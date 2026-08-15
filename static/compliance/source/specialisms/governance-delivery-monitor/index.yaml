@@ -434,18 +434,23 @@ phases:
           phase: "delivery"
           governance_context: "$context.governance_context"
           planned_delivery:
-            media_buy_id: "$context.media_buy_id"
+            media_buy_id: "mb_governance_delivery_monitor"
             geo:
               countries: ["US"]
             channels: ["display", "olv"]
             total_budget: 40000
             currency: "USD"
           delivery_metrics:
+            statement_id: "governance_delivery_monitor_0001"
+            statement_digest: "sha256:7a1a1cf8cdd13f1c470dce0e2e00da1cd1403876dd6f2b231b6b83924e2489d5"
+            sequence: 1
+            issued_at: "2099-05-16T00:00:00Z"
             reporting_period:
               start: "2099-05-01T00:00:00Z"
               end: "2099-05-15T00:00:00Z"
             spend: 20000
             cumulative_spend: 20000
+            currency: "USD"
             channel_distribution:
               ctv: 70
               video: 30

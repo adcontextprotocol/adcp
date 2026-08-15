@@ -10,6 +10,7 @@ import {
 } from '../../src/training-agent/governance-handlers.js';
 import { clearSessions, getSession, runWithSessionContext } from '../../src/training-agent/state.js';
 import { resetGovernanceSigning } from '../../src/training-agent/governance-signing.js';
+import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
 import { getCanonicalBase } from '../../src/training-agent/tenants/registry.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
@@ -575,6 +576,14 @@ describe('check_governance request-shape binding', () => {
             total_budget: { amount: 1_000, currency: 'USD' },
           },
         });
+        const deliveryMetrics = {
+          statement_id: 'stmt_mb_execution_0001',
+          sequence: 1,
+          issued_at: '2027-01-02T01:00:00Z',
+          reporting_period: { start: '2027-01-01T00:00:00Z', end: '2027-01-02T00:00:00Z' },
+          cumulative_spend: 100,
+          currency: 'USD',
+        };
         return claims(await check({
           plan_id: undefined,
           caller: 'https://seller.example',
@@ -585,6 +594,12 @@ describe('check_governance request-shape binding', () => {
             total_budget: 1_000,
             currency: 'USD',
           },
+          ...(phase === 'delivery' && {
+            delivery_metrics: {
+              ...deliveryMetrics,
+              statement_digest: computeDeliveryStatementDigest('mb_execution', deliveryMetrics),
+            },
+          }),
         }));
       });
 

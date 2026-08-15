@@ -201,6 +201,50 @@ Every `check_governance` invocation MUST produce an audit log entry — retrieva
 
 The buyer-side intent check and any seller-side execution check each produce a distinct `check_id`, while the opaque action binding in their signed `sub` remains stable. For completed or failed outcomes, `report_plan_outcome` MUST carry an exact `check_id`, `plan_id`, and `governance_context` tuple from an approved decision in that action lifecycle. The authenticated reporter MUST be the buyer-side caller from the original intent, and `purchase_type` MUST match that intent. The governance agent rejects mismatched tuples and permits only one terminal settlement per opaque action binding, regardless of whether a report names the intent or execution check (apart from an identical idempotent cached replay). Auditors reconcile that intent entry with any execution entry and the service's persisted token record. The report's monetary fields are reconciliation evidence: the governance agent derives ledger authority from its own intent record, narrowed by a matching purchase execution record when available.
 
+#### Evidence authority and reconciliation
+
+Campaign Governance is a three-party evidence system, not a rule that one participant is authoritative for every fact. The governance agent is selected by and works for the buyer, so its ledger is authoritative for authorization state but is not independent evidence that physical delivery or a refund occurred.
+
+| Fact | Authoritative protocol record | What the other parties contribute |
+|---|---|---|
+| Spend authority and plan headroom | Governance agent's approved checks and derived ledger | Buyer proposes an action; seller may narrow the execution commitment |
+| What the seller claims it delivered or billed | Seller-authenticated canonical delivery statement | Buyer may forward the copy it received or submit its own measurement |
+| What the buyer observed | Buyer-authenticated delivery observation | It remains separately attributed and never overwrites the seller statement |
+| Commercial release, refund, credit, or makegood | Seller report plus plan-owner review | Governance verifies identities, evidence integrity, bounds, and accounting policy |
+| Current ledger and conservative exposure | Governance-derived state over all retained records | Neither a buyer nor seller can directly set this value |
+
+For each `phase: "delivery"` check, the seller MUST provide an immutable `delivery_metrics.statement_id`, a monotonically increasing `sequence`, and a `statement_digest`. The digest is lowercase hex SHA-256 prefixed with `sha256:` over RFC 8785 JCS of:
+
+```json
+{
+  "seller_reference": "<planned_delivery.media_buy_id>",
+  "delivery_metrics": "<the complete delivery_metrics object except statement_digest>"
+}
+```
+
+The seller's authenticated call attributes that statement to the seller. A statement ID is unique in that seller's namespace and binds to one governed action; reusing it for another action or different content is a conflict. A non-increasing sequence on the same action is also a conflict. Delivery evidence describes an already-authorized commitment and MUST NOT reserve that commitment a second time.
+
+The buyer reports its side through `report_plan_outcome` with `outcome: "delivery"`, naming the exact seller delivery `check_id` and `governance_context`. `source: "seller_statement_copy"` means only that the buyer received the same seller statement; it is not independent corroboration. `source: "buyer_measurement"` is separately attributed buyer evidence. In either case, governance retains both records and compares period, cumulative spend, currency, and—when forwarded—the seller statement ID and digest.
+
+If the records disagree, governance MUST:
+
+- mark the governed action `disputed` and preserve both values with their source identities;
+- use `max(seller_reported_spend, buyer_observed_spend)` as `conservative_exposure` while the dispute is unresolved;
+- neither average the values nor choose the last writer; and
+- reject adjustment acceptance while the disputed governance period remains open.
+
+Reconciliation is append-only. The buyer submits a newer observation against the applicable canonical seller statement after the parties resolve the discrepancy. The governance agent uses the latest observation as the current reconciliation state while retaining every earlier disputed record in the audit trail.
+
+A seller may also issue a corrected statement for the same open period by submitting a new `check_governance` delivery call with a higher `sequence`. The latest in-sequence statement becomes the applicable canonical statement; the buyer's next observation SHOULD bind to it. Earlier statements remain in the audit trail.
+
+Campaign Governance is an operational control, not the source of truth for final billing. The authenticated plan owner MAY end an operational reporting window by submitting a new observation for that exact seller statement and period with `period_closed: true`. If the values still disagree, governance records `closed_unresolved`, freezes both parties' evidence for that period, and stops the historical discrepancy from blocking later governance or a buyer-reviewed adjustment. Neither party may add a different delivery statement or observation for the closed period. Closure does not assert a final payable amount, settle an invoice, or resolve the commercial dispute; those remain outside Campaign Governance. A seller statement for a different subsequent reporting period starts that period as `open` and `unmatched`.
+
+Thus, a seller reporting 100 to governance and 200 to the buyer produces an explicit discrepancy, not an authoritative 100 or 200 overwrite. The converse behaves the same way. Governance's audit view exposes the current `delivery_reporting_period`, `seller_reported_spend`, `buyer_observed_spend`, `conservative_exposure`, `delivery_reconciliation_status`, and `delivery_period_state` while retaining every historical entry.
+
+Commercial adjustments follow the same attributed-evidence rule. The authenticated seller first calls `report_plan_adjustment` with `action: "report"` and an integrity-bound evidence record. This creates a `reported` record only. The authenticated plan owner then calls the same task with `action: "review"` to accept or dispute the exact `adjustment_id`. A report becomes `verified` only after acceptance; a seller cannot unilaterally reduce net cost or restore plan headroom.
+
+Verified decommitments require a canonical seller delivery statement and, in aggregate, cannot exceed the undelivered obligation. Seller-issued adjustment and evidence IDs are immutable within the seller's namespace and cannot be rebound to different content. Verified refunds and credits reduce economic `net_cost`; they restore reusable headroom only when the plan explicitly uses `budget.accounting_mode: "verified_net_cost"`. The default `gross_commitment` mode restores headroom only for verified decommitments. Makegoods remain non-cash audit records in both modes. Regardless of mode, the original commitment remains in trailing anti-fragmentation aggregates, preventing repeated commit-adjust-commit cycles from evading cumulative thresholds.
+
 #### Interaction with idempotency
 
 - **Replay of an already-completed identical request within the seller's idempotency window:** return the cached outcome without re-executing side effects or re-authorizing. Token expiry after the original commit does not invalidate the historical cached success. This ordering is essential because the idempotency window is longer than the intent-token lifetime.
@@ -323,6 +367,8 @@ aggregate = sum(c.amount for c in commit_history
 then evaluates `aggregate` against each applicable threshold. The current incoming commit is included in the sum. Denied commits and unresolved conditions do not contribute; only actions that ultimately receive `approved` and are confirmed count. `now` is the governance agent's wall-clock time at evaluation; sliding-window boundaries are not snapped to plan or calendar boundaries.
 
 **Commitments are sticky within the window.** `c.amount` is the amount committed at approval time, not the delivered amount. Under-delivery, cancellation, makegoods, and post-approval budget reductions MUST NOT decrement a commit's contribution to the aggregate before the trailing window rolls it off. Otherwise a buyer could free fragmentation headroom by cancelling an approved commit and immediately re-committing sub-threshold — full spend moves across the round trip, each leg passes in isolation. An `update_media_buy` that *increases* committed budget enters as a delta (new committed budget − prior committed); a decrease does not decrement.
+
+[`report_plan_adjustment`](./tasks/report_plan_adjustment) separates current plan obligation from that sticky history. A verified `decommitment` restores current plan headroom, but the original outcome amount remains in the trailing-window aggregate until it rolls off. Verified refunds and credits reduce economic net cost and restore headroom only under an explicit `verified_net_cost` accounting mode; makegoods never restore cash headroom. Governance agents MUST retain gross commitment, reported and verified adjustments, economic net cost, restored headroom, and current ledger commitment as separately auditable values.
 
 When an individual commit would be below a threshold in isolation but pushes the trailing-window aggregate above the threshold, the governance agent MUST apply the threshold's consequence (human review escalation, denial, or conditions) to that commit. Governance agents MAY expose an `aggregate_committed` field on `get_plan_audit_logs` responses so auditors can reconstruct the fragmentation-defense decision without re-deriving it from the full outcome stream. The field's shape (units, currency, window-boundary reporting) is governance-agent-specific in 3.x and will be standardized in a later revision; implementers exposing it SHOULD document their shape alongside their `get_plan_audit_logs` response.
 
@@ -1114,11 +1160,11 @@ Governance checks complement the buyer-side governance loop, they do not replace
 | **Who checks** | Buyer's governance agent, called by orchestrator | Buyer's governance agent, called by seller |
 | **When** | Before the buyer sends the request | Before confirm, on update, during delivery |
 | **What's validated** | The buyer's intended action | The seller's planned and actual delivery |
-| **Trust model** | Self-attested | Independently verified |
+| **Trust model** | Buyer-attributed intent | Seller-attributed statement, reconciled against buyer evidence |
 | **Budget tracking** | Yes (plan state) | Governance agent maintains state |
-| **Ongoing monitoring** | Via `report_plan_outcome` | Via `delivery` phase |
+| **Ongoing monitoring** | Buyer observations via `report_plan_outcome` | Seller statements via `delivery` phase |
 
-The `delivery` phase gives the governance agent real-time visibility into what sellers are actually delivering. The buyer-side `report_plan_outcome` depends on the orchestrator reporting honestly; the `delivery` phase gets reports directly from the seller.
+The `delivery` phase gives the governance agent a seller-authenticated claim about delivery. Buyer observations arrive separately through `report_plan_outcome`. Neither claim silently replaces the other; the [evidence reconciliation rules](#evidence-authority-and-reconciliation) define how conflicts are retained and handled.
 
 The buyer-side and seller-side governance checks hit the same agent — the one registered on the account via `sync_governance`. The orchestrator calls it for intent checks and the seller calls it for execution checks; both conversations reach the same authority with the same plan state.
 

@@ -1,0 +1,661 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import '../../src/training-agent/task-handlers.js';
+import {
+  handleCheckGovernance,
+  handleGetPlanAuditLogs,
+  handleReportPlanAdjustment,
+  handleReportPlanOutcome,
+  handleSyncPlans,
+} from '../../src/training-agent/governance-handlers.js';
+import { clearSessions, runWithSessionContext } from '../../src/training-agent/state.js';
+import type { GovernanceAdjustmentType, TrainingContext } from '../../src/training-agent/types.js';
+import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
+
+const CTX: TrainingContext = { mode: 'open' };
+const BUYER_CTX: TrainingContext = { ...CTX, authenticatedAgentUrl: 'https://buyer.example' };
+const SELLER_CTX: TrainingContext = { ...CTX, authenticatedAgentUrl: 'https://seller.example' };
+const ATTACKER_CTX: TrainingContext = { ...CTX, authenticatedAgentUrl: 'https://attacker.example' };
+const PLAN = {
+  plan_id: 'plan-adjustment-binding',
+  brand: { domain: 'adjustment-binding.example' },
+  objectives: 'Verify seller-authenticated append-only commitment adjustments.',
+  budget: { total: 100, currency: 'USD', reallocation_threshold: 100 },
+  flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+};
+
+async function settle(
+  amount = 100,
+  accountingMode: 'gross_commitment' | 'verified_net_cost' = 'gross_commitment',
+) {
+  await handleSyncPlans({
+    plans: [{
+      ...PLAN,
+      budget: { ...PLAN.budget, accounting_mode: accountingMode },
+    }],
+  }, BUYER_CTX);
+  const intent = await handleCheckGovernance({
+    plan_id: PLAN.plan_id,
+    caller: BUYER_CTX.authenticatedAgentUrl,
+    target_agent: SELLER_CTX.authenticatedAgentUrl,
+    tool: 'create_media_buy',
+    payload: { total_budget: { amount, currency: 'USD' } },
+  }, BUYER_CTX) as Record<string, any>;
+  const outcome = await handleReportPlanOutcome({
+    plan_id: PLAN.plan_id,
+    check_id: intent.check_id,
+    governance_context: intent.governance_context,
+    idempotency_key: `outcome_${intent.check_id}_adjustment`,
+    outcome: 'completed',
+    seller_response: { seller_reference: 'mb_adjustable_001', committed_budget: amount },
+  }, BUYER_CTX) as Record<string, any>;
+  expect(outcome.errors, JSON.stringify(outcome)).toBeUndefined();
+  return { intent, outcome };
+}
+
+function adjustmentRequest(
+  outcomeId: string,
+  adjustmentType: GovernanceAdjustmentType,
+  amount: number,
+  suffix = adjustmentType,
+) {
+  return {
+    action: 'report',
+    plan_id: PLAN.plan_id,
+    outcome_id: outcomeId,
+    seller_reference: 'mb_adjustable_001',
+    seller_adjustment_id: `seller_adjustment_${suffix}`,
+    adjustment_type: adjustmentType,
+    amount: { amount, currency: 'USD' },
+    reason: `Seller recorded ${adjustmentType} for the governed resource.`,
+    effective_at: '2027-02-01T12:00:00Z',
+    evidence: {
+      evidence_id: `evidence_${suffix}`,
+      evidence_type: {
+        decommitment: 'decommitment_agreement',
+        refund: 'refund_settlement',
+        credit: 'credit_note',
+        makegood: 'makegood_agreement',
+      }[adjustmentType],
+      digest: `sha256:${'a'.repeat(64)}`,
+      issued_at: '2027-02-01T11:55:00Z',
+    },
+    idempotency_key: `adjustment_${suffix}_0001`,
+  };
+}
+
+function reviewRequest(adjustmentId: string, decision: 'accept' | 'dispute' = 'accept', suffix = decision) {
+  return {
+    action: 'review',
+    plan_id: PLAN.plan_id,
+    adjustment_id: adjustmentId,
+    decision,
+    reason: decision === 'dispute' ? 'Buyer evidence does not support the adjustment.' : undefined,
+    idempotency_key: `adjustment_review_${suffix}_0001`,
+  };
+}
+
+async function reportSellerDelivery(
+  governanceContext: string,
+  cumulativeSpend: number,
+  suffix = 'latest',
+  sequence = 1,
+  reportingPeriod = { start: '2027-01-01T00:00:00Z', end: '2027-02-01T00:00:00Z' },
+) {
+  const deliveryMetrics = {
+    statement_id: `delivery_statement_${suffix}`,
+    sequence,
+    issued_at: '2027-02-01T11:00:00Z',
+    reporting_period: reportingPeriod,
+    cumulative_spend: cumulativeSpend,
+    currency: 'USD',
+  };
+  return handleCheckGovernance({
+    caller: SELLER_CTX.authenticatedAgentUrl,
+    governance_context: governanceContext,
+    phase: 'delivery',
+    planned_delivery: {
+      media_buy_id: 'mb_adjustable_001',
+      total_budget: 100,
+      currency: 'USD',
+    },
+    delivery_metrics: {
+      ...deliveryMetrics,
+      statement_digest: computeDeliveryStatementDigest('mb_adjustable_001', deliveryMetrics),
+    },
+  }, SELLER_CTX) as Promise<Record<string, any>>;
+}
+
+async function audit() {
+  return handleGetPlanAuditLogs({
+    brand: PLAN.brand,
+    plan_ids: [PLAN.plan_id],
+    include_entries: true,
+  }, BUYER_CTX) as Promise<Record<string, any>>;
+}
+
+describe('report_plan_adjustment', () => {
+  beforeEach(() => clearSessions());
+  afterEach(() => clearSessions());
+
+  it('restores headroom only for a seller-authenticated decommitment', async () => {
+    await runWithSessionContext(async () => {
+      const { intent, outcome } = await settle();
+      const deliveryCheck = await reportSellerDelivery(intent.governance_context, 60);
+      expect(deliveryCheck.verdict, JSON.stringify(deliveryCheck)).toBe('approved');
+      const reported = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'decommitment', 40),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      expect(reported).toMatchObject({ adjustment_state: 'reported', headroom_restored: 0 });
+      const result = await handleReportPlanAdjustment(
+        reviewRequest(reported.adjustment_id),
+        BUYER_CTX,
+      ) as Record<string, any>;
+      const logs = await audit();
+      const plan = logs.plans[0];
+      const entry = plan.entries.find((item: any) => item.type === 'adjustment');
+
+      expect(result).toMatchObject({
+        adjustment_state: 'verified',
+        adjustment_type: 'decommitment',
+        amount: { amount: 40, currency: 'USD' },
+        headroom_restored: 40,
+        plan_summary: {
+          gross_committed: 100,
+          adjustments_reported: 40,
+          adjustments_verified: 40,
+          net_cost: 60,
+          headroom_restored: 40,
+          ledger_committed: 60,
+          net_committed: 60,
+          budget_remaining: 40,
+        },
+      });
+      expect(plan.budget).toMatchObject({
+        authorized: 100,
+        gross_committed: 100,
+        adjustments_reported: 40,
+        adjustments_verified: 40,
+        net_cost: 60,
+        headroom_restored: 40,
+        net_committed: 60,
+        committed: 60,
+        remaining: 40,
+      });
+      expect(plan.summary.adjustments_reported).toBe(1);
+      expect(plan.governed_actions[0]).toMatchObject({
+        committed: 100,
+        adjustments_reported: 40,
+        adjustments_verified: 40,
+        net_cost: 60,
+        headroom_restored: 40,
+        net_committed: 60,
+      });
+      expect(entry).toMatchObject({
+        caller: SELLER_CTX.authenticatedAgentUrl,
+        outcome_id: outcome.outcome_id,
+        seller_reference: 'mb_adjustable_001',
+        seller_adjustment_id: 'seller_adjustment_decommitment',
+        adjustment_type: 'decommitment',
+        adjustment_state: 'verified',
+        verified_amount: 40,
+        amount: { amount: 40, currency: 'USD' },
+        headroom_restored: 40,
+      });
+    });
+  });
+
+  it.each(['refund', 'credit', 'makegood'] as const)(
+    'records %s without restoring gross-commitment headroom',
+    async (adjustmentType) => {
+      await runWithSessionContext(async () => {
+        const { outcome } = await settle();
+        const reported = await handleReportPlanAdjustment(
+          adjustmentRequest(outcome.outcome_id, adjustmentType, 25),
+          SELLER_CTX,
+        ) as Record<string, any>;
+        const result = await handleReportPlanAdjustment(
+          reviewRequest(reported.adjustment_id, 'accept', adjustmentType),
+          BUYER_CTX,
+        ) as Record<string, any>;
+        const logs = await audit();
+
+        expect(result).toMatchObject({
+          adjustment_state: 'verified',
+          headroom_restored: 0,
+          plan_summary: {
+            gross_committed: 100,
+            adjustments_reported: 25,
+            adjustments_verified: adjustmentType === 'makegood' ? 0 : 25,
+            net_cost: adjustmentType === 'makegood' ? 100 : 75,
+            headroom_restored: 0,
+            net_committed: 100,
+            budget_remaining: 0,
+          },
+        });
+        expect(logs.plans[0].budget.committed).toBe(100);
+      });
+    },
+  );
+
+  it('lets verified refunds restore headroom only when the plan opts into verified net cost', async () => {
+    await runWithSessionContext(async () => {
+      const { outcome } = await settle(100, 'verified_net_cost');
+      const reported = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'refund', 25, 'net_cost_refund'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      const verified = await handleReportPlanAdjustment(
+        reviewRequest(reported.adjustment_id, 'accept', 'net_cost_refund'),
+        BUYER_CTX,
+      ) as Record<string, any>;
+
+      expect(verified).toMatchObject({
+        adjustment_state: 'verified',
+        headroom_restored: 25,
+        plan_summary: {
+          accounting_mode: 'verified_net_cost',
+          gross_committed: 100,
+          adjustments_verified: 25,
+          net_cost: 75,
+          ledger_committed: 75,
+          budget_remaining: 25,
+        },
+      });
+    });
+  });
+
+  it('requires the authenticated plan owner to review an adjustment', async () => {
+    await runWithSessionContext(async () => {
+      const { outcome } = await settle();
+      const reported = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'refund', 25, 'wrong_reviewer'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      const rejected = await handleReportPlanAdjustment(
+        reviewRequest(reported.adjustment_id, 'accept', 'wrong_reviewer'),
+        ATTACKER_CTX,
+      ) as Record<string, any>;
+
+      expect(rejected.errors?.[0]).toMatchObject({ code: 'REFERENCE_NOT_FOUND' });
+      expect((await audit()).plans[0].budget).toMatchObject({
+        adjustments_reported: 25,
+        adjustments_verified: 0,
+        committed: 100,
+      });
+    });
+  });
+
+  it('records a buyer dispute without changing economic or ledger state', async () => {
+    await runWithSessionContext(async () => {
+      const { outcome } = await settle();
+      const reported = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'credit', 25, 'buyer_dispute'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      const disputed = await handleReportPlanAdjustment(
+        reviewRequest(reported.adjustment_id, 'dispute', 'buyer_dispute'),
+        BUYER_CTX,
+      ) as Record<string, any>;
+
+      expect(disputed).toMatchObject({
+        adjustment_state: 'disputed',
+        headroom_restored: 0,
+        plan_summary: { adjustments_verified: 0, net_cost: 100, ledger_committed: 100 },
+      });
+    });
+  });
+
+  it('blocks adjustment acceptance when seller and buyer delivery evidence disagree', async () => {
+    await runWithSessionContext(async () => {
+      const { intent, outcome } = await settle();
+      const sellerDelivery = await reportSellerDelivery(intent.governance_context, 60, 'conflict');
+      const statement = sellerDelivery.delivery_statement;
+      const buyerDelivery = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: sellerDelivery.check_id,
+        governance_context: sellerDelivery.governance_context,
+        idempotency_key: 'delivery_conflict_buyer_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'buyer_observation_conflict',
+          source: 'buyer_measurement',
+          observed_at: '2027-02-01T11:05:00Z',
+          reporting_period: statement.reporting_period,
+          cumulative_spend: 80,
+          currency: 'USD',
+        },
+      }, BUYER_CTX) as Record<string, any>;
+      expect(buyerDelivery.delivery_reconciliation_status).toBe('disputed');
+
+      const reported = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'refund', 10, 'delivery_conflict'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      const rejected = await handleReportPlanAdjustment(
+        reviewRequest(reported.adjustment_id, 'accept', 'delivery_conflict'),
+        BUYER_CTX,
+      ) as Record<string, any>;
+      const logs = await audit();
+
+      expect(rejected.errors?.[0]).toMatchObject({ code: 'CONFLICT' });
+      expect(logs.plans[0].governed_actions[0]).toMatchObject({
+        seller_reported_spend: 60,
+        buyer_observed_spend: 80,
+        conservative_exposure: 80,
+        delivery_reconciliation_status: 'disputed',
+      });
+      expect(logs.plans[0].budget.committed).toBe(100);
+
+      const reconciled = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: sellerDelivery.check_id,
+        governance_context: sellerDelivery.governance_context,
+        idempotency_key: 'delivery_conflict_resolved_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'buyer_observation_reconciled',
+          source: 'buyer_measurement',
+          observed_at: '2027-02-01T11:10:00Z',
+          reporting_period: statement.reporting_period,
+          cumulative_spend: 60,
+          currency: 'USD',
+        },
+      }, BUYER_CTX) as Record<string, any>;
+      expect(reconciled.delivery_reconciliation_status).toBe('consistent');
+
+      const accepted = await handleReportPlanAdjustment(
+        reviewRequest(reported.adjustment_id, 'accept', 'delivery_reconciled'),
+        BUYER_CTX,
+      ) as Record<string, any>;
+      expect(accepted).toMatchObject({ adjustment_state: 'verified', headroom_restored: 0 });
+      expect((await audit()).plans[0].governed_actions[0]).toMatchObject({
+        seller_reported_spend: 60,
+        buyer_observed_spend: 60,
+        conservative_exposure: 60,
+        delivery_reconciliation_status: 'consistent',
+      });
+    });
+  });
+
+  it('freezes a closed unresolved period without turning governance into billing truth', async () => {
+    await runWithSessionContext(async () => {
+      const { intent, outcome } = await settle();
+      const sellerDelivery = await reportSellerDelivery(intent.governance_context, 60, 'period_close');
+      const statement = sellerDelivery.delivery_statement;
+      const openDispute = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: sellerDelivery.check_id,
+        governance_context: sellerDelivery.governance_context,
+        idempotency_key: 'delivery_period_open_dispute_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'buyer_observation_period_open',
+          source: 'buyer_measurement',
+          observed_at: '2027-02-01T11:05:00Z',
+          reporting_period: statement.reporting_period,
+          cumulative_spend: 80,
+          currency: 'USD',
+        },
+      }, BUYER_CTX) as Record<string, any>;
+      expect(openDispute).toMatchObject({
+        delivery_reconciliation_status: 'disputed',
+        delivery_period_state: 'open',
+      });
+
+      const reported = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'refund', 10, 'closed_period_refund'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      const closed = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: sellerDelivery.check_id,
+        governance_context: sellerDelivery.governance_context,
+        idempotency_key: 'delivery_period_close_unresolved_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'buyer_observation_period_close',
+          source: 'buyer_measurement',
+          observed_at: '2027-02-02T00:00:00Z',
+          reporting_period: statement.reporting_period,
+          cumulative_spend: 80,
+          currency: 'USD',
+          period_closed: true,
+        },
+      }, BUYER_CTX) as Record<string, any>;
+      expect(closed).toMatchObject({
+        delivery_reconciliation_status: 'closed_unresolved',
+        delivery_period_state: 'closed',
+      });
+
+      const accepted = await handleReportPlanAdjustment(
+        reviewRequest(reported.adjustment_id, 'accept', 'closed_period_refund'),
+        BUYER_CTX,
+      ) as Record<string, any>;
+      expect(accepted).toMatchObject({ adjustment_state: 'verified', headroom_restored: 0 });
+
+      const rewrittenBuyerEvidence = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: sellerDelivery.check_id,
+        governance_context: sellerDelivery.governance_context,
+        idempotency_key: 'delivery_period_rewrite_attempt_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'buyer_observation_period_rewrite',
+          source: 'buyer_measurement',
+          observed_at: '2027-02-02T01:00:00Z',
+          reporting_period: statement.reporting_period,
+          cumulative_spend: 60,
+          currency: 'USD',
+        },
+      }, BUYER_CTX) as Record<string, any>;
+      expect(rewrittenBuyerEvidence.errors?.[0]).toMatchObject({ code: 'CONFLICT' });
+
+      const rewrittenSellerEvidence = await reportSellerDelivery(
+        sellerDelivery.governance_context,
+        61,
+        'closed_period_rewrite',
+        2,
+      );
+      expect(rewrittenSellerEvidence.errors?.[0]).toMatchObject({ code: 'CONFLICT' });
+
+      const closedAudit = await audit();
+      expect(closedAudit.plans[0].entries
+        .filter((entry: Record<string, unknown>) => entry.delivery_reconciliation_status)
+        .map((entry: Record<string, unknown>) => entry.delivery_reconciliation_status))
+        .toEqual(['disputed', 'closed_unresolved']);
+
+      const nextPeriod = await reportSellerDelivery(
+        sellerDelivery.governance_context,
+        75,
+        'next_period',
+        2,
+        { start: '2027-02-01T00:00:00Z', end: '2027-03-01T00:00:00Z' },
+      );
+      expect(nextPeriod.verdict, JSON.stringify(nextPeriod)).toBe('approved');
+      const currentAction = (await audit()).plans[0].governed_actions[0];
+      expect(currentAction).toMatchObject({
+        seller_reported_spend: 75,
+        delivery_reporting_period: {
+          start: '2027-02-01T00:00:00Z',
+          end: '2027-03-01T00:00:00Z',
+        },
+        delivery_reconciliation_status: 'unmatched',
+        delivery_period_state: 'open',
+      });
+      expect(currentAction).not.toHaveProperty('buyer_observed_spend');
+    });
+  });
+
+  it('rejects a decommitment larger than the latest undelivered obligation', async () => {
+    await runWithSessionContext(async () => {
+      const { intent, outcome } = await settle();
+      await reportSellerDelivery(intent.governance_context, 80, 'decommit_bound');
+      const reported = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'decommitment', 25, 'decommit_bound'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      const rejected = await handleReportPlanAdjustment(
+        reviewRequest(reported.adjustment_id, 'accept', 'decommit_bound'),
+        BUYER_CTX,
+      ) as Record<string, any>;
+
+      expect(rejected.errors?.[0]).toMatchObject({ code: 'VALIDATION_ERROR' });
+      expect((await audit()).plans[0].budget.committed).toBe(100);
+    });
+  });
+
+  it('caps cumulative verified decommitments at the undelivered obligation', async () => {
+    await runWithSessionContext(async () => {
+      const { intent, outcome } = await settle();
+      await reportSellerDelivery(intent.governance_context, 60, 'cumulative_decommit_bound');
+      const first = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'decommitment', 30, 'cumulative_decommit_first'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      expect((await handleReportPlanAdjustment(
+        reviewRequest(first.adjustment_id, 'accept', 'cumulative_decommit_first'),
+        BUYER_CTX,
+      ) as Record<string, any>).adjustment_state).toBe('verified');
+
+      const second = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'decommitment', 11, 'cumulative_decommit_second'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      const rejected = await handleReportPlanAdjustment(
+        reviewRequest(second.adjustment_id, 'accept', 'cumulative_decommit_second'),
+        BUYER_CTX,
+      ) as Record<string, any>;
+
+      expect(rejected.errors?.[0]).toMatchObject({ code: 'VALIDATION_ERROR' });
+      expect((await audit()).plans[0].budget).toMatchObject({
+        headroom_restored: 30,
+        committed: 70,
+      });
+    });
+  });
+
+  it('rejects seller reuse of a delivery statement ID with different evidence', async () => {
+    await runWithSessionContext(async () => {
+      const { intent } = await settle();
+      const first = await reportSellerDelivery(intent.governance_context, 60, 'seller_equivocation');
+      const conflict = await reportSellerDelivery(intent.governance_context, 61, 'seller_equivocation');
+
+      expect(first.verdict).toBe('approved');
+      expect(conflict.errors?.[0]).toMatchObject({ code: 'CONFLICT' });
+      const statementEntry = (await audit()).plans[0].entries.find(
+        (entry: Record<string, unknown>) => entry.delivery_statement,
+      );
+      expect(statementEntry.delivery_statement).toMatchObject({ cumulative_spend: 60 });
+    });
+  });
+
+  it('caps cumulative adjustments at the original authoritative commitment', async () => {
+    await runWithSessionContext(async () => {
+      const { outcome } = await settle();
+      expect((await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'refund', 30, 'refund_cap'),
+        SELLER_CTX,
+      ) as Record<string, any>).adjustment_state).toBe('reported');
+
+      const rejected = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'decommitment', 71, 'decommitment_cap'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+
+      expect(rejected.errors?.[0]).toMatchObject({ code: 'VALIDATION_ERROR' });
+      expect((await audit()).plans[0].budget).toMatchObject({
+        adjustments_reported: 30,
+        headroom_restored: 0,
+        committed: 100,
+      });
+    });
+  });
+
+  it('rejects a caller other than the seller audience without mutation', async () => {
+    await runWithSessionContext(async () => {
+      const { outcome } = await settle();
+      const rejected = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'decommitment', 25),
+        ATTACKER_CTX,
+      ) as Record<string, any>;
+
+      expect(rejected.errors?.[0]).toMatchObject({ code: 'REFERENCE_NOT_FOUND' });
+      expect((await audit()).plans[0].budget.committed).toBe(100);
+    });
+  });
+
+  it.each([
+    ['mismatched resource', { seller_reference: 'mb_other' }],
+    ['mismatched currency', { amount: { amount: 25, currency: 'EUR' } }],
+    ['zero amount', { amount: { amount: 0, currency: 'USD' } }],
+    ['negative amount', { amount: { amount: -25, currency: 'USD' } }],
+  ])('rejects %s without mutation', async (_label, patch) => {
+    await runWithSessionContext(async () => {
+      const { outcome } = await settle();
+      const rejected = await handleReportPlanAdjustment({
+        ...adjustmentRequest(outcome.outcome_id, 'decommitment', 25),
+        ...patch,
+      }, SELLER_CTX) as Record<string, any>;
+
+      expect(rejected.errors?.[0]).toMatchObject({ code: 'VALIDATION_ERROR' });
+      expect((await audit()).plans[0].budget.committed).toBe(100);
+    });
+  });
+
+  it('returns the immutable cached response for an exact replay', async () => {
+    await runWithSessionContext(async () => {
+      const { outcome } = await settle();
+      const request = adjustmentRequest(outcome.outcome_id, 'decommitment', 25);
+      const first = await handleReportPlanAdjustment(request, SELLER_CTX) as Record<string, any>;
+      const replay = await handleReportPlanAdjustment(request, SELLER_CTX) as Record<string, any>;
+
+      expect(replay).toMatchObject({
+        adjustment_id: first.adjustment_id,
+        replayed: true,
+        headroom_restored: 0,
+      });
+      expect((await audit()).plans[0].budget).toMatchObject({
+        adjustments_reported: 25,
+        committed: 100,
+      });
+    });
+  });
+
+  it('rejects idempotency and seller adjustment ID reuse with changed payloads', async () => {
+    await runWithSessionContext(async () => {
+      const { outcome } = await settle();
+      const request = adjustmentRequest(outcome.outcome_id, 'decommitment', 25);
+      expect((await handleReportPlanAdjustment(request, SELLER_CTX) as Record<string, any>).adjustment_state).toBe('reported');
+
+      const idempotencyConflict = await handleReportPlanAdjustment({
+        ...request,
+        amount: { amount: 20, currency: 'USD' },
+      }, SELLER_CTX) as Record<string, any>;
+      const sellerIdConflict = await handleReportPlanAdjustment({
+        ...request,
+        idempotency_key: 'adjustment_distinct_0001',
+        amount: { amount: 20, currency: 'USD' },
+      }, SELLER_CTX) as Record<string, any>;
+
+      expect(idempotencyConflict.errors?.[0]).toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+      expect(sellerIdConflict.errors?.[0]).toMatchObject({ code: 'CONFLICT' });
+      expect((await audit()).plans[0].budget.committed).toBe(100);
+    });
+  });
+
+  it('rejects rebinding a seller evidence ID to another adjustment', async () => {
+    await runWithSessionContext(async () => {
+      const { outcome } = await settle();
+      const first = adjustmentRequest(outcome.outcome_id, 'refund', 10, 'evidence_first');
+      expect((await handleReportPlanAdjustment(first, SELLER_CTX) as Record<string, any>).adjustment_state).toBe('reported');
+
+      const second = adjustmentRequest(outcome.outcome_id, 'refund', 10, 'evidence_second');
+      second.evidence.evidence_id = first.evidence.evidence_id;
+      const rejected = await handleReportPlanAdjustment(second, SELLER_CTX) as Record<string, any>;
+
+      expect(rejected.errors?.[0]).toMatchObject({ code: 'CONFLICT' });
+      expect((await audit()).plans[0].budget.adjustments_reported).toBe(10);
+    });
+  });
+});

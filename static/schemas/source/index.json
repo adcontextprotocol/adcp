@@ -2152,6 +2152,16 @@
             "description": "Outcome acceptance status with budget impact and findings"
           }
         },
+        "report-plan-adjustment": {
+          "request": {
+            "$ref": "/schemas/governance/report-plan-adjustment-request.json",
+            "description": "Seller-authenticated append-only commitment adjustment report"
+          },
+          "response": {
+            "$ref": "/schemas/governance/report-plan-adjustment-response.json",
+            "description": "Accepted adjustment with gross, restored-headroom, and net budget state"
+          }
+        },
         "get-plan-audit-logs": {
           "request": {
             "$ref": "/schemas/governance/get-plan-audit-logs-request.json",

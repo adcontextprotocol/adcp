@@ -8,10 +8,12 @@ description: "get_plan_audit_logs retrieves governance state, budget tracking, a
 # get_plan_audit_logs
 
 <Note>
-**Experimental.** Campaign governance ([`sync_plans`](/docs/governance/campaign/tasks/sync_plans), [`check_governance`](/docs/governance/campaign/tasks/check_governance), [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome), `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
+**Experimental.** Campaign governance ([`sync_plans`](/docs/governance/campaign/tasks/sync_plans), [`check_governance`](/docs/governance/campaign/tasks/check_governance), [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome), [`report_plan_adjustment`](/docs/governance/campaign/tasks/report_plan_adjustment), `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/docs/reference/experimental-status) for the full contract.
 </Note>
 
 Retrieve governance state and audit trail for a plan, multiple plans, or an entire portfolio. Returns budget tracking, validation history, and compliance summary.
+
+Budget state separates `gross_committed`, `adjustments_reported`, `adjustments_verified`, economic `net_cost`, `headroom_restored`, and `ledger_committed`. The legacy `committed` and `net_committed` fields remain 3.x aliases for the current ledger value. Adjustment entries are append-only; they never rewrite the source outcome or decrement the trailing aggregate used for fragmentation defense.
 
 ## Request
 
@@ -25,7 +27,7 @@ Retrieve governance state and audit trail for a plan, multiple plans, or an enti
 }
 ```
 
-Results are grouped by `governance_context` within each plan. Each governed action (media buy, rights license, signal activation, creative service) appears under its `governance_context`.
+Results are joined by the governance agent's stable opaque action binding. The exposed `governance_context` is the original intent context for correlation; later lifecycle checks have freshly signed context strings but remain part of the same action.
 
 **Multiple plans** -- retrieve specific plans in one call:
 
@@ -64,9 +66,17 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
       "status": "active",
       "budget": {
         "authorized": 500000,
-        "committed": 425000,
-        "remaining": 75000,
-        "utilization_pct": 85
+        "accounting_mode": "gross_commitment",
+        "gross_committed": 425000,
+        "adjustments_reported": 25000,
+        "adjustments_verified": 25000,
+        "net_cost": 400000,
+        "headroom_restored": 25000,
+        "ledger_committed": 400000,
+        "net_committed": 400000,
+        "committed": 400000,
+        "remaining": 100000,
+        "utilization_pct": 80
       },
       "channel_allocation": {
         "olv": { "committed": 275000, "pct": 55 },
@@ -78,6 +88,20 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
           "purchase_type": "media_buy",
           "status": "active",
           "committed": 275000,
+          "adjustments_reported": 25000,
+          "adjustments_verified": 25000,
+          "net_cost": 250000,
+          "headroom_restored": 25000,
+          "net_committed": 250000,
+          "seller_reported_spend": 200000,
+          "buyer_observed_spend": 210000,
+          "delivery_reporting_period": {
+            "start": "2026-03-01T00:00:00Z",
+            "end": "2026-04-01T00:00:00Z"
+          },
+          "conservative_exposure": 210000,
+          "delivery_reconciliation_status": "disputed",
+          "delivery_period_state": "open",
           "check_count": 8
         },
         {
@@ -98,6 +122,8 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
       "summary": {
         "checks_performed": 14,
         "outcomes_reported": 12,
+        "adjustments_reported": 1,
+        "adjustments_verified": 1,
         "statuses": {
           "approved": 12,
           "denied": 1,
@@ -189,6 +215,22 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
             "spend": 137500
           },
           "outcome_status": "accepted"
+        },
+        {
+          "id": "adj_001",
+          "type": "adjustment",
+          "timestamp": "2026-03-23T09:00:00Z",
+          "caller": "https://ads.seller-example.com/adcp",
+          "governance_context": "gc_mb_seller_456",
+          "purchase_type": "media_buy",
+          "outcome_id": "out_001",
+          "seller_reference": "mb_seller_456",
+          "seller_adjustment_id": "cancel_mb_seller_456_01",
+          "adjustment_type": "decommitment",
+          "amount": { "amount": 25000, "currency": "USD" },
+          "headroom_restored": 25000,
+          "reason": "Remaining obligation cancelled by mutual agreement.",
+          "effective_at": "2026-03-23T08:30:00Z"
         }
       ]
     }
@@ -218,21 +260,42 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].status` | enum | `active`, `suspended`, or `completed`. |
 | `plans[].budget` | object | Budget state. |
 | `plans[].budget.authorized` | number | Total authorized budget from the plan. |
-| `plans[].budget.committed` | number | Total budget committed from confirmed outcomes. |
+| `plans[].budget.accounting_mode` | enum | `gross_commitment` or `verified_net_cost`; controls which verified records restore headroom. |
+| `plans[].budget.gross_committed` | number | Authoritative commitment from completed outcomes before adjustments. |
+| `plans[].budget.adjustments_reported` | number | Sum of all seller-reported adjustment amounts, regardless of review state. |
+| `plans[].budget.adjustments_verified` | number | Buyer-accepted economic reductions; makegoods contribute zero. |
+| `plans[].budget.net_cost` | number | Gross commitment minus verified economic reductions. |
+| `plans[].budget.headroom_restored` | number | Verified reductions eligible to restore headroom under the accounting mode. |
+| `plans[].budget.ledger_committed` | number | Amount currently charged against plan headroom. |
+| `plans[].budget.net_committed` | number | Legacy alias for `ledger_committed`. |
+| `plans[].budget.committed` | number | Legacy 3.x alias for `net_committed`. |
 | `plans[].budget.remaining` | number | Authorized minus committed. |
 | `plans[].budget.utilization_pct` | number | Committed as a percentage of authorized. |
 | `plans[].channel_allocation` | object | Current channel mix. Keyed by channel ID. |
 | `plans[].channel_allocation[channel].committed` | number | Budget committed to this channel. |
 | `plans[].channel_allocation[channel].pct` | number | Channel's share of the authorized total budget. |
-| `plans[].governed_actions` | array | Per-governed-action breakdown, grouped by `governance_context`. |
-| `plans[].governed_actions[].governance_context` | string | Opaque governance context identifying this governed action. |
+| `plans[].governed_actions` | array | Per-action breakdown joined by the stable opaque action binding. |
+| `plans[].governed_actions[].governance_context` | string | Original intent context exposed for correlation. |
 | `plans[].governed_actions[].purchase_type` | enum | `media_buy`, `rights_license`, `signal_activation`, or `creative_services`. |
 | `plans[].governed_actions[].status` | enum | `active`, `suspended`, or `completed`. |
-| `plans[].governed_actions[].committed` | number | Budget committed for this governed action. |
+| `plans[].governed_actions[].committed` | number | Gross authoritative commitment for this governed action. |
+| `plans[].governed_actions[].adjustments_reported` | number | Sum of all adjustment amounts for this action. |
+| `plans[].governed_actions[].adjustments_verified` | number | Buyer-accepted economic reductions for this action. |
+| `plans[].governed_actions[].net_cost` | number | Gross commitment minus verified economic reductions. |
+| `plans[].governed_actions[].headroom_restored` | number | Verified amount eligible under the plan accounting mode. |
+| `plans[].governed_actions[].net_committed` | number | Current ledger obligation after restored headroom. |
+| `plans[].governed_actions[].seller_reported_spend` | number | Latest canonical seller cumulative spend. |
+| `plans[].governed_actions[].buyer_observed_spend` | number | Latest buyer-attributed cumulative spend. |
+| `plans[].governed_actions[].delivery_reporting_period` | object | Current seller reporting period summarized for this action. |
+| `plans[].governed_actions[].conservative_exposure` | number | Highest credible amount while evidence is unresolved. |
+| `plans[].governed_actions[].delivery_reconciliation_status` | enum | `consistent`, `disputed`, `unmatched`, or `closed_unresolved`. |
+| `plans[].governed_actions[].delivery_period_state` | enum | `open` or `closed`; closure is operational and does not settle billing. |
 | `plans[].governed_actions[].check_count` | integer | Number of governance checks performed. |
 | `plans[].summary` | object | Aggregate validation and outcome statistics. |
 | `plans[].summary.checks_performed` | number | Total governance checks performed. |
 | `plans[].summary.outcomes_reported` | number | Total outcomes reported. |
+| `plans[].summary.adjustments_reported` | number | Total append-only adjustment records reported. |
+| `plans[].summary.adjustments_verified` | number | Total records accepted by the authenticated plan owner. |
 | `plans[].summary.statuses` | object | Count of each governance check status (`approved`, `denied`, `conditions`). Also includes `human_reviewed` as a supplementary count — checks that required human review before resolving. Always a subset of `approved` + `denied`; `conditions` is an agent-issued flow-control state and is never counted here. |
 | `plans[].summary.findings_count` | number | Total findings across all checks and outcomes. |
 | `plans[].summary.escalations` | array | Checks that were escalated for human review and their resolutions. |
@@ -253,7 +316,7 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].summary.drift_metrics.thresholds.human_override_rate_max` | number | Maximum acceptable human override rate. |
 | `plans[].entries` | array | Ordered audit trail (only when `include_entries` is `true`). |
 | `plans[].entries[].id` | string | Entry identifier. |
-| `plans[].entries[].type` | enum | `check` or `outcome`. |
+| `plans[].entries[].type` | enum | `check`, `outcome`, or `adjustment`. |
 | `plans[].entries[].timestamp` | string | ISO 8601 timestamp. |
 | `plans[].entries[].plan_id` | string | Plan this entry belongs to. Present when querying multiple plans or a portfolio. |
 | `plans[].entries[].caller` | string | URL of the agent that made the request. Resolved from the credentials used on the governance callback. |
@@ -274,8 +337,24 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].entries[].committed_budget` | number | Governance-authorized budget reserved for the action (present for `completed` outcome entries). This is the ledger-authoritative amount, not a caller assertion. |
 | `plans[].entries[].reported_committed_budget` | number | Caller-reported seller amount retained for reconciliation. Never ledger authority. |
 | `plans[].entries[].seller_reference` | string | Seller resource identifier retained with the outcome, such as a media-buy ID. |
-| `plans[].entries[].delivery` | object | Deprecated buyer-reported delivery snapshot retained as audit evidence on a `delivery` outcome. Seller-originated delivery monitoring uses `check_governance` with `phase: "delivery"`. |
+| `plans[].entries[].delivery_statement` | object | Canonical seller-attributed statement retained on a delivery check, including ID, digest, sequence, period, cumulative spend, currency, and the exact digest-verifiable payload. |
+| `plans[].entries[].delivery` | object | Buyer-attributed observation retained on a `delivery` outcome. It never overwrites the seller statement. |
+| `plans[].entries[].delivery_reconciliation_status` | enum | `consistent`, `disputed`, `unmatched`, or `closed_unresolved`. Only an open dispute blocks adjustment verification. |
+| `plans[].entries[].delivery_period_state` | enum | `open` or `closed`. Closed evidence is immutable but not a final billing record. |
 | `plans[].entries[].outcome_status` | string | Outcome status (present for `outcome` entries). |
+| `plans[].entries[].outcome_id` | string | Source completed outcome (present for `adjustment` entries). |
+| `plans[].entries[].seller_adjustment_id` | string | Seller-issued source record (present for `adjustment` entries). |
+| `plans[].entries[].adjustment_type` | enum | `decommitment`, `refund`, `credit`, or `makegood`. |
+| `plans[].entries[].amount` | object | Positive adjustment amount and plan currency. |
+| `plans[].entries[].adjustment_state` | enum | `reported`, `verified`, or `disputed`. |
+| `plans[].entries[].verified_amount` | number | Buyer-accepted economic reduction; zero while reported, disputed, or for makegoods. |
+| `plans[].entries[].evidence` | object | Seller evidence ID, type, digest, and issue time. |
+| `plans[].entries[].headroom_restored` | number | Headroom restored by this record under the plan accounting mode. |
+| `plans[].entries[].reviewed_by` | string | Authenticated plan owner that reviewed the record. |
+| `plans[].entries[].reviewed_at` | string | Review timestamp. |
+| `plans[].entries[].review_reason` | string | Optional acceptance reason or required dispute reason. |
+| `plans[].entries[].reason` | string | Seller-supplied adjustment reason. |
+| `plans[].entries[].effective_at` | string | When the seller adjustment became effective. |
 
 ## Authorization
 
@@ -292,3 +371,4 @@ The request schema does not carry an envelope `account` field — tenant identit
 - [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) -- Push or update plans
 - [`check_governance`](/docs/governance/campaign/tasks/check_governance) -- Validate actions against the plan
 - [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome) -- Report outcomes to update plan state
+- [`report_plan_adjustment`](/docs/governance/campaign/tasks/report_plan_adjustment) -- Append a seller-authenticated adjustment without rewriting the outcome

@@ -972,6 +972,10 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
             (fxBudget.reallocation_unlimited as boolean | undefined)
             ?? existing?.budget.reallocationUnlimited
             ?? false,
+          accountingMode:
+            (fxBudget.accounting_mode as GovernancePlanState['budget']['accountingMode'] | undefined)
+            ?? existing?.budget.accountingMode
+            ?? 'gross_commitment',
           perSellerMaxPct:
             (fxBudget.per_seller_max_pct as number | undefined) ?? existing?.budget.perSellerMaxPct,
           allocations:

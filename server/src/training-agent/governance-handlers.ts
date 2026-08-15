@@ -2,7 +2,8 @@
  * Governance tool definitions and handlers for the training agent.
  *
  * Implements sync_plans, check_governance, report_plan_outcome,
- * and get_plan_audit_logs per the AdCP campaign governance schema.
+ * report_plan_adjustment, and get_plan_audit_logs per the AdCP campaign
+ * governance schema.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -13,6 +14,8 @@ import type {
   GovernanceDelegation,
   GovernanceCheckState,
   GovernanceOutcomeState,
+  GovernanceAdjustmentState,
+  GovernanceAdjustmentType,
   GovernanceFinding,
   GovernanceCondition,
   SessionState,
@@ -25,7 +28,12 @@ import {
 } from './state.js';
 import { signGovernanceContext, type GovernancePhase, type PolicyDecision } from './governance-context.js';
 import { getCanonicalBase } from './canonical-base.js';
-import { computeGovernanceOutcomeHash, computeGovernedPayloadHash } from './governance-payload-hash.js';
+import {
+  computeDeliveryStatementDigest,
+  computeGovernanceAdjustmentHash,
+  computeGovernanceOutcomeHash,
+  computeGovernedPayloadHash,
+} from './governance-payload-hash.js';
 
 const EXECUTION_GOVERNANCE_PHASES = new Set<GovernancePhase>(['purchase', 'modification', 'delivery']);
 
@@ -63,6 +71,12 @@ const EXPLICIT_COMMITMENT_TOOLS = new Set([
   'build_creative',
 ]);
 const VALID_OUTCOME_TYPES = new Set(['completed', 'failed', 'delivery']);
+const VALID_ADJUSTMENT_TYPES = new Set<GovernanceAdjustmentType>([
+  'decommitment',
+  'refund',
+  'credit',
+  'makegood',
+]);
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9_.:-]{16,255}$/;
 
 /**
@@ -191,6 +205,7 @@ function snapshotRevision(state: GovernancePlanState): GovernancePlanState['revi
     mode: state.mode,
     reallocationThreshold: state.budget.reallocationThreshold,
     reallocationUnlimited: state.budget.reallocationUnlimited,
+    accountingMode: state.budget.accountingMode,
     policyCategories: state.policyCategories,
     policyIds: state.policyIds,
     planAsSupplied: state.planAsSupplied,
@@ -212,6 +227,7 @@ interface SyncPlanInput {
     reallocation_unlimited?: boolean;
     per_seller_max_pct?: number;
     allocations?: Record<string, { amount?: number; max_pct?: number }>;
+    accounting_mode?: 'gross_commitment' | 'verified_net_cost';
   };
   human_review_required?: boolean;
   flight: { start: string; end: string };
@@ -289,6 +305,12 @@ interface PlannedDeliveryInput {
 }
 
 interface DeliveryMetricsInput {
+  statement_id?: string;
+  statement_digest?: string;
+  sequence?: number;
+  issued_at?: string;
+  reporting_period?: { start?: string; end?: string };
+  currency?: string;
   cumulative_spend?: number;
   geo_distribution?: Record<string, number>;
   channel_distribution?: Record<string, number>;
@@ -311,6 +333,34 @@ interface SellerResponseInput {
   seller_reference?: string;
   committed_budget?: number;
   packages?: Array<{ budget?: number | { total?: number } }>;
+}
+
+interface ReportPlanAdjustmentInput extends ToolArgs {
+  action: 'report';
+  plan_id: string;
+  outcome_id: string;
+  seller_reference: string;
+  seller_adjustment_id: string;
+  adjustment_type: GovernanceAdjustmentType;
+  amount: { amount: number; currency: string };
+  reason: string;
+  effective_at: string;
+  evidence: {
+    evidence_id: string;
+    evidence_type: 'decommitment_agreement' | 'refund_settlement' | 'credit_note' | 'makegood_agreement';
+    digest: string;
+    issued_at: string;
+  };
+  idempotency_key: string;
+}
+
+interface ReviewPlanAdjustmentInput extends ToolArgs {
+  action: 'review';
+  plan_id: string;
+  adjustment_id: string;
+  decision: 'accept' | 'dispute';
+  reason?: string;
+  idempotency_key: string;
 }
 
 interface GetPlanAuditLogsInput extends ToolArgs {
@@ -350,6 +400,7 @@ export const GOVERNANCE_TOOLS = [
                   currency: { type: 'string' },
                   reallocation_threshold: { type: 'number', minimum: 0, description: 'Amount above which reallocations require human escalation. Denominated in currency.' },
                   reallocation_unlimited: { type: 'boolean', description: 'Set to true for deliberate full-autonomy declarations. Mutually exclusive with reallocation_threshold.' },
+                  accounting_mode: { type: 'string', enum: ['gross_commitment', 'verified_net_cost'], default: 'gross_commitment' },
                   per_seller_max_pct: { type: 'number' },
                   allocations: {
                     type: 'object',
@@ -469,6 +520,7 @@ export const GOVERNANCE_TOOLS = [
             currency: { type: 'string', pattern: '^[A-Z]{3}$' },
           },
           required: ['amount', 'currency'],
+          additionalProperties: false,
         },
         execution_commitment: {
           type: 'object',
@@ -510,7 +562,7 @@ export const GOVERNANCE_TOOLS = [
         brand: { type: 'object', description: 'Top-level brand reference identifying the tenant.' },
         plan_id: { type: 'string' },
         check_id: { type: 'string' },
-        governance_context: { type: 'string', description: 'Opaque governance context from check_governance. Required with check_id for completed and failed outcomes; deprecated delivery snapshots must provide both fields or neither.' },
+        governance_context: { type: 'string', description: 'Opaque governance context from check_governance. Required with check_id for all outcomes. Delivery observations bind to the exact seller delivery statement check.' },
         purchase_type: { type: 'string', enum: ['media_buy', 'rights_license', 'signal_activation', 'creative_services'], description: 'Type of financial commitment. Defaults to media_buy.' },
         idempotency_key: { type: 'string', minLength: 16, maxLength: 255, pattern: '^[A-Za-z0-9_.:-]+$' },
         outcome: { type: 'string', enum: ['completed', 'failed', 'delivery'] },
@@ -529,7 +581,25 @@ export const GOVERNANCE_TOOLS = [
         },
         delivery: {
           type: 'object',
-          properties: { spend: { type: 'number', minimum: 0 } },
+          properties: {
+            observation_id: { type: 'string', minLength: 1 },
+            source: { type: 'string', enum: ['seller_statement_copy', 'buyer_measurement'] },
+            observed_at: { type: 'string', format: 'date-time' },
+            reporting_period: {
+              type: 'object',
+              properties: {
+                start: { type: 'string', format: 'date-time' },
+                end: { type: 'string', format: 'date-time' },
+              },
+              required: ['start', 'end'],
+            },
+            cumulative_spend: { type: 'number', minimum: 0 },
+            currency: { type: 'string', pattern: '^[A-Z]{3}$' },
+            seller_statement_id: { type: 'string' },
+            seller_statement_digest: { type: 'string', pattern: '^sha256:[a-f0-9]{64}$' },
+            period_closed: { type: 'boolean', default: false },
+          },
+          required: ['observation_id', 'source', 'observed_at', 'reporting_period', 'cumulative_spend', 'currency'],
         },
         error: { type: 'object' },
       },
@@ -546,12 +616,66 @@ export const GOVERNANCE_TOOLS = [
         {
           if: { properties: { outcome: { const: 'delivery' } }, required: ['outcome'] },
           then: {
-            required: ['delivery'],
-            dependencies: {
-              check_id: ['governance_context'],
-              governance_context: ['check_id'],
-            },
+            required: ['check_id', 'governance_context', 'delivery'],
           },
+        },
+      ],
+    },
+  },
+  {
+    name: 'report_plan_adjustment',
+    description: 'Report a seller adjustment or review it as the authenticated plan owner. Adjustments remain non-authoritative until the buyer accepts them.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        account: { type: 'object', description: 'Account reference identifying the tenant.' },
+        brand: { type: 'object', description: 'Top-level brand reference identifying the tenant.' },
+        action: { type: 'string', enum: ['report', 'review'] },
+        plan_id: { type: 'string' },
+        adjustment_id: { type: 'string' },
+        decision: { type: 'string', enum: ['accept', 'dispute'] },
+        outcome_id: { type: 'string', description: 'Completed outcome whose authoritative commitment is being adjusted.' },
+        seller_reference: { type: 'string', maxLength: 255, description: 'Exact seller resource identifier retained on the completed outcome.' },
+        seller_adjustment_id: { type: 'string', maxLength: 255, description: 'Seller-unique immutable adjustment record identifier.' },
+        adjustment_type: { type: 'string', enum: ['decommitment', 'refund', 'credit', 'makegood'] },
+        amount: {
+          type: 'object',
+          properties: {
+            amount: { type: 'number', exclusiveMinimum: 0 },
+            currency: { type: 'string', pattern: '^[A-Z]{3}$' },
+          },
+          required: ['amount', 'currency'],
+        },
+        reason: { type: 'string', minLength: 1, maxLength: 1000 },
+        effective_at: { type: 'string', format: 'date-time' },
+        evidence: {
+          type: 'object',
+          properties: {
+            evidence_id: { type: 'string' },
+            evidence_type: { type: 'string', enum: ['decommitment_agreement', 'refund_settlement', 'credit_note', 'makegood_agreement'] },
+            digest: { type: 'string', pattern: '^sha256:[a-f0-9]{64}$' },
+            issued_at: { type: 'string', format: 'date-time' },
+          },
+          required: ['evidence_id', 'evidence_type', 'digest', 'issued_at'],
+          additionalProperties: false,
+        },
+        idempotency_key: { type: 'string', minLength: 16, maxLength: 255, pattern: '^[A-Za-z0-9_.:-]+$' },
+      },
+      required: ['action', 'plan_id', 'idempotency_key'],
+      allOf: [
+        {
+          if: { properties: { action: { const: 'report' } }, required: ['action'] },
+          then: { required: ['outcome_id', 'seller_reference', 'seller_adjustment_id', 'adjustment_type', 'amount', 'reason', 'effective_at', 'evidence'] },
+        },
+        {
+          if: { properties: { action: { const: 'review' } }, required: ['action'] },
+          then: { required: ['adjustment_id', 'decision'] },
+        },
+        {
+          if: { properties: { action: { const: 'review' }, decision: { const: 'dispute' } }, required: ['action', 'decision'] },
+          then: { required: ['reason'] },
         },
       ],
     },
@@ -631,6 +755,11 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
     }
     if (typeof plan.budget.total !== 'number' || !plan.budget.currency) {
       return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} budget requires total (number) and currency (string)` }] };
+    }
+    if (plan.budget.accounting_mode !== undefined
+      && plan.budget.accounting_mode !== 'gross_commitment'
+      && plan.budget.accounting_mode !== 'verified_net_cost') {
+      return { errors: [{ code: 'VALIDATION_ERROR', message: `plan ${plan.plan_id} budget.accounting_mode must be gross_commitment or verified_net_cost` }] };
     }
     const hasThreshold = typeof plan.budget.reallocation_threshold === 'number';
     const hasUnlimited = plan.budget.reallocation_unlimited === true;
@@ -730,6 +859,7 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
         currency: plan.budget.currency,
         reallocationThreshold,
         reallocationUnlimited: hasUnlimited,
+        accountingMode: plan.budget.accounting_mode ?? 'gross_commitment',
         perSellerMaxPct: plan.budget.per_seller_max_pct,
         allocations: plan.budget.allocations ? Object.fromEntries(
           Object.entries(plan.budget.allocations).map(([k, v]) => [k, { amount: v.amount, maxPct: v.max_pct }]),
@@ -1047,6 +1177,115 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
         code: 'VALIDATION_ERROR',
         message: `planned_delivery.media_buy_id is required for ${phase} governance checks`,
       }],
+    };
+  }
+
+  let deliveryStatement: GovernanceCheckState['deliveryStatement'];
+  if (phase === 'delivery') {
+    if (!deliveryMetrics || !plannedDelivery?.media_buy_id) {
+      return { errors: [{ code: 'VALIDATION_ERROR', message: 'Delivery checks require planned_delivery and delivery_metrics.' }] };
+    }
+    if (
+      typeof deliveryMetrics.statement_id !== 'string'
+      || deliveryMetrics.statement_id.length === 0
+      || !Number.isInteger(deliveryMetrics.sequence)
+      || (deliveryMetrics.sequence ?? 0) < 1
+      || typeof deliveryMetrics.issued_at !== 'string'
+      || Number.isNaN(Date.parse(deliveryMetrics.issued_at))
+      || typeof deliveryMetrics.reporting_period?.start !== 'string'
+      || typeof deliveryMetrics.reporting_period?.end !== 'string'
+      || Number.isNaN(Date.parse(deliveryMetrics.reporting_period.start))
+      || Number.isNaN(Date.parse(deliveryMetrics.reporting_period.end))
+      || typeof deliveryMetrics.cumulative_spend !== 'number'
+      || !Number.isFinite(deliveryMetrics.cumulative_spend)
+      || deliveryMetrics.cumulative_spend < 0
+      || typeof deliveryMetrics.currency !== 'string'
+      || !/^[A-Z]{3}$/.test(deliveryMetrics.currency)
+      || typeof deliveryMetrics.statement_digest !== 'string'
+      || !/^sha256:[a-f0-9]{64}$/.test(deliveryMetrics.statement_digest)
+    ) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: 'Delivery metrics require a valid statement_id, sequence, issued_at, reporting_period, cumulative_spend, currency, and statement_digest.',
+        }],
+      };
+    }
+    if (deliveryMetrics.currency !== plan?.budget.currency) {
+      return { errors: [{ code: 'VALIDATION_ERROR', message: 'Delivery statement currency must match the plan currency.' }] };
+    }
+    let expectedDigest: string;
+    try {
+      expectedDigest = computeDeliveryStatementDigest(
+        plannedDelivery.media_buy_id,
+        deliveryMetrics as unknown as Record<string, unknown>,
+      );
+    } catch {
+      return { errors: [{ code: 'VALIDATION_ERROR', message: 'Delivery statement must contain only finite canonical JSON values.' }] };
+    }
+    if (deliveryMetrics.statement_digest !== expectedDigest) {
+      return { errors: [{ code: 'VALIDATION_ERROR', message: 'delivery_metrics.statement_digest does not match the canonical delivery statement.' }] };
+    }
+    const statementSequence = deliveryMetrics.sequence as number;
+    let priorStatement = [...session.governanceChecks.values()].find(check =>
+      check.deliveryStatement?.statementId === deliveryMetrics.statement_id
+      && check.targetAudience === authenticatedCaller);
+    if (!priorStatement) {
+      const priorSession = await findSessionMatching(candidate =>
+        [...candidate.governanceChecks.values()].some(check =>
+          check.deliveryStatement?.statementId === deliveryMetrics.statement_id
+          && check.targetAudience === authenticatedCaller));
+      priorStatement = priorSession
+        ? [...priorSession.governanceChecks.values()].find(check =>
+          check.deliveryStatement?.statementId === deliveryMetrics.statement_id
+          && check.targetAudience === authenticatedCaller)
+        : undefined;
+    }
+    if (priorStatement) {
+      if (
+        priorStatement.deliveryStatement?.statementDigest !== deliveryMetrics.statement_digest
+        || priorStatement.governanceBindingId !== priorCheck?.governanceBindingId
+      ) {
+        return { errors: [{ code: 'CONFLICT', message: 'The seller reused statement_id for a different governed action or delivery statement.' }] };
+      }
+      return buildCheckResponse(priorStatement);
+    }
+    const periodAlreadyClosed = [...session.governanceOutcomes.values()].some(outcome => {
+      const outcomePeriod = (outcome.delivery as {
+        reporting_period?: { start?: unknown; end?: unknown };
+      } | undefined)?.reporting_period;
+      return outcome.governanceBindingId === priorCheck?.governanceBindingId
+        && outcome.deliveryPeriodState === 'closed'
+        && outcomePeriod?.start === deliveryMetrics.reporting_period?.start
+        && outcomePeriod?.end === deliveryMetrics.reporting_period?.end;
+    });
+    if (periodAlreadyClosed) {
+      return { errors: [{ code: 'CONFLICT', message: 'The governance reporting period is closed and cannot accept a new seller statement.' }] };
+    }
+    const latestSequence = [...session.governanceChecks.values()]
+      .filter(check =>
+        check.governanceBindingId === priorCheck?.governanceBindingId
+        && check.deliveryStatement)
+      .reduce((max, check) => Math.max(max, check.deliveryStatement?.sequence ?? 0), 0);
+    if (statementSequence <= latestSequence) {
+      return { errors: [{ code: 'CONFLICT', message: 'Delivery statement sequence must increase monotonically for the governed action.' }] };
+    }
+    deliveryStatement = {
+      statementId: deliveryMetrics.statement_id,
+      statementDigest: deliveryMetrics.statement_digest,
+      sequence: statementSequence,
+      issuedAt: deliveryMetrics.issued_at,
+      sellerReference: plannedDelivery.media_buy_id,
+      cumulativeSpend: deliveryMetrics.cumulative_spend,
+      currency: deliveryMetrics.currency,
+      reportingPeriod: {
+        start: deliveryMetrics.reporting_period.start,
+        end: deliveryMetrics.reporting_period.end,
+      },
+      canonicalPayload: {
+        seller_reference: plannedDelivery.media_buy_id,
+        delivery_metrics: structuredClone(deliveryMetrics) as unknown as Record<string, unknown>,
+      },
     };
   }
 
@@ -1515,9 +1754,14 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     }
 
     const pdBudget = plannedDelivery.total_budget;
-    executionCommitment = originalIntentCheck?.tool === 'update_media_buy'
-      ? req.execution_commitment?.amount
-      : pdBudget;
+    // A delivery check reports evidence about an already-authorized
+    // commitment. Treating planned_delivery.total_budget as a fresh
+    // commitment here would charge the same media buy against the plan twice.
+    executionCommitment = phase === 'delivery'
+      ? undefined
+      : originalIntentCheck?.tool === 'update_media_buy'
+        ? req.execution_commitment?.amount
+        : pdBudget;
     if (executionCommitment !== undefined) {
       categoriesEvaluated.push('budget_authority');
       const intentCurrency = originalIntentCheck?.authorizedCurrency;
@@ -1782,6 +2026,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     policiesEvaluated: plan.policyIds || [],
     timestamp: now.toISOString(),
     expiresAt,
+    ...(deliveryStatement ? { deliveryStatement } : {}),
   };
 
   session.governanceChecks.set(checkId, check);
@@ -1798,7 +2043,6 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
   const outcome = req.outcome;
   const sellerResponse = req.seller_response;
   const delivery = req.delivery;
-  const deliverySpend = delivery?.spend;
 
   if (!VALID_OUTCOME_TYPES.has(outcome)) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: 'outcome must be completed, failed, or delivery.' }] };
@@ -1823,23 +2067,60 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
   if (outcome === 'delivery' && !delivery) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: 'delivery is required for a delivery outcome.' }] };
   }
-  if (outcome === 'delivery' && ((checkId === undefined) !== (governanceContext === undefined))) {
+  if (outcome === 'delivery' && (!checkId || !governanceContext)) {
     return {
       errors: [{
         code: 'VALIDATION_ERROR',
-        message: 'A delivery outcome must include check_id and governance_context together, or omit both for the deprecated plan-owner snapshot path.',
+        message: 'A buyer delivery observation must identify the seller delivery check with check_id and governance_context.',
       }],
     };
   }
-
-  if (deliverySpend !== undefined && (
-    typeof deliverySpend !== 'number'
-    || !Number.isFinite(deliverySpend)
-    || deliverySpend < 0
-  )) {
-    return {
-      errors: [{ code: 'VALIDATION_ERROR', message: 'delivery.spend must be a finite, non-negative number' }],
+  if (outcome === 'delivery') {
+    const observation = delivery as {
+      observation_id?: unknown;
+      source?: unknown;
+      observed_at?: unknown;
+      cumulative_spend?: unknown;
+      currency?: unknown;
+      reporting_period?: { start?: unknown; end?: unknown };
+      seller_statement_id?: unknown;
+      seller_statement_digest?: unknown;
+      period_closed?: unknown;
     };
+    const validSource = observation.source === 'seller_statement_copy'
+      || observation.source === 'buyer_measurement';
+    if (
+      typeof observation.observation_id !== 'string'
+      || observation.observation_id.length === 0
+      || !validSource
+      || typeof observation.observed_at !== 'string'
+      || Number.isNaN(Date.parse(observation.observed_at))
+      || typeof observation.cumulative_spend !== 'number'
+      || !Number.isFinite(observation.cumulative_spend)
+      || observation.cumulative_spend < 0
+      || typeof observation.currency !== 'string'
+      || !/^[A-Z]{3}$/.test(observation.currency)
+      || typeof observation.reporting_period?.start !== 'string'
+      || typeof observation.reporting_period?.end !== 'string'
+      || Number.isNaN(Date.parse(observation.reporting_period.start))
+      || Number.isNaN(Date.parse(observation.reporting_period.end))
+      || (observation.period_closed !== undefined && typeof observation.period_closed !== 'boolean')
+      || (
+        observation.source === 'seller_statement_copy'
+        && (
+          typeof observation.seller_statement_id !== 'string'
+          || typeof observation.seller_statement_digest !== 'string'
+          || !/^sha256:[a-f0-9]{64}$/.test(observation.seller_statement_digest)
+        )
+      )
+    ) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: 'Buyer delivery observations require identity, source, period, cumulative spend, currency, and source-specific statement evidence.',
+        }],
+      };
+    }
   }
 
   let requestPayloadHash: string;
@@ -1946,12 +2227,6 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     }
   }
 
-  if (outcome === 'delivery' && !checkId && ctx.authenticatedAgentUrl !== plan.ownerAgentUrl) {
-    return {
-      errors: [{ code: 'PERMISSION_DENIED', message: 'A legacy delivery snapshot may be reported only by the authenticated plan owner.' }],
-    };
-  }
-
   const intentAuthorization = authorizationCheck?.binding === 'proposed'
     ? authorizationCheck
     : authorizationCheck?.governanceBindingId
@@ -1990,6 +2265,37 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     }
   }
 
+  if (outcome === 'delivery' && delivery) {
+    const observationId = (delivery as { observation_id?: unknown }).observation_id;
+    const priorObservation = [...session.governanceOutcomes.values()].find(existing =>
+      existing.planId === planId
+      && existing.planOwnerAgentUrl === ctx.authenticatedAgentUrl
+      && existing.outcomeType === 'delivery'
+      && (existing.delivery as { observation_id?: unknown } | undefined)?.observation_id === observationId);
+    if (priorObservation) {
+      if (priorObservation.requestPayloadHash !== requestPayloadHash) {
+        return { errors: [{ code: 'CONFLICT', message: 'The buyer reused observation_id with different delivery evidence.' }] };
+      }
+      return { ...(priorObservation.response ?? { outcome_id: priorObservation.outcomeId }), replayed: true };
+    }
+    const observationPeriod = (delivery as {
+      reporting_period?: { start?: unknown; end?: unknown };
+    }).reporting_period;
+    const closedPeriod = [...session.governanceOutcomes.values()].find(existing => {
+      const existingPeriod = (existing.delivery as {
+        reporting_period?: { start?: unknown; end?: unknown };
+      } | undefined)?.reporting_period;
+      return existing.outcomeType === 'delivery'
+        && existing.governanceBindingId === authorizationCheck?.governanceBindingId
+        && existing.deliveryPeriodState === 'closed'
+        && existingPeriod?.start === observationPeriod?.start
+        && existingPeriod?.end === observationPeriod?.end;
+    });
+    if (closedPeriod) {
+      return { errors: [{ code: 'CONFLICT', message: 'The governance reporting period is closed and its evidence is immutable.' }] };
+    }
+  }
+
   if ((outcome === 'completed' || outcome === 'failed') && checkId) {
     const settlementBindingId = authorizationCheck?.governanceBindingId;
     const priorSettlement = [...session.governanceOutcomes.values()].find(existing =>
@@ -2025,6 +2331,51 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
   let committedBudget = 0;
   let reportedCommittedBudget: number | undefined;
   const findings: GovernanceFinding[] = [];
+  let deliveryReconciliationStatus: GovernanceOutcomeState['deliveryReconciliationStatus'];
+  let deliveryPeriodState: GovernanceOutcomeState['deliveryPeriodState'];
+
+  if (outcome === 'delivery' && delivery) {
+    const sellerStatement = authorizationCheck?.deliveryStatement;
+    if (!sellerStatement) {
+      return validationError('check_id must identify a canonical seller delivery statement.');
+    }
+    const observation = delivery as {
+      source: 'seller_statement_copy' | 'buyer_measurement';
+      cumulative_spend: number;
+      currency: string;
+      reporting_period: { start: string; end: string };
+      seller_statement_id?: string;
+      seller_statement_digest?: string;
+      period_closed?: boolean;
+    };
+    const statementConflict = observation.source === 'seller_statement_copy'
+      && (
+        observation.seller_statement_id !== sellerStatement.statementId
+        || observation.seller_statement_digest !== sellerStatement.statementDigest
+      );
+    const valueConflict = observation.cumulative_spend !== sellerStatement.cumulativeSpend
+      || observation.currency !== sellerStatement.currency
+      || observation.reporting_period.start !== sellerStatement.reportingPeriod.start
+      || observation.reporting_period.end !== sellerStatement.reportingPeriod.end;
+    deliveryPeriodState = observation.period_closed === true ? 'closed' : 'open';
+    deliveryReconciliationStatus = statementConflict || valueConflict
+      ? deliveryPeriodState === 'closed' ? 'closed_unresolved' : 'disputed'
+      : 'consistent';
+    if (deliveryReconciliationStatus === 'disputed' || deliveryReconciliationStatus === 'closed_unresolved') {
+      findings.push({
+        categoryId: 'delivery_evidence_conflict',
+        severity: 'critical',
+        explanation: deliveryPeriodState === 'closed'
+          ? 'The governance period closed with unresolved buyer and seller delivery evidence.'
+          : 'Buyer-attributed delivery evidence conflicts with the seller statement retained by governance.',
+        details: {
+          field: 'delivery.cumulative_spend',
+          expected: sellerStatement.cumulativeSpend,
+          actual: observation.cumulative_spend,
+        },
+      });
+    }
+  }
 
   if (outcome === 'completed' && sellerResponse) {
     let packageBudgetTotal = 0;
@@ -2144,6 +2495,10 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
         explanation: f.explanation,
       })),
     }),
+    ...(deliveryReconciliationStatus && {
+      delivery_reconciliation_status: deliveryReconciliationStatus,
+    }),
+    ...(deliveryPeriodState && { delivery_period_state: deliveryPeriodState }),
     ...((outcome === 'completed' || outcome === 'failed') && {
       plan_summary: {
         total_committed: plan.committedBudget,
@@ -2170,12 +2525,344 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     requestPayloadHash,
     response,
     ...(outcome === 'delivery' && delivery ? { delivery: structuredClone(delivery) } : {}),
+    ...(deliveryReconciliationStatus ? { deliveryReconciliationStatus } : {}),
+    ...(deliveryPeriodState ? { deliveryPeriodState } : {}),
     findings,
     timestamp: new Date().toISOString(),
   };
 
   session.governanceOutcomes.set(outcomeId, outcomeState);
 
+  return response;
+}
+
+function buildAdjustmentPlanSummary(
+  session: SessionState,
+  plan: GovernancePlanState,
+): Record<string, unknown> {
+  const outcomes = [...session.governanceOutcomes.values()].filter(outcome =>
+    outcome.planId === plan.planId && outcome.planOwnerAgentUrl === plan.ownerAgentUrl);
+  const adjustments = [...session.governanceAdjustments.values()].filter(adjustment =>
+    adjustment.planId === plan.planId && adjustment.planOwnerAgentUrl === plan.ownerAgentUrl);
+  const grossCommitted = outcomes.reduce((sum, outcome) => sum + outcome.committedBudget, 0);
+  const adjustmentsReported = adjustments.reduce((sum, adjustment) => sum + adjustment.amount, 0);
+  const adjustmentsVerified = adjustments.reduce((sum, adjustment) => sum + adjustment.verifiedAmount, 0);
+  const headroomRestored = adjustments.reduce((sum, adjustment) => sum + adjustment.headroomRestored, 0);
+  if (
+    !Number.isFinite(grossCommitted)
+    || !Number.isFinite(adjustmentsReported)
+    || !Number.isFinite(adjustmentsVerified)
+    || !Number.isFinite(headroomRestored)
+  ) {
+    throw new Error('Plan adjustment totals exceed numeric ledger limits.');
+  }
+  return {
+    accounting_mode: plan.budget.accountingMode ?? 'gross_commitment',
+    gross_committed: grossCommitted,
+    adjustments_reported: adjustmentsReported,
+    adjustments_verified: adjustmentsVerified,
+    net_cost: grossCommitted - adjustmentsVerified,
+    headroom_restored: headroomRestored,
+    ledger_committed: plan.committedBudget,
+    // 3.2 compatibility alias. This is the plan ledger after adjustments
+    // eligible under accounting_mode, not necessarily economic net cost.
+    net_committed: plan.committedBudget,
+    budget_remaining: plan.budget.total - plan.committedBudget,
+  };
+}
+
+export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingContext) {
+  const req = args as ReportPlanAdjustmentInput | ReviewPlanAdjustmentInput;
+  let session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const validationError = (message: string) => ({
+    errors: [{ code: 'VALIDATION_ERROR', message }],
+  });
+  if (req.action !== 'report' && req.action !== 'review') {
+    return validationError('action must be report or review.');
+  }
+  if (typeof req.plan_id !== 'string' || req.plan_id.length === 0) {
+    return validationError('plan_id is required.');
+  }
+  if (typeof req.idempotency_key !== 'string' || !IDEMPOTENCY_KEY_RE.test(req.idempotency_key)) {
+    return validationError('idempotency_key is required and must match ^[A-Za-z0-9_.:-]{16,255}$.');
+  }
+  let requestPayloadHash: string;
+  try {
+    requestPayloadHash = computeGovernanceAdjustmentHash(req as unknown as Record<string, unknown>);
+  } catch {
+    return validationError('report_plan_adjustment must contain only finite JSON numeric values.');
+  }
+
+  if (!ctx.authenticatedAgentUrl) {
+    return { errors: [{ code: 'PERMISSION_DENIED', message: 'report_plan_adjustment requires an authenticated agent.' }] };
+  }
+
+  if (req.action === 'review') {
+    if (typeof req.adjustment_id !== 'string' || req.adjustment_id.length === 0) {
+      return validationError('adjustment_id is required for review.');
+    }
+    if (req.decision !== 'accept' && req.decision !== 'dispute') {
+      return validationError('decision must be accept or dispute.');
+    }
+    if (req.reason !== undefined && (typeof req.reason !== 'string' || req.reason.length === 0 || req.reason.length > 1000)) {
+      return validationError('reason must be between 1 and 1000 characters when provided.');
+    }
+    if (req.decision === 'dispute' && req.reason === undefined) {
+      return validationError('reason is required when disputing an adjustment.');
+    }
+    let adjustment = session.governanceAdjustments.get(req.adjustment_id);
+    if (!adjustment || adjustment.planId !== req.plan_id) {
+      const found = await findSessionMatching(candidate => {
+        const value = candidate.governanceAdjustments.get(req.adjustment_id);
+        return value?.planId === req.plan_id;
+      });
+      if (found) {
+        session = found;
+        adjustment = found.governanceAdjustments.get(req.adjustment_id);
+      }
+    }
+    const plan = adjustment
+      ? findGovernancePlanEntry(session, req.plan_id, adjustment.planOwnerAgentUrl)?.[1]
+      : undefined;
+    if (!adjustment || !plan || plan.ownerAgentUrl !== ctx.authenticatedAgentUrl) {
+      return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'Adjustment not found.' }] };
+    }
+    const duplicateReview = [...session.governanceAdjustments.values()].find(existing =>
+      existing.reviewIdempotencyKey === req.idempotency_key
+      && existing.adjustmentId !== req.adjustment_id);
+    if (duplicateReview) {
+      return { errors: [{ code: 'IDEMPOTENCY_CONFLICT', message: 'Review idempotency key was already used for another adjustment.' }] };
+    }
+    if (adjustment.reviewIdempotencyKey === req.idempotency_key) {
+      if (adjustment.reviewPayloadHash !== requestPayloadHash) {
+        return { errors: [{ code: 'IDEMPOTENCY_CONFLICT', message: 'Review idempotency key was reused with a different payload.' }] };
+      }
+      return { ...(adjustment.reviewResponse ?? {}), replayed: true };
+    }
+    if (adjustment.verificationState !== 'reported') {
+      return { errors: [{ code: 'CONFLICT', message: `Adjustment is already ${adjustment.verificationState}.` }] };
+    }
+    const now = new Date().toISOString();
+    let headroomRestored = 0;
+    let verifiedAmount = 0;
+    if (req.decision === 'accept') {
+      const latestDeliveryReconciliation = [...session.governanceOutcomes.values()]
+        .reverse()
+        .find(outcome =>
+          outcome.governanceBindingId === adjustment?.governanceBindingId
+          && outcome.outcomeType === 'delivery');
+      if (latestDeliveryReconciliation?.deliveryReconciliationStatus === 'disputed') {
+        return { errors: [{ code: 'CONFLICT', message: 'Delivery evidence is disputed; reconcile it before accepting an adjustment.' }] };
+      }
+      if (adjustment.adjustmentType === 'decommitment') {
+        const sellerStatements = [...session.governanceChecks.values()]
+          .filter(check =>
+            check.governanceBindingId === adjustment?.governanceBindingId
+            && check.deliveryStatement)
+          .sort((a, b) => (b.deliveryStatement?.sequence ?? 0) - (a.deliveryStatement?.sequence ?? 0));
+        const latestStatement = sellerStatements[0]?.deliveryStatement;
+        if (!latestStatement) {
+          return { errors: [{ code: 'CONFLICT', message: 'A canonical seller delivery statement is required before decommitment can be verified.' }] };
+        }
+        const sourceOutcome = session.governanceOutcomes.get(adjustment.outcomeId);
+        const remainingObligation = (sourceOutcome?.committedBudget ?? 0) - latestStatement.cumulativeSpend;
+        const priorVerifiedDecommitments = [...session.governanceAdjustments.values()]
+          .filter(existing =>
+            existing.adjustmentId !== adjustment?.adjustmentId
+            && existing.outcomeId === adjustment?.outcomeId
+            && existing.adjustmentType === 'decommitment'
+            && existing.verificationState === 'verified')
+          .reduce((sum, existing) => sum + existing.verifiedAmount, 0);
+        const cumulativeDecommitment = priorVerifiedDecommitments + adjustment.amount;
+        if (
+          !Number.isFinite(remainingObligation)
+          || !Number.isFinite(cumulativeDecommitment)
+          || cumulativeDecommitment > remainingObligation
+        ) {
+          return validationError('Decommitment exceeds the undelivered obligation in the latest reconciled statement.');
+        }
+        verifiedAmount = adjustment.amount;
+        headroomRestored = adjustment.amount;
+      } else if (adjustment.adjustmentType === 'refund' || adjustment.adjustmentType === 'credit') {
+        verifiedAmount = adjustment.amount;
+        headroomRestored = (plan.budget.accountingMode ?? 'gross_commitment') === 'verified_net_cost'
+          ? adjustment.amount
+          : 0;
+      }
+      const currentByType = plan.committedByType?.[adjustment.purchaseType] ?? 0;
+      const nextCommitted = plan.committedBudget - headroomRestored;
+      const nextByType = currentByType - headroomRestored;
+      if (!Number.isFinite(nextCommitted) || !Number.isFinite(nextByType) || nextCommitted < 0 || nextByType < 0) {
+        return validationError('Verified adjustment would make the governance ledger negative.');
+      }
+      plan.committedBudget = nextCommitted;
+      plan.committedByType = plan.committedByType || {};
+      plan.committedByType[adjustment.purchaseType] = nextByType;
+      adjustment.verificationState = 'verified';
+    } else {
+      adjustment.verificationState = 'disputed';
+    }
+    adjustment.verifiedAmount = verifiedAmount;
+    adjustment.headroomRestored = headroomRestored;
+    adjustment.reviewIdempotencyKey = req.idempotency_key;
+    adjustment.reviewPayloadHash = requestPayloadHash;
+    adjustment.reviewerBuyer = ctx.authenticatedAgentUrl;
+    adjustment.reviewReason = req.reason;
+    adjustment.reviewedAt = now;
+    const response: Record<string, unknown> = {
+      adjustment_id: adjustment.adjustmentId,
+      adjustment_state: adjustment.verificationState,
+      adjustment_type: adjustment.adjustmentType,
+      amount: { amount: adjustment.amount, currency: adjustment.currency },
+      headroom_restored: headroomRestored,
+      plan_summary: buildAdjustmentPlanSummary(session, plan),
+    };
+    adjustment.reviewResponse = response;
+    return response;
+  }
+
+  if (typeof req.outcome_id !== 'string' || req.outcome_id.length === 0) return validationError('outcome_id is required.');
+  if (typeof req.seller_reference !== 'string' || req.seller_reference.length === 0 || req.seller_reference.length > 255) {
+    return validationError('seller_reference is required and must be at most 255 characters.');
+  }
+  if (typeof req.seller_adjustment_id !== 'string' || req.seller_adjustment_id.length === 0 || req.seller_adjustment_id.length > 255) {
+    return validationError('seller_adjustment_id is required and must be at most 255 characters.');
+  }
+  if (!VALID_ADJUSTMENT_TYPES.has(req.adjustment_type)) return validationError('Invalid adjustment_type.');
+  if (!req.amount || typeof req.amount.amount !== 'number' || !Number.isFinite(req.amount.amount) || req.amount.amount <= 0) {
+    return validationError('amount.amount must be a finite number greater than zero.');
+  }
+  if (typeof req.amount.currency !== 'string' || !/^[A-Z]{3}$/.test(req.amount.currency)) {
+    return validationError('amount.currency must be a three-letter uppercase currency code.');
+  }
+  if (typeof req.reason !== 'string' || req.reason.length === 0 || req.reason.length > 1000) {
+    return validationError('reason is required and must be at most 1000 characters.');
+  }
+  if (typeof req.effective_at !== 'string' || Number.isNaN(Date.parse(req.effective_at))) {
+    return validationError('effective_at must be a valid date-time.');
+  }
+  const expectedEvidenceType: Record<GovernanceAdjustmentType, GovernanceAdjustmentState['evidence']['evidenceType']> = {
+    decommitment: 'decommitment_agreement',
+    refund: 'refund_settlement',
+    credit: 'credit_note',
+    makegood: 'makegood_agreement',
+  };
+  if (
+    !req.evidence
+    || typeof req.evidence.evidence_id !== 'string'
+    || req.evidence.evidence_id.length === 0
+    || req.evidence.evidence_id.length > 255
+    || req.evidence.evidence_type !== expectedEvidenceType[req.adjustment_type]
+    || typeof req.evidence.digest !== 'string'
+    || !/^sha256:[a-f0-9]{64}$/.test(req.evidence.digest)
+    || typeof req.evidence.issued_at !== 'string'
+    || Number.isNaN(Date.parse(req.evidence.issued_at))
+  ) {
+    return validationError(`evidence must be valid and use ${expectedEvidenceType[req.adjustment_type]} for ${req.adjustment_type}.`);
+  }
+
+  const findReplay = (candidate: SessionState): GovernanceAdjustmentState | undefined =>
+    [...candidate.governanceAdjustments.values()].find(existing =>
+      existing.reporterSeller === ctx.authenticatedAgentUrl
+      && (
+        existing.idempotencyKey === req.idempotency_key
+        || existing.sellerAdjustmentId === req.seller_adjustment_id
+        || existing.evidence.evidenceId === req.evidence.evidence_id
+      ));
+  let replay = findReplay(session);
+  if (!replay) {
+    const replaySession = await findSessionMatching(candidate => findReplay(candidate) !== undefined);
+    replay = replaySession ? findReplay(replaySession) : undefined;
+  }
+  if (replay) {
+    if (replay.requestPayloadHash !== requestPayloadHash) {
+      const keyName = replay.idempotencyKey === req.idempotency_key
+        ? 'idempotency_key'
+        : replay.sellerAdjustmentId === req.seller_adjustment_id
+          ? 'seller_adjustment_id'
+          : 'evidence.evidence_id';
+      return { errors: [{ code: keyName === 'idempotency_key' ? 'IDEMPOTENCY_CONFLICT' : 'CONFLICT', message: `${keyName} was already used with a different payload.` }] };
+    }
+    return { ...replay.response, replayed: true };
+  }
+
+  let sourceOutcome = session.governanceOutcomes.get(req.outcome_id);
+  if (!sourceOutcome || sourceOutcome.planId !== req.plan_id) {
+    const found = await findSessionMatching(candidate => candidate.governanceOutcomes.get(req.outcome_id)?.planId === req.plan_id);
+    if (found) {
+      session = found;
+      sourceOutcome = found.governanceOutcomes.get(req.outcome_id);
+    }
+  }
+  const plan = sourceOutcome?.planOwnerAgentUrl
+    ? findGovernancePlanEntry(session, req.plan_id, sourceOutcome.planOwnerAgentUrl)?.[1]
+    : undefined;
+  const intentCheck = sourceOutcome?.governanceBindingId
+    ? [...session.governanceChecks.values()].find(check =>
+      check.status === 'approved'
+      && check.binding === 'proposed'
+      && check.governanceBindingId === sourceOutcome?.governanceBindingId)
+    : undefined;
+  if (!sourceOutcome || !plan || intentCheck?.targetAudience !== ctx.authenticatedAgentUrl) {
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: 'Completed governance outcome not found.' }] };
+  }
+  if (sourceOutcome.outcomeType !== 'completed' || sourceOutcome.committedBudget <= 0) {
+    return validationError('Only a completed outcome with a positive authoritative commitment can be adjusted.');
+  }
+  if (sourceOutcome.sellerReference !== req.seller_reference) {
+    return validationError('seller_reference must exactly match the source outcome.');
+  }
+  if (req.amount.currency !== plan.budget.currency) {
+    return validationError(`amount.currency must match the plan currency ${plan.budget.currency}.`);
+  }
+  const priorAdjusted = [...session.governanceAdjustments.values()]
+    .filter(adjustment => adjustment.outcomeId === sourceOutcome?.outcomeId)
+    .reduce((sum, adjustment) => sum + adjustment.amount, 0);
+  if (!Number.isFinite(priorAdjusted + req.amount.amount) || priorAdjusted + req.amount.amount > sourceOutcome.committedBudget) {
+    return validationError('Cumulative adjustments exceed the original authoritative commitment.');
+  }
+
+  const adjustmentId = `adj_${randomUUID().slice(0, 8)}`;
+  const state: GovernanceAdjustmentState = {
+    adjustmentId,
+    planId: req.plan_id,
+    planOwnerAgentUrl: plan.ownerAgentUrl,
+    outcomeId: sourceOutcome.outcomeId,
+    ...(sourceOutcome.governanceBindingId ? { governanceBindingId: sourceOutcome.governanceBindingId } : {}),
+    ...(sourceOutcome.governanceContext ? { governanceContext: sourceOutcome.governanceContext } : {}),
+    purchaseType: sourceOutcome.purchaseType ?? 'media_buy',
+    sellerReference: req.seller_reference,
+    sellerAdjustmentId: req.seller_adjustment_id,
+    adjustmentType: req.adjustment_type,
+    amount: req.amount.amount,
+    currency: req.amount.currency,
+    headroomRestored: 0,
+    verifiedAmount: 0,
+    verificationState: 'reported',
+    evidence: {
+      evidenceId: req.evidence.evidence_id,
+      evidenceType: req.evidence.evidence_type,
+      digest: req.evidence.digest,
+      issuedAt: req.evidence.issued_at,
+    },
+    reason: req.reason,
+    effectiveAt: req.effective_at,
+    idempotencyKey: req.idempotency_key,
+    reporterSeller: ctx.authenticatedAgentUrl,
+    requestPayloadHash,
+    response: {},
+    timestamp: new Date().toISOString(),
+  };
+  session.governanceAdjustments.set(adjustmentId, state);
+  const response: Record<string, unknown> = {
+    adjustment_id: adjustmentId,
+    adjustment_state: 'reported',
+    adjustment_type: req.adjustment_type,
+    amount: { amount: req.amount.amount, currency: req.amount.currency },
+    headroom_restored: 0,
+    plan_summary: buildAdjustmentPlanSummary(session, plan),
+  };
+  state.response = response;
   return response;
 }
 
@@ -2253,10 +2940,29 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
         && o.planOwnerAgentUrl === plan.ownerAgentUrl
         && (!ctxFilter || (o.governanceContext && ctxFilter.has(o.governanceContext)))
         && (!ptFilter || ptFilter.has(o.purchaseType || 'media_buy')));
+    const adjustments = Array.from(planSession.governanceAdjustments.values())
+      .filter(a => a.planId === planId
+        && a.planOwnerAgentUrl === plan.ownerAgentUrl
+        && (!ctxFilter || (a.governanceContext && ctxFilter.has(a.governanceContext)))
+        && (!ptFilter || ptFilter.has(a.purchaseType || 'media_buy')));
 
     // Budget state
+    const grossCommitted = outcomes.reduce((sum, outcome) => sum + outcome.committedBudget, 0);
+    const adjustmentsReported = adjustments.reduce((sum, adjustment) => sum + adjustment.amount, 0);
+    const adjustmentsVerified = adjustments.reduce((sum, adjustment) => sum + adjustment.verifiedAmount, 0);
+    const headroomRestored = adjustments.reduce((sum, adjustment) => sum + adjustment.headroomRestored, 0);
     const budget = {
       authorized: plan.budget.total,
+      accounting_mode: plan.budget.accountingMode ?? 'gross_commitment',
+      gross_committed: grossCommitted,
+      adjustments_reported: adjustmentsReported,
+      adjustments_verified: adjustmentsVerified,
+      net_cost: grossCommitted - adjustmentsVerified,
+      headroom_restored: headroomRestored,
+      ledger_committed: plan.committedBudget,
+      net_committed: plan.committedBudget,
+      // Legacy alias retained throughout 3.x. `committed` now reflects the
+      // net obligation after verified headroom-restoring adjustments.
       committed: plan.committedBudget,
       remaining: plan.budget.total - plan.committedBudget,
       utilization_pct: plan.budget.total > 0
@@ -2267,31 +2973,116 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
     // Channel allocation from outcomes
     const channelAllocation: Record<string, { committed: number; pct: number }> = {};
 
-    // Governed actions breakdown (grouped by governance_context)
-    const actionMap = new Map<string, { purchase_type: string; status: string; committed: number; checkCount: number; seller_reference?: string }>();
+    // Governed actions are joined by the stable opaque action binding. Each
+    // lifecycle check receives a freshly signed governance_context, so using
+    // that token string as the internal join key would incorrectly separate
+    // seller delivery evidence from the buyer observation it is meant to
+    // reconcile. The response still exposes the original intent context.
+    const actionMap = new Map<string, {
+      governanceContext: string;
+      purchase_type: string;
+      status: string;
+      committed: number;
+      adjustmentsReported: number;
+      adjustmentsVerified: number;
+      headroomRestored: number;
+      checkCount: number;
+      sellerReportedSpend?: number;
+      buyerObservedSpend?: number;
+      sellerStatementSequence?: number;
+      deliveryReportingPeriod?: { start: string; end: string };
+      deliveryReconciliationStatus?: GovernanceOutcomeState['deliveryReconciliationStatus'];
+      deliveryPeriodState?: GovernanceOutcomeState['deliveryPeriodState'];
+      seller_reference?: string;
+    }>();
     for (const check of checks) {
-      if (check.governanceContext) {
-        if (!actionMap.has(check.governanceContext)) {
-          actionMap.set(check.governanceContext, { purchase_type: check.purchaseType || 'media_buy', status: 'active', committed: 0, checkCount: 0 });
+      const actionKey = check.governanceBindingId ?? check.governanceContext;
+      if (actionKey && check.governanceContext) {
+        if (!actionMap.has(actionKey)) {
+          actionMap.set(actionKey, {
+            governanceContext: check.governanceContext,
+            purchase_type: check.purchaseType || 'media_buy',
+            status: 'active',
+            committed: 0,
+            adjustmentsReported: 0,
+            adjustmentsVerified: 0,
+            headroomRestored: 0,
+            checkCount: 0,
+          });
         }
-        actionMap.get(check.governanceContext)!.checkCount++;
+        const entry = actionMap.get(actionKey)!;
+        if (check.binding === 'proposed') entry.governanceContext = check.governanceContext;
+        entry.checkCount++;
+        if (
+          check.deliveryStatement
+          && check.deliveryStatement.sequence >= (entry.sellerStatementSequence ?? 0)
+        ) {
+          entry.sellerReportedSpend = check.deliveryStatement.cumulativeSpend;
+          entry.sellerStatementSequence = check.deliveryStatement.sequence;
+          entry.deliveryReportingPeriod = check.deliveryStatement.reportingPeriod;
+          entry.buyerObservedSpend = undefined;
+          entry.deliveryReconciliationStatus = 'unmatched';
+          entry.deliveryPeriodState = 'open';
+        }
       }
     }
     for (const outcome of outcomes) {
-      if (outcome.governanceContext) {
-        const entry = actionMap.get(outcome.governanceContext);
+      const actionKey = outcome.governanceBindingId ?? outcome.governanceContext;
+      if (actionKey && outcome.governanceContext) {
+        const entry = actionMap.get(actionKey);
         if (entry) {
           entry.committed += outcome.committedBudget;
           if (outcome.sellerReference) entry.seller_reference = outcome.sellerReference;
+          if (outcome.delivery) {
+            const deliveryObservation = outcome.delivery as {
+              cumulative_spend?: unknown;
+              reporting_period?: { start?: unknown; end?: unknown };
+            };
+            const observationMatchesCurrentPeriod = entry.deliveryReportingPeriod !== undefined
+              && entry.deliveryReportingPeriod.start === deliveryObservation.reporting_period?.start
+              && entry.deliveryReportingPeriod?.end === deliveryObservation.reporting_period?.end;
+            if (observationMatchesCurrentPeriod) {
+              if (typeof deliveryObservation.cumulative_spend === 'number') {
+                entry.buyerObservedSpend = deliveryObservation.cumulative_spend;
+              }
+              entry.deliveryReconciliationStatus = outcome.deliveryReconciliationStatus ?? 'unmatched';
+              entry.deliveryPeriodState = outcome.deliveryPeriodState ?? 'open';
+            }
+          }
+        }
+      }
+    }
+    for (const adjustment of adjustments) {
+      const actionKey = adjustment.governanceBindingId ?? adjustment.governanceContext;
+      if (actionKey && adjustment.governanceContext) {
+        const entry = actionMap.get(actionKey);
+        if (entry) {
+          entry.adjustmentsReported += adjustment.amount;
+          entry.adjustmentsVerified += adjustment.verifiedAmount;
+          entry.headroomRestored += adjustment.headroomRestored;
         }
       }
     }
 
-    const governedActions = Array.from(actionMap.entries()).map(([ctx, data]) => ({
-      governance_context: ctx,
+    const governedActions = Array.from(actionMap.values()).map(data => ({
+      governance_context: data.governanceContext,
       purchase_type: data.purchase_type,
       status: data.status,
       committed: data.committed,
+      adjustments_reported: data.adjustmentsReported,
+      adjustments_verified: data.adjustmentsVerified,
+      net_cost: data.committed - data.adjustmentsVerified,
+      headroom_restored: data.headroomRestored,
+      net_committed: data.committed - data.headroomRestored,
+      ...(data.sellerReportedSpend !== undefined && { seller_reported_spend: data.sellerReportedSpend }),
+      ...(data.buyerObservedSpend !== undefined && { buyer_observed_spend: data.buyerObservedSpend }),
+      ...((data.sellerReportedSpend !== undefined || data.buyerObservedSpend !== undefined) && {
+        ...(data.deliveryReportingPeriod && { delivery_reporting_period: data.deliveryReportingPeriod }),
+        conservative_exposure: Math.max(data.sellerReportedSpend ?? 0, data.buyerObservedSpend ?? 0),
+        delivery_reconciliation_status: data.deliveryReconciliationStatus
+          ?? (data.sellerReportedSpend !== undefined && data.buyerObservedSpend === undefined ? 'unmatched' : 'consistent'),
+        delivery_period_state: data.deliveryPeriodState ?? 'open',
+      }),
       check_count: data.checkCount,
       ...(data.seller_reference && { seller_reference: data.seller_reference }),
     }));
@@ -2339,6 +3130,8 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
     const summary = {
       checks_performed: totalChecks,
       outcomes_reported: outcomes.length,
+      adjustments_reported: adjustments.length,
+      adjustments_verified: adjustments.filter(adjustment => adjustment.verificationState === 'verified').length,
       statuses: statusCounts,
       findings_count: allFindings.length,
       escalations,
@@ -2378,6 +3171,19 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
             ...(f.policyId && { policy_id: f.policyId }),
             ...(f.confidence !== undefined && { confidence: f.confidence }),
           })),
+          ...(check.deliveryStatement && {
+            delivery_statement: {
+              statement_id: check.deliveryStatement.statementId,
+              statement_digest: check.deliveryStatement.statementDigest,
+              sequence: check.deliveryStatement.sequence,
+              issued_at: check.deliveryStatement.issuedAt,
+              seller_reference: check.deliveryStatement.sellerReference,
+              cumulative_spend: check.deliveryStatement.cumulativeSpend,
+              currency: check.deliveryStatement.currency,
+              reporting_period: check.deliveryStatement.reportingPeriod,
+              canonical_payload: check.deliveryStatement.canonicalPayload,
+            },
+          }),
         });
       }
 
@@ -2395,6 +3201,40 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
           ...(outcome.governanceContext && { governance_context: outcome.governanceContext }),
           ...(outcome.sellerReference && { seller_reference: outcome.sellerReference }),
           ...(outcome.delivery && { delivery: outcome.delivery }),
+          ...(outcome.deliveryReconciliationStatus && {
+            delivery_reconciliation_status: outcome.deliveryReconciliationStatus,
+          }),
+          ...(outcome.deliveryPeriodState && { delivery_period_state: outcome.deliveryPeriodState }),
+        });
+      }
+
+      for (const adjustment of adjustments) {
+        auditEntries.push({
+          id: adjustment.adjustmentId,
+          type: 'adjustment',
+          timestamp: adjustment.timestamp,
+          caller: adjustment.reporterSeller,
+          outcome_id: adjustment.outcomeId,
+          seller_reference: adjustment.sellerReference,
+          seller_adjustment_id: adjustment.sellerAdjustmentId,
+          adjustment_type: adjustment.adjustmentType,
+          amount: { amount: adjustment.amount, currency: adjustment.currency },
+          adjustment_state: adjustment.verificationState,
+          verified_amount: adjustment.verifiedAmount,
+          headroom_restored: adjustment.headroomRestored,
+          evidence: {
+            evidence_id: adjustment.evidence.evidenceId,
+            evidence_type: adjustment.evidence.evidenceType,
+            digest: adjustment.evidence.digest,
+            issued_at: adjustment.evidence.issuedAt,
+          },
+          ...(adjustment.reviewerBuyer && { reviewed_by: adjustment.reviewerBuyer }),
+          ...(adjustment.reviewedAt && { reviewed_at: adjustment.reviewedAt }),
+          ...(adjustment.reviewReason && { review_reason: adjustment.reviewReason }),
+          reason: adjustment.reason,
+          effective_at: adjustment.effectiveAt,
+          purchase_type: adjustment.purchaseType,
+          ...(adjustment.governanceContext && { governance_context: adjustment.governanceContext }),
         });
       }
 
@@ -2541,6 +3381,19 @@ function buildCheckResponse(check: GovernanceCheckState) {
     ...(check.expiresAt && { expires_at: check.expiresAt }),
     ...(check.phase === 'delivery' && check.status === 'approved' && {
       next_check: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    }),
+    ...(check.deliveryStatement && {
+      delivery_statement: {
+        statement_id: check.deliveryStatement.statementId,
+        statement_digest: check.deliveryStatement.statementDigest,
+        sequence: check.deliveryStatement.sequence,
+        issued_at: check.deliveryStatement.issuedAt,
+        seller_reference: check.deliveryStatement.sellerReference,
+        reporting_period: check.deliveryStatement.reportingPeriod,
+        cumulative_spend: check.deliveryStatement.cumulativeSpend,
+        currency: check.deliveryStatement.currency,
+        canonical_payload: check.deliveryStatement.canonicalPayload,
+      },
     }),
     ...(check.governanceContext && {
       governance_context: check.governanceContext,

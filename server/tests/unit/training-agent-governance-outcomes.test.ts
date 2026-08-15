@@ -6,6 +6,7 @@ import {
   handleReportPlanOutcome,
   handleSyncPlans,
 } from '../../src/training-agent/governance-handlers.js';
+import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
 import { clearSessions, getSession, runWithSessionContext } from '../../src/training-agent/state.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
@@ -181,21 +182,54 @@ describe('report_plan_outcome authorization and ledger binding', () => {
     await runWithSessionContext(async () => {
       const intent = await setupIntent(100);
       await report(intent, 100);
-      const delivery = {
+      const deliveryMetrics = {
+        statement_id: 'stmt_mb_001_0001',
+        sequence: 1,
+        issued_at: '2027-01-02T01:00:00Z',
         reporting_period: { start: '2027-01-01T00:00:00Z', end: '2027-01-02T00:00:00Z' },
-        spend: 40,
-        impressions: 2_000,
+        cumulative_spend: 40,
+        currency: 'USD',
       };
-      const result = await handleReportPlanOutcome({
+      const sellerStatement = await handleCheckGovernance({
+        caller: SELLER_CTX.authenticatedAgentUrl,
+        governance_context: intent.governance_context,
+        phase: 'delivery',
+        planned_delivery: { media_buy_id: 'mb_001', total_budget: 100, currency: 'USD' },
+        delivery_metrics: {
+          ...deliveryMetrics,
+          statement_digest: computeDeliveryStatementDigest('mb_001', deliveryMetrics),
+        },
+      }, SELLER_CTX) as Record<string, any>;
+      const delivery = {
+        observation_id: 'obs_mb_001_0001',
+        source: 'seller_statement_copy',
+        observed_at: '2027-01-02T01:05:00Z',
+        reporting_period: deliveryMetrics.reporting_period,
+        cumulative_spend: 40,
+        currency: 'USD',
+        seller_statement_id: deliveryMetrics.statement_id,
+        seller_statement_digest: computeDeliveryStatementDigest('mb_001', deliveryMetrics),
+      };
+      const observationRequest = {
         plan_id: PLAN.plan_id,
         idempotency_key: `delivery_${intent.check_id}_0001`,
+        check_id: sellerStatement.check_id,
+        governance_context: sellerStatement.governance_context,
         outcome: 'delivery',
         delivery,
+      } as const;
+      const result = await handleReportPlanOutcome(observationRequest, BUYER_CTX) as Record<string, any>;
+      const equivocation = await handleReportPlanOutcome({
+        ...observationRequest,
+        idempotency_key: `delivery_${intent.check_id}_0002`,
+        delivery: { ...delivery, cumulative_spend: 41 },
       }, BUYER_CTX) as Record<string, any>;
       const logs = await audit();
       const deliveryEntry = logs.plans[0].entries.find((entry: any) => entry.outcome === 'delivery');
 
       expect(result.status).toBe('accepted');
+      expect(result.delivery_reconciliation_status).toBe('consistent');
+      expect(equivocation.errors?.[0]).toMatchObject({ code: 'CONFLICT' });
       expect(logs.plans[0].budget.committed).toBe(100);
       expect(deliveryEntry.delivery).toEqual(delivery);
     });

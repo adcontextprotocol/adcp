@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/governance/report-plan-adjustment-request.json",
+  "title": "Report Plan Adjustment Request",
+  "description": "Two-party append-only adjustment lifecycle. The authenticated seller reports commercial evidence; the authenticated plan owner later accepts or disputes that exact record. Reporting alone never changes net cost or headroom.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" },
+    {
+      "if": { "properties": { "action": { "const": "report" } }, "required": ["action"] },
+      "then": {
+        "required": ["outcome_id", "seller_reference", "seller_adjustment_id", "adjustment_type", "amount", "reason", "effective_at", "evidence"]
+      }
+    },
+    {
+      "if": { "properties": { "action": { "const": "review" } }, "required": ["action"] },
+      "then": { "required": ["adjustment_id", "decision"] }
+    },
+    {
+      "if": {
+        "properties": { "action": { "const": "review" }, "decision": { "const": "dispute" } },
+        "required": ["action", "decision"]
+      },
+      "then": { "required": ["reason"] }
+    },
+    {
+      "if": { "properties": { "adjustment_type": { "const": "decommitment" } }, "required": ["adjustment_type"] },
+      "then": { "properties": { "evidence": { "properties": { "evidence_type": { "const": "decommitment_agreement" } } } } }
+    },
+    {
+      "if": { "properties": { "adjustment_type": { "const": "refund" } }, "required": ["adjustment_type"] },
+      "then": { "properties": { "evidence": { "properties": { "evidence_type": { "const": "refund_settlement" } } } } }
+    },
+    {
+      "if": { "properties": { "adjustment_type": { "const": "credit" } }, "required": ["adjustment_type"] },
+      "then": { "properties": { "evidence": { "properties": { "evidence_type": { "const": "credit_note" } } } } }
+    },
+    {
+      "if": { "properties": { "adjustment_type": { "const": "makegood" } }, "required": ["adjustment_type"] },
+      "then": { "properties": { "evidence": { "properties": { "evidence_type": { "const": "makegood_agreement" } } } } }
+    }
+  ],
+  "x-status": "experimental",
+  "x-mutates-state": true,
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["report", "review"],
+      "description": "report is seller-authenticated and creates a non-authoritative record; review is plan-owner-authenticated and accepts or disputes it."
+    },
+    "plan_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Plan containing the source outcome.",
+      "x-entity": "governance_plan"
+    },
+    "outcome_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Completed outcome whose authoritative commitment is being adjusted.",
+      "x-entity": "governance_outcome"
+    },
+    "adjustment_id": {
+      "type": "string",
+      "description": "Adjustment to accept or dispute. Required for review.",
+      "x-entity": "governance_adjustment"
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["accept", "dispute"],
+      "description": "Buyer review decision. Acceptance is blocked while delivery evidence for the governed action is disputed in an open governance period; a historical closed_unresolved period is audit evidence, not a billing determination."
+    },
+    "seller_reference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Seller resource identifier. Must exactly match the reference retained on the source outcome."
+    },
+    "seller_adjustment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Stable identifier of the adjustment in the authenticated seller's system.",
+      "x-entity": "seller_adjustment"
+    },
+    "adjustment_type": {
+      "type": "string",
+      "enum": ["decommitment", "refund", "credit", "makegood"],
+      "description": "Commercial meaning. Verified decommitments restore headroom in every mode; verified refunds and credits restore it only in verified_net_cost mode; makegoods never restore cash headroom."
+    },
+    "amount": {
+      "type": "object",
+      "description": "Positive adjustment amount in the plan currency.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Finite positive amount. Cumulative adjustments for an outcome cannot exceed its authoritative commitment."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Three-letter uppercase currency code matching the plan currency."
+        }
+      },
+      "required": ["amount", "currency"],
+      "additionalProperties": false
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000,
+      "description": "Human-readable reason retained in the audit trail."
+    },
+    "effective_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller's adjustment became effective."
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Integrity-bound commercial source record supplied by the seller. Its evidence_type must correspond to adjustment_type.",
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Immutable identifier in the authenticated seller's namespace. Reuse with different adjustment evidence is a conflict.",
+          "x-entity": "governance_adjustment_evidence"
+        },
+        "evidence_type": {
+          "type": "string",
+          "enum": ["decommitment_agreement", "refund_settlement", "credit_note", "makegood_agreement"]
+        },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "issued_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["evidence_id", "evidence_type", "digest", "issued_at"],
+      "additionalProperties": false
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "description": "Caller-generated retry key. Exact replays return the original report or review; reuse with another payload is rejected."
+    },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": [
+    "action",
+    "plan_id",
+    "idempotency_key"
+  ],
+  "additionalProperties": true
+}

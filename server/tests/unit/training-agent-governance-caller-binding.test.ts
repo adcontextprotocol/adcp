@@ -6,6 +6,7 @@ import {
   handleGetPlanAuditLogs,
   handleSyncPlans,
 } from '../../src/training-agent/governance-handlers.js';
+import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
 import { clearSessions, getSession, runWithSessionContext } from '../../src/training-agent/state.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
@@ -101,12 +102,23 @@ describe('check_governance authenticated caller binding', () => {
         phase: 'purchase',
         planned_delivery: { media_buy_id: 'mb_lifecycle', total_budget: 10_000, currency: 'USD' },
       }, { mode: 'open', authenticatedAgentUrl: 'https://seller.example' }) as Record<string, any>;
+      const deliveryMetrics = {
+        statement_id: 'stmt_mb_lifecycle_0001',
+        sequence: 1,
+        issued_at: '2027-01-02T01:00:00Z',
+        reporting_period: { start: '2027-01-01T00:00:00Z', end: '2027-01-02T00:00:00Z' },
+        cumulative_spend: 1_000,
+        currency: 'USD',
+      };
       const delivery = await handleCheckGovernance({
         caller: 'https://seller.example',
         governance_context: purchase.governance_context,
         phase: 'delivery',
         planned_delivery: { media_buy_id: 'mb_lifecycle', total_budget: 10_000, currency: 'USD' },
-        delivery_metrics: { cumulative_spend: 1_000 },
+        delivery_metrics: {
+          ...deliveryMetrics,
+          statement_digest: computeDeliveryStatementDigest('mb_lifecycle', deliveryMetrics),
+        },
       }, { mode: 'open', authenticatedAgentUrl: 'https://seller.example' }) as Record<string, any>;
 
       expect(purchase.verdict, JSON.stringify(purchase)).toBe('approved');

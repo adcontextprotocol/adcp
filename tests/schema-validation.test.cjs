@@ -534,6 +534,9 @@ async function runTests() {
     const validateOutcome = await testAjv.compileAsync(
       loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/report-plan-outcome-request.json'))
     );
+    const validateOutcomeResponse = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/report-plan-outcome-response.json'))
+    );
     const validatePlannedDelivery = testAjv.getSchema('/schemas/core/planned-delivery.json');
     if (!validatePlannedDelivery) {
       return 'planned-delivery schema was not loaded with the governance request';
@@ -664,19 +667,58 @@ async function runTests() {
       outcome: 'delivery',
       delivery: { reporting_period: { start: '2026-08-01T00:00:00Z', end: '2026-08-02T00:00:00Z' } }
     };
-    if (!validateOutcome(legacyDelivery)) {
-      return `legacy plan-owner delivery snapshot rejected: ${testAjv.errorsText(validateOutcome.errors)}`;
+    if (validateOutcome(legacyDelivery)) {
+      return 'legacy unbound delivery snapshots must be rejected';
+    }
+    const deliveryObservation = {
+      plan_id: 'plan_123',
+      idempotency_key: 'delivery-vector-0002',
+      outcome: 'delivery',
+      check_id: 'check_1',
+      governance_context: 'signed.context.token',
+      delivery: {
+        observation_id: 'observation_1',
+        source: 'seller_statement_copy',
+        observed_at: '2026-08-02T01:00:00Z',
+        reporting_period: { start: '2026-08-01T00:00:00Z', end: '2026-08-02T00:00:00Z' },
+        cumulative_spend: 100,
+        currency: 'USD',
+        seller_statement_id: 'statement_1',
+        seller_statement_digest: `sha256:${'a'.repeat(64)}`
+      }
+    };
+    if (!validateOutcome(deliveryObservation)) {
+      return `exact-tuple delivery observation rejected: ${testAjv.errorsText(validateOutcome.errors)}`;
     }
     if (!validateOutcome({
-      ...legacyDelivery,
-      check_id: 'check_1',
-      governance_context: 'signed.context.token'
+      ...deliveryObservation,
+      delivery: { ...deliveryObservation.delivery, observation_id: 'observation_close_1', period_closed: true }
     })) {
-      return `exact-tuple delivery snapshot rejected: ${testAjv.errorsText(validateOutcome.errors)}`;
+      return `governance period closure rejected: ${testAjv.errorsText(validateOutcome.errors)}`;
+    }
+    if (validateOutcome({
+      ...deliveryObservation,
+      delivery: { ...deliveryObservation.delivery, period_closed: 'yes' }
+    })) {
+      return 'governance period closure must be boolean';
+    }
+    if (!validateOutcomeResponse({
+      outcome_id: 'outcome_close_1',
+      outcome_state: 'findings',
+      delivery_reconciliation_status: 'closed_unresolved',
+      delivery_period_state: 'closed'
+    })) {
+      return `closed unresolved outcome response rejected: ${testAjv.errorsText(validateOutcomeResponse.errors)}`;
     }
     if (validateOutcome({ ...legacyDelivery, check_id: 'check_1' })
       || validateOutcome({ ...legacyDelivery, governance_context: 'signed.context.token' })) {
-      return 'delivery snapshots must provide check_id and governance_context together or omit both';
+      return 'delivery observations must provide check_id and governance_context together';
+    }
+    if (validateOutcome({
+      ...deliveryObservation,
+      delivery: { ...deliveryObservation.delivery, seller_statement_digest: undefined }
+    })) {
+      return 'seller statement copies must carry the seller statement digest';
     }
     if (validateOutcome({
       plan_id: 'plan_123',

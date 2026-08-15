@@ -347,6 +347,7 @@ export interface SessionState {
   governancePlans: Map<string, GovernancePlanState>;
   governanceChecks: Map<string, GovernanceCheckState>;
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
+  governanceAdjustments: Map<string, GovernanceAdjustmentState>;
   propertyLists: Map<string, PropertyListState>;
   collectionLists: Map<string, CollectionListState>;
   contentStandards: Map<string, ContentStandardsState>;
@@ -674,6 +675,7 @@ export interface GovernancePlanState {
     currency: string;
     reallocationThreshold: number;
     reallocationUnlimited: boolean;
+    accountingMode: 'gross_commitment' | 'verified_net_cost';
     perSellerMaxPct?: number;
     allocations?: Record<string, { amount?: number; maxPct?: number }>;
   };
@@ -690,6 +692,7 @@ export interface GovernancePlanState {
     mode: GovernancePlanState['mode'];
     reallocationThreshold: number;
     reallocationUnlimited: boolean;
+    accountingMode: 'gross_commitment' | 'verified_net_cost';
     policyCategories?: string[];
     policyIds?: string[];
     /**
@@ -768,6 +771,20 @@ export interface GovernanceCheckState {
   policiesEvaluated: string[];
   timestamp: string;
   expiresAt?: string;
+  deliveryStatement?: {
+    statementId: string;
+    statementDigest: string;
+    sequence: number;
+    issuedAt: string;
+    sellerReference: string;
+    cumulativeSpend: number;
+    currency: string;
+    reportingPeriod: { start: string; end: string };
+    canonicalPayload: {
+      seller_reference: string;
+      delivery_metrics: Record<string, unknown>;
+    };
+  };
 }
 
 export interface GovernanceFinding {
@@ -806,9 +823,51 @@ export interface GovernanceOutcomeState {
   requestPayloadHash?: string;
   /** Exact successful response returned for idempotent replay. */
   response?: Record<string, unknown>;
-  /** Deprecated buyer delivery snapshot retained as audit evidence only. */
+  /** Buyer-attributed delivery observation retained independently of seller evidence. */
   delivery?: Record<string, unknown>;
+  deliveryReconciliationStatus?: 'consistent' | 'disputed' | 'unmatched' | 'closed_unresolved';
+  /** Operational governance-window state; closure is not a billing settlement. */
+  deliveryPeriodState?: 'open' | 'closed';
   findings: GovernanceFinding[];
+  timestamp: string;
+}
+
+export type GovernanceAdjustmentType = 'decommitment' | 'refund' | 'credit' | 'makegood';
+
+export interface GovernanceAdjustmentState {
+  adjustmentId: string;
+  planId: string;
+  planOwnerAgentUrl: string;
+  outcomeId: string;
+  governanceBindingId?: string;
+  governanceContext?: string;
+  purchaseType: string;
+  sellerReference: string;
+  sellerAdjustmentId: string;
+  adjustmentType: GovernanceAdjustmentType;
+  amount: number;
+  currency: string;
+  headroomRestored: number;
+  verifiedAmount: number;
+  verificationState: 'reported' | 'verified' | 'disputed';
+  evidence: {
+    evidenceId: string;
+    evidenceType: 'decommitment_agreement' | 'refund_settlement' | 'credit_note' | 'makegood_agreement';
+    digest: string;
+    issuedAt: string;
+  };
+  reason: string;
+  effectiveAt: string;
+  idempotencyKey: string;
+  reporterSeller: string;
+  requestPayloadHash: string;
+  response: Record<string, unknown>;
+  reviewIdempotencyKey?: string;
+  reviewPayloadHash?: string;
+  reviewResponse?: Record<string, unknown>;
+  reviewerBuyer?: string;
+  reviewReason?: string;
+  reviewedAt?: string;
   timestamp: string;
 }
 

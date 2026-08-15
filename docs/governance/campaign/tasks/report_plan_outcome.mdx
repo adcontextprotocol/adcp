@@ -104,64 +104,91 @@ The caller's lower report is preserved in the audit trail but cannot manufacture
 
 All monetary inputs MUST be finite and non-negative. Invalid or overflowing values are rejected before ledger or audit mutation. Each approved check may be settled by only one completed or failed outcome; idempotent replay returns the cached result, while a second distinct settlement is a conflict.
 
-## Delivery data (periodic reporting)
+## Buyer delivery observation
+
+The seller first submits a canonical delivery statement through [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `phase: "delivery"`. The buyer then binds its observation to that exact approved seller check. This preserves two attributed records instead of treating either party as the universal source of truth.
 
 ```json
 {
   "tool": "report_plan_outcome",
   "arguments": {
     "plan_id": "plan_q1_2026_launch",
-    "check_id": "chk_q1_launch_001",
+    "check_id": "chk_seller_delivery_001",
     "idempotency_key": "outcome-delivery-2026-001",
     "governance_context": "gc_mb_seller_456",
     "outcome": "delivery",
     "delivery": {
+      "observation_id": "obs_q1_launch_001",
+      "source": "seller_statement_copy",
+      "observed_at": "2026-03-22T01:05:00Z",
       "reporting_period": {
         "start": "2026-03-15T00:00:00Z",
         "end": "2026-03-22T00:00:00Z"
       },
-      "impressions": 1250000,
-      "spend": 18750,
-      "cpm": 15.00,
-      "viewability_rate": 0.72,
-      "completion_rate": 0.65
+      "cumulative_spend": 12500,
+      "currency": "USD",
+      "seller_statement_id": "stmt_q1_launch_001",
+      "seller_statement_digest": "sha256:4b55f1157094ed8df2635250f71568701d294cb0da57845eba886a62e5434633",
+      "impressions": 850000
     }
   }
 }
 ```
 
-This legacy buyer snapshot is audit evidence only. It does not add delivery spend to the already-recorded commitment; authoritative seller monitoring uses [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `phase: "delivery"`.
+Use `source: "seller_statement_copy"` when the buyer is forwarding the statement it received from the seller. That proves consistent transmission, not independent measurement. Use `source: "buyer_measurement"` for separately measured buyer evidence; seller statement ID and digest are then optional. Delivery observations never add spend to the already-recorded commitment.
+
+Authoritative seller monitoring uses [`check_governance`](/docs/governance/campaign/tasks/check_governance) with `phase: "delivery"`; the buyer observation remains separately attributed audit evidence.
 
 ### Response (on track)
 
 ```json
 {
   "outcome_id": "out_del_001",
-  "outcome_state": "accepted"
+  "outcome_state": "accepted",
+  "delivery_reconciliation_status": "consistent",
+  "delivery_period_state": "open"
 }
 ```
 
-### Response (anomaly detected)
+### Response (seller and buyer disagree)
 
 ```json
 {
   "outcome_id": "out_del_002",
   "outcome_state": "findings",
+  "delivery_reconciliation_status": "disputed",
+  "delivery_period_state": "open",
   "findings": [
     {
-      "category_id": "budget_authority",
-      "severity": "warning",
-      "explanation": "Spend is pacing 62% above plan. At current rate, budget will be exhausted 5 weeks early.",
+      "category_id": "delivery_evidence_conflict",
+      "severity": "critical",
+      "explanation": "Buyer-attributed delivery evidence conflicts with the seller statement retained by governance.",
       "details": {
-        "planned_weekly_spend": 11538,
-        "actual_weekly_spend": 18750,
-        "overpace_pct": 62,
-        "projected_exhaustion": "2026-05-03T00:00:00Z"
+        "field": "delivery.cumulative_spend",
+        "expected": 100,
+        "actual": 200
       }
     }
   ]
 }
 ```
+
+Governance retains both attributed amounts, reports conservative exposure as the higher credible amount in [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs), and blocks adjustment acceptance while the governance period is open. It never averages the claims or applies a last-writer-wins rule.
+
+### Closing an unresolved governance period
+
+The plan owner may submit a new observation for the same seller statement and `reporting_period` with `period_closed: true`. If the values still disagree, the response makes the limited operational meaning explicit:
+
+```json
+{
+  "outcome_id": "out_del_003",
+  "outcome_state": "findings",
+  "delivery_reconciliation_status": "closed_unresolved",
+  "delivery_period_state": "closed"
+}
+```
+
+Closure freezes that period's governance evidence and prevents the old discrepancy from blocking later governance or a buyer-reviewed adjustment. It does not determine the final invoice, payable amount, credit balance, or commercial winner. A different subsequent seller reporting period starts `open` and `unmatched`; neither party may rewrite the closed period.
 
 ## Failed actions
 
@@ -203,7 +230,7 @@ If the seller rejected the request, report it so the governance agent can update
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `plan_id` | string | Yes | The plan this outcome is for. |
-| `check_id` | string | Conditional | The `check_id` from [`check_governance`](/docs/governance/campaign/tasks/check_governance). Required with `governance_context` for `completed` and `failed` outcomes. A deprecated `delivery` snapshot either supplies both fields as an exact tuple or omits both for the authenticated plan-owner path. |
+| `check_id` | string | Conditional | Exact approved check. Required for every outcome; a delivery observation names the seller delivery statement check. |
 | `idempotency_key` | string | Yes | Stable retry key. An identical replay returns the cached outcome without another ledger mutation; reuse with a different payload is rejected. |
 | `purchase_type` | enum | No | The kind of financial commitment: `media_buy` (default), `rights_license`, `signal_activation`, or `creative_services`. When omitted, the governance agent assumes `media_buy`. |
 | `outcome` | enum | Yes | `completed`, `failed`, or `delivery`. |
@@ -213,17 +240,21 @@ If the seller rejected the request, report it so the governance agent can update
 | `seller_response.packages` | array | No | Confirmed packages with actual budget and targeting. |
 | `seller_response.planned_delivery` | object | No | What the seller said it will deliver. When seller-side governance is not configured, this is the governance agent's only view of the seller's delivery parameters. |
 | `seller_response.creative_deadline` | string | No | ISO 8601 deadline for creative submission. |
-| `delivery` | object | No | Deprecated buyer-reported delivery snapshot. Required when outcome is `delivery`. For 3.x compatibility, the authenticated plan owner may omit both `check_id` and `governance_context`; otherwise both are required and validated as an exact tuple. Audit evidence only; it never increases committed obligation. Sellers use `check_governance` phase `delivery` for authoritative monitoring. |
-| `delivery.reporting_period` | object | No | Start and end timestamps for the reporting window. |
-| `delivery.impressions` | integer | No | Impressions delivered in the period. |
-| `delivery.spend` | number | No | Finite, non-negative spend in the period. Audit evidence only; never added as a second commitment. |
-| `delivery.cpm` | number | No | Effective CPM for the period. |
-| `delivery.viewability_rate` | number | No | Viewability rate (0-1). |
-| `delivery.completion_rate` | number | No | Video completion rate (0-1). |
+| `delivery` | object | No | Buyer-attributed observation. Required for `delivery`; retained separately from the seller statement and never added as a second commitment. |
+| `delivery.observation_id` | string | For delivery | Stable buyer-issued record ID. |
+| `delivery.source` | enum | For delivery | `seller_statement_copy` or `buyer_measurement`. |
+| `delivery.observed_at` | date-time | For delivery | When the buyer recorded the observation. |
+| `delivery.reporting_period` | object | For delivery | Exact period compared with the seller statement. |
+| `delivery.cumulative_spend` | number | For delivery | Finite, non-negative buyer-attributed cumulative spend. |
+| `delivery.currency` | string | For delivery | Three-letter currency matching the compared evidence. |
+| `delivery.period_closed` | boolean | No | Defaults to `false`. The authenticated plan owner may close this operational governance period. An unresolved close is retained as `closed_unresolved`; closure is not billing settlement. |
+| `delivery.seller_statement_id` | string | For seller copy | ID received with the seller statement. |
+| `delivery.seller_statement_digest` | string | For seller copy | Digest received with the seller statement. |
+| `delivery.impressions` | integer | No | Optional buyer-attributed impressions. |
 | `error` | object | No | Error details. Required when outcome is `failed`. |
 | `error.code` | string | No | Error code from the seller. |
 | `error.message` | string | No | Human-readable error description. |
-| `governance_context` | string | Conditional | Exact approved context paired with `check_id` and `plan_id`. Required for `completed` and `failed`; on deprecated `delivery`, supply it together with `check_id` or omit both for the authenticated plan-owner path. |
+| `governance_context` | string | Conditional | Exact approved context paired with `check_id` and `plan_id`. Required for every outcome. |
 
 ### Response
 
@@ -232,6 +263,8 @@ If the seller rejected the request, report it so the governance agent can update
 | `outcome_id` | string | Unique identifier for this outcome record. |
 | `outcome_state` | enum | `accepted` (state updated, no issues) or `findings` (issues detected). |
 | `committed_budget` | number | Governance-authorized budget reserved by this completed outcome. |
+| `delivery_reconciliation_status` | enum | `consistent`, `disputed`, `unmatched`, or `closed_unresolved`; present for delivery observations. |
+| `delivery_period_state` | enum | `open` or `closed`. Closure freezes governance evidence but does not settle billing. |
 | `findings` | array | Present only when `outcome_state` is `findings`. |
 | `findings[].category_id` | string | Which validation category flagged the issue. |
 | `findings[].severity` | enum | `info`, `warning`, or `critical`. |
@@ -244,7 +277,7 @@ If the seller rejected the request, report it so the governance agent can update
 | Code | Recovery | Description |
 |------|----------|-------------|
 | [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found) | correctable | `plan_id` or `check_id` does not resolve within the authenticated reporter's scope. Verify the identifiers and authenticated buyer; do not probe another buyer's plan. |
-| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | correctable | The exact tuple, purchase type, outcome-dependent fields, idempotency-key format, or monetary evidence is invalid. Correct the named value; for deprecated delivery snapshots supply both `check_id` and `governance_context` or neither. |
+| [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | correctable | The exact tuple, purchase type, outcome-dependent fields, idempotency-key format, or monetary evidence is invalid. Correct the named value; delivery observations must bind both `check_id` and `governance_context` to a seller statement. |
 | [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict) | correctable | This reporter already used the key with another canonical payload. Resend the exact original request for replay, or use a fresh key for a genuinely distinct report. |
 | [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) | correctable | The authenticated reporter is not the buyer that owns the plan or made the original approved intent. Retry only with that buyer identity. |
 | [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | transient | The opaque governed action already has a different terminal settlement. Read the audit trail and accept the existing settlement; do not retry as a second terminal outcome. |
@@ -253,5 +286,6 @@ If the seller rejected the request, report it so the governance agent can update
 ## Related tasks
 
 - [`check_governance`](/docs/governance/campaign/tasks/check_governance) -- The governance check that authorized the action
+- [`report_plan_adjustment`](/docs/governance/campaign/tasks/report_plan_adjustment) -- Append a later seller-authenticated adjustment to a completed outcome
 - [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) -- Push or update the plan
 - [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs) -- View plan state and audit trail
