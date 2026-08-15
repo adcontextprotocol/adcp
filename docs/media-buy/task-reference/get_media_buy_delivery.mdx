@@ -34,11 +34,10 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 
 ### Deterministic filter contract
 
-When a seller accepts deterministic filters, it MUST scope the response to every
-supplied filter. Every `media_buy_deliveries[]` row MUST have a `media_buy_id` in
-`media_buy_ids` when that filter is present and a lifecycle `status` in
-`status_filter` when that filter is present. Multiple filters apply
-conjunctively; a seller MUST NOT accept them and return an unfiltered result.
+`media_buy_ids` and accepted date bounds MUST observably scope the response.
+Every `media_buy_deliveries[]` row MUST have a `media_buy_id` in
+`media_buy_ids` when that filter is present. A seller MUST NOT accept the filter
+and return delivery rows for other buys.
 
 For an accepted `start_date` and `end_date`, `reporting_period.start` and
 `reporting_period.end` MUST represent those exact UTC day boundaries, and all
