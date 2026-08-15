@@ -44,7 +44,8 @@
         "count": {
           "type": "integer",
           "minimum": 2,
-          "description": "Number of draft alternatives requested. Buyers MUST NOT exceed a seller's advertised proposal_refinement.max_alternatives; sellers reject an excessive count at task level with VALIDATION_ERROR rather than clamping it."
+          "maximum": 10,
+          "description": "Number of draft alternatives requested. The protocol maximum is 10. Buyers MUST NOT exceed a seller's lower advertised proposal_refinement.max_alternatives; sellers reject an excessive count at task level with VALIDATION_ERROR rather than clamping it."
         }
       },
       "required": ["count"],

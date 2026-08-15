@@ -786,7 +786,8 @@
             "max_alternatives": {
               "type": "integer",
               "minimum": 2,
-              "description": "Optional maximum alternatives.count the seller accepts. Valid only when supported_dimensions includes alternatives. Requests above this ceiling fail at task level with VALIDATION_ERROR identifying refinements[i].alternatives.count; sellers MUST NOT silently clamp the request or return alternatives_unavailable for the declared ceiling violation."
+              "maximum": 10,
+              "description": "Optional maximum alternatives.count the seller accepts, up to the protocol maximum of 10. Valid only when supported_dimensions includes alternatives. Requests above this ceiling fail at task level with VALIDATION_ERROR identifying refinements[i].alternatives.count; sellers MUST NOT silently clamp the request or return alternatives_unavailable for the declared ceiling violation."
             }
           },
           "required": ["supported_dimensions"],

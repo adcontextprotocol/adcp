@@ -13841,6 +13841,55 @@ describe('proposal lifecycle', () => {
     expect(await storedProposalIds()).toEqual(before);
   });
 
+  it('rejects a mixed refinement batch task-wide before minting any sibling proposal', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const sources: Array<Record<string, unknown>> = [];
+    for (let index = 0; index < 3; index += 1) {
+      const { result: requested, isError } = await simulateCallTool(server, 'request_proposals', {
+        brand: account.brand,
+        brief: 'social engagement display',
+      });
+      expect(isError, JSON.stringify(requested)).toBeFalsy();
+      sources.push((requested.proposals as Array<Record<string, unknown>>)[0]);
+    }
+
+    const storedProposalIds = () => runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      return (session.lastGetProductsContext?.proposals ?? []).map(proposal => proposal.proposal_id);
+    });
+    const before = await storedProposalIds();
+
+    const { result: refined, isError } = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: sources[0].proposal_id,
+        action: 'revise',
+        ask: 'Prefer premium video.',
+      }, {
+        proposal_id: sources[1].proposal_id,
+        action: 'revise',
+        ask: 'Prefer premium audio.',
+      }, {
+        proposal_id: sources[2].proposal_id,
+        action: 'revise',
+        constraints: { total_budget: { max: 50000, currency: 'USD' } },
+      }],
+    });
+
+    expect(isError, JSON.stringify(refined)).toBe(true);
+    expect(refined).toMatchObject({
+      code: 'UNSUPPORTED_FEATURE',
+      field: 'refinements.2.constraints',
+      details: {
+        unsupported_dimension: 'total_budget',
+        supported_dimensions: [],
+      },
+    });
+    expect(refined).not.toHaveProperty('results');
+    expect(await storedProposalIds()).toEqual(before);
+  });
+
   it.each([
     ['constraints', { constraints: { total_budget: { max: 50000, currency: 'USD' } } }, 'total_budget'],
     ['product_changes', { product_changes: { 'social-display': 'include' } }, 'product_selection'],

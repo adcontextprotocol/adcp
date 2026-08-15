@@ -3196,6 +3196,30 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-request.json',
     {
+      idempotency_key: 'refine-proposals-too-many-alternatives-0001',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        alternatives: { count: 11 }
+      }]
+    },
+    'refine_proposals rejects alternatives above the protocol maximum'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-oversized-batch-0001',
+      refinements: Array.from({ length: 26 }, (_, index) => ({
+        proposal_id: `proposal-${index + 1}`,
+        action: 'revise',
+        ask: 'Prefer premium video.'
+      }))
+    },
+    'refine_proposals rejects batches above the protocol maximum'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
       idempotency_key: 'refine-proposals-contradictory-product-0001',
       refinements: [{
         proposal_id: 'proposal-1',
@@ -3620,6 +3644,20 @@ async function runTests() {
       }
     },
     'proposal refinement cannot advertise an alternatives limit without alternatives support'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        lifecycle_tools: ['refine_proposals'],
+        proposal_refinement: {
+          supported_dimensions: ['alternatives'],
+          max_alternatives: 11
+        }
+      }
+    },
+    'proposal refinement cannot advertise an alternatives limit above the protocol maximum'
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-response.json',

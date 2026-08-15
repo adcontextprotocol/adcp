@@ -10,7 +10,7 @@ testable: false
 - `action: "revise"` applies structured discovery `criteria`, typed boundaries, product changes, requested alternatives, and/or the buyer's free-text `ask`, returning one or more new draft proposals.
 - `action: "finalize"` changes no commercial terms and returns a new committed proposal backed by an inventory hold until `expires_at`.
 
-Revision may target a draft, committed, or accepted proposal; finalization must target a draft. Proposal IDs must be unique within the request, and results preserve request order. Every successful operation returns a new `proposal_id`; that ID is the complete version identity for the immutable commercial snapshot, and the source remains unchanged.
+Revision may target a draft, committed, or accepted proposal; finalization must target a draft. A request contains at most 25 refinements. Proposal IDs must be unique within the request, and results preserve request order. Every successful operation returns a new `proposal_id`; that ID is the complete version identity for the immutable commercial snapshot, and the source remains unchanged.
 
 {/* Using latest because this schema is not yet released in any version.
     Update to the correct version alias after the next release. */}
@@ -52,7 +52,7 @@ Typed fields are deliberately small and mechanically verifiable:
 |---|---|
 | `constraints.total_budget` | Inclusive `min`/`max` bounds checked against a present `commercial_terms.total_budget`; `currency` must match and `min` must not exceed `max`. The `total_budget` key is the stable constraint identifier. |
 | `product_changes` | Map keyed by product ID. `include` requires a product in `commercial_terms.purchases`; `omit` requires it to be absent. Keying makes contradictory actions unrepresentable. |
-| `alternatives.count` | Number of commercially distinct drafts requested. Returned alternatives have unique `terms_digest` values; diversity strategy remains free text. |
+| `alternatives.count` | Number of commercially distinct drafts requested, from 2 through the protocol maximum of 10 and no higher than a seller's advertised `max_alternatives`. Returned alternatives have unique `terms_digest` values; diversity strategy remains free text. |
 | `criteria` | Structured discovery criteria to replace on the source proposal. Omitted criteria fields remain inherited; concrete targeting and offer filters belong here. |
 | `ask` | Free text for substitution, trade-offs, diversity, preferences, or other long-tail context. |
 
