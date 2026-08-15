@@ -1,0 +1,304 @@
+id: brand/signed_response_envelope_vectors
+version: "1.0.0"
+title: "Signed brand responses are fresh and bound to request, task, and tenant"
+category: brand_baseline
+summary: "Consumer-under-test matrix for verify_brand_claim and verify_brand_claims payload-envelope verification: valid responses pass; expired, replayed/request-mismatched, and cross-tenant responses fail closed."
+track: brand
+required_tools:
+  - comply_test_controller
+
+narrative: |
+  `verify_brand_claim` and `verify_brand_claims` are the closed AdCP 3.x list of
+  tasks whose response payloads use the `adcp-response-payload+jws` envelope.
+  Signature validity alone is insufficient. An online consumer applies the
+  ordered verifier checklist, including freshness, exact request binding, task
+  binding, tenant binding, and outer-payload consistency.
+
+  This storyboard grades a CONSUMER of those signed responses. The paired
+  `signed_responses_runner` contract hosts a deterministic fixture brand agent,
+  signs each response at run time with a public test-only response-signing key,
+  dispatches the consumer through `evaluate_signed_brand_response`, and records
+  one verifier decision per vector. Both the single and batch tasks execute the
+  same four-case matrix:
+
+    1. a fresh response bound to the actual request and expected tenant passes;
+    2. a cryptographically valid but expired envelope fails at checklist step 7;
+    3. a response replayed against a different request fails at step 8; and
+    4. a response naming a different tenant fails at step 9.
+
+  Consumers that do not advertise the runner contract grade `not_applicable`.
+  Consumers that opt in must report every case; missing result traffic is a
+  failure rather than an implicit pass.
+
+agent:
+  interaction_model: signed_brand_response_consumer
+  capabilities: []
+  examples:
+    - "Registry or buyer agent consuming signed brand-claim responses"
+    - "Governance platform verifying brand relationship evidence"
+    - "Agency identity service processing verify_brand_claims batches"
+
+caller:
+  role: compliance_runner
+  example: "AdCP Verified runner with signed-response consumer dispatch"
+
+prerequisites:
+  description: |
+    The runner implements `test-kits/signed-responses-runner.yaml`, and the
+    consumer under test advertises the comply_test_controller scenario
+    `evaluate_signed_brand_response`. The fixture endpoint is sandbox-only and
+    the published private key is test material, never a production trust root.
+  test_kit: "test-kits/signed-responses-runner.yaml"
+
+phases:
+  - id: single_response_matrix
+    title: "verify_brand_claim binding matrix"
+    narrative: |
+      The consumer sends the runner-supplied single-claim request to the fixture
+      brand agent four times. The fixture returns a freshly signed envelope for
+      each variant. The consumer reports the ordered verifier decision without
+      rewriting the signed payload or treating a failed binding as valid
+      historical evidence for an online decision.
+
+    steps:
+      - id: verify_single_signed_response_matrix
+        title: "Verify fresh, expired, replayed, and cross-tenant single responses"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L1/security#verifier-checklist-responses"
+        requires_contract: signed_responses_runner
+        sample_request_skip_schema: true
+        stateful: true
+        expected: |
+          Report four decisions for verify_brand_claim: accept the fresh bound
+          envelope and reject the other three with their exact registered error
+          codes.
+        sample_request:
+          scenario: evaluate_signed_brand_response
+          account:
+            sandbox: true
+          params:
+            task: verify_brand_claim
+            profile: single
+            fixture_agent_url: "https://signed-response-fixture.example/mcp"
+            expected_brand_domain: "streamhaus.example"
+            vector_selectors:
+              fresh: fresh_valid
+              expired: envelope_expired
+              replay: replayed_request_hash_mismatch
+              tenant: tenant_mismatch
+            result_endpoint: "https://runner.example/signed-brand-response/result"
+          context:
+            correlation_id: "brand--signed_response--single--matrix"
+        validations:
+          - check: response_schema
+            description: "DR-0001 / comply-test-controller-response.json: controller dispatch returns a schema-valid response"
+          - check: upstream_traffic
+            description: "DR-0001 / security.mdx response verifier checklist steps 1-10: a fresh, valid, request-bound, task-bound, tenant-bound single response is accepted"
+            endpoint_pattern: "POST */signed-brand-response/result"
+            min_count: 1
+            attestation_mode_required: "raw"
+            payload_must_contain:
+              - path: "task"
+                match: equals
+                value: "verify_brand_claim"
+              - path: "vector_id"
+                match: equals
+                value: "fresh_valid"
+              - path: "decision"
+                match: equals
+                value: "accept"
+              - path: "error_code"
+                match: absent
+            identifier_paths:
+              - "params.task"
+              - "params.vector_selectors.fresh"
+          - check: upstream_traffic
+            description: "DR-0001 / security.mdx response verifier checklist step 7 and error-code.json: an expired single-response envelope is rejected with SIGNED_RESPONSE_ENVELOPE_EXPIRED"
+            endpoint_pattern: "POST */signed-brand-response/result"
+            min_count: 1
+            attestation_mode_required: "raw"
+            payload_must_contain:
+              - path: "task"
+                match: equals
+                value: "verify_brand_claim"
+              - path: "vector_id"
+                match: equals
+                value: "envelope_expired"
+              - path: "decision"
+                match: equals
+                value: "reject"
+              - path: "error_code"
+                match: equals
+                value: "SIGNED_RESPONSE_ENVELOPE_EXPIRED"
+            identifier_paths:
+              - "params.task"
+              - "params.vector_selectors.expired"
+          - check: upstream_traffic
+            description: "DR-0001 / security.mdx response verifier checklist step 8 and error-code.json: replay against a different single request is rejected with SIGNED_RESPONSE_REQUEST_HASH_MISMATCH"
+            endpoint_pattern: "POST */signed-brand-response/result"
+            min_count: 1
+            attestation_mode_required: "raw"
+            payload_must_contain:
+              - path: "task"
+                match: equals
+                value: "verify_brand_claim"
+              - path: "vector_id"
+                match: equals
+                value: "replayed_request_hash_mismatch"
+              - path: "decision"
+                match: equals
+                value: "reject"
+              - path: "error_code"
+                match: equals
+                value: "SIGNED_RESPONSE_REQUEST_HASH_MISMATCH"
+            identifier_paths:
+              - "params.task"
+              - "params.vector_selectors.replay"
+          - check: upstream_traffic
+            description: "DR-0001 / security.mdx response verifier checklist step 9 and error-code.json: a single response for the wrong tenant is rejected with SIGNED_RESPONSE_TENANT_MISMATCH"
+            endpoint_pattern: "POST */signed-brand-response/result"
+            min_count: 1
+            attestation_mode_required: "raw"
+            payload_must_contain:
+              - path: "task"
+                match: equals
+                value: "verify_brand_claim"
+              - path: "vector_id"
+                match: equals
+                value: "tenant_mismatch"
+              - path: "decision"
+                match: equals
+                value: "reject"
+              - path: "error_code"
+                match: equals
+                value: "SIGNED_RESPONSE_TENANT_MISMATCH"
+            identifier_paths:
+              - "params.task"
+              - "params.vector_selectors.tenant"
+
+  - id: batch_response_matrix
+    title: "verify_brand_claims binding matrix"
+    narrative: |
+      The same matrix runs through the bulk task. Batch shape does not weaken
+      the payload-envelope checks: task, request hash, freshness, tenant, and
+      outer response consistency are verified for the signed batch artifact as
+      a whole before any claim result is trusted.
+
+    steps:
+      - id: verify_batch_signed_response_matrix
+        title: "Verify fresh, expired, replayed, and cross-tenant batch responses"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L1/security#verifier-checklist-responses"
+        requires_contract: signed_responses_runner
+        sample_request_skip_schema: true
+        stateful: true
+        expected: |
+          Report four decisions for verify_brand_claims with the same acceptance
+          and rejection semantics as the single-claim task.
+        sample_request:
+          scenario: evaluate_signed_brand_response
+          account:
+            sandbox: true
+          params:
+            task: verify_brand_claims
+            profile: batch
+            fixture_agent_url: "https://signed-response-fixture.example/mcp"
+            expected_brand_domain: "streamhaus.example"
+            vector_selectors:
+              fresh: fresh_valid
+              expired: envelope_expired
+              replay: replayed_request_hash_mismatch
+              tenant: tenant_mismatch
+            result_endpoint: "https://runner.example/signed-brand-response/result"
+          context:
+            correlation_id: "brand--signed_response--batch--matrix"
+        validations:
+          - check: response_schema
+            description: "DR-0001 / comply-test-controller-response.json: batch controller dispatch returns a schema-valid response"
+          - check: upstream_traffic
+            description: "DR-0001 / security.mdx response verifier checklist steps 1-10: a fresh, valid, request-bound, task-bound, tenant-bound batch response is accepted"
+            endpoint_pattern: "POST */signed-brand-response/result"
+            min_count: 1
+            attestation_mode_required: "raw"
+            payload_must_contain:
+              - path: "task"
+                match: equals
+                value: "verify_brand_claims"
+              - path: "vector_id"
+                match: equals
+                value: "fresh_valid"
+              - path: "decision"
+                match: equals
+                value: "accept"
+              - path: "error_code"
+                match: absent
+            identifier_paths:
+              - "params.task"
+              - "params.vector_selectors.fresh"
+          - check: upstream_traffic
+            description: "DR-0001 / security.mdx response verifier checklist step 7 and error-code.json: an expired batch-response envelope is rejected with SIGNED_RESPONSE_ENVELOPE_EXPIRED"
+            endpoint_pattern: "POST */signed-brand-response/result"
+            min_count: 1
+            attestation_mode_required: "raw"
+            payload_must_contain:
+              - path: "task"
+                match: equals
+                value: "verify_brand_claims"
+              - path: "vector_id"
+                match: equals
+                value: "envelope_expired"
+              - path: "decision"
+                match: equals
+                value: "reject"
+              - path: "error_code"
+                match: equals
+                value: "SIGNED_RESPONSE_ENVELOPE_EXPIRED"
+            identifier_paths:
+              - "params.task"
+              - "params.vector_selectors.expired"
+          - check: upstream_traffic
+            description: "DR-0001 / security.mdx response verifier checklist step 8 and error-code.json: replay against a different batch request is rejected with SIGNED_RESPONSE_REQUEST_HASH_MISMATCH"
+            endpoint_pattern: "POST */signed-brand-response/result"
+            min_count: 1
+            attestation_mode_required: "raw"
+            payload_must_contain:
+              - path: "task"
+                match: equals
+                value: "verify_brand_claims"
+              - path: "vector_id"
+                match: equals
+                value: "replayed_request_hash_mismatch"
+              - path: "decision"
+                match: equals
+                value: "reject"
+              - path: "error_code"
+                match: equals
+                value: "SIGNED_RESPONSE_REQUEST_HASH_MISMATCH"
+            identifier_paths:
+              - "params.task"
+              - "params.vector_selectors.replay"
+          - check: upstream_traffic
+            description: "DR-0001 / security.mdx response verifier checklist step 9 and error-code.json: a batch response for the wrong tenant is rejected with SIGNED_RESPONSE_TENANT_MISMATCH"
+            endpoint_pattern: "POST */signed-brand-response/result"
+            min_count: 1
+            attestation_mode_required: "raw"
+            payload_must_contain:
+              - path: "task"
+                match: equals
+                value: "verify_brand_claims"
+              - path: "vector_id"
+                match: equals
+                value: "tenant_mismatch"
+              - path: "decision"
+                match: equals
+                value: "reject"
+              - path: "error_code"
+                match: equals
+                value: "SIGNED_RESPONSE_TENANT_MISMATCH"
+            identifier_paths:
+              - "params.task"
+              - "params.vector_selectors.tenant"
