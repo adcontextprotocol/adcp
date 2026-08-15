@@ -1048,6 +1048,25 @@ For `verify_brand_claims`, implementations SHOULD deduplicate brand.json fetches
 
 Response-signing keys are scoped by brand tenant as well as by purpose. A shared multi-brand fleet MUST publish distinct response-signing key material and distinct `kid` values for each `brand_domain` it serves, even when the same software and `agent_url` serve multiple brands. Cross-brand reuse of a response-signing JWK is a profile violation because it defeats tenant-bound replay analysis; this rule is stricter than ordinary cross-purpose separation and applies only to `adcp_use: "response-signing"` keys.
 
+<a id="verifier-checklist-responses" />
+
+#### Verifier checklist (designated-task response signing)
+
+Verifiers consuming a `signed_response` on `verify_brand_claim` or `verify_brand_claims` MUST apply these checks in order, short-circuiting on the first failure. Steps 1–6 establish cryptographic validity; steps 7–10 enforce the envelope's binding claims. The [brand-authorization cross-check](#designated-task-response-signing) (advisory in 3.2) is a separate, subsequent check — it does not replace the binding checks below.
+
+1. Parse the `signed_response` member. Reject if `protected`, `payload`, or `signature` is absent or structurally malformed.
+2. Decode the base64url-encoded JWS protected header. Reject if `alg` is not in the allowlist (`EdDSA`, `ES256`), `kid` is absent, or `typ` is not exactly `adcp-response-payload+jws`.
+3. Resolve `kid` to a JWK at the responding agent's `jwks_uri` (defaulting to `/.well-known/jwks.json` at the agent URL's origin when `jwks_uri` is absent). Enforce `use: "sig"`, `key_ops` containing `"verify"`, and exact `adcp_use: "response-signing"`. Reject on any mismatch, including absent `adcp_use`.
+4. Canonicalize `signed_response.payload` with RFC 8785/JCS, base64url-encode the result, construct the JWS Signing Input as `BASE64URL(UTF8(protected)) || "." || BASE64URL(UTF8(JCS(payload)))`, and verify the signature against the resolved JWK. Reject if verification fails.
+5. Reject if `signed_response.payload.typ` is not exactly `adcp-response-payload+jws`. This prevents cross-profile replay — a governance JWS (`adcp-gov+jws`) or any other typed token MUST NOT validate under this profile.
+6. Reject if `signed_response.payload.task` does not match the invoked task (`verify_brand_claim` or `verify_brand_claims`). This prevents cross-task replay — a valid `verify_brand_claim` envelope MUST NOT validate on a `verify_brand_claims` response and vice versa.
+7. **Expiry.** Reject if `signed_response.payload.exp ≤ now − skew`, where `skew` is an implementation-defined clock-skew tolerance (SHOULD be ≤ 60 s). Online verifiers MUST reject expired envelopes with `SIGNED_RESPONSE_ENVELOPE_EXPIRED`. Audit verifiers MAY verify after `exp` as historical evidence, but MUST NOT treat the result as current truth. Also reject if `iat > now + skew` (issued in the future).
+8. **Request-hash binding.** Recompute the SHA-256 hash of the JCS-canonical request-binding object `{ task, brand_domain, agent_url, caller_identity, request }` using the same derivation rules documented in [the payload field definitions above](#designated-task-response-signing). Reject with `SIGNED_RESPONSE_REQUEST_HASH_MISMATCH` if the recomputed hash does not byte-match `signed_response.payload.request_hash`. This check binds the signed response to the exact request that produced it — without it, a signed response from one request can be replayed as the answer to a different request.
+9. **Tenant binding.** Reject with `SIGNED_RESPONSE_TENANT_MISMATCH` if `signed_response.payload.brand_domain` does not match the verifier's resolved or expected brand tenant for this call. The brand agent derives `brand_domain` from server-side tenant resolution, not from caller-supplied request fields; a mismatch indicates cross-tenant replay or a multi-brand agent routing error.
+10. **Payload consistency.** Reject if any unsigned task-body field on the outer response disagrees with the corresponding field in `signed_response.payload.response`. Protocol/version envelope fields (`status`, `context_id`, `task_id`, `message`, `timestamp`, `replayed`, `adcp_version`, `adcp_major_version`) and `signed_response` itself are excluded from this comparison.
+
+Only after all 10 checks pass does the verifier treat the signed response as cryptographically valid and bound. The subsequent [brand-authorization cross-check](#designated-task-response-signing) (3.2 advisory) determines whether the signing key is authorized to answer for `brand_domain` — that check is independent of the binding checks above.
+
 #### Transport scope
 
 | Class | 3.0–3.1 | 3.2 | 4.0 |
