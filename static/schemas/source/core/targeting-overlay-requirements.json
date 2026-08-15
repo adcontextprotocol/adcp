@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-overlay-requirements.json",
   "title": "Targeting Overlay Requirements",
-  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request shape deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: a requirement value of true matches either product support true or any valid support object for that dimension; an object requirement matches product support true or a support object in which every requested boolean is true and every requested array is a subset of the corresponding product array. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request, including systems, do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching.",
+  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request shape deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: a requirement value of true matches either product support true or any valid support object for that dimension; an object requirement matches product support true or a support object in which every requested boolean is true and every requested array is a subset of the corresponding product array. geo_places and geo_places_exclude always use the collision-safe object form: every requested system and country key must exist and each requested place-type and system-version array must be a subset of the corresponding product array. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching.",
   "type": "object",
   "definitions": {
     "required": { "type": "boolean", "const": true },
@@ -23,6 +23,46 @@
           "additionalProperties": false
         }
       ]
+    },
+    "placeCatalogRequirement": {
+      "type": "object",
+      "description": "Required country/type pairs and optional exact catalog versions for one identifier system. Country keys prevent a false Cartesian product between countries and place types.",
+      "properties": {
+        "countries": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Z]{2}$" },
+          "additionalProperties": {
+            "type": "array",
+            "items": { "$ref": "/schemas/core/geo-place-type.json" },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "minProperties": 1
+        },
+        "system_versions": {
+          "type": "array",
+          "description": "Optional exact catalog versions that must remain selectable. Versions are opaque strings, not ordered ranges.",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": ["countries"],
+      "additionalProperties": false
+    },
+    "placeRequirement": {
+      "type": "object",
+      "description": "Identifier systems and collision-safe country/type pairs the buyer must be allowed to select later.",
+      "properties": {
+        "systems": {
+          "type": "object",
+          "propertyNames": { "$ref": "/schemas/core/geo-place-system.json" },
+          "additionalProperties": { "$ref": "#/definitions/placeCatalogRequirement" },
+          "minProperties": 1
+        }
+      },
+      "required": ["systems"],
+      "additionalProperties": false
     },
     "keywordRequirement": {
       "anyOf": [
@@ -69,6 +109,8 @@
     "geo_regions_exclude": { "$ref": "#/definitions/required" },
     "geo_metros": { "$ref": "#/definitions/metroRequirement" },
     "geo_metros_exclude": { "$ref": "#/definitions/metroRequirement" },
+    "geo_places": { "$ref": "#/definitions/placeRequirement" },
+    "geo_places_exclude": { "$ref": "#/definitions/placeRequirement" },
     "geo_postal_areas": {
       "anyOf": [
         { "$ref": "#/definitions/required" },

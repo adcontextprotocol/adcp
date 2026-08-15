@@ -140,6 +140,16 @@ const ENUM_VALUE_ALLOWLIST = [
   // enums/metro-system.json — Nielsen DMA is the industry-standard geographic
   // division (same justification as FIELD_ALLOWLIST entry).
   { value: 'nielsen_dma', pathContains: 'enums/metro-system.json' },
+
+  // Geographic place schemas — registered external catalog identifier spaces.
+  // These values select the namespace in which stable place IDs are interpreted;
+  // they do not expose a vendor-specific version of an AdCP resource.
+  { value: 'google_ads',    pathContains: 'core/geo-place-system.json' },
+  { value: 'microsoft_ads', pathContains: 'core/geo-place-system.json' },
+  { value: 'google_ads',    pathContains: 'core/geo-place-area.json' },
+  { value: 'microsoft_ads', pathContains: 'core/geo-place-area.json' },
+  { value: 'google_ads',    pathContains: 'core/get-geo-place-resolution-response.json' },
+  { value: 'microsoft_ads', pathContains: 'core/get-geo-place-resolution-response.json' },
 ];
 
 function findJSONFiles(dir) {

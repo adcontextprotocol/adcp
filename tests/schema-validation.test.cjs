@@ -1599,6 +1599,312 @@ async function runTests() {
     return true;
   });
 
+  // Test 11D: Validate identifier-based place targeting across execution, discovery, and capabilities
+  await test('Geo place targeting uses stable identifiers and declares discoverable support', async () => {
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+
+    const validateTargeting = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/targeting.json')));
+    const validateCapabilities = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'protocol/get-adcp-capabilities-response.json')));
+    const validateForecastGeo = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-dimension-geo.json')));
+    const validateResolutionRequest = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/get-geo-place-resolution-request.json')));
+    const validateResolutionResponse = await testAjv.compileAsync(loadSchema(path.join(SCHEMA_BASE_DIR, 'core/get-geo-place-resolution-response.json')));
+
+    const assertValid = (validate, value, label) => {
+      if (!validate(value)) {
+        return `${label} unexpectedly failed validation: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+      }
+      return true;
+    };
+    const assertInvalid = (validate, value, label) => validate(value)
+      ? `${label} unexpectedly passed validation`
+      : true;
+
+    let result = assertValid(
+      validateTargeting,
+      {
+        geo_places: [{
+          country: 'NL',
+          system: 'geonames',
+          system_version: '2026-05',
+          place_type: 'city',
+          values: ['2759794', '2747373'],
+          value_labels: {
+            '2759794': 'Amsterdam, North Holland, Netherlands',
+            '2747373': 'The Hague, South Holland, Netherlands'
+          }
+        }],
+        geo_places_exclude: [{
+          country: 'US',
+          system: 'https://seller.example/geo/catalogs/places',
+          place_type: 'city',
+          values: ['san-jose-ca-001']
+        }]
+      },
+      'targeting overlay with place inclusion and exclusion'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateTargeting,
+      { geo_places: [{ country: 'NL', system: 'geoname', place_type: 'city', values: ['2759794'] }] },
+      'misspelled registered place system'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateTargeting,
+      { geo_places: [{ country: 'NL', system: 'geonames', place_type: 'municipalit', values: ['2759794'] }] },
+      'misspelled registered place type'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateTargeting,
+      { geo_places: [{ country: 'NL', system: 'geonames', place_type: 'city', values: ['Amsterdam'] }] },
+      'GeoNames display name used as a targeting identifier'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateTargeting,
+      { geo_places: [{ country: 'NL', system: 'geonames', values: ['2759794'] }] },
+      'place target without place_type'
+    );
+    if (result !== true) return result;
+
+    const capabilityBase = {
+      status: 'completed',
+      adcp: { major_versions: [3], idempotency: { supported: false } },
+      supported_protocols: ['media_buy'],
+      media_buy: { execution: { targeting: {} } }
+    };
+    capabilityBase.media_buy.execution.targeting.geo_places = {
+      geonames: {
+        countries: {
+          US: ['city', 'county'],
+          NL: ['city', 'municipality'],
+          GB: ['city', 'post_town']
+        },
+        catalog: {
+          source: 'https://seller.example/data-sources/geonames-mirror',
+          current_version: '2026-05',
+          supported_versions: ['2026-05', '2026-04'],
+          resolver: {
+            url: 'https://seller.example/adcp/geo/resolve/geonames',
+            auth: 'seller_credentials',
+            protocol: 'adcp_geo_place_resolver_v1'
+          }
+        }
+      },
+      'https://seller.example/geo/catalogs/places': {
+        countries: { NL: ['city'] },
+        catalog: {
+          current_version: '2026-q2',
+          supported_versions: ['2026-q2'],
+          resolver: {
+            url: 'https://seller.example/adcp/geo/resolve/private',
+            auth: 'seller_credentials',
+            protocol: 'adcp_geo_place_resolver_v1'
+          }
+        }
+      }
+    };
+    result = assertValid(validateCapabilities, capabilityBase, 'place targeting capability declaration');
+    if (result !== true) return result;
+
+    const legacyCartesianCapabilities = JSON.parse(JSON.stringify(capabilityBase));
+    legacyCartesianCapabilities.media_buy.execution.targeting.geo_places.geonames = {
+      countries: ['US', 'NL'],
+      place_types: ['city', 'municipality'],
+      supports_system_version: true
+    };
+    result = assertInvalid(validateCapabilities, legacyCartesianCapabilities, 'legacy Cartesian place support declaration');
+    if (result !== true) return result;
+
+    const typoCapabilities = JSON.parse(JSON.stringify(capabilityBase));
+    typoCapabilities.media_buy.execution.targeting.geo_places.geoname =
+      typoCapabilities.media_buy.execution.targeting.geo_places.geonames;
+    delete typoCapabilities.media_buy.execution.targeting.geo_places.geonames;
+    result = assertInvalid(validateCapabilities, typoCapabilities, 'misspelled capability system key');
+    if (result !== true) return result;
+
+    const invalidCapabilities = JSON.parse(JSON.stringify(capabilityBase));
+    delete invalidCapabilities.media_buy.execution.targeting.geo_places.geonames.countries.NL;
+    invalidCapabilities.media_buy.execution.targeting.geo_places.geonames.countries.NL = [];
+    result = assertInvalid(validateCapabilities, invalidCapabilities, 'place support with an empty country type list');
+    if (result !== true) return result;
+
+    const catalogCapabilitySchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/geo-place-catalog-capability.json'));
+    const membershipRule = catalogCapabilitySchema['x-adcp-validation']?.member_of;
+    if (membershipRule?.field !== 'current_version' || membershipRule?.array_field !== 'supported_versions') {
+      return 'geo-place-catalog-capability must declare current_version membership validation';
+    }
+    const geonamesCatalog = capabilityBase.media_buy.execution.targeting.geo_places.geonames.catalog;
+    if (!geonamesCatalog.supported_versions.includes(geonamesCatalog.current_version)) {
+      return 'valid capability fixture current_version must be in supported_versions';
+    }
+    const invalidCatalogMembership = {
+      current_version: '2026-03',
+      supported_versions: ['2026-05', '2026-04']
+    };
+    if (invalidCatalogMembership.supported_versions.includes(invalidCatalogMembership.current_version)) {
+      return 'semantic catalog membership validation must reject an undeclared current_version';
+    }
+
+    const areaSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/geo-place-area.json'));
+    const labelRule = areaSchema['x-adcp-validation']?.map_keys_subset_of_array;
+    if (labelRule?.map_field !== 'value_labels' || labelRule?.array_field !== 'values') {
+      return 'geo-place-area must declare value_labels key membership validation';
+    }
+    const labelsAreSubset = (area) => Object.keys(area.value_labels || {}).every(value => area.values.includes(value));
+    if (labelsAreSubset({ values: ['2759794'], value_labels: { '999999': 'Wrong place' } })) {
+      return 'semantic value_labels validation must reject labels for absent values';
+    }
+
+    const targetingSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/targeting.json'));
+    const disjointRule = targetingSchema['x-adcp-validation']?.disjoint_place_fields;
+    if (disjointRule?.include !== 'geo_places' || disjointRule?.exclude !== 'geo_places_exclude') {
+      return 'targeting schema must declare geo place include/exclude disjointness validation';
+    }
+    if (JSON.stringify(disjointRule.identity) !== JSON.stringify(['country', 'system', 'place_type', 'value'])) {
+      return 'geo place include/exclude identity must exclude catalog version';
+    }
+    const placeIdentitySet = (areas) => new Set((areas || []).flatMap(area =>
+      area.values.map(value => [area.country, area.system, area.place_type, value].join('\u0000'))));
+    const hasPlaceOverlap = overlay => {
+      const included = placeIdentitySet(overlay.geo_places);
+      return [...placeIdentitySet(overlay.geo_places_exclude)].some(identity => included.has(identity));
+    };
+    if (!hasPlaceOverlap({
+      geo_places: [{ country: 'NL', system: 'geonames', system_version: '2026-05', place_type: 'city', values: ['2759794'] }],
+      geo_places_exclude: [{ country: 'NL', system: 'geonames', system_version: '2026-04', place_type: 'city', values: ['2759794'] }]
+    })) {
+      return 'semantic place overlap validation must reject cross-version overlap';
+    }
+
+    result = assertValid(
+      validateResolutionRequest,
+      { q: 'Amsterdam', country: 'NL', subdivision: 'NL-NH', place_type: 'city', locale: 'nl-NL', limit: 20 },
+      'place resolution request with disambiguation context'
+    );
+    if (result !== true) return result;
+
+    result = assertValid(
+      validateResolutionRequest,
+      { value: '2759794', country: 'NL', place_type: 'city', system_version: '2026-05' },
+      'place identifier lifecycle refresh request'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateResolutionRequest,
+      { q: 'Amsterdam', value: '2759794', country: 'NL' },
+      'place resolution request containing both name and identifier'
+    );
+    if (result !== true) return result;
+
+    const resolutionResponse = {
+        request: {
+          q: 'Amsterdam',
+          country: 'NL',
+          subdivision: 'NL-NH',
+          place_type: 'city',
+          system_version: '2026-05'
+        },
+        system: 'geonames',
+        system_version: '2026-05',
+        matches: [{
+          value: '2759794',
+          country: 'NL',
+          subdivision: 'NL-NH',
+          place_type: 'city',
+          label: 'Amsterdam',
+          canonical_name: 'Amsterdam, North Holland, Netherlands',
+          parent_labels: ['North Holland', 'Netherlands'],
+          status: 'active'
+        }, {
+          value: '9999999',
+          country: 'NL',
+          subdivision: 'NL-NH',
+          place_type: 'city',
+          label: 'Old Amsterdam target',
+          canonical_name: 'Old Amsterdam target, Netherlands',
+          parent_labels: ['Netherlands'],
+          status: 'deprecated',
+          replaced_by_values: ['2759794']
+        }]
+      };
+    result = assertValid(
+      validateResolutionResponse,
+      resolutionResponse,
+      'place resolution response with lifecycle replacement metadata'
+    );
+    if (result !== true) return result;
+
+    const bindingRule = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/get-geo-place-resolution-response.json'))['x-adcp-validation']?.resolver_response_binding;
+    if (bindingRule?.system !== 'capability_key' || !bindingRule?.match_fields?.includes('subdivision')) {
+      return 'place resolution response must declare capability/request binding semantics';
+    }
+    const responseMatchesResolverContract = (response, capabilitySystem, currentVersion) => {
+      const request = response.request;
+      const expectedVersion = request.system_version || currentVersion;
+      return response.system === capabilitySystem
+        && response.system_version === expectedVersion
+        && response.matches.every(match => match.country === request.country
+          && (!request.subdivision || match.subdivision === request.subdivision)
+          && (!request.place_type || match.place_type === request.place_type));
+    };
+    if (!responseMatchesResolverContract(resolutionResponse, 'geonames', '2026-05')) {
+      return 'valid resolver response fixture must bind to capability and normalized request';
+    }
+    const mismatchedResolverResponse = JSON.parse(JSON.stringify(resolutionResponse));
+    mismatchedResolverResponse.matches[0].subdivision = 'NL-ZH';
+    if (responseMatchesResolverContract(mismatchedResolverResponse, 'geonames', '2026-05')) {
+      return 'resolver response binding must reject a match outside the requested subdivision';
+    }
+
+    const rawNameResponse = JSON.parse(JSON.stringify(resolutionResponse));
+    rawNameResponse.matches[0].value = 'Amsterdam';
+    result = assertInvalid(
+      validateResolutionResponse,
+      rawNameResponse,
+      'registered-system resolver response containing a raw name'
+    );
+    if (result !== true) return result;
+
+    const missingDisambiguationResponse = JSON.parse(JSON.stringify(resolutionResponse));
+    delete missingDisambiguationResponse.matches[0].canonical_name;
+    result = assertInvalid(
+      validateResolutionResponse,
+      missingDisambiguationResponse,
+      'resolver response without required canonical disambiguation name'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateResolutionRequest,
+      { q: 'Springfield' },
+      'place resolution request without country disambiguation'
+    );
+    if (result !== true) return result;
+
+    result = assertInvalid(
+      validateForecastGeo,
+      { kind: 'geo', geo_level: 'place', country: 'NL', system: 'geonames', geo_code: '2759794' },
+      'place reporting row before reporting support is standardized'
+    );
+    if (result !== true) return result;
+
+    return true;
+  });
+
   // Test 12: Validate ForecastPoint dimension and viewability compatibility gates
   await test('ForecastPoint dimension and viewability compatibility gates behave as intended', async () => {
     const dimensionsSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/forecast-point-dimensions.json'));

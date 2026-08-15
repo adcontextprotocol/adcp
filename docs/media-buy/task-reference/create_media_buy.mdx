@@ -199,6 +199,16 @@ An unexpired `committed` proposal carries an inventory hold and cannot be reject
 | `start_time` | string | No | ISO 8601 date-time for this package's flight start. When omitted, inherits the media buy's `start_time`. Must fall within the media buy's date range. Does not support `"asap"`. |
 | `end_time` | string | No | ISO 8601 date-time for this package's flight end. When omitted, inherits the media buy's `end_time`. Must fall within the media buy's date range. |
 | `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
+
+For `targeting_overlay.geo_places` and `geo_places_exclude`, create-time values
+must be within the selected Product's corresponding `overlay_support` tuple.
+Unsupported dimensions, systems, countries, place types, or combinations return
+`UNSUPPORTED_FEATURE`. A supported tuple with an invalid, unknown, or deprecated
+ID—or an unsupported explicit catalog version—returns [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) with
+`error.field` on the offending field. A supported selection with no current
+inventory returns `PRODUCT_UNAVAILABLE`, without silent substitution or
+repricing. An accepted create confirms the selected terms for the complete
+effective targeting.
 | `creatives` | CreativeAsset[] | No | Upload new creative assets inline and assign. Requires `media_buy.features.inline_creative_management: true`; when the seller also advertises `creative.has_creative_library: true`, `creative_id` must not already exist in the library. |
 | `context` | object | No | Opaque correlation data echoed unchanged in the package response, webhooks, and read surfaces. Use to map seller-assigned `package_id` back to your internal line items, campaign structure, or tracking state. Buyers targeting mixed seller populations SHOULD include a per-package correlation value here, commonly `context.buyer_ref`, for legacy sellers that do not echo `product_id`. |
 | `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with [`TERMS_REJECTED`](/docs/building/verification/compliance-catalog#error-code-terms-rejected), or adjusts. When omitted, product's `measurement_terms` apply. |

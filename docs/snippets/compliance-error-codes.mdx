@@ -77,6 +77,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `PERMISSION_DENIED` | correctable | call check_governance to mint a valid token, or contact the seller to resolve the underlying permission; when error.details.scope is 'agent' with reason 'sandbox_only' the rejection is terminal-pending-onboarding — surface to a human rather than auto-retrying. For suspended/blocked agent relationships, sellers emit AGENT_SUSPENDED / AGENT_BLOCKED instead (those codes carry recovery: terminal directly). |
 | `PIXEL_TRACKER_LOSSY_DOWNGRADE` | correctable | advisory — emitted alongside the v1 downgrade emission: SDK collapsed a pixel_tracker asset to v1 <code>{"{asset_type: url, url_type: tracker_pixel}"}</code> for a seller that doesn't support pixel_tracker natively. The URL still fires; what's lost is in <code>{"error.details.lost_fields"}</code> (event variant, method:js execution context, or custom event timing). Buyer decision: accept the loss (most counter pixels survive), or fail the buy and route to a 3.1-capable seller. Non-fatal — do not auto-retry |
 | `PIXEL_TRACKER_UPGRADE_INFERRED` | correctable | advisory — emitted when a 3.1 SDK upgrades a v1 url+tracker_pixel asset to pixel_tracker by inferring event and method from asset_id conventions. The inference may not match the buyer's original intent; check <code>{"error.details.inferred_event"}</code> / <code>{"inferred_method"}</code> and re-prompt the seller for explicit values if precise measurement matters. Non-fatal — do not auto-retry |
+| `PLACE_TARGET_UNAVAILABLE` | correctable | resolve the pinned value against the current catalog, review any replacement, and submit an intentional package targeting update |
 | `PLAN_NOT_FOUND` | correctable | verify plan_id via sync_plans, or register the plan first |
 | `POLICY_VIOLATION` | correctable | review policy requirements in the error details |
 | `PRIVATE_FIELD_IN_PUBLIC_PLACEMENT` | correctable | seller-side fix needed: remove private operational fields (<code>{"visibility"}</code>, <code>{"source"}</code>, <code>{"origin"}</code>, <code>{"delivery_mappings"}</code>, or similar) from public placement objects. Consumers MUST fail closed for the affected placement and alert operators; do not echo private field values in logs or error details |
@@ -760,6 +761,15 @@ Inference rules (normative):
 Surface: SDK MUST augment the response's <code>{"errors[]"}</code> with <code>{"code: \"PIXEL_TRACKER_UPGRADE_INFERRED\""}</code>, <code>{"field"}</code> pointing at the upgraded asset path, and <code>{"error.details"}</code> SHOULD carry <code>{"{ asset_id, inferred_event, inferred_method, inference_basis: \"asset_id_convention\" \u007c \"default\" }"}</code>. Buyer agents reading the response can re-prompt the seller for explicit values if precise measurement matters.
 
 Recovery: warning — non-fatal, no retry. Seller-side: upgrade emit path to ship pixel_tracker shape directly when 3.1-capable; until then, conventional asset_id values give the SDK enough signal to upgrade without losing critical semantics.
+
+</Accordion>
+<a id="error-code-place-target-unavailable"></a>
+
+<Accordion title="PLACE_TARGET_UNAVAILABLE — correctable">
+
+**Suggested action:** resolve the pinned value against the current catalog, review any replacement, and submit an intentional package targeting update
+
+A place identifier previously accepted and pinned on a package can no longer be executed. This is a nonfatal resource-state error returned in get_media_buys.errors[] alongside the affected buy. error.field MUST point to the exact media_buys[N].packages[M].targeting_overlay.geo_places[_exclude][A].values[V] response path. error.details MUST include media_buy_id, package_id, system, system_version, country, place_type, and value. The seller MUST preserve and echo the pinned target rather than silently changing geography. Recovery: correctable (look up the value through the declared resolver at the current catalog version and submit an intentional targeting update).
 
 </Accordion>
 <a id="error-code-plan-not-found"></a>

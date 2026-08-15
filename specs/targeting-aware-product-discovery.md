@@ -386,8 +386,10 @@ superset operation:
 - an object requirement matches product support `true` or a support object in
   which every requested boolean is true;
 - every requested array is a subset of the corresponding product array;
-- object fields the request did not name, including `systems`, do not
-  participate; and
+- for named places, every required identifier-system and country key exists,
+  and requested type/version arrays are subsets of the corresponding Product
+  support arrays;
+- object fields the request did not name do not participate; and
 - a missing or unknown required field does not match.
 
 Every valid structured support object represents at least one positive
@@ -465,6 +467,37 @@ exclusion values belong in `targeting_overlay` and affect discovery forecasts
 like every other concrete constraint. If inclusion and exclusion overlap,
 exclusion wins; a seller that cannot enforce the result rejects the request
 rather than silently broadening it.
+
+Named-place overlays are stricter: the seller rejects the same
+`(country, system, place_type, value)` in `geo_places` and
+`geo_places_exclude`, even across catalog versions, rather than applying
+exclusion precedence.
+
+Named-place requirements bind the identifier namespace before values are
+known. They key first by `system`, then by country, so two catalogs or two
+same-named places cannot collide and country/type support is never interpreted
+as a Cartesian product:
+
+```json
+{
+  "required_overlay_support": {
+    "geo_places": {
+      "systems": {
+        "geonames": {
+          "countries": { "NL": ["city"] },
+          "system_versions": ["2026-05"]
+        }
+      }
+    }
+  }
+}
+```
+
+A matching Product returns the same keyed structure under
+`overlay_support.geo_places`, adds `current_version` and its complete selectable
+`system_versions`, and may disclose package/value limits. This is binding
+permission to provide values later, not a value-specific availability promise.
+`geo_places_exclude` is requested and declared independently.
 
 ## Sparse targeting resolution
 
