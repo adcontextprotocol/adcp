@@ -141,6 +141,18 @@
           "$ref": "/schemas/core/account.json",
           "description": "Billing account representing who pays for advertising. Accounts have rate cards, payment terms, and platform mappings."
         },
+        "operator-identity": {
+          "$ref": "/schemas/core/operator-identity.json",
+          "description": "Complete buyer-desired operator domain and optional operator-owned unit for an advertiser account"
+        },
+        "account-identity-change": {
+          "$ref": "/schemas/core/account-identity-change.json",
+          "description": "Pending or rejected operator-identity transition on an existing account"
+        },
+        "account-identity-change-preview": {
+          "$ref": "/schemas/core/account-identity-change-preview.json",
+          "description": "Non-persisted impact and disposition preview for a dry-run account identity transition"
+        },
         "account-with-authorization": {
           "$ref": "/schemas/core/account-with-authorization.json",
           "description": "List-accounts response item combining Account with caller-specific authorization metadata"
