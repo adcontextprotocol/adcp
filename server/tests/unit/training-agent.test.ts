@@ -8906,6 +8906,52 @@ describe('create_media_buy package-level date validation', () => {
 
 // ── Paused package delivery ─────────────────────────────────────────
 
+describe('get_media_buy_delivery date validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns VALIDATION_ERROR for an empty half-open date range', async () => {
+    const account = {
+      brand: { domain: 'delivery-date-validation.example' },
+      operator: 'delivery-date-validation.example',
+      sandbox: true,
+    };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_media_buy',
+      params: {
+        media_buy_id: 'delivery_date_validation_buy',
+        fixture: {
+          status: 'active',
+          currency: 'USD',
+          start_time: '2026-01-01T00:00:00Z',
+          end_time: '2026-12-31T00:00:00Z',
+          packages: [{ package_id: 'delivery_date_validation_package', budget: 1000 }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_ids: ['delivery_date_validation_buy'],
+      start_date: '2026-04-15',
+      end_date: '2026-04-15',
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      code: 'VALIDATION_ERROR',
+      field: 'start_date',
+    }));
+  });
+});
+
 describe('paused package delivery', () => {
   beforeEach(() => {
     invalidateCache();

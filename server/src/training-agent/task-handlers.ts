@@ -8786,7 +8786,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const reportingEnd = req.end_date ? new Date(`${req.end_date}T00:00:00.000Z`) : now;
   if (req.start_date && req.end_date && reportingStart.getTime() >= reportingEnd.getTime()) {
     return {
-      errors: [{ code: 'INVALID_REQUEST', message: 'start_date must be before end_date', field: 'start_date' }],
+      errors: [{ code: 'VALIDATION_ERROR', message: 'start_date must be before end_date', field: 'start_date' }],
     };
   }
   const durationMs = end.getTime() - start.getTime();
