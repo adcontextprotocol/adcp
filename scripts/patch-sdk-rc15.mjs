@@ -6,7 +6,7 @@ import path from 'node:path';
 // This temporary patch remains version-locked even though its filename dates
 // from the release where it was introduced. Remove it when the upstream
 // get_products routing and scoped capability propagation fixes ship.
-const EXPECTED_VERSION = '13.0.0-rc.20';
+const EXPECTED_VERSION = '13.0.0-rc.21';
 const packageJson = JSON.parse(fs.readFileSync(path.resolve('node_modules/@adcp/sdk/package.json'), 'utf8'));
 
 if (packageJson.version !== EXPECTED_VERSION) {

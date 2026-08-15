@@ -65,7 +65,7 @@ test('field-strip notice attributes noncanonical fields to the request payload',
   const contract = yaml.load(fs.readFileSync(contractPath, 'utf8'));
   const notice = contract.notice.canonical_codes.input_schema_field_stripped;
 
-  assert.equal(contract.version, '2.9.1');
+  assert.equal(contract.version, '2.10.0');
   assert.equal(notice.severity, 'info');
   assert.equal('spec_source' in notice, false, 'the notice is task-neutral and must not cite one creative schema');
   assert.match(notice.message_template, /neither the agent's MCP inputSchema nor the canonical/);
