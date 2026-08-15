@@ -136,7 +136,8 @@ test('storyboard result assertions and runner outcomes use registered exact erro
       const expected = expectedErrors[vector];
       assert.equal(fields.decision.value, expected === null ? 'accept' : 'reject');
       if (expected === null) {
-        assert.equal(fields.error_code.match, 'absent');
+        assert.equal(fields.error_code.match, 'equals');
+        assert.equal(fields.error_code.value, null);
       } else {
         assert.equal(fields.error_code.value, expected);
       }

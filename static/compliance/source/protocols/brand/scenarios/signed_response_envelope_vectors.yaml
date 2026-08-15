@@ -110,7 +110,8 @@ phases:
                 match: equals
                 value: "accept"
               - path: "error_code"
-                match: absent
+                match: equals
+                value: null
             identifier_paths:
               - "params.task"
               - "params.vector_selectors.fresh"
@@ -235,7 +236,8 @@ phases:
                 match: equals
                 value: "accept"
               - path: "error_code"
-                match: absent
+                match: equals
+                value: null
             identifier_paths:
               - "params.task"
               - "params.vector_selectors.fresh"

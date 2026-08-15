@@ -225,7 +225,7 @@ result_report_contract:
     task: "verify_brand_claim | verify_brand_claims"
     vector_id: "fresh_valid | envelope_expired | replayed_request_hash_mismatch | tenant_mismatch"
     decision: "accept | reject"
-    error_code: "absent on accept; exact registered signed-response error code on reject"
+    error_code: "null on accept; exact registered signed-response error code on reject"
 
 scope:
   in_scope: |
