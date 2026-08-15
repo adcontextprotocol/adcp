@@ -1,0 +1,210 @@
+# Acme Outdoor — Sample Advertiser Test Kit
+#
+# Entity definition: fictional-entities.yaml → advertisers[acme_outdoor]
+#
+# Provides the "ingredients" needed to test creative agent storyboards:
+# a brand identity, sample assets at common dimensions, and sample text.
+#
+# This brand is registered as a sandbox brand in AgenticAdvertising.org (AAO).
+# Agents resolve acmeoutdoor.example via the standard AAO brand resolution path.
+# AAO returns the brand.json below but excludes sandbox brands from production
+# brand discovery results.
+
+id: acme_outdoor
+name: "Acme Outdoor"
+description: "Fictional outdoor gear brand for storyboard testing"
+sandbox: true
+
+# Authentication fixture for the universal security_baseline storyboard
+# (universal/security.yaml). Declares:
+#   - api_key: the demo Bearer the runner sends on the positive api-key
+#     probe. The conformance handle is the `demo-<kit>-` prefix — agents
+#     SHOULD accept any Bearer matching that prefix (not this literal
+#     value) so the suffix can rotate across spec versions without
+#     breaking previously-conformant agents.
+#   - probe_task: the protected, auth-required read the runner calls under
+#     `auth: none` and with a random-invalid key. Default is list_creatives;
+#     declare explicitly so the api_key phase runs instead of being skipped
+#     via `skip_if: "!test_kit.auth.api_key"`.
+auth:
+  api_key: "demo-acme-outdoor-v1"
+  probe_task: list_creatives
+
+brand:
+  house:
+    domain: "acmeoutdoor.example"
+    name: "Acme Outdoor"
+  brand_id: "acme_outdoor"
+  names:
+    - en: "Acme Outdoor"
+  description: "Premium outdoor gear for every adventure. From trail to summit, we make gear that performs."
+  industry: "retail"
+  keller_type: "master"
+  logos:
+    - url: "https://test-assets.adcontextprotocol.org/acme-outdoor/logo-primary.png"
+      orientation: "horizontal"
+      background: "light-bg"
+      variant: "primary"
+      width: 400
+      height: 100
+    - url: "https://test-assets.adcontextprotocol.org/acme-outdoor/logo-icon.png"
+      orientation: "square"
+      background: "transparent-bg"
+      variant: "icon"
+      width: 200
+      height: 200
+  colors:
+    primary: "#1B5E20"
+    secondary: "#FF6F00"
+    accent: "#FDD835"
+    background: "#FAFAFA"
+    text: "#212121"
+  fonts:
+    heading:
+      family: "Montserrat"
+      weight: 700
+      url: "https://fonts.googleapis.com/css2?family=Montserrat:wght@700"
+    body:
+      family: "Open Sans"
+      weight: 400
+      url: "https://fonts.googleapis.com/css2?family=Open+Sans"
+  tone:
+    voice: "Confident and adventurous, but never pretentious. We talk to people who do things, not people who buy things."
+    attributes:
+      - "active"
+      - "direct"
+      - "warm"
+    dos:
+      - "Use action verbs"
+      - "Reference real outdoor activities"
+      - "Keep it short"
+    donts:
+      - "Use superlatives without evidence"
+      - "Talk down to the reader"
+      - "Use corporate jargon"
+
+# Sample assets at common ad dimensions.
+# These are placeholder URLs — in production, these would point to actual hosted test images.
+assets:
+  images:
+    - id: "hero_300x250"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-300x250.jpg"
+      width: 300
+      height: 250
+      mime_type: "image/jpeg"
+      description: "Medium rectangle hero — hiker on mountain trail"
+
+    - id: "hero_728x90"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-728x90.jpg"
+      width: 728
+      height: 90
+      mime_type: "image/jpeg"
+      description: "Leaderboard hero — panoramic mountain vista"
+
+    - id: "hero_320x50"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-320x50.jpg"
+      width: 320
+      height: 50
+      mime_type: "image/jpeg"
+      description: "Mobile banner hero — trail gear close-up"
+
+    - id: "hero_160x600"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-160x600.jpg"
+      width: 160
+      height: 600
+      mime_type: "image/jpeg"
+      description: "Wide skyscraper hero — vertical trail scene"
+
+    - id: "hero_master"
+      url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-master.jpg"
+      width: 1200
+      height: 628
+      mime_type: "image/jpeg"
+      description: "Master hero image — high-res source for any size"
+
+  text:
+    headlines:
+      - "Summer Sale — 40% Off All Gear"
+      - "Built for the Trail"
+      - "Adventure Starts Here"
+    descriptions:
+      - "Premium outdoor gear tested on the world's toughest trails. Shop the summer collection."
+      - "From daypacks to expedition tents, gear that performs when it matters."
+    cta:
+      - "Shop Now"
+      - "Explore the Collection"
+      - "Find Your Gear"
+
+  click_url: "https://acmeoutdoor.example/summer-sale"
+
+# Inventory list fixtures for property_list / collection_list targeting tests.
+#
+# These reference lists a fictional governance/inventory agent would publish.
+# They let storyboards exercise the full PropertyListReference / CollectionListReference
+# contract without needing a live list server: scenarios point at list_id values
+# and the seller's test engine returns canned contents.
+#
+# Both matching and non-matching sets are provided so a single test fixture
+# covers targeting (buy should include listed inventory) and no-match behaviour
+# (buy references a list that resolves to zero matches in this seller's catalog).
+inventory_targets:
+  # --- Matching sets (Acme Outdoor's intended audience) ---
+  matching_properties:
+    agent_url: "https://governance.pinnacle-agency.example"
+    list_id: "acme_outdoor_allowlist_v1"
+    description: "Outdoor lifestyle properties relevant to Acme Outdoor campaigns."
+    # Expected contents when the list is fetched via get_property_list.
+    expected_identifiers:
+      - type: domain
+        value: "outdoormagazine.example"
+      - type: domain
+        value: "hikingtrails.example"
+      - type: domain
+        value: "campinggear.example"
+      - type: domain
+        value: "mountaineering.example"
+
+  matching_collections:
+    agent_url: "https://governance.pinnacle-agency.example"
+    list_id: "acme_outdoor_collections_v1"
+    description: "Outdoor programming the buyer wants to run alongside."
+    # Expected collection entries when fetched via get_collection_list.
+    expected_collections:
+      - collection_rid: "rid:outdoor:trail_life"
+        name: "Trail Life"
+        kind: "series"
+        genre: "outdoor"
+        distribution_ids:
+          - type: imdb_id
+            value: "tt9100001"
+      - collection_rid: "rid:outdoor:summit_stories"
+        name: "Summit Stories"
+        kind: "series"
+        genre: "outdoor"
+        distribution_ids:
+          - type: imdb_id
+            value: "tt9100002"
+
+  # --- No-match sets (nothing in this seller's catalog matches) ---
+  no_match_properties:
+    agent_url: "https://governance.pinnacle-agency.example"
+    list_id: "acme_outdoor_no_match_v1"
+    description: "Properties outside this seller's inventory — should yield zero matches."
+    expected_identifiers:
+      - type: domain
+        value: "never-sold-here.example"
+      - type: domain
+        value: "also-not-indexed.example"
+
+  no_match_collections:
+    agent_url: "https://governance.pinnacle-agency.example"
+    list_id: "acme_outdoor_no_match_collections_v1"
+    description: "Collections not carried by this seller — should yield zero matches."
+    expected_collections:
+      - collection_rid: "rid:food:bistro_kitchen"
+        name: "Bistro Kitchen"
+        kind: "series"
+        genre: "food"
+        distribution_ids:
+          - type: imdb_id
+            value: "tt9200001"
