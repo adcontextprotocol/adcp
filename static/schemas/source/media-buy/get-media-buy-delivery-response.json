@@ -554,6 +554,50 @@
                       "type": "boolean",
                       "description": "Whether by_placement was truncated. Sellers MUST return this flag whenever by_placement is present (false means the list is complete)."
                     },
+                    "by_spot": {
+                      "type": "array",
+                      "description": "Spot-level as-run airing records for broadcast TV, radio, or other scheduled inventory. Available when the buyer requests spot breakdown via reporting_dimensions and the product declares supports_spot_breakdown. Sellers MUST order rows by aired_at ascending. Network and station are optional so station-direct radio and network-level TV records use the same channel-neutral shape.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "aired_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "description": "RFC 3339 timestamp when the spot actually aired."
+                              },
+                              "network": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Optional network or syndicated service name, for example 'USA Network' or 'Westwood One'."
+                              },
+                              "station": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Optional station identifier or call sign, for example 'WABC-TV' or 'WNYC-FM'."
+                              },
+                              "daypart": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Optional seller-defined daypart label, for example 'prime_time' or 'morning_drive'."
+                              }
+                            },
+                            "required": [
+                              "aired_at",
+                              "impressions"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_spot_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_spot is incomplete because of the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_spot is present (false means the as-run log is complete for the requested reporting period)."
+                    },
                     "daily_breakdown": {
                       "type": "array",
                       "description": "Day-by-day delivery for this package. Only present when include_package_daily_breakdown is true in the request. Enables per-package pacing analysis and line-item monitoring.",

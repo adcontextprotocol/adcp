@@ -254,6 +254,18 @@
           },
           "additionalProperties": true
         },
+        "spot": {
+          "type": "object",
+          "description": "Request a spot-level as-run airing log for broadcast TV, radio, or other scheduled inventory. Rows are ordered by aired_at ascending. When limit is omitted, sellers SHOULD return the complete log for the requested reporting period.",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional maximum number of spot rows to return. When the response is incomplete because of this limit or a seller-imposed maximum, by_spot_truncated is true."
+            }
+          },
+          "additionalProperties": true
+        },
         "placement": {
           "type": "object",
           "description": "Request placement breakdown.",

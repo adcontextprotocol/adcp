@@ -106,6 +106,10 @@
       "type": "boolean",
       "description": "Whether this product supports placement breakdowns in delivery reporting (by_placement within by_package)"
     },
+    "supports_spot_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports spot-level as-run airing logs in delivery reporting (by_spot within by_package). Applies to broadcast TV, radio, and other scheduled inventory."
+    },
     "date_range_support": {
       "type": "string",
       "enum": ["date_range", "lifetime_only"],
