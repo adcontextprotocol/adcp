@@ -431,6 +431,60 @@
       "expected_action": "surface_to_caller"
     },
     {
+      "id": "mcp-account-moved-missing-recovery",
+      "description": "ACCOUNT_MOVED without an explicit recovery field uses the canonical correctable fallback",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Account reference moved."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "ACCOUNT_MOVED",
+            "message": "The former natural key is tombstoned",
+            "details": {
+              "current_account": {
+                "brand": {"domain": "nova-athletics.example"},
+                "operator": "pinnacle-media.example"
+              }
+            }
+          }
+        }
+      },
+      "expected_error": {
+        "code": "ACCOUNT_MOVED",
+        "message": "The former natural key is tombstoned",
+        "details": {
+          "current_account": {
+            "brand": {"domain": "nova-athletics.example"},
+            "operator": "pinnacle-media.example"
+          }
+        }
+      },
+      "expected_action": "surface_to_caller"
+    },
+    {
+      "id": "mcp-account-identity-conflict-missing-recovery",
+      "description": "ACCOUNT_IDENTITY_CONFLICT without an explicit recovery field uses the canonical correctable fallback",
+      "transport": "mcp",
+      "path": "structuredContent",
+      "response": {
+        "content": [{"type": "text", "text": "Account identity is already in use."}],
+        "isError": true,
+        "structuredContent": {
+          "adcp_error": {
+            "code": "ACCOUNT_IDENTITY_CONFLICT",
+            "message": "The desired natural key belongs to another account"
+          }
+        }
+      },
+      "expected_error": {
+        "code": "ACCOUNT_IDENTITY_CONFLICT",
+        "message": "The desired natural key belongs to another account"
+      },
+      "expected_action": "surface_to_caller"
+    },
+    {
       "id": "mcp-missing-recovery-unknown-code",
       "description": "Missing recovery field with unknown vendor code — should default to terminal",
       "transport": "mcp",

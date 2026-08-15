@@ -12,6 +12,7 @@ description: "Graded universal compliance storyboards that every AdCP agent runs
 
 | Graded storyboard | Purpose | Source |
 |-------------------|---------|--------|
+| `account-identity-reconciliation` | Validates revision-guarded operator identity rekeying, collision safety, and former-key redirects for sellers that advertise identity updates. | [YAML](https://adcontextprotocol.org/compliance/latest/universal/account-identity-reconciliation.yaml) |
 | `agent-notification-configs` | Validates the 3.2 agent-level capabilities.changed registration surface: advertised revision fencing, NO_AUTH rejection, and dry-run clear semantics. | [YAML](https://adcontextprotocol.org/compliance/latest/universal/agent-notification-configs.yaml) |
 | `billing-gate-dispatch` | Validates that account.supported_billing is declared and honored by sync_accounts, including out-of-set BILLING_NOT_SUPPORTED rejection, recovery-value consistency, and the distinct per-buyer-agent BILLING_NOT_PERMITTED_FOR_AGENT gate. | [YAML](https://adcontextprotocol.org/compliance/latest/universal/billing-gate-dispatch.yaml) |
 | `canonical-format-validate-input` | Validates 3.1 canonical-format dry-run semantics: structural pass/fail across canonical slots and unvalidatable_nondeterministic for seeded products. | [YAML](https://adcontextprotocol.org/compliance/latest/universal/canonical-format-validate-input.yaml) |

@@ -95,12 +95,16 @@ asyncio.run(main())
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `brand` | object | Yes | Brand reference identifying the advertiser. Only its BrandKey fields — `domain`, optional `brand_id`, and the canonicalized ISO 3166-1 alpha-2 `countries[]` set — participate in account identity. Countries qualify commercial identity; they do not target delivery. The existing 3.x task still accepts broader BrandRef fields for compatibility, but mutable/per-call fields such as `industries`, `data_subject_contestation`, and `brand_kit_override` never affect lookup or upsert identity. New producers should send only BrandKey fields. |
-| `operator` | string | Yes | Domain of the entity operating on the brand's behalf (e.g. `pinnacle-media.com`). When the brand operates directly, set to the brand's domain. Verified against the brand's `authorized_operators` in brand.json. |
+| `account` | object | Settings update | Existing account to update, selected by `account_id` or its current natural key. Its presence selects settings-update mode and prevents provisioning side effects. |
+| `revision` | integer | With `operator_identity` | Expected current account revision in settings-update mode. It is required for identity changes and optional for existing non-identity settings updates. Sellers reject stale revisions atomically with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict). Obtain it from [`list_accounts`](/docs/accounts/tasks/list_accounts) or the latest `sync_accounts` result. |
+| `operator_identity` | object | No | Complete desired operator identity in settings-update mode. Requires `account.identity_updates.supported: true`. Omit this field to leave identity unchanged; include it without `operator_unit` to remove the current unit. |
+| `destination_billing_entity` | object | Operator-billed domain handoff | Complete staged billing identity for the destination operator. Required when changing `operator` on an account with `billing: "operator"`; otherwise absent. It is write-only while approval is pending and does not replace the canonical `billing_entity` until the handoff applies. |
+| `brand` | object | Provisioning | Brand reference identifying the advertiser. Only its BrandKey fields — `domain`, optional `brand_id`, and the canonicalized ISO 3166-1 alpha-2 `countries[]` set — participate in account identity. Countries qualify commercial identity; they do not target delivery. The existing 3.x task still accepts broader BrandRef fields for compatibility, but mutable/per-call fields such as `industries`, `data_subject_contestation`, and `brand_kit_override` never affect lookup or upsert identity. New producers should send only BrandKey fields. |
+| `operator` | string | Provisioning | Domain of the entity operating on the brand's behalf (e.g. `pinnacle-media.com`). When the brand operates directly, set to the brand's domain. Verified against the brand's `authorized_operators` in brand.json. |
 | `operator_unit` | object | No | Operator-owned business unit, agency seat, or buying-platform account. `id` is the stable operator-assigned identifier and participates in the natural key; optional `name` is mutable display metadata and does not. This is not the seller's `account_id`. |
 | `currency` | string | No | Immutable ISO 4217 transaction currency when the seller's advertiser object is currency-bound. Check `account.supported_account_currency_modes`: include `currency` for `fixed`; omit it for `per_media_buy`. If an older 3.x seller omits that capability, its currency model is not discoverable and must be established out of band. A supplied currency participates in the natural key and every media buy on the account must use it. |
-| `billing` | string | Yes | Who the seller invoices for this buyer–storefront account relationship: `operator`, `agent`, or `advertiser`. Check [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) for `supported_billing`. The seller must accept the requested invoiced party exactly or reject the request. This field does not choose a payment rail, clearing intermediary, or per-media-buy settlement route; AdCP payment and settlement remain out of protocol. Sellers MAY additionally reject a seller-wide supported value when the calling buyer agent's commercial relationship does not permit it. See [`BILLING_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-billing-not-supported), [`BILLING_NOT_PERMITTED_FOR_AGENT`](/docs/building/verification/compliance-catalog#error-code-billing-not-permitted-for-agent), [Buyer-agent identity](/docs/building/by-layer/L2/accounts-and-agents#buyer-agent-identity), and [Billing and Account Setup](/docs/building/by-layer/L3/error-handling#billing-and-account-setup). |
-| `billing_entity` | object | No | Structured business entity details for the party responsible for payment. Contains `legal_name` (required), plus optional `vat_id`, `tax_id`, `registration_number`, `address`, `contacts`, and `bank`. Bank details are write-only — included in requests but never echoed in responses. See [billing entity and invoice recipient](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient). |
+| `billing` | string | Provisioning | Who the seller invoices for this buyer–storefront account relationship: `operator`, `agent`, or `advertiser`. Check [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) for `supported_billing`. The seller must accept the requested invoiced party exactly or reject the request. This field does not choose a payment rail, clearing intermediary, or per-media-buy settlement route; AdCP payment and settlement remain out of protocol. Sellers MAY additionally reject a seller-wide supported value when the calling buyer agent's commercial relationship does not permit it. See [`BILLING_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-billing-not-supported), [`BILLING_NOT_PERMITTED_FOR_AGENT`](/docs/building/verification/compliance-catalog#error-code-billing-not-permitted-for-agent), [Buyer-agent identity](/docs/building/by-layer/L2/accounts-and-agents#buyer-agent-identity), and [Billing and Account Setup](/docs/building/by-layer/L3/error-handling#billing-and-account-setup). |
+| `billing_entity` | object | No | Structured business entity details for the account's current invoiced party. Contains `legal_name` (required), plus optional `vat_id`, `tax_id`, `registration_number`, `address`, `contacts`, and `bank`. Bank details are write-only — included in requests but never echoed in responses. Do not use this field to stage a destination operator during a handoff; use `destination_billing_entity`. See [billing entity and invoice recipient](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient). |
 | `payment_terms` | string | No | Payment terms for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. The seller must either accept these terms or reject the account — terms are never silently remapped. When omitted, the seller applies its default terms. |
 | `sandbox` | boolean | No | When true, set up a sandbox account with no real platform calls or billing. Only applicable to buyer-declared accounts (`require_operator_auth: false`). For account-id namespaces, sandbox accounts are pre-existing test accounts discovered via [`list_accounts`](/docs/accounts/tasks/list_accounts) or supplied out-of-band. |
 | `notification_configs` | array | No | Account-level webhook subscribers for events that outlive any single media buy: creative lifecycle notifications, account status changes, and wholesale feed change webhooks. Omit to leave existing subscribers unchanged; send `[]` to remove all subscribers; send a full array to replace. Entries are keyed by account-scoped `subscriber_id`; an existing `subscriber_id` is upserted, and persisted IDs absent from the sent array are removed. |
@@ -126,6 +130,62 @@ For example, the following key identifies Nova's NL/DE advertiser object, operat
 
 The natural key is the buyer-declared account reference. A numeric or opaque `account_id` is instead a seller/storefront identifier: discover it with `list_accounts` (or receive it out of band) and do not substitute an operator's buying-platform account ID into that field.
 
+### Reconciling operator identity
+
+When a buyer discovers that an existing account has the wrong operator domain or operator unit, it MUST identify the existing account through settings-update mode. Sending the corrected natural key as a new provisioning entry does not communicate replacement intent and can legitimately identify a second account.
+
+`operator_identity` is a complete desired value, not a patch:
+
+- Omit `operator_identity` to leave the operator identity unchanged.
+- Include the same `operator` and `operator_unit.id` with a different `name` to update display metadata.
+- Omit `operator_unit` inside `operator_identity` to remove the current unit.
+- Change `operator_unit.id`, add a unit, or remove one to rekey the same account within the operator.
+- Change `operator` to request an inter-entity operator-domain handoff. The seller MUST place this transition into approval; it cannot apply directly from buyer assertion alone. Before applying it, the seller MUST verify that the authenticated caller can administer the current account, obtain verified brand authorization for the destination operator, and confirm that the destination operator accepts the handoff. A passive or caller-supplied `authorized_operators` value is not sufficient without the seller's normal verification of the brand-controlled source.
+
+```json
+{
+  "idempotency_key": "identity-update-018f24c0-65d1-7c3a",
+  "accounts": [
+    {
+      "account": { "account_id": "acc_nova_pinnacle" },
+      "revision": 7,
+      "operator_identity": {
+        "operator": "pinnacle-media.example",
+        "operator_unit": {
+          "id": "east-coast",
+          "name": "East Coast"
+        }
+      }
+    }
+  ]
+}
+```
+
+Identity reconciliation changes the same advertiser account; it is never provisioning or merging. The seller MUST resolve exactly one existing account, reject a target-key collision with [`ACCOUNT_IDENTITY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-account-identity-conflict), preserve `account_id`, historical media buys, reporting continuity, and other account-scoped history, and apply no identity change if it cannot preserve that continuity. `currency`, `sandbox`, and brand identity remain immutable through this field.
+
+An intra-operator unit change stays within the existing account authority boundary. An operator-domain handoff crosses that boundary and therefore has additional rules:
+
+- The canonical operator, billing, and grants remain unchanged while approval is pending.
+- When `billing: "operator"`, the request MUST include a complete `destination_billing_entity`. This staged value is write-only while approval is pending; the account response continues to return the current canonical `billing_entity`. The seller MUST re-run its commercial approval for the destination entity, payment terms, and credit state, then switch canonical operator and billing identity together. It MUST NOT expose or apply the destination billing identity early or silently associate the former operator's billing identity with the destination.
+- At the atomic switch, grants scoped to the former operator MUST be revoked unless independently authorized for the continuing principal. The destination operator receives only explicitly approved grants. Brand- or buyer-agent grants that remain independently valid MAY be preserved.
+- A seller that cannot complete those transitions without breaking account or resource continuity MUST reject or keep the request pending; it MUST NOT partially rekey the account.
+
+Every persisted account mutation increments its integer `revision`. Buyers MUST pass the latest observed `revision` with `operator_identity`; the seller MUST compare it atomically with the write and return `CONFLICT` without side effects on mismatch. Dry runs, validation failures, reads, and exact idempotency replays do not increment it.
+
+An immediately applied intra-operator update returns the new canonical `operator` and `operator_unit`. An operator-domain change always returns the current canonical fields plus `identity_change.status: "pending_approval"`; `list_accounts` exposes the same state. Approval atomically performs the authorized identity, billing, and grant transition and clears `identity_change`. Rejection retains the canonical fields, discards the staged destination billing identity, and exposes `identity_change.status: "rejected"` with a reason. Each disposition increments `revision`.
+
+A new `operator_identity` request submitted with the current revision replaces an earlier pending or rejected request and increments the revision. To cancel a pending request without changing the canonical identity, submit the current canonical `operator_identity` with the current revision; the seller clears `identity_change`, discards any staged destination billing identity, and increments the revision. A stale request returns `CONFLICT` without replacing or clearing the existing state. Exact idempotency replays return the original result without another revision increment.
+
+After a rekey, the seller MUST tombstone the former natural key while the account or any account-scoped historical resource is retained. An authorized caller using that former key receives [`ACCOUNT_MOVED`](/docs/building/verification/compliance-catalog#error-code-account-moved) with `details.current_account`; the seller MUST NOT provision a second account from it. Callers without access to the current account receive [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found) so the redirect does not become a cross-tenant existence oracle.
+
+With `dry_run: true`, the seller performs the same account resolution, revision, collision, authorization, and continuity checks but persists nothing and leaves the revision unchanged. Each identity-update result includes `identity_change_preview`:
+
+- `would_apply` means an intra-operator update can apply immediately.
+- `would_require_approval` means an operator-domain handoff would enter approval.
+- `blocked` identifies continuity, authorization, billing, grant, or active-resource blockers in `blockers`.
+
+The preview's `impacts[]` records whether account ID, media buys, reporting, approval, billing, and grants would be preserved, revalidated, revoked and regranted, or block the change. A natural-key collision returns `ACCOUNT_IDENTITY_CONFLICT` and a blocked preview. Dry-run results may use `action: "updated"` to describe the change that would occur or `action: "failed"` for a blocker; the top-level `dry_run: true` and `identity_change_preview` make clear that no mutation occurred. Dry runs MUST NOT return a persisted `identity_change`.
+
 ## Response
 
 **Success response:**
@@ -142,15 +202,18 @@ Returns an `accounts` array with per-account results. Individual accounts may be
 
 | Field | Description |
 |-------|-------------|
-| `brand` | Echoed from request. Object with `domain`, optional `brand_id`, and optional `countries[]`. |
-| `operator` | Echoed from request. |
-| `operator_unit` | Echoed when supplied. `id` is stable identity; `name` is display metadata. |
+| `brand` | Current canonical brand. Object with `domain`, optional `brand_id`, and optional `countries[]`. |
+| `operator` | Current canonical operator domain. While an identity change is pending or rejected, this remains the current value. |
+| `operator_unit` | Current canonical operator unit. `id` is stable identity; `name` is display metadata. |
+| `revision` | Current optimistic-concurrency revision. Return it from identity-update-capable sellers and pass it on the next settings update. |
+| `identity_change` | Pending or rejected desired operator identity. Canonical identity remains in `operator` and `operator_unit`. |
+| `identity_change_preview` | Dry-run-only disposition and resource-impact preview. Canonical identity and revision remain unchanged. |
 | `currency` | Fixed account currency, echoed when supplied. |
 | `name` | Seller's display name for the account. |
 | `action` | What happened: `created`, `updated`, `unchanged`, or `failed`. |
 | `status` | Current state of the account (see [Account status](#account-status)). |
 | `billing` | Billing model applied. Matches the requested value. |
-| `billing_entity` | Business entity details for the invoiced party, echoed from the request. Sellers may add fields the agent omitted (e.g., `registration_number` from a credit check) but must not return data from a different entity. Bank details are omitted (write-only). |
+| `billing_entity` | Current canonical business entity for the invoiced party. During a pending operator-domain handoff, this remains the current entity; the staged `destination_billing_entity` is write-only. Sellers may add verified fields, but bank details are always omitted. |
 | `account_scope` | How the seller scoped this account: `operator` (shared across brands for this operator), `brand` (shared across operators for this brand), `operator_brand` (dedicated to this operator+brand pair), or `agent` (agent-scoped account shared across declared brand/operator pairs). See [account scope](/docs/building/by-layer/L2/accounts-and-agents#account-scope). |
 | `setup` | Present when `status: "pending_approval"`. Contains `url` for completing credit or legal setup, `message` explaining what's needed, and optional `expires_at`. |
 | `rate_card` | Seller-assigned rate card identifier (when applicable). |
@@ -598,6 +661,10 @@ asyncio.run(main())
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
 | [`ACCOUNT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-account-not-found) | Referenced account does not exist or is not accessible | Check `account_id` or re-sync |
+| [`ACCOUNT_MOVED`](/docs/building/verification/compliance-catalog#error-code-account-moved) | A former natural key was used after the account was rekeyed | Replace the stale reference with `error.details.current_account`, refresh through [`list_accounts`](/docs/accounts/tasks/list_accounts), and retry with a fresh idempotency key |
+| [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | Submitted `revision` is stale | Re-read `list_accounts`, reconcile, and retry with the current revision |
+| [`ACCOUNT_IDENTITY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-account-identity-conflict) | Desired natural key already belongs to another account | Choose a different operator identity or retain the current identity; do not retry the same desired identity unchanged |
+| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | Seller does not advertise the requested identity change in `account.identity_updates.supported_changes` | Leave identity unchanged or use a seller-supported transition |
 | [`BILLING_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-billing-not-supported) | Seller-wide capability gate (`supported_billing` does not include the value) or per-account-relationship gate; see [Billing and Account Setup](/docs/building/by-layer/L3/error-handling#billing-and-account-setup) | Check [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) for `supported_billing`, adjust or omit `billing`; inspect `error.details.scope` to disambiguate capability vs account scope |
 | [`BILLING_NOT_PERMITTED_FOR_AGENT`](/docs/building/verification/compliance-catalog#error-code-billing-not-permitted-for-agent) | Seller-wide capability accepts the value, but the calling buyer agent's commercial relationship does not (e.g., passthrough-only — no payments relationship); see [Buyer-agent identity](/docs/building/by-layer/L2/accounts-and-agents#buyer-agent-identity) | Retry with `error.details.suggested_billing` (typically `operator`) when present; when absent, surface to a human — the agent cannot extend its own commercial relationship |
 | [`PAYMENT_TERMS_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-payment-terms-not-supported) | Seller does not accept the requested payment terms | Omit `payment_terms` to accept the seller's default, or negotiate offline |
