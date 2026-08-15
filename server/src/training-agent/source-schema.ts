@@ -116,7 +116,6 @@ function bundleSchema(root: JsonSchema): JsonSchema {
       const type = record.type ?? linkedSchemaType(linkedSchemaUri) ?? 'object';
       return {
         type,
-        ...(typeof record.description === 'string' && { description: record.description }),
         'x-adcp-schema-uri': linkedSchemaUri,
         ...(type === 'object' && { additionalProperties: true }),
       };

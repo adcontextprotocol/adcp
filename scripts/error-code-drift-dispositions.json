@@ -216,6 +216,11 @@
       "target_version": "3.1",
       "note": "Canonical-formats dual-emission divergence advisory (#3307). Non-fatal; surfaces when a product carries both format_ids (v1) and format_options (v2) that disagree after projection. Wire change — held for 3.1."
     },
+    "FORMAT_SHAPE_PROMOTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Canonical-format promotion advisory for legacy custom declarations after seller_rendered_stateful_display and coordinated_placements become first-class in 3.2. Additive wire code — held for 3.2."
+    },
     "FORMAT_DECLARATION_V1_AMBIGUOUS": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
