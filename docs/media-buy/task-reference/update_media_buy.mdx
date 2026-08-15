@@ -191,6 +191,7 @@ asyncio.run(create_and_pause_campaign())
 |-----------|------|----------|-------------|
 | `account` | [account-ref](/docs/building/by-layer/L2/accounts-and-agents#account-references) | Yes | Account that owns this media buy. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }`. Required for governance checks and account resolution. |
 | `media_buy_id` | string | Yes | Seller's media buy identifier to update |
+| `name` | string | No | Replacement human-readable label for trafficking UI display and buyer-seller communication (maximum 255 characters). A seller that cannot update it mid-flight SHOULD return the prior unchanged value rather than silently dropping the field. |
 | `revision` | integer | No | Expected current revision for optimistic concurrency. Seller rejects with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) on mismatch. Obtain from [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) or the most recent response. |
 | `start_time` | string | No | Updated campaign start time |
 | `end_time` | string | No | Updated campaign end time |
@@ -271,6 +272,7 @@ For budget/pacing interaction and bidding inheritance, see [Budget & Pacing Cont
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
+| `name` | Persisted human-readable label after the update. When the request supplied `name`, the seller MUST return the stored value (updated or prior unchanged value). |
 | `media_buy_status` | Media buy lifecycle status after the update (present when status changes, e.g., cancellation). Canonical 3.1 field. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status). |
 | `status` | **Deprecated in 3.1, removed in 3.2** ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)). Use `media_buy_status` instead. Top-level `status` collides with the envelope task-status on flat-serialized MCP wire. |
 | `revision` | Revision number after this update. Use in subsequent requests intended to change state for optimistic concurrency. Exact idempotency replays return the prior revision. |

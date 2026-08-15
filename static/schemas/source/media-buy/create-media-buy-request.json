@@ -182,6 +182,11 @@
       "type": "string",
       "description": "Purchase order number for tracking"
     },
+    "name": {
+      "type": "string",
+      "maxLength": 255,
+      "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. When supplied, the seller MUST persist it and echo it unchanged on the create success response and subsequent get_media_buys reads. This display label is not an identifier or financial reference."
+    },
     "agency_estimate_number": {
       "type": "string",
       "maxLength": 100,

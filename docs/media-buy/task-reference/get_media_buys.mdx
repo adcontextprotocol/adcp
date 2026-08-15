@@ -58,6 +58,7 @@ Returns an array of media buys with current status, creative approval state, and
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Seller's media buy identifier |
+| `name` | Persisted human-readable label for trafficking UI display and buyer-seller communication. Sellers MUST return it for AdCP-created buys that supplied `name`; it may be absent for external buys or buys created without one. It is not an identifier or financial reference. |
 | `accepted_proposal_id` | Current immutable commercial snapshot used to begin [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals); present for compact-lifecycle buys. |
 | `accepted_proposal_terms_digest` | Digest binding the current accepted proposal terms for recovery and governance verification. |
 | `accepted_proposal` | Complete accepted canonical proposal for compact-lifecycle buys. Together with the ID and digest, this lets a restarted client refine the current commercial envelope without reconstructing historical offers. |
