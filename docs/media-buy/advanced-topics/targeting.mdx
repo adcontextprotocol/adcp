@@ -43,6 +43,29 @@ When the buyer wants package-level control over specific selectable signals that
 
 Products can also expose `included_signals` for signals already bundled into or planned into the product. Those signals are descriptive product metadata, not package-level targeting controls, and buyers do not echo them in `signal_targeting_groups`.
 
+## Browser-family targeting
+
+Use `targeting_overlay.browser` and `targeting_overlay.browser_exclude` for portable browser-family constraints. The fields intentionally stop at families: browser versions, user-agent strings, backend segment IDs, and arbitrary ad-server key/value expressions are not part of the contract.
+
+```json
+{
+  "targeting_overlay": {
+    "browser": ["chrome", "safari", "samsung_internet"],
+    "browser_exclude": ["safari"]
+  }
+}
+```
+
+Values within `browser` use OR semantics, and `browser_exclude` wins on overlap, so this example delivers on Chrome or Samsung Internet but not Safari. When `browser` is present, omitted families are not eligible. The canonical families are `chrome`, `safari`, `firefox`, `edge`, `opera`, `samsung_internet`, `android_webview`, `other`, and `unknown`.
+
+`other` means the seller recognizes the browser family but it is not one of the explicitly named families. For example, a FreeWheel connector can map recognized values such as Amazon Silk, Android Browser, or Internet Explorer to `other`. `unknown` means the seller cannot classify the browser into a recognized family. Include either value explicitly when that traffic should be eligible; omitting it from an inclusion list excludes it. Samsung Internet remains distinct from Chrome even though both are Chromium-based. `android_webview` means the impression itself is reliably classified as rendering in Android WebView; a native-app placement or an in-app browser opened after a click is not automatically Android WebView.
+
+Browser family describes the impression delivery and rendering environment, not the post-click landing-page browser. Sellers must not infer it solely from operating system, device, “Web” or “Mobile Web” inventory, or placement. Sellers advertising browser support map these portable values to their platform controls internally. A social or app-only product with only device, OS, or placement controls omits `overlay_support.browser` and `overlay_support.browser_exclude` rather than approximating browser support.
+
+Browser and device constraints intersect. For example, `browser: ["safari"]` with `device_platform: ["android"]` may have no executable inventory. During discovery, the seller excludes an incompatible product or returns a configured product with a sparse, buyer-visible `targeting_resolution.modifications` alternative. At create or update, it rejects an exact combination it cannot enforce rather than silently broadening delivery.
+
+Inclusion and exclusion are independent product capabilities. Use concrete values in `targeting_overlay` when pricing and forecasts must reflect them now, and use `required_overlay_support.browser` or `required_overlay_support.browser_exclude` when package values will be supplied later. Requirement `true` asks for any positive support; `{ "families": ["chrome", "firefox"] }` requires both named families. A product advertises unrestricted support as `true`, or partial support as `{ "families": [...] }`. Products such as CTV, audio, DOOH, or app inventory can omit browser support entirely.
+
 ## Portable demographic targeting
 
 Use `targeting_overlay.demographics` when the buyer needs a demographic predicate to survive product discovery, purchase, seller compilation, and readback without being reinterpreted from prose. AdCP 3.2 standardizes age first:
@@ -891,6 +914,23 @@ For products where inventory and audience planning are inseparable, such as line
 - **Examples**: `["dooh"]`, `["ctv", "dooh"]`
 - **Use cases**: Exclude CTV for app-install campaigns, exclude DOOH for direct-response campaigns
 - **Note**: Supported when seller declares `device_type: true` in `get_adcp_capabilities`
+
+### browser
+
+- **Description**: Restrict impression delivery to canonical browser families
+- **Format**: Non-empty array of `chrome`, `safari`, `firefox`, `edge`, `opera`, `samsung_internet`, `android_webview`, `other`, or `unknown`
+- **Examples**: `["chrome"]`, `["chrome", "firefox"]`, `["safari", "unknown"]`
+- **Semantics**: Values use OR; when present, omitted families are ineligible. The field describes the impression rendering environment, not a post-click browser.
+- **Discovery**: Require any later-selectable family with `required_overlay_support.browser: true`, or require a subset with `required_overlay_support.browser.families`. Products disclose unrestricted support as `true` or partial support with `overlay_support.browser.families`.
+
+### browser_exclude
+
+- **Description**: Exclude canonical browser families from impression delivery
+- **Format**: Non-empty array using the same values as `browser`
+- **Examples**: `["unknown"]`, `["safari", "android_webview"]`
+- **Conflict rule**: Exclusion wins when the same family appears in both browser fields
+- **Discovery**: Inclusion and exclusion support are independent; `required_overlay_support.browser_exclude` and `overlay_support.browser_exclude` use the same `true` or `{ "families": [...] }` capability form.
+- **Failure rule**: A seller that cannot enforce the exclusion rejects the request instead of dropping it
 
 ### language
 - **Description**: Restrict to users with specific language preferences

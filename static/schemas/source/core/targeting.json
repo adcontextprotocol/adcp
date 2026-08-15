@@ -238,6 +238,24 @@
       },
       "minItems": 1
     },
+    "browser": {
+      "type": "array",
+      "description": "Restrict delivery to specific canonical browser families in the impression delivery and rendering environment, not the post-click landing-page browser. Values MUST NOT be inferred solely from operating system, device, web/mobile-web inventory, or placement. Values in this array use OR semantics. When browser is supplied, families not listed are ineligible: other includes a seller-recognized family that is not explicitly enumerated, while unknown includes a browser the seller cannot classify into a recognized family. When the same family appears in browser and browser_exclude, exclusion wins. Browser and device constraints intersect; a seller that cannot enforce the exact combination MUST exclude or explicitly reconfigure the product during discovery and MUST reject it at create or update rather than silently widening delivery. Browser versions and seller-native IDs are intentionally unsupported.",
+      "items": {
+        "$ref": "/schemas/enums/browser-family.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "browser_exclude": {
+      "type": "array",
+      "description": "Exclude specific canonical browser families from delivery. other excludes seller-recognized families that are not explicitly enumerated; unknown excludes browsers the seller cannot classify into a recognized family. When the same family appears in browser and browser_exclude, exclusion wins. Sellers MUST reject a request they cannot enforce rather than silently dropping the exclusion.",
+      "items": {
+        "$ref": "/schemas/enums/browser-family.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "store_catchments": {
       "type": "array",
       "description": "Target users within store catchment areas from a synced store catalog. Each entry references a store-type catalog and optionally narrows to specific stores or catchment zones.",
