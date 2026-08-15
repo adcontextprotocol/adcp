@@ -22,6 +22,7 @@ import {
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'comply-test.example.com' }, operator: 'comply-tester', sandbox: true };
+const CONTROLLER_ACCOUNT = { ...ACCOUNT, operator: ACCOUNT.brand.domain };
 const BRAND = { domain: 'comply-test.example.com', name: 'Comply Test Brand' };
 
 function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
@@ -356,7 +357,7 @@ describe('comply_test_controller', () => {
     it('seeds an acquired grant that update_rights can pause', async () => {
       const { result: seeded } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'seed_rights_grant',
-        account: ACCOUNT,
+        account: CONTROLLER_ACCOUNT,
         params: {
           rights_id: 'janssen_likeness_voice',
           fixture: {
@@ -382,7 +383,7 @@ describe('comply_test_controller', () => {
 
       const { result: replay } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'seed_rights_grant',
-        account: ACCOUNT,
+        account: CONTROLLER_ACCOUNT,
         params: {
           rights_id: 'janssen_likeness_voice',
           fixture: {
@@ -399,7 +400,7 @@ describe('comply_test_controller', () => {
 
       const { result: conflict } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'seed_rights_grant',
-        account: ACCOUNT,
+        account: CONTROLLER_ACCOUNT,
         params: {
           rights_id: 'janssen_likeness_voice',
           fixture: {

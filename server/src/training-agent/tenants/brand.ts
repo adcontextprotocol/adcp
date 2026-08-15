@@ -104,13 +104,15 @@ export function buildBrandTenantConfig(host: string, options: { storyboardCompat
       platform: new TrainingBrandPlatform(options.storyboardCompat) as any,
       serverOptions: {
         customTools: {
-          comply_test_controller: customToolFor(
-            'comply_test_controller',
-            'Triggers sandbox-only state transitions for brand-rights compliance testing.',
-            COMPLY_TEST_CONTROLLER_SCHEMA,
-            handleComplyTestController,
-            { trainingContext: { tenantId: TENANT_ID, storyboardCompat: options.storyboardCompat } },
-          ),
+          ...(options.storyboardCompat?.version !== '3.0' && {
+            comply_test_controller: customToolFor(
+              'comply_test_controller',
+              'Triggers sandbox-only state transitions for brand-rights compliance testing.',
+              COMPLY_TEST_CONTROLLER_SCHEMA,
+              handleComplyTestController,
+              { trainingContext: { tenantId: TENANT_ID, storyboardCompat: options.storyboardCompat } },
+            ),
+          }),
           list_accounts: listAccountsTool(options.storyboardCompat),
           verify_brand_claim: customToolFor(
             'verify_brand_claim',

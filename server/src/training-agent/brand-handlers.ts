@@ -1460,7 +1460,7 @@ export async function handleUpdateRights(
       creativeApprovalRequired: true,
     }),
     implementation_date: new Date().toISOString(),
-    paused: effectivePaused,
+    ...(paused !== undefined && { paused }),
     sandbox: true,
   };
 }

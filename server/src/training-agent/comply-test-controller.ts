@@ -1069,7 +1069,7 @@ const LOCAL_SCENARIOS = [
 
 function localScenariosFor(ctx: TrainingContext): string[] {
   return ctx.storyboardCompat?.version === '3.0'
-    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'query_provenance_audit_observations')
+    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations')
     : [...LOCAL_SCENARIOS];
 }
 
@@ -1433,15 +1433,31 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     };
     const seedFingerprint = JSON.stringify(seeded);
     seeded.seedFingerprint = seedFingerprint;
-    const existing = session.rightsGrants.get(rightsId);
+    // The SDK runner intentionally normalizes controller calls to the
+    // brand-owned sandbox operator. Rights grants belong to the acquiring
+    // buyer, so seed the partition named by fixture.buyer_domain instead;
+    // update_rights then reaches the same account-scoped state.
+    const grantAccount = args.account?.brand
+      ? { ...args.account, operator: seeded.buyerDomain }
+      : args.account;
+    const grantSessionKey = sessionKeyFromArgs(
+      { ...args, account: grantAccount },
+      ctx.mode,
+      ctx.userId,
+      ctx.moduleId,
+    );
+    const grantSession = grantSessionKey === sessionKey
+      ? session
+      : await getSession(grantSessionKey);
+    const existing = grantSession.rightsGrants.get(rightsId);
     if (existing) {
       if (existing.seedFingerprint !== seedFingerprint) {
         return { success: false, error: 'INVALID_STATE', error_detail: `rights_id "${rightsId}" was already seeded with a different fixture — seed_rights_grant is idempotent` };
       }
       return { success: true, message: `rights_id "${rightsId}" already seeded with the same fixture` };
     }
-    enforceMapCap(session.rightsGrants, rightsId, 'rights grants');
-    session.rightsGrants.set(rightsId, seeded);
+    enforceMapCap(grantSession.rightsGrants, rightsId, 'rights grants');
+    grantSession.rightsGrants.set(rightsId, seeded);
     return { success: true, message: `Rights grant "${rightsId}" seeded` };
   }
   if (scenario === 'seed_measurement_catalog') {

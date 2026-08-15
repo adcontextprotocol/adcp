@@ -81,6 +81,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           rights_id: "janssen_likeness_voice"
           paused: true
           idempotency_key: "$generate:uuid_v4#brand_rights_update_seeded_grant"
@@ -124,6 +125,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           rights_id: "stale_rights_grant_00000000"
           paused: true
           idempotency_key: "$generate:uuid_v4#brand_rights_update_unknown_grant"
