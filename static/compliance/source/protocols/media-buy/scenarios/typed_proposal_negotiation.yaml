@@ -236,10 +236,6 @@ phases:
           the requested bounds. parent_proposal_id must equal the source.
         sample_request:
           idempotency_key: "$generate:uuid_v4#typed_negotiation_budget_satisfied"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           refinements:
             - proposal_id: "$context.seed_proposal_id"
               action: "revise"
@@ -312,10 +308,6 @@ phases:
           constraint not listed in unsatisfied_constraints.
         sample_request:
           idempotency_key: "$generate:uuid_v4#typed_negotiation_budget_unsatisfied"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           refinements:
             - proposal_id: "$context.seed_proposal_id"
               action: "revise"
@@ -328,9 +320,9 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches refine-proposals-response.json schema"
-          - check: field_value_in
+          - check: field_value
             path: "results[0].outcome"
-            values: ["partial", "unable"]
+            allowed_values: ["partial", "unable"]
             description: "Outcome is partial or unable when budget is unsatisfiable"
           - check: field_value
             path: "results[0].reason_code"
@@ -365,10 +357,6 @@ phases:
           parent_proposal_id equals source on every returned draft.
         sample_request:
           idempotency_key: "$generate:uuid_v4#typed_negotiation_product_changes"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           refinements:
             - proposal_id: "$context.seed_proposal_id"
               action: "revise"
@@ -380,9 +368,9 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches refine-proposals-response.json schema"
-          - check: field_value_in
+          - check: field_value
             path: "results[0].outcome"
-            values: ["revised", "partial"]
+            allowed_values: ["revised", "partial"]
             description: "Outcome is revised or partial"
           - check: field_value
             path: "results[0].source_proposal_id"
@@ -417,10 +405,6 @@ phases:
           alternatives_unavailable if fewer distinct drafts are possible.
         sample_request:
           idempotency_key: "$generate:uuid_v4#typed_negotiation_alternatives"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           refinements:
             - proposal_id: "$context.seed_proposal_id"
               action: "revise"
@@ -437,9 +421,9 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches refine-proposals-response.json schema"
-          - check: field_value_in
+          - check: field_value
             path: "results[0].outcome"
-            values: ["revised", "partial"]
+            allowed_values: ["revised", "partial"]
             description: "Outcome is revised or partial"
           - check: field_present
             path: "results[0].proposals"
@@ -480,10 +464,6 @@ phases:
           supported_dimensions per the registered details shape.
         sample_request:
           idempotency_key: "$generate:uuid_v4#typed_negotiation_unsupported_dimension"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           refinements:
             - proposal_id: "$context.seed_proposal_id"
               action: "revise"
@@ -524,10 +504,6 @@ phases:
           and parent_proposal_id equal to the source draft.
         sample_request:
           idempotency_key: "$context.finalize_idempotency_key"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           refinements:
             - proposal_id: "$context.budget_revised_proposal_id"
               action: "finalize"
@@ -580,10 +556,6 @@ phases:
         stateful: true
         sample_request:
           idempotency_key: "$context.finalize_idempotency_key"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           refinements:
             - proposal_id: "$context.budget_revised_proposal_id"
               action: "finalize"
@@ -663,10 +635,6 @@ phases:
           parent_proposal_id equals the accepted source.
         sample_request:
           idempotency_key: "$generate:uuid_v4#typed_negotiation_amendment"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           refinements:
             - proposal_id: "$context.committed_proposal_id"
               action: "revise"
@@ -680,9 +648,9 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches refine-proposals-response.json schema"
-          - check: field_value_in
+          - check: field_value
             path: "results[0].outcome"
-            values: ["revised", "partial"]
+            allowed_values: ["revised", "partial"]
             description: "Amendment produces a draft successor"
           - check: field_present
             path: "results[0].proposals[0].parent_proposal_id"
@@ -709,10 +677,6 @@ phases:
           parent_proposal_id equals the accepted source.
         sample_request:
           idempotency_key: "$generate:uuid_v4#typed_negotiation_cancellation"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           refinements:
             - proposal_id: "$context.committed_proposal_id"
               action: "revise"
@@ -722,9 +686,9 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches refine-proposals-response.json schema"
-          - check: field_value_in
+          - check: field_value
             path: "results[0].outcome"
-            values: ["revised", "partial", "unable"]
+            allowed_values: ["revised", "partial", "unable"]
             description: "Cancellation attempt produces an outcome"
           - check: field_value
             path: "results[0].source_proposal_id"
@@ -753,10 +717,6 @@ phases:
           proposal is not eligible. No new proposal is created.
         sample_request:
           idempotency_key: "$generate:uuid_v4#typed_negotiation_double_finalize"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           refinements:
             - proposal_id: "$context.committed_proposal_id"
               action: "finalize"
@@ -786,10 +746,6 @@ phases:
           order. Each entry has its own outcome and source_proposal_id.
         sample_request:
           idempotency_key: "$generate:uuid_v4#typed_negotiation_multi_source_batch"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
           refinements:
             - proposal_id: "$context.seed_proposal_id"
               action: "revise"
@@ -801,9 +757,8 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches refine-proposals-response.json schema"
-          - check: array_length
-            path: "results"
-            min: 2
+          - check: field_present
+            path: "results[1]"
             description: "Results contain one entry per source proposal"
           - check: field_value
             path: "results[0].source_proposal_id"

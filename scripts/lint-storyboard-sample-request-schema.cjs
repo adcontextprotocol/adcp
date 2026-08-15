@@ -151,6 +151,7 @@ function discriminatorFor(payload, schema) {
 // idempotency-key patterns in the schemas. Substitutions typically resolve
 // to ids at runtime, so a UUID is a safer default than a short sentinel.
 const STRING_PLACEHOLDER = '00000000-0000-4000-8000-000000000000';
+const SHA256_DIGEST_PLACEHOLDER = `sha256:${'A'.repeat(43)}`;
 
 /**
  * Build a schema-typed placeholder for a substitution string. The placeholder
@@ -177,6 +178,7 @@ function placeholderFor(schema, depth = 0) {
     if (resolved.format === 'email') return 'placeholder@example.com';
     if (Array.isArray(resolved.enum) && resolved.enum.length > 0) return resolved.enum[0];
     if (typeof resolved.const !== 'undefined') return resolved.const;
+    if (resolved.pattern === '^sha256:[A-Za-z0-9_-]{43}$') return SHA256_DIGEST_PLACEHOLDER;
     // Object variant nested inside a oneOf/anyOf at a location where the
     // author's substitution will resolve to that shape at runtime. Synthesize
     // the concrete shape instead of returning a string that fails required.
