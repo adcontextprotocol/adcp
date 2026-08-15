@@ -515,6 +515,42 @@
                       "type": "boolean",
                       "description": "Whether by_audience was truncated. Sellers MUST return this flag whenever by_audience is present (false means the list is complete)."
                     },
+                    "by_demographic": {
+                      "type": "array",
+                      "description": "Delivery by measurement-system demographic within this package. Available when the buyer requests demographic breakdown via reporting_dimensions and the product declares supports_demographic_breakdown. Demographic is a free-form code in the declared demographic_system's notation.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metrics.json"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "demographic": {
+                                "type": "string",
+                                "minLength": 1,
+                                "pattern": "\\S",
+                                "description": "Demographic code in the declared system's notation (for example, P25-54 for Nielsen)."
+                              },
+                              "demographic_system": {
+                                "$ref": "/schemas/enums/demographic-system.json",
+                                "description": "Measurement system that defines the demographic code."
+                              }
+                            },
+                            "required": [
+                              "demographic",
+                              "demographic_system",
+                              "impressions",
+                              "spend"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "by_demographic_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_demographic was truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_demographic is present (false means the list is complete)."
+                    },
                     "by_placement": {
                       "type": "array",
                       "description": "Delivery by placement within this package. Available when the buyer requests placement breakdown via reporting_dimensions and the seller supports it. Placement IDs reference the product's placements array.",

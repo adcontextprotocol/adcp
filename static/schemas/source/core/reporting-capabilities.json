@@ -102,6 +102,10 @@
       "type": "boolean",
       "description": "Whether this product supports audience segment breakdowns in delivery reporting (by_audience within by_package)"
     },
+    "supports_demographic_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports measurement-system demographic breakdowns in delivery reporting (by_demographic within by_package)"
+    },
     "supports_placement_breakdown": {
       "type": "boolean",
       "description": "Whether this product supports placement breakdowns in delivery reporting (by_placement within by_package)"

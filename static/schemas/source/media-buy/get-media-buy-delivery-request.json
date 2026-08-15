@@ -254,6 +254,23 @@
           },
           "additionalProperties": true
         },
+        "demographic": {
+          "type": "object",
+          "description": "Request delivery broken down by measurement-system demographic codes (for example, P25-54 in Nielsen notation). Check reporting_capabilities.supports_demographic_breakdown before requesting this dimension.",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 25,
+              "description": "Maximum number of demographic entries to return. Defaults to 25."
+            },
+            "sort_by": {
+              "$ref": "/schemas/enums/sort-metric.json",
+              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
+              "default": "spend"
+            }
+          }
+        },
         "placement": {
           "type": "object",
           "description": "Request placement breakdown.",
