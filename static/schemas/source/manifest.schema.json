@@ -55,6 +55,12 @@
             "type": "boolean",
             "description": "True if invoking this tool can change server-side state. New mutating tools MUST require idempotency_key (or carry an explicit naturally-idempotent exemption). A stable 3.x compatibility facade may explicitly mark the key optional while narrower replacement tools carry the required-key contract. Verb prefixes are not authoritative."
           },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240,
+            "description": "Optional concise, agent-facing description suitable for live tool discovery. This is separate from the canonical request schema description and does not affect validation."
+          },
           "operation_family": {
             "type": "string",
             "description": "Stable logical operation identity used for authorization, idempotency equivalence, task recovery, and webhook identity. Aliases in the same family share this value."

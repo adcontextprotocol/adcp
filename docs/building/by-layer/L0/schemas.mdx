@@ -304,6 +304,61 @@ clients combine the model-context inputs with each live MCP tool's concise
 `name` and `description`; the downloadable model-context manifest is not a
 description catalog by itself.
 
+#### Capability-selected runtime projection
+
+AdCP 3.2 hosts MUST derive a live MCP tool surface from the release manifest
+and the tools the endpoint can actually dispatch. A runtime projection is a
+selection of the generated per-tool bundles, not another schema profile and
+not a second hand-maintained tool catalog.
+
+The deterministic selection algorithm is:
+
+1. Build `implemented_tools` from the endpoint's dispatch registry. Every name
+   MUST exist in the canonical release manifest. Do not infer implementation
+   from documentation, a role profile, or a protocol claim.
+2. If the session has no narrower capability scope, select
+   `implemented_tools`. Otherwise, select the implemented tools whose manifest
+   `protocol` is enabled, unioned with exact enabled tool names. Convert
+   `supported_protocols` snake case to manifest kebab case (`media_buy` →
+   `media-buy`) before comparing. Exact tool claims that are not implemented
+   are configuration errors; hosts MUST fail closed rather than advertise
+   them.
+3. Treat `protocol` as ownership metadata, not dependency closure. Shared task,
+   account, or discovery tools are included only when the host adds their exact
+   names. Selection never pulls in neighboring tools implicitly.
+4. Production projections MUST exclude the `compliance` protocol. Deprecated
+   compatibility facades are included only when the endpoint really implements
+   and advertises them; deprecation alone is not a runtime filter.
+5. Sort selected names lexicographically. For each selected name, emit one MCP
+   `tools/list` entry containing `name`, the optional manifest `summary` as the
+   live `description`, and the corresponding self-contained `inputSchema` from
+   the MCP projection. Do not emit unselected tools or load response schemas
+   into the model-facing list.
+6. Keep the release manifest and response bundles available outside model
+   context. SDKs validate a direct result through that tool's `response_schema`;
+   they resolve terminal polling results through `task_result_resolution`.
+
+The coarse protocol set normally comes from `supported_protocols`. Exact names
+come from the active capability blocks (for example `lifecycle_tools`,
+`repair_tasks`, and `projection_tasks`) plus shared tools the host exposes for
+that session. The implementation registry remains the upper bound in every
+case. Unknown protocol or tool names, duplicate selector inputs, and production
+attempts to expose compliance tools are errors.
+
+For caller-side version adaptation, the live discovery result is authoritative.
+An SDK calls a current split 3.2 tool when that name is present. If it is absent,
+the SDK checks the current tool's `legacy_fallback` manifest entry and may use
+the named legacy tool only when that name is live: `direct` is a one-call
+translation, `orchestrated` must preserve the current operation's state and
+idempotency semantics across the sequence, and `none` is unsupported. SDKs
+MUST NOT infer a fallback from a shared protocol classification.
+
+The checked-in `production`, `media-buy`, and `creative` profiles remain useful
+catalogs and role-oriented starting points. They are not mandatory runtime
+combinations. The complete canonical projection remains the authority for
+documentation, conformance, compatibility analysis, code generation, and lazy
+response validation.
+
 AdCP 4.0 will make JSON Schema 2020-12 the canonical source dialect. That
 major-version migration is where the protocol may selectively use
 `unevaluatedProperties`, `dependentRequired`, `dependentSchemas`, and other

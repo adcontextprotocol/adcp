@@ -617,6 +617,106 @@ function writeJson(filename, value) {
   fs.writeFileSync(filename, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+function uniqueStringSet(values, label, { required = false } = {}) {
+  if (values === undefined && !required) return new Set();
+  if (!Array.isArray(values) || values.some(value => typeof value !== 'string' || value.length === 0)) {
+    throw new Error(`${label} must be an array of non-empty strings`);
+  }
+  const result = new Set(values);
+  if (result.size !== values.length) throw new Error(`${label} must not contain duplicates`);
+  return result;
+}
+
+/**
+ * Select the exact runtime tool surface from a release manifest.
+ *
+ * implementedTools is the host's dispatch registry and is always the hard
+ * upper bound. capabilityProtocols is a coarse protocol-family scope;
+ * capabilityTools adds exact cross-protocol tools and per-session exceptions.
+ * Protocol classification is ownership metadata, not dependency closure, so
+ * this function never adds related tools implicitly.
+ */
+function selectRuntimeToolNames(manifest, {
+  implementedTools,
+  capabilityProtocols,
+  capabilityTools,
+  production = true,
+} = {}) {
+  if (!manifest || typeof manifest !== 'object' || !manifest.tools || typeof manifest.tools !== 'object') {
+    throw new Error('manifest must contain a tools object');
+  }
+
+  const implemented = uniqueStringSet(implementedTools, 'implementedTools', { required: true });
+  const protocolInputs = uniqueStringSet(capabilityProtocols, 'capabilityProtocols');
+  const protocols = new Set([...protocolInputs].map(protocol => protocol.replaceAll('_', '-')));
+  if (protocols.size !== protocolInputs.size) {
+    throw new Error('capabilityProtocols must not contain equivalent snake_case and kebab-case values');
+  }
+  const exactTools = uniqueStringSet(capabilityTools, 'capabilityTools');
+  const knownTools = new Set(Object.keys(manifest.tools));
+  const knownProtocols = new Set(Object.values(manifest.tools).map(tool => tool.protocol));
+
+  for (const toolName of implemented) {
+    if (!knownTools.has(toolName)) throw new Error(`implementedTools names unknown tool ${toolName}`);
+  }
+  for (const protocol of protocols) {
+    if (!knownProtocols.has(protocol)) throw new Error(`capabilityProtocols names unknown protocol ${protocol}`);
+    if (production && protocol === 'compliance') {
+      throw new Error('production runtime projections cannot select the compliance protocol');
+    }
+  }
+  for (const toolName of exactTools) {
+    if (!knownTools.has(toolName)) throw new Error(`capabilityTools names unknown tool ${toolName}`);
+    if (!implemented.has(toolName)) {
+      throw new Error(`capabilityTools advertises unimplemented tool ${toolName}`);
+    }
+    if (production && manifest.tools[toolName].protocol === 'compliance') {
+      throw new Error(`production runtime projections cannot select compliance tool ${toolName}`);
+    }
+  }
+
+  const hasCapabilityScope = capabilityProtocols !== undefined || capabilityTools !== undefined;
+  return [...implemented]
+    .filter(toolName => !production || manifest.tools[toolName].protocol !== 'compliance')
+    .filter(toolName => (
+      !hasCapabilityScope
+      || exactTools.has(toolName)
+      || protocols.has(manifest.tools[toolName].protocol)
+    ))
+    .sort();
+}
+
+/** Build MCP tools/list entries from already-generated per-tool bundles. */
+function buildRuntimeToolsList(projectionManifest, selectedToolNames, loadInputSchema) {
+  if (
+    !projectionManifest
+    || typeof projectionManifest !== 'object'
+    || !projectionManifest.tools
+    || typeof projectionManifest.tools !== 'object'
+  ) {
+    throw new Error('projectionManifest must contain a tools object');
+  }
+  const selected = uniqueStringSet(selectedToolNames, 'selectedToolNames', { required: true });
+  if (typeof loadInputSchema !== 'function') throw new Error('loadInputSchema must be a function');
+
+  return [...selected].sort().map(name => {
+    const tool = projectionManifest.tools[name];
+    if (!tool) throw new Error(`selectedToolNames names unknown projected tool ${name}`);
+    if (typeof tool.inputSchema !== 'string') {
+      throw new Error(`projected tool ${name} does not provide inputSchema`);
+    }
+    const inputSchema = loadInputSchema(tool.inputSchema, name);
+    if (!inputSchema || typeof inputSchema !== 'object' || Array.isArray(inputSchema)) {
+      throw new Error(`loadInputSchema returned an invalid schema for ${name}`);
+    }
+    return {
+      name,
+      ...(tool.summary ? { description: tool.summary } : {}),
+      inputSchema: clone(inputSchema),
+    };
+  });
+}
+
 function generateMcpSchemaProjection({
   sourceDir,
   targetDir,
@@ -680,7 +780,10 @@ function generateMcpSchemaProjection({
 
   for (const [toolName, tool] of Object.entries(manifest.tools || {})) {
     if (!toolFilter(toolName, tool)) continue;
-    const projectedTool = { protocol: tool.protocol };
+    const projectedTool = {
+      protocol: tool.protocol,
+      ...(tool.summary ? { summary: tool.summary } : {}),
+    };
     for (const [field, relativePath] of [
       ['inputSchema', tool.request_schema],
       ['outputSchema', tool.response_schema],
@@ -739,6 +842,7 @@ module.exports = {
   MCP_PROTOCOL_VERSION,
   assertDraft07SourceSchema,
   assertLocalRefsResolve,
+  buildRuntimeToolsList,
   collectExternalRefs,
   compactDraft07Schema,
   enforceSchemaBounds,
@@ -746,6 +850,7 @@ module.exports = {
   measureSchema,
   projectDraft07Node,
   projectSourceSchema,
+  selectRuntimeToolNames,
   stripModelContextAnnotations,
   stripPresentationAnnotations,
 };

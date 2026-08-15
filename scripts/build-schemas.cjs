@@ -1180,6 +1180,18 @@ function discoverTools(sourceDir) {
       const requestSchema = JSON.parse(fs.readFileSync(requestPath, 'utf8'));
       const responseName = `${toolBase}-response.json`;
       const responseSchema = `${protocol}/${responseName}`;
+      const summary = requestSchema['x-tool-summary'];
+      if (summary !== undefined && (
+        typeof summary !== 'string'
+        || summary.length === 0
+        || summary.length > 240
+        || summary !== summary.trim()
+        || /[\r\n]/.test(summary)
+      )) {
+        throw new Error(
+          `Manifest generation: ${protocol}/${f.name} has invalid x-tool-summary metadata`
+        );
+      }
       const legacyFallback = requestSchema['x-legacy-fallback'];
       if (legacyFallback !== undefined) {
         const keys = legacyFallback && typeof legacyFallback === 'object' && !Array.isArray(legacyFallback)
@@ -1223,6 +1235,7 @@ function discoverTools(sourceDir) {
         name: toolName,
         protocol,
         mutating,
+        ...(summary ? { summary } : {}),
         operation_family: requestSchema['x-operation-family'] || toolName,
         idempotency_requirement: Array.isArray(requestSchema.required) && requestSchema.required.includes('idempotency_key')
           ? 'required'
@@ -1305,6 +1318,7 @@ function buildManifest(sourceDir, urlVersion, semverVersion, repoRoot) {
     toolsObj[t.name] = {
       protocol: t.protocol,
       mutating: t.mutating,
+      ...(t.summary ? { summary: t.summary } : {}),
       operation_family: t.operation_family,
       idempotency_requirement: t.idempotency_requirement,
       request_schema: t.request_schema,
