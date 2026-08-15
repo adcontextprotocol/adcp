@@ -414,6 +414,7 @@ test('temporary snapshot redirects cover every available live page', () => {
     'docs/protocol/language-and-localization',
     'docs/protocol/sync_agent_notification_configs',
     'docs/accounts/provisioning-walkthrough',
+    'docs/media-buy/product-discovery/proposal-negotiation',
     'docs/media-buy/media-buys/indicators',
     'docs/media-buy/task-reference/list_products',
     'docs/media-buy/task-reference/request_proposals',
