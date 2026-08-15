@@ -34,9 +34,9 @@ test("input-field weight report attributes the largest transitive schema graphs"
   const report = analyzeInputSchemaWeights(schemas);
 
   assert.equal(report.tool_count, 16);
-  assert.equal(report.definition_instances, 559);
-  assert.equal(report.unique_definitions, 142);
-  assert.equal(report.repeated_definitions, 104);
+  assert.equal(report.definition_instances, 562);
+  assert.equal(report.unique_definitions, 143);
+  assert.equal(report.repeated_definitions, 105);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -155,7 +155,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
   });
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
-  assert.equal(Object.keys(view.dictionary.$defs).length, 142);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 143);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(
@@ -215,7 +215,7 @@ test("experiment report keeps all alternatives smaller than standalone model con
   assert.equal(report.status, "non-normative");
   assert.equal(report.prompt_cleanup_adapter.required, true);
   assert.equal(report.selection.tools.length, 16);
-  assert.equal(variants.standalone.context_bytes, 290_821);
+  assert.equal(variants.standalone.context_bytes, 292_717);
   assert.ok(
     variants.prompt_cleanup.context_bytes <
       variants.standalone.context_bytes * 0.82
@@ -228,7 +228,7 @@ test("experiment report keeps all alternatives smaller than standalone model con
     variants.shared_dictionary_with_prompt_cleanup.context_bytes <
       variants.shared_dictionary.context_bytes
   );
-  assert.equal(variants.shared_dictionary.dictionary_definitions, 142);
+  assert.equal(variants.shared_dictionary.dictionary_definitions, 143);
   assert.equal(
     variants.shared_dictionary_with_prompt_cleanup.dictionary_definitions,
     122

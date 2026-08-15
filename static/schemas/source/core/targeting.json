@@ -9,7 +9,7 @@
       "exclude": "geo_places_exclude",
       "identity": ["country", "system", "place_type", "value"]
     },
-    "description": "JSON Schema draft-07 cannot compare values across sibling arrays. Conformance tooling MUST reject any place identity present in both geo_places and geo_places_exclude. Catalog version is deliberately not part of identity: a stable ID cannot be both included and excluded by assigning different versions."
+    "description": "JSON Schema draft-07 cannot compare values across sibling arrays. Conformance tooling MUST reject any place identity present in both geo_places and geo_places_exclude. Catalog version is deliberately not part of place identity: a stable ID cannot be both included and excluded by assigning different versions."
   },
   "type": "object",
   "properties": {
@@ -33,7 +33,7 @@
     },
     "geo_regions": {
       "type": "array",
-      "description": "Restrict delivery to specific regions/states. ISO 3166-2 subdivision codes (e.g., 'US-CA', 'GB-SCT').",
+      "description": "Restrict delivery to exact canonical ISO 3166-2 subdivisions (states, provinces, regions, departments, or other subdivision categories). Unknown identifiers are invalid. At create or update, sellers MUST reject unsupported identifiers and MUST NOT silently widen, drop, or partially apply the list. During get_products, a seller may instead return a sparse, buyer-reviewable targeting_resolution modification for a valid but unsupported requested outcome. Exact internal translation preserves accepted identifiers in package readback.",
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
@@ -42,7 +42,11 @@
     },
     "geo_regions_exclude": {
       "type": "array",
-      "description": "Exclude specific regions/states from delivery. ISO 3166-2 subdivision codes (e.g., 'US-CA', 'GB-SCT').",
+      "description": "Exclude exact canonical ISO 3166-2 subdivisions. Support is independent from geo_regions inclusion support. Unknown identifiers and values also present in geo_regions are invalid. At create or update, sellers MUST reject unsupported identifiers and partial application; during get_products, a seller may instead return a sparse, buyer-reviewable targeting_resolution modification for a valid but unsupported requested outcome.",
+      "x-adcp-validation": {
+        "disjoint_with": "geo_regions",
+        "spec": "docs/media-buy/advanced-topics/targeting.mdx#geo_regions_exclude"
+      },
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"

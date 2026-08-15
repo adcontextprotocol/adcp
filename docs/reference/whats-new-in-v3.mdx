@@ -329,7 +329,7 @@ Storyboards move into the protocol at `/compliance/{version}/` with a new `speci
 
 The capabilities model is streamlined for 3.0: redundant boolean gates are removed. If a `content_standards` object exists in `get_adcp_capabilities`, the agent supports content standards — no separate boolean needed.
 
-`reporting_capabilities` is now required on every product. Geo capability fields keep their typed shapes: `geo_countries` and `geo_regions` as booleans, `geo_metros` and `geo_postal_areas` as structured objects.
+`reporting_capabilities` is now required on every product. Geo capability fields remain typed: `geo_countries` is boolean; `geo_regions` accepts its legacy boolean or a country/value-aware object; and `geo_metros` and `geo_postal_areas` use structured objects. Region inclusion and exclusion may be declared independently.
 
 See the [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades#capabilities-model-simplification) for the full list of removed fields and migration steps.
 

@@ -169,6 +169,14 @@
           "$ref": "/schemas/core/targeting-overlay-requirements.json",
           "description": "Buyer requirements for product-scoped targeting dimensions that must remain selectable on packages"
         },
+        "geo-region-requirement": {
+          "$ref": "/schemas/core/geo-region-requirement.json",
+          "description": "Buyer country/value requirements for ISO subdivision targeting selected later"
+        },
+        "geo-region-support": {
+          "$ref": "/schemas/core/geo-region-support.json",
+          "description": "Country- and value-aware selectable ISO subdivision targeting support"
+        },
         "product-targeting-resolution": {
           "$ref": "/schemas/core/product-targeting-resolution.json",
           "description": "Discovery-time targeting modifications bound to a configured product"

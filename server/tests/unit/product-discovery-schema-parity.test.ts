@@ -133,6 +133,11 @@ describe('product discovery MCP schema parity', () => {
       'x-adcp-schema-uri': '/schemas/core/geo-place-requirement.json',
       additionalProperties: true,
     });
+    expect(overlayRequirements.properties.geo_regions.anyOf[1]).toMatchObject({
+      type: 'object',
+      'x-adcp-schema-uri': '/schemas/core/geo-region-requirement.json',
+      additionalProperties: true,
+    });
 
     const request = tools.find(tool => tool.name === 'request_proposals')!.inputSchema as JsonSchema;
     const requestCriteria = resolveLocalRef(request, request.properties.criteria);

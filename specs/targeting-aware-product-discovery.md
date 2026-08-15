@@ -468,10 +468,24 @@ like every other concrete constraint. If inclusion and exclusion overlap,
 exclusion wins; a seller that cannot enforce the result rejects the request
 rather than silently broadening it.
 
-Named-place overlays are stricter: the seller rejects the same
-`(country, system, place_type, value)` in `geo_places` and
+ISO-subdivision and named-place overlays are stricter. The seller rejects the
+same ISO 3166-2 value in `geo_regions` and `geo_regions_exclude`. It likewise
+rejects the same `(country, system, place_type, value)` in `geo_places` and
 `geo_places_exclude`, even across catalog versions, rather than applying
 exclusion precedence.
+
+ISO subdivision support may be structured by country and exact candidate
+values. For `geo_regions` and `geo_regions_exclude`, `all_values: true` means
+every protocol-valid ISO 3166-2 value active in the seller's support snapshot
+when the declaration is issued remains selectable; it does not automatically
+include values introduced by a later catalog revision. `catalog_version` and
+`as_of` identify that snapshot when supplied. `values` declares a finite
+selectable subset. A requirement matches only when every country is present and
+every requested value is contained, unless product support declares
+`all_values`. Inclusion and exclusion match independently.
+Known subdivision values belong in `targeting_overlay` so configured discovery
+or refinement binds exact support, price, and forecast without a separate
+resolver task.
 
 Named-place requirements bind the identifier namespace before values are
 known. They key first by `system`, then by country, so two catalogs or two
