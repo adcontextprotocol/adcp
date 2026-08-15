@@ -110,6 +110,53 @@ Control what percentage of impressions each creative receives:
 
 Weights are relative — they don't need to sum to 100, but doing so makes intent clear.
 
+### Rotation modes and groups
+
+`rotation_mode` is a package policy carried on each assignment row. All assignments in one package MUST resolve to the same mode; omission resolves to `weighted`, preserving the pre-3.2 behavior above. A seller MUST reject conflicting modes with `VALIDATION_ERROR` before creating or updating the package rather than picking the first row.
+
+| Mode | Selection behavior |
+|---|---|
+| `weighted` | Select proportionally by `weight`. Omitted weights are equal; `weight: 0` pauses an assignment. This is the default. |
+| `even` | Balance delivery across eligible assignments without buyer-supplied weights. |
+| `sequential` | Cycle through `sequence_position` in ascending order within each group. Every assignment requires a position. |
+| `random` | Make an independent uniform selection from the eligible assignments. |
+
+`group_id` identifies a pool only within its containing package; the same value in another package is unrelated. Assignments without `group_id` belong to the package's default group. In sequential mode, positions start at 1 and MUST be unique within each effective group, so separate groups may reuse the same positions.
+
+Conventional weighted pool (the legacy shape remains valid):
+
+```json
+{
+  "creative_assignments": [
+    { "creative_id": "host_read_30", "weight": 70 },
+    { "creative_id": "produced_spot_30", "weight": 30 }
+  ]
+}
+```
+
+Sequential podcast storytelling:
+
+```json
+{
+  "creative_assignments": [
+    {
+      "creative_id": "story_chapter_1",
+      "rotation_mode": "sequential",
+      "group_id": "listener_story",
+      "sequence_position": 1
+    },
+    {
+      "creative_id": "story_chapter_2",
+      "rotation_mode": "sequential",
+      "group_id": "listener_story",
+      "sequence_position": 2
+    }
+  ]
+}
+```
+
+`weight` is valid only for the effective `weighted` mode. `sequence_position` is valid only for explicit `sequential` assignments. Package validators additionally enforce effective-mode consistency and position uniqueness because JSON Schema draft-07 cannot compare values across assignment rows.
+
 ### Placement targeting
 
 Assign specific creatives to specific placements within a product:
