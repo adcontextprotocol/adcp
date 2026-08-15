@@ -67,6 +67,26 @@
           "additionalProperties": false
         }
       ]
+    },
+    "browserSupport": {
+      "anyOf": [
+        { "$ref": "#/definitions/supported" },
+        {
+          "type": "object",
+          "description": "Canonical browser families that may be selected on packages later. This is executable targeting capability, not a guarantee of inventory for every family.",
+          "properties": {
+            "families": {
+              "type": "array",
+              "items": { "$ref": "/schemas/enums/browser-family.json" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": { "$ref": "/schemas/core/ext.json" }
+          },
+          "required": ["families"],
+          "additionalProperties": false
+        }
+      ]
     }
   },
   "properties": {
@@ -158,6 +178,8 @@
     "device_platform_exclude": { "$ref": "#/definitions/supported" },
     "device_type": { "$ref": "#/definitions/supported" },
     "device_type_exclude": { "$ref": "#/definitions/supported" },
+    "browser": { "$ref": "#/definitions/browserSupport" },
+    "browser_exclude": { "$ref": "#/definitions/browserSupport" },
     "store_catchments": { "$ref": "#/definitions/supported" },
     "language": { "$ref": "#/definitions/supported" },
     "keyword_targets": { "$ref": "#/definitions/keywordSupport" },

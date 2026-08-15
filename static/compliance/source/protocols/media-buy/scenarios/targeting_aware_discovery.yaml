@@ -53,9 +53,13 @@ prerequisites:
   description: |
     The controller seeds a non-guaranteed video product with US inventory,
     Nielsen DMA support, two targetable publisher-scoped placements, list
-    targeting support, and enumerated age intervals. The seller can return
-    request-scoped configured products derived from this catalog product. The
-    expired configured fixture is a retained tombstone issued to this scenario's
+    targeting support, enumerated age intervals, and deterministic browser
+    inventory. Chrome, Firefox, and unclassifiable browser traffic are
+    forecastable; Safari is recognized and targetable but has no inventory in
+    the seeded forecast window. Safari is compatible only with iOS and macOS,
+    so Safari plus Android is unenforceable. The seller can return request-scoped
+    configured products derived from this catalog product. The expired
+    configured fixture is a retained tombstone issued to this scenario's
     authenticated account and discovery lineage; inaccessible lineages are not
     exposed.
   test_kit: "test-kits/acme-outdoor.yaml"
@@ -89,7 +93,12 @@ fixtures:
           max_values_per_package: 2
         property_list: true
         collection_list: true
+        device_platform: true
         device_platform_exclude: true
+        browser:
+          families: ["chrome", "safari", "firefox", "unknown"]
+        browser_exclude:
+          families: ["chrome", "safari", "firefox", "unknown"]
         keyword_targets: true
         demographics:
           age: true
@@ -104,6 +113,11 @@ fixtures:
               age: { min: 25, max: 34, include_unknown: false }
             - interval_id: "age_35_44"
               age: { min: 35, max: 44, include_unknown: false }
+      browser_inventory:
+        forecastable_families: ["chrome", "firefox", "unknown"]
+        unavailable_families: ["safari"]
+        platform_compatibility:
+          safari: ["ios", "macos"]
     - product_id: "targeting_aware_fixed_placement"
       delivery_type: "non_guaranteed"
       channels: ["ctv"]
@@ -361,6 +375,8 @@ phases:
           targeting_overlay:
             geo_countries: ["US"]
             device_platform_exclude: ["fire_os"]
+            browser: ["chrome", "safari", "unknown"]
+            browser_exclude: ["safari"]
             property_list:
               agent_url: "https://governance.pinnacle-agency.example"
               list_id: "acme_outdoor_allowlist_v1"
@@ -379,6 +395,10 @@ phases:
             property_list: true
             collection_list: true
             device_platform_exclude: true
+            browser:
+              families: ["chrome", "firefox"]
+            browser_exclude:
+              families: ["unknown"]
             keyword_targets:
               supported_match_types: ["exact"]
           context:
@@ -386,10 +406,12 @@ phases:
         expected: |
           Return one configured product whose price and availability forecast
           are scoped to US feed inventory, the selected property and collection
-          lists, and the Fire OS exclusion. Exact acceptance omits
+          lists, the Fire OS exclusion, and Chrome or unclassified browser
+          traffic with Safari excluded. Exact acceptance omits
           targeting_resolution. overlay_support confirms later DMA, placement,
-          property-list, collection-list, and device-platform exclusion without
-          returning one product per possible value.
+          property-list, collection-list, platform, and independent browser
+          inclusion/exclusion control without returning one product per possible
+          value.
         context_outputs:
           - key: "exact_product_id"
             path: "products[0].product_id"
@@ -430,6 +452,16 @@ phases:
             path: "products[0].overlay_support.device_platform_exclude"
             value: true
             description: "Platform exclusion support is declared independently"
+          - check: field_value
+            path: "products[0].overlay_support.browser"
+            value:
+              families: ["chrome", "safari", "firefox", "unknown"]
+            description: "Required later browser inclusion support is declared by family"
+          - check: field_value
+            path: "products[0].overlay_support.browser_exclude"
+            value:
+              families: ["chrome", "safari", "firefox", "unknown"]
+            description: "Required later browser exclusion support is declared independently"
 
       - id: get_unsupported_future_targeting
         title: "Exclude products that lack a required future dimension"
@@ -821,7 +853,7 @@ phases:
             description: "A recognized expired configured product uses PRODUCT_EXPIRED"
 
   - id: modified_targeting_discovery
-    title: "Accept a seller-supported demographic alternative through product selection"
+    title: "Accept sparse demographic and browser alternatives through product selection"
     steps:
       - id: get_modified_age_product
         title: "Request an age range the product cannot execute exactly"
@@ -841,13 +873,15 @@ phases:
           targeting_overlay:
             demographics:
               age: { min: 21, max: 35, include_unknown: false }
+            browser: ["chrome", "safari"]
           context:
             correlation_id: "targeting_aware_discovery--modified_age"
         expected: |
-          Return a distinct configured product proposing ages 25–34. The sparse
-          resolution contains only /demographics/age, expires_at bounds the
-          offer, and the forecast reflects ages 25–34 rather than the catalog
-          product or original inexact request.
+          Return a distinct configured product proposing ages 25–34 and
+          removing Safari because only Chrome has forecastable inventory for
+          the requested discovery scope. The ordered sparse resolution changes only
+          /demographics/age and /browser, expires_at bounds the offer, and the
+          forecast reflects the resulting effective targeting.
         context_outputs:
           - key: "modified_product_id"
             path: "products[0].product_id"
@@ -868,6 +902,18 @@ phases:
             path: "products[0].targeting_resolution.modifications[0].applied"
             value: { min: 25, max: 34, include_unknown: false }
             description: "Configured age predicate is 25–34 with unknown ages excluded"
+          - check: field_value
+            path: "products[0].targeting_resolution.modifications[1].operation"
+            value: "remove_values"
+            description: "Browser set changes use the sparse set operation"
+          - check: field_value
+            path: "products[0].targeting_resolution.modifications[1].path"
+            value: "/browser"
+            description: "Browser modification targets the complete browser-family set"
+          - check: field_contains
+            path: "products[0].targeting_resolution.modifications[1].values[*]"
+            value: "safari"
+            description: "The configured offer visibly removes Safari"
           - check: field_present
             path: "products[0].expires_at"
             description: "Modified configured product is time-bound"
@@ -895,9 +941,9 @@ phases:
               bid_price: 14.0
               budget: 5000
         expected: |
-          Selecting the configured product accepts ages 25–34. The response
-          package echoes complete effective targeting and never stores
-          equivalent false.
+          Selecting the configured product accepts ages 25–34 and Chrome-only
+          browser targeting. The response package echoes complete effective
+          targeting and never stores equivalent false.
         context_outputs:
           - key: "modified_media_buy_id"
             path: "media_buy_id"
@@ -912,6 +958,13 @@ phases:
             path: "packages[0].targeting_overlay.demographics.age.max"
             value: 34
             description: "Accepted effective upper bound is echoed"
+          - check: field_value
+            path: "packages[0].targeting_overlay.browser[0]"
+            value: "chrome"
+            description: "Accepted effective browser family is echoed"
+          - check: field_absent
+            path: "packages[0].targeting_overlay.browser[1]"
+            description: "Removed Safari is not booked"
           - check: field_value
             path: "packages[0].targeting_resolution.demographics.equivalent"
             value: true
@@ -944,9 +997,9 @@ phases:
               bid_price: 14.0
               budget: 5000
         expected: |
-          The configured product retains the US, Fire OS exclusion, property,
-          collection, and feed targeting accepted at discovery even though the
-          buyer does not repeat it.
+          The configured product retains the US, Fire OS exclusion, browser
+          inclusion/exclusion, property, collection, and feed targeting
+          accepted at discovery even though the buyer does not repeat it.
         context_outputs:
           - key: "placement_media_buy_id"
             path: "media_buy_id"
@@ -967,6 +1020,28 @@ phases:
             path: "packages[0].targeting_overlay.device_platform_exclude[0]"
             value: "fire_os"
             description: "Configured-product platform exclusion is booked without repetition"
+          - check: field_contains
+            path: "packages[0].targeting_overlay.browser[*]"
+            value: "chrome"
+            description: "Named Chrome traffic remains in the booked inclusion set"
+          - check: field_contains
+            path: "packages[0].targeting_overlay.browser[*]"
+            value: "safari"
+            description: "Overlapping Safari remains explicit in the booked inclusion set"
+          - check: field_contains
+            path: "packages[0].targeting_overlay.browser[*]"
+            value: "unknown"
+            description: "Explicitly eligible unclassifiable browsers remain in the booked inclusion set"
+          - check: field_absent
+            path: "packages[0].targeting_overlay.browser[3]"
+            description: "Booked browser inclusion has exactly the three requested families"
+          - check: field_contains
+            path: "packages[0].targeting_overlay.browser_exclude[*]"
+            value: "safari"
+            description: "Overlapping Safari exclusion is booked and wins during delivery"
+          - check: field_absent
+            path: "packages[0].targeting_overlay.browser_exclude[1]"
+            description: "Booked browser exclusion has exactly the one requested family"
           - check: field_value
             path: "packages[0].targeting_overlay.property_list.list_id"
             value: "acme_outdoor_allowlist_v1"
@@ -1002,6 +1077,8 @@ phases:
               targeting_overlay:
                 geo_countries: ["US"]
                 device_platform_exclude: ["fire_os"]
+                browser: ["chrome", "firefox"]
+                browser_exclude: ["unknown"]
                 property_list:
                   agent_url: "https://governance.pinnacle-agency.example"
                   list_id: "acme_outdoor_allowlist_v1"
@@ -1015,8 +1092,10 @@ phases:
                       placement_id: "short_video"
         expected: |
           Apply the full overlay replacement atomically under update_targeting.
-          The response echoes short_video as the committed purchased set. The
-          seller rejects rather than partially applying an invalid selection.
+          The response echoes short_video plus the later-selected Chrome or
+          Firefox inclusion and unknown-browser exclusion. This exercises the
+          independently advertised future browser capabilities. The seller
+          rejects rather than partially applying an invalid selection.
         validations:
           - check: response_schema
             description: "Response matches update-media-buy-response.json"
@@ -1039,6 +1118,69 @@ phases:
                     - publisher_domain: "pinnacle-media.example"
                       placement_id: "short_video"
             description: "Update response returns complete post-update placement targeting state"
+          - check: field_contains
+            path: "affected_packages[*].targeting_overlay.browser[*]"
+            value: "chrome"
+            description: "Update applies later-selected Chrome inclusion"
+          - check: field_contains
+            path: "affected_packages[*].targeting_overlay.browser[*]"
+            value: "firefox"
+            description: "Update applies later-selected Firefox inclusion"
+          - check: field_absent
+            path: "affected_packages[0].targeting_overlay.browser[2]"
+            description: "Update returns exactly two selected browser families"
+          - check: field_contains
+            path: "affected_packages[*].targeting_overlay.browser_exclude[*]"
+            value: "unknown"
+            description: "Update applies the later-selected unknown-browser exclusion"
+          - check: field_absent
+            path: "affected_packages[0].targeting_overlay.browser_exclude[1]"
+            description: "Update returns exactly one browser exclusion"
+
+      - id: reject_incompatible_browser_platform
+        title: "Reject an incompatible browser and device combination"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.placement_media_buy_id"
+          idempotency_key: "$generate:uuid_v4#targeting_aware_discovery_incompatible_browser_platform"
+          packages:
+            - package_id: "$context.placement_package_id"
+              targeting_overlay:
+                geo_countries: ["US"]
+                device_platform: ["android"]
+                device_platform_exclude: ["fire_os"]
+                browser: ["safari"]
+                browser_exclude: ["unknown"]
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_allowlist_v1"
+                collection_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_collections_v1"
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "short_video"
+        expected: |
+          Reject atomically with UNSUPPORTED_FEATURE because the seeded product
+          can classify both dimensions but cannot execute Safari on Android.
+          The prior Chrome-or-Firefox targeting remains committed.
+        validations:
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "An unenforceable browser and platform intersection is rejected"
 
       - id: reject_cross_publisher_placement
         title: "Reject a placement outside the product publisher scope"
@@ -1132,7 +1274,7 @@ phases:
         expected: |
           Return complete effective targeting with short_video selected. The
           stored package does not expose a separate effective-placement source
-          of truth. Both rejected updates were atomic and left this state
+          of truth. All three rejected updates were atomic and left this state
           unchanged.
         validations:
           - check: response_schema
@@ -1157,6 +1299,24 @@ phases:
             path: "media_buys[0].packages[0].targeting_overlay.device_platform_exclude[0]"
             value: "fire_os"
             description: "Readback preserves the purchased platform exclusion"
+          - check: field_contains
+            path: "media_buys[0].packages[0].targeting_overlay.browser[*]"
+            value: "chrome"
+            description: "Readback preserves later-selected Chrome inclusion"
+          - check: field_contains
+            path: "media_buys[0].packages[0].targeting_overlay.browser[*]"
+            value: "firefox"
+            description: "Readback preserves later-selected browser inclusion"
+          - check: field_absent
+            path: "media_buys[0].packages[0].targeting_overlay.browser[2]"
+            description: "Readback browser inclusion has exactly two families"
+          - check: field_contains
+            path: "media_buys[0].packages[0].targeting_overlay.browser_exclude[*]"
+            value: "unknown"
+            description: "Readback preserves later-selected browser exclusion"
+          - check: field_absent
+            path: "media_buys[0].packages[0].targeting_overlay.browser_exclude[1]"
+            description: "Readback browser exclusion has exactly one family"
           - check: field_value
             path: "media_buys[0].packages[0].targeting_overlay.property_list.list_id"
             value: "acme_outdoor_allowlist_v1"

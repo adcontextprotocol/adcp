@@ -45,6 +45,8 @@
             "/device_platform_exclude",
             "/device_type",
             "/device_type_exclude",
+            "/browser",
+            "/browser_exclude",
             "/language"
           ],
           "description": "Supported targeting field with string-set semantics. Postal-area paths identify their group with selector; direct top-level sets omit selector."

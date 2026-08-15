@@ -41,6 +41,25 @@
           "additionalProperties": false
         }
       ]
+    },
+    "browserRequirement": {
+      "anyOf": [
+        { "$ref": "#/definitions/required" },
+        {
+          "type": "object",
+          "description": "Require later package-level selection for the listed canonical browser families. The requirement matches unrestricted true support or structured support containing every requested family.",
+          "properties": {
+            "families": {
+              "type": "array",
+              "items": { "$ref": "/schemas/enums/browser-family.json" },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": ["families"],
+          "additionalProperties": false
+        }
+      ]
     }
   },
   "properties": {
@@ -114,6 +133,8 @@
     "device_platform_exclude": { "$ref": "#/definitions/required" },
     "device_type": { "$ref": "#/definitions/required" },
     "device_type_exclude": { "$ref": "#/definitions/required" },
+    "browser": { "$ref": "#/definitions/browserRequirement" },
+    "browser_exclude": { "$ref": "#/definitions/browserRequirement" },
     "store_catchments": { "$ref": "#/definitions/required" },
     "language": { "$ref": "#/definitions/required" },
     "keyword_targets": { "$ref": "#/definitions/keywordRequirement" },
