@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.1.14
+
+### Patch Changes
+
+- bcaf175: Fix three schema fields whose inline enums omitted values already present in their canonical enum definitions.
+
 ## 3.1.13
 
 ### Patch Changes
