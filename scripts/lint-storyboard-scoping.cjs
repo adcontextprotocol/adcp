@@ -127,6 +127,7 @@ const EXEMPT_FROM_LINT = new Set([
   'list_creative_formats',
   'list_accounts',
   // (b) Global brand/rights catalog reads
+  'search_brands',
   'get_brand_identity',
   'get_rights',
   'update_rights',
