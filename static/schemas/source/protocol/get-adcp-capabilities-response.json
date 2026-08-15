@@ -176,8 +176,7 @@
                   "type": "array",
                   "description": "Surface types this seller supports via TMP.",
                   "items": {
-                    "type": "string",
-                    "enum": ["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio", "ai_assistant"]
+                    "$ref": "/schemas/enums/property-type.json"
                   }
                 }
               }
