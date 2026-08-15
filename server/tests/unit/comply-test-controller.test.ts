@@ -701,6 +701,56 @@ describe('comply_test_controller', () => {
       expect(found.some(b => b.media_buy_id === 'seeded_mb_1')).toBe(true);
     });
 
+    it('keeps public controller entity seeds visible after the SDK strips sandbox', async () => {
+      const publicServer = createTrainingAgentServer({ mode: 'open', principal: 'static:public' });
+      const sandboxAccount = {
+        brand: { domain: 'public-seed.example' },
+        operator: 'public-seed.example',
+        sandbox: true,
+      };
+      const taskAccount = {
+        brand: sandboxAccount.brand,
+        operator: sandboxAccount.operator,
+      };
+
+      await simulateCallTool(publicServer, 'comply_test_controller', {
+        scenario: 'seed_creative',
+        account: sandboxAccount,
+        params: {
+          creative_id: 'public_seed_creative',
+          fixture: { status: 'approved', format_id: { id: 'display_300x250' } },
+        },
+      });
+      await simulateCallTool(publicServer, 'comply_test_controller', {
+        scenario: 'seed_media_buy',
+        account: sandboxAccount,
+        params: {
+          media_buy_id: 'public_seed_buy',
+          fixture: {
+            status: 'active',
+            packages: [{
+              package_id: 'public_seed_package',
+              creative_assignments: ['public_seed_creative'],
+            }],
+          },
+        },
+      });
+
+      const { result: buys } = await simulateCallTool(publicServer, 'get_media_buys', {
+        account: taskAccount,
+        media_buy_ids: ['public_seed_buy'],
+      });
+      expect((buys as any).media_buys.map((buy: any) => buy.media_buy_id)).toEqual(['public_seed_buy']);
+
+      const { result: creatives } = await simulateCallTool(publicServer, 'list_creatives', {
+        account: taskAccount,
+        filters: { media_buy_ids: ['public_seed_buy'] },
+      });
+      expect((creatives as any).creatives.map((creative: any) => creative.creative_id)).toEqual([
+        'public_seed_creative',
+      ]);
+    });
+
     it('seed_media_buy preserves available_actions and enforces non-self-serve mode mismatch', async () => {
       const { result, isError } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'seed_media_buy',
