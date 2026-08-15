@@ -155,6 +155,10 @@ phases:
         context_outputs:
           - name: "signal_ref"
             path: "signals[0].signal_ref"
+          - name: "signal_ref_scope"
+            path: "signals[0].signal_ref.scope"
+          - name: "signal_ref_id"
+            path: "signals[0].signal_ref.signal_id"
           - name: "signal_agent_segment_id"
             path: "signals[0].signal_agent_segment_id"
           - name: "signal_pricing_option_id"
@@ -248,9 +252,13 @@ phases:
           - check: response_schema
             description: "DR-0001 / get-media-buys-response.json: readback matches the normative schema"
           - check: field_value
-            path: "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[0].signals[0].signal_ref"
-            value: "$context.signal_ref"
-            description: "DR-0001 / targeting signal-reference contract: readback preserves the exact discovered signal_ref"
+            path: "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[0].signals[0].signal_ref.scope"
+            value: "$context.signal_ref_scope"
+            description: "DR-0001 / targeting signal-reference contract: readback preserves the discovered signal_ref scope"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[0].signals[0].signal_ref.signal_id"
+            value: "$context.signal_ref_id"
+            description: "DR-0001 / targeting signal-reference contract: readback preserves the exact discovered signal_id within its scope"
           - check: field_value
             path: "media_buys[0].packages[0].targeting_overlay.signal_targeting_groups.groups[0].signals[0].signal_agent_segment_id"
             value: "$context.signal_agent_segment_id"
@@ -270,6 +278,9 @@ phases:
 
   - id: register_buyer_audience
     title: "Register a buyer-managed CRM audience"
+    requires_capability:
+      path: media_buy.audience_targeting
+      present: true
     steps:
       - id: sync_buyer_audience
         title: "Create a buyer-managed audience identity"
@@ -277,9 +288,6 @@ phases:
         schema_ref: "media-buy/sync-audiences-request.json"
         response_schema_ref: "media-buy/sync-audiences-response.json"
         doc_ref: "/media-buy/task-reference/sync_audiences"
-        requires_capability:
-          path: media_buy.audience_targeting
-          present: true
         stateful: true
         expected: |
           Register the buyer-managed CRM list and return its audience_id. That
@@ -315,6 +323,9 @@ phases:
 
   - id: reject_cross_path_substitution
     title: "Reject identities submitted through the wrong targeting path"
+    requires_capability:
+      path: media_buy.audience_targeting
+      present: true
     steps:
       - id: reject_signal_as_audience
         title: "Reject a discovered signal handle in audience_include"
@@ -322,9 +333,6 @@ phases:
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/advanced-topics/targeting#audience_include"
-        requires_capability:
-          path: media_buy.audience_targeting
-          present: true
         expect_error: true
         negative_path: payload_well_formed
         stateful: false
@@ -366,9 +374,6 @@ phases:
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/advanced-topics/targeting#signal_targeting_groups"
-        requires_capability:
-          path: media_buy.audience_targeting
-          present: true
         expect_error: true
         negative_path: payload_well_formed
         stateful: false
