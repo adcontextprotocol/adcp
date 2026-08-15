@@ -11441,6 +11441,15 @@ describe('activate_signal handler', () => {
 
   it('requires governance for rights services from account registration without a local plan', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
+    const initialGrant = await simulateCallTool(server, 'acquire_rights', {
+      account,
+      rights_id: 'janssen_likeness_voice',
+      pricing_option_id: 'monthly_exclusive',
+      buyer: { domain: 'signal-test.example' },
+      campaign: { description: 'Athletic campaign', uses: ['likeness'] },
+    });
+    expect(initialGrant.result.rights_status).toBe('acquired');
+
     await syncGovernedAccount(server);
 
     const acquired = await simulateCallTool(server, 'acquire_rights', {

@@ -228,6 +228,9 @@ export interface RightsGrantState {
   impressionCap?: number;
   paused: boolean;
   createdAt: string;
+  /** Canonical controller fixture retained so seed retries stay idempotent
+   * even after update_rights mutates lifecycle fields. */
+  seedFingerprint?: string;
 }
 
 export interface ComplyDeliveryAccumulator {

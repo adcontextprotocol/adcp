@@ -207,6 +207,7 @@ describe('comply_test_controller', () => {
         'force_creative_purge',
         'force_wholesale_feed_webhook',
         'seed_account',
+        'seed_rights_grant',
         'seed_creative_format',
         'seed_measurement_catalog',
         'query_provenance_audit_observations',
@@ -215,7 +216,7 @@ describe('comply_test_controller', () => {
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(23);
+      expect(scenarios.length).toBe(24);
       // Dedup invariant — see the list_scenarios response merge in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
@@ -348,6 +349,80 @@ describe('comply_test_controller', () => {
         'acct_seed_account_2',
       ]));
       expect(threeZeroResult.pagination).toMatchObject({ has_more: true });
+    });
+  });
+
+  describe('seed_rights_grant', () => {
+    it('seeds an acquired grant that update_rights can pause', async () => {
+      const { result: seeded } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_rights_grant',
+        account: ACCOUNT,
+        params: {
+          rights_id: 'janssen_likeness_voice',
+          fixture: {
+            brand_id: 'daan_janssen',
+            buyer_domain: 'comply-tester',
+            pricing_option_id: 'monthly_exclusive',
+            start_date: '2099-04-01',
+            end_date: '2099-06-30',
+            impression_cap: 100000,
+          },
+        },
+      });
+      expect(seeded.success).toBe(true);
+
+      const { result: updated, isError } = await simulateCallTool(server, 'update_rights', {
+        account: ACCOUNT,
+        rights_id: 'janssen_likeness_voice',
+        paused: true,
+      });
+      expect(isError).not.toBe(true);
+      expect(updated).toMatchObject({ rights_id: 'janssen_likeness_voice', paused: true });
+      expect((updated.rights_constraint as { grant_status?: string }).grant_status).toBe('paused');
+
+      const { result: replay } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_rights_grant',
+        account: ACCOUNT,
+        params: {
+          rights_id: 'janssen_likeness_voice',
+          fixture: {
+            brand_id: 'daan_janssen',
+            buyer_domain: 'comply-tester',
+            pricing_option_id: 'monthly_exclusive',
+            start_date: '2099-04-01',
+            end_date: '2099-06-30',
+            impression_cap: 100000,
+          },
+        },
+      });
+      expect(replay.success).toBe(true);
+
+      const { result: conflict } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_rights_grant',
+        account: ACCOUNT,
+        params: {
+          rights_id: 'janssen_likeness_voice',
+          fixture: {
+            brand_id: 'daan_janssen',
+            buyer_domain: 'comply-tester',
+            pricing_option_id: 'monthly_exclusive',
+            start_date: '2099-04-01',
+            end_date: '2099-07-31',
+            impression_cap: 100000,
+          },
+        },
+      });
+      expect(conflict).toMatchObject({ success: false, error: 'INVALID_STATE' });
+    });
+
+    it('rejects an unknown grant without mutating seeded state', async () => {
+      const { result, isError } = await simulateCallTool(server, 'update_rights', {
+        account: ACCOUNT,
+        rights_id: 'stale_rights_grant_00000000',
+        paused: true,
+      });
+      expect(isError).toBe(true);
+      expect(result.code).toBe('REFERENCE_NOT_FOUND');
     });
   });
 

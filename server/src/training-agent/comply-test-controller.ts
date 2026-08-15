@@ -27,6 +27,7 @@ import type {
   PackageState,
   CreativeState,
   GovernancePlanState,
+  RightsGrantState,
   AccountRef,
   BrandRef,
   ComplyDeliveryAccumulator,
@@ -1058,6 +1059,7 @@ const LOCAL_SCENARIOS = [
   'force_creative_purge',
   'force_wholesale_feed_webhook',
   'seed_account',
+  'seed_rights_grant',
   'seed_creative_format',
   'seed_measurement_catalog',
   'query_provenance_audit_observations',
@@ -1408,6 +1410,39 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
   if (scenario === 'seed_account') {
     return seedAccountFixture(rawArgs as ToolArgs, ctx);
+  }
+  if (scenario === 'seed_rights_grant') {
+    const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+    const rightsId = typeof params.rights_id === 'string' ? params.rights_id : undefined;
+    if (!rightsId) {
+      return { success: false, error: 'INVALID_PARAMS', error_detail: 'params.rights_id is required for seed_rights_grant' };
+    }
+    const fixture = isRecord(params.fixture) ? params.fixture : {};
+    const seeded: RightsGrantState = {
+      grantId: rightsId,
+      rightsId,
+      brandId: typeof fixture.brand_id === 'string' ? fixture.brand_id : 'daan_janssen',
+      buyerDomain: typeof fixture.buyer_domain === 'string' ? fixture.buyer_domain : 'pinnacle-agency.example',
+      status: 'acquired',
+      pricingOptionId: typeof fixture.pricing_option_id === 'string' ? fixture.pricing_option_id : 'monthly_exclusive',
+      startDate: typeof fixture.start_date === 'string' ? fixture.start_date : '2099-04-01',
+      endDate: typeof fixture.end_date === 'string' ? fixture.end_date : '2099-06-30',
+      ...(typeof fixture.impression_cap === 'number' && { impressionCap: fixture.impression_cap }),
+      paused: fixture.paused === true,
+      createdAt: typeof fixture.created_at === 'string' ? fixture.created_at : '2099-01-01T00:00:00Z',
+    };
+    const seedFingerprint = JSON.stringify(seeded);
+    seeded.seedFingerprint = seedFingerprint;
+    const existing = session.rightsGrants.get(rightsId);
+    if (existing) {
+      if (existing.seedFingerprint !== seedFingerprint) {
+        return { success: false, error: 'INVALID_STATE', error_detail: `rights_id "${rightsId}" was already seeded with a different fixture — seed_rights_grant is idempotent` };
+      }
+      return { success: true, message: `rights_id "${rightsId}" already seeded with the same fixture` };
+    }
+    enforceMapCap(session.rightsGrants, rightsId, 'rights grants');
+    session.rightsGrants.set(rightsId, seeded);
+    return { success: true, message: `Rights grant "${rightsId}" seeded` };
   }
   if (scenario === 'seed_measurement_catalog') {
     return handleSeedMeasurementCatalog(session, rawArgs);

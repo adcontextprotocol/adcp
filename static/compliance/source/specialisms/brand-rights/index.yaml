@@ -1,5 +1,5 @@
 id: brand_rights
-version: "1.1.0"
+version: "1.2.0"
 title: "Brand identity and rights licensing"
 protocol: brand
 category: brand_rights
@@ -9,6 +9,7 @@ required_tools:
   - get_brand_identity
 requires_scenarios:
   - brand_rights/governance_denied
+  - brand_rights/update_rights_lifecycle
 
 narrative: |
   You run a brand agent — a system that holds brand identity data (logos, colors, fonts,

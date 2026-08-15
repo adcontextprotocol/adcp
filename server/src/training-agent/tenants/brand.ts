@@ -19,6 +19,7 @@ import { getTenantSigningMaterial } from './signing.js';
 import { customToolFor } from './custom-tool-helper.js';
 import { listAccountsTool } from './account-tools.js';
 import { handleCreativeApproval } from '../brand-handlers.js';
+import { handleComplyTestController } from '../comply-test-controller.js';
 import { verifyBrandClaimHandler, verifyBrandClaimsHandler } from '../brand-claim-handlers.js';
 import type { TrainingContext } from '../types.js';
 
@@ -35,6 +36,18 @@ const BRAND_REF = z.object({
 }).passthrough().optional();
 
 const CONTEXT_REF = z.any().optional();
+
+const COMPLY_TEST_CONTROLLER_SCHEMA = {
+  scenario: z.string(),
+  account: z.object({
+    account_id: z.string().optional(),
+    brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
+    operator: z.string().optional(),
+    sandbox: z.literal(true),
+  }).passthrough(),
+  params: z.object({}).passthrough().optional(),
+  context: CONTEXT_REF,
+};
 
 // verify_brand_claim — one tool, four claim types discriminated by claim_type.
 // The `claim` object varies by type, so it stays passthrough; the handler
@@ -91,6 +104,13 @@ export function buildBrandTenantConfig(host: string, options: { storyboardCompat
       platform: new TrainingBrandPlatform(options.storyboardCompat) as any,
       serverOptions: {
         customTools: {
+          comply_test_controller: customToolFor(
+            'comply_test_controller',
+            'Triggers sandbox-only state transitions for brand-rights compliance testing.',
+            COMPLY_TEST_CONTROLLER_SCHEMA,
+            handleComplyTestController,
+            { trainingContext: { tenantId: TENANT_ID, storyboardCompat: options.storyboardCompat } },
+          ),
           list_accounts: listAccountsTool(options.storyboardCompat),
           verify_brand_claim: customToolFor(
             'verify_brand_claim',
