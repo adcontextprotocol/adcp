@@ -150,7 +150,10 @@ describe('product discovery MCP schema parity', () => {
     expect(refinement.oneOf).toEqual(expect.arrayContaining([
       expect.objectContaining({
         properties: { action: expect.objectContaining({ const: 'revise' }) },
-        anyOf: [{ required: ['instructions'] }, { required: ['criteria'] }],
+        anyOf: expect.arrayContaining([
+          { required: ['ask'] },
+          { required: ['criteria'] },
+        ]),
       }),
     ]));
   });

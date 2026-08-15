@@ -7,10 +7,10 @@ testable: false
 
 `refine_proposals` has two explicit operations over immutable proposal snapshots:
 
-- `action: "revise"` applies structured `criteria`, semantic `instructions`, or both and returns a new draft proposal.
+- `action: "revise"` applies structured discovery `criteria`, typed boundaries, product changes, requested alternatives, and/or the buyer's free-text `ask`, returning one or more new draft proposals.
 - `action: "finalize"` changes no commercial terms and returns a new committed proposal backed by an inventory hold until `expires_at`.
 
-Revision may target a draft, committed, or accepted proposal; finalization must target a draft. Proposal IDs must be unique within the request, and results preserve request order. Every successful operation returns a new `proposal_id`; that ID is the complete version identity for the immutable commercial snapshot, and the source remains unchanged.
+Revision may target a draft, committed, or accepted proposal; finalization must target a draft. A request contains at most 25 refinements. Proposal IDs must be unique within the request, and results preserve request order. Every successful operation returns a new `proposal_id`; that ID is the complete version identity for the immutable commercial snapshot, and the source remains unchanged.
 
 {/* Using latest because this schema is not yet released in any version.
     Update to the correct version alias after the next release. */}
@@ -23,7 +23,17 @@ Revision may target a draft, committed, or accepted proposal; finalization must 
     {
       "proposal_id": "proposal_123",
       "action": "revise",
-      "instructions": "Shift more budget toward video."
+      "constraints": {
+        "total_budget": { "max": 50000, "currency": "USD" },
+        "cpm": { "max": 18, "currency": "USD" },
+        "flight": { "end_no_earlier_than": "2026-10-31T23:59:59Z" }
+      },
+      "product_changes": {
+        "premium_video": "include",
+        "display_ros": "omit"
+      },
+      "alternatives": { "count": 3 },
+      "ask": "Use materially different product mixes while preserving reach."
     },
     {
       "proposal_id": "proposal_456",
@@ -38,11 +48,105 @@ Revision may target a draft, committed, or accepted proposal; finalization must 
 }
 ```
 
-Use `criteria` for representable changes and `instructions` for semantic changes without a structured field. Each present criteria field replaces that field from the source proposal; omitted criteria fields remain bound to the revision. A revise entry may include either or both, but must include at least one. This makes a targeting change deterministic and ensures the revised proposal's price and forecast use the new effective overlay.
+Typed fields are deliberately small and mechanically verifiable:
 
-When hard targeting appears only in `instructions`, the seller confirms any structured interpretation that materially affects the revision in that result's `targeting_resolution.brief_targeting`. Exact structured targeting is not repeated; product-specific alternatives remain sparse modifications on the returned configured products.
+| Field | Meaning |
+|---|---|
+| `constraints.total_budget` | Inclusive `min`/`max` bounds checked against a present `commercial_terms.total_budget`; `currency` must match and `min` must not exceed `max`. Each `constraints` key is its own stable constraint identifier. |
+| `constraints.cpm` | Hard rate ceiling. Satisfied only when every purchase carries fixed `cpm`/`vcpm` pricing in the requested `currency` with `fixed_price` at or below `max`; auction-priced or non-CPM purchases leave it unsatisfied. |
+| `constraints.impressions` | Hard volume floor. Satisfied only when every purchase carries `impressions` and their sum is at least `min`. |
+| `constraints.flight` | Flight-window bounds. `start_no_later_than` requires a concrete `commercial_terms.start_time` at or before the bound (`asap` is unverifiable and unsatisfied); `end_no_earlier_than` requires `end_time` at or after it. |
+| `product_changes` | Map keyed by product ID. `include` requires a product in `commercial_terms.purchases`; `omit` requires it to be absent. Keying makes contradictory actions unrepresentable. |
+| `alternatives.count` | Number of drafts with distinct commercial terms requested, from 2 through the protocol maximum of 10 and no higher than a seller's advertised `max_alternatives`. Returned alternatives have distinct `commercial_terms` and therefore unique `terms_digest` values; diversity strategy remains free text. |
+| `criteria` | Structured discovery criteria to replace on the source proposal. Omitted criteria fields remain inherited; concrete targeting and offer filters belong here. |
+| `ask` | Free text for substitution, trade-offs, diversity, preferences, or other long-tail context. |
 
-The response contains one ordered `results[]` entry per request. `revised` means the requested change produced a new draft, `partial` returns an honest draft plus explanatory notes, `finalized` returns a committed held snapshot, and `unable` returns a reason without minting a misleading result. Every returned proposal carries typed `commercial_terms` and a `terms_digest`. Pass only a finalized committed proposal to [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal), or use [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) when the buyer stops pursuing it. The deprecated [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) proposal mode remains only as the 3.x compatibility adapter.
+`vary` and typed preference enums are intentionally absent: concepts such as “prioritize reach” cannot be verified consistently against `commercial_terms`. A seller may interpret them from `ask`, but cannot report them as deterministically satisfied.
+
+Each present `criteria` field replaces that field from the source proposal; omitted fields remain bound to the revision. This makes a targeting change deterministic and ensures the revised proposal's price and forecast use the new effective overlay. When hard targeting appears only in `ask`, the seller confirms any structured interpretation that materially affects the revision in that result's `targeting_resolution.brief_targeting`. Exact structured targeting is not repeated; product-specific alternatives remain sparse modifications on the returned configured products.
+
+**Response schema:** [`/schemas/latest/media-buy/refine-proposals-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/refine-proposals-response.json)
+
+The response contains one ordered `results[]` entry per requested source proposal. Each entry echoes `source_proposal_id`; buyers cross-check by that echo rather than by position alone. Every returned proposal carries `parent_proposal_id` equal to the entry's `source_proposal_id`, so negotiation lineage survives in the proposals themselves:
+
+| Outcome | Proposal field | Meaning |
+|---|---|---|
+| `revised` | `proposals[]` | Every hard constraint is satisfied. Without `alternatives`, the array has one draft; with `alternatives.count`, it has exactly that many and every `terms_digest` is unique. |
+| `partial` | `proposals[]` | Honest drafts were produced, but a hard constraint, typed change, requested count, or free-text ask was not fully applied. `reason_code` and `reason` are required. |
+| `finalized` | `proposal` | One committed proposal backed by an inventory hold. |
+| `unable` | none | No honest draft was produced. `reason_code` and `reason` are required. |
+
+`reason_code` distinguishes commercial refusal from implementation limits:
+
+| Code | Meaning |
+|---|---|
+| `commercially_declined` | The seller understood terms requested through the free-text `ask` but declined to offer them. |
+| `constraint_unsatisfiable` | A typed constraint or product change was not satisfied — whether the seller cannot or will not meet it. |
+| `unsupported_dimension` | The seller cannot parse or validate a requested typed dimension. |
+| `uninterpreted` | Some or all of the free-text `ask` could not be interpreted. |
+| `alternatives_unavailable` | Fewer distinct drafts were produced than requested. |
+| `source_unavailable` | The source proposal was unavailable or ineligible for this caller. |
+| `hold_unavailable` | The seller declined or failed to reserve inventory for a finalize. |
+| `batch_aborted` | This entry failed only because a sibling in the all-or-none finalize batch failed. |
+
+Typed failures always use `constraint_unsatisfiable`, regardless of whether the refusal is capability or commercial; won't-versus-can't nuance belongs in `reason` or a `commercially_declined` response to an `ask`. When multiple shortfalls co-occur, `constraint_unsatisfiable` takes precedence over every other code, and an alternatives shortfall remains visible through `proposals.length`.
+
+A draft that violates a hard constraint MUST NOT be returned as `revised`. For `constraints.total_budget`, satisfaction requires a present `commercial_terms.total_budget`, the requested currency, and an amount inside every supplied bound. An absent total, currency mismatch, or out-of-range amount is unsatisfied: the seller returns `partial`, or `unable` when it cannot produce an honest draft, with `reason_code: "constraint_unsatisfiable"` and `unsatisfied_constraints: ["total_budget"]`. The other `constraints` keys behave identically under their satisfaction rules in the request schema.
+
+Every draft on a `partial` result MUST satisfy every typed constraint whose key is absent from `unsatisfied_constraints` and every product action absent from `unsatisfied_product_changes`, whatever the `reason_code`. This is the invariant that lets a buyer trust typed compliance without parsing prose. Constraint failures are identified through `unsatisfied_constraints` (echoing request `constraints` keys), `unsatisfied_product_changes` (a subset of the requested product-action map), or both.
+
+A `partial` response to the request above looks like:
+
+```json
+{
+  "adcp_version": "3.2.0",
+  "status": "completed",
+  "results": [
+    {
+      "source_proposal_id": "proposal_123",
+      "outcome": "partial",
+      "reason_code": "alternatives_unavailable",
+      "reason": "Two commercially distinct packages are available at these terms.",
+      "proposals": [
+        { "proposal_id": "proposal_9a1", "parent_proposal_id": "proposal_123", "proposal_status": "draft", "...": "..." },
+        { "proposal_id": "proposal_9a2", "parent_proposal_id": "proposal_123", "proposal_status": "draft", "...": "..." }
+      ]
+    },
+    {
+      "source_proposal_id": "proposal_456",
+      "outcome": "revised",
+      "proposals": [
+        { "proposal_id": "proposal_9b7", "parent_proposal_id": "proposal_456", "proposal_status": "draft", "...": "..." }
+      ]
+    }
+  ],
+  "products": ["..."]
+}
+```
+
+Every returned proposal carries typed `commercial_terms` and a `terms_digest` — the base64url SHA-256 of the [RFC 8785 JCS](https://www.rfc-editor.org/rfc/rfc8785) serialization of `commercial_terms`, prefixed with `sha256:`. Buyers can and should recompute it: digest agreement, not seller assertion, is what makes drafts comparable and alternatives verifiably distinct. Only `commercial_terms` is contractual. Narrative fields — `reason`, `suggestions`, `description`, and anything a buyer wrote in `ask` — are explanatory and never part of the deal a later [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) binds.
+
+## A realistic negotiation
+
+Sam is buying a $50,000 Acme Outdoor campaign from StreamHaus. Capability discovery says StreamHaus supports `total_budget`, `product_changes`, `alternatives`, and `criteria`, with `max_alternatives: 3`. Sam can therefore construct one mechanically checkable request: cap spend at USD 50,000, include premium video, omit run-of-site display, narrow geography to the US and Canada, and ask for three distinct mixes.
+
+Suppose StreamHaus can satisfy the budget and targeting but can produce only two commercially distinct drafts. It returns `partial` with two proposals, `reason_code: "alternatives_unavailable"`, and unique `terms_digest` values. Sam does not need to parse sales prose to understand the counteroffer: the typed budget and product checks still pass, while the requested alternative count does not. Sam can compare the two drafts, revise one again, or finalize the preferred draft.
+
+The failure paths are equally deterministic:
+
+- If a returned draft omits `commercial_terms.total_budget`, uses another currency, or exceeds the cap, the result identifies `total_budget` as unsatisfied and cannot be `revised`.
+- If Sam requests four alternatives against the advertised ceiling of three, the whole call fails with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) at `refinements[0].alternatives.count`; StreamHaus creates no draft.
+- If StreamHaus omits `criteria` from `supported_dimensions`, the whole call fails with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) before mutation. Sam can remove or translate that field and retry with a new valid payload.
+
+This separation is the value of the compact negotiation surface: capabilities prevent impossible asks, typed fields make compliance testable, and `ask` remains available for the commercial nuance that cannot be reduced to a reliable boolean.
+
+Pass only a finalized committed proposal to [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal), or use [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals) when the buyer stops pursuing it.
+
+## Relationship to legacy refinement
+
+The deprecated [`get_products`](/docs/media-buy/task-reference/get_products) `buying_mode: "refine"` surface is the 3.x compatibility façade; `refine_proposals` is the canonical compact-lifecycle negotiation task. The two surfaces share `ask`, product `include`/`omit` verbs, and the same `budget_range` `{min,max,currency}` shape — with inverted semantics. Legacy `budget_range` is a soft discovery filter the seller may miss without failing; compact `constraints.total_budget` is a hard constraint that forces `partial` or `unable` when violated. An adapter that copies the shape without converting the semantics silently turns a preference into a rejection. Compact hard constraints also reject unknown range members and require the semantic `min <= max` check; legacy filters remain extension-tolerant. The surfaces do not share response envelopes: legacy calls may return position-matched `refinement_applied[]`, while compact calls return one `results[]` entry per source proposal and prohibit `refinement_applied`.
+
+Adapters may map a single legacy proposal refinement into the compact task, but must not invent support for per-proposal constraints or alternatives that the legacy envelope cannot represent faithfully. The legacy `more_like_this` verb has no typed compact equivalent and maps only lossily into `ask`.
 
 ## Finalize and hold inventory
 
@@ -60,9 +164,15 @@ Finalization is seller commitment, not buyer acceptance. It locks the already-ne
 }
 ```
 
-A request containing `finalize` must contain only finalize entries. Sellers validate the complete batch before creating any holds; multi-proposal finalization is atomic. Exact retries use the same idempotency key. A new key does not extend or recreate an existing hold.
+A request containing `finalize` must contain only finalize entries. Sellers validate the complete batch before creating any holds; multi-proposal finalization is atomic. When any hold cannot be created, no result is `finalized`: the failing entry returns `unable` with `reason_code: "hold_unavailable"`, and otherwise-eligible siblings return `unable` with `reason_code: "batch_aborted"`. Exact retries use the same idempotency key. A new key does not extend or recreate an existing hold: while a committed successor's hold is unexpired, finalizing the same draft again MUST fail at task level with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state) rather than minting a second hold; after expiry a new finalize MAY create a new one.
+
+Holds are a seller commitment against real inventory, so hold policy is the seller's. Sellers MAY decline any hold (`hold_unavailable`), MAY cap concurrent unexpired holds per buyer to prevent inventory squatting, and choose `expires_at` themselves — the hold window should be long enough to complete acceptance and short enough that unaccepted holds do not function as free inventory options. Nothing in this task obliges a seller to grant holds without whatever credit or relationship checks it applies to reservations generally; the async `submitted` path exists for exactly that re-underwriting.
 
 Every revised proposal inherits the source proposal's opportunity association. Callers do not repeat opportunity context during refinement.
+
+## Negotiation security
+
+Both sides of this task are agents, and both sides' inputs are untrusted. `ask` is attacker-controlled free text: sellers MUST NOT let it alter pricing floors, authorization, or policy, and MUST NOT expose other buyers' terms through it — fence it from any LLM with pricing authority and treat its interpretation as suggestion, never instruction. In the other direction, deterministic `constraint_unsatisfiable` responses form a price oracle: repeated budget or rate probes can binary-search a floor at no cost. Sellers SHOULD apply rate or commercial friction to sustained un-held revision rounds and MAY keep `reason` deliberately coarse rather than revealing how near a rejected constraint came to clearing.
 
 ## Amend an accepted MediaBuy
 
@@ -76,7 +186,7 @@ An accepted proposal is the immutable commercial envelope attached to its MediaB
       "proposal_id": "proposal_accepted_123",
       "action": "revise",
       "change_kind": "amendment",
-      "instructions": "Extend the flight by two weeks and add the premium video product."
+      "ask": "Extend the flight by two weeks and add the premium video product."
     }
   ]
 }

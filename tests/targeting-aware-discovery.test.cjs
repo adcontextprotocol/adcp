@@ -113,7 +113,7 @@ test("split discovery tasks carry targeting through shared criteria", async () =
       refinements: [{ proposal_id: "proposal_123", action: "revise" }],
     }),
     false,
-    "a refinement still needs structured criteria or semantic instructions"
+    "a refinement still needs structured criteria or a semantic ask"
   );
   assert.equal(
     validateRefine({

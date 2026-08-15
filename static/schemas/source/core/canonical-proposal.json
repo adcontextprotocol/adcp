@@ -7,7 +7,13 @@
   "properties": {
     "proposal_id": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "proposal" },
     "proposal_kind": { "type": "string", "enum": ["new_media_buy", "media_buy_update", "media_buy_cancellation"] },
-    "parent_proposal_id": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "proposal" },
+    "parent_proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "proposal",
+      "description": "Immediate predecessor this snapshot was forked from. Every proposal produced by refine_proposals carries it, equal to the request's source proposal_id, so negotiation lineage is reconstructible from proposals alone."
+    },
     "media_buy_id": { "type": "string", "minLength": 1, "x-entity": "media_buy" },
     "opportunity_id": {
       "type": "string",

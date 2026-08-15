@@ -824,6 +824,39 @@
           "minItems": 1,
           "uniqueItems": true
         },
+        "proposal_refinement": {
+          "type": "object",
+          "description": "Pre-flight support for typed refine_proposals revision dimensions. These declarations mean the seller can parse and mechanically validate a dimension; they never promise that the seller will commercially concede it. Absence means typed-dimension support is unknown and buyers must handle per-result partial or unable outcomes. A dimension omitted from an explicit supported_dimensions list MUST be rejected at task level with UNSUPPORTED_FEATURE before any proposal is created.",
+          "properties": {
+            "supported_dimensions": {
+              "type": "array",
+              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
+              "items": {
+                "type": "string",
+                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "alternatives", "criteria"]
+              },
+              "uniqueItems": true
+            },
+            "max_alternatives": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 10,
+              "description": "Optional maximum alternatives.count the seller accepts, up to the protocol maximum of 10. Valid only when supported_dimensions includes alternatives. Requests above this ceiling fail at task level with VALIDATION_ERROR identifying refinements[i].alternatives.count; sellers MUST NOT silently clamp the request or return alternatives_unavailable for the declared ceiling violation."
+            }
+          },
+          "required": ["supported_dimensions"],
+          "allOf": [
+            {
+              "if": { "required": ["max_alternatives"] },
+              "then": {
+                "properties": {
+                  "supported_dimensions": { "contains": { "const": "alternatives" } }
+                }
+              }
+            }
+          ],
+          "additionalProperties": true
+        },
         "reporting_delivery_methods": {
           "type": "array",
           "description": "How this seller delivers reporting data to buyers. Polling via get_media_buy_delivery is always available as a baseline regardless of this field. This array declares additional push-based delivery methods the seller supports. 'webhook': seller pushes to buyer-provided URL (configured per buy via reporting_webhook). 'offline': seller pushes batch files to a cloud storage bucket (seller-provisioned per account via reporting_bucket on the account object). When absent, only polling is available.",
@@ -1500,6 +1533,15 @@
         }
       },
       "allOf": [
+        {
+          "if": { "required": ["proposal_refinement"] },
+          "then": {
+            "properties": {
+              "lifecycle_tools": { "contains": { "const": "refine_proposals" } }
+            },
+            "required": ["lifecycle_tools"]
+          }
+        },
         {
           "if": {
             "properties": {

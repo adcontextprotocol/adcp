@@ -4324,9 +4324,13 @@ export function normalizeProductDiscoveryArgs(
               scope: 'proposal',
               proposal_id: entry.proposal_id,
               action: entry.action === 'finalize' ? 'finalize' : 'include',
+              ...(entry.action !== 'finalize' && isRecord(entry.constraints) && { constraints: entry.constraints }),
+              ...(entry.action !== 'finalize' && isRecord(entry.product_changes) && { product_changes: entry.product_changes }),
+              ...(entry.action !== 'finalize' && isRecord(entry.alternatives) && { alternatives: entry.alternatives }),
+              ...(entry.action !== 'finalize' && isRecord(entry.criteria) && { criteria: entry.criteria }),
               ...(entry.action !== 'finalize'
-                && typeof entry.instructions === 'string'
-                && { ask: entry.instructions }),
+                && typeof entry.ask === 'string'
+                && { ask: entry.ask }),
               ...(entry.action !== 'finalize'
                 && (entry.change_kind === 'amendment' || entry.change_kind === 'cancellation')
                 && { change_kind: entry.change_kind }),
@@ -4600,9 +4604,9 @@ export function projectProductDiscoveryResult(
     const sourceIds = requestedRefinements
       .map(entry => entry.proposal_id)
       .filter((id): id is string => typeof id === 'string');
-    const actionBySource = new Map(requestedRefinements
+    const requestBySource = new Map(requestedRefinements
       .filter((entry): entry is Record<string, unknown> & { proposal_id: string } => typeof entry.proposal_id === 'string')
-      .map(entry => [entry.proposal_id, entry.action === 'finalize' ? 'finalize' : 'revise'] as const));
+      .map(entry => [entry.proposal_id, entry] as const));
     const proposalsBySource = new Map(proposals.map(proposal => [
       proposal.__source_proposal_id,
       proposal,
@@ -4611,24 +4615,63 @@ export function projectProductDiscoveryResult(
       .map(proposal => outwardProposal(proposal, proposalProducts));
     return {
       results: sourceIds.map(sourceProposalId => {
+        const request = requestBySource.get(sourceProposalId);
         const internalProposal = proposalsBySource.get(sourceProposalId);
         const proposal = internalProposal && outwardProposal(internalProposal, proposalProducts);
-        const outcome = actionBySource.get(sourceProposalId) === 'finalize'
+        const isFinalize = request?.action === 'finalize';
+        const constraints = isRecord(request?.constraints) ? request.constraints : undefined;
+        const hasTypedRevision = constraints !== undefined
+          || isRecord(request?.product_changes)
+          || isRecord(request?.alternatives);
+        const hasNonAlternativeTypedRevision = constraints !== undefined
+          || isRecord(request?.product_changes);
+        const requestedAlternativeCount = isRecord(request?.alternatives)
+          && typeof request.alternatives.count === 'number'
+          ? request.alternatives.count
+          : undefined;
+        const outcome = isFinalize
           ? 'finalized'
-          : internalProposal?.__refinement_outcome === 'partial' ? 'partial' : 'revised';
-        return proposal
-          ? {
-              source_proposal_id: sourceProposalId,
-              outcome,
-              proposal,
-              ...(outcome === 'partial' && typeof internalProposal?.__refinement_notes === 'string'
-                && { notes: internalProposal.__refinement_notes }),
-            }
-          : {
-              source_proposal_id: sourceProposalId,
-              outcome: 'unable',
-              reason: 'The source proposal was not found or could not be revised under the requested terms.',
-            };
+          : internalProposal?.__refinement_outcome === 'partial' || hasTypedRevision ? 'partial' : 'revised';
+        if (!proposal) {
+          return {
+            source_proposal_id: sourceProposalId,
+            outcome: 'unable',
+            reason_code: 'source_unavailable',
+            reason: 'The source proposal was not found or could not be revised under the requested terms.',
+          };
+        }
+        if (outcome === 'finalized') {
+          return {
+            source_proposal_id: sourceProposalId,
+            outcome,
+            proposal,
+          };
+        }
+        if (outcome === 'partial') {
+          const reasonCode = hasNonAlternativeTypedRevision
+            ? 'unsupported_dimension'
+            : requestedAlternativeCount !== undefined && requestedAlternativeCount > 1
+              ? 'alternatives_unavailable'
+              : hasTypedRevision ? 'unsupported_dimension' : 'uninterpreted';
+          return {
+            source_proposal_id: sourceProposalId,
+            outcome,
+            proposals: [proposal],
+            reason_code: reasonCode,
+            reason: reasonCode === 'alternatives_unavailable'
+              ? `The training agent produced 1 of ${requestedAlternativeCount} requested alternatives.`
+              : typeof internalProposal?.__refinement_notes === 'string'
+                ? internalProposal.__refinement_notes
+                : reasonCode === 'unsupported_dimension'
+                  ? 'The training agent does not implement the requested typed refinement dimension.'
+                  : 'The training agent could not fully interpret the free-text ask.',
+          };
+        }
+        return {
+          source_proposal_id: sourceProposalId,
+          outcome,
+          proposals: [proposal],
+        };
       }),
       products: supportingProductsForProposals(outwardProposals, products).map(compactCanonicalProduct),
     };
@@ -4797,28 +4840,34 @@ export function validateProductDiscoveryAliasInput(
         return { message: 'proposal_id values in refinements must be unique', field: `refinements[${index}].proposal_id` };
       }
       proposalIds.add(entry.proposal_id);
-      if (entry.criteria !== undefined) {
-        return {
-          code: 'UNSUPPORTED_FEATURE',
-          message: 'The training agent does not execute structured proposal refinements until the 3.2 SDK rollout; use schema fixtures for preview validation.',
-          field: `refinements[${index}].criteria`,
-        };
-      }
       if (entry.action !== 'revise' && entry.action !== 'finalize') {
         return {
           message: 'action is required and must be revise or finalize',
           field: `refinements[${index}].action`,
         };
       }
-      if (entry.action === 'revise' && !(typeof entry.instructions === 'string' && entry.instructions.length > 0)) {
-        return { message: 'each revision requires instructions or structured criteria', field: `refinements[${index}]` };
-      }
-      if (
-        entry.action === 'finalize'
-        && (entry.instructions !== undefined || entry.change_kind !== undefined || entry.criteria !== undefined)
-      ) {
+      const hasTypedRevision = isRecord(entry.constraints)
+        || isRecord(entry.product_changes)
+        || isRecord(entry.alternatives)
+        || isRecord(entry.criteria);
+      const hasAsk = typeof entry.ask === 'string' && entry.ask.length > 0;
+      const isCancellation = entry.change_kind === 'cancellation';
+      if (entry.action === 'revise' && !hasTypedRevision && !hasAsk && !isCancellation) {
         return {
-          message: 'finalize cannot be combined with instructions, criteria, or change_kind',
+          message: 'each revision requires constraints, product_changes, alternatives, criteria, ask, or change_kind cancellation',
+          field: `refinements[${index}]`,
+        };
+      }
+      if (entry.action === 'finalize' && (
+        entry.ask !== undefined
+        || entry.change_kind !== undefined
+        || entry.constraints !== undefined
+        || entry.product_changes !== undefined
+        || entry.alternatives !== undefined
+        || entry.criteria !== undefined
+      )) {
+        return {
+          message: 'finalize cannot be combined with revision fields',
           field: `refinements[${index}].action`,
         };
       }
@@ -4832,8 +4881,19 @@ export function validateProductDiscoveryAliasInput(
           field: `refinements[${index}].change_kind`,
         };
       }
+      if (isRecord(entry.constraints) && isRecord(entry.constraints.total_budget)) {
+        const { min, max } = entry.constraints.total_budget;
+        if (typeof min === 'number' && typeof max === 'number' && min > max) {
+          return {
+            message: 'constraints.total_budget.min must be less than or equal to max',
+            field: `refinements[${index}].constraints.total_budget`,
+          };
+        }
+      }
       const unknown = Object.keys(entry).find(
-        field => !['proposal_id', 'action', 'change_kind', 'instructions', 'criteria'].includes(field),
+        field => ![
+          'proposal_id', 'action', 'change_kind', 'constraints', 'product_changes', 'alternatives', 'criteria', 'ask',
+        ].includes(field),
       );
       if (unknown) {
         return { message: `${unknown} is not supported on proposal refinements`, field: `refinements[${index}].${unknown}` };
@@ -5799,6 +5859,9 @@ async function handleGetProductsUnlocked(
         action?: 'include' | 'omit' | 'finalize' | 'decline';
         ask?: string;
         change_kind?: 'amendment' | 'cancellation';
+        constraints?: { total_budget?: { min?: number; max?: number; currency?: string } };
+        product_changes?: Record<string, 'include' | 'omit'>;
+        alternatives?: { count?: number };
         reason?: string;
         detail?: string;
       };
@@ -6090,6 +6153,9 @@ async function handleGetProductsUnlocked(
             continue;
           }
           const concreteCpmAsk = parseConcreteCpmAsk(op.ask);
+          const hasTypedRevision = op.constraints !== undefined
+            || op.product_changes !== undefined
+            || op.alternatives !== undefined;
           if (concreteCpmAsk) {
             const stagedProducts = new Map<string, ReturnType<typeof concreteCpmPricing>>();
             let allAllocationsPriced = true;
@@ -6127,17 +6193,31 @@ async function handleGetProductsUnlocked(
                 return `${allocation.product_id}: ${pricing.currency} ${pricing.fixedPrice} CPM`;
               }).join('; ');
               const budgetNote = budget ? ` Recommended total set to ${budget.currency} ${budget.amount}.` : '';
-              refinementApplied.push({
-                scope: 'proposal',
-                proposal_id: op.proposal_id,
-                status: 'applied',
-                notes: `Concrete fixed CPM pricing applied (${rates}).${budgetNote}`,
-              });
+              refinementApplied.push(hasTypedRevision
+                ? {
+                    scope: 'proposal',
+                    proposal_id: op.proposal_id,
+                    status: 'partial',
+                    notes: `Concrete fixed CPM pricing applied (${rates}).${budgetNote} Typed refinement dimensions are not implemented by the training agent.`,
+                  }
+                : {
+                    scope: 'proposal',
+                    proposal_id: op.proposal_id,
+                    status: 'applied',
+                    notes: `Concrete fixed CPM pricing applied (${rates}).${budgetNote}`,
+                  });
             } else {
               refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'partial', ...askAckNotes(op.ask) });
             }
           } else {
-            refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: op.ask ? 'partial' : 'applied', ...askAckNotes(op.ask) });
+            refinementApplied.push({
+              scope: 'proposal',
+              proposal_id: op.proposal_id,
+              status: op.ask || hasTypedRevision ? 'partial' : 'applied',
+              ...(hasTypedRevision
+                ? { notes: 'Typed refinement dimensions are not implemented by the training agent' }
+                : askAckNotes(op.ask)),
+            });
           }
         } else if (action === 'finalize') {
           const status = proposalLifecycle(proposal).proposal_status;
@@ -6424,7 +6504,7 @@ async function handleGetProductsUnlocked(
         .map(entry => [entry.proposal_id, {
           action: entry.action === 'finalize' ? 'finalize' as const : 'revise' as const,
           changeKind: entry.change_kind,
-          instructions: entry.ask,
+          ask: entry.ask,
         }]),
     );
     proposals = sourceProposalOrder.flatMap((sourceId, index) => {
@@ -6439,13 +6519,13 @@ async function handleGetProductsUnlocked(
         ...proposal,
         proposal_id: `proposal_revision_${digest}`,
         __source_proposal_id: sourceId,
+        __parent_proposal_id: sourceId,
         __refinement_outcome: outcome?.status === 'partial' ? 'partial' : 'revised',
         ...(outcome?.notes && { __refinement_notes: outcome.notes }),
         ...(isAcceptedSource && {
           __proposal_kind: refinement?.changeKind === 'cancellation'
             ? 'media_buy_cancellation'
             : 'media_buy_update',
-          __parent_proposal_id: sourceId,
           __media_buy_id: sourceInternal.__media_buy_id,
           __base_media_buy_revision: sourceInternal.__media_buy_revision,
         }),
@@ -6483,7 +6563,7 @@ async function handleGetProductsUnlocked(
         const commercialTerms = structuredClone(successorInternal.__canonical_commercial_terms) as Record<string, unknown>;
         commercialTerms.cancellation_terms = {
           effective_at: new Date().toISOString(),
-          ...(typeof refinement.instructions === 'string' && { reason: refinement.instructions.slice(0, 500) }),
+          ...(typeof refinement.ask === 'string' && { reason: refinement.ask.slice(0, 500) }),
         };
         successorInternal.__canonical_commercial_terms = commercialTerms;
         successorInternal.__canonical_terms_digest = proposalTermsDigest(commercialTerms);
@@ -10129,6 +10209,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
       ...(supportsGetProductsRejected(servedAdcpVersion) && {
         lifecycle_tools: [...PRODUCT_DISCOVERY_TOOLS],
+        proposal_refinement: { supported_dimensions: [] },
       }),
       supports_proposals: true,
       performance_feedback: {
@@ -12201,6 +12282,34 @@ function applyThreeZeroGetProductsIdempotencyCompatibility(
   };
 }
 
+const REFINEMENT_CONSTRAINT_DIMENSIONS = ['total_budget', 'cpm', 'impressions', 'flight'] as const;
+
+type UnsupportedTrainingRefinement = {
+  field: string;
+  dimension: (typeof REFINEMENT_CONSTRAINT_DIMENSIONS)[number] | 'product_changes' | 'alternatives' | 'criteria';
+  index: number;
+};
+
+function unsupportedTrainingProposalRefinement(
+  toolName: string,
+  args: Record<string, unknown>,
+): UnsupportedTrainingRefinement | undefined {
+  if (toolName !== 'refine_proposals' || !Array.isArray(args.refinements)) return undefined;
+  for (const [index, refinement] of args.refinements.entries()) {
+    if (!isRecord(refinement)) continue;
+    if (isRecord(refinement.constraints)) {
+      const dimension = REFINEMENT_CONSTRAINT_DIMENSIONS.find(
+        key => (refinement.constraints as Record<string, unknown>)[key] !== undefined,
+      );
+      if (dimension) return { field: `constraints.${dimension}`, dimension, index };
+    }
+    if (refinement.product_changes !== undefined) return { field: 'product_changes', dimension: 'product_changes', index };
+    if (refinement.alternatives !== undefined) return { field: 'alternatives', dimension: 'alternatives', index };
+    if (refinement.criteria !== undefined) return { field: 'criteria', dimension: 'criteria', index };
+  }
+  return undefined;
+}
+
 /**
  * Execute a training agent tool in-process (no HTTP round-trip).
  * Used by Addie's adcp-tools during certification demos.
@@ -12259,6 +12368,13 @@ async function executeTrainingAgentToolInContext(
   const aliasValidationError = validateProductDiscoveryAliasInput(toolName, initialHandlerArgs);
   if (aliasValidationError) {
     return { success: false, error: aliasValidationError.message };
+  }
+  const unsupportedRefinement = unsupportedTrainingProposalRefinement(toolName, initialHandlerArgs);
+  if (unsupportedRefinement) {
+    return {
+      success: false,
+      error: `UNSUPPORTED_FEATURE at refinements.${unsupportedRefinement.index}.${unsupportedRefinement.field}: The training seller does not support the ${unsupportedRefinement.dimension} typed proposal-refinement dimension.`,
+    };
   }
   const normalizedHandlerArgs = normalizeProductDiscoveryArgs(toolName, initialHandlerArgs);
   const authPrincipal = ctx.principal ?? ctx.userId ?? 'anonymous';
@@ -12501,6 +12617,22 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         result: adcpError(aliasValidationError.code ?? 'INVALID_REQUEST', {
           message: aliasValidationError.message,
           ...(aliasValidationError.field && { field: aliasValidationError.field }),
+          recovery: 'correctable',
+        }, callerContext, servedAdcpVersion),
+        flushable: true,
+      };
+    }
+
+    const unsupportedRefinement = unsupportedTrainingProposalRefinement(name, initialHandlerArgs);
+    if (unsupportedRefinement) {
+      return {
+        result: adcpError('UNSUPPORTED_FEATURE', {
+          message: `The training seller does not support the ${unsupportedRefinement.dimension} typed proposal-refinement dimension.`,
+          field: `refinements.${unsupportedRefinement.index}.${unsupportedRefinement.field}`,
+          details: {
+            unsupported_dimension: unsupportedRefinement.dimension,
+            supported_dimensions: [],
+          },
           recovery: 'correctable',
         }, callerContext, servedAdcpVersion),
         flushable: true,

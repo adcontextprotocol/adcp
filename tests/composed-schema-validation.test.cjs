@@ -3655,18 +3655,134 @@ async function runTests() {
     {
       idempotency_key: 'refine-proposals-0001',
       refinements: [
-        { proposal_id: 'proposal-1', action: 'revise', instructions: 'Prefer video and move budget toward it' },
-        { proposal_id: 'proposal-2', action: 'revise', instructions: 'Use only the premium video product' }
+        { proposal_id: 'proposal-1', action: 'revise', ask: 'Prefer video and move budget toward it' },
+        { proposal_id: 'proposal-2', action: 'revise', ask: 'Use only the premium video product' }
       ]
     },
     'refine_proposals accepts plural proposal-scoped immutable refinements'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-typed-0001',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: { total_budget: { max: 50000, currency: 'USD' } },
+        product_changes: {
+          'premium-video': 'include',
+          'display-ros': 'omit'
+        },
+        alternatives: { count: 3 }
+      }]
+    },
+    'refine_proposals accepts deterministic typed revision dimensions without free text'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-typed-0002',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: {
+          cpm: { max: 18, currency: 'USD' },
+          impressions: { min: 2000000 },
+          flight: { start_no_later_than: '2027-06-01T00:00:00Z', end_no_earlier_than: '2027-06-30T23:59:59Z' }
+        }
+      }]
+    },
+    'refine_proposals accepts rate, volume, and flight hard constraints'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-typed-0003',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: { cpm: { max: 18 } }
+      }]
+    },
+    'refine_proposals cpm constraint requires an explicit currency'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-typed-0004',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: { flight: {} }
+      }]
+    },
+    'refine_proposals flight constraint requires at least one bound'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-too-many-alternatives-0001',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        alternatives: { count: 11 }
+      }]
+    },
+    'refine_proposals rejects alternatives above the protocol maximum'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-oversized-batch-0001',
+      refinements: Array.from({ length: 26 }, (_, index) => ({
+        proposal_id: `proposal-${index + 1}`,
+        action: 'revise',
+        ask: 'Prefer premium video.'
+      }))
+    },
+    'refine_proposals rejects batches above the protocol maximum'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-contradictory-product-0001',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        product_changes: [
+          { product_id: 'premium-video', action: 'include' },
+          { product_id: 'premium-video', action: 'omit' }
+        ]
+      }]
+    },
+    'refine_proposals rejects the array shape that could express contradictory product actions'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-unknown-budget-member-0001',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: { total_budget: { max: 50000, currency: 'USD', tolerance: 0.1 } }
+      }]
+    },
+    'refine_proposals hard budget constraints reject unknown members'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-empty-amendment-0001',
+      refinements: [{ proposal_id: 'proposal-1', action: 'revise', change_kind: 'amendment' }]
+    },
+    'refine_proposals rejects an amendment with no requested change'
   );
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-request.json',
     {
       idempotency_key: 'refine-proposals-missing-action-0001',
       refinements: [
-        { proposal_id: 'proposal-1', instructions: 'Prefer video and move budget toward it' }
+        { proposal_id: 'proposal-1', ask: 'Prefer video and move budget toward it' }
       ]
     },
     'refine_proposals requires an explicit action discriminator'
@@ -3679,7 +3795,7 @@ async function runTests() {
         proposal_id: 'accepted-proposal-1',
         action: 'revise',
         change_kind: 'cancellation',
-        instructions: 'Cancel at the earliest date permitted by the accepted terms.'
+        ask: 'Cancel at the earliest date permitted by the accepted terms.'
       }]
     },
     'refine_proposals forks an accepted proposal into a cancellation proposal'
@@ -3690,7 +3806,7 @@ async function runTests() {
       idempotency_key: 'refine-proposals-0002',
       refinements: [{ proposal_id: 'proposal-1', action: 'finalize' }]
     },
-    'refine_proposals accepts explicit finalization without fake revision instructions'
+    'refine_proposals accepts explicit finalization without a fake revision ask'
   );
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-request.json',
@@ -3698,7 +3814,7 @@ async function runTests() {
       idempotency_key: 'refine-proposals-mixed-finalize-0001',
       refinements: [
         { proposal_id: 'proposal-1', action: 'finalize' },
-        { proposal_id: 'proposal-2', action: 'revise', instructions: 'Change the budget.' }
+        { proposal_id: 'proposal-2', action: 'revise', ask: 'Change the budget.' }
       ]
     },
     'refine_proposals keeps finalize batches exclusive and atomic'
@@ -4009,10 +4125,64 @@ async function runTests() {
     {
       ...splitCapabilityBase,
       media_buy: {
-        lifecycle_tools: ['request_proposals', 'refine_proposals']
+        lifecycle_tools: ['request_proposals', 'refine_proposals'],
+        proposal_refinement: {
+          supported_dimensions: ['total_budget', 'cpm', 'impressions', 'flight', 'product_changes', 'alternatives', 'criteria'],
+          max_alternatives: 4
+        }
       }
     },
-    'compact proposal capability advertises supported split tools'
+    'compact proposal capability advertises typed refinement dimensions'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        lifecycle_tools: ['refine_proposals'],
+        proposal_refinement: { supported_dimensions: [] }
+      }
+    },
+    'compact proposal capability can authoritatively advertise ask-only refinement'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        lifecycle_tools: ['request_proposals'],
+        proposal_refinement: { supported_dimensions: ['total_budget'] }
+      }
+    },
+    'proposal refinement capabilities require the refine_proposals lifecycle tool'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        lifecycle_tools: ['refine_proposals'],
+        proposal_refinement: {
+          supported_dimensions: ['total_budget'],
+          max_alternatives: 4
+        }
+      }
+    },
+    'proposal refinement cannot advertise an alternatives limit without alternatives support'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        lifecycle_tools: ['refine_proposals'],
+        proposal_refinement: {
+          supported_dimensions: ['alternatives'],
+          max_alternatives: 11
+        }
+      }
+    },
+    'proposal refinement cannot advertise an alternatives limit above the protocol maximum'
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-response.json',
@@ -4152,23 +4322,109 @@ async function runTests() {
     },
     'request_proposals success cannot carry rejection fields'
   );
+  const canonicalDraftRevision = {
+    proposal_id: 'proposal-2',
+    parent_proposal_id: 'proposal-1',
+    proposal_kind: 'new_media_buy',
+    proposal_status: 'draft',
+    name: 'Revised premium video plan',
+    commercial_terms: {
+      brand: { domain: 'buyer.example' },
+      purchases: [{
+        product_id: 'premium-video',
+        pricing_option_id: 'fixed-cpm',
+        pricing: { pricing_option_id: 'fixed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 28 },
+        start_time: '2027-06-01T12:00:00Z',
+        end_time: '2027-07-01T00:00:00Z'
+      }],
+      start_time: '2027-06-01T12:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      total_budget: { amount: 50000, currency: 'USD' }
+    },
+    terms_digest: `sha256:${'A'.repeat(43)}`
+  };
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'partial',
+        proposals: [canonicalDraftRevision],
+        reason_code: 'constraint_unsatisfiable',
+        reason: 'The requested budget floor could not be met.',
+        unsatisfied_constraints: ['total_budget', 'cpm']
+      }],
+      products: []
+    },
+    'refine_proposals partial results identify unsatisfied keyed constraints'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'unable',
+        reason_code: 'constraint_unsatisfiable',
+        reason: 'The required product cannot be included.',
+        unsatisfied_product_changes: { 'premium-video': 'include' }
+      }],
+      products: []
+    },
+    'refine_proposals unable results identify unsatisfied keyed product changes'
+  );
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'partial',
-        proposal: {
-          proposal_id: 'proposal-2',
-          name: 'Partially revised premium video plan',
-          allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
-          proposal_status: 'committed',
-          expires_at: '2027-06-30T23:59:59Z'
-        }
+        proposals: [canonicalDraftRevision],
+        reason_code: 'constraint_unsatisfiable',
+        reason: 'A structured request was not satisfied.'
       }],
       products: []
     },
-    'refine_proposals partial results require explanatory notes'
+    'refine_proposals constraint failures require machine-readable failed identifiers'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'revised',
+        proposals: [
+          canonicalDraftRevision,
+          { ...canonicalDraftRevision, proposal_id: 'proposal-3', terms_digest: `sha256:${'B'.repeat(43)}` }
+        ]
+      }],
+      products: []
+    },
+    'refine_proposals accepts multiple commercially distinct revised alternatives'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'revised',
+        proposals: [canonicalDraftRevision],
+        unsatisfied_constraints: ['total_budget']
+      }],
+      products: []
+    },
+    'refine_proposals cannot label a constraint-violating draft revised'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'revised',
+        proposals: [(() => { const { parent_proposal_id, ...orphan } = canonicalDraftRevision; return orphan; })()]
+      }],
+      products: []
+    },
+    'refine_proposals rejects returned proposals without negotiation lineage'
   );
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
@@ -4178,6 +4434,7 @@ async function runTests() {
         outcome: 'finalized',
         proposal: {
           proposal_id: 'proposal-committed-1',
+          parent_proposal_id: 'proposal-draft-1',
           proposal_kind: 'new_media_buy',
           proposal_status: 'committed',
           expires_at: '2027-06-30T23:59:59Z',
@@ -4209,6 +4466,7 @@ async function runTests() {
         outcome: 'finalized',
         proposal: {
           proposal_id: 'proposal-committed-1',
+          parent_proposal_id: 'proposal-draft-1',
           proposal_kind: 'new_media_buy',
           proposal_status: 'committed',
           expires_at: '2027-06-30T23:59:59Z',
@@ -4230,6 +4488,7 @@ async function runTests() {
       }, {
         source_proposal_id: 'proposal-draft-2',
         outcome: 'unable',
+        reason_code: 'source_unavailable',
         reason: 'Inventory could not be held.'
       }],
       products: []
