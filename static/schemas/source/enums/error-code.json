@@ -29,6 +29,7 @@
     "ACCOUNT_REQUIRED",
     "ACCOUNT_NOT_FOUND",
     "ACCOUNT_MOVED",
+    "ACCOUNT_IDENTITY_CONFLICT",
     "ACCOUNT_SETUP_REQUIRED",
     "ACCOUNT_AMBIGUOUS",
     "ACCOUNT_PAYMENT_REQUIRED",
@@ -130,6 +131,7 @@
     "ACCOUNT_REQUIRED": "The service must resolve the commercial account before it can determine governance applicability, but the request and referenced resource do not identify one. Recovery: correctable (pass account, or use a resource bound to an account).",
     "ACCOUNT_NOT_FOUND": "The account reference could not be resolved. Recovery: terminal (verify account via list_accounts or contact seller).",
     "ACCOUNT_MOVED": "An authorized caller used a former natural key that was tombstoned after the same account was rekeyed through sync_accounts. The seller MUST return the current canonical reference in error.details.current_account, conforming to error-details/account-moved.json, and MUST NOT provision or resolve a second account from the former key. Sellers retain the tombstone while the account or any account-scoped historical resources are retained. To avoid a cross-tenant existence oracle, sellers return ACCOUNT_MOVED only when the caller is authorized to resolve the current account; otherwise they return ACCOUNT_NOT_FOUND. Recovery: correctable (replace the stale account reference with details.current_account, refresh through list_accounts, and retry with a fresh idempotency key).",
+    "ACCOUNT_IDENTITY_CONFLICT": "The complete operator_identity requested through sync_accounts would rekey the account onto a natural key already owned by another account. The seller MUST reject the change atomically, MUST NOT merge the accounts, and MUST preserve both accounts and every account-scoped resource unchanged. Distinct from CONFLICT, which reports a transient stale revision or concurrent write. Recovery: correctable (choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged).",
     "ACCOUNT_SETUP_REQUIRED": "Natural key resolved but the account needs setup before use. Recovery: correctable (check details.setup for URL or instructions).",
     "ACCOUNT_AMBIGUOUS": "Natural key resolves to multiple accounts. Recovery: correctable (pass explicit account_id or a more specific natural key).",
     "ACCOUNT_PAYMENT_REQUIRED": "Account has an outstanding balance requiring payment before new buys. Recovery: terminal (buyer must resolve billing).",
@@ -303,6 +305,10 @@
     "ACCOUNT_MOVED": {
       "recovery": "correctable",
       "suggestion": "replace the stale reference with error.details.current_account, refresh through list_accounts, and retry with a fresh idempotency key"
+    },
+    "ACCOUNT_IDENTITY_CONFLICT": {
+      "recovery": "correctable",
+      "suggestion": "choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged"
     },
     "ACCOUNT_SETUP_REQUIRED": {
       "recovery": "correctable",

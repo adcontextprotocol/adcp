@@ -730,7 +730,7 @@
         },
         "identity_updates": {
           "type": "object",
-          "description": "Whether the seller accepts buyer-desired operator identity reconciliation through sync_accounts settings-update entries. Sellers declaring support expose the exact identity transitions they implement and MUST return account revisions from sync_accounts and list_accounts.",
+          "description": "Whether the seller accepts buyer-desired operator identity reconciliation through sync_accounts settings-update entries. Sellers declaring support expose the exact identity transitions they implement, MUST return account revisions from sync_accounts and list_accounts, and MUST return identity_change_preview for dry-run identity updates.",
           "oneOf": [
             {
               "title": "AccountIdentityUpdatesSupported",
@@ -742,7 +742,7 @@
                 },
                 "supported_changes": {
                   "type": "array",
-                  "description": "Identity changes the seller accepts. operator_unit_name covers display-name-only reconciliation; operator_unit covers adding, removing, or changing the stable unit id and also implies name updates; operator covers changing the operator domain.",
+                  "description": "Identity changes the seller accepts. operator_unit_name covers display-name-only reconciliation within the current operator. operator_unit covers adding, removing, or changing the stable unit id within the current operator and also implies name updates. operator covers an inter-entity operator-domain handoff and encompasses the entire replacement operator identity, including any simultaneous unit addition, removal, or change; a seller need not also advertise operator_unit for that cross-operator replacement.",
                   "items": {
                     "type": "string",
                     "enum": [

@@ -13,6 +13,8 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | Code | Recovery | Suggested action |
 |------|----------|------------------|
 | `ACCOUNT_AMBIGUOUS` | correctable | pass explicit account_id or a more specific natural key |
+| `ACCOUNT_IDENTITY_CONFLICT` | correctable | choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged |
+| `ACCOUNT_MOVED` | correctable | replace the stale reference with error.details.current_account, refresh through list_accounts, and retry with a fresh idempotency key |
 | `ACCOUNT_NOT_FOUND` | terminal | verify account via list_accounts or contact seller |
 | `ACCOUNT_PAYMENT_REQUIRED` | terminal | buyer must resolve billing |
 | `ACCOUNT_REQUIRED` | correctable | pass account, or reference an existing resource whose owning account the service can resolve |
@@ -121,6 +123,24 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 **Suggested action:** pass explicit account_id or a more specific natural key
 
 Natural key resolves to multiple accounts. Recovery: correctable (pass explicit account_id or a more specific natural key).
+
+</Accordion>
+<a id="error-code-account-identity-conflict"></a>
+
+<Accordion title="ACCOUNT_IDENTITY_CONFLICT — correctable">
+
+**Suggested action:** choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged
+
+The complete operator_identity requested through sync_accounts would rekey the account onto a natural key already owned by another account. The seller MUST reject the change atomically, MUST NOT merge the accounts, and MUST preserve both accounts and every account-scoped resource unchanged. Distinct from CONFLICT, which reports a transient stale revision or concurrent write. Recovery: correctable (choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged).
+
+</Accordion>
+<a id="error-code-account-moved"></a>
+
+<Accordion title="ACCOUNT_MOVED — correctable">
+
+**Suggested action:** replace the stale reference with error.details.current_account, refresh through list_accounts, and retry with a fresh idempotency key
+
+An authorized caller used a former natural key that was tombstoned after the same account was rekeyed through sync_accounts. The seller MUST return the current canonical reference in error.details.current_account, conforming to error-details/account-moved.json, and MUST NOT provision or resolve a second account from the former key. Sellers retain the tombstone while the account or any account-scoped historical resources are retained. To avoid a cross-tenant existence oracle, sellers return ACCOUNT_MOVED only when the caller is authorized to resolve the current account; otherwise they return ACCOUNT_NOT_FOUND. Recovery: correctable (replace the stale account reference with details.current_account, refresh through list_accounts, and retry with a fresh idempotency key).
 
 </Accordion>
 <a id="error-code-account-not-found"></a>

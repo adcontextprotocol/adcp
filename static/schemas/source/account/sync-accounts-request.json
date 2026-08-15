@@ -21,7 +21,7 @@
     },
     "accounts": {
       "type": "array",
-      "description": "Per-account sync entries. Each entry uses one of two key shapes: the `account` field (AccountRef) for settings-update mode, or the flat `brand` + `operator` + `billing` trio for provisioning mode. Settings updates MAY carry the latest account revision and a complete desired operator_identity.",
+      "description": "Per-account sync entries. Each entry uses one of two key shapes: the `account` field (AccountRef) for settings-update mode, or the flat `brand` + `operator` + `billing` trio for provisioning mode. An operator_identity settings update MUST carry the latest account revision.",
       "items": {
         "type": "object",
         "description": "An advertiser account entry — either provisions/upserts a new account (natural key) or updates an existing one (AccountRef key).",
@@ -33,11 +33,15 @@
           "revision": {
             "type": "integer",
             "minimum": 1,
-            "description": "Expected current account revision for optimistic concurrency in settings-update mode. Optional for backward compatibility. When provided, the seller MUST compare it atomically with the write, reject a mismatch with CONFLICT, and leave the account unchanged. Obtain it from list_accounts or the most recent sync_accounts result. Reads, dry runs, validation failures, and exact idempotency replays do not increment revision; every persisted settings or identity-change state transition does. MUST be absent in provisioning mode."
+            "description": "Expected current account revision for optimistic concurrency in settings-update mode. Required whenever operator_identity is present; optional for existing non-identity settings updates. The seller MUST compare it atomically with the write, reject a mismatch with CONFLICT, and leave the account unchanged. Obtain it from list_accounts or the most recent sync_accounts result. Reads, dry runs, validation failures, and exact idempotency replays do not increment revision; every persisted settings or identity-change state transition does. MUST be absent in provisioning mode."
           },
           "operator_identity": {
             "$ref": "/schemas/core/operator-identity.json",
-            "description": "Complete desired operator identity for settings-update mode. Omit this field to leave operator identity unchanged. When present, omission of operator_unit within the object removes the existing unit. Changing only operator_unit.name updates display metadata; changing operator_unit.id, adding/removing a unit, or changing operator rekeys the same account atomically. The seller MUST preserve account_id and all account-scoped resources and state, MUST reject collisions without merging, and MUST apply no identity change if continuity cannot be preserved. Operator-domain changes MUST be revalidated against the brand's authorized_operators policy and MAY remain pending seller approval. MUST be absent in provisioning mode."
+            "description": "Complete desired operator identity for settings-update mode. Omit this field to leave operator identity unchanged. When present, omission of operator_unit within the object removes the existing unit. Changing only operator_unit.name updates display metadata; changing operator_unit.id or adding/removing a unit rekeys the same account within the current operator. Changing operator requests an inter-entity handoff and MUST enter pending_approval until the seller verifies the current account authority, verified brand authorization, destination-operator acceptance, and any operator-scoped billing and grant transition. The seller MUST preserve account_id and account-scoped historical resources, MUST reject collisions without merging, and MUST apply no identity change if continuity cannot be preserved. MUST be accompanied by revision and MUST be absent in provisioning mode."
+          },
+          "destination_billing_entity": {
+            "$ref": "/schemas/core/business-entity.json",
+            "description": "Complete staged billing identity for the requested destination operator during an operator-domain handoff on an account whose billing party is operator. This value is write-only while approval is pending and MUST NOT replace or be echoed as the account's canonical billing_entity until the handoff applies atomically. Required by the protocol when an operator-billed account changes operator; otherwise MUST be absent. Requires operator_identity and revision and MUST be absent in provisioning mode."
           },
           "brand": {
             "$ref": "/schemas/core/brand-ref.json",
@@ -136,6 +140,13 @@
                     "operator_identity"
                   ]
                 }
+              },
+              {
+                "not": {
+                  "required": [
+                    "destination_billing_entity"
+                  ]
+                }
               }
             ]
           },
@@ -184,6 +195,15 @@
             ]
           }
         ],
+        "dependencies": {
+          "operator_identity": [
+            "revision"
+          ],
+          "destination_billing_entity": [
+            "operator_identity",
+            "revision"
+          ]
+        },
         "additionalProperties": true
       },
       "maxItems": 1000

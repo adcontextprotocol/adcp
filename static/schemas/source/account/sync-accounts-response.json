@@ -54,6 +54,10 @@
                 "$ref": "/schemas/core/account-identity-change.json",
                 "description": "Pending or rejected desired operator identity. The top-level operator and operator_unit remain canonical until an approved change is applied."
               },
+              "identity_change_preview": {
+                "$ref": "/schemas/core/account-identity-change-preview.json",
+                "description": "Dry-run-only preview of whether the requested identity would apply, require approval, or be blocked, plus evaluated resource impacts. This value is not persisted; canonical fields and revision remain current."
+              },
               "currency": {
                 "type": "string",
                 "pattern": "^[A-Z]{3}$",
@@ -91,7 +95,11 @@
               },
               "billing_entity": {
                 "$ref": "/schemas/core/business-entity.json",
-                "description": "Business entity details for the party responsible for payment, echoed from the request. Sellers MAY add fields the agent omitted (e.g., filling in registration_number from a credit check), but MUST NOT return data from a different entity. Bank details are omitted (write-only)."
+                "description": "Current canonical business entity for the party responsible for payment. Sellers MAY add verified fields, but MUST NOT return data from a different entity. During an operator-domain handoff this remains the current entity until approval applies atomically; destination_billing_entity is staged and write-only. Bank details are omitted (write-only)."
+              },
+              "destination_billing_entity": {
+                "description": "Request-only staging field. It MUST NOT appear in sync_accounts responses.",
+                "not": {}
               },
               "account_scope": {
                 "$ref": "/schemas/enums/account-scope.json"
@@ -182,6 +190,19 @@
               "action",
               "status"
             ],
+            "dependencies": {
+              "identity_change": [
+                "revision"
+              ],
+              "identity_change_preview": [
+                "revision"
+              ]
+            },
+            "not": {
+              "required": [
+                "destination_billing_entity"
+              ]
+            },
             "additionalProperties": true
           }
         },
@@ -200,7 +221,47 @@
         "required": [
           "errors"
         ]
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "dry_run": {
+                "const": true
+              }
+            },
+            "required": [
+              "dry_run"
+            ]
+          },
+          "then": {
+            "properties": {
+              "accounts": {
+                "items": {
+                  "not": {
+                    "required": [
+                      "identity_change"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "accounts": {
+                "items": {
+                  "not": {
+                    "required": [
+                      "identity_change_preview"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     {
       "title": "SyncAccountsError",

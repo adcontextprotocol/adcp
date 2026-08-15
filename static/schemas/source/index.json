@@ -149,6 +149,10 @@
           "$ref": "/schemas/core/account-identity-change.json",
           "description": "Pending or rejected operator-identity transition on an existing account"
         },
+        "account-identity-change-preview": {
+          "$ref": "/schemas/core/account-identity-change-preview.json",
+          "description": "Non-persisted impact and disposition preview for a dry-run account identity transition"
+        },
         "account-with-authorization": {
           "$ref": "/schemas/core/account-with-authorization.json",
           "description": "List-accounts response item combining Account with caller-specific authorization metadata"

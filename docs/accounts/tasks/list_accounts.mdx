@@ -93,7 +93,7 @@ seller-assigned `account_id` or by the complete buyer-declared natural key.
 | `brand` | Brand reference: `domain`, optional `brand_id`, and optional commercial-identity `countries[]`. Countries are not delivery targeting. |
 | `operator` | Operator domain. Always present — when the brand operates directly, `operator` equals the brand's domain. |
 | `operator_unit` | Optional operator-owned unit. `id` is stable identity; `name` is mutable display metadata. |
-| `revision` | Current account optimistic-concurrency revision. Sellers advertising `account.identity_updates.supported: true` always return it; pass it in the next `sync_accounts` settings update. |
+| `revision` | Current account optimistic-concurrency revision. Sellers advertising `account.identity_updates.supported: true` always return it; pass it in the next [`sync_accounts`](/docs/accounts/tasks/sync_accounts) settings update. |
 | `identity_change` | Pending or rejected desired operator identity. While present, `operator` and `operator_unit` remain the current canonical identity. Poll until the change applies or is rejected. |
 | `currency` | Optional immutable account currency. When present, media buys on the account must use it. |
 | `status` | Current account state: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed` |

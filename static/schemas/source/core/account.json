@@ -60,7 +60,11 @@
     },
     "billing_entity": {
       "$ref": "/schemas/core/business-entity.json",
-      "description": "Business entity details for the party responsible for payment. Contains the legal name, tax IDs, address, and bank details needed for formal B2B invoicing. Corresponds to whoever billing points to (operator, agent, or advertiser). When this account appears in a response, bank details MUST be omitted (write-only)."
+      "description": "Current canonical business entity for the party responsible for payment. Contains the legal name, tax IDs, and address needed for formal B2B invoicing. Corresponds to whoever billing points to (operator, agent, or advertiser). When this account appears in a response, bank details MUST be omitted and the request-only destination_billing_entity MUST NOT be exposed."
+    },
+    "destination_billing_entity": {
+      "description": "Request-only staging field. It MUST NOT appear in account read models.",
+      "not": {}
     },
     "rate_card": {
       "type": "string",
@@ -245,6 +249,16 @@
     "name",
     "status"
   ],
+  "dependencies": {
+    "identity_change": [
+      "revision"
+    ]
+  },
+  "not": {
+    "required": [
+      "destination_billing_entity"
+    ]
+  },
   "additionalProperties": true,
   "examples": [
     {
