@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/decline-proposals-request.json",
   "title": "Decline Proposals Request",
   "description": "Terminally decline one or more immutable proposals. Repeating an already-applied decline with a new idempotency key succeeds with outcome declined and preserves the first recorded reason and detail; the proposal cannot later be executed.",
+  "x-tool-summary": "Terminally decline one or more proposals and record the buyer's reason.",
   "type": "object",
   "x-mutates-state": true,
   "x-operation-family": "decline_proposals",

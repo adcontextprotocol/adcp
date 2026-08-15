@@ -865,15 +865,10 @@ test('representative capability-selected media-buy runtime exposes only selected
     relativePath => readJson(path.join(PRODUCTION_PROFILE_DIR, relativePath))
   );
   assert.deepEqual(runtimeTools.map(tool => tool.name), selectedToolNames);
-  assert.equal(
-    runtimeTools.find(tool => tool.name === 'get_adcp_capabilities').description,
-    canonicalManifest.tools.get_adcp_capabilities.summary
-  );
-  assert.equal(
-    runtimeTools.find(tool => tool.name === 'list_products').description,
-    canonicalManifest.tools.list_products.summary
-  );
   for (const tool of runtimeTools) {
+    assert.equal(tool.description, canonicalManifest.tools[tool.name].summary);
+    assert.ok(tool.description.length > 0);
+    assert.equal(tool.inputSchema['x-tool-summary'], undefined);
     assert.equal(tool.outputSchema, undefined);
     assert.equal(tool.inputSchema.$schema, JSON_SCHEMA_2020_12);
     assert.deepEqual(collectExternalRefs(tool.inputSchema), []);
@@ -957,6 +952,13 @@ test('generated role profiles are active validation catalogs with bounded model-
     for (const toolName of expectedTools) {
       const fullTool = profile.tools[toolName];
       const modelTool = modelContext.tools[toolName];
+      assert.ok(canonicalManifest.tools[toolName].summary, `${toolName} must provide a runtime summary`);
+      assert.ok(
+        canonicalManifest.tools[toolName].summary.length <= 160,
+        `${toolName} runtime summary must stay concise`
+      );
+      assert.equal(fullTool.summary, canonicalManifest.tools[toolName].summary);
+      assert.equal(modelTool.summary, fullTool.summary);
       assert.equal(fullTool.protocol, canonicalManifest.tools[toolName].protocol);
       assert.equal(modelTool.protocol, fullTool.protocol);
       assert.equal(modelTool.inputSchema, fullTool.inputSchema);

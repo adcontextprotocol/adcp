@@ -3,6 +3,7 @@
   "$id": "/schemas/creative/get-creative-features-request.json",
   "title": "Get Creative Features Request",
   "description": "Request payload for the get_creative_features task. Submits a creative manifest for evaluation by a governance agent, which analyzes the creative and returns scored feature values (brand safety, content categorization, quality metrics, etc.).",
+  "x-tool-summary": "Evaluate a creative manifest and return scored safety, content, quality, and governance features.",
   "type": "object",
   "allOf": [
     {

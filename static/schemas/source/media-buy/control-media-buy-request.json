@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/control-media-buy-request.json",
   "title": "Control Media Buy Request",
   "description": "Apply operational delivery controls inside the MediaBuy's accepted proposal envelope. Sellers return REQUOTE_REQUIRED when budget, targeting, or another control would change the commercial envelope; the buyer then forks the accepted proposal through refine_proposals. Creative mutation, new products/packages, flight changes, pricing changes, and billing-term changes are not accepted here.",
+  "x-tool-summary": "Pause, resume, cancel, or adjust delivery controls without changing accepted commercial terms.",
   "type": "object",
   "x-mutates-state": true,
   "x-governed-commitment": {

@@ -3,6 +3,7 @@
   "$id": "/schemas/creative/list-transformers-request.json",
   "title": "List Transformers Request (Creative Agent)",
   "description": "Request parameters for discovering account-scoped creative transformers offered by this creative agent. Brief-filterable and paginated. Transformers are the creative analog of media-buy products: agent-offered, account-scoped, selectable units of build capability. Use `expand_params` to additionally return account-scoped option VALUES (e.g. the buyer's configured voices) for named enumerable params.",
+  "x-tool-summary": "Discover account-scoped creative transformers and their selectable configuration options.",
   "type": "object",
   "allOf": [
     { "$ref": "/schemas/core/version-envelope.json" },

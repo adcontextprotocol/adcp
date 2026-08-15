@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/request-proposals-request.json",
   "title": "Request Proposals Request",
   "description": "Ask a seller to create one or more indicative media-plan proposals from a brief. Each returned proposal_id identifies one immutable draft snapshot; revise or finalize it through refine_proposals, or decline it through decline_proposals.",
+  "x-tool-summary": "Ask a seller to create one or more draft media-plan proposals from a campaign brief.",
   "type": "object",
   "x-mutates-state": true,
   "x-operation-family": "request_proposals",

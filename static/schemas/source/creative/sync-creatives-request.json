@@ -3,6 +3,7 @@
   "$id": "/schemas/creative/sync-creatives-request.json",
   "title": "Sync Creatives Request",
   "description": "Request parameters for syncing creative assets with upsert semantics - supports bulk operations, scoped updates, and assignment management",
+  "x-tool-summary": "List or synchronize creative assets, scoped updates, and media-buy assignments.",
   "type": "object",
   "allOf": [
     {

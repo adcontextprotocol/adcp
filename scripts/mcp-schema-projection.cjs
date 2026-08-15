@@ -18,6 +18,7 @@ const PRESENTATION_ANNOTATIONS = new Set([
   'enumDescriptions',
   'examples',
   'title',
+  'x-tool-summary',
 ]);
 
 // Model prompt views communicate request shape while the parent role profile
