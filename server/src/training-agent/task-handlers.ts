@@ -1778,6 +1778,7 @@ import {
   COMPLY_TEST_CONTROLLER_TOOL,
   handleComplyTestController,
   getDeliverySimulation,
+  getDeliverySimulationForPeriod,
   getAccountStatus,
   getSeededCreativeFormats,
 } from './comply-test-controller.js';
@@ -8782,10 +8783,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const start = new Date(mb.startTime);
   const end = new Date(mb.endTime);
   const reportingStart = req.start_date ? new Date(`${req.start_date}T00:00:00.000Z`) : start;
-  const reportingEnd = req.end_date ? new Date(`${req.end_date}T23:59:59.999Z`) : now;
-  if (req.start_date && req.end_date && reportingStart.getTime() > reportingEnd.getTime()) {
+  const reportingEnd = req.end_date ? new Date(`${req.end_date}T00:00:00.000Z`) : now;
+  if (req.start_date && req.end_date && reportingStart.getTime() >= reportingEnd.getTime()) {
     return {
-      errors: [{ code: 'INVALID_REQUEST', message: 'start_date must be on or before end_date', field: 'start_date' }],
+      errors: [{ code: 'INVALID_REQUEST', message: 'start_date must be before end_date', field: 'start_date' }],
     };
   }
   const durationMs = end.getTime() - start.getTime();
@@ -8795,7 +8796,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
   // Read simulated delivery upfront so vendor_metric_values can be spread into
   // per-package entries inside the map below.
-  const simDeliveryEarly = getDeliverySimulation(session, mb.mediaBuyId);
+  const simDeliveryEarly = req.start_date || req.end_date
+    ? getDeliverySimulationForPeriod(session, mb.mediaBuyId, reportingStart, reportingEnd)
+    : getDeliverySimulation(session, mb.mediaBuyId);
 
   // Build per-package metrics
   let totalImpressions = 0;
