@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/get-media-buy-delivery-request.json",
   "title": "Get Media Buy Delivery Request",
   "description": "Request parameters for retrieving comprehensive delivery metrics",
+  "x-tool-summary": "Retrieve media-buy delivery metrics with optional date, package, window, attribution, and dimension breakdowns.",
   "type": "object",
   "allOf": [
     {

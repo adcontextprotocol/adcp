@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/refine-proposals-request.json",
   "title": "Refine Proposals Request",
   "description": "Create draft revisions or finalize draft proposals into held committed snapshots. Each result receives a new proposal_id and every source remains unchanged.",
+  "x-tool-summary": "Revise draft proposals or finalize them into committed, inventory-held snapshots.",
   "type": "object",
   "x-mutates-state": true,
   "x-operation-family": "refine_proposals",

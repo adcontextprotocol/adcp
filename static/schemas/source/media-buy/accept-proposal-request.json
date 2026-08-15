@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/accept-proposal-request.json",
   "title": "Accept Proposal Request",
   "description": "Accept one committed immutable proposal. Depending on proposal_kind, acceptance creates a MediaBuy, applies an amendment, or applies a negotiated cancellation. The proposal already contains the commercial terms, so callers do not repeat packages, dates, targeting, or creatives.",
+  "x-tool-summary": "Accept a committed proposal to create or amend a media buy, or apply a negotiated cancellation.",
   "type": "object",
   "x-mutates-state": true,
   "x-governed-commitment": {

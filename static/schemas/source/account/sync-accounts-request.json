@@ -3,6 +3,7 @@
   "$id": "/schemas/account/sync-accounts-request.json",
   "title": "Sync Accounts Request",
   "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares the advertiser identity, operator, optional operator-owned buying unit, optional fixed account currency, sandbox disposition, and billing model. The seller provisions or links the corresponding advertiser object via upsert. `brand.countries`, `operator_unit.id`, `currency`, and `sandbox` participate in the buyer-declared natural key when present; `operator_unit.name` is display metadata only. The seller MAY echo a seller-assigned account_id but MUST continue accepting the complete natural-key AccountRef.\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by seller/storefront `account_id` or buyer-declared natural key. The seller updates settable state without provisioning side effects.\n\nExactly one key shape is allowed per entry. Sellers that do not implement one mode return `UNSUPPORTED_PROVISIONING` for that mode.",
+  "x-tool-summary": "Provision advertiser accounts or update settings for existing accounts through declarative synchronization.",
   "type": "object",
   "allOf": [
     {

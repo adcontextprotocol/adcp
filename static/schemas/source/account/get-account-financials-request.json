@@ -3,6 +3,7 @@
   "$id": "/schemas/account/get-account-financials-request.json",
   "title": "Get Account Financials Request",
   "description": "Request financial status for an operator-billed account. Returns spend summary, credit/balance status, and invoice history. Only applicable when the seller declares account_financials capability.",
+  "x-tool-summary": "Retrieve spend, credit or balance status, and invoice history for an operator-billed account.",
   "type": "object",
   "allOf": [
     {
