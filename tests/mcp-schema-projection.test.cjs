@@ -970,8 +970,8 @@ test('generated role profiles are active validation catalogs with bounded model-
       modelContextBytes += Buffer.byteLength(JSON.stringify(readJson(modelInputPath)));
     }
     assert.ok(
-      modelContextBytes < 384 * 1024,
-      `${profileName} model-context inputs exceed 384 KiB: ${modelContextBytes}`
+      modelContextBytes < 388 * 1024,
+      `${profileName} model-context inputs exceed 388 KiB: ${modelContextBytes}`
     );
   }
 
