@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-overlay-requirements.json",
   "title": "Targeting Overlay Requirements",
-  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request shape deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: a requirement value of true matches either product support true or any valid support object for that dimension; an object requirement matches product support true or a support object in which every requested boolean is true and every requested array is a subset of the corresponding product array. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request, including systems, do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching.",
+  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request shape deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: a requirement value of true matches either product support true or any valid support object for that dimension; an object requirement matches product support true or a support object in which every requested boolean is true and every requested array is a subset of the corresponding product array. geo_places and geo_places_exclude always use the collision-safe object form: every requested system and country key must exist and each requested place-type and system-version array must be a subset of the corresponding product array. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching.",
   "type": "object",
   "definitions": {
     "required": { "type": "boolean", "const": true },
@@ -69,6 +69,14 @@
     "geo_regions_exclude": { "$ref": "#/definitions/required" },
     "geo_metros": { "$ref": "#/definitions/metroRequirement" },
     "geo_metros_exclude": { "$ref": "#/definitions/metroRequirement" },
+    "geo_places": {
+      "$ref": "/schemas/core/geo-place-requirement.json",
+      "x-adcp-schema-uri": "/schemas/core/geo-place-requirement.json"
+    },
+    "geo_places_exclude": {
+      "$ref": "/schemas/core/geo-place-requirement.json",
+      "x-adcp-schema-uri": "/schemas/core/geo-place-requirement.json"
+    },
     "geo_postal_areas": {
       "anyOf": [
         { "$ref": "#/definitions/required" },
