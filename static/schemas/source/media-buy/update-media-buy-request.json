@@ -128,7 +128,9 @@
     },
     "name": {
       "type": "string",
+      "minLength": 1,
       "maxLength": 255,
+      "pattern": "\\S",
       "description": "Replacement human-readable name for this media buy, used for trafficking UI display and operational communication. Sellers that cannot update name mid-flight SHOULD echo the prior unchanged value in the success response rather than silently dropping the field. This display label is not an identifier or financial reference."
     },
     "revision": {

@@ -85,6 +85,12 @@ describe("media-buy name contract", () => {
         false,
         `${label} must reject a 256-character name`
       );
+      assert.equal(validate(""), false, `${label} must reject an empty name`);
+      assert.equal(
+        validate(" \t\n "),
+        false,
+        `${label} must reject a whitespace-only name`
+      );
     }
   });
 

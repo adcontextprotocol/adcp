@@ -184,7 +184,9 @@
     },
     "name": {
       "type": "string",
+      "minLength": 1,
       "maxLength": 255,
+      "pattern": "\\S",
       "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. When supplied, the seller MUST persist it and echo it unchanged on the create success response and subsequent get_media_buys reads. This display label is not an identifier or financial reference."
     },
     "agency_estimate_number": {

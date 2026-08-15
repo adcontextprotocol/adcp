@@ -31,7 +31,9 @@
         },
         "name": {
           "type": "string",
+          "minLength": 1,
           "maxLength": 255,
+          "pattern": "\\S",
           "description": "Persisted human-readable name for this media buy. When create_media_buy supplied name, the seller MUST echo it unchanged here. This display label is shared for trafficking UI display and operational communication; it is not an identifier or financial reference."
         },
         "account": {
