@@ -121,6 +121,18 @@ describe('product discovery MCP schema parity', () => {
     expect(criteria.properties.offer_filters).toBeDefined();
     expect(criteria.properties.targeting_overlay).toBeDefined();
     expect(criteria.properties.required_overlay_support).toBeDefined();
+    const targeting = resolveLocalRef(list, criteria.properties.targeting_overlay);
+    expect(targeting.properties.geo_places.items).toMatchObject({
+      type: 'object',
+      'x-adcp-schema-uri': '/schemas/core/geo-place-area.json',
+      additionalProperties: true,
+    });
+    const overlayRequirements = resolveLocalRef(list, criteria.properties.required_overlay_support);
+    expect(overlayRequirements.properties.geo_places).toMatchObject({
+      type: 'object',
+      'x-adcp-schema-uri': '/schemas/core/geo-place-requirement.json',
+      additionalProperties: true,
+    });
 
     const request = tools.find(tool => tool.name === 'request_proposals')!.inputSchema as JsonSchema;
     const requestCriteria = resolveLocalRef(request, request.properties.criteria);

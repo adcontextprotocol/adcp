@@ -494,6 +494,10 @@
           "$ref": "/schemas/core/geo-place-area.json",
           "description": "Catalog-backed named place target using stable identifiers in a declared system"
         },
+        "geo-place-requirement": {
+          "$ref": "/schemas/core/geo-place-requirement.json",
+          "description": "Collision-safe identifier systems, countries, place types, and catalog versions required for later package selection"
+        },
         "geo-place-support": {
           "$ref": "/schemas/core/geo-place-support.json",
           "description": "Countries and place types supported for one place identifier system"

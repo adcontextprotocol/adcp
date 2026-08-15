@@ -117,7 +117,8 @@
       "type": "array",
       "description": "Restrict delivery to catalog-backed named places. Values MUST be stable identifiers in the declared system, not display names. Sellers must declare supported systems, countries, and place types in get_adcp_capabilities and reject unsupported entries rather than silently dropping them.",
       "items": {
-        "$ref": "/schemas/core/geo-place-area.json"
+        "$ref": "/schemas/core/geo-place-area.json",
+        "x-adcp-schema-uri": "/schemas/core/geo-place-area.json"
       },
       "minItems": 1
     },
@@ -125,7 +126,8 @@
       "type": "array",
       "description": "Exclude catalog-backed named places. Uses the same identifier-based shape as geo_places. Sellers MUST reject overlap with geo_places for the same country, system, place_type, and value.",
       "items": {
-        "$ref": "/schemas/core/geo-place-area.json"
+        "$ref": "/schemas/core/geo-place-area.json",
+        "x-adcp-schema-uri": "/schemas/core/geo-place-area.json"
       },
       "minItems": 1
     },
