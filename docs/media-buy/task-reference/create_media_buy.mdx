@@ -1286,7 +1286,7 @@ An optional media-buy `daily_budget_cap` sets a hard ceiling on aggregate spend 
 
 Daily caps are **orthogonal to `pacing`**. The media-buy cap bounds aggregate daily spend, package caps bound individual package spend, and pacing governs distribution within those limits. `pacing: "asap"` plus a cap is valid. Every cap on one media buy uses its accepted `budget_cap_timezone`, which defaults to the seller's billing timezone, so aggregate and package accounting share one calendar-day boundary.
 
-`daily_budget_cap` requires seller support: sellers advertise `media_buy.budget_capping` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities), including supported scopes and the effective timezone. A cap is always hard. Sellers MUST reject an undeclared scope with `UNSUPPORTED_FEATURE` rather than silently dropping or softening it, and echo accepted caps plus the shared timezone on read surfaces.
+`daily_budget_cap` requires seller support: sellers advertise `media_buy.budget_capping` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities), including supported scopes and the effective timezone. A cap is always hard. Sellers MUST reject an undeclared scope with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) rather than silently dropping or softening it, and echo accepted caps plus the shared timezone on read surfaces.
 
 When a seller does not support `daily_budget_cap`, approximate a daily rate with `pacing: "even"` and a `budget ÷ flight_days` calculation, or split a long flight into shorter packages each with its own `budget` — both are best-effort, not a guaranteed ceiling.
 
