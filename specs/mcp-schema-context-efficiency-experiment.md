@@ -31,12 +31,12 @@ metric; tokenizer counts are included to make the model-context effect legible.
 
 | Presentation                       |   Bytes | Approx. tokens | Reduction |
 | ---------------------------------- | ------: | -------------: | --------: |
-| Standalone model-context inputs    | 281,887 |         70,730 |  baseline |
-| Prompt cleanup                     | 226,543 |         56,605 |     20.0% |
-| Shared dictionary                  |  99,511 |         25,015 |     64.6% |
-| Shared dictionary + prompt cleanup |  85,589 |         21,415 |     69.7% |
+| Standalone model-context inputs    | 290,821 |         73,032 |  baseline |
+| Prompt cleanup                     | 233,008 |         58,295 |     20.2% |
+| Shared dictionary                  | 101,627 |         25,557 |     65.0% |
+| Shared dictionary + prompt cleanup |  86,882 |         21,753 |     70.2% |
 
-The selected standalone schemas contain 541 definition instances but only 138
+The selected standalone schemas contain 559 definition instances but only 142
 unique definitions. One shared dictionary therefore produces substantially
 more savings than weakening the schemas themselves.
 
@@ -47,11 +47,11 @@ closure to that field. The heaviest model-context fields are:
 
 | Tool field                     | Definitions | Compact definition bytes |
 | ------------------------------ | ----------: | -----------------------: |
-| `refine_proposals.refinements` |          72 |                   41,193 |
-| `list_products.criteria`       |          71 |                   40,440 |
-| `request_proposals.criteria`   |          71 |                   40,440 |
-| `buy_products.purchases`       |          61 |                   31,621 |
-| `control_media_buy.packages`   |          46 |                   25,090 |
+| `refine_proposals.refinements` |          76 |                   43,309 |
+| `list_products.criteria`       |          75 |                   42,556 |
+| `request_proposals.criteria`   |          75 |                   42,556 |
+| `buy_products.purchases`       |          64 |                   32,914 |
+| `control_media_buy.packages`   |          49 |                   26,383 |
 | Legacy-style account selectors |          13 |                    5,912 |
 
 This report is intended to prevent accidental schema expansion: a small input
@@ -71,7 +71,7 @@ Root references point to a separately supplied JSON Schema resource:
 ```
 
 The client pre-registers one resource with `$id` `adcp://schemas/shared` and the
-138 unique definitions. References between definitions remain local to that
+142 unique definitions. References between definitions remain local to that
 resource.
 
 The repository test establishes the compatibility boundary deliberately:
