@@ -10,6 +10,13 @@
       "description": "Seller's unique identifier for the media buy",
       "x-entity": "media_buy"
     },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "\\S",
+      "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. Sellers MUST include the persisted name on read surfaces such as get_media_buys when the media buy was created through AdCP with name. Sellers MAY omit name for media buys created outside AdCP or created without name. This display label is not an identifier or financial reference."
+    },
     "accepted_proposal_id": {
       "type": "string",
       "minLength": 1,

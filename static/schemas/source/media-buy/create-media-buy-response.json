@@ -29,6 +29,13 @@
           "description": "Seller's unique identifier for the created media buy",
           "x-entity": "media_buy"
         },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "\\S",
+          "description": "Persisted human-readable name for this media buy. When create_media_buy supplied name, the seller MUST echo it unchanged here. This display label is shared for trafficking UI display and operational communication; it is not an identifier or financial reference."
+        },
         "account": {
           "$ref": "/schemas/core/account.json",
           "description": "Account billed for this media buy. Includes advertiser, billing proxy (if any), and rate card applied."

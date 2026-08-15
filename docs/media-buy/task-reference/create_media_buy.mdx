@@ -158,6 +158,7 @@ npx @adcp/sdk@latest \
 | `paused` | boolean | No | Create the media buy with delivery held. When true and the buy would otherwise be active, `media_buy_status` is `paused`. Setup blockers still take precedence: missing creatives yield `pending_creatives`, and future flights yield `pending_start`; the hold becomes visible as `paused` after those blockers clear. |
 | `invoice_recipient` | [BusinessEntity](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override the account's default billing entity for this buy. The seller MUST validate the recipient is authorized and include it in [`check_governance`](/docs/governance/campaign/tasks/check_governance) when governance agents are configured. |
 | `po_number` | string | No | Purchase order number |
+| `name` | string | No | Human-readable shared label for trafficking UI display and buyer-seller communication (maximum 255 characters). Sellers persist and echo it unchanged; it is not a purchase-order, reconciliation, or identity key. |
 | `idempotency_key` | string | No | Unique key for safe retries. If a request with the same key and account has already been processed, the seller returns the existing media buy. MUST be unique per (seller, request) pair. Min 16 chars. |
 | `context` | object | No | Opaque correlation data echoed unchanged in the response. Use for internal tracking, trace IDs, or other caller-specific identifiers. |
 | `reporting_webhook` | ReportingWebhook | No | Automated reporting delivery configuration |
@@ -281,6 +282,7 @@ A provider portfolio bidding strategy illustrates the current abstraction bounda
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Seller's unique identifier |
+| `name` | Persisted human-readable media-buy label. When supplied in the request, the seller MUST echo it unchanged. |
 | `account` | Resolved account billed for this media buy, echoed as a full [Account](/docs/building/by-layer/L2/accounts-and-agents#account-references) object (includes `account_id`, `name`, `status`, and the resolved `brand`/`operator`). When the request used implicit resolution (`brand` + `operator`), this confirms the account the seller resolved. Optional. |
 | `confirmed_at` | ISO 8601 timestamp when the seller committed to the media buy. Stable after it is set. May be `null` in deferred/manual approval flows until seller commitment occurs. |
 | `creative_deadline` | ISO 8601 timestamp for creative upload deadline |
