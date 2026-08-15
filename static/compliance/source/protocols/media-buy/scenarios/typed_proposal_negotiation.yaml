@@ -198,6 +198,8 @@ phases:
         context_outputs:
           - path: "proposals[0].proposal_id"
             key: "seed_proposal_id"
+          - name: finalize_idempotency_key
+            generate: uuid_v4
 
         validations:
           - check: response_schema
@@ -250,8 +252,6 @@ phases:
             key: "budget_revised_proposal_id"
           - path: "results[0].proposals[0].terms_digest"
             key: "budget_revised_terms_digest"
-          - name: finalize_idempotency_key
-            generate: uuid_v4
 
         validations:
           - check: response_schema
@@ -486,9 +486,10 @@ phases:
   - id: finalize_proposal
     title: "Finalize draft into committed snapshot"
     narrative: |
-      Finalize the budget-revised draft. The seller creates a committed
+      Finalize the initial seed draft. The seller creates a committed
       successor with firm pricing and an inventory hold. The committed
-      proposal carries expires_at and its proposal_status is committed.
+      proposal carries expires_at and its proposal_status is committed. This
+      lifecycle path is independent of every optional typed dimension.
 
     steps:
       - id: finalize_draft
@@ -505,7 +506,7 @@ phases:
         sample_request:
           idempotency_key: "$context.finalize_idempotency_key"
           refinements:
-            - proposal_id: "$context.budget_revised_proposal_id"
+            - proposal_id: "$context.seed_proposal_id"
               action: "finalize"
 
         context_outputs:
@@ -532,11 +533,11 @@ phases:
             description: "Committed proposal has expires_at for the hold window"
           - check: field_value
             path: "results[0].proposal.parent_proposal_id"
-            value: "$context.budget_revised_proposal_id"
+            value: "$context.seed_proposal_id"
             description: "Committed proposal parent_proposal_id equals source draft"
           - check: field_value
             path: "results[0].source_proposal_id"
-            value: "$context.budget_revised_proposal_id"
+            value: "$context.seed_proposal_id"
             description: "Result echoes the source proposal_id"
 
   - id: finalize_idempotent_replay
@@ -557,7 +558,7 @@ phases:
         sample_request:
           idempotency_key: "$context.finalize_idempotency_key"
           refinements:
-            - proposal_id: "$context.budget_revised_proposal_id"
+            - proposal_id: "$context.seed_proposal_id"
               action: "finalize"
 
         validations:
@@ -750,7 +751,7 @@ phases:
             - proposal_id: "$context.seed_proposal_id"
               action: "revise"
               ask: "Maximize video allocation."
-            - proposal_id: "$context.budget_revised_proposal_id"
+            - proposal_id: "$context.amendment_proposal_id"
               action: "revise"
               ask: "Add native inventory alongside existing products."
 
@@ -766,5 +767,5 @@ phases:
             description: "First result echoes first source"
           - check: field_value
             path: "results[1].source_proposal_id"
-            value: "$context.budget_revised_proposal_id"
+            value: "$context.amendment_proposal_id"
             description: "Second result echoes second source"
