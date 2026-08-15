@@ -149,6 +149,49 @@ describe('CrawlerService brand.json ingestion', () => {
     });
   });
 
+  it('bounds house portfolio fan-out and rechecks the crawl lock', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const brandRefs = Array.from({ length: 21 }, (_, index) => ({
+      domain: `leaf-${index}.example`,
+      brand_id: `leaf-${index}`,
+    }));
+    const portfolio = {
+      house: { domain: 'house.example', name: 'Example House' },
+      brand_refs: brandRefs,
+    };
+    const resolveHouseBrandReference = vi.fn().mockResolvedValue(null);
+    const assertExecutionLock = vi.fn();
+
+    Object.assign(ctx, {
+      brandManager: {
+        validateDomain: vi.fn().mockResolvedValue({
+          valid: true,
+          errors: [],
+          warnings: [],
+          domain: 'house.example',
+          url: 'https://house.example/.well-known/brand.json',
+          variant: 'house_portfolio',
+          raw_data: portfolio,
+        }),
+        resolveHouseBrandReference,
+        resolveBrand: vi.fn().mockResolvedValue(null),
+      },
+      brandDb: { upsertDiscoveredBrand: vi.fn().mockResolvedValue(undefined) },
+      upsertBrandProperties: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await ctx.scanBrandForDomain('house.example', assertExecutionLock);
+
+    expect(resolveHouseBrandReference).toHaveBeenCalledTimes(20);
+    expect(resolveHouseBrandReference).not.toHaveBeenCalledWith(
+      brandRefs[20],
+      'house.example',
+      { skipCache: true },
+    );
+    expect(assertExecutionLock).toHaveBeenCalled();
+  });
+
   it('reports a valid redirect without claiming that a full manifest was persisted', async () => {
     const { CrawlerService } = await import('../../src/crawler.js');
     const ctx = Object.create((CrawlerService as any).prototype);

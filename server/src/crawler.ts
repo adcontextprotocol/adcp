@@ -53,6 +53,11 @@ const PUBLISHER_CRAWL_DEFER_MS = 30_000;
 const PUBLISHER_CRAWL_RETENTION_MS = 30 * 24 * 60 * 60_000;
 const CRAWL_EXECUTION_LOCK_OPERATION_TIMEOUT_MS = 10_000;
 const FULL_CRAWL_INTENT_LOCK_WAIT_MS = 10_000;
+// A single house manifest must not monopolize a crawl request. Pointer fetches
+// already have a 10-second transport timeout; this cap and small concurrency
+// bound keep the worst-case fan-out within the single-domain crawl budget.
+const HOUSE_PORTFOLIO_REF_SCAN_LIMIT = 20;
+const HOUSE_PORTFOLIO_REF_SCAN_CONCURRENCY = 4;
 
 export type SingleDomainCrawlOutcome = 'completed' | 'invalid';
 
@@ -144,6 +149,14 @@ class CrawlExecutionLockLostError extends Error {
     super('Crawl execution lock ownership was lost');
     this.name = 'CrawlExecutionLockLostError';
   }
+}
+
+function isCrawlOwnershipLoss(error: unknown): boolean {
+  const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+  return error instanceof CrawlExecutionLockLostError ||
+    error instanceof PublisherCrawlLeaseLostError ||
+    code === 'crawl_execution_lock_lost' ||
+    code === 'crawl_lease_lost';
 }
 
 export class CrawlerService {
@@ -929,7 +942,10 @@ export class CrawlerService {
       // each portfolio pointer from the house context so referenced leaves are
       // persisted as `house_only` when they do not reciprocate.
       if (result.variant === 'house_portfolio') {
-        await this.persistHousePortfolioRelationships(result.raw_data as HousePortfolioVariant);
+        await this.persistHousePortfolioRelationships(
+          result.raw_data as HousePortfolioVariant,
+          assertExecutionLock,
+        );
       }
 
       // Compute and persist relationship trust. resolveBrand() re-fetches via
@@ -939,13 +955,16 @@ export class CrawlerService {
       // background crawler that runs on a schedule.
       try {
         const resolved = await this.brandManager.resolveBrand(domain, { skipCache: true });
+        assertExecutionLock?.();
         if (resolved?.relationship_trust) {
           await this.persistResolvedBrandTrust(domain, resolved);
+          assertExecutionLock?.();
         }
         // If resolved but trust is absent, leave stale trust and computed_at
         // in place — it is better to serve a stale verified verdict than to
         // silently clear it on an inconclusive resolution pass.
       } catch (err) {
+        if (isCrawlOwnershipLoss(err)) throw err;
         log.warn({ domain, err }, 'Trust computation failed during brand scan');
       }
     }
@@ -958,38 +977,64 @@ export class CrawlerService {
     };
   }
 
-  private async persistHousePortfolioRelationships(portfolio: HousePortfolioVariant): Promise<void> {
-    for (const ref of portfolio.brand_refs ?? []) {
-      try {
-        const resolved = await this.brandManager.resolveHouseBrandReference(
-          ref,
-          portfolio.house.domain,
-          { skipCache: true },
-        );
-        if (!resolved?.relationship_trust) continue;
+  private async persistHousePortfolioRelationships(
+    portfolio: HousePortfolioVariant,
+    assertExecutionLock?: () => void,
+  ): Promise<void> {
+    const allRefs = portfolio.brand_refs ?? [];
+    const refs = allRefs.slice(0, HOUSE_PORTFOLIO_REF_SCAN_LIMIT);
+    if (allRefs.length > refs.length) {
+      log.warn(
+        {
+          houseDomain: portfolio.house.domain,
+          totalRefs: allRefs.length,
+          scannedRefs: refs.length,
+        },
+        'House portfolio relationship scan capped',
+      );
+    }
 
-        // The pointer resolver has validated the leaf's canonical document, so
-        // persist that authoritative identity before caching the relationship.
-        await this.brandDb.upsertDiscoveredBrand({
-          domain: ref.domain,
-          brand_id: ref.brand_id,
-          canonical_domain: resolved.canonical_domain,
-          brand_name: resolved.brand_name,
-          brand_names: resolved.names,
-          keller_type: resolved.keller_type,
-          parent_brand: resolved.parent_brand,
-          brand_agent_url: resolved.brand_agent_url,
-          has_brand_manifest: Boolean(resolved.brand_manifest),
-          brand_manifest: resolved.brand_manifest,
-          source_type: 'brand_json',
-        });
-        await this.persistResolvedBrandTrust(ref.domain, resolved);
-      } catch (err) {
-        log.warn(
-          { err, houseDomain: portfolio.house.domain, leafDomain: ref.domain },
-          'Failed to index house portfolio relationship',
-        );
-      }
+    for (let offset = 0; offset < refs.length; offset += HOUSE_PORTFOLIO_REF_SCAN_CONCURRENCY) {
+      assertExecutionLock?.();
+      await Promise.all(
+        refs.slice(offset, offset + HOUSE_PORTFOLIO_REF_SCAN_CONCURRENCY).map(async (ref) => {
+          try {
+            assertExecutionLock?.();
+            const resolved = await this.brandManager.resolveHouseBrandReference(
+              ref,
+              portfolio.house.domain,
+              { skipCache: true },
+            );
+            assertExecutionLock?.();
+            if (!resolved?.relationship_trust) return;
+
+            // The pointer resolver has validated the leaf's canonical document, so
+            // persist that authoritative identity before caching the relationship.
+            await this.brandDb.upsertDiscoveredBrand({
+              domain: ref.domain,
+              brand_id: ref.brand_id,
+              canonical_domain: resolved.canonical_domain,
+              brand_name: resolved.brand_name,
+              brand_names: resolved.names,
+              keller_type: resolved.keller_type,
+              parent_brand: resolved.parent_brand,
+              brand_agent_url: resolved.brand_agent_url,
+              has_brand_manifest: Boolean(resolved.brand_manifest),
+              brand_manifest: resolved.brand_manifest,
+              source_type: 'brand_json',
+            });
+            assertExecutionLock?.();
+            await this.persistResolvedBrandTrust(ref.domain, resolved);
+            assertExecutionLock?.();
+          } catch (err) {
+            if (isCrawlOwnershipLoss(err)) throw err;
+            log.warn(
+              { err, houseDomain: portfolio.house.domain, leafDomain: ref.domain },
+              'Failed to index house portfolio relationship',
+            );
+          }
+        }),
+      );
     }
   }
 
@@ -1106,7 +1151,7 @@ export class CrawlerService {
           assertExecutionLock?.();
           await this.scanBrandForDomain(domain, assertExecutionLock);
         } catch (err) {
-          if (err instanceof CrawlExecutionLockLostError) throw err;
+          if (isCrawlOwnershipLoss(err)) throw err;
           log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Brand scan failed');
         }
       }));
@@ -2080,8 +2125,9 @@ export class CrawlerService {
     );
 
     try {
-      await this.scanBrandForDomain(normalizedDomain);
+      await this.scanBrandForDomain(normalizedDomain, assertExecutionLock);
     } catch (err) {
+      if (isCrawlOwnershipLoss(err)) throw err;
       log.warn({ domain: normalizedDomain, err: err instanceof Error ? err.message : err }, 'Brand scan during adagents revalidation failed');
     }
 
@@ -2744,8 +2790,9 @@ export class CrawlerService {
       // Scan brand.json for this domain
       stage = 'brand_scan';
       try {
-        await this.scanBrandForDomain(domain);
+        await this.scanBrandForDomain(domain, assertLease);
       } catch (err) {
+        if (isCrawlOwnershipLoss(err)) throw err;
         log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Brand scan during single domain crawl failed');
       }
 
