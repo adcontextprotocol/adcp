@@ -214,6 +214,10 @@ phases:
             path: "context.correlation_id"
             value: "collection_lists--list_collection_lists"
             description: "Context correlation_id returned unchanged"
+          - check: field_contains
+            path: "lists[*].list_id"
+            value: "$context.collection_list_id"
+            description: "DR-0001 / list_collection_lists name filter contract: the just-created collection list is returned"
 
       - id: get_collection_list
         title: "Get a specific collection list with resolved collections"
@@ -258,6 +262,10 @@ phases:
             path: "context.correlation_id"
             value: "collection_lists--get_collection_list"
             description: "Context correlation_id returned unchanged"
+          - check: field_equals_context
+            path: "list.list_id"
+            context_key: "collection_list_id"
+            description: "DR-0001 / get_collection_list identity contract: readback returns the requested created list"
 
   - id: update_list
     title: "Update collection lists"

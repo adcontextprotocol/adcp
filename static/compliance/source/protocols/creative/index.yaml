@@ -190,10 +190,10 @@ phases:
             path: "context.correlation_id"
             value: "creative_lifecycle--list_all"
             description: "Context correlation_id returned unchanged"
-          - check: field_equals_context
-            path: "creatives[0].creative_id"
-            context_key: "synced_creative_id"
-            description: "list_creatives returns the creative synced earlier"
+          - check: field_contains
+            path: "creatives[*].creative_id"
+            value: "$context.synced_creative_id"
+            description: "DR-0001 / list_creatives account contract: the creative synced earlier remains discoverable"
       - id: list_filtered
         title: "List creatives filtered by format"
         narrative: |
@@ -235,10 +235,53 @@ phases:
             path: "context.correlation_id"
             value: "creative_lifecycle--list_filtered"
             description: "Context correlation_id returned unchanged"
+          - check: field_contains
+            path: "creatives[*].creative_id"
+            value: "$context.synced_creative_id"
+            description: "DR-0001 / list_creatives format filter contract: the synced image creative remains in the filtered result"
+  - id: delivery_readback
+    title: "Read delivery for the synced creative"
+    narrative: |
+      The buyer requests delivery for the creative synced earlier. The response must
+      identify that creative rather than returning unrelated but schema-valid data.
+
+    steps:
+      - id: get_synced_creative_delivery
+        title: "Get delivery for the synced creative"
+        task: get_creative_delivery
+        requires_tool: get_creative_delivery
+        schema_ref: "creative/get-creative-delivery-request.json"
+        response_schema_ref: "creative/get-creative-delivery-response.json"
+        doc_ref: "/creative/task-reference/get_creative_delivery"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return delivery for the requested creative and its variant collection,
+          including aggregate metrics when available.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          creative_ids:
+            - "$context.synced_creative_id"
+          context:
+            correlation_id: "creative_lifecycle--get_synced_creative_delivery"
+        validations:
+          - check: response_schema
+            description: "Response matches get-creative-delivery-response.json schema"
           - check: field_equals_context
             path: "creatives[0].creative_id"
             context_key: "synced_creative_id"
-            description: "Filtered list_creatives returns the display creative synced earlier"
+            description: "DR-0001 / get_creative_delivery filter contract: delivery belongs to the requested synced creative"
+          - check: field_present
+            path: "creatives[0].variants"
+            description: "DR-0001 / creative delivery response contract: the required variants collection is present"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--get_synced_creative_delivery"
+            description: "Context correlation_id returned unchanged"
   - id: build_and_preview
     title: "Preview display creative"
     narrative: |

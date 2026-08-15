@@ -206,6 +206,10 @@ phases:
             path: "context.correlation_id"
             value: "property_lists--list_property_lists"
             description: "Context correlation_id returned unchanged"
+          - check: field_contains
+            path: "lists[*].list_id"
+            value: "$context.property_list_id"
+            description: "DR-0001 / list_property_lists name filter contract: the just-created property list is returned"
       - id: get_property_list
         title: "Get a specific property list"
         narrative: |
@@ -242,6 +246,10 @@ phases:
             path: "context.correlation_id"
             value: "property_lists--get_property_list"
             description: "Context correlation_id returned unchanged"
+          - check: field_equals_context
+            path: "list.list_id"
+            context_key: "property_list_id"
+            description: "DR-0001 / get_property_list identity contract: readback returns the requested created list"
   - id: update_list
     title: "Update property lists"
     narrative: |
