@@ -1,11 +1,11 @@
-import type { Agent, FederatedAgent } from "./types.js";
+import type { Agent, FederatedAgent, ResolvedBrand } from "./types.js";
 import type { Client } from "pg";
 import { PropertyCrawler, getPropertyIndex, type AgentInfo, type CrawlResult } from "@adcp/sdk";
 import { sanitizeAdagentsProperty } from "./discovery/property-index-guard.js";
 import { FederatedIndexService } from "./federated-index.js";
 import type { DiscoveredAgent } from "./db/federated-index-db.js";
 import { AdAgentsManager, type AdAgentsValidationResult } from "./adagents-manager.js";
-import { BrandManager, type BrandValidationResult } from "./brand-manager.js";
+import { BrandManager, type BrandValidationResult, type HousePortfolioVariant } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
 import {
   PublisherCrawlLeaseLostError,
@@ -925,6 +925,13 @@ export class CrawlerService {
         await this.upsertBrandProperties(domain, result.raw_data as Record<string, unknown>);
       }
 
+      // A leaf-only crawl cannot discover a house-side-only assertion. Index
+      // each portfolio pointer from the house context so referenced leaves are
+      // persisted as `house_only` when they do not reciprocate.
+      if (result.variant === 'house_portfolio') {
+        await this.persistHousePortfolioRelationships(result.raw_data as HousePortfolioVariant);
+      }
+
       // Compute and persist relationship trust. resolveBrand() re-fetches via
       // its own skipCache path (validateDomain used skipCache:true above so the
       // validation cache is cold), records any relationship declarations, and
@@ -933,21 +940,7 @@ export class CrawlerService {
       try {
         const resolved = await this.brandManager.resolveBrand(domain, { skipCache: true });
         if (resolved?.relationship_trust) {
-          // Only set claimed_house_domain for one-sided states; for mutual/inline
-          // the relationship is fully verified and there is no unverified "claim".
-          const isMutualOrInline = resolved.relationship_trust === 'mutual' || resolved.relationship_trust === 'inline';
-          await this.brandDb.updateRelationshipTrust(domain, {
-            relationship_trust: resolved.relationship_trust,
-            relationship_verified_at: resolved.relationship_verified_at
-              ? new Date(resolved.relationship_verified_at)
-              : null,
-            // For one-sided states the leaf document's unverified claim is the
-            // meaningful artifact; for fully-verified states it is not.
-            claimed_house_domain: isMutualOrInline ? null : (resolved.claimed_house_domain ?? null),
-            // For mutual/inline, persist the resolver-verified house edge so that
-            // list endpoints surface the trusted domain without an extra resolve call.
-            house_domain: isMutualOrInline ? (resolved.house_domain ?? null) : null,
-          });
+          await this.persistResolvedBrandTrust(domain, resolved);
         }
         // If resolved but trust is absent, leave stale trust and computed_at
         // in place — it is better to serve a stale verified verdict than to
@@ -963,6 +956,64 @@ export class CrawlerService {
       variant: result.variant ?? null,
       manifestPersisted,
     };
+  }
+
+  private async persistHousePortfolioRelationships(portfolio: HousePortfolioVariant): Promise<void> {
+    for (const ref of portfolio.brand_refs ?? []) {
+      try {
+        const resolved = await this.brandManager.resolveHouseBrandReference(
+          ref,
+          portfolio.house.domain,
+          { skipCache: true },
+        );
+        if (!resolved?.relationship_trust) continue;
+
+        // The pointer resolver has validated the leaf's canonical document, so
+        // persist that authoritative identity before caching the relationship.
+        await this.brandDb.upsertDiscoveredBrand({
+          domain: ref.domain,
+          brand_id: ref.brand_id,
+          canonical_domain: resolved.canonical_domain,
+          brand_name: resolved.brand_name,
+          brand_names: resolved.names,
+          keller_type: resolved.keller_type,
+          parent_brand: resolved.parent_brand,
+          brand_agent_url: resolved.brand_agent_url,
+          has_brand_manifest: Boolean(resolved.brand_manifest),
+          brand_manifest: resolved.brand_manifest,
+          source_type: 'brand_json',
+        });
+        await this.persistResolvedBrandTrust(ref.domain, resolved);
+      } catch (err) {
+        log.warn(
+          { err, houseDomain: portfolio.house.domain, leafDomain: ref.domain },
+          'Failed to index house portfolio relationship',
+        );
+      }
+    }
+  }
+
+  private async persistResolvedBrandTrust(domain: string, resolved: ResolvedBrand): Promise<void> {
+    if (!resolved.relationship_trust) return;
+    const isMutualOrInline = resolved.relationship_trust === 'mutual' ||
+      resolved.relationship_trust === 'inline';
+    const trustedHouseDomain = isMutualOrInline &&
+      resolved.house_domain?.toLowerCase() !== domain.toLowerCase()
+      ? resolved.house_domain
+      : null;
+    await this.brandDb.updateRelationshipTrust(domain, {
+      relationship_trust: resolved.relationship_trust,
+      relationship_verified_at: resolved.relationship_verified_at
+        ? new Date(resolved.relationship_verified_at)
+        : null,
+      // For fully verified states there is no unverified claim. Other states
+      // preserve the leaf's own declaration when one exists.
+      claimed_house_domain: isMutualOrInline ? null : (resolved.claimed_house_domain ?? null),
+      // Passing null is deliberate: transitions away from mutual/inline must
+      // clear a previously trusted house edge. An inline master brand can name
+      // its own domain as the portfolio house; that is not a hierarchy edge.
+      house_domain: trustedHouseDomain,
+    });
   }
 
   /**

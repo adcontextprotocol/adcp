@@ -1399,6 +1399,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('report_plan_outcome');
     expect(toolNames).toContain('get_plan_audit_logs');
     expect(toolNames).toContain('get_brand_identity');
+    expect(toolNames).toContain('search_brands');
     expect(toolNames).toContain('get_rights');
     expect(toolNames).toContain('acquire_rights');
     expect(toolNames).toContain('update_rights');
@@ -1434,7 +1435,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_collection_list');
     expect(toolNames).toContain('list_collection_lists');
     expect(toolNames).toContain('delete_collection_list');
-    expect(toolNames).toHaveLength(55);
+    expect(toolNames).toHaveLength(56);
 
     const validateInput = tools.find(t => t.name === 'validate_input');
     expect(validateInput?.inputSchema?.properties?.targets?.maxItems).toBe(50);

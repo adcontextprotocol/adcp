@@ -2656,6 +2656,40 @@ async function runTests() {
     return true;
   });
 
+  await test('search_brands carries canonical relationship trust without treating absence as standalone', async () => {
+    const schema = loadSchema(path.join(SCHEMA_BASE_DIR, 'brand/search-brands-response.json'));
+    const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(testAjv);
+    const validate = await testAjv.compileAsync(schema);
+    const baseBrand = {
+      brand_id: 'leaf_brand',
+      names: [{ en: 'Leaf Brand' }]
+    };
+    const response = brands => ({ status: 'completed', brands });
+
+    if (!validate(response([baseBrand]))) {
+      return `unknown trust state was rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (!validate(response([{
+        ...baseBrand,
+        house: { domain: 'house.example', name: 'Example House' },
+        relationship_trust: 'mutual',
+        relationship_verified_at: '2026-08-15T12:00:00Z'
+      }]))) {
+      return `mutual trust result was rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (!validate(response([{
+        ...baseBrand,
+        relationship_trust: 'house_only'
+      }]))) {
+      return `house-only trust result was rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (validate(response([{ ...baseBrand, relationship_trust: 'mutual_assertion' }]))) {
+      return 'obsolete RFC-era relationship trust vocabulary must be rejected';
+    }
+    return true;
+  });
+
   // Test 13: Validate schema examples against their schemas
   await test('Schema examples validate against their own schemas', async () => {
     // Skip schemas that require format-aware validation (creative manifests need format context)

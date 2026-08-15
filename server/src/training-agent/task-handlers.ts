@@ -1717,6 +1717,7 @@ import {
 } from './governance-handlers.js';
 import {
   BRAND_TOOLS,
+  handleSearchBrands,
   handleGetBrandIdentity,
   handleGetRights,
   handleAcquireRights,
@@ -12053,6 +12054,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   check_governance: handleCheckGovernance,
   report_plan_outcome: handleReportPlanOutcome,
   get_plan_audit_logs: handleGetPlanAuditLogs,
+  search_brands: handleSearchBrands,
   get_brand_identity: handleGetBrandIdentity,
   get_rights: handleGetRights,
   acquire_rights: handleAcquireRights,

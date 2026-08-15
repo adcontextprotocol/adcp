@@ -511,6 +511,43 @@ describe('BrandDatabase.getAllBrandsForRegistry', () => {
       expect(row!.house_domain).toBe('mutual-house.example.com');
     });
 
+    it('updateRelationshipTrust clears and audits a stale trusted house edge', async () => {
+      await insertBrand({
+        domain: 'stale-edge.example.com',
+        brand_name: 'Stale Edge Brand',
+        is_public: true,
+        source_type: 'brand_json',
+        house_domain: 'old-house.example.com',
+      });
+
+      await brandDb.updateRelationshipTrust('stale-edge.example.com', {
+        relationship_trust: 'house_only',
+        relationship_verified_at: null,
+        claimed_house_domain: null,
+        house_domain: null,
+      });
+
+      const result = await brandDb.getAllBrandsForRegistry({ search: 'stale-edge' });
+      const row = result.find((b) => b.domain === 'stale-edge.example.com');
+      expect(row!.relationship_trust).toBe('house_only');
+      expect(row!.house_domain).toBeUndefined();
+
+      const audit = await pool.query<{ details: Record<string, unknown> }>(
+        `SELECT details
+         FROM registry_audit_log
+         WHERE resource_type = 'brand'
+           AND resource_id = 'stale-edge.example.com'
+           AND action = 'brand_house_domain_changed'
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      );
+      expect(audit.rows[0]?.details).toMatchObject({
+        prior_house_domain: 'old-house.example.com',
+        new_house_domain: null,
+        mutation_source: 'relationship_trust_resolution',
+      });
+    });
+
     it('findCompany returns relationship_trust when present', async () => {
       await insertBrand({
         domain: 'findco-trust.example.com',
