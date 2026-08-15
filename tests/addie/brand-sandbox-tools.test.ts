@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';
 import { canonicalize } from '@adcp/sdk';
 import {
@@ -7,6 +7,10 @@ import {
   handleAcquireRights,
   handleUpdateRights,
 } from '../../server/src/training-agent/brand-handlers.js';
+import {
+  flushDirtySessions,
+  runWithSessionContext,
+} from '../../server/src/training-agent/state.js';
 
 const ctx = { mode: 'training' as const };
 
@@ -20,7 +24,11 @@ const handlers: Record<string, Handler> = {
 };
 
 async function call(tool: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-  return await handlers[tool](args, ctx);
+  return runWithSessionContext(async () => {
+    const result = await handlers[tool](args, ctx);
+    await flushDirtySessions();
+    return result;
+  });
 }
 
 function rightsTestDates() {
@@ -433,6 +441,19 @@ describe('brand protocol tools (training agent)', () => {
   });
 
   describe('update_rights', () => {
+    beforeEach(async () => {
+      const acquired = await call('acquire_rights', {
+        rights_id: 'janssen_likeness_voice',
+        pricing_option_id: 'monthly_exclusive',
+        buyer: { domain: 'bistro-oranje.nl', brand_id: 'bistro_oranje' },
+        campaign: {
+          description: 'Local restaurant campaign featuring Dutch cuisine',
+          uses: ['likeness'],
+          countries: ['NL'],
+        },
+      });
+      expect(acquired.rights_status).toBe('acquired');
+    });
 
     it('returns updated terms with extended end_date', async () => {
       const { extensionEndDate } = rightsTestDates();

@@ -1,11 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { handleUpdateRights } from '../../src/training-agent/brand-handlers.js';
+import {
+  handleAcquireRights,
+  handleUpdateRights,
+} from '../../src/training-agent/brand-handlers.js';
 import {
   TOOL_TO_PROTOCOL,
   TOOL_TO_TASK_TYPE,
 } from '../../src/training-agent/webhooks.js';
+import {
+  flushDirtySessions,
+  runWithSessionContext,
+} from '../../src/training-agent/state.js';
 
 describe('training-agent completion webhook contract', () => {
   it('keeps mapped task types aligned with the canonical task-type enum', () => {
@@ -35,10 +42,26 @@ describe('training-agent completion webhook contract', () => {
   });
 
   it('accepts update_rights callbacks now that its task type is routable', async () => {
-    const result = await handleUpdateRights({
+    const acquired = await runWithSessionContext(async () => {
+      const result = await handleAcquireRights({
+        rights_id: 'janssen_likeness_voice',
+        pricing_option_id: 'monthly_exclusive',
+        buyer: { domain: 'webhook-contract.example' },
+        campaign: {
+          description: 'Restaurant campaign for webhook contract coverage',
+          uses: ['likeness'],
+          countries: ['NL'],
+        },
+      }, { mode: 'open' });
+      await flushDirtySessions();
+      return result;
+    });
+    expect(acquired).toMatchObject({ rights_status: 'acquired' });
+
+    const result = await runWithSessionContext(() => handleUpdateRights({
       rights_id: 'janssen_likeness_voice',
       push_notification_config: { url: 'https://webhook.example.com/rights' },
-    }, { mode: 'open' });
+    }, { mode: 'open' }));
 
     expect(result).toMatchObject({ rights_id: 'janssen_likeness_voice' });
     expect(result).not.toHaveProperty('errors');
