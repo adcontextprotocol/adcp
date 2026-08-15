@@ -273,8 +273,7 @@ For budget/pacing interaction and bidding inheritance, see [Budget & Pacing Cont
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
 | `name` | Persisted human-readable label after the update. When the request supplied `name`, the seller MUST return the stored value (updated or prior unchanged value). |
-| `media_buy_status` | Media buy lifecycle status after the update (present when status changes, e.g., cancellation). Canonical 3.1 field. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status). |
-| `status` | **Deprecated in 3.1, removed in 3.2** ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)). Use `media_buy_status` instead. Top-level `status` collides with the envelope task-status on flat-serialized MCP wire. |
+| `media_buy_status` | Media buy lifecycle status after the update (present when status changes, e.g., cancellation). See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status). |
 | `revision` | Revision number after this update. Use in subsequent requests intended to change state for optimistic concurrency. Exact idempotency replays return the prior revision. |
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
 | `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
@@ -648,7 +647,7 @@ Cancel an entire media buy:
 }
 ```
 
-The body-level `media_buy_status` is the canonical 3.1 field for the buy's lifecycle state. The legacy top-level `status: MediaBuyStatus` form (e.g., `"status": "canceled"`) is deprecated and removed in 3.2 ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)) — it collided with the envelope task-status at the same root key. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for the migration.
+The body-level `media_buy_status` is the canonical field for the buy's lifecycle state. The AdCP 3.2 source schema no longer permits the legacy top-level `status: MediaBuyStatus` form (e.g., `"status": "canceled"`) because it collides with the envelope task-status at the same root key. That legacy lifecycle field existed only during the 3.1 deprecation window; in 3.2, root `status` is TaskStatus only. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for migration guidance.
 
 **[`NOT_CANCELLABLE`](/docs/building/verification/compliance-catalog#error-code-not-cancellable) error response:**
 ```json
