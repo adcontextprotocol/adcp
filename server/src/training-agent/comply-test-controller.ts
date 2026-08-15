@@ -2200,22 +2200,70 @@ function handleForceGetProductsRejection(
  * result are idempotent no-ops; tasks at any other terminal state return
  * INVALID_TRANSITION.
  *
- * Buyer-side observability via tasks/get is intentionally **deferred** to a
- * follow-up. The MCP SDK's TaskStore generates task_ids server-side and exposes
- * no API for caller-supplied IDs, and the SDK's auto-registered tasks/get
- * returns the MCP Task shape rather than the AdCP `tasks-get-response.json`
- * shape — both gaps need fixing before a storyboard polling phase against the
- * training-agent can pass. This commit ships the controller-side primitive
- * (the directive write) so other reference sellers and the upstream SDK have a
- * concrete behavior to mirror; the storyboard extension lands once the
- * polling integration exists. See PR description for the deferred tracking.
+ * The v6 sales facade registers forced submitted tasks through handoffToTask
+ * and waits on waitForForcedTaskCompletion below. Resolving that waiter lets
+ * the SDK project the same task through get_task_status and list_tasks; the
+ * tenant controller adapter also completes the shared registry before it
+ * returns so the next polling step cannot race the background handoff.
  */
 const FORCED_TASK_COMPLETIONS = new Map<string, { result: Record<string, unknown>; ownerKey: string; completedAt: string }>();
 const MAX_FORCED_TASK_COMPLETIONS = 1000;
+const FORCED_TASK_COMPLETION_TIMEOUT_MS = 15 * 60 * 1000;
+interface PendingForcedTaskCompletion {
+  ownerKey: string;
+  resolve: (result: Record<string, unknown>) => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+const PENDING_FORCED_TASK_COMPLETIONS = new Map<string, PendingForcedTaskCompletion>();
+
+/**
+ * Register the background half of a forceable async task. The v6 task
+ * framework owns the buyer-visible task registry; resolving this promise lets
+ * that framework write the terminal result to get_task_status/list_tasks.
+ */
+export function waitForForcedTaskCompletion(
+  taskId: string,
+  ownerKey: string,
+): Promise<Record<string, unknown>> {
+  const completed = FORCED_TASK_COMPLETIONS.get(taskId);
+  if (completed) {
+    if (completed.ownerKey !== ownerKey) {
+      return Promise.reject(new Error(`Task "${taskId}" belongs to another sandbox account`));
+    }
+    return Promise.resolve(completed.result);
+  }
+
+  const pending = PENDING_FORCED_TASK_COMPLETIONS.get(taskId);
+  if (pending) {
+    if (pending.ownerKey !== ownerKey) {
+      return Promise.reject(new Error(`Task "${taskId}" is already registered for another sandbox account`));
+    }
+    return Promise.reject(new Error(`Task "${taskId}" already has a pending completion waiter`));
+  }
+
+  if (PENDING_FORCED_TASK_COMPLETIONS.size >= MAX_FORCED_TASK_COMPLETIONS) {
+    return Promise.reject(new Error(`Pending forced-completion cap reached (${MAX_FORCED_TASK_COMPLETIONS})`));
+  }
+
+  return new Promise<Record<string, unknown>>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      PENDING_FORCED_TASK_COMPLETIONS.delete(taskId);
+      reject(new Error(`Task "${taskId}" was not completed within the 15-minute compliance window`));
+    }, FORCED_TASK_COMPLETION_TIMEOUT_MS);
+    timeout.unref();
+    PENDING_FORCED_TASK_COMPLETIONS.set(taskId, { ownerKey, resolve, reject, timeout });
+  });
+}
 
 /** Test-only: clear the forced-completion pool. */
 export function clearForcedTaskCompletions(): void {
   FORCED_TASK_COMPLETIONS.clear();
+  for (const pending of PENDING_FORCED_TASK_COMPLETIONS.values()) {
+    clearTimeout(pending.timeout);
+    pending.reject(new Error('Forced task completion state was reset'));
+  }
+  PENDING_FORCED_TASK_COMPLETIONS.clear();
 }
 
 /** Test-only: read the forced-completion pool. */
@@ -2298,6 +2346,15 @@ function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, u
     };
   }
 
+  const pending = PENDING_FORCED_TASK_COMPLETIONS.get(taskId);
+  if (pending && pending.ownerKey !== sessionKey) {
+    return {
+      success: false,
+      error: 'NOT_FOUND',
+      error_detail: `Task "${taskId}" was not registered for this sandbox account`,
+    };
+  }
+
   if (FORCED_TASK_COMPLETIONS.size >= MAX_FORCED_TASK_COMPLETIONS) {
     return {
       success: false,
@@ -2311,6 +2368,11 @@ function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, u
     ownerKey: sessionKey,
     completedAt: new Date().toISOString(),
   });
+  if (pending) {
+    clearTimeout(pending.timeout);
+    PENDING_FORCED_TASK_COMPLETIONS.delete(taskId);
+    pending.resolve(result as Record<string, unknown>);
+  }
 
   return {
     success: true,
