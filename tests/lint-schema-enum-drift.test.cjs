@@ -3,6 +3,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -29,6 +30,43 @@ test('canonical enums load from enums/ directory', () => {
   assert.ok(enums.size > 0, 'expected at least one canonical enum file');
   assert.ok(enums.has('property-type.json'), 'expected property-type.json in canonical enums');
   assert.ok(enums.has('account-status.json'), 'expected account-status.json in canonical enums');
+});
+
+test('lint reports an inline enum that is a strict subset of a canonical enum', (t) => {
+  const schemaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'schema-enum-drift-'));
+  t.after(() => fs.rmSync(schemaDir, { recursive: true, force: true }));
+
+  fs.writeFileSync(
+    path.join(schemaDir, 'drifted.json'),
+    JSON.stringify({
+      type: 'object',
+      properties: {
+        surface: {
+          type: 'string',
+          enum: [
+            'website',
+            'mobile_app',
+            'ctv_app',
+            'desktop_app',
+            'dooh',
+            'podcast',
+            'radio',
+            'streaming_audio',
+            'ai_assistant',
+          ],
+        },
+      },
+    }),
+  );
+
+  assert.deepEqual(lint(schemaDir).driftViolations, [
+    {
+      file: 'drifted.json',
+      path: '/properties/surface',
+      canonicalEnum: 'property-type.json',
+      missing: ['linear_tv'],
+    },
+  ]);
 });
 
 test('capabilities trusted_match.surfaces uses $ref to property-type.json', () => {
