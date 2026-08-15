@@ -141,6 +141,79 @@ and model families. Record:
 The shared dictionary should advance only if typed-call quality is no worse
 than the standalone presentation and missing-resource behavior fails closed.
 
+## Standards landscape
+
+Checked 2026-08-15.
+
+### MCP
+
+There is direct prior art, but no current interoperable mechanism:
+
+- [MCP SEP-1576](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1576)
+  proposed deduplicating tool schemas with local and external `$ref`s, varying
+  `tools/list` detail, and retrieving a smaller relevant tool set. That is very
+  close to this experiment. The proposal is now closed and marked dormant,
+  with no linked implementation. The closing guidance recommends first using
+  the [MCP contributor Discord](https://modelcontextprotocol.io/community/communication#discord)
+  to establish renewed interest and sponsorship.
+- [MCP SEP-834](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/834)
+  is the complementary effort to make JSON Schema 2020-12 support explicit.
+  Full JSON Schema support makes the references legal schema, but does not by
+  itself define how an MCP client discovers, transports, registers, or places
+  an external schema resource in model context.
+- The [Skills over MCP Working Group](https://github.com/modelcontextprotocol/modelcontextprotocol/discussions/2628)
+  is actively addressing adjacent tool-bloat and dependency-loading problems
+  with resource-backed, lazily loaded skills. Its early tests covered
+  fast-agent, Gemini CLI, Codex, and Goose. That work demonstrates that several
+  clients can already put MCP resources into model context, but it does not yet
+  make those resources a shared dictionary for `Tool.inputSchema` validation.
+
+So a shared dictionary is technically credible and aligned with known MCP
+work, but standard support is not imminent or assured. The useful next step is
+to take this measured AdCP case to the MCP schema/tooling discussions as a
+narrow proposal: capability negotiation, dictionary transport and identity,
+external-reference resolution, caching, and fail-closed behavior. AdCP should
+not advertise external references in ordinary `tools/list` until clients
+negotiate that support.
+
+### A2A
+
+A2A has a different default shape. An
+[Agent Skill](https://a2a-protocol.org/latest/definitions/) is descriptive and
+advertises input and output media types, not a JSON Schema for each skill's
+arguments. A [remote A2A agent](https://a2a-protocol.org/latest/topics/key-concepts/)
+is intentionally opaque, so its internal tool schemas are not normally copied
+into the caller's model context.
+
+The [A2A extension mechanism](https://a2a-protocol.org/latest/topics/extensions/)
+can nevertheless define structured `params`, schemas for additional data, or
+a profile requiring schema-conforming data parts. An AdCP-over-A2A extension
+could therefore identify a versioned shared schema bundle and negotiate it in
+the Agent Card. That is possible without changing A2A core, but it would be an
+AdCP extension requiring explicit support on both sides. It only creates the
+same token-saving opportunity when the client exposes those typed AdCP
+operations to its model; ordinary prompt-to-opaque-agent A2A traffic does not
+have MCP's repeated-tool-schema cost.
+
+## Evaluation package
+
+[PR #6568](https://github.com/adcontextprotocol/adcp/pull/6568) is the runnable
+reference experiment. Reviewers can check it out and reproduce the selection,
+measurements, shared dictionary, adapter, and fail-closed validation:
+
+```bash
+gh pr checkout 6568
+npm ci
+npm run experiment:mcp-schema-context
+npm run test:mcp-schema-projection
+```
+
+It is not yet a multi-client model-quality shootout. That follow-up should use
+the same 16-tool corpus and record the metrics above for at least two client
+and model families, with one standalone-schema arm and one pre-registered
+dictionary arm. Keeping the harness separate from the protocol schemas lets
+client-specific resource registration remain experimental.
+
 ## Reproduction
 
 ```bash
