@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/index.json",
+  "$id": "https://adcontextprotocol.org/schemas/index.json",
   "title": "AdCP Schema Discovery",
   "description": "Root discovery document for file-based AdCP schema consumers. Use latest_stable or a major/minor alias target instead of choosing by directory listing.",
   "latest": "3.1.14",
@@ -561,7 +561,7 @@
       "version": "2.5.3",
       "stability": "stable",
       "prerelease": false,
-      "deprecated": false,
+      "deprecated": true,
       "path": "/schemas/2.5.3/",
       "index": "/schemas/2.5.3/index.json"
     },
@@ -569,7 +569,7 @@
       "version": "2.5.2",
       "stability": "stable",
       "prerelease": false,
-      "deprecated": false,
+      "deprecated": true,
       "path": "/schemas/2.5.2/",
       "index": "/schemas/2.5.2/index.json"
     },
@@ -577,7 +577,7 @@
       "version": "2.5.1",
       "stability": "stable",
       "prerelease": false,
-      "deprecated": false,
+      "deprecated": true,
       "path": "/schemas/2.5.1/",
       "index": "/schemas/2.5.1/index.json"
     },
@@ -585,7 +585,7 @@
       "version": "2.5.0",
       "stability": "stable",
       "prerelease": false,
-      "deprecated": false,
+      "deprecated": true,
       "path": "/schemas/2.5.0/",
       "index": "/schemas/2.5.0/index.json"
     }
