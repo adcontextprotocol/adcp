@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.23
+
+### Patch Changes
+
+- 2914784: Fix the trusted matching capabilities schema to accept `linear_tv`, which is already part of the canonical property type enum.
+
 ## 3.0.22
 
 ### Patch Changes
