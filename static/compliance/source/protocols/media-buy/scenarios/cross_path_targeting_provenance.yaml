@@ -5,7 +5,7 @@ category: media_buy_seller
 summary: "Verifies that a seller keeps buyer-managed sync_audiences resources on audience_include/audience_exclude, keeps get_signals results on signal_targeting_groups, rejects cross-path substitutions, and preserves exact signal identity and pricing on readback."
 track: media_buy
 
-# A scenario-level signal gate plus step-level audience gates forms the
+# A scenario-level signal gate plus phase-level audience gates forms the
 # conjunction without extending the runner's single requires_capability shape.
 # Signal-only sellers still exercise exact signal readback; both cross-path
 # rejection probes run only when the seller also advertises audience targeting.
