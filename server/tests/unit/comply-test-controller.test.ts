@@ -1744,6 +1744,113 @@ describe('comply_test_controller', () => {
       expect((result as any).cumulative.impressions).toBe(8000);
     });
 
+    it('filters dated delivery batches with start-inclusive, end-exclusive boundaries', async () => {
+      const mediaBuyId = await createMediaBuy(server);
+      const utcDate = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
+      const excludedBefore = utcDate(4);
+      const includedAtStart = utcDate(3);
+      const excludedAtEnd = utcDate(2);
+
+      for (const [deliveryDate, impressions] of [
+        [excludedBefore, 100],
+        [includedAtStart, 200],
+        [excludedAtEnd, 400],
+      ] as const) {
+        const { result } = await simulateCallTool(server, 'comply_test_controller', {
+          scenario: 'simulate_delivery',
+          params: {
+            media_buy_id: mediaBuyId,
+            delivery_date: deliveryDate,
+            impressions,
+            clicks: impressions / 10,
+            reported_spend: { amount: impressions / 2, currency: 'USD' },
+          },
+          account: ACCOUNT,
+          brand: BRAND,
+        });
+        expect(result.success).toBe(true);
+        expect((result as any).simulated.delivery_date).toBe(deliveryDate);
+      }
+
+      const { result: delivery } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_id: mediaBuyId,
+        start_date: includedAtStart,
+        end_date: excludedAtEnd,
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(delivery.reporting_period).toEqual({
+        start: `${includedAtStart}T00:00:00.000Z`,
+        end: `${excludedAtEnd}T00:00:00.000Z`,
+      });
+      const totals = (delivery as any).media_buy_deliveries[0].totals;
+      expect(totals.impressions).toBe(200);
+      expect(totals.clicks).toBe(20);
+      expect(totals.spend).toBe(100);
+
+      const sessionKey = sessionKeyFromArgs({ account: ACCOUNT }, DEFAULT_CTX.mode, DEFAULT_CTX.userId, DEFAULT_CTX.moduleId);
+      const session = await getSession(sessionKey);
+      const cumulative = session.complyExtensions.deliverySimulations.get(mediaBuyId);
+      expect(cumulative?.impressions).toBe(700);
+      expect(cumulative?.datedSimulations).toHaveLength(3);
+
+      const { result: emptyRange } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_id: mediaBuyId,
+        start_date: includedAtStart,
+        end_date: includedAtStart,
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(emptyRange).toEqual(expect.objectContaining({
+        code: 'INVALID_REQUEST',
+        field: 'start_date',
+      }));
+    });
+
+    it('rejects an invalid delivery_date without creating delivery state', async () => {
+      const mediaBuyId = await createMediaBuy(server);
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: {
+          media_buy_id: mediaBuyId,
+          delivery_date: '2026-02-30',
+          impressions: 100,
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_PARAMS');
+      expect(result.error_detail).toContain('delivery_date');
+
+      const sessionKey = sessionKeyFromArgs({ account: ACCOUNT }, DEFAULT_CTX.mode, DEFAULT_CTX.userId, DEFAULT_CTX.moduleId);
+      const session = await getSession(sessionKey);
+      expect(session.complyExtensions.deliverySimulations.has(mediaBuyId)).toBe(false);
+    });
+
+    it('keeps legacy undated simulations visible in date-filtered delivery reads', async () => {
+      const mediaBuyId = await createMediaBuy(server);
+      const startDate = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);
+      const endDate = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: { media_buy_id: mediaBuyId, impressions: 333, clicks: 33 },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+
+      const { result: delivery } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        media_buy_id: mediaBuyId,
+        start_date: startDate,
+        end_date: endDate,
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      const totals = (delivery as any).media_buy_deliveries[0].totals;
+      expect(totals.impressions).toBe(333);
+      expect(totals.clicks).toBe(33);
+    });
+
     it('rejects malformed package-scoped vendor inputs without creating delivery state', async () => {
       const mediaBuyId = await createMediaBuy(server);
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
