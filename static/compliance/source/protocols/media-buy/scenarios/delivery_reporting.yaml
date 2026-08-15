@@ -178,6 +178,13 @@ phases:
               budget: 10000
               pricing_option_id: "$context.pricing_option_2_id"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_delivery_reporting_setup_create_media_buy"
+        context_outputs:
+          - name: delivery_media_buy_id
+            path: "media_buy_id"
+          - name: delivery_package_1_id
+            path: "packages[0].package_id"
+          - name: delivery_package_2_id
+            path: "packages[1].package_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
@@ -241,6 +248,24 @@ phases:
           - check: field_present
             path: "media_buy_deliveries"
             description: "Response contains delivery data"
+          - check: field_equals_context
+            path: "media_buy_deliveries[0].media_buy_id"
+            context_key: "delivery_media_buy_id"
+            description: "DR-0001 / get_media_buy_delivery filter contract: the requested media buy is the one returned"
+          - check: field_contains
+            path: "media_buy_deliveries[0].by_package[*].package_id"
+            value: "$context.delivery_package_1_id"
+            description: "DR-0001 / delivery response contract: reporting includes the first package created for the buy"
+          - check: field_contains
+            path: "media_buy_deliveries[0].by_package[*].package_id"
+            value: "$context.delivery_package_2_id"
+            description: "DR-0001 / delivery response contract: reporting includes the second package created for the buy"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.impressions"
+            description: "DR-0001 / delivery response contract: simulated impressions are reported substantively"
+          - check: field_present
+            path: "media_buy_deliveries[0].totals.spend"
+            description: "DR-0001 / delivery response contract: simulated spend is reported substantively"
 
   - id: viewability_delivery
     title: "Delivery reporting surfaces viewability.viewed_seconds for viewability-capable products"

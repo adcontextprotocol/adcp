@@ -152,6 +152,9 @@ phases:
           idempotency_key: "$generate:uuid_v4#content_standards_create_standards_create_content_standards"
           context:
             correlation_id: "content_standards--create_content_standards"
+        context_outputs:
+          - name: content_standards_id
+            path: "standards_id"
         validations:
           - check: response_schema
             description: "Response matches create-content-standards-response.json schema"
@@ -205,6 +208,10 @@ phases:
             path: "context.correlation_id"
             value: "content_standards--list_content_standards"
             description: "Context correlation_id returned unchanged"
+          - check: field_contains
+            path: "standards[*].standards_id"
+            value: "$context.content_standards_id"
+            description: "DR-0001 / list_content_standards account contract: the just-created standards set is returned"
       - id: get_content_standards
         title: "Get a specific content standard"
         narrative: |
@@ -241,6 +248,10 @@ phases:
             path: "context.correlation_id"
             value: "content_standards--get_content_standards"
             description: "Context correlation_id returned unchanged"
+          - check: field_equals_context
+            path: "standards_id"
+            context_key: "content_standards_id"
+            description: "DR-0001 / get_content_standards identity contract: readback returns the requested created standards set"
   - id: update_standards
     title: "Update content standards"
     narrative: |
