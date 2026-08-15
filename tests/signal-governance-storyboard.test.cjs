@@ -43,6 +43,9 @@ test('signal governance denial is task-gated and proves no deployment side effec
     discovery.context_outputs.find((capture) => capture.key === 'pricing_option_id')?.path,
     'signals[0].pricing_options[0].pricing_option_id',
   );
+  assert.deepEqual(discovery.sample_request.fields, ['pricing_options']);
+  assert.match(discovery.sample_request.signal_spec, /paid, standalone marketplace signal/);
+  assert.match(discovery.sample_request.signal_spec, /at least one pricing option/);
   assert.equal(denied.sample_request.action, 'activate');
   assert.equal(denied.sample_request.pricing_option_id, '$context.pricing_option_id');
   assert.equal(denied.sample_request.governance_context, undefined);

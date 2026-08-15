@@ -121,7 +121,11 @@ phases:
         expected: |
           Return at least one signal with a signal_agent_segment_id and pricing.
         sample_request:
-          signal_spec: "outdoor enthusiasts, age 25-54, US"
+          signal_spec: >-
+            a paid, standalone marketplace signal for outdoor enthusiasts age 25-54 in
+            the US, with at least one pricing option available for immediate activation
+          fields:
+            - pricing_options
           account:
             brand:
               domain: "acmeoutdoor.example"
