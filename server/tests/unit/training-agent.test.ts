@@ -6919,6 +6919,65 @@ describe('list_creatives handler', () => {
     expect(pg.total_count).toBe(1);
   });
 
+  it('filters creatives by status and media buy assignment with AND semantics', async () => {
+    const account = {
+      brand: { domain: 'creative-read-filters.example' },
+      operator: 'creative-read-filters.example',
+      sandbox: true,
+    };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    for (const [creativeId, status] of [
+      ['cr_filter_match', 'rejected'],
+      ['cr_filter_wrong_status', 'approved'],
+      ['cr_filter_wrong_buy', 'rejected'],
+    ] as const) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_creative',
+        params: {
+          creative_id: creativeId,
+          fixture: { status, format_kind: 'image' },
+        },
+      });
+    }
+
+    for (const [mediaBuyId, creativeAssignments] of [
+      ['mb_filter_target', ['cr_filter_match', 'cr_filter_wrong_status']],
+      ['mb_filter_other', ['cr_filter_wrong_buy']],
+    ] as const) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_media_buy',
+        params: {
+          media_buy_id: mediaBuyId,
+          fixture: {
+            status: 'active',
+            packages: [{
+              package_id: `${mediaBuyId}_package`,
+              creative_assignments: creativeAssignments,
+            }],
+          },
+        },
+      });
+    }
+
+    const { result } = await simulateCallTool(server, 'list_creatives', {
+      account,
+      adcp_version: '3.1',
+      ext: { adcp: { creative_wire: 'legacy' } },
+      filters: {
+        statuses: ['rejected'],
+        media_buy_ids: ['mb_filter_target'],
+      },
+    });
+
+    expect((result.creatives as Array<{ creative_id: string; status: string }>)).toEqual([
+      expect.objectContaining({ creative_id: 'cr_filter_match', status: 'rejected' }),
+    ]);
+    expect(result.query_summary).toEqual({ total_matching: 1, returned: 1 });
+  });
+
   it('filters by top-level asset type and composes with format_ids', async () => {
     const account = { brand: { domain: 'assetfilters.example' }, operator: 'assetfilters.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -8846,6 +8905,52 @@ describe('create_media_buy package-level date validation', () => {
 });
 
 // ── Paused package delivery ─────────────────────────────────────────
+
+describe('get_media_buy_delivery date validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns VALIDATION_ERROR for an empty half-open date range', async () => {
+    const account = {
+      brand: { domain: 'delivery-date-validation.example' },
+      operator: 'delivery-date-validation.example',
+      sandbox: true,
+    };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_media_buy',
+      params: {
+        media_buy_id: 'delivery_date_validation_buy',
+        fixture: {
+          status: 'active',
+          currency: 'USD',
+          start_time: '2026-01-01T00:00:00Z',
+          end_time: '2026-12-31T00:00:00Z',
+          packages: [{ package_id: 'delivery_date_validation_package', budget: 1000 }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_ids: ['delivery_date_validation_buy'],
+      start_date: '2026-04-15',
+      end_date: '2026-04-15',
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      code: 'VALIDATION_ERROR',
+      field: 'start_date',
+    }));
+  });
+});
 
 describe('paused package delivery', () => {
   beforeEach(() => {

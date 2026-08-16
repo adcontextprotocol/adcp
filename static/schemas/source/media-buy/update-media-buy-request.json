@@ -179,6 +179,16 @@
       ],
       "additionalProperties": false
     },
+    "daily_budget_cap": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "Replace the hard aggregate daily cap; null removes it. Numeric changes apply immediately with current-day spend counted. A cap below that spend pauses delivery for the day. Package caps are unchanged. Requires advertised media_buy scope; otherwise rejected with UNSUPPORTED_FEATURE."
+    },
+    "budget_cap_timezone": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Replace the shared IANA cap-day timezone; null restores the default selected by budget_capping.timezone_basis (Account.timezone or fixed_timezone). Requires buyer_timezone_override. Changes start at the next boundary in the previously effective timezone; numeric cap changes remain immediate."
+    },
     "budget_allocation": {
       "allOf": [
         {

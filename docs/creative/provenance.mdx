@@ -20,6 +20,7 @@ Provenance is an optional object that can attach to creative assets, creative ma
 | Field | Type | Description |
 |-------|------|-------------|
 | `digital_source_type` | enum | IPTC-aligned classification of AI involvement |
+| `synthetic_depiction` | boolean | Assessed declaration that a real or fictional person is synthetically depicted; omission means unassessed |
 | `ai_tool` | object | AI system used (`name` required, plus optional `version` and `provider`) |
 | `human_oversight` | enum | Level of human involvement in the creation process |
 | `declared_by` | object | Party attaching this provenance claim (`role` required, plus optional `agent_url`) |
@@ -56,6 +57,23 @@ For content with no AI involvement, provenance is even simpler:
   "digital_source_type": "digital_capture"
 }
 ```
+
+### Synthetic depiction
+
+`synthetic_depiction` answers a narrower question than `digital_source_type`: does the creative depict a real or fictional person performing or appearing in a way that was generated or materially manipulated rather than captured as depicted? It is an assessed boolean declaration, not a three-state enum:
+
+| Case | Declaration |
+|---|---|
+| Fully synthetic human performer | `synthetic_depiction: true` |
+| Real performer materially manipulated to say, do, or appear as something not captured | `synthetic_depiction: true` |
+| Synthetic content with no human depiction, such as a generated landscape or product rendering | `synthetic_depiction: false` after assessment |
+| Creative not assessed for synthetic depiction | Omit `synthetic_depiction` |
+
+Both `true` and `false` mean the creative was assessed. Omission means unassessed; it does not mean false. The value is independent of `digital_source_type`, so receivers MUST NOT infer one from the other.
+
+<Warning>
+`synthetic_depiction` is only a declaration about what the content depicts. It does not state that a depicted person consented, that the use is legal, or that an independent verifier confirmed the claim. Those determinations remain separate policy, rights, and verification concerns.
+</Warning>
 
 ### Full example
 
@@ -565,6 +583,7 @@ Sellers express provenance requirements on `creative-policy` — a field on ever
   "provenance_required": true,
   "provenance_requirements": {
     "require_digital_source_type": true,
+    "require_synthetic_depiction": true,
     "require_disclosure_metadata": true,
     "require_embedded_provenance": true
   },
@@ -591,6 +610,7 @@ Sellers that publish a requirement MUST enforce it. `sync_creatives` rejects non
 |---|---|
 | `PROVENANCE_REQUIRED` | No provenance object anywhere on the creative |
 | `PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING` | Resolved provenance has no `digital_source_type` |
+| `PROVENANCE_SYNTHETIC_DEPICTION_MISSING` | Resolved provenance has no assessed `synthetic_depiction` boolean |
 | `PROVENANCE_DISCLOSURE_MISSING` | Resolved provenance has no `disclosure.required`, or true with no jurisdictions |
 | `PROVENANCE_EMBEDDED_MISSING` | Resolved provenance has no `embedded_provenance[]` entry |
 | `PROVENANCE_VERIFIER_NOT_ACCEPTED` | `verify_agent.agent_url` is not on the seller's `accepted_verifiers` list (cross-checked before any outbound call) |

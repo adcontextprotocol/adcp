@@ -15,7 +15,7 @@ AdCP distinguishes four entities in every billable operation:
 
 **Brand** — The advertiser whose products or services are promoted. Identified by a `brand` reference (`domain` + optional `brand_id` and ISO country `countries[]`), resolved via `/.well-known/brand.json`. Countries distinguish commercial advertiser identities without becoming delivery targeting.
 
-**Account** — A billing relationship between a buyer and seller. Determines rate card, payment terms, credit limit, and who receives invoices. Every billable operation requires an account reference — a seller/storefront-assigned `account_id` when the seller or upstream platform owns the canonical account namespace, or an advertiser natural key (`brand`, `operator`, optional `operator_unit`, `currency`, `sandbox`) for buyer-declared accounts.
+**Account** — A billing relationship between a buyer and seller. Determines rate card, payment terms, credit limit, operational timezone, and who receives invoices. Every billable operation requires an account reference — a seller/storefront-assigned `account_id` when the seller or upstream platform owns the canonical account namespace, or an advertiser natural key (`brand`, `operator`, optional `operator_unit`, fixed `currency`, buyer-selected `timezone`, `sandbox`) for buyer-declared accounts.
 
 **Operator** — The entity driving buys — an agency trading desk, the brand's internal team, or another entity acting on behalf of the advertiser. Identified by domain and verifiable via [authorized operators](#authorized-operators) in `brand.json`.
 
@@ -447,7 +447,7 @@ The agent may be directly responsible for billing when `billing` is `"agent"`. W
 
 ### Natural key semantics
 
-The tuple `(brand, operator, operator_unit.id, currency, sandbox)` identifies the advertiser object in the seller system. The nested `brand` carries `domain`, optional `brand_id`, and optional ISO country `countries[]`; these countries qualify commercial identity and never target delivery. `operator_unit` identifies the operator's own business unit, agency seat, or buying-platform account. Its stable `id` participates in identity, while its optional `name` is display metadata and may change without creating a new account. `currency` participates only when the seller's advertiser object is locked to one currency. Omit it when currency is selected per media buy.
+The tuple `(brand, operator, operator_unit.id, currency, timezone, sandbox)` identifies the advertiser object in the seller system. The nested `brand` carries `domain`, optional `brand_id`, and optional ISO country `countries[]`; these countries qualify commercial identity and never target delivery. `operator_unit` identifies the operator's own business unit, agency seat, or buying-platform account. Its stable `id` participates in identity, while its optional `name` is display metadata and may change without creating a new account. `currency` participates only when the seller's advertiser object is locked to one currency. `timezone` participates only when the seller requires the buyer to select an immutable account timezone during provisioning. Omit either qualifier when its capability mode does not apply.
 
 This separates two account namespaces that must not be conflated: `operator_unit.id` is assigned by the buyer-side operator, while `account_id` is assigned by the AdCP seller/storefront. Both may be opaque values, but they identify different objects and are not interchangeable.
 
@@ -479,7 +479,7 @@ The agent does not choose the scope — the seller assigns it based on its own a
 
 When multiple natural keys resolve to the same scope, the `account_scope` explains why.
 
-For buyer-declared accounts (`require_operator_auth: false`), use the complete natural key (`brand` + `operator` + optional `operator_unit`, `currency`, and `sandbox`) on subsequent requests. A seller may also return an `account_id` from `sync_accounts` as its internal handle, but the seller MUST continue accepting the natural-key `AccountRef` for every account provisioned this way and MUST return its natural-key fields from `list_accounts`. For account-id namespaces (`require_operator_auth: true`), discover seller/storefront account IDs via `list_accounts` for upstream-managed namespaces, or receive them out-of-band for seller-defined namespaces — including sandbox test accounts.
+For buyer-declared accounts (`require_operator_auth: false`), use the complete natural key (`brand` + `operator` + optional `operator_unit`, fixed `currency`, buyer-selected `timezone`, and `sandbox`) on subsequent requests. A seller may also return an `account_id` from `sync_accounts` as its internal handle, but the seller MUST continue accepting the natural-key `AccountRef` for every account provisioned this way and MUST return its natural-key fields from `list_accounts`. For account-id namespaces (`require_operator_auth: true`), discover seller/storefront account IDs via `list_accounts` for upstream-managed namespaces, or receive them out-of-band for seller-defined namespaces — including sandbox test accounts.
 
 ## Error codes
 

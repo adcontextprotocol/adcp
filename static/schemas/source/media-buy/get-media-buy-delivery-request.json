@@ -42,12 +42,12 @@
     "start_date": {
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-      "description": "Start date for reporting period (YYYY-MM-DD). When omitted along with end_date, returns campaign lifetime data. Only accepted when the product's reporting_capabilities.date_range_support is 'date_range'."
+      "description": "Inclusive start date for the reporting period (YYYY-MM-DD). When omitted along with end_date, returns campaign lifetime data. Only accepted when the product's reporting_capabilities.date_range_support is 'date_range'."
     },
     "end_date": {
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-      "description": "End date for reporting period (YYYY-MM-DD). When omitted along with start_date, returns campaign lifetime data. Only accepted when the product's reporting_capabilities.date_range_support is 'date_range'."
+      "description": "Exclusive end date for the reporting period (YYYY-MM-DD). Must be later than start_date. When omitted along with start_date, returns campaign lifetime data. Only accepted when the product's reporting_capabilities.date_range_support is 'date_range'."
     },
     "include_package_daily_breakdown": {
       "type": "boolean",
@@ -250,6 +250,45 @@
               "$ref": "/schemas/enums/sort-metric.json",
               "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
               "default": "spend"
+            }
+          },
+          "additionalProperties": true
+        },
+        "demographic": {
+          "type": "object",
+          "description": "Request delivery broken down by demographic. Check the product's reporting_capabilities.supports_demographic_breakdown independently from demographic_targeting. When age_ranges is present, every requested range MUST be exactly supported by exact_predicates or equal one of the declared enumerated_intervals; sellers MUST reject unsupported ranges with UNSUPPORTED_FEATURE rather than silently widen or narrow them.",
+          "properties": {
+            "age_ranges": {
+              "type": "array",
+              "description": "Optional canonical age ranges to return as distinct rows. Copying an applied targeting predicate here requests aligned reporting only when the reporting capability supports that exact predicate. Omit to request the product's declared native demographic breakdown.",
+              "items": {
+                "$ref": "/schemas/core/demographic-age-range.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 25,
+              "description": "Maximum number of demographic entries to return. Defaults to 25."
+            },
+            "sort_by": {
+              "$ref": "/schemas/enums/sort-metric.json",
+              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
+              "default": "spend"
+            }
+          },
+          "additionalProperties": false
+        },
+        "spot": {
+          "type": "object",
+          "description": "Request a spot-level as-run airing log for broadcast TV, radio, or other scheduled inventory. Rows are ordered by aired_at ascending. When limit is omitted, sellers SHOULD return the complete log for the requested reporting period.",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional maximum number of spot rows to return. When the response is incomplete because of this limit or a seller-imposed maximum, by_spot_truncated is true."
             }
           },
           "additionalProperties": true

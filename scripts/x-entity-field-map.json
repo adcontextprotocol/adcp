@@ -6,6 +6,7 @@
     "product_id": "product",
     "proposal_id": "proposal",
     "opportunity_id": "opportunity",
+    "spot_id": "spot_airing",
     "creative_id": "creative",
     "audience_id": "audience",
     "evidence_id": "audience_evidence",

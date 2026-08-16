@@ -34,12 +34,12 @@ The mapping is normative — sellers and SDKs MUST use this table to translate b
 | `extend_flight` | `end_time`, `packages[].end_time` (later than current) | End-time push only |
 | `shorten_flight` | `end_time`, `packages[].end_time` (earlier than current) | End-time pull only |
 | `update_flight_dates` | `start_time`, `end_time`, `packages[].start_time`, `packages[].end_time` (shift) | Start-shift distinct from extend/shorten; covers both buy-level and package-level dates |
-| `increase_budget` | `total_budget`, `packages[].budget` (raise or `null`) | `packages[].budget: null` removes a seller-optimized package cap and therefore relaxes, rather than lowers, its ceiling. |
-| `decrease_budget` | `total_budget`, `packages[].budget` (lower) | Sellers typically bound by already-spent |
+| `increase_budget` | `total_budget`, `packages[].budget`, `daily_budget_cap`, `packages[].daily_budget_cap` (raise or `null`) | A `null` cap removes a ceiling and therefore relaxes, rather than lowers, the budget constraint. |
+| `decrease_budget` | `total_budget`, `packages[].budget`, `daily_budget_cap`, `packages[].daily_budget_cap` (set or lower) | Daily-cap reductions apply immediately but cannot reverse spend already incurred in the current cap day. |
 | `reallocate_budget` | `packages[].budget` (redistribute, aggregate unchanged) |  |
 | `update_budget_allocation` | `budget_allocation`, `packages[].min_spend_target` | Changes fixed/shared mode, cross-package goals, or soft minimum targets, including `null` to clear a target. Automatic allocation inside an accepted seller-optimized buy is not an update action. |
 | `update_targeting` | `packages[].targeting_overlay`, `packages[].keyword_targets_add`, `packages[].keyword_targets_remove`, `packages[].negative_keywords_add`, `packages[].negative_keywords_remove` | Includes audience, geography, property, collection, and `placement_selection` changes. |
-| `update_pacing` | `pacing`, `packages[].pacing` | Media-buy pacing controls aggregate spend; package pacing is subordinate. |
+| `update_pacing` | `pacing`, `packages[].pacing`, `budget_cap_timezone` | Media-buy pacing controls aggregate spend; package pacing is subordinate. A cap-timezone change begins at the next existing day boundary. |
 | `update_bidding` | `bidding`, `packages[].bidding` | Replaces or clears complete authored bidding blocks. The seller validates every resulting effective package policy before mutation. |
 | `update_frequency_caps` | `packages[].targeting_overlay.frequency_cap` | Renegotiated mid-flight more often than other targeting. Field is singular `frequency_cap` (single rule), not plural. |
 | `replace_creative` | `packages[].creatives[]` swap (assignments unchanged) | Distinct AM workflow from changing assignment set |
@@ -50,7 +50,7 @@ The mapping is normative — sellers and SDKs MUST use this table to translate b
 
 The direction-of-change actions (`extend_flight` / `shorten_flight`, `increase_budget` / `decrease_budget` / `reallocate_budget`) share their `update_fields` paths; the action is determined by comparing the requested value against the buy's current state, not by which field is set. Server-side dispatch enforcement MUST diff request-vs-current to pick the right action and reject with `ACTION_NOT_ALLOWED` if the resolved action is not in the buy's `available_actions[]`.
 
-For seller-optimized constraints, clearing `packages[].budget` with `null` resolves to `increase_budget` because it removes a hard ceiling. Clearing `packages[].min_spend_target` resolves to `update_budget_allocation`. A request clearing both requires both actions when the seller enforces field-level actions conjunctively. Sellers that do not advertise the required action reject the update without mutation; `seller_optimized_budget: true` alone does not promise mid-flight constraint changes.
+For seller-optimized constraints, clearing `packages[].budget` or either scope's `daily_budget_cap` with `null` resolves to `increase_budget` because it removes a hard ceiling. Clearing `packages[].min_spend_target` resolves to `update_budget_allocation`. A request clearing both requires both actions when the seller enforces field-level actions conjunctively. Sellers that do not advertise the required action reject the update without mutation; `seller_optimized_budget: true` alone does not promise mid-flight constraint changes.
 
 The coarse legacy actions (`update_budget`, `update_dates`, `update_packages`, [`sync_creatives`](/docs/creative/task-reference/sync_creatives)) cover the finer-grained vocabulary in a single value for sellers still emitting the 3.0 enum surface. Sellers SHOULD migrate to the finer set; the legacy values are removed in 4.0.
 
@@ -204,6 +204,8 @@ asyncio.run(create_and_pause_campaign())
 | `invoice_recipient` | [BusinessEntity](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override who receives the invoice for this buy. The seller MUST validate authorization and include in [`check_governance`](/docs/governance/campaign/tasks/check_governance) when governance agents are configured. |
 | `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) packages. When `budget_allocation` is omitted or fixed, each new package requires `budget` and cannot use `min_spend_target`. To add an uncapped package to an existing seller-optimized buy, include the resulting seller-optimized `budget_allocation` block so the allocation context is explicit. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
 | `total_budget` | TotalBudget | No | Updated hard aggregate lifetime budget. When supplied alone, in fixed mode the seller atomically scales active package budgets proportionally; when supplied with `packages` or `new_packages`, `total_budget.amount` must equal the resulting package sum (assertion path). In seller-optimized mode, updates the shared pool without treating package caps as allocations. Already-spent amounts continue to count against the new total. `currency` must equal the existing media-buy currency. |
+| `daily_budget_cap` | number \| null | No | Replace the hard aggregate daily cap; `null` removes it. Numeric changes apply immediately with spend already incurred in the current cap day counted against the new value. Package caps are not redistributed. |
+| `budget_cap_timezone` | string \| null | No | Replace the shared IANA cap-day timezone override; `null` restores the default selected by `budget_capping.timezone_basis` (`Account.timezone` or `fixed_timezone`). The new timezone begins at the next boundary under the previously effective timezone. |
 | `budget_allocation` | BudgetAllocation | No | Updated fixed or seller-optimized allocation configuration. Mode changes require `update_budget_allocation` in `available_actions`. |
 | `pacing` | string | No | Updated aggregate media-buy pacing strategy. |
 | `bidding` | BiddingPolicy \| null | No | Replace the complete media-buy bidding default, use `{automatic: true}` for an explicit automatic policy, or clear it with `null`. Goal binding follows the resulting allocation mode; monetary amounts remain in the media-buy currency. Package-authored overrides remain explicit. |
@@ -259,6 +261,7 @@ Configure automated delivery reporting for this media buy:
 | `start_time` | string | Updated flight start date/time in ISO 8601 format. Must fall within the media buy's date range. |
 | `end_time` | string | Updated flight end date/time in ISO 8601 format. Must fall within the media buy's date range. |
 | `pacing` | string | Updated pacing strategy |
+| `daily_budget_cap` | number \| null | Replace the hard package-level daily spend ceiling; `null` removes it. The change applies immediately to the current cap day and counts spend already incurred that day. Package caps remain subordinate to the aggregate media-buy cap. |
 | `bidding` | BiddingPolicy \| null | Replace the complete package-authored override, use `{automatic: true}` to explicitly disable inherited buyer controls, or clear it with `null` so the package inherits media-buy bidding. During legacy migration, `null` may accompany `bid_price` or a monetary optimization-goal target; only a non-null canonical block conflicts with those representations. |
 | `bid_price` | number | **Deprecated in 3.2.** Legacy package bid representation; cannot be combined with a non-null `bidding` object. |
 | `optimization_goals` | OptimizationGoal[] | Replace objective functions for this package. Currency-bearing policy belongs in `bidding`; legacy monetary targets cannot be combined with canonical bidding. |
@@ -287,8 +290,7 @@ For budget/pacing interaction and bidding inheritance, see [Budget & Pacing Cont
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
 | `name` | Persisted human-readable label after the update. When the request supplied `name`, the seller MUST return the stored value (updated or prior unchanged value). |
-| `media_buy_status` | Media buy lifecycle status after the update (present when status changes, e.g., cancellation). Canonical 3.1 field. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status). |
-| `status` | **Deprecated in 3.1, removed in 3.2** ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)). Use `media_buy_status` instead. Top-level `status` collides with the envelope task-status on flat-serialized MCP wire. |
+| `media_buy_status` | Media buy lifecycle status after the update (present when status changes, e.g., cancellation). See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status). |
 | `revision` | Revision number after this update. Use in subsequent requests intended to change state for optimistic concurrency. Exact idempotency replays return the prior revision. |
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
 | `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
@@ -662,7 +664,7 @@ Cancel an entire media buy:
 }
 ```
 
-The body-level `media_buy_status` is the canonical 3.1 field for the buy's lifecycle state. The legacy top-level `status: MediaBuyStatus` form (e.g., `"status": "canceled"`) is deprecated and removed in 3.2 ([#4906](https://github.com/adcontextprotocol/adcp/issues/4906)) — it collided with the envelope task-status at the same root key. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for the migration.
+The body-level `media_buy_status` is the canonical field for the buy's lifecycle state. The AdCP 3.2 source schema no longer permits the legacy top-level `status: MediaBuyStatus` form (e.g., `"status": "canceled"`) because it collides with the envelope task-status at the same root key. That legacy lifecycle field existed only during the 3.1 deprecation window; in 3.2, root `status` is TaskStatus only. See [Migration › `media_buy_status`](/docs/reference/migration/media-buy-status) for migration guidance.
 
 **[`NOT_CANCELLABLE`](/docs/building/verification/compliance-catalog#error-code-not-cancellable) error response:**
 ```json
