@@ -267,6 +267,14 @@ test('normalizeSubstitutions replaces every live substitution dialect', () => {
   assert.equal(normalizeSubstitutions('plain value', stringSchema), 'plain value');
 });
 
+test('normalizeSubstitutions produces a schema-valid digest placeholder', () => {
+  const digest = normalizeSubstitutions('$context.terms_digest', {
+    type: 'string',
+    pattern: '^sha256:[A-Za-z0-9_-]{43}$',
+  });
+  assert.match(digest, /^sha256:[A-Za-z0-9_-]{43}$/);
+});
+
 // Object-typed substitution synthesis — the lint change landed in this PR.
 // A substitution that lands at an object location (plain or inside a
 // discriminated oneOf) must produce a shape-valid placeholder or ajv will
