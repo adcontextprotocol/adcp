@@ -249,6 +249,10 @@
           "$ref": "/schemas/core/geo-breakdown-support.json",
           "description": "Geographic breakdown capability declaration for reporting"
         },
+        "spot-reporting-capability": {
+          "$ref": "/schemas/core/spot-reporting-capability.json",
+          "description": "Spot-level as-run reporting support and available spot-grain metrics"
+        },
         "format": {
           "$ref": "/schemas/core/format.json",
           "description": "Deprecated 3.x named-format compatibility definition; use ProductFormatDeclaration canonical contracts for new integrations.",

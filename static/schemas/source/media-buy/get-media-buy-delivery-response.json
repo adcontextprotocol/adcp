@@ -556,7 +556,7 @@
                     },
                     "by_spot": {
                       "type": "array",
-                      "description": "Spot-level as-run airing records for broadcast TV, radio, or other scheduled inventory. Available when the buyer requests spot breakdown via reporting_dimensions and the product declares supports_spot_breakdown. Sellers MUST order rows by aired_at ascending. Network and station are optional so station-direct radio and network-level TV records use the same channel-neutral shape.",
+                      "description": "Spot-level as-run airing records for broadcast TV, radio, or other scheduled inventory. Available when the buyer requests spot breakdown and the product declares supports_spot_breakdown. Sellers MUST order rows by aired_at ascending. The same spot_id is reused when a later package measurement_window adds or revises metrics. Network and station are optional so station-direct radio and network-level TV records use the same channel-neutral shape.",
                       "items": {
                         "allOf": [
                           {
@@ -565,10 +565,16 @@
                           {
                             "type": "object",
                             "properties": {
+                              "spot_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Stable seller-scoped identifier for this scheduled spot occurrence. Reused across measurement-window updates and available to later preemption or makegood workflows. Distinct from creative_id.",
+                                "x-entity": "spot_airing"
+                              },
                               "aired_at": {
                                 "type": "string",
                                 "format": "date-time",
-                                "description": "RFC 3339 timestamp when the spot actually aired."
+                                "description": "RFC 3339 timestamp when the spot actually aired. Its presence proves an airing; it is not inferred from impressions."
                               },
                               "network": {
                                 "type": "string",
@@ -587,8 +593,8 @@
                               }
                             },
                             "required": [
-                              "aired_at",
-                              "impressions"
+                              "spot_id",
+                              "aired_at"
                             ]
                           }
                         ]

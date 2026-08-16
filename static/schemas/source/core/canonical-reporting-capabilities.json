@@ -29,7 +29,7 @@
     "supports_device_platform_breakdown": { "type": "boolean" },
     "supports_audience_breakdown": { "type": "boolean" },
     "supports_placement_breakdown": { "type": "boolean" },
-    "supports_spot_breakdown": { "type": "boolean" },
+    "supports_spot_breakdown": { "$ref": "/schemas/core/spot-reporting-capability.json" },
     "date_range_support": { "type": "string", "enum": ["date_range", "lifetime_only"] },
     "windowed_pull_granularities": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-frequency.json" }, "uniqueItems": true },
     "measurement_windows": { "type": "array", "items": { "$ref": "/schemas/core/measurement-window.json" }, "minItems": 1, "uniqueItems": true }

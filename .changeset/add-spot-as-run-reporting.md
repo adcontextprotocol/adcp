@@ -2,4 +2,4 @@
 "adcontextprotocol": minor
 ---
 
-Add opt-in spot-level as-run delivery reporting for broadcast TV, radio, and other scheduled inventory, with channel-neutral network, station, daypart, and airing-time fields.
+Add opt-in spot-level as-run delivery reporting for scheduled inventory, with stable spot identity, actual airing time, and explicit product capability for metrics available at spot grain.

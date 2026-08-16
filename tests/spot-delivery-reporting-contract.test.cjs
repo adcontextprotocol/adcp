@@ -27,6 +27,7 @@ async function compile(schema) {
 describe("spot-level as-run delivery reporting", () => {
   let validateRequest;
   let validateSpot;
+  let validateCapabilities;
 
   before(async () => {
     const request = readSchema(
@@ -41,9 +42,10 @@ describe("spot-level as-run delivery reporting", () => {
       (schema) => schema.properties
     );
 
-    [validateRequest, validateSpot] = await Promise.all([
+    [validateRequest, validateSpot, validateCapabilities] = await Promise.all([
       compile(request),
       compile(byPackageExtension.properties.by_spot.items),
+      compile(readSchema("/schemas/core/reporting-capabilities.json")),
     ]);
   });
 
@@ -62,6 +64,7 @@ describe("spot-level as-run delivery reporting", () => {
   it("uses one channel-neutral row shape for TV and radio airings", () => {
     for (const row of [
       {
+        spot_id: "spot_tv_001",
         aired_at: "2026-08-15T20:14:00Z",
         network: "USA Network",
         station: "WABC-TV",
@@ -70,6 +73,7 @@ describe("spot-level as-run delivery reporting", () => {
         spend: 1250,
       },
       {
+        spot_id: "spot_radio_001",
         aired_at: "2026-08-15T07:30:00Z",
         station: "WNYC-FM",
         daypart: "morning_drive",
@@ -80,10 +84,29 @@ describe("spot-level as-run delivery reporting", () => {
     }
   });
 
-  it("requires an RFC 3339 airing timestamp and impressions", () => {
+  it("requires stable identity and an RFC 3339 airing timestamp, not impressions", () => {
+    const asRunOnly = {
+      spot_id: "spot_live_001",
+      aired_at: "2026-08-15T20:14:00Z",
+    };
+    assert.equal(
+      validateSpot(asRunOnly),
+      true,
+      JSON.stringify(validateSpot.errors)
+    );
+    assert.equal(
+      validateSpot({ ...asRunOnly, impressions: 0 }),
+      true,
+      "measured zero is explicit"
+    );
+    assert.equal(
+      validateSpot({ ...asRunOnly, impressions: null }),
+      false,
+      "unavailable is omitted, not null"
+    );
+    assert.equal(validateSpot({ spot_id: "spot_bad", aired_at: "not-a-time" }), false);
     assert.equal(validateSpot({ aired_at: "2026-08-15T20:14:00Z" }), false);
-    assert.equal(validateSpot({ aired_at: "not-a-time", impressions: 1 }), false);
-    assert.equal(validateSpot({ impressions: 1 }), false);
+    assert.equal(validateSpot({ spot_id: "spot_missing_time" }), false);
   });
 
   it("advertises spot support on both reporting capability surfaces", () => {
@@ -93,10 +116,31 @@ describe("spot-level as-run delivery reporting", () => {
     ]) {
       const schema = readSchema(uri);
       assert.equal(
-        schema.properties.supports_spot_breakdown.type,
-        "boolean",
+        schema.properties.supports_spot_breakdown.$ref,
+        "/schemas/core/spot-reporting-capability.json",
         uri
       );
     }
+
+    const capabilities = {
+      available_reporting_frequencies: ["daily"],
+      expected_delay_minutes: 60,
+      timezone: "UTC",
+      supports_webhooks: true,
+      available_metrics: ["impressions", "spend"],
+      date_range_support: "date_range",
+      supports_spot_breakdown: { available_metrics: ["impressions"] },
+    };
+    assert.equal(
+      validateCapabilities(capabilities),
+      true,
+      JSON.stringify(validateCapabilities.errors)
+    );
+    capabilities.supports_spot_breakdown.available_metrics = [];
+    assert.equal(
+      validateCapabilities(capabilities),
+      true,
+      "airing-only reporting is explicit"
+    );
   });
 });
