@@ -55,6 +55,16 @@
       "required": ["amount", "currency"],
       "additionalProperties": false
     },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Hard aggregate daily spend ceiling accepted as part of these terms. It bounds total spend without creating purchase allocations."
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Shared IANA calendar-day boundary for aggregate and purchase daily caps in these terms."
+    },
     "budget_allocation": { "$ref": "/schemas/core/canonical-budget-allocation.json" },
     "pacing": { "$ref": "/schemas/enums/pacing.json" },
     "bidding": { "$ref": "/schemas/core/bidding-policy.json" },

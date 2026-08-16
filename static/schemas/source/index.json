@@ -205,6 +205,10 @@
           "$ref": "/schemas/core/demographic-targeting-capability.json",
           "description": "Product-scoped demographic execution modes and exact interval capabilities"
         },
+        "demographic-reporting-capability": {
+          "$ref": "/schemas/core/demographic-reporting-capability.json",
+          "description": "Product-scoped demographic reporting ranges, systems, and suppression posture"
+        },
         "demographic-targeting-resolution": {
           "$ref": "/schemas/core/demographic-targeting-resolution.json",
           "description": "Requested, applied, execution, and exact-equivalence demographic readback"
