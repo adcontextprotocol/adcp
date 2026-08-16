@@ -13,6 +13,7 @@
     "snapshot_id": "audience_evidence_snapshot",
     "event_source_id": "event_source",
     "catalog_id": "catalog",
+    "catalog_generation": "catalog_generation",
     "signal_agent_segment_id": "signal_activation_id",
     "account_id": "account",
     "standards_id": "content_standards",

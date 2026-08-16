@@ -986,7 +986,23 @@
           "additionalProperties": false
         },
         "features": {
-          "$ref": "/schemas/core/media-buy-features.json"
+          "allOf": [
+            { "$ref": "/schemas/core/media-buy-features.json" },
+            {
+              "if": {
+                "required": ["catalog_item_availability_updates"],
+                "properties": {
+                  "catalog_item_availability_updates": { "const": true }
+                }
+              },
+              "then": {
+                "required": ["catalog_management"],
+                "properties": {
+                  "catalog_management": { "const": true }
+                }
+              }
+            }
+          ]
         },
         "execution": {
           "type": "object",
