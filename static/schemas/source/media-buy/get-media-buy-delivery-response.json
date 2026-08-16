@@ -45,7 +45,7 @@
     },
     "reporting_period": {
       "type": "object",
-      "description": "Date range for the report. All periods use UTC timezone.",
+      "description": "Half-open date range for the report: start is inclusive and end is exclusive. All periods use UTC timezone.",
       "properties": {
         "start": {
           "type": "string",
@@ -55,7 +55,7 @@
         "end": {
           "type": "string",
           "format": "date-time",
-          "description": "ISO 8601 exclusive end timestamp in UTC (e.g., 2024-02-06T00:00:00Z for a report covering 2024-02-05)"
+          "description": "Exclusive ISO 8601 end timestamp in UTC (e.g., 2024-02-06T00:00:00Z for a report covering 2024-02-05)"
         }
       },
       "required": [
