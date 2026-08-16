@@ -12491,6 +12491,14 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
       recovery?: string;
       details?: Record<string, unknown>;
     };
+    const classifiedDomainFailure =
+      Boolean(structured.code) ||
+      structured.message.startsWith('Proposal source version changed:') ||
+      structured.message.startsWith('Proposal source already has an active hold:') ||
+      structured.message.startsWith('Proposal successor already exists:');
+    if (!classifiedDomainFailure) {
+      logger.error({ error, profile, sessionHash }, 'Unexpected proposal refinement failure');
+    }
     return {
       errors: [{
         code: structured.code ?? 'INVALID_STATE',
