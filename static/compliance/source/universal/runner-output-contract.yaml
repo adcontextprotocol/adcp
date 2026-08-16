@@ -798,10 +798,8 @@ skip_result:
     - reason                  # not_applicable | no_phases |
                               # prerequisite_failed | missing_tool |
                               # missing_test_controller |
-                              # fixture_unavailable | unsatisfied_contract |
-                              # peer_branch_taken |
-                              # peer_substituted | requirement_unmet |
-                              # fixture_unsatisfied
+                              # unsatisfied_contract | peer_branch_taken |
+                              # peer_substituted | requirement_unmet
     - detail                  # explanation citing the declared
                               # supported_protocols / specialisms and, if
                               # relevant, the missing tool, prerequisite step
