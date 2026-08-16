@@ -1276,16 +1276,39 @@ Delivery data can be broken down across multiple dimensions within each package.
 | Device type | `by_device_type` | `device_type`, `impressions`, `spend` | — | `supports_device_type_breakdown` |
 | Device platform | `by_device_platform` | `device_platform`, `impressions`, `spend` | — | `supports_device_platform_breakdown` |
 | Audience | `by_audience` | `audience_id`, `audience_source`, `impressions`, `spend` | `audience_name` | `supports_audience_breakdown` |
-| Demographic | `by_demographic` | `demographic`, `demographic_system`, `impressions`, `spend` | other delivery metrics | `supports_demographic_breakdown` |
+| Demographic | `by_demographic` | `demographic`, `demographic_system`, `impressions`, `spend` | `age`, other delivery metrics | `supports_demographic_breakdown` |
 | Placement | `by_placement` | `placement_id`, `impressions`, `spend` | `publisher_domain`, `placement_name` | `supports_placement_breakdown` |
 
-Each breakdown entry inherits all fields from `delivery-metrics` (clicks, conversions, and other optional metrics) plus its dimension-specific fields. Every entry requires the fields shown in the required fields column. Check `reporting_capabilities` on the product to discover which dimensions are available; product-level capabilities are authoritative because different products from the same seller may support different breakdowns. `supports_geo_breakdown` is an object that declares available levels and systems; the other capability declarations in this table are boolean flags. Within `supports_geo_breakdown`, `country` and `region` are booleans, while `metro` is keyed by `metro-system` values and native `postal_area` is keyed by ISO 3166-1 alpha-2 country with arrays of country-local `postal-system` values. Geo rows use `system` for `geo_level: "metro"` and `"postal_area"`; native postal rows also include `country`. Deprecated country-fused postal systems remain accepted for compatibility.
+Each breakdown entry inherits all fields from `delivery-metrics` (clicks, conversions, and other optional metrics) plus its dimension-specific fields. Every entry requires the fields shown in the required fields column. Check `reporting_capabilities` on the product to discover which dimensions are available; product-level capabilities are authoritative because different products from the same seller may support different breakdowns. `supports_geo_breakdown` and `supports_demographic_breakdown` are structured declarations; the other capability declarations in this table are boolean flags. Within `supports_geo_breakdown`, `country` and `region` are booleans, while `metro` is keyed by `metro-system` values and native `postal_area` is keyed by ISO 3166-1 alpha-2 country with arrays of country-local `postal-system` values. Geo rows use `system` for `geo_level: "metro"` and `"postal_area"`; native postal rows also include `country`. Deprecated country-fused postal systems remain accepted for compatibility.
 
-Demographic rows pair a free-form `demographic` code with the `demographic_system` that defines its notation, such as `P25-54` with `nielsen`. This reuses the same vocabulary as CPP pricing and GRP forecasts.
+Demographic targeting and demographic reporting are separate product capabilities. A product may execute an exact buyer predicate while its measurement source reports only fixed buckets. For example, a social product might declare continuous targeting for ages 18–65 but the following reporting capability:
+
+```json test=false
+{
+  "supports_demographic_breakdown": {
+    "age": {
+      "reporting_modes": ["enumerated_intervals"],
+      "intervals": [
+        {
+          "age": { "min": 25, "max": 34, "include_unknown": false },
+          "demographic": "25-34",
+          "demographic_system": "custom"
+        }
+      ]
+    },
+    "demographic_systems": ["custom"],
+    "may_suppress_small_cells": true
+  }
+}
+```
+
+That product can target 26–30 if its separate `demographic_targeting` declaration allows it, but it cannot report 26–30. The buyer sees the 25–34 reporting interval before purchase and MUST NOT treat that wider row as delivery against the requested target. `reporting_dimensions.demographic.age_ranges` requests exact output ranges; every range must be supported by `exact_predicates` or equal a declared interval. Omitting `age_ranges` asks for the seller's native declared breakdown.
+
+Demographic rows pair a free-form `demographic` code with its `demographic_system`, such as `P25-54` with `nielsen`. When the capability or request identifies an age interval, the row also carries canonical `age`; that structured predicate, not a parsed label, is authoritative. `by_demographic_suppressed` discloses privacy or measurement-threshold omissions separately from `by_demographic_truncated`.
 
 Placement identity is publisher-scoped. Placement rows MAY carry `publisher_domain`, the publisher namespace from the product's `placements[]` entry, so buyers can treat `{publisher_domain, placement_id}` as the stable placement identity for multi-publisher products when it is present. Sellers SHOULD emit `publisher_domain` whenever the product placement carries it (always true for `kind: "publisher_ref"`); sellers MAY omit it only for `kind: "seller_inline"` placements in a legacy single-publisher context where the seller agent's own domain is the namespace. When `publisher_domain` is omitted, buyers MAY interpret `placement_id` relative to the seller agent's own publisher domain only in that legacy single-publisher context; otherwise buyers should not infer a cross-publisher placement key. `publisher_domain` is single-valued because each placement belongs to exactly one publisher namespace.
 
-Breakdowns are opt-in — no dimension data is returned unless explicitly requested. Sellers that don't support a requested dimension silently omit it. Each breakdown array has a sibling `by_*_truncated` boolean indicating whether additional rows exist beyond the requested `limit`.
+Breakdowns are opt-in — no dimension data is returned unless explicitly requested. Sellers that don't support a requested dimension silently omit it. An unsupported `demographic.age_ranges` value on a product that otherwise supports the dimension returns `UNSUPPORTED_FEATURE`; sellers never widen or narrow it silently. Each breakdown array has a sibling `by_*_truncated` boolean indicating whether additional non-suppressed rows exist beyond the requested `limit`.
 
 ## Targeting Consistency
 Reporting aligns with AdCP's [Targeting](/docs/media-buy/advanced-topics/targeting) approach, enabling:

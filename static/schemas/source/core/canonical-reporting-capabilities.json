@@ -28,7 +28,7 @@
     "supports_device_type_breakdown": { "type": "boolean" },
     "supports_device_platform_breakdown": { "type": "boolean" },
     "supports_audience_breakdown": { "type": "boolean" },
-    "supports_demographic_breakdown": { "type": "boolean" },
+    "supports_demographic_breakdown": { "$ref": "/schemas/core/demographic-reporting-capability.json" },
     "supports_placement_breakdown": { "type": "boolean" },
     "date_range_support": { "type": "string", "enum": ["date_range", "lifetime_only"] },
     "windowed_pull_granularities": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-frequency.json" }, "uniqueItems": true },

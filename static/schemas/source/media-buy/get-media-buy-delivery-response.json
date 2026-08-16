@@ -517,7 +517,7 @@
                     },
                     "by_demographic": {
                       "type": "array",
-                      "description": "Delivery by measurement-system demographic within this package. Available when the buyer requests demographic breakdown via reporting_dimensions and the product declares supports_demographic_breakdown. Demographic is a free-form code in the declared demographic_system's notation.",
+                      "description": "Delivery by demographic within this package. Available when the buyer requests demographic breakdown and the product declares supports_demographic_breakdown. A free-form measurement code does not prove alignment with buyer targeting. When age is present it is the authoritative machine-comparable interval; for requested age_ranges, sellers MUST echo the exact requested interval and MUST NOT substitute a wider or narrower native bucket.",
                       "items": {
                         "allOf": [
                           {
@@ -535,6 +535,10 @@
                               "demographic_system": {
                                 "$ref": "/schemas/enums/demographic-system.json",
                                 "description": "Measurement system that defines the demographic code."
+                              },
+                              "age": {
+                                "$ref": "/schemas/core/demographic-age-range.json",
+                                "description": "Canonical age interval represented by this row. Required by protocol semantics for age ranges requested through reporting_dimensions.demographic.age_ranges and for intervals declared in the product's demographic reporting capability."
                               }
                             },
                             "required": [
@@ -549,7 +553,11 @@
                     },
                     "by_demographic_truncated": {
                       "type": "boolean",
-                      "description": "Whether by_demographic was truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_demographic is present (false means the list is complete)."
+                      "description": "Whether non-suppressed by_demographic rows were truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_demographic is present. False means every non-suppressed row is present; inspect by_demographic_suppressed separately before reconciling rows to package totals."
+                    },
+                    "by_demographic_suppressed": {
+                      "type": "boolean",
+                      "description": "Whether one or more otherwise reportable demographic rows were omitted due to privacy, policy, or measurement thresholds. Sellers MUST return this flag whenever by_demographic is present. False means no rows were threshold-suppressed."
                     },
                     "by_placement": {
                       "type": "array",

@@ -103,8 +103,8 @@
       "description": "Whether this product supports audience segment breakdowns in delivery reporting (by_audience within by_package)"
     },
     "supports_demographic_breakdown": {
-      "type": "boolean",
-      "description": "Whether this product supports measurement-system demographic breakdowns in delivery reporting (by_demographic within by_package)"
+      "$ref": "/schemas/core/demographic-reporting-capability.json",
+      "description": "Product-scoped demographic breakdown support for by_demographic reporting. Declares reportable age ranges and measurement systems independently from demographic targeting execution."
     },
     "supports_placement_breakdown": {
       "type": "boolean",

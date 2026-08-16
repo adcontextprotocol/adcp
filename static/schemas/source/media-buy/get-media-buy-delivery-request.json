@@ -256,8 +256,17 @@
         },
         "demographic": {
           "type": "object",
-          "description": "Request delivery broken down by measurement-system demographic codes (for example, P25-54 in Nielsen notation). Check reporting_capabilities.supports_demographic_breakdown before requesting this dimension.",
+          "description": "Request delivery broken down by demographic. Check the product's reporting_capabilities.supports_demographic_breakdown independently from demographic_targeting. When age_ranges is present, every requested range MUST be exactly supported by exact_predicates or equal one of the declared enumerated_intervals; sellers MUST reject unsupported ranges with UNSUPPORTED_FEATURE rather than silently widen or narrow them.",
           "properties": {
+            "age_ranges": {
+              "type": "array",
+              "description": "Optional canonical age ranges to return as distinct rows. Copying an applied targeting predicate here requests aligned reporting only when the reporting capability supports that exact predicate. Omit to request the product's declared native demographic breakdown.",
+              "items": {
+                "$ref": "/schemas/core/demographic-age-range.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
             "limit": {
               "type": "integer",
               "minimum": 1,
@@ -269,7 +278,8 @@
               "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
               "default": "spend"
             }
-          }
+          },
+          "additionalProperties": false
         },
         "placement": {
           "type": "object",
