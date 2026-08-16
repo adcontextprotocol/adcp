@@ -286,6 +286,8 @@ phases:
         context_outputs:
           - name: governance_context
             path: "governance_context"
+          - name: intent_check_id
+            path: "check_id"
   - id: create_buy
     title: "Create media buy under governance approval"
     narrative: |
@@ -349,6 +351,74 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "governance_delivery_monitor--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+  - id: settle_outcome
+    title: "Settle the confirmed buy as a completed governance outcome"
+    narrative: |
+      The buyer reports the seller's confirmation back to governance. This closes the
+      authorization record for the original intent check and reserves the
+      governance-authorized commitment on the plan ledger — the amount a later
+      commercial adjustment can act against.
+
+    steps:
+      - id: report_completed_outcome
+        title: "Report the completed outcome"
+        narrative: |
+          The buyer reports outcome: completed against the original intent check_id
+          and governance_context. Governance reserves its own approved amount
+          (the full $40,000 intent commitment) regardless of the seller-reported
+          package total, which happens to match here.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Return an accepted outcome that reserves the authoritative commitment:
+          - outcome_id: identifier for the completed governance outcome
+          - outcome_state: accepted
+          - committed_budget: 40000
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          check_id: "$context.intent_check_id"
+          governance_context: "$context.governance_context"
+          outcome: "completed"
+          seller_response:
+            seller_reference: "$context.media_buy_id"
+            packages:
+              - package_id: "pkg_display"
+                product_id: "outdoor_display_q2"
+                budget: 20000
+              - package_id: "pkg_video"
+                product_id: "outdoor_video_q2"
+                budget: 20000
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_settle_outcome_report_completed_outcome"
+          context:
+            correlation_id: "governance_delivery_monitor--report_completed_outcome"
+        context_outputs:
+          - name: outcome_id
+            path: "outcome_id"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
+          - check: field_value
+            path: "outcome_state"
+            value: "accepted"
+            description: "Seller-reported package total matches the governance-authorized commitment"
+          - check: field_value
+            path: "committed_budget"
+            value: 40000
+            description: "Governance reserves its own approved intent amount, not a caller-chosen figure (report_plan_outcome.mdx: the caller cannot choose the ledger amount)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--report_completed_outcome"
             description: "Context correlation_id returned unchanged"
   - id: delivery_monitoring
     title: "Delivery metrics show budget drift"
@@ -458,6 +528,11 @@ phases:
 
           context:
             correlation_id: "governance_delivery_monitor--check_governance_drift"
+        context_outputs:
+          - name: delivery_check_id
+            path: "check_id"
+          - name: delivery_governance_context
+            path: "governance_context"
         validations:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
@@ -474,4 +549,531 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "governance_delivery_monitor--check_governance_drift"
+            description: "Context correlation_id returned unchanged"
+
+  - id: adjustment_decommitment_accepted
+    title: "Seller reports a decommitment; plan owner accepts it"
+    narrative: |
+      Some of the committed inventory will not run. The seller reports a decommitment
+      against the completed outcome with an integrity-bound evidence record. Governance
+      records it as reported only — net cost and headroom are unchanged until the plan
+      owner independently reviews it. The plan owner then accepts, and only then does
+      governance verify the record and restore headroom.
+
+    steps:
+      - id: report_decommitment
+        title: "Seller reports a decommitment"
+        narrative: |
+          The seller reports a $5,000 decommitment against the completed outcome. The
+          amount is within the undelivered obligation established by the canonical
+          delivery statement ($40,000 commitment − $20,000 cumulative spend = $20,000
+          headroom). Reporting alone never changes net cost or headroom.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Record the report without touching accounting state:
+          - adjustment_state: reported
+          - headroom_restored: 0
+
+        sample_request:
+          action: "report"
+          plan_id: "$context.plan_id"
+          outcome_id: "$context.outcome_id"
+          seller_reference: "$context.media_buy_id"
+          seller_adjustment_id: "cancel_mb_acme_q2_2026_01"
+          adjustment_type: "decommitment"
+          amount:
+            amount: 5000
+            currency: "USD"
+          reason: "Remaining inventory obligation cancelled by mutual agreement."
+          effective_at: "2099-05-20T09:30:00Z"
+          evidence:
+            evidence_id: "agreement_mb_acme_q2_2026_01"
+            evidence_type: "decommitment_agreement"
+            digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            issued_at: "2099-05-20T09:25:00Z"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_decommitment_accepted_report_decommitment"
+          context:
+            correlation_id: "governance_delivery_monitor--report_decommitment"
+        context_outputs:
+          - name: adjustment_id
+            path: "adjustment_id"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-adjustment-response.json schema (adjustment_state is a required enum field)"
+          - check: field_value
+            path: "adjustment_state"
+            value: "reported"
+            description: "A seller report alone lands in reported state (report_plan_adjustment.mdx: 'the report response has adjustment_state: \"reported\"')"
+          - check: field_value
+            path: "headroom_restored"
+            value: 0
+            description: "Reporting alone never changes plan headroom (report_plan_adjustment.mdx: 'net cost and plan headroom do not change')"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--report_decommitment"
+            description: "Context correlation_id returned unchanged"
+
+      - id: review_accept_decommitment
+        title: "Plan owner accepts the decommitment"
+        narrative: |
+          The plan owner independently reviews the exact adjustment_id and accepts it.
+          Only now does governance verify the record and restore headroom — the seller's
+          report could not do this unilaterally.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Verify the adjustment and restore headroom:
+          - adjustment_state: verified
+          - headroom_restored: 5000
+          - plan_summary reflects the reduced ledger commitment
+
+        sample_request:
+          action: "review"
+          plan_id: "$context.plan_id"
+          adjustment_id: "$context.adjustment_id"
+          decision: "accept"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_decommitment_accepted_review_accept_decommitment"
+          context:
+            correlation_id: "governance_delivery_monitor--review_accept_decommitment"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-adjustment-response.json schema (plan_summary's full field set is required)"
+          - check: field_value
+            path: "adjustment_state"
+            value: "verified"
+            description: "Only plan-owner acceptance moves a record to verified (report_plan_adjustment.mdx: 'Only an accepted record becomes verified and may affect accounting')"
+          - check: field_value
+            path: "headroom_restored"
+            value: 5000
+            description: "A verified decommitment restores headroom in every accounting mode (report_plan_adjustment.mdx table: decommitment → headroom Restored)"
+          - check: field_value
+            path: "plan_summary.accounting_mode"
+            value: "gross_commitment"
+            description: "Plan uses the default accounting_mode (schema enum on plan_summary.accounting_mode)"
+          - check: field_value
+            path: "plan_summary.net_cost"
+            value: 35000
+            description: "Verified decommitment reduces economic net_cost (report_plan_adjustment.mdx table: decommitment → net_cost Reduced)"
+          - check: field_value
+            path: "plan_summary.ledger_committed"
+            value: 35000
+            description: "Restored headroom lowers the plan's ledger commitment by the verified amount"
+          - check: field_value
+            path: "plan_summary.budget_remaining"
+            value: 5000
+            description: "budget_remaining reflects the restored headroom (schema-required plan_summary field)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--review_accept_decommitment"
+            description: "Context correlation_id returned unchanged"
+
+  - id: adjustment_over_commitment_rejected
+    title: "Over-adjustment is rejected"
+    narrative: |
+      A second seller report against the same outcome would push cumulative reported
+      adjustments past the outcome's authoritative commitment. Governance rejects the
+      report outright — the cap is enforced at report time, not deferred to review.
+
+    steps:
+      - id: report_over_commitment
+        title: "Seller reports an adjustment that exceeds the remaining commitment"
+        narrative: |
+          $5,000 was already reported (and verified) against this $40,000 outcome. A
+          further $36,000 report would bring cumulative reported adjustments to
+          $41,000 — above the outcome's authoritative commitment. The payload is
+          schema-valid; the rejection is a cross-request ledger rule.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject the report with VALIDATION_ERROR — cumulative reported adjustments
+          for this outcome cannot exceed its authoritative commitment.
+
+        sample_request:
+          action: "report"
+          plan_id: "$context.plan_id"
+          outcome_id: "$context.outcome_id"
+          seller_reference: "$context.media_buy_id"
+          seller_adjustment_id: "cancel_mb_acme_q2_2026_02"
+          adjustment_type: "decommitment"
+          amount:
+            amount: 36000
+            currency: "USD"
+          reason: "Attempting to cancel the remainder of the commitment."
+          effective_at: "2099-05-21T09:30:00Z"
+          evidence:
+            evidence_id: "agreement_mb_acme_q2_2026_02"
+            evidence_type: "decommitment_agreement"
+            digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            issued_at: "2099-05-21T09:25:00Z"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_over_commitment_rejected_report_over_commitment"
+          context:
+            correlation_id: "governance_delivery_monitor--report_over_commitment"
+        validations:
+          - check: error_code
+            value: "VALIDATION_ERROR"
+            description: "Cumulative adjustments for an outcome cannot exceed its authoritative commitment (report-plan-adjustment-request.json amount.amount description; report_plan_adjustment.mdx fields table: 'Cumulative reports cannot exceed the source commitment')"
+
+  - id: adjustment_reference_not_found
+    title: "Adjustment report against an unknown outcome is rejected"
+    narrative: |
+      A report naming an outcome_id governance does not recognize gets the same
+      not-found shape the spec requires for an absent record or one belonging to
+      another seller — never a fabricated success.
+
+    steps:
+      - id: report_unknown_outcome
+        title: "Seller reports against a nonexistent outcome_id"
+        narrative: |
+          The payload is otherwise well-formed, but outcome_id does not identify any
+          completed outcome governance holds for this plan.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject with REFERENCE_NOT_FOUND — the same shape returned for a record
+          belonging to another seller, so a prober cannot distinguish the two cases.
+
+        sample_request:
+          action: "report"
+          plan_id: "$context.plan_id"
+          outcome_id: "out_ffffffff"
+          seller_reference: "$context.media_buy_id"
+          seller_adjustment_id: "cancel_unknown_outcome_01"
+          adjustment_type: "decommitment"
+          amount:
+            amount: 1000
+            currency: "USD"
+          reason: "Testing an adjustment against an outcome governance does not hold."
+          effective_at: "2099-05-22T09:30:00Z"
+          evidence:
+            evidence_id: "agreement_unknown_outcome_01"
+            evidence_type: "decommitment_agreement"
+            digest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            issued_at: "2099-05-22T09:25:00Z"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_reference_not_found_report_unknown_outcome"
+          context:
+            correlation_id: "governance_delivery_monitor--report_unknown_outcome"
+        validations:
+          - check: error_code
+            value: "REFERENCE_NOT_FOUND"
+            description: "The source is absent or not attributable to the authenticated seller or plan owner (report_plan_adjustment.mdx error table; 'Governance returns the same not-found shape for an absent record and a record belonging to another seller')"
+
+  - id: adjustment_dispute_blocks_acceptance
+    title: "A disputed delivery period blocks acceptance until the period closes"
+    narrative: |
+      The seller reports a refund. Before the plan owner reviews it, the buyer submits
+      a delivery observation that conflicts with the seller's canonical delivery
+      statement for the same governed action. While that period is open and disputed,
+      governance MUST reject acceptance of any reported adjustment for the action. Once
+      the plan owner closes the period, the historical discrepancy is preserved as
+      closed_unresolved but no longer blocks acceptance.
+
+    steps:
+      - id: report_refund_adjustment
+        title: "Seller reports a refund"
+        narrative: |
+          A $3,000 refund, reported and evidenced independently of the decommitment
+          above. Cumulative reported adjustments ($5,000 + $3,000 = $8,000) stay well
+          under the $40,000 commitment.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Record the refund report without touching accounting state:
+          - adjustment_state: reported
+          - headroom_restored: 0
+
+        sample_request:
+          action: "report"
+          plan_id: "$context.plan_id"
+          outcome_id: "$context.outcome_id"
+          seller_reference: "$context.media_buy_id"
+          seller_adjustment_id: "refund_mb_acme_q2_2026_01"
+          adjustment_type: "refund"
+          amount:
+            amount: 3000
+            currency: "USD"
+          reason: "Partial refund for an under-delivered placement."
+          effective_at: "2099-05-23T09:30:00Z"
+          evidence:
+            evidence_id: "settlement_mb_acme_q2_2026_01"
+            evidence_type: "refund_settlement"
+            digest: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            issued_at: "2099-05-23T09:25:00Z"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_dispute_blocks_acceptance_report_refund_adjustment"
+          context:
+            correlation_id: "governance_delivery_monitor--report_refund_adjustment"
+        context_outputs:
+          - name: adjustment_id_refund
+            path: "adjustment_id"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-adjustment-response.json schema"
+          - check: field_value
+            path: "adjustment_state"
+            value: "reported"
+            description: "A seller report alone lands in reported state (report_plan_adjustment.mdx: adjustment_state: \"reported\")"
+          - check: field_value
+            path: "headroom_restored"
+            value: 0
+            description: "Reporting alone never changes plan headroom"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--report_refund_adjustment"
+            description: "Context correlation_id returned unchanged"
+
+      - id: buyer_delivery_dispute
+        title: "Buyer reports a conflicting delivery observation"
+        narrative: |
+          The buyer's independently measured cumulative spend ($25,000) disagrees with
+          the seller's canonical delivery statement ($20,000) for the same reporting
+          period. Governance MUST mark the governed action disputed and retain both
+          attributed values rather than averaging or picking a last writer.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Record the conflicting observation without overwriting the seller statement:
+          - outcome_state: findings
+          - delivery_reconciliation_status: disputed
+          - delivery_period_state: open
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          check_id: "$context.delivery_check_id"
+          governance_context: "$context.delivery_governance_context"
+          outcome: "delivery"
+          delivery:
+            observation_id: "obs_mb_acme_q2_2026_dispute_01"
+            source: "buyer_measurement"
+            observed_at: "2099-05-24T00:00:00Z"
+            reporting_period:
+              start: "2099-05-01T00:00:00Z"
+              end: "2099-05-15T00:00:00Z"
+            cumulative_spend: 25000
+            currency: "USD"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_dispute_blocks_acceptance_buyer_delivery_dispute"
+          context:
+            correlation_id: "governance_delivery_monitor--buyer_delivery_dispute"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema (delivery_reconciliation_status is an enum field)"
+          - check: field_value
+            path: "outcome_state"
+            value: "findings"
+            description: "A conflicting observation is recorded with findings, not silently accepted"
+          - check: field_value
+            path: "delivery_reconciliation_status"
+            value: "disputed"
+            description: "governance specification (Evidence authority and reconciliation): a conflicting buyer/seller record MUST mark the governed action disputed"
+          - check: field_value
+            path: "delivery_period_state"
+            value: "open"
+            description: "The period is still open — no period_closed was submitted"
+          - check: field_present
+            path: "findings"
+            description: "Disputed reconciliation MUST surface a finding (schema: findings present when outcome_state is findings)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--buyer_delivery_dispute"
+            description: "Context correlation_id returned unchanged"
+
+      - id: review_accept_blocked
+        title: "Acceptance is rejected while the period is open and disputed"
+        narrative: |
+          The plan owner tries to accept the refund reported above. The governed
+          action has an open, disputed delivery period, so acceptance is rejected —
+          not only for the most recent reporting period, but for any open dispute
+          on the action.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject with CONFLICT — delivery evidence for the governed action is
+          disputed in an open governance period.
+
+        sample_request:
+          action: "review"
+          plan_id: "$context.plan_id"
+          adjustment_id: "$context.adjustment_id_refund"
+          decision: "accept"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_dispute_blocks_acceptance_review_accept_blocked"
+          context:
+            correlation_id: "governance_delivery_monitor--review_accept_blocked"
+        validations:
+          - check: error_code
+            value: "CONFLICT"
+            description: "specification.mdx (Evidence authority and reconciliation): governance MUST reject adjustment acceptance while any reporting period for the governed action has a disputed, unclosed latest observation"
+
+      - id: close_reporting_period
+        title: "Plan owner closes the disputed reporting period"
+        narrative: |
+          The plan owner submits a new observation for the same seller statement and
+          period with period_closed: true. The values still disagree, so the period
+          becomes closed_unresolved rather than consistent — closure freezes the
+          evidence without asserting a final billing amount.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Freeze the period without resolving the discrepancy:
+          - outcome_state: findings
+          - delivery_reconciliation_status: closed_unresolved
+          - delivery_period_state: closed
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          check_id: "$context.delivery_check_id"
+          governance_context: "$context.delivery_governance_context"
+          outcome: "delivery"
+          delivery:
+            observation_id: "obs_mb_acme_q2_2026_close_01"
+            source: "buyer_measurement"
+            observed_at: "2099-05-25T00:00:00Z"
+            reporting_period:
+              start: "2099-05-01T00:00:00Z"
+              end: "2099-05-15T00:00:00Z"
+            cumulative_spend: 25000
+            currency: "USD"
+            period_closed: true
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_dispute_blocks_acceptance_close_reporting_period"
+          context:
+            correlation_id: "governance_delivery_monitor--close_reporting_period"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
+          - check: field_value
+            path: "delivery_reconciliation_status"
+            value: "closed_unresolved"
+            description: "specification.mdx: if the values still disagree at closure, governance records closed_unresolved and freezes both parties' evidence for that period"
+          - check: field_value
+            path: "delivery_period_state"
+            value: "closed"
+            description: "period_closed: true freezes the operational reporting window (schema enum on delivery_period_state)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--close_reporting_period"
+            description: "Context correlation_id returned unchanged"
+
+      - id: review_accept_after_closure
+        title: "Acceptance succeeds once the period is closed_unresolved"
+        narrative: |
+          A historical closed_unresolved period is audit evidence, not a live block.
+          The plan owner retries the same review and it now succeeds: the refund
+          verifies, reducing economic net_cost, but — because this plan uses the
+          default gross_commitment accounting mode — a verified refund does not
+          restore ledger headroom the way the decommitment above did.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Verify the refund without restoring ledger headroom:
+          - adjustment_state: verified
+          - headroom_restored: 0
+          - plan_summary.net_cost reduced; plan_summary.ledger_committed unchanged
+
+        sample_request:
+          action: "review"
+          plan_id: "$context.plan_id"
+          adjustment_id: "$context.adjustment_id_refund"
+          decision: "accept"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_dispute_blocks_acceptance_review_accept_after_closure"
+          context:
+            correlation_id: "governance_delivery_monitor--review_accept_after_closure"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-adjustment-response.json schema"
+          - check: field_value
+            path: "adjustment_state"
+            value: "verified"
+            description: "A closed_unresolved period does not block acceptance (report_plan_adjustment.mdx: 'A historical closed_unresolved period does not block a later buyer-reviewed adjustment')"
+          - check: field_value
+            path: "headroom_restored"
+            value: 0
+            description: "Verified refunds restore headroom only under budget.accounting_mode verified_net_cost; this plan uses the default gross_commitment (report_plan_adjustment.mdx table: refund → headroom in gross_commitment Unchanged)"
+          - check: field_value
+            path: "plan_summary.net_cost"
+            value: 32000
+            description: "Verified refunds reduce economic net_cost regardless of accounting mode (report_plan_adjustment.mdx table: refund → net_cost Reduced)"
+          - check: field_value
+            path: "plan_summary.ledger_committed"
+            value: 35000
+            description: "ledger_committed is unchanged from the decommitment-only state — the refund did not restore headroom under gross_commitment"
+          - check: field_value
+            path: "plan_summary.adjustments_verified"
+            value: 8000
+            description: "Both the decommitment (5000) and the refund (3000) are now verified"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--review_accept_after_closure"
             description: "Context correlation_id returned unchanged"

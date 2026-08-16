@@ -37,7 +37,7 @@ This change breaks three experimental surfaces (`x-status: experimental`). All t
 {
   "delivery_metrics": {
     "statement_id": "stmt_001",
-    "statement_digest": "sha256:4b55f1157094ed8df2635250f71568701d294cb0da57845eba886a62e5434633",
+    "statement_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
     "sequence": 1,
     "issued_at": "2026-03-22T00:05:00Z",
     "reporting_period": { "start": "2026-03-15T00:00:00Z", "end": "2026-03-22T00:00:00Z" },

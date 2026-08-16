@@ -80,6 +80,13 @@ const VALID_ADJUSTMENT_TYPES = new Set<GovernanceAdjustmentType>([
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9_.:-]{16,255}$/;
 
 /**
+ * Bound checks on raw float sums tolerate a tiny epsilon so an exact-boundary
+ * total (e.g. 0.1 + 0.2 vs 0.3) is not spuriously rejected by binary
+ * floating-point representation error.
+ */
+const exceedsBound = (total: number, bound: number): boolean => total > bound + 1e-6;
+
+/**
  * `plan_id` is buyer-generated and only unique within that buyer's namespace.
  * Keep the storage key owner-qualified so two authenticated buyers can reuse the
  * same opaque identifier without seeing or overwriting each other's plan state.
@@ -859,7 +866,7 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
         currency: plan.budget.currency,
         reallocationThreshold,
         reallocationUnlimited: hasUnlimited,
-        accountingMode: plan.budget.accounting_mode ?? 'gross_commitment',
+        accountingMode: plan.budget.accounting_mode ?? existing?.budget.accountingMode ?? 'gross_commitment',
         perSellerMaxPct: plan.budget.per_seller_max_pct,
         allocations: plan.budget.allocations ? Object.fromEntries(
           Object.entries(plan.budget.allocations).map(([k, v]) => [k, { amount: v.amount, maxPct: v.max_pct }]),
@@ -2194,7 +2201,11 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
               item.binding === 'proposed'
               && item.governanceBindingId === check.governanceBindingId)
             : undefined;
-        return intent?.caller === ctx.authenticatedAgentUrl;
+        // Delivery observations are also reportable by the plan owner, who
+        // may never have been the original intent caller (see the delivery
+        // reporter permission check below).
+        return intent?.caller === ctx.authenticatedAgentUrl
+          || (outcome === 'delivery' && check.planOwnerAgentUrl === ctx.authenticatedAgentUrl);
       })
       : null;
     if (fallback) {
@@ -2252,10 +2263,16 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
         }],
       };
     }
-    if (
-      ctx.authenticatedAgentUrl === undefined
-      || ctx.authenticatedAgentUrl !== intentAuthorization.caller
-    ) {
+    // Completed/failed settlement remains restricted to the original intent
+    // caller. Delivery observations are also reportable by the plan owner —
+    // the accountable party for the plan's reporting periods — even when a
+    // delegated agent placed the original intent.
+    const isOriginalIntentCaller = ctx.authenticatedAgentUrl !== undefined
+      && ctx.authenticatedAgentUrl === intentAuthorization.caller;
+    const isPlanOwnerReportingDelivery = outcome === 'delivery'
+      && ctx.authenticatedAgentUrl !== undefined
+      && ctx.authenticatedAgentUrl === plan.ownerAgentUrl;
+    if (!isOriginalIntentCaller && !isPlanOwnerReportingDelivery) {
       return {
         errors: [{
           code: 'PERMISSION_DENIED',
@@ -2266,10 +2283,23 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
   }
 
   if (outcome === 'delivery' && delivery) {
+    // Closing a reporting period is a plan-owner-only authority regardless of
+    // which authorized reporter (owner or delegated intent caller) submits it.
+    if (
+      (delivery as { period_closed?: unknown }).period_closed === true
+      && ctx.authenticatedAgentUrl !== plan.ownerAgentUrl
+    ) {
+      return {
+        errors: [{
+          code: 'PERMISSION_DENIED',
+          message: 'Only the authenticated plan owner may close a governance reporting period.',
+        }],
+      };
+    }
     const observationId = (delivery as { observation_id?: unknown }).observation_id;
     const priorObservation = [...session.governanceOutcomes.values()].find(existing =>
       existing.planId === planId
-      && existing.planOwnerAgentUrl === ctx.authenticatedAgentUrl
+      && existing.reporterCaller === ctx.authenticatedAgentUrl
       && existing.outcomeType === 'delivery'
       && (existing.delivery as { observation_id?: unknown } | undefined)?.observation_id === observationId);
     if (priorObservation) {
@@ -2338,6 +2368,26 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     const sellerStatement = authorizationCheck?.deliveryStatement;
     if (!sellerStatement) {
       return validationError('check_id must identify a canonical seller delivery statement.');
+    }
+    // The named check may point at a statement the seller has since corrected.
+    // Resolve the canonical (highest-sequence) statement for this governed
+    // binding and reporting period; an observation naming a superseded
+    // statement cannot reconcile or close the period. Applies to both
+    // seller_statement_copy and buyer_measurement sources.
+    const canonicalSequence = [...session.governanceChecks.values()]
+      .filter(check =>
+        check.governanceBindingId === authorizationCheck?.governanceBindingId
+        && check.deliveryStatement
+        && check.deliveryStatement.reportingPeriod.start === sellerStatement.reportingPeriod.start
+        && check.deliveryStatement.reportingPeriod.end === sellerStatement.reportingPeriod.end)
+      .reduce((max, check) => Math.max(max, check.deliveryStatement!.sequence), 0);
+    if (canonicalSequence > sellerStatement.sequence) {
+      return {
+        errors: [{
+          code: 'CONFLICT',
+          message: 'The named seller statement has been superseded by a higher-sequence statement; submit the observation against the latest canonical statement.',
+        }],
+      };
     }
     const observation = delivery as {
       source: 'seller_statement_copy' | 'buyer_measurement';
@@ -2645,15 +2695,32 @@ export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingCo
     const now = new Date().toISOString();
     let headroomRestored = 0;
     let verifiedAmount = 0;
+    let nextCommittedBudget = plan.committedBudget;
+    let nextCommittedByType = plan.committedByType?.[adjustment.purchaseType] ?? 0;
     if (req.decision === 'accept') {
-      const latestDeliveryReconciliation = [...session.governanceOutcomes.values()]
-        .reverse()
-        .find(outcome =>
+      // Block acceptance if ANY open period's latest observation for this
+      // binding is disputed — not just the globally latest delivery outcome.
+      // A period that closed unresolved is frozen and does not block
+      // acceptance; only a still-open dispute does.
+      const deliveryOutcomesForBinding = [...session.governanceOutcomes.values()]
+        .filter(outcome =>
           outcome.governanceBindingId === adjustment?.governanceBindingId
           && outcome.outcomeType === 'delivery');
-      if (latestDeliveryReconciliation?.deliveryReconciliationStatus === 'disputed') {
+      const latestObservationByPeriod = new Map<string, GovernanceOutcomeState>();
+      for (const deliveryOutcome of deliveryOutcomesForBinding) {
+        const period = (deliveryOutcome.delivery as {
+          reporting_period?: { start?: unknown; end?: unknown };
+        } | undefined)?.reporting_period;
+        latestObservationByPeriod.set(JSON.stringify([period?.start, period?.end]), deliveryOutcome);
+      }
+      const hasDisputedOpenPeriod = [...latestObservationByPeriod.values()]
+        .some(deliveryOutcome => deliveryOutcome.deliveryReconciliationStatus === 'disputed');
+      if (hasDisputedOpenPeriod) {
         return { errors: [{ code: 'CONFLICT', message: 'Delivery evidence is disputed; reconcile it before accepting an adjustment.' }] };
       }
+
+      const sourceOutcomeForAdjustment = session.governanceOutcomes.get(adjustment.outcomeId);
+
       if (adjustment.adjustmentType === 'decommitment') {
         const sellerStatements = [...session.governanceChecks.values()]
           .filter(check =>
@@ -2664,8 +2731,7 @@ export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingCo
         if (!latestStatement) {
           return { errors: [{ code: 'CONFLICT', message: 'A canonical seller delivery statement is required before decommitment can be verified.' }] };
         }
-        const sourceOutcome = session.governanceOutcomes.get(adjustment.outcomeId);
-        const remainingObligation = (sourceOutcome?.committedBudget ?? 0) - latestStatement.cumulativeSpend;
+        const remainingObligation = (sourceOutcomeForAdjustment?.committedBudget ?? 0) - latestStatement.cumulativeSpend;
         const priorVerifiedDecommitments = [...session.governanceAdjustments.values()]
           .filter(existing =>
             existing.adjustmentId !== adjustment?.adjustmentId
@@ -2677,7 +2743,7 @@ export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingCo
         if (
           !Number.isFinite(remainingObligation)
           || !Number.isFinite(cumulativeDecommitment)
-          || cumulativeDecommitment > remainingObligation
+          || exceedsBound(cumulativeDecommitment, remainingObligation)
         ) {
           return validationError('Decommitment exceeds the undelivered obligation in the latest reconciled statement.');
         }
@@ -2689,34 +2755,69 @@ export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingCo
           ? adjustment.amount
           : 0;
       }
+
+      // Independent of the decommitment-specific obligation cap above: the
+      // cumulative verified amount for this outcome can never exceed its
+      // authoritative commitment. Disputed adjustments are terminal and never
+      // verify, so they never contribute to this sum.
+      const priorVerifiedForOutcome = [...session.governanceAdjustments.values()]
+        .filter(existing =>
+          existing.adjustmentId !== adjustment?.adjustmentId
+          && existing.outcomeId === adjustment?.outcomeId
+          && existing.verificationState === 'verified')
+        .reduce((sum, existing) => sum + existing.verifiedAmount, 0);
+      if (
+        sourceOutcomeForAdjustment
+        && exceedsBound(priorVerifiedForOutcome + verifiedAmount, sourceOutcomeForAdjustment.committedBudget)
+      ) {
+        return validationError('Cumulative verified adjustments exceed the original authoritative commitment.');
+      }
+
       const currentByType = plan.committedByType?.[adjustment.purchaseType] ?? 0;
-      const nextCommitted = plan.committedBudget - headroomRestored;
-      const nextByType = currentByType - headroomRestored;
-      if (!Number.isFinite(nextCommitted) || !Number.isFinite(nextByType) || nextCommitted < 0 || nextByType < 0) {
+      nextCommittedBudget = plan.committedBudget - headroomRestored;
+      nextCommittedByType = currentByType - headroomRestored;
+      if (
+        !Number.isFinite(nextCommittedBudget)
+        || !Number.isFinite(nextCommittedByType)
+        || nextCommittedBudget < 0
+        || nextCommittedByType < 0
+      ) {
         return validationError('Verified adjustment would make the governance ledger negative.');
       }
-      plan.committedBudget = nextCommitted;
-      plan.committedByType = plan.committedByType || {};
-      plan.committedByType[adjustment.purchaseType] = nextByType;
       adjustment.verificationState = 'verified';
     } else {
       adjustment.verificationState = 'disputed';
     }
     adjustment.verifiedAmount = verifiedAmount;
     adjustment.headroomRestored = headroomRestored;
-    adjustment.reviewIdempotencyKey = req.idempotency_key;
-    adjustment.reviewPayloadHash = requestPayloadHash;
-    adjustment.reviewerBuyer = ctx.authenticatedAgentUrl;
-    adjustment.reviewReason = req.reason;
-    adjustment.reviewedAt = now;
+
+    // buildAdjustmentPlanSummary can throw on numeric-overflow ledger totals.
+    // Build the full response — including the plan summary — against a
+    // candidate ledger snapshot before committing the real mutation, so a
+    // thrown error leaves plan.committedBudget/committedByType and the review
+    // idempotency cache entry untouched.
+    const candidatePlan: GovernancePlanState = {
+      ...plan,
+      committedBudget: nextCommittedBudget,
+      committedByType: { ...(plan.committedByType ?? {}), [adjustment.purchaseType]: nextCommittedByType },
+    };
     const response: Record<string, unknown> = {
       adjustment_id: adjustment.adjustmentId,
       adjustment_state: adjustment.verificationState,
       adjustment_type: adjustment.adjustmentType,
       amount: { amount: adjustment.amount, currency: adjustment.currency },
       headroom_restored: headroomRestored,
-      plan_summary: buildAdjustmentPlanSummary(session, plan),
+      plan_summary: buildAdjustmentPlanSummary(session, candidatePlan),
     };
+
+    plan.committedBudget = nextCommittedBudget;
+    plan.committedByType = plan.committedByType || {};
+    plan.committedByType[adjustment.purchaseType] = nextCommittedByType;
+    adjustment.reviewIdempotencyKey = req.idempotency_key;
+    adjustment.reviewPayloadHash = requestPayloadHash;
+    adjustment.reviewerBuyer = ctx.authenticatedAgentUrl;
+    adjustment.reviewReason = req.reason;
+    adjustment.reviewedAt = now;
     adjustment.reviewResponse = response;
     return response;
   }
@@ -2815,10 +2916,17 @@ export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingCo
   if (req.amount.currency !== plan.budget.currency) {
     return validationError(`amount.currency must match the plan currency ${plan.budget.currency}.`);
   }
+  // Disputed adjustments are terminal and never verify, so they must not
+  // consume the cumulative-adjustment cap — otherwise a disputed report would
+  // permanently block a seller's corrected re-report for the same outcome.
   const priorAdjusted = [...session.governanceAdjustments.values()]
-    .filter(adjustment => adjustment.outcomeId === sourceOutcome?.outcomeId)
+    .filter(adjustment => adjustment.outcomeId === sourceOutcome?.outcomeId
+      && adjustment.verificationState !== 'disputed')
     .reduce((sum, adjustment) => sum + adjustment.amount, 0);
-  if (!Number.isFinite(priorAdjusted + req.amount.amount) || priorAdjusted + req.amount.amount > sourceOutcome.committedBudget) {
+  if (
+    !Number.isFinite(priorAdjusted + req.amount.amount)
+    || exceedsBound(priorAdjusted + req.amount.amount, sourceOutcome.committedBudget)
+  ) {
     return validationError('Cumulative adjustments exceed the original authoritative commitment.');
   }
 

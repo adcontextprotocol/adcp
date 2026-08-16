@@ -732,6 +732,148 @@ async function runTests() {
     return true;
   });
 
+  await test('check_governance delivery phase requires a statement_digest on delivery_metrics', async () => {
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+    const validateRequest = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/check-governance-request.json'))
+    );
+
+    const deliveryCheck = {
+      caller: 'https://seller.example',
+      governance_context: 'signed.context.token',
+      phase: 'delivery',
+      planned_delivery: { media_buy_id: 'mb_123', total_budget: 1000, currency: 'USD' },
+      delivery_metrics: {
+        statement_id: 'stmt_1',
+        statement_digest: `sha256:${'a'.repeat(64)}`,
+        sequence: 1,
+        issued_at: '2026-08-09T00:00:00Z',
+        reporting_period: { start: '2026-08-01T00:00:00Z', end: '2026-08-08T00:00:00Z' },
+        cumulative_spend: 100,
+        currency: 'USD'
+      }
+    };
+    if (!validateRequest(deliveryCheck)) {
+      return `valid delivery-phase statement rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+    const { statement_digest, ...metricsWithoutDigest } = deliveryCheck.delivery_metrics;
+    if (validateRequest({ ...deliveryCheck, delivery_metrics: metricsWithoutDigest })) {
+      return 'delivery-phase delivery_metrics must require statement_digest';
+    }
+    return true;
+  });
+
+  await test('report_plan_adjustment enforces action-specific evidence and dispute rules', async () => {
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+    const validateRequest = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/report-plan-adjustment-request.json'))
+    );
+    const validateResponse = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/report-plan-adjustment-response.json'))
+    );
+
+    const minimalReport = {
+      action: 'report',
+      plan_id: 'plan_123',
+      idempotency_key: 'report-adjustment-0001',
+      outcome_id: 'out_1',
+      seller_reference: 'mb_1',
+      seller_adjustment_id: 'sadj_1',
+      adjustment_type: 'decommitment',
+      amount: { amount: 1000, currency: 'USD' },
+      reason: 'Remaining inventory obligation cancelled by mutual agreement.',
+      effective_at: '2026-08-09T09:30:00Z',
+      evidence: {
+        evidence_id: 'ev_1',
+        evidence_type: 'decommitment_agreement',
+        digest: `sha256:${'a'.repeat(64)}`,
+        issued_at: '2026-08-09T09:25:00Z'
+      }
+    };
+    if (!validateRequest(minimalReport)) {
+      return `valid minimal seller report rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+
+    const minimalReviewAccept = {
+      action: 'review',
+      plan_id: 'plan_123',
+      idempotency_key: 'review-adjustment-0001',
+      adjustment_id: 'adj_1',
+      decision: 'accept'
+    };
+    if (!validateRequest(minimalReviewAccept)) {
+      return `valid minimal review acceptance rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+
+    if (validateRequest({ ...minimalReviewAccept, decision: 'dispute' })) {
+      return 'a dispute decision must require reason';
+    }
+    if (!validateRequest({ ...minimalReviewAccept, decision: 'dispute', reason: 'Cumulative spend does not match our records.' })) {
+      return `dispute with reason rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+
+    const { evidence, ...reportMissingEvidence } = minimalReport;
+    if (validateRequest(reportMissingEvidence)) {
+      return 'a seller report must require evidence';
+    }
+
+    if (validateRequest({
+      ...minimalReport,
+      adjustment_type: 'refund',
+      evidence: { ...minimalReport.evidence, evidence_type: 'decommitment_agreement' }
+    })) {
+      return 'evidence_type must match adjustment_type (refund requires refund_settlement)';
+    }
+    if (!validateRequest({
+      ...minimalReport,
+      adjustment_type: 'refund',
+      evidence: { ...minimalReport.evidence, evidence_type: 'refund_settlement' }
+    })) {
+      return `matching refund evidence_type rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+
+    if (validateRequest({ ...minimalReport, idempotency_key: 'too-short' })) {
+      return 'idempotency_key shorter than 16 characters must be rejected';
+    }
+
+    const verifiedResponse = {
+      adjustment_id: 'adj_1',
+      adjustment_state: 'verified',
+      adjustment_type: 'decommitment',
+      amount: { amount: 5000, currency: 'USD' },
+      headroom_restored: 5000,
+      plan_summary: {
+        accounting_mode: 'gross_commitment',
+        gross_committed: 40000,
+        adjustments_reported: 5000,
+        adjustments_verified: 5000,
+        net_cost: 35000,
+        headroom_restored: 5000,
+        ledger_committed: 35000,
+        net_committed: 35000,
+        budget_remaining: 5000
+      }
+    };
+    if (!validateResponse(verifiedResponse)) {
+      return `valid verified adjustment response rejected: ${testAjv.errorsText(validateResponse.errors)}`;
+    }
+    return true;
+  });
+
   // Test 5: Validate enum schemas
   await test('All enum schemas have proper enum values', () => {
     const enumSchemas = schemas.filter(([path]) => path.includes('/enums/'));
