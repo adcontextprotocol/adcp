@@ -214,7 +214,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.31.1",
+    "@changesets/cli": "^3.0.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/escape-html": "^1.0.4",
     "@types/express": "^5.0.6",
