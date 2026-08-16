@@ -10,6 +10,8 @@ testable: false
 - `action: "revise"` applies structured discovery `criteria`, typed boundaries, product changes, requested alternatives, and/or the buyer's free-text `ask`, returning one or more new draft proposals.
 - `action: "finalize"` changes no commercial terms and returns a new committed proposal backed by an inventory hold until `expires_at`.
 
+For an end-to-end buyer and seller implementation workflow, see [Proposal negotiation](/docs/media-buy/product-discovery/proposal-negotiation).
+
 Revision may target a draft, committed, or accepted proposal; finalization must target a draft. A request contains at most 25 refinements. Proposal IDs must be unique within the request, and results preserve request order. Every successful operation returns a new `proposal_id`; that ID is the complete version identity for the immutable commercial snapshot, and the source remains unchanged.
 
 {/* Using latest because this schema is not yet released in any version.

@@ -8,7 +8,7 @@
     "status": {
       "type": "string",
       "const": "submitted",
-      "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, whose status field carries a MediaBuyStatus value (pending_creatives, pending_start, active). See task-status.json for the full task-status enum."
+      "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, which carries media-buy lifecycle state in `media_buy_status`. See task-status.json for the full task-status enum."
     },
     "task_id": {
       "type": "string",
