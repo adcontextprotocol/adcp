@@ -101,6 +101,7 @@ export type AdcpSpecialism =
   | 'property-lists'
   | 'sales-broadcast-tv'
   | 'sales-catalog-driven'
+  | 'sales-dooh'
   | 'sales-guaranteed'
   | 'sales-non-guaranteed'
   | 'sales-proposal-mode'
@@ -125,6 +126,7 @@ export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'property-lists',
   'sales-broadcast-tv',
   'sales-catalog-driven',
+  'sales-dooh',
   'sales-guaranteed',
   'sales-non-guaranteed',
   'sales-proposal-mode',

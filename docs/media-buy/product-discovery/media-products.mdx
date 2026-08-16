@@ -54,6 +54,12 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `conversion_tracking` (object, optional): Conversion event tracking capabilities. Presence indicates the product supports `optimization_goals` with `kind: "event"`. See [Conversion tracking](#conversion-tracking-1).
 - `product_card` (object, optional): Visual card definition for displaying this product in user interfaces. See [Product Cards](#product-cards).
 
+### Pass-through product sources
+
+Schema validity is not the same as format resolvability. The shared 3.x Product schema still accepts a legacy-only `format_ids[]` product so older sellers remain readable, but each `{agent_url, id}` is only useful when the consuming path also fetches and resolves that named-format catalog.
+
+AdCP 3.2 intermediaries that import or pass through upstream products MUST require upstream `format_options[]`, or fetch and authoritatively resolve every referenced legacy format before translating it into canonical declarations. That translation MUST preserve the resolved constraints losslessly or narrow them explicitly; intermediaries MUST NOT guess dimensions, slots, codecs, durations, or other constraints from a format ID. If authoritative resolution or safe translation fails, omit or reject the product with an actionable error. Intermediaries MUST NOT pass through a legacy-only product on a source path that does not resolve its format catalog, and buyers MUST NOT infer legacy resolvability from schema validation alone.
+
 ### Metric optimization
 
 Products that support `optimization_goals` with `kind: "metric"` declare their capabilities in `metric_optimization`. No event source or conversion tracking setup is required for metric goals — the seller tracks these metrics natively.

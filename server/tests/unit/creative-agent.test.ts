@@ -1421,7 +1421,7 @@ describe('MCP tool responses include structuredContent', () => {
     expect(structured.formats.length).toBe(4);
   });
 
-  it('list_creative_formats structuredContent matches content text', async () => {
+  it('list_creative_formats keeps the text summary distinct from structuredContent', async () => {
     const result = await client.callTool({
       name: 'list_creative_formats',
       arguments: {},
@@ -1430,7 +1430,8 @@ describe('MCP tool responses include structuredContent', () => {
     const structured = result.structuredContent as Record<string, unknown>;
     const content = result.content as Array<{ type: string; text: string }>;
     expect(content).toHaveLength(1);
-    expect(JSON.parse(content[0].text)).toEqual(structured);
+    expect(content[0].text).toBe('list_creative_formats completed successfully.');
+    expect(content[0].text).not.toBe(JSON.stringify(structured));
   });
 
   it('preview_creative returns structuredContent with previews', async () => {
@@ -1456,7 +1457,7 @@ describe('MCP tool responses include structuredContent', () => {
     expect(structured.previews.length).toBe(1);
   });
 
-  it('preview_creative structuredContent matches content text', async () => {
+  it('preview_creative returns a terse text summary beside structuredContent', async () => {
     const result = await client.callTool({
       name: 'preview_creative',
       arguments: {
@@ -1469,7 +1470,24 @@ describe('MCP tool responses include structuredContent', () => {
 
     const structured = result.structuredContent as Record<string, unknown>;
     const content = result.content as Array<{ type: string; text: string }>;
-    expect(JSON.parse(content[0].text)).toEqual(structured);
+    expect(content[0].text).toBe('preview_creative completed successfully.');
+    expect(content[0].text).not.toBe(JSON.stringify(structured));
+  });
+
+  it('preview_creative summary does not claim success when the payload reports errors', async () => {
+    const result = await client.callTool({
+      name: 'preview_creative',
+      arguments: {
+        request_type: 'variant',
+        creative_id: 'creative-without-delivery-state',
+      },
+    });
+
+    const structured = result.structuredContent as { errors?: unknown[] };
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(structured.errors).toHaveLength(1);
+    expect(content[0].text).toBe('preview_creative completed with 1 reported error.');
+    expect(content[0].text).not.toMatch(/success/i);
   });
 
   it('list_creative_formats structuredContent includes all 76 reference and UI formats', async () => {

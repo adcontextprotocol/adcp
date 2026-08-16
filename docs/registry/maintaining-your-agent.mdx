@@ -40,7 +40,7 @@ Both qualifiers run the same storyboards on the same ~1h heartbeat. The differen
 | Qualifier | Runner targets | What it attests |
 |---|---|---|
 | **(Spec)** | Any endpoint you register — test deployment, local dev, sandbox-only stack | AdCP wire format and protocol semantics are correct |
-| **(Sandbox)** | Your registered **production** `agent_url` with `account.sandbox: true` on every request | Your production code path honors sandbox flagging with zero real-world side effects |
+| **(Sandbox)** | Your registered **production** `agent_url`, using natural-key references with `sandbox: true` or preverified sandbox `account_id` references | Your production code path keeps sandbox accounts isolated with zero real-world side effects |
 
 See [AAO Verified](/docs/building/verification/aao-verified) for complete eligibility and attestation details.
 

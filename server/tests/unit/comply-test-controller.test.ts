@@ -60,7 +60,10 @@ async function simulateListTools(server: ReturnType<typeof createTrainingAgentSe
 }
 
 /** Create a media buy and return its ID. */
-async function createMediaBuy(server: ReturnType<typeof createTrainingAgentServer>): Promise<string> {
+async function createMediaBuy(
+  server: ReturnType<typeof createTrainingAgentServer>,
+  packageCount = 1,
+): Promise<string> {
   // Get a valid product first
   const { result: products, isError: productsError } = await simulateCallTool(server, 'get_products', {
     buying_mode: 'wholesale',
@@ -85,11 +88,11 @@ async function createMediaBuy(server: ReturnType<typeof createTrainingAgentServe
     brand: BRAND,
     start_time: 'asap',
     end_time: endTime.toISOString(),
-    packages: [{
+    packages: Array.from({ length: packageCount }, () => ({
       product_id: product.product_id,
       pricing_option_id: pricingOption.pricing_option_id,
       budget: 10000,
-    }],
+    })),
   });
   if (isError || (result as any).errors) {
     throw new Error(`create_media_buy failed: ${JSON.stringify(result)}`);
@@ -1755,6 +1758,12 @@ describe('comply_test_controller', () => {
           media_buy_id: mediaBuyId,
           impressions: 10000,
           clicks: 150,
+          plays: 240,
+          dooh_metrics: {
+            loop_plays: 240,
+            screens_used: 12,
+            screen_time_seconds: 1440,
+          },
           reported_spend: { amount: 150.00, currency: 'USD' },
         },
         account: ACCOUNT,
@@ -1762,7 +1771,13 @@ describe('comply_test_controller', () => {
       });
       expect(simResult.success).toBe(true);
       expect((simResult as any).simulated.impressions).toBe(10000);
+      expect((simResult as any).simulated.plays).toBe(240);
       expect((simResult as any).cumulative.impressions).toBe(10000);
+      expect((simResult as any).cumulative.dooh_metrics).toEqual({
+        loop_plays: 240,
+        screens_used: 12,
+        screen_time_seconds: 1440,
+      });
 
       // Verify reflected in delivery
       const { result: delivery } = await simulateCallTool(server, 'get_media_buy_delivery', {
@@ -1773,6 +1788,15 @@ describe('comply_test_controller', () => {
       const totals = (delivery as any).media_buy_deliveries[0].totals;
       expect(totals.impressions).toBeGreaterThanOrEqual(10000);
       expect(totals.clicks).toBeGreaterThanOrEqual(150);
+      expect(totals.plays).toBe(240);
+      expect(totals.dooh_metrics).toEqual({
+        loop_plays: 240,
+        screens_used: 12,
+        screen_time_seconds: 1440,
+      });
+      const packageDelivery = (delivery as any).media_buy_deliveries[0].by_package[0];
+      expect(packageDelivery.plays).toBe(240);
+      expect(packageDelivery.dooh_metrics.screens_used).toBe(12);
     });
 
     it('is additive across calls', async () => {
@@ -1780,18 +1804,51 @@ describe('comply_test_controller', () => {
 
       await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'simulate_delivery',
-        params: { media_buy_id: mediaBuyId, impressions: 5000 },
+        params: {
+          media_buy_id: mediaBuyId,
+          impressions: 5000,
+          plays: 40,
+          dooh_metrics: { loop_plays: 40, screens_used: 8 },
+        },
         account: ACCOUNT,
         brand: BRAND,
       });
 
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'simulate_delivery',
-        params: { media_buy_id: mediaBuyId, impressions: 3000 },
+        params: {
+          media_buy_id: mediaBuyId,
+          impressions: 3000,
+          plays: 35,
+          dooh_metrics: { loop_plays: 35, screens_used: 6 },
+        },
         account: ACCOUNT,
         brand: BRAND,
       });
       expect((result as any).cumulative.impressions).toBe(8000);
+      expect((result as any).cumulative.plays).toBe(75);
+      expect((result as any).cumulative.dooh_metrics).toEqual({ loop_plays: 35, screens_used: 6 });
+    });
+
+    it('rejects media-buy-scoped DOOH metrics for multi-package buys without mutating delivery state', async () => {
+      const mediaBuyId = await createMediaBuy(server, 2);
+
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: {
+          media_buy_id: mediaBuyId,
+          plays: 25,
+          dooh_metrics: { loop_plays: 25, screens_used: 4 },
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_PARAMS');
+      const sessionKey = sessionKeyFromArgs({ account: ACCOUNT }, DEFAULT_CTX.mode, DEFAULT_CTX.userId, DEFAULT_CTX.moduleId);
+      const session = await getSession(sessionKey);
+      expect(session.complyExtensions.deliverySimulations.has(mediaBuyId)).toBe(false);
     });
 
     it('filters dated delivery batches with start-inclusive, end-exclusive boundaries', async () => {

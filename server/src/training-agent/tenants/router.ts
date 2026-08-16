@@ -605,7 +605,10 @@ async function tryHandleLocalComplyScenario(
     jsonrpc: '2.0',
     id: req.body.id ?? null,
     result: {
-      content: [{ type: 'text', text: JSON.stringify(structuredContent) }],
+      content: [{
+        type: 'text',
+        text: `Compliance scenario ${String(rawArgs.scenario)} completed.`,
+      }],
       structuredContent,
     },
   });
@@ -916,7 +919,7 @@ function projectTenantCapabilities(
     projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
     const firstText = parsed.result?.content?.[0];
     if (firstText?.type === 'text') {
-      firstText.text = JSON.stringify(structured);
+      firstText.text = 'Capabilities retrieved successfully.';
     }
     return Buffer.from(JSON.stringify(parsed), 'utf8');
   } catch {

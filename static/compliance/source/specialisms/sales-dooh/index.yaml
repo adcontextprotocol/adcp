@@ -1,0 +1,573 @@
+id: sales_dooh
+version: "1.0.0"
+title: "Digital out-of-home — non-guaranteed"
+protocol: media-buy
+category: sales_dooh
+summary: "DOOH seller for non-guaranteed venue and screen inventory with canonical screen formats and substantive play reporting."
+track: media_buy
+required_tools:
+  - sync_governance
+  - sync_creatives
+  - list_products
+  - create_media_buy
+  - get_media_buy_delivery
+requires_scenarios:
+  - media_buy_seller/delivery_reporting
+  - media_buy_seller/pending_creatives_to_start
+  - media_buy_seller/invalid_transitions
+  - governance_aware_seller/governance_multi_agent_rejected
+
+invariants:
+  - status.monotonic
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+
+narrative: |
+  You run a digital out-of-home seller that offers venue and screen inventory
+  through a non-guaranteed buying path. A buyer discovers DOOH products, checks
+  the exact dimensions and file constraints accepted by the screens, syncs a
+  compatible creative, creates a buy, and
+  reconciles delivery from screen logs.
+
+  DOOH products are still ordinary AdCP products. The `dooh` channel identifies
+  them; publisher properties and public placements identify venue or screen
+  scope; canonical `format_options` express the screen's creative contract.
+  Delivery reports use `plays` and `dooh_metrics` for screen activity. Optional
+  attention measures use the existing vendor-metric contracts and their own
+  selected conformance profile rather than becoming a requirement of the core
+  DOOH claim.
+
+  This storyboard intentionally does not require click, conversion, browser-pixel,
+  or persistent-person identifiers. Those are not inherent to DOOH delivery.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+    - supports_non_guaranteed
+    - sells_dooh
+  examples:
+    - "Non-guaranteed transit screen network seller"
+    - "Non-guaranteed venue media marketplace"
+    - "Auction-based digital billboard marketplace"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency buyer"
+
+prerequisites:
+  description: |
+    The caller needs a sandbox account and a creative suitable for a portrait
+    screen. The test kit provides the fictional Acme Outdoor brand and assets.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "dooh_transit_concourse_loop"
+      name: "Transit concourse portrait screens"
+      description: "A non-guaranteed package of portrait screens in fictional transit concourses."
+      publisher_properties:
+        - publisher_domain: "metro-media.example"
+          selection_type: "by_tag"
+          property_tags: ["transit_venues"]
+      channels: ["dooh"]
+      delivery_type: "non_guaranteed"
+      format_options:
+        - format_option_id: "dooh_portrait_image_1080x1920"
+          format_kind: "image"
+          params:
+            width: 1080
+            height: 1920
+            max_file_size_kb: 10240
+            image_formats: ["jpg", "png"]
+            ssl_required: true
+            asset_source: "buyer_uploaded"
+            buyer_asset_acceptance: "accepted"
+            composition_model: "deterministic"
+            slots:
+              - asset_group_id: "image_main"
+                asset_type: "image"
+                required: true
+      placements:
+        - kind: "seller_inline"
+          publisher_domain: "metro-media.example"
+          placement_id: "central_concourse_portrait_screens"
+          name: "Central concourse portrait screens"
+          mode: "included"
+          tags: ["transit", "concourse", "portrait"]
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 240
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend", "plays", "dooh_metrics"]
+        supports_placement_breakdown: true
+        date_range_support: "date_range"
+  pricing_options:
+    - product_id: "dooh_transit_concourse_loop"
+      pricing_option_id: "dooh_transit_cpm_auction"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 8.0
+      price_guidance:
+        p50: 10.0
+        p75: 12.0
+
+phases:
+  - id: capability_discovery
+    title: "Discover the DOOH seller"
+    narrative: |
+      The buyer verifies both the executable DOOH specialization and the
+      portfolio routing declaration. The specialism selects this storyboard;
+      primary_channels tells buyers which briefs the seller accepts.
+    steps:
+      - id: get_capabilities
+        title: "Check DOOH capabilities"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Declare the media-buy protocol, the sales-dooh specialism, and dooh
+          in media_buy.portfolio.primary_channels.
+        sample_request:
+          context:
+            correlation_id: "sales_dooh--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "media_buy"
+            description: "Agent declares media_buy protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "sales-dooh"
+            description: "Agent declares the sales-dooh specialism"
+          - check: field_contains
+            path: "media_buy.portfolio.primary_channels[*]"
+            value: "dooh"
+            description: "Portfolio routing scope includes DOOH"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_dooh--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: product_discovery
+    title: "Discover venue and screen inventory"
+    narrative: |
+      The buyer reads an exact seeded DOOH product from the 3.2 product list.
+      The returned product must be independently actionable: its canonical format
+      declaration supplies dimensions and other asset constraints without a
+      legacy format-catalog lookup.
+    steps:
+      - id: get_dooh_products
+        title: "Read non-guaranteed DOOH products"
+        task: list_products
+        schema_ref: "media-buy/list-products-request.json"
+        response_schema_ref: "media-buy/list-products-response.json"
+        doc_ref: "/media-buy/task-reference/list_products"
+        comply_scenario: full_sales_flow
+        stateful: true
+        expected: |
+          Return the seeded DOOH product with:
+          - channels containing dooh
+          - delivery_type set to non_guaranteed
+          - canonical format_options with concrete screen dimensions
+          - publisher property and placement scope
+          - plays and dooh_metrics reporting
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#sales_dooh_product_discovery_get_dooh_products"
+          criteria:
+            product_ids: ["dooh_transit_concourse_loop"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "sales_dooh--get_dooh_products"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "dooh_product_id"
+        validations:
+          - check: response_schema
+            description: "Response matches list-products-response.json schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "dooh_transit_concourse_loop"
+            description: "Exact fixture selection makes discovery independent of catalog order"
+          - check: field_contains
+            path: "products[0].channels[*]"
+            value: "dooh"
+            description: "Returned product is sold as DOOH"
+          - check: field_value
+            path: "products[0].delivery_type"
+            value: "non_guaranteed"
+            description: "Returned product uses the non-guaranteed path"
+          - check: field_present
+            path: "products[0].format_options[0].format_kind"
+            description: "Product carries a canonical format declaration"
+          - check: field_present
+            path: "products[0].format_options[0].params.width"
+            description: "Canonical format declares screen width"
+          - check: field_present
+            path: "products[0].format_options[0].params.height"
+            description: "Canonical format declares screen height"
+          - check: field_present
+            path: "products[0].publisher_properties[0].publisher_domain"
+            description: "Product identifies its publisher property scope"
+          - check: field_present
+            path: "products[0].placements[0].placement_id"
+            description: "Product identifies its public screen placement"
+          - check: field_contains
+            path: "products[0].reporting_capabilities.available_metrics[*]"
+            value: "plays"
+            description: "Product can report raw screen plays"
+          - check: field_contains
+            path: "products[0].reporting_capabilities.available_metrics[*]"
+            value: "dooh_metrics"
+            description: "Product can report DOOH delivery detail"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_dooh--get_dooh_products"
+            description: "Context correlation_id returned unchanged"
+
+  - id: creative_sync
+    title: "Sync a screen-compatible creative"
+    narrative: |
+      The buyer uploads a hosted portrait image that satisfies the exact
+      canonical dimensions returned by product discovery. DOOH creative is a
+      file delivered to a screen runtime; browser trackers and click assets are
+      not required by this scenario.
+    steps:
+      - id: validate_input
+        title: "Validate the portrait asset against the product"
+        task: validate_input
+        requires_tool: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#validation-flow--validate_input"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        expected: |
+          When the seller offers validate_input, validate the complete portrait
+          image manifest against the exact DOOH product returned by discovery
+          and return validated_pass.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "image"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "dooh_portrait_image_1080x1920"
+            assets:
+              image_main:
+                asset_type: "image"
+                url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-1080x1920.jpg"
+                width: 1080
+                height: 1920
+                mime_type: "image/jpeg"
+          targets:
+            - kind: "product"
+              id: "$context.dooh_product_id"
+          context:
+            correlation_id: "sales_dooh--validate_input"
+        validations:
+          - check: response_schema
+            description: "Response matches validate-input-response.json schema"
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Portrait manifest satisfies the discovered DOOH product contract"
+          - check: field_value
+            path: "results[0].target.kind"
+            value: "product"
+            description: "Validation result is scoped to a product target"
+          - check: field_equals_context
+            path: "results[0].target.id"
+            context_key: "dooh_product_id"
+            description: "Validation result identifies the discovered DOOH product"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_dooh--validate_input"
+            description: "Context correlation_id returned unchanged"
+
+      - id: sync_creatives
+        title: "Push the portrait screen asset"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Accept the image creative for review or processing after validating
+          its 1080x1920 dimensions against the product's canonical format.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          creatives:
+            - creative_id: "dooh_acme_portrait_1080x1920"
+              name: "Acme Outdoor portrait screen"
+              format_kind: "image"
+              assets:
+                image_main:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-1080x1920.jpg"
+                  width: 1080
+                  height: 1920
+                  mime_type: "image/jpeg"
+          idempotency_key: "$generate:uuid_v4#sales_dooh_creative_sync_sync_creatives"
+          context:
+            correlation_id: "sales_dooh--sync_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "dooh_acme_portrait_1080x1920"
+            description: "Response identifies the submitted DOOH creative"
+          - check: field_value
+            path: "creatives[0].action"
+            allowed_values: ["created", "updated", "unchanged"]
+            description: "Seller accepts the product-validated creative rather than returning a per-item failure"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_dooh--sync_creatives"
+            description: "Context correlation_id returned unchanged"
+
+  - id: create_buy
+    title: "Create the non-guaranteed DOOH buy"
+    narrative: |
+      The buyer registers governance and creates a non-guaranteed buy against
+      the exact product and pricing option returned by discovery.
+    steps:
+      - id: sync_governance
+        title: "Register governance agent"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: "Acknowledge governance registration for the sandbox account."
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+                sandbox: true
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#sales_dooh_create_buy_sync_governance"
+          context:
+            correlation_id: "sales_dooh--sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "synced"
+            description: "Governance agent is registered"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_dooh--sync_governance"
+            description: "Context correlation_id returned unchanged"
+
+      - id: create_media_buy
+        title: "Buy the DOOH product"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Create a media buy containing the selected non-guaranteed DOOH
+          package and return its seller-assigned identifiers.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.dooh_product_id"
+              budget: 10000
+              bid_price: 10
+              pricing_option_id: "dooh_transit_cpm_auction"
+              creative_assignments:
+                - creative_id: "dooh_acme_portrait_1080x1920"
+          idempotency_key: "$generate:uuid_v4#sales_dooh_create_buy_create_media_buy"
+          context:
+            correlation_id: "sales_dooh--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+          - name: dooh_package_id
+            path: "packages[0].package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller assigns a media_buy_id"
+          - check: field_present
+            path: "packages[0].package_id"
+            description: "Seller assigns a package_id"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_dooh--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+
+  - id: delivery
+    title: "Reconcile DOOH delivery"
+    narrative: |
+      The controller injects deterministic DOOH screen activity, then the buyer
+      requests delivery for the buy. The response must reproduce the exact
+      `plays` and `dooh_metrics` values and reconcile them to the purchased package.
+    steps:
+      - id: simulate_delivery
+        title: "Inject deterministic DOOH delivery"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        comply_scenario: deterministic_delivery
+        stateful: true
+        expected: |
+          Acknowledge the exact play count and screen-activity metrics injected
+          for this sandbox media buy.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            plays: 125
+            dooh_metrics:
+              loop_plays: 125
+              screens_used: 18
+              screen_time_seconds: 1250
+              sov_achieved: 0.125
+          context:
+            correlation_id: "sales_dooh--simulate_delivery"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "DOOH delivery simulation succeeds"
+          - check: field_value
+            path: "simulated.plays"
+            value: 125
+            description: "Controller acknowledges the injected play count"
+          - check: field_value
+            path: "simulated.dooh_metrics.loop_plays"
+            value: 125
+            description: "Controller acknowledges the injected DOOH detail"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_dooh--simulate_delivery"
+            description: "Context correlation_id returned unchanged"
+
+      - id: get_delivery
+        title: "Read DOOH delivery"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        expected: |
+          Return delivery data for the requested media buy. DOOH sellers report
+          the exact injected screen activity through plays and dooh_metrics.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+          context:
+            correlation_id: "sales_dooh--get_delivery"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries"
+            description: "Response contains DOOH delivery data"
+          - check: field_equals_context
+            path: "media_buy_deliveries[0].media_buy_id"
+            context_key: "media_buy_id"
+            description: "Delivery belongs to the requested media buy"
+          - check: field_contains
+            path: "media_buy_deliveries[0].by_package[*].package_id"
+            value: "$context.dooh_package_id"
+            description: "Delivery includes the purchased DOOH package"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].plays"
+            value: 125
+            description: "Package delivery reproduces the injected raw play count"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].dooh_metrics.loop_plays"
+            value: 125
+            description: "Package delivery reproduces the injected loop play count"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].dooh_metrics.screens_used"
+            value: 18
+            description: "Package delivery reproduces the injected unique screen count"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].dooh_metrics.screen_time_seconds"
+            value: 1250
+            description: "Package delivery reproduces the injected screen time"
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].dooh_metrics.sov_achieved"
+            value: 0.125
+            description: "Package delivery reproduces the injected share of voice"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.plays"
+            value: 125
+            description: "Buy totals reproduce the injected raw play count"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.dooh_metrics.loop_plays"
+            value: 125
+            description: "Buy totals reproduce the injected loop play count"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.dooh_metrics.screens_used"
+            value: 18
+            description: "Buy totals reproduce the injected unique screen count"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.dooh_metrics.screen_time_seconds"
+            value: 1250
+            description: "Buy totals reproduce the injected screen time"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.dooh_metrics.sov_achieved"
+            value: 0.125
+            description: "Buy totals reproduce the injected share of voice"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_dooh--get_delivery"
+            description: "Context correlation_id returned unchanged"

@@ -177,6 +177,22 @@ describe('canonical session scope', () => {
 });
 
 describe('custom-tool account scoping', () => {
+  it('keeps successful payloads in structuredContent and emits only a terse text summary', async () => {
+    const tool = customToolFor(
+      'test_read',
+      'test',
+      z.any(),
+      () => ({ records: [{ id: 'record-1', value: 'full payload' }] }),
+    );
+    const response = await (tool.handler as any)({}, {});
+
+    expect(response.structuredContent.records).toEqual([{ id: 'record-1', value: 'full payload' }]);
+    expect(response.content).toEqual([
+      { type: 'text', text: 'test_read completed.' },
+    ]);
+    expect(response.content[0].text).not.toBe(JSON.stringify(response.structuredContent));
+  });
+
   it('reuses the shared canonical scope for top-level and usage accounts', () => {
     const account = {
       brand: { domain: 'House.Example', brand_id: 'spark' },
