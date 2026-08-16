@@ -12493,9 +12493,9 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
     };
     const classifiedDomainFailure =
       Boolean(structured.code) ||
-      structured.message.startsWith('Proposal source version changed:') ||
-      structured.message.startsWith('Proposal source already has an active hold:') ||
-      structured.message.startsWith('Proposal successor already exists:');
+      structured.message?.startsWith('Proposal source version changed:') ||
+      structured.message?.startsWith('Proposal source already has an active hold:') ||
+      structured.message?.startsWith('Proposal successor already exists:');
     if (!classifiedDomainFailure) {
       logger.error({ error, profile, sessionHash }, 'Unexpected proposal refinement failure');
     }
