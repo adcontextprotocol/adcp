@@ -3550,7 +3550,7 @@ describe('validate_input handler: CTV experience profiles', () => {
     ]));
   });
 
-  it('flags a missing activation copy slot as a violation (no non-blocking warnings channel exists on this validate_input surface)', async () => {
+  it('does not hard-fail a missing activation copy slot because the profile requirement is advisory', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const seeded = await seedCtvProduct(server, 'video_vast', {
       activation_methods: ['push_notification'],
@@ -3558,10 +3558,8 @@ describe('validate_input handler: CTV experience profiles', () => {
     const result = await validateCtvProduct(server, 'video_vast', seeded);
 
     const results = result.results as Array<Record<string, unknown>>;
-    expect(results[0].result_kind).toBe('validated_fail');
-    expect(results[0].violations).toEqual(expect.arrayContaining([
-      expect.objectContaining({ rule: 'ctv_activation_copy_slots', field: 'params.activation_methods' }),
-    ]));
+    expect(results[0].result_kind).toBe('validated_pass');
+    expect(results[0].violations).toBeUndefined();
   });
 
   it('accepts push_notification activation_methods when the activation_message copy slot is declared', async () => {

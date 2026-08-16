@@ -45,16 +45,6 @@ const VIDEO_VAST_DURATION_FLOOR_MS: Record<string, number> = {
   in_scene: 3000,
 };
 
-/** Character-limited copy slot(s) expected when a format declares the given
- * activation method. Presence-only check — per-slot max_chars enforcement
- * is not tracked by the runtime CanonicalSlot shape.
- */
-const ACTIVATION_COPY_SLOTS: Record<string, readonly string[]> = {
-  push_notification: ['activation_message'],
-  email: ['activation_email_subject', 'activation_email_body'],
-  text_message: ['activation_text_message'],
-};
-
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
@@ -72,10 +62,7 @@ function meetsDurationFloor(params: Record<string, unknown>, floorMs: number): b
  * canonical's matrix permits. Canonicals with no entry in the matrix permit
  * no experience at all.
  */
-export function ctvExperienceMatrixViolation(
-  formatKind: string,
-  params: Record<string, unknown>,
-): CtvViolation | null {
+export function ctvExperienceMatrixViolation(formatKind: string, params: Record<string, unknown>): CtvViolation | null {
   const experience = asString(params.ctv_ad_experience);
   if (!experience) return null;
   const allowed = CTV_EXPERIENCE_MATRIX[formatKind];
@@ -83,9 +70,7 @@ export function ctvExperienceMatrixViolation(
   return {
     rule: 'ctv_experience_matrix',
     field: 'params.ctv_ad_experience',
-    expected: allowed && allowed.length > 0
-      ? allowed
-      : `ctv_ad_experience is not permitted on ${formatKind}`,
+    expected: allowed && allowed.length > 0 ? allowed : `ctv_ad_experience is not permitted on ${formatKind}`,
     predicted: experience,
   };
 }
@@ -174,7 +159,7 @@ export function videoVastCtvViolations(params: Record<string, unknown>): CtvViol
  */
 export function nativeInFeedCtvViolations(
   params: Record<string, unknown>,
-  effectiveSlots: EffectiveSlot[],
+  effectiveSlots: EffectiveSlot[]
 ): CtvViolation[] {
   const violations: CtvViolation[] = [];
   const experience = asString(params.ctv_ad_experience);
@@ -211,45 +196,16 @@ export function nativeInFeedCtvViolations(
  */
 export function imageCtvViolations(params: Record<string, unknown>): CtvViolation[] {
   if (params.motion_level === 'full_motion') {
-    return [{
-      rule: 'motion_level_static_canonical',
-      field: 'params.motion_level',
-      expected: 'static or limited_motion',
-      predicted: 'full_motion',
-    }];
+    return [
+      {
+        rule: 'motion_level_static_canonical',
+        field: 'params.motion_level',
+        expected: 'static or limited_motion',
+        predicted: 'full_motion',
+      },
+    ];
   }
   return [];
-}
-
-/**
- * Copy-bearing activation methods (push_notification, email, text_message)
- * SHOULD pair with a character-limited copy slot declared via params.slots.
- * There is no non-blocking warnings[] channel on ValidateInputResult in this
- * codebase (grepped: no `warnings` field on the validate_input result type
- * or handler), so this reports as a distinct, non-schema violation rule
- * rather than silently doing nothing.
- */
-export function activationCopySlotViolations(
-  params: Record<string, unknown>,
-  effectiveSlots: EffectiveSlot[],
-): CtvViolation[] {
-  const methods = Array.isArray(params.activation_methods) ? params.activation_methods : [];
-  const slotIds = new Set(effectiveSlots.map(slot => slot.asset_group_id));
-  const violations: CtvViolation[] = [];
-  for (const method of methods) {
-    const requiredSlotIds = typeof method === 'string' ? ACTIVATION_COPY_SLOTS[method] : undefined;
-    if (!requiredSlotIds) continue;
-    const missing = requiredSlotIds.filter(id => !slotIds.has(id));
-    if (missing.length > 0) {
-      violations.push({
-        rule: 'ctv_activation_copy_slots',
-        field: 'params.activation_methods',
-        expected: `copy slot(s) ${requiredSlotIds.join(', ')} declared via params.slots for activation method "${method}"`,
-        predicted: missing,
-      });
-    }
-  }
-  return violations;
 }
 
 /**
@@ -260,7 +216,7 @@ export function activationCopySlotViolations(
 export function ctvSemanticViolations(
   formatKind: string,
   params: Record<string, unknown>,
-  effectiveSlots: EffectiveSlot[],
+  effectiveSlots: EffectiveSlot[]
 ): CtvViolation[] {
   const violations: CtvViolation[] = [];
 
@@ -276,8 +232,6 @@ export function ctvSemanticViolations(
   if (formatKind === 'image') {
     violations.push(...imageCtvViolations(params));
   }
-
-  violations.push(...activationCopySlotViolations(params, effectiveSlots));
 
   return violations;
 }
