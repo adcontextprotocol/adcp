@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.1.15
+
+### Patch Changes
+
+- 39fff21: Clarify that exhausting the rate-limit trip runner without observing a
+  `RATE_LIMITED` response is a coverage gap reported with
+  `skip_result.reason: not_applicable` and
+  `skip_result.detail: rate_limit_not_triggered`, not a seller conformance
+  failure.
+
 ## 3.1.14
 
 ### Patch Changes

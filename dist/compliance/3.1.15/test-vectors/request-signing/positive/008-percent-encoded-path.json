@@ -1,0 +1,30 @@
+{
+  "name": "URL path percent-encoded bytes normalized to uppercase hex",
+  "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization step 6: normalize percent-encoding)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/resource/%e2%98%83/item",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:3BiEuAwj6TId9StqdEmin-WxLkyji6sOH0dFuCLm3Rk7GHCsYtcXIswbD4oFoVmtvRCHuMaIyCMqnQejhV7PDA:"
+    },
+    "body": "{\"op\":\"update\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_signature_base": "\"@method\": POST\n\"@target-uri\": https://seller.example.com/adcp/resource/%E2%98%83/item\n\"@authority\": seller.example.com\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+  "expected_outcome": {
+    "success": true
+  },
+  "$comment": "As-received path uses lowercase hex (%e2%98%83 — the ☃ snowman); canonical @target-uri uppercases to %E2%98%83 per RFC 3986 §6.2.2.1. Unreserved characters would additionally be decoded, but the snowman bytes are reserved so they stay percent-encoded. Verifiers that don't uppercase hex will fail step 10."
+}
