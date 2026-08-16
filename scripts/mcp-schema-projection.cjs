@@ -561,6 +561,11 @@ function stripModelContextAnnotations(schema) {
   walkSchema(stripped, node => {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
     for (const keyword of MODEL_CONTEXT_OMISSIONS) delete node[keyword];
+    // Closed-object enforcement belongs to the validation profile. The
+    // declared property list already communicates the prompt shape, while
+    // retaining `additionalProperties: true` and schema-valued maps preserves
+    // meaningful extension and dictionary surfaces.
+    if (node.additionalProperties === false) delete node.additionalProperties;
     for (const keyword of Object.keys(node)) {
       if (keyword.startsWith('x-')) delete node[keyword];
     }
