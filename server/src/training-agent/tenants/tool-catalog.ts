@@ -109,6 +109,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   calibrate_content: ['governance'],
 
   // brand
+  search_brands: ['brand'],
   get_brand_identity: ['brand'],
   verify_brand_claim: ['brand'],
   verify_brand_claims: ['brand'],
@@ -136,7 +137,8 @@ export function toolsForTenant(
       // off /sales under 3.0 (the released 3.0.x sales scenarios skip it), but
       // /signals keeps it across versions.
       if (
-        tool === 'list_products'
+        tool === 'search_brands'
+        || tool === 'list_products'
         || tool === 'request_proposals'
         || tool === 'refine_proposals'
         || tool === 'decline_proposals'
