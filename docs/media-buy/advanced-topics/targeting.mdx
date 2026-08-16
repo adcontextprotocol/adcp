@@ -596,11 +596,15 @@ Use for **localization requirements**:
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
-  "language": ["es", "en"]
+  "language": ["fr-CA", "en"]
 }
 ```
 
-**Format**: ISO 639-1 two-letter language codes (e.g., `en`, `es`, `fr`, `de`, `zh`).
+**Format**: Canonical BCP 47 language ranges (for example, `en`, `fr-CA`, `zh-Hant-TW`). AdCP uses lower-case language and variants, title-case script, and upper-case region.
+
+**Matching**: Sellers apply RFC 4647 §3.3.1 Basic Filtering in the direction buyer range → user language-preference tag. `fr` matches `fr`, `fr-CA`, and `fr-FR`; `fr-CA` matches `fr-CA` and more-specific descendants, but not `fr` or the sibling `fr-FR`. Multiple requested ranges use OR logic.
+
+**Discovery**: The structured `media_buy.execution.targeting.language.supported_languages` capability lists exact selectable request values. A capability entry of `fr` does not authorize a request for `fr-CA`; the seller must list `fr-CA` when that narrower range is accepted. Sellers that cannot enforce a requested value reject the request rather than silently widening or dropping it. A legacy `language: true`, or a structured declaration with no list, indicates coarse support without an exhaustive preflight list.
 
 ### Frequency Capping
 Two frequency controls can be used independently or together:
@@ -995,8 +999,10 @@ For products where inventory and audience planning are inseparable, such as line
 
 ### language
 - **Description**: Restrict to users with specific language preferences
-- **Format**: Array of ISO 639-1 two-letter language codes
-- **Examples**: `["en"]`, `["es", "en"]`, `["zh", "ja", "ko"]`
+- **Format**: Array of canonical BCP 47 language ranges
+- **Examples**: `["en"]`, `["fr-CA", "en"]`, `["zh-Hant-TW", "ja", "ko"]`
+- **Matching**: RFC 4647 Basic Filtering in the direction buyer range → user language-preference tag. A broad `fr` range includes `fr-CA`; a narrow `fr-CA` range does not include `fr` or `fr-FR`.
+- **Discovery**: If the seller publishes `execution.targeting.language.supported_languages`, each requested value must be an exact member of that list. Sellers reject unsupported values rather than widening or ignoring them.
 - **Use cases**: Localized creative, language-specific campaigns
 
 ### keyword_targets
