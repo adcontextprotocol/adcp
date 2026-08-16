@@ -29,6 +29,10 @@
           "type": "boolean",
           "description": "When true, the seller requires creatives to include a `digital_source_type` field in their provenance, set to a valid value from the `digital-source-type` enum (not null or absent). Submissions that omit this field are rejected with `PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING`. Supports EU AI Act Art. 50 and CA SB 942 compliance workflows where AI disclosure metadata must be present at the protocol level."
         },
+        "require_synthetic_depiction": {
+          "type": "boolean",
+          "description": "When true, the seller requires creatives to include an assessed `synthetic_depiction` boolean in their resolved provenance. Both true and false satisfy the requirement; absence means unassessed and is rejected with `PROVENANCE_SYNTHETIC_DEPICTION_MISSING`. This gate requires a declaration only — it does not establish consent, legality, or independent verification."
+        },
         "require_disclosure_metadata": {
           "type": "boolean",
           "description": "When true, the seller requires creatives to include a `disclosure` object in their provenance with `disclosure.required` set to a boolean value (true or false). When `disclosure.required` is true, at least one entry in `disclosure.jurisdictions` is expected. Submissions that omit `disclosure.required` are rejected with `PROVENANCE_DISCLOSURE_MISSING`."
