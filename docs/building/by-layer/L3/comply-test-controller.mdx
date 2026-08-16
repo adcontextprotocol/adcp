@@ -95,7 +95,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, delivery_date?, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
       }
     },
     "required": ["scenario"]
@@ -428,6 +428,7 @@ Injects synthetic delivery data for a media buy. Subsequent calls to [`get_media
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `media_buy_id` | string | Yes | Media buy to add delivery to |
+| `delivery_date` | string (`YYYY-MM-DD`) | No | UTC calendar date assigned to this simulated batch for reporting-period tests |
 | `impressions` | integer | No | Impressions to simulate |
 | `clicks` | integer | No | Clicks to simulate |
 | `reported_spend` | object | No | `{ amount: number, currency: string }` — spend as reported in delivery data, does not affect budget |
@@ -437,6 +438,14 @@ Injects synthetic delivery data for a media buy. Subsequent calls to [`get_media
 | `reach_window` | object | No | Measurement window for simulated reach/frequency. Shape: `{ kind: "cumulative" }`, `{ kind: "period", period: Duration }`, or `{ kind: "rolling", period: Duration }` |
 | `viewability` | object | No | Viewability block to surface at `totals.viewability`, including `measurable_impressions`, `viewable_impressions`, `viewable_rate`, `viewed_seconds`, and `standard`. `standard` SHOULD be supplied whenever measured viewability values are present |
 
+When `delivery_date` is present, the controller records the batch as a dated
+snapshot. A later `get_media_buy_delivery` request with date bounds includes
+snapshots whose dates fall in the exact half-open interval
+`[start_date, end_date)`: `start_date` is inclusive and `end_date` is exclusive.
+Omitting date bounds preserves cumulative reporting. Implementations that only
+store legacy undated simulations continue to expose their cumulative totals
+when a caller supplies date bounds.
+
 **Example:**
 
 ```json
@@ -444,6 +453,7 @@ Injects synthetic delivery data for a media buy. Subsequent calls to [`get_media
   "scenario": "simulate_delivery",
   "params": {
     "media_buy_id": "mb-789",
+    "delivery_date": "2026-04-15",
     "impressions": 10000,
     "clicks": 150,
     "reach": 4000,
@@ -738,6 +748,7 @@ literal when one of those strategies binds a seller-issued ID. See
 {
   "success": true,
   "simulated": {
+    "delivery_date": "2026-04-15",
     "impressions": 10000,
     "clicks": 150,
     "reach": 4000,

@@ -162,7 +162,7 @@
     },
     "total_budget": {
       "type": "object",
-      "description": "Updated hard aggregate lifetime budget. currency MUST equal the existing media-buy currency; an update does not redenominate a buy. In fixed mode the amount MUST equal the sum of package budgets after applying this update. In seller-optimized mode this changes the shared pool; already-spent amounts still count against the new total.",
+      "description": "Updated hard aggregate lifetime budget. currency MUST equal the existing media-buy currency; an update does not redenominate a buy. When supplied alone (without packages or new_packages), in fixed mode the seller MUST atomically scale every active package budget in proportion to its current committed budget, rejecting the entire request if any derived budget cannot be accepted. When supplied with packages or new_packages, the amount MUST equal the resulting fixed-mode package sum; the seller applies the explicit package mutations and rejects with VALIDATION_ERROR if the total is inconsistent. In seller-optimized mode this changes the shared pool without converting package caps into allocations. Already-spent amounts still count against the new total.",
       "properties": {
         "amount": {
           "type": "number",

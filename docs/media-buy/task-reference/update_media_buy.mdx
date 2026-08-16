@@ -203,7 +203,7 @@ asyncio.run(create_and_pause_campaign())
 | `idempotency_key` | string | No | Unique key for safe retries. If an update with the same key has already been processed, the seller returns the original response. MUST be unique per (seller, request) pair. Min 16 chars. |
 | `invoice_recipient` | [BusinessEntity](/docs/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override who receives the invoice for this buy. The seller MUST validate authorization and include in [`check_governance`](/docs/governance/campaign/tasks/check_governance) when governance agents are configured. |
 | `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) packages. When `budget_allocation` is omitted or fixed, each new package requires `budget` and cannot use `min_spend_target`. To add an uncapped package to an existing seller-optimized buy, include the resulting seller-optimized `budget_allocation` block so the allocation context is explicit. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
-| `total_budget` | TotalBudget | No | Updated hard aggregate lifetime budget. Already-spent amounts continue to count against the new total. `currency` must equal the existing media-buy currency; updates do not redenominate a buy. |
+| `total_budget` | TotalBudget | No | Updated hard aggregate lifetime budget. When supplied alone, in fixed mode the seller atomically scales active package budgets proportionally; when supplied with `packages` or `new_packages`, `total_budget.amount` must equal the resulting package sum (assertion path). In seller-optimized mode, updates the shared pool without treating package caps as allocations. Already-spent amounts continue to count against the new total. `currency` must equal the existing media-buy currency. |
 | `daily_budget_cap` | number \| null | No | Replace the hard aggregate daily cap; `null` removes it. Numeric changes apply immediately with spend already incurred in the current cap day counted against the new value. Package caps are not redistributed. |
 | `budget_cap_timezone` | string \| null | No | Replace the shared IANA cap-day timezone override; `null` restores the default selected by `budget_capping.timezone_basis` (`Account.timezone` or `fixed_timezone`). The new timezone begins at the next boundary under the previously effective timezone. |
 | `budget_allocation` | BudgetAllocation | No | Updated fixed or seller-optimized allocation configuration. Mode changes require `update_budget_allocation` in `available_actions`. |
@@ -212,6 +212,20 @@ asyncio.run(create_and_pause_campaign())
 | `push_notification_config` | object | No | Webhook for async operation notifications |
 
 `account` and `media_buy_id` are always required.
+
+### Atomic total-budget updates
+
+`total_budget` supports two code paths depending on whether explicit package mutations are also present in the same request.
+
+**Redistribution path** (`packages` and `new_packages` absent): the seller invokes proportional redistribution as described below.
+
+**Assertion path** (`packages` or `new_packages` present): the seller applies the explicit package mutations and requires `total_budget.amount` to equal the resulting fixed-mode package sum. If the total is inconsistent, the seller MUST return [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) and apply no changes.
+
+For the redistribution path on a fixed-allocation buy, sellers MUST derive each active package's new budget from its share of the current active-package budget total. All derived budgets are accepted or rejected as one mutation. If the active total is zero, a package lacks a usable committed budget, or any package cannot accept its derived amount, the seller rejects the whole update. Sellers MUST preserve the requested aggregate exactly, assigning any representation-level rounding remainder deterministically to the final active package. Canceled packages are not redistributed and remain unchanged.
+
+For a seller-optimized buy, `total_budget` updates the shared hard pool. Package `budget` values remain optional caps rather than allocations and are not rescaled. In either mode, a supplied stale `revision`, currency mismatch, or exact idempotency replay follows the normal whole-request rules.
+
+On fixed-mode success, `affected_packages` MUST contain the full post-update state of every rescaled active package so the buyer can audit the resulting allocation without a second read.
 
 ### Optimistic concurrency
 
@@ -282,7 +296,7 @@ For budget/pacing interaction and bidding inheritance, see [Budget & Pacing Cont
 | `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
 | `valid_actions` | Flat-vocabulary actions the buyer can perform after this update. Saves a round-trip to [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). Deprecated in favor of `available_actions[]` and removed in 4.0. |
 | `available_actions` | Structured per-buy resolution of actions available after this update, each entry with action, resolved `mode`, optional `sla`, optional `terms_ref`. Authoritative — buyer SDKs SHOULD prefer this over `valid_actions` when both are present. |
-| `affected_packages` | For package-level updates, array of full Package objects showing complete post-update state for each directly modified package. This is a state snapshot, not a sparse delta: sellers MUST NOT return `{ package_id }`-only stubs. Campaign-level updates that do not modify packages may return an empty array. |
+| `affected_packages` | Full Package objects for every modified package, including every active package rescaled by a fixed-mode `total_budget` update. This is a state snapshot, not a sparse delta: sellers MUST NOT return `{ package_id }`-only stubs. Campaign-level updates that do not modify packages may return an empty array. |
 | `warnings` | Structured non-blocking observations. The update was still applied. Continuing conditions appear on the next `get_media_buys` snapshot. |
 
 ### Error Response
@@ -755,7 +769,7 @@ Common errors and resolutions:
 | [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) | Update violates content policy | Review policy requirements |
 | [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state) | Operation not allowed in current state (e.g., updating completed/canceled media buy) | Check campaign status via `get_media_buys` |
 | [`NOT_CANCELLABLE`](/docs/building/verification/compliance-catalog#error-code-not-cancellable) | Media buy or package cannot be canceled | Check seller's cancellation policy or contact seller |
-| [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected) | Creative failed content policy review | Revise the creative per the seller's advertising policies |
+| [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected) | Creative failed content-policy, brand-safety, or accessibility review | Revise according to the applicable policy or validated accessibility criteria |
 | [`CREATIVE_LOCALE_NOT_ACCEPTED`](/docs/building/verification/compliance-catalog#error-code-creative-locale-not-accepted) | Creative has no materialized variant accepted by the package's effective format locale policy, or its serving default is ineligible | Supply a matching locale variant, assign a different creative, or change the creative's default behavior |
 | [`CREATIVE_DEADLINE_EXCEEDED`](/docs/building/verification/compliance-catalog#error-code-creative-deadline-exceeded) | Creative change submitted past the package's `creative_deadline` | Check package `creative_deadline` before submitting creative changes |
 | [`BUDGET_EXCEEDED`](/docs/building/verification/compliance-catalog#error-code-budget-exceeded) | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |

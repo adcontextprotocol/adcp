@@ -102,9 +102,17 @@
       "type": "boolean",
       "description": "Whether this product supports audience segment breakdowns in delivery reporting (by_audience within by_package)"
     },
+    "supports_demographic_breakdown": {
+      "$ref": "/schemas/core/demographic-reporting-capability.json",
+      "description": "Product-scoped demographic breakdown support for by_demographic reporting. Declares reportable age ranges and measurement systems independently from demographic targeting execution."
+    },
     "supports_placement_breakdown": {
       "type": "boolean",
       "description": "Whether this product supports placement breakdowns in delivery reporting (by_placement within by_package)"
+    },
+    "supports_spot_breakdown": {
+      "$ref": "/schemas/core/spot-reporting-capability.json",
+      "description": "Spot-level as-run airing-log support and metrics available at spot grain for broadcast TV, radio, and other scheduled inventory."
     },
     "date_range_support": {
       "type": "string",

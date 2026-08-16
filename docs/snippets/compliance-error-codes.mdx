@@ -47,7 +47,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `CREATIVE_INACCESSIBLE` | correctable | verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit |
 | `CREATIVE_LOCALE_NOT_ACCEPTED` | correctable | supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default |
 | `CREATIVE_NOT_FOUND` | correctable | verify creative_id via list_creatives, or sync_creatives to register it |
-| `CREATIVE_REJECTED` | correctable | revise the creative per the seller's advertising_policies |
+| `CREATIVE_REJECTED` | correctable | revise the creative according to the applicable advertising policy or validated accessibility criteria |
 | `CREATIVE_VALUE_NOT_ALLOWED` | correctable | pick a value from error.details.allowed_values (or re-fetch the format) and resubmit |
 | `CREDENTIAL_IN_ARGS` | terminal | do NOT auto-retry — auto-retry re-logs the credential on each attempt. Move authentication material or caller-supplied trust material out of request args (top-level, <code>{"context"}</code>, <code>{"ext"}</code>, any nested location) onto the relevant transport authentication/trust channel or account provisioning path (Authorization: Bearer, RFC 9421 signature/JWKS, mTLS, MCP/A2A authentication framing); rotate any leaked credential, then resubmit |
 | `EVALUATOR_AGENT_NOT_ACCEPTED` | correctable | replace the evaluator agent_url (evaluator.feature_agent.agent_url or the evaluator agent-form agent_url) with one from the seller's published accepted_verifiers, or drop the evaluator agent pointer to fall back to seller-default ranking |
@@ -407,7 +407,7 @@ Concurrent modification detected. The resource was modified by another request b
 
 **Suggested action:** check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller
 
-Creative change submitted after the package's creative_deadline. Distinct from CREATIVE_REJECTED (content policy failure). Recovery: correctable (check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller).
+Creative change submitted after the package's creative_deadline. Distinct from CREATIVE_REJECTED (content-policy, brand-safety, or accessibility-review failure). Recovery: correctable (check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller).
 
 </Accordion>
 <a id="error-code-creative-inaccessible"></a>
@@ -416,7 +416,7 @@ Creative change submitted after the package's creative_deadline. Distinct from C
 
 **Suggested action:** verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit
 
-A creative governance agent (get_creative_features) could not retrieve the submitted creative_manifest assets for evaluation — an asset URL was unreachable, returned an error, or required credentials the agent does not hold. Distinct from CREATIVE_NOT_FOUND (a creative_id absent from the agent's library, not an asset-fetch failure) and CREATIVE_REJECTED (assets retrieved but failed policy). Recovery: correctable (verify the asset URLs are reachable without agent-side credentials, then re-submit).
+A creative governance agent (get_creative_features) could not retrieve the submitted creative_manifest assets for evaluation — an asset URL was unreachable, returned an error, or required credentials the agent does not hold. Distinct from CREATIVE_NOT_FOUND (a creative_id absent from the agent's library, not an asset-fetch failure) and CREATIVE_REJECTED (assets retrieved but failed creative review). Recovery: correctable (verify the asset URLs are reachable without agent-side credentials, then re-submit).
 
 </Accordion>
 <a id="error-code-creative-locale-not-accepted"></a>
@@ -441,9 +441,9 @@ Referenced creative does not exist in the agent's creative library. Recovery: co
 
 <Accordion title="CREATIVE_REJECTED — correctable">
 
-**Suggested action:** revise the creative per the seller's advertising_policies
+**Suggested action:** revise the creative according to the applicable advertising policy or validated accessibility criteria
 
-Creative failed content policy review. For deadline violations, see CREATIVE_DEADLINE_EXCEEDED. Recovery: correctable (revise the creative per the seller's advertising_policies).
+Creative failed content-policy, brand-safety, or accessibility review. For deadline violations, see CREATIVE_DEADLINE_EXCEEDED. Accessibility failures SHOULD use structured details conforming to error-details/accessibility-violation.json. Recovery: correctable (revise the creative according to the applicable policy or validated accessibility criteria).
 
 </Accordion>
 <a id="error-code-creative-value-not-allowed"></a>
@@ -452,7 +452,7 @@ Creative failed content policy review. For deadline violations, see CREATIVE_DEA
 
 **Suggested action:** pick a value from error.details.allowed_values (or re-fetch the format) and resubmit
 
-A submitted text-asset value is not in the format's declared <code>{"allowed_values"}</code> list. Distinct from <code>{"CREATIVE_REJECTED"}</code> (generic content-policy failure) by being a closed-set constraint violation that the buyer can resolve mechanically without policy interpretation — the seller has published the complete list of acceptable values on the format, and any value outside that list is rejected by definition. The seller MUST set <code>{"error.field"}</code> to the offending asset's path within the manifest (e.g., <code>{"creatives[0].creative_manifest.assets[0].value"}</code> or the field name declared by the format) and SHOULD include the format's <code>{"allowed_values"}</code> array in <code>{"error.details.allowed_values"}</code> so the buyer agent can re-prompt its LLM with constrained sampling. Recovery: correctable (select a value from <code>{"allowed_values"}</code> and resubmit).
+A submitted text-asset value is not in the format's declared <code>{"allowed_values"}</code> list. Distinct from <code>{"CREATIVE_REJECTED"}</code> (generic creative-review failure) by being a closed-set constraint violation that the buyer can resolve mechanically without policy interpretation — the seller has published the complete list of acceptable values on the format, and any value outside that list is rejected by definition. The seller MUST set <code>{"error.field"}</code> to the offending asset's path within the manifest (e.g., <code>{"creatives[0].creative_manifest.assets[0].value"}</code> or the field name declared by the format) and SHOULD include the format's <code>{"allowed_values"}</code> array in <code>{"error.details.allowed_values"}</code> so the buyer agent can re-prompt its LLM with constrained sampling. Recovery: correctable (select a value from <code>{"allowed_values"}</code> and resubmit).
 
 </Accordion>
 <a id="error-code-credential-in-args"></a>
@@ -929,7 +929,7 @@ Seller's <code>{"creative_policy.provenance_requirements.require_embedded_proven
 
 **Suggested action:** attach a provenance object - at minimum digital_source_type - and resubmit
 
-Seller's <code>{"creative_policy.provenance_required"}</code> is true and the submitted creative has no <code>{"provenance"}</code> object on the manifest, on the creative-asset, or on any individual asset. Distinct from <code>{"CREATIVE_REJECTED"}</code> (generic content-policy failure) by being narrowly about provenance presence. Recovery: correctable (attach a provenance object - at minimum <code>{"digital_source_type"}</code> - and resubmit). <code>{"error.field"}</code> MUST point at the path where provenance was expected (e.g., <code>{"creatives[0].creative_manifest"}</code>).
+Seller's <code>{"creative_policy.provenance_required"}</code> is true and the submitted creative has no <code>{"provenance"}</code> object on the manifest, on the creative-asset, or on any individual asset. Distinct from <code>{"CREATIVE_REJECTED"}</code> (generic creative-review failure) by being narrowly about provenance presence. Recovery: correctable (attach a provenance object - at minimum <code>{"digital_source_type"}</code> - and resubmit). <code>{"error.field"}</code> MUST point at the path where provenance was expected (e.g., <code>{"creatives[0].creative_manifest"}</code>).
 
 </Accordion>
 <a id="error-code-provenance-synthetic-depiction-missing"></a>

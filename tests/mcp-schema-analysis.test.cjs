@@ -34,7 +34,7 @@ test("input-field weight report attributes the largest transitive schema graphs"
   const report = analyzeInputSchemaWeights(schemas);
 
   assert.equal(report.tool_count, 16);
-  assert.equal(report.definition_instances, 567);
+  assert.equal(report.definition_instances, 568);
   assert.equal(report.unique_definitions, 146);
   assert.equal(report.repeated_definitions, 106);
   assert.ok(report.repeated_definition_bytes > 180_000);
@@ -215,7 +215,7 @@ test("experiment report keeps all alternatives smaller than standalone model con
   assert.equal(report.status, "non-normative");
   assert.equal(report.prompt_cleanup_adapter.required, true);
   assert.equal(report.selection.tools.length, 16);
-  assert.equal(variants.standalone.context_bytes, 285_655);
+  assert.equal(variants.standalone.context_bytes, 286_259);
   assert.ok(
     variants.prompt_cleanup.context_bytes <
       variants.standalone.context_bytes * 0.82

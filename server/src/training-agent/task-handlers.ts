@@ -1879,6 +1879,7 @@ import {
   COMPLY_TEST_CONTROLLER_TOOL,
   handleComplyTestController,
   getDeliverySimulation,
+  getDeliverySimulationForPeriod,
   getAccountStatus,
   getSeededCreativeFormats,
 } from './comply-test-controller.js';
@@ -2695,6 +2696,38 @@ function projectedPackageBudgetTotal(mb: MediaBuyState, req: UpdateMediaBuyArgs)
   const nextExisting = [...currentBudgets.values()].reduce((sum, budget) => sum + budget, 0);
   const added = (req.new_packages ?? []).reduce((sum, pkg) => sum + pkg.budget, 0);
   return nextExisting + added;
+}
+
+function proportionalFixedPackageBudgets(
+  mb: MediaBuyState,
+  requestedTotal: number,
+): { budgets?: Map<string, number>; error?: TaskError } {
+  const activePackages = mb.packages.filter(pkg => !pkg.canceled);
+  const currentTotal = activePackages.reduce((sum, pkg) => sum + pkg.budget, 0);
+  if (
+    activePackages.length === 0
+    || !Number.isFinite(currentTotal)
+    || currentTotal <= 0
+    || activePackages.some(pkg => !Number.isFinite(pkg.budget) || pkg.budget <= 0)
+  ) {
+    return {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Cannot proportionally update total_budget without positive, finite committed budgets on active packages.',
+      },
+    };
+  }
+
+  const budgets = new Map<string, number>();
+  let allocated = 0;
+  activePackages.forEach((pkg, index) => {
+    const amount = index === activePackages.length - 1
+      ? requestedTotal - allocated
+      : requestedTotal * (pkg.budget / currentTotal);
+    budgets.set(pkg.packageId, amount);
+    allocated += amount;
+  });
+  return { budgets };
 }
 
 interface MediaBuyAggregateUpdate {
@@ -10147,10 +10180,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const start = new Date(mb.startTime);
   const end = new Date(mb.endTime);
   const reportingStart = req.start_date ? new Date(`${req.start_date}T00:00:00.000Z`) : start;
-  const reportingEnd = req.end_date ? new Date(`${req.end_date}T23:59:59.999Z`) : now;
-  if (req.start_date && req.end_date && reportingStart.getTime() > reportingEnd.getTime()) {
+  const reportingEnd = req.end_date ? new Date(`${req.end_date}T00:00:00.000Z`) : now;
+  if (req.start_date && req.end_date && reportingStart.getTime() >= reportingEnd.getTime()) {
     return {
-      errors: [{ code: 'INVALID_REQUEST', message: 'start_date must be on or before end_date', field: 'start_date' }],
+      errors: [{ code: 'VALIDATION_ERROR', message: 'start_date must be before end_date', field: 'start_date' }],
     };
   }
   const durationMs = end.getTime() - start.getTime();
@@ -10160,7 +10193,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
   // Read simulated delivery upfront so vendor_metric_values can be spread into
   // per-package entries inside the map below.
-  const simDeliveryEarly = getDeliverySimulation(session, mb.mediaBuyId);
+  const simDeliveryEarly = req.start_date || req.end_date
+    ? getDeliverySimulationForPeriod(session, mb.mediaBuyId, reportingStart, reportingEnd)
+    : getDeliverySimulation(session, mb.mediaBuyId);
 
   // Build per-package metrics
   let totalImpressions = 0;
@@ -10195,8 +10230,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
     const { model: pricingModel, rate } = derivePricing(pkg, productMap);
     const isRevenueShare = pricingModel === 'revenue_share';
+    const useScopedSimulation = simDelivery !== undefined
+      && Boolean(req.start_date || req.end_date);
     const budget = pkg.budget;
-    const spend = isRevenueShare
+    const spend = isRevenueShare || useScopedSimulation
       ? (simDelivery?.reportedSpend.amount ?? 0)
       : Math.round(budget * elapsed * 100) / 100;
 
@@ -10212,12 +10249,14 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     else if (channels?.some(c => ['print'].includes(c))) ctr = 0;
     else ctr = 0.001;
 
-    const impressions = isRevenueShare
+    const impressions = isRevenueShare || useScopedSimulation
       ? (simDelivery?.impressions ?? 0)
       : rate > 0 ? Math.round((spend / rate) * 1000) : 0;
-    const clicks = isRevenueShare ? (simDelivery?.clicks ?? 0) : Math.round(impressions * ctr);
+    const clicks = isRevenueShare || useScopedSimulation
+      ? (simDelivery?.clicks ?? 0)
+      : Math.round(impressions * ctr);
 
-    if (!isRevenueShare) {
+    if (!isRevenueShare && !useScopedSimulation) {
       totalImpressions += impressions;
       totalSpend += spend;
       totalClicks += clicks;
@@ -10838,6 +10877,7 @@ function accountRefsOverlap(stored: AccountRef | undefined, requested: AccountRe
 type CreativeListFilters = {
   creative_ids?: string[];
   statuses?: string[];
+  media_buy_ids?: string[];
   format_ids?: FormatID[];
   asset_types?: string[];
 };
@@ -10960,6 +11000,17 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   if (filters.statuses?.length) {
     const statuses = new Set(filters.statuses);
     creatives = creatives.filter(c => statuses.has(c.status));
+  }
+  if (filters.media_buy_ids?.length) {
+    const requestedMediaBuyIds = new Set(filters.media_buy_ids);
+    const assignedCreativeIds = new Set<string>();
+    for (const mediaBuy of session.mediaBuys.values()) {
+      if (!requestedMediaBuyIds.has(mediaBuy.mediaBuyId)) continue;
+      for (const pkg of mediaBuy.packages) {
+        for (const creativeId of pkg.creativeAssignments) assignedCreativeIds.add(creativeId);
+      }
+    }
+    creatives = creatives.filter(c => assignedCreativeIds.has(c.creativeId));
   }
   const formatKinds = (req.filters as unknown as { format_kinds?: string[] } | undefined)?.format_kinds;
   const filterProjectionAdapters = formatKinds?.length || filters.format_ids?.length
@@ -11171,9 +11222,16 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   }
   const resultingAllocation = aggregateUpdate.budget_allocation ?? mb.budgetAllocation;
   const sellerOptimized = resultingAllocation?.mode === 'seller_optimized';
+  const fixedRedistribution = aggregateUpdate.total_budget && !sellerOptimized && req.packages === undefined && req.new_packages === undefined
+    ? proportionalFixedPackageBudgets(mb, aggregateUpdate.total_budget.amount)
+    : undefined;
+  if (fixedRedistribution?.error) {
+    return { errors: [fixedRedistribution.error] };
+  }
   if (
     aggregateUpdate.total_budget
     && !sellerOptimized
+    && (req.packages !== undefined || req.new_packages !== undefined)
     && aggregateUpdate.total_budget.amount !== projectedPackageBudgetTotal(mb, req)
   ) {
     return {
@@ -11506,6 +11564,23 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     || req.new_packages?.length,
   );
   if (aggregateUpdate.total_budget) {
+    if (fixedRedistribution?.budgets) {
+      for (const pkg of mb.packages) {
+        const nextBudget = fixedRedistribution.budgets.get(pkg.packageId);
+        if (nextBudget === undefined) continue;
+        const oldBudget = pkg.budget;
+        pkg.budget = nextBudget;
+        affectedPackageIds.add(pkg.packageId);
+        mb.history.push({
+          revision: mb.revision,
+          timestamp: now,
+          actor: 'buyer',
+          action: 'budget_updated',
+          summary: `Package ${pkg.packageId} budget proportionally changed from ${oldBudget} to ${nextBudget}`,
+          packageId: pkg.packageId,
+        });
+      }
+    }
     mb.totalBudget = aggregateUpdate.total_budget.amount;
   } else if (
     !sellerOptimized
