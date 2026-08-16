@@ -84,6 +84,15 @@
       "description": "Hard aggregate lifetime budget amount",
       "minimum": 0
     },
+    "daily_budget_cap": {
+      "type": "number",
+      "description": "Current hard aggregate spend ceiling per calendar day. Sellers MUST echo this whenever an aggregate daily cap is set. It bounds total media-buy spend without allocating or reserving spend for packages.",
+      "minimum": 0
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "description": "IANA timezone defining the shared calendar-day boundary for every aggregate and package daily cap on this media buy. Sellers MUST echo it whenever any daily cap is set."
+    },
     "currency": {
       "type": "string",
       "description": "Single ISO 4217 denomination for total_budget, every package budget/minimum, and every canonical BiddingPolicy monetary field. Every package's selected pricing option MUST declare this currency; packages requiring another currency belong in a separate media buy.",

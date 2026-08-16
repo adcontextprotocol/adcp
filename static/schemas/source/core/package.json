@@ -33,6 +33,11 @@
       "description": "Soft lifetime spend target accepted for this package under seller-optimized budget allocation. This is an allocation preference, not a billing or delivery guarantee.",
       "minimum": 0
     },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "The hard package spend ceiling per shared media-buy cap day, in the media buy's currency. Sellers MUST echo this whenever a package daily cap is set. It is a subordinate ceiling, not a reserved or current allocation; the media buy's budget_cap_timezone defines its day boundary."
+    },
     "pacing": {
       "$ref": "/schemas/enums/pacing.json"
     },

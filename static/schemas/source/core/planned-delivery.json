@@ -76,6 +76,15 @@
       "description": "Total budget the seller will deliver against.",
       "minimum": 0
     },
+    "daily_budget_cap": {
+      "type": "number",
+      "description": "Hard aggregate daily spend ceiling the seller will enforce. Governance checks compare it with the authorized execution controls; it does not allocate spend to packages.",
+      "minimum": 0
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "description": "IANA timezone defining the calendar-day boundary for every daily cap on the planned media buy."
+    },
     "currency": {
       "type": "string",
       "description": "ISO 4217 currency code for the budget. Governance execution checks require it whenever total_budget is present and require it to match the intent-authorized currency.",

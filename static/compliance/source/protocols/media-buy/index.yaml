@@ -38,6 +38,7 @@ requires_scenarios:
   - media_buy_seller/bidding_policy_placement
   - media_buy_seller/bidding_cost_binding
   - media_buy_seller/package_automatic_bidding
+  - media_buy_seller/typed_proposal_negotiation
 
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that
@@ -416,7 +417,7 @@ phases:
 
           Synchronous (completed):
           - media_buy_id: your platform's identifier
-          - media_buy_status: active, pending_start, or pending_creatives (deprecated top-level status may mirror this during the 3.1 migration window)
+          - media_buy_status: active, pending_start, or pending_creatives
           - packages: line items with pricing
           - confirmed_at: seller commitment timestamp, or null only for a provisional buy that already exists and is retrievable
           - revision: optimistic concurrency token
