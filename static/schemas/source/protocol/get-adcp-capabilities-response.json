@@ -1153,8 +1153,28 @@
                   "additionalProperties": true
                 },
                 "language": {
-                  "type": "boolean",
-                  "description": "Whether seller supports language targeting (ISO 639-1 codes)"
+                  "description": "Language-preference targeting support. A legacy boolean is a coarse declaration. The structured form can enumerate the exact canonical BCP 47 targeting ranges the seller accepts. Buyers MUST treat supported_languages as exact selectable values: a declared 'fr' does not by itself authorize a request for 'fr-CA'. Sellers MUST reject unsupported requested values rather than silently widening or dropping them.",
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "supported": {
+                          "type": "boolean",
+                          "description": "Whether seller supports language-preference targeting"
+                        },
+                        "supported_languages": {
+                          "type": "array",
+                          "description": "Exact canonical BCP 47 language ranges accepted in targeting.language. Omission means the seller makes no exhaustive language-list declaration.",
+                          "items": {
+                            "$ref": "/schemas/core/locale-tag.json"
+                          }
+                        }
+                      }
+                    }
+                  ]
                 },
                 "keyword_targets": {
                   "type": "object",

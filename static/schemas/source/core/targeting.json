@@ -433,10 +433,9 @@
     },
     "language": {
       "type": "array",
-      "description": "Restrict to users with specific language preferences. ISO 639-1 codes (e.g., 'en', 'es', 'fr').",
+      "description": "Restrict to users with specific language preferences using canonical BCP 47 language ranges. Each buyer range is evaluated against a user's language-preference tag with RFC 4647 section 3.3.1 Basic Filtering: 'fr' matches 'fr', 'fr-CA', and 'fr-FR', while 'fr-CA' matches 'fr-CA' and more-specific descendants but not 'fr' or 'fr-FR'. Values use OR logic.",
       "items": {
-        "type": "string",
-        "pattern": "^[a-z]{2}$"
+        "$ref": "/schemas/core/locale-tag.json"
       },
       "minItems": 1
     },
