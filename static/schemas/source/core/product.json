@@ -598,7 +598,7 @@
       "properties": {
         "methods": {
           "type": "array",
-          "description": "Activation paths available on this product, as an unordered set of independent options.",
+          "description": "Activation capabilities available on this product, as an unordered set. Entries are usually independent options; a clean_room entry may compose with dataset_query or platform_distribution to declare how a targetable result leaves the room or reaches the buying platform.",
           "items": {
             "$ref": "/schemas/core/audience-activation-method.json"
           },

@@ -154,20 +154,20 @@ When an attestation affected either decision, readback preserves the exact refer
 
 The [`audience_targeting`](/docs/protocol/get_adcp_capabilities#audience_targeting) capability describes *what identifiers* a seller matches on; `audience_activation` describes *how the data moves*. Two parties can both support audiences and remain practically incompatible — a buyer built around Snowflake sharing and a seller that only accepts API pushes discover that today at integration time, or worse, at activation time. Products that accept buyer audiences declare their activation paths so that mismatch surfaces during discovery.
 
-```json test=false
+```json
 "audience_activation": {
   "methods": [
     { "pattern": "sync_audiences" },
     {
       "pattern": "dataset_query",
-      "vendor": { "domain": "snowflake.com" },
+      "vendor": { "domain": "data-cloud.example" },
       "consumer_identities": [
         { "cloud": "aws", "region": "us-east-1", "identity": "SELLERORG.ADCP_INGEST" }
       ]
     },
     {
       "pattern": "platform_distribution",
-      "vendor": { "domain": "liveramp.com" },
+      "vendor": { "domain": "activation-hub.example" },
       "destination_ref": "dest_12345",
       "bind_expiry_days": 14
     }
@@ -177,7 +177,7 @@ The [`audience_targeting`](/docs/protocol/get_adcp_capabilities#audience_targeti
 }
 ```
 
-`methods` is an unordered set of independent options. `preferred_method` (optional) names the seller's preference and MUST also appear in `methods`. Absence of `audience_activation` means undeclared — treat it as needs-clarification rather than non-support, except under an `audience_activation_methods` filter, where sellers MUST exclude undeclared products.
+`methods` is an unordered set of activation capabilities. Entries are usually independent options; `clean_room` may compose with `dataset_query` or `platform_distribution` to declare the output rail. `preferred_method` (optional) names the seller's preference and MUST also appear in `methods`. Absence of `audience_activation` means undeclared — treat it as needs-clarification rather than non-support, except under an `audience_activation_methods` filter, where sellers MUST exclude undeclared products.
 
 Schema: [`core/audience-activation-method.json`](https://adcontextprotocol.org/schemas/v3/core/audience-activation-method.json)
 
@@ -190,9 +190,11 @@ Each entry declares a `pattern` plus pattern-specific fields. Vendor identity is
 | `sync_audiences` | — | Audience pushes and external source references via the AdCP [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) task. Any AdCP-speaking buyer can use it. |
 | `tmp_identity_match` | `buyer_agent.agent_url` | The seller has wired TMP identity-match calls to this specific buyer agent. Entries MUST be consistent with `trusted_match.providers[]` where both are present. |
 | `file_transfer` | `transport`, `vendor` | Bucket-addressed file exchange (`s3`, `gcs`, `azure_blob`). Optional `directions` (`buyer_to_seller`, `seller_to_buyer`); absent means unspecified, not neither. |
-| `dataset_query` | `vendor` | The seller reads a dataset the buyer shares through the vendor's grantee-identified sharing mechanism (Snowflake Secure Data Sharing, Databricks Delta Sharing, BigQuery authorized views). Optional `consumer_identities[]` lists the principals to grant, qualified by cloud/region — routing and cost hints, not grant-reachability or compliance boundaries. |
-| `clean_room` | `vendor` | Privacy-preserving match in the named vendor's room. Informational: room setup is bilateral onboarding; where the room can export output, the output binds through a `dataset` or `platform_segment` source on `sync_audiences`. |
-| `platform_distribution` | `vendor`, `destination_ref` | The vendor's rails deliver segments to the seller's declared destination. The buyer initiates distribution in the vendor's system, then binds the arriving segment via `sync_audiences`. Optional `bind_expiry_days` declares when an unfulfilled bind may expire. |
+| `dataset_query` | `vendor` | The seller reads a dataset the buyer shares through the vendor's grantee-identified sharing mechanism (Snowflake Secure Data Sharing, Databricks Delta Sharing, BigQuery authorized views). Optional `consumer_identities[]` lists the principals to grant. `identity` is required; paired `cloud` and `region` metadata is optional for deployment-scoped identities and omitted for global principals. Location semantics are vendor-specific: they can constrain direct-share reachability, select fulfillment, or provide routing/cost hints, but are not compliance boundaries. |
+| `clean_room` | `vendor` | Privacy-preserving match in the named vendor's room. Declare this under audience activation only when the collaboration can produce an audience targetable on this product; analytics-only or measurement-only room access does not qualify. The declaration does not promise portable output. Room setup remains bilateral. |
+| `platform_distribution` | `vendor` | The vendor's rails deliver segments to the seller's destination. The buyer initiates distribution in the vendor's system, then binds the arriving segment via `sync_audiences`. Optional `destination_ref` is an opaque account-scoped destination or seat reference; omit it until bilateral setup establishes the destination. Optional `bind_expiry_days` declares when an unfulfilled bind may expire. |
+
+Clean-room activation composes with the output rail rather than assuming every room behaves alike. Platform-native and partner-distributed audiences pair `clean_room` with `platform_distribution`; queryable outputs pair it with `dataset_query`. A room that only returns aggregate insights belongs in measurement or reporting capabilities, not `audience_activation`. This covers walled-garden rooms, independent collaboration providers, and warehouse-native rooms without a vendor allowlist or a false promise that outputs can move between them.
 
 A grant-based path is in-protocol only when the vendor flow is **grantee-identified** — the grant names a principal and no secret is conveyed. Token-bearer flows (presigned URLs, bearer-token activation links) remain out-of-band integrations.
 

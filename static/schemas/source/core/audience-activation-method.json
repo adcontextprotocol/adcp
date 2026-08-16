@@ -10,7 +10,7 @@
       "description": "The seller accepts audience pushes and external source references via the AdCP sync_audiences task. Any AdCP-speaking buyer can use this path with no additional integration.",
       "type": "object",
       "properties": {
-        "pattern": { "const": "sync_audiences" }
+        "pattern": { "type": "string", "const": "sync_audiences" }
       },
       "required": ["pattern"],
       "additionalProperties": false
@@ -20,7 +20,7 @@
       "description": "The seller has configured Trusted Match Protocol identity-match calls to a specific buyer agent. Declarations are per buyer agent because the integration is not generic. Entries MUST be consistent with trusted_match.providers[] where both are present on the product.",
       "type": "object",
       "properties": {
-        "pattern": { "const": "tmp_identity_match" },
+        "pattern": { "type": "string", "const": "tmp_identity_match" },
         "buyer_agent": {
           "type": "object",
           "properties": {
@@ -42,7 +42,7 @@
       "description": "Bucket-addressed file exchange over a cloud storage protocol. The buyer moves the bytes; direction declares who hosts the bucket.",
       "type": "object",
       "properties": {
-        "pattern": { "const": "file_transfer" },
+        "pattern": { "type": "string", "const": "file_transfer" },
         "transport": {
           "$ref": "/schemas/enums/cloud-storage-protocol.json",
           "description": "Storage protocol for the exchange."
@@ -70,14 +70,14 @@
       "description": "Vendor-mediated query access: the seller reads a dataset the buyer shares through the vendor's grantee-identified sharing mechanism (e.g., Snowflake Secure Data Sharing, Databricks Delta Sharing, BigQuery authorized views). Admissible only when the grant names a principal and no secret is conveyed; token-bearer flows remain out-of-band.",
       "type": "object",
       "properties": {
-        "pattern": { "const": "dataset_query" },
+        "pattern": { "type": "string", "const": "dataset_query" },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Data-sharing platform the seller can consume from."
         },
         "consumer_identities": {
           "type": "array",
-          "description": "Principals the buyer grants access to in the vendor's system, qualified by cloud and region. Qualifiers are routing and cost hints (pick the near/cheap identity) — not grant-reachability boundaries and not compliance boundaries; data-transfer assessments key on the recipient entity's jurisdiction, not the grantee account's region. Optional: sellers MAY instead communicate identities during account setup.",
+          "description": "Principals the buyer grants access to in the vendor's system. identity is always required. cloud and region are optional, paired deployment metadata: omit both for global principals (for example, an IAM principal or federated identity). Their operational meaning is vendor-specific — they may constrain direct-share reachability or select a fulfillment route, or may be routing and cost hints only. They are not compliance boundaries; data-transfer assessments key on the recipient entity's jurisdiction, not the grantee account's region. Optional: sellers MAY instead communicate identities during account setup.",
           "items": {
             "type": "object",
             "properties": {
@@ -92,10 +92,15 @@
               },
               "identity": {
                 "type": "string",
+                "minLength": 1,
                 "description": "Principal to grant, interpreted relative to the enclosing entry's vendor.domain. Format is vendor-specific and opaque — Snowflake: orgname.accountname; Databricks: sharing recipient identifier; BigQuery: IAM principal."
               }
             },
-            "required": ["cloud", "region", "identity"],
+            "required": ["identity"],
+            "dependencies": {
+              "cloud": ["region"],
+              "region": ["cloud"]
+            },
             "additionalProperties": false
           },
           "minItems": 1
@@ -106,10 +111,10 @@
     },
     {
       "title": "Clean room",
-      "description": "Privacy-preserving match in the named vendor's clean room; neither party sees the other's raw rows. Informational declaration: room setup is bilateral onboarding, and where the room can export output, the output binds through a dataset or platform_segment source on sync_audiences.",
+      "description": "Privacy-preserving match in the named vendor's clean room; neither party sees the other's raw rows. A seller MUST declare this audience-activation pattern only when the collaboration can produce an audience targetable on this product; analytics-only or measurement-only room access does not qualify. The declaration does not imply that output is portable. Room setup is bilateral onboarding. Platform-native or partner-distributed output pairs with platform_distribution; queryable output pairs with dataset_query. The resulting audience binds through a dataset or platform_segment source on sync_audiences.",
       "type": "object",
       "properties": {
-        "pattern": { "const": "clean_room" },
+        "pattern": { "type": "string", "const": "clean_room" },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Clean-room product's operating domain."
@@ -120,18 +125,19 @@
     },
     {
       "title": "Platform distribution",
-      "description": "The vendor's rails deliver segments to the seller's declared destination; the buyer initiates distribution in the vendor's system and binds the arriving segment via sync_audiences.",
+      "description": "The vendor's rails deliver segments to the seller's destination; the buyer initiates distribution in the vendor's system and binds the arriving segment via sync_audiences. destination_ref is optional because many vendors create or reveal the account-scoped destination only during bilateral account setup.",
       "type": "object",
       "properties": {
-        "pattern": { "const": "platform_distribution" },
+        "pattern": { "type": "string", "const": "platform_distribution" },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",
           "description": "Distribution platform's operating domain."
         },
         "destination_ref": {
           "type": "string",
+          "minLength": 1,
           "maxLength": 256,
-          "description": "Seller's destination identifier in the vendor's system, as the buyer needs it to initiate distribution. A seller-declared configuration reference, not a buyer-invoked key."
+          "description": "Opaque, account-scoped destination or seat reference in the vendor's system, as the buyer needs it to initiate distribution. A seller-declared configuration reference, not a buyer-invoked key or secret. Sellers MUST NOT publish one global reference when the vendor configuration is buyer- or account-specific. Omit until account setup has established the destination."
         },
         "bind_expiry_days": {
           "type": "integer",
@@ -139,23 +145,23 @@
           "description": "Window after which the seller MAY expire an unfulfilled segment bind (action: failed). Initial vendor distribution is days-scale; windows shorter than the vendor's documented distribution latency are non-conformant."
         }
       },
-      "required": ["pattern", "vendor", "destination_ref"],
+      "required": ["pattern", "vendor"],
       "additionalProperties": false
     }
   ],
   "examples": [
     { "pattern": "sync_audiences" },
     { "pattern": "tmp_identity_match", "buyer_agent": { "agent_url": "https://buyer.example-agent.com" } },
-    { "pattern": "file_transfer", "transport": "s3", "directions": ["buyer_to_seller"], "vendor": { "domain": "amazon.com" } },
+    { "pattern": "file_transfer", "transport": "s3", "directions": ["buyer_to_seller"], "vendor": { "domain": "object-store.example" } },
     {
       "pattern": "dataset_query",
-      "vendor": { "domain": "snowflake.com" },
+      "vendor": { "domain": "data-cloud.example" },
       "consumer_identities": [
         { "cloud": "aws", "region": "us-east-1", "identity": "SELLERORG.ADCP_INGEST" },
-        { "cloud": "aws", "region": "eu-central-1", "identity": "SELLERORG.ADCP_INGEST_EU" }
+        { "identity": "serviceAccount:adcp-ingest@publisher.example" }
       ]
     },
-    { "pattern": "clean_room", "vendor": { "domain": "liveramp.com" } },
-    { "pattern": "platform_distribution", "vendor": { "domain": "liveramp.com" }, "destination_ref": "dest_12345", "bind_expiry_days": 14 }
+    { "pattern": "clean_room", "vendor": { "domain": "collaboration-room.example" } },
+    { "pattern": "platform_distribution", "vendor": { "domain": "activation-hub.example" }, "destination_ref": "dest_12345", "bind_expiry_days": 14 }
   ]
 }
