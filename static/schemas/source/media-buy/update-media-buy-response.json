@@ -49,6 +49,15 @@
           "description": "Updated hard aggregate lifetime budget, denominated in currency. Echoed when the update affects the shared total or package budgets so buyers can verify the new aggregate without a round-trip to get_media_buys.",
           "minimum": 0
         },
+        "daily_budget_cap": {
+          "type": "number",
+          "description": "Post-update hard aggregate daily spend ceiling. Echoed when the update sets or changes the aggregate daily cap; omitted after the cap is removed.",
+          "minimum": 0
+        },
+        "budget_cap_timezone": {
+          "type": "string",
+          "description": "Post-update IANA timezone shared by every aggregate and package daily cap. Echoed whenever the update affects daily caps or their timezone."
+        },
         "budget_allocation": {
           "allOf": [
             {

@@ -148,6 +148,8 @@ npx @adcp/sdk@latest \
 | `proposal_id` | string | No* | ID of the exact committed proposal snapshot produced by [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) with `action: "finalize"`, or by the legacy [`get_products`](/docs/media-buy/task-reference/get_products) finalize action. Drafts fail with [`PROPOSAL_NOT_COMMITTED`](/docs/building/verification/compliance-catalog#error-code-proposal-not-committed); declined or already executed proposals fail with [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state). Exact retries reuse the original idempotency key and replay success. |
 | `opportunity` | OpportunityContext | No | Proposal-mode planning-cycle closure shared with [`request_proposals`](/docs/media-buy/task-reference/request_proposals) and [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals); requires `proposal_id`. Omitting status is the create-specific signal to infer closed with `accepted_with_seller`; if status is sent, it must explicitly carry that closure. |
 | `total_budget` | TotalBudget | No* | Hard aggregate lifetime budget. Its currency is the single media-buy denomination for package constraints and canonical bidding. Required for proposals and seller-optimized explicit packages. Optional in fixed explicit-package mode; when supplied there, it must equal the sum of package budgets. |
+| `daily_budget_cap` | number | No | Hard aggregate ceiling per calendar day in the media-buy currency. It limits total buy spend without allocating or reserving amounts for packages. Requires `media_buy` in `budget_capping.supported_scopes`. |
+| `budget_cap_timezone` | string | No | Shared IANA calendar-day boundary override for aggregate and package daily caps. Accepted only when `budget_capping.buyer_timezone_override` is true; otherwise `timezone_basis` selects `Account.timezone` or the advertised `fixed_timezone`. |
 | `budget_allocation` | BudgetAllocation | No | Cross-package allocation mode. Omit for fixed allocation. Use `seller_optimized` with media-buy optimization goals to delegate allocation to the seller. Must be omitted when executing a proposal because the committed proposal supplies it. |
 | `packages` | Package[] | No* | Array of package configurations (see below). Required when not using proposal_id. |
 | `brand` | BrandRef | Yes | Brand reference — resolved to full identity at execution time. See [brand.json](/docs/brand-protocol/brand-json) |
@@ -191,6 +193,7 @@ An unexpired `committed` proposal carries an inventory hold and cannot be reject
 | `impressions` | number | No | Impression goal for this package |
 | `paused` | boolean | No | Create package in paused state (default: `false`) |
 | `pacing` | string | No | `"even"` (default), `"asap"`, or `"front_loaded"` |
+| `daily_budget_cap` | number | No | Optional hard package-level spend ceiling per calendar day, subordinate to any aggregate media-buy `daily_budget_cap`. It is a package constraint, not a reserved daily allocation; seller-optimized packages may omit it. All daily caps on the buy use the media-buy cap timezone. |
 | `bidding` | BiddingPolicy | No | Complete package-authored bidding override. Use `{automatic: true}` to explicitly override a media-buy policy with provider automatic bidding. Omit to inherit. This is replacement inheritance, not a field-by-field merge. |
 | `bid_price` | number | No | **Deprecated in 3.2.** Use `bidding.bid_amount` or `bidding.max_bid`. A package cannot supply both representations. |
 | `optimization_goals` | [OptimizationGoal[]](/docs/media-buy/conversion-tracking/#optimization-goals) | No | Objective functions for this package: what to optimize and in what priority. Currency controls belong in `bidding`; legacy `target.cost_per` and `target.per_ad_spend` remain accepted only for migration. |
@@ -1189,6 +1192,8 @@ AdCP supports fixed package budgets and media-buy-level shared budgets. `budget_
 | `impressions` | Package | number | Impression goal for the package. An alternative volume target to `budget`; a seller may pace to whichever binds first. |
 | `pacing` | Media buy | enum | How the seller spreads aggregate spend across the media-buy flight. |
 | `packages[].pacing` | Package | enum | Subordinate temporal preference affecting which package receives the aggregate spend. |
+| `daily_budget_cap` | Media buy | number | Optional hard aggregate ceiling per calendar day. It limits total buy spend without allocating that amount among packages. |
+| `packages[].daily_budget_cap` | Package | number | Optional subordinate package ceiling per calendar day. It is not a reservation or current allocation. |
 | `bidding` | Media buy or package | BiddingPolicy | Buyer execution policy. Media-buy is the inherited default; package is a complete override. |
 | `bid_price` | Package | number | Deprecated legacy representation normalized to `bidding.bid_amount` or `bidding.max_bid`. |
 | `start_time` / `end_time` | Package | string | The flight window the budget is spread across. When omitted, the package inherits the media buy's flight dates. |
@@ -1275,14 +1280,15 @@ Continuous allocation decisions inside an accepted seller-optimized buy are deli
 
 The package caps total $130,000, creating room for the seller to allocate the $100,000 shared total toward the better-performing package. The first package has a soft $20,000 minimum-spend target; neither package has a reserved allocation.
 
-#### Known gap: no explicit daily cap
+#### Daily budget cap
 
-AdCP 3.2 has **no per-day (or per-hour) budget cap field.** Delivery rate is governed by the combination of `budget`, `pacing`, and the flight window (`start_time` / `end_time`) — not a hard daily ceiling the buyer can pin. To constrain daily spend today:
+An optional media-buy `daily_budget_cap` sets a hard ceiling on aggregate spend per calendar day without creating package allocations. Optional package `daily_budget_cap` values add subordinate per-package ceilings. In seller-optimized mode, package caps may be omitted so the seller can allocate the aggregate daily allowance dynamically; a package cap is always a ceiling, never a reservation.
 
-- **Approximate a daily rate** by setting `pacing: "even"` and choosing `budget` and flight length so `budget ÷ flight_days` lands near the target daily spend. Enforcement is seller-side and best-effort, not a guaranteed hard cap.
-- **Tighten the window** by splitting a long flight into shorter packages (e.g. weekly packages), each with its own `budget`, when finer control is needed.
+Daily caps are **orthogonal to `pacing`**. The media-buy cap bounds aggregate daily spend, package caps bound individual package spend, and pacing governs distribution within those limits. `pacing: "asap"` plus a cap is valid. Every cap on one media buy uses its accepted `budget_cap_timezone`. Without a buyer override, `budget_capping.timezone_basis` selects either the account's operational timezone or the advertised feature-specific `fixed_timezone`; aggregate and package accounting then share that one boundary.
 
-A first-class daily-cap field is not yet specified. Tracking: [#5983](https://github.com/adcontextprotocol/adcp/issues/5983).
+`daily_budget_cap` requires seller support: sellers advertise `media_buy.budget_capping` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities), including supported scopes and the default timezone basis. A cap is always hard. Sellers MUST reject an undeclared scope with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) rather than silently dropping or softening it, and echo accepted caps plus the resolved shared timezone on read surfaces.
+
+When a seller does not support `daily_budget_cap`, approximate a daily rate with `pacing: "even"` and a `budget ÷ flight_days` calculation, or split a long flight into shorter packages each with its own `budget` — both are best-effort, not a guaranteed ceiling.
 
 ### Targeting Overlays
 

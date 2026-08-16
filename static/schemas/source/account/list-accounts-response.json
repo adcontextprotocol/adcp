@@ -15,7 +15,7 @@
   "properties": {
     "accounts": {
       "type": "array",
-      "description": "Array of accounts accessible to the authenticated agent. Each entry is the full Account object plus optional authorization. Buyer-declared entries include brand, operator, and any operator_unit, fixed currency, and sandbox qualifiers so the natural AccountRef round-trips after a cold start.",
+      "description": "Array of accounts accessible to the authenticated agent. Each entry is the full Account object plus optional authorization. Buyer-declared entries include brand, operator, and any operator_unit, fixed currency, buyer-selected account timezone, and sandbox qualifiers so the natural AccountRef round-trips after a cold start.",
       "items": {
         "$ref": "/schemas/core/account-with-authorization.json"
       }

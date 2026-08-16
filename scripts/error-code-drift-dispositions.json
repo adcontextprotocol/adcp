@@ -176,6 +176,11 @@
       "target_version": "3.1",
       "note": "Provenance subsystem (#3468). Held for 3.1."
     },
+    "PROVENANCE_SYNTHETIC_DEPICTION_MISSING": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Synthetic-depiction declaration policy gate (#6512). Additive 3.2 provenance error vocabulary — held for 3.2."
+    },
     "PROVENANCE_DISCLOSURE_MISSING": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",

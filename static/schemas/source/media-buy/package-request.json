@@ -34,7 +34,8 @@
   "not": {
     "anyOf": [
       { "required": ["capability_ids"] },
-      { "required": ["bidding", "bid_price"] }
+      { "required": ["bidding", "bid_price"] },
+      { "required": ["budget_cap_timezone"] }
     ]
   },
   "properties": {
@@ -103,6 +104,11 @@
       "type": "number",
       "description": "Impression goal for this package",
       "minimum": 0
+    },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional hard package daily spend ceiling in the media-buy currency. It is subordinate, not a reserved allocation; package caps need not sum to the aggregate cap. Uses the media buy's cap timezone. Requires advertised package budget-capping scope; otherwise rejected with UNSUPPORTED_FEATURE."
     },
     "start_time": {
       "type": "string",

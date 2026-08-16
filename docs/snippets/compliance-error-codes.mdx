@@ -95,6 +95,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `PROVENANCE_DISCLOSURE_MISSING` | correctable | set provenance.disclosure.required and, when true, populate disclosure.jurisdictions |
 | `PROVENANCE_EMBEDDED_MISSING` | correctable | attach at least one embedded_provenance entry from a supported provider and resubmit |
 | `PROVENANCE_REQUIRED` | correctable | attach a provenance object - at minimum digital_source_type - and resubmit |
+| `PROVENANCE_SYNTHETIC_DEPICTION_MISSING` | correctable | assess the creative, set provenance.synthetic_depiction to true or false, and resubmit |
 | `PROVENANCE_VERIFIER_NOT_ACCEPTED` | correctable | replace verify_agent.agent_url with one from the seller's published accepted_verifiers, drop verify_agent if the embedding is self-verifiable, or re-embed with a verifier the seller accepts |
 | `RATE_LIMITED` | transient | wait top-level error.retry_after seconds when present, then retry |
 | `READ_ONLY_SCOPE` | correctable | use a non-mutating alternative, or surface to the operator to request a scope that permits mutation |
@@ -929,6 +930,15 @@ Seller's <code>{"creative_policy.provenance_requirements.require_embedded_proven
 **Suggested action:** attach a provenance object - at minimum digital_source_type - and resubmit
 
 Seller's <code>{"creative_policy.provenance_required"}</code> is true and the submitted creative has no <code>{"provenance"}</code> object on the manifest, on the creative-asset, or on any individual asset. Distinct from <code>{"CREATIVE_REJECTED"}</code> (generic content-policy failure) by being narrowly about provenance presence. Recovery: correctable (attach a provenance object - at minimum <code>{"digital_source_type"}</code> - and resubmit). <code>{"error.field"}</code> MUST point at the path where provenance was expected (e.g., <code>{"creatives[0].creative_manifest"}</code>).
+
+</Accordion>
+<a id="error-code-provenance-synthetic-depiction-missing"></a>
+
+<Accordion title="PROVENANCE_SYNTHETIC_DEPICTION_MISSING — correctable">
+
+**Suggested action:** assess the creative, set provenance.synthetic_depiction to true or false, and resubmit
+
+Seller's <code>{"creative_policy.provenance_requirements.require_synthetic_depiction"}</code> is true and the submitted creative's resolved provenance (after inheritance) has no <code>{"synthetic_depiction"}</code> boolean. Both <code>{"true"}</code> and <code>{"false"}</code> satisfy the requirement; absence means unassessed. Distinct from <code>{"PROVENANCE_REQUIRED"}</code> (no provenance object at all) and from <code>{"PROVENANCE_CLAIM_CONTRADICTED"}</code> (an independent verifier actively refuted a declared value). Recovery: correctable (assess the creative, set <code>{"provenance.synthetic_depiction"}</code> to true or false, and resubmit). <code>{"error.field"}</code> MUST point at the resolved <code>{"provenance.synthetic_depiction"}</code> path. The declaration does not establish consent, legality, or verification.
 
 </Accordion>
 <a id="error-code-provenance-verifier-not-accepted"></a>
