@@ -214,6 +214,7 @@ See [TMPX Exposure Tokens](/docs/trusted-match/specification#tmpx-exposure-token
 
 The `{AXEM}` macro is from the legacy AXE integration. In [TMP](/docs/trusted-match), this is replaced by:
 - **Structured creative assets** move to the `creative_manifest` field on the [Offer](/docs/trusted-match/specification#offer).
+- **Loose dynamic rendering values** use the Offer's `creative_data` map under the package's publisher/creative contract; they are not ad-server macro substitutions.
 - **Per-user exposure tracking** uses the [`{TMPX}`](#tmp-exposure-tracking) macro from Identity Match.
 
 ### Catalog Item Macros

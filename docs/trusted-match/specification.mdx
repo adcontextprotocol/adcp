@@ -12,7 +12,7 @@ description: Authoritative message type definitions, field tables, privacy requi
 
 This is the authoritative reference for the Trusted Match Protocol (TMP). For conceptual introductions, see the [overview](/docs/trusted-match/) and [core concepts](/docs/trusted-match/context-and-identity).
 
-Specific areas expected to evolve include TMPX exposure tokens, country-partitioned identity, and Offer macros — see the [3.1.0 roadmap](https://github.com/adcontextprotocol/adcp/issues/2201) for planned changes.
+Specific areas expected to evolve include TMPX exposure tokens, country-partitioned identity, and Offer creative data — see the [3.1.0 roadmap](https://github.com/adcontextprotocol/adcp/issues/2201) for planned changes.
 
 ## Definitions
 
@@ -164,7 +164,16 @@ A buyer's response for a single package.
 | `price` | OfferPrice | No | Variable price for this offer. Only present when the product supports variable pricing. |
 | `summary` | string | No | Buyer-generated description of the offer for the publisher to judge relevance. E.g., "50% off Goldenfield mayo — recipe integration". |
 | `creative_manifest` | CreativeManifest | No | Full creative details, inline. When present, the publisher has everything needed to render. For large creatives (VAST, video), the manifest references external assets via URLs. |
-| `macros` | Map\<string, string\> | No | Key-value pairs for dynamic creative rendering or attribution tracking. In the GAM case, these flow as macro values. Distinct from the Identity Match `tmpx` field which carries an encrypted exposure token for frequency tracking. |
+| `creative_data` | Map\<string, string\> | No | Optional free-form string enhancements for dynamic creative rendering, such as sponsor labels and promotion codes. This is not ad-server macro substitution or attribution tracking; tracker URLs belong in `creative_manifest` assets and exposure tracking uses TMPX. |
+
+`creative_data` deliberately has no protocol-level key registry and declares no
+required keys. Key meanings are package-local. Receivers MUST ignore unknown
+keys, and a missing key MUST NOT make an otherwise renderable offer fail. Any
+content required to render an inline creative belongs in the declared
+`creative_manifest` assets; `creative_data` may complement those assets but MUST
+NOT be their only carrier. This keeps a manifest self-contained while allowing
+optional publisher-specific presentation enhancements without creating a second
+format schema.
 
 #### OfferPrice
 
