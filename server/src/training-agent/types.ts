@@ -9,6 +9,7 @@ import type {
   LegacyFormatID as FormatID,
   LegacyCreateMediaBuyRequest as CreateMediaBuyRequest,
   EventType,
+  CanonicalProposal,
 } from '@adcp/sdk';
 
 // SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/sdk types
@@ -20,6 +21,14 @@ export type TalentRole = typeof TALENT_ROLES[number];
 
 /** First wire release that carries the get_products business-rejection arm. */
 export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.0' as const;
+
+export const PROPOSAL_NEGOTIATION_PROFILES = [
+  'ask-only',
+  'typed-negotiation',
+  'constrained-seller',
+  'finalization-failure',
+] as const;
+export type ProposalNegotiationProfile = (typeof PROPOSAL_NEGOTIATION_PROFILES)[number];
 
 export function supportsGetProductsRejected(servedVersion: string | undefined): boolean {
   if (!servedVersion) return false;
@@ -68,6 +77,10 @@ export interface TrainingContext {
    *  presence-gated signing at the auth layer. Default `/mcp` does not
    *  advertise request signing, so unsigned bearer callers keep working. */
   strict?: boolean;
+  /** Deterministic proposal-negotiation policy selected by the trusted route.
+   * The public `/sales/mcp` endpoint remains ask-only; beta-gated profile
+   * routes set one of the other values without trusting buyer input. */
+  proposalNegotiationProfile?: ProposalNegotiationProfile;
   /** Local storyboard-runner compatibility shims. Never set in deployed routes. */
   storyboardCompat?: { version: '3.0' };
   /** Whether creative usage is billed through AdCP. Defaults to true for legacy/shared routes. */
@@ -270,6 +283,13 @@ export interface ComplyDeliveryAccumulator {
     vendor: { domain: string; brand_id?: string };
     metric_id: string;
   }>>;
+  /** Per-call snapshots with a UTC delivery date for deterministic range tests. */
+  datedSimulations?: ComplyDatedDeliverySimulation[];
+}
+
+export interface ComplyDatedDeliverySimulation {
+  deliveryDate: string;
+  metrics: Omit<ComplyDeliveryAccumulator, 'datedSimulations'>;
 }
 
 export interface ComplyBudgetSimulation {
@@ -366,6 +386,15 @@ export interface SessionState {
     operation: 'finalize';
     idempotencyKey: string;
     successorProposalId: string;
+  }>;
+  /** Canonical proposal snapshots consumed by the SDK negotiation engine.
+   * Sources are immutable; only the compare-and-swap version and active hold
+   * metadata advance when a successor batch commits. */
+  proposalRefinementRecords: Map<string, {
+    proposal: CanonicalProposal;
+    version: number;
+    activeHold?: { proposal_id: string; expires_at: string };
+    accepted?: { accepted_at: string; media_buy_id: string; media_buy_revision: number };
   }>;
   usageRecords: UsageRecord[];
   /** Maps build_variant_id → the FormatID target used to produce it.

@@ -18,6 +18,12 @@ import {
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { canonicalize, PostgresTaskStore } from '@adcp/sdk';
 import {
+  createProposalRefinementHandler,
+  type ProposalRefinementScope,
+  type ProposalRefinementStore,
+  type ProposalSourceExpectation,
+} from '@adcp/sdk/server';
+import {
   canonicalFormatLegacyResolverFromCatalogSnapshots,
   canonicalFormatLegacyResolverFromRoutes,
   legacyRoutesForProduct,
@@ -63,11 +69,19 @@ import type {
   LegacyPreviewCreativeResponse as PreviewCreativeResponse,
   LegacyBuildCreativeResponse as BuildCreativeResponse,
   LegacyCreativeManifest as AdcpCreativeManifest,
+  CanonicalProposal,
+  ProposalPurchase,
+  RefineProposalsRequest,
 } from '@adcp/sdk';
 import { CreativeAssetSchema, CreativeManifestSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getCanonicalBase } from './canonical-base.js';
 import { ctvSemanticViolations } from './ctv-experience-matrix.js';
+import {
+  evaluateTrainingProposal,
+  proposalCapabilitiesForProfile,
+  type TrainingProposalPolicyContext,
+} from './proposal-negotiation-profiles.js';
 
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
@@ -1719,6 +1733,7 @@ import {
 } from './governance-handlers.js';
 import {
   BRAND_TOOLS,
+  handleSearchBrands,
   handleGetBrandIdentity,
   handleGetRights,
   handleAcquireRights,
@@ -1780,6 +1795,7 @@ import {
   COMPLY_TEST_CONTROLLER_TOOL,
   handleComplyTestController,
   getDeliverySimulation,
+  getDeliverySimulationForPeriod,
   getAccountStatus,
   getSeededCreativeFormats,
 } from './comply-test-controller.js';
@@ -2567,6 +2583,38 @@ function projectedPackageBudgetTotal(mb: MediaBuyState, req: UpdateMediaBuyArgs)
   const nextExisting = [...currentBudgets.values()].reduce((sum, budget) => sum + budget, 0);
   const added = (req.new_packages ?? []).reduce((sum, pkg) => sum + pkg.budget, 0);
   return nextExisting + added;
+}
+
+function proportionalFixedPackageBudgets(
+  mb: MediaBuyState,
+  requestedTotal: number,
+): { budgets?: Map<string, number>; error?: TaskError } {
+  const activePackages = mb.packages.filter(pkg => !pkg.canceled);
+  const currentTotal = activePackages.reduce((sum, pkg) => sum + pkg.budget, 0);
+  if (
+    activePackages.length === 0
+    || !Number.isFinite(currentTotal)
+    || currentTotal <= 0
+    || activePackages.some(pkg => !Number.isFinite(pkg.budget) || pkg.budget <= 0)
+  ) {
+    return {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Cannot proportionally update total_budget without positive, finite committed budgets on active packages.',
+      },
+    };
+  }
+
+  const budgets = new Map<string, number>();
+  let allocated = 0;
+  activePackages.forEach((pkg, index) => {
+    const amount = index === activePackages.length - 1
+      ? requestedTotal - allocated
+      : requestedTotal * (pkg.budget / currentTotal);
+    budgets.set(pkg.packageId, amount);
+    allocated += amount;
+  });
+  return { budgets };
 }
 
 interface MediaBuyAggregateUpdate {
@@ -4530,6 +4578,7 @@ export function projectProductDiscoveryResult(
 ): Record<string, unknown> {
   if (!isProductDiscoveryTool(toolName) || toolName === 'get_products') return result;
   if (Array.isArray(result.errors) && result.errors.length > 0 && !Array.isArray(result.products)) return result;
+  if (toolName === 'refine_proposals' && Array.isArray(result.results)) return result;
   if (toolName === 'request_proposals' && result.status === 'rejected') {
     return {
       outcome: 'rejected',
@@ -6630,6 +6679,21 @@ async function handleGetProductsUnlocked(
   for (const proposal of retainedCommittedProposals.values()) {
     if (!persistedProposalIds.has(proposal.proposal_id)) persistedProposals.push(proposal);
   }
+  if (usesTypedProposalNegotiation(ctx)) {
+    const canonicalProducts = new Map(
+      registryProducts.map(product => [product.product_id, product]),
+    );
+    for (const proposal of persistedProposals) {
+      if (session.proposalRefinementRecords.has(proposal.proposal_id)) continue;
+      session.proposalRefinementRecords.set(proposal.proposal_id, {
+        proposal: outwardProposal(
+          proposal as unknown as Record<string, unknown>,
+          canonicalProducts,
+        ) as unknown as CanonicalProposal,
+        version: 1,
+      });
+    }
+  }
   // Only refine requests establish durable context for later refinements.
   // Brief/wholesale discovery must remain read-only so concurrent reads cannot
   // overwrite a proposal committed by a serialized refine request.
@@ -7682,6 +7746,7 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
   }
   const mediaBuyCurrency = accountCurrency ?? req.total_budget?.currency ?? 'USD';
   let executedCompactProposal: Proposal | undefined;
+  let executedCompactProposalSession: SessionState | undefined;
 
   // Consume any single-shot directive registered by
   // comply_test_controller.force_create_media_buy_arm. Runs before all other
@@ -8052,7 +8117,10 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
       const candidate = proposalSession.lastGetProductsContext?.proposals?.find(
         p => p.proposal_id === req.proposal_id,
       );
-      if (candidate) proposal = candidate;
+      if (candidate) {
+        proposal = candidate;
+        executedCompactProposalSession = proposalSession;
+      }
     }
     if (proposal) {
       const internal = proposal as unknown as Record<string, unknown>;
@@ -8193,7 +8261,12 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
         ...(bidPrice !== undefined && { bid_price: bidPrice }),
       };
     });
-    if (compactProposal) executedCompactProposal = proposal;
+    if (compactProposal) {
+      executedCompactProposal = proposal;
+      if (!executedCompactProposalSession && session.proposalRefinementRecords.has(proposal.proposal_id)) {
+        executedCompactProposalSession = session;
+      }
+    }
   }
 
   if (!req.packages?.length) {
@@ -8559,6 +8632,27 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
         close_reason: 'accepted_with_seller',
       };
     }
+    const proposalSession = executedCompactProposalSession ?? session;
+    const record = proposalSession.proposalRefinementRecords.get(executedCompactProposal.proposal_id);
+    if (record) {
+      proposalSession.proposalRefinementRecords.set(executedCompactProposal.proposal_id, {
+        ...record,
+        version: record.version + 1,
+        accepted: {
+          accepted_at: now,
+          media_buy_id: mediaBuyId,
+          media_buy_revision: mediaBuy.revision,
+        },
+      });
+      for (const [proposalId, source] of proposalSession.proposalRefinementRecords) {
+        if (source.activeHold?.proposal_id !== executedCompactProposal.proposal_id) continue;
+        proposalSession.proposalRefinementRecords.set(proposalId, {
+          ...source,
+          version: source.version + 1,
+          activeHold: undefined,
+        });
+      }
+    }
   }
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
@@ -8787,10 +8881,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const start = new Date(mb.startTime);
   const end = new Date(mb.endTime);
   const reportingStart = req.start_date ? new Date(`${req.start_date}T00:00:00.000Z`) : start;
-  const reportingEnd = req.end_date ? new Date(`${req.end_date}T23:59:59.999Z`) : now;
-  if (req.start_date && req.end_date && reportingStart.getTime() > reportingEnd.getTime()) {
+  const reportingEnd = req.end_date ? new Date(`${req.end_date}T00:00:00.000Z`) : now;
+  if (req.start_date && req.end_date && reportingStart.getTime() >= reportingEnd.getTime()) {
     return {
-      errors: [{ code: 'INVALID_REQUEST', message: 'start_date must be on or before end_date', field: 'start_date' }],
+      errors: [{ code: 'VALIDATION_ERROR', message: 'start_date must be before end_date', field: 'start_date' }],
     };
   }
   const durationMs = end.getTime() - start.getTime();
@@ -8800,7 +8894,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
   // Read simulated delivery upfront so vendor_metric_values can be spread into
   // per-package entries inside the map below.
-  const simDeliveryEarly = getDeliverySimulation(session, mb.mediaBuyId);
+  const simDeliveryEarly = req.start_date || req.end_date
+    ? getDeliverySimulationForPeriod(session, mb.mediaBuyId, reportingStart, reportingEnd)
+    : getDeliverySimulation(session, mb.mediaBuyId);
 
   // Build per-package metrics
   let totalImpressions = 0;
@@ -8835,8 +8931,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
     const { model: pricingModel, rate } = derivePricing(pkg, productMap);
     const isRevenueShare = pricingModel === 'revenue_share';
+    const useScopedSimulation = simDelivery !== undefined
+      && Boolean(req.start_date || req.end_date);
     const budget = pkg.budget;
-    const spend = isRevenueShare
+    const spend = isRevenueShare || useScopedSimulation
       ? (simDelivery?.reportedSpend.amount ?? 0)
       : Math.round(budget * elapsed * 100) / 100;
 
@@ -8852,12 +8950,14 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     else if (channels?.some(c => ['print'].includes(c))) ctr = 0;
     else ctr = 0.001;
 
-    const impressions = isRevenueShare
+    const impressions = isRevenueShare || useScopedSimulation
       ? (simDelivery?.impressions ?? 0)
       : rate > 0 ? Math.round((spend / rate) * 1000) : 0;
-    const clicks = isRevenueShare ? (simDelivery?.clicks ?? 0) : Math.round(impressions * ctr);
+    const clicks = isRevenueShare || useScopedSimulation
+      ? (simDelivery?.clicks ?? 0)
+      : Math.round(impressions * ctr);
 
-    if (!isRevenueShare) {
+    if (!isRevenueShare && !useScopedSimulation) {
       totalImpressions += impressions;
       totalSpend += spend;
       totalClicks += clicks;
@@ -9381,6 +9481,7 @@ function accountRefsOverlap(stored: AccountRef | undefined, requested: AccountRe
 type CreativeListFilters = {
   creative_ids?: string[];
   statuses?: string[];
+  media_buy_ids?: string[];
   format_ids?: FormatID[];
   asset_types?: string[];
 };
@@ -9503,6 +9604,17 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   if (filters.statuses?.length) {
     const statuses = new Set(filters.statuses);
     creatives = creatives.filter(c => statuses.has(c.status));
+  }
+  if (filters.media_buy_ids?.length) {
+    const requestedMediaBuyIds = new Set(filters.media_buy_ids);
+    const assignedCreativeIds = new Set<string>();
+    for (const mediaBuy of session.mediaBuys.values()) {
+      if (!requestedMediaBuyIds.has(mediaBuy.mediaBuyId)) continue;
+      for (const pkg of mediaBuy.packages) {
+        for (const creativeId of pkg.creativeAssignments) assignedCreativeIds.add(creativeId);
+      }
+    }
+    creatives = creatives.filter(c => assignedCreativeIds.has(c.creativeId));
   }
   const formatKinds = (req.filters as unknown as { format_kinds?: string[] } | undefined)?.format_kinds;
   const filterProjectionAdapters = formatKinds?.length || filters.format_ids?.length
@@ -9711,9 +9823,16 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   }
   const resultingAllocation = aggregateUpdate.budget_allocation ?? mb.budgetAllocation;
   const sellerOptimized = resultingAllocation?.mode === 'seller_optimized';
+  const fixedRedistribution = aggregateUpdate.total_budget && !sellerOptimized && req.packages === undefined && req.new_packages === undefined
+    ? proportionalFixedPackageBudgets(mb, aggregateUpdate.total_budget.amount)
+    : undefined;
+  if (fixedRedistribution?.error) {
+    return { errors: [fixedRedistribution.error] };
+  }
   if (
     aggregateUpdate.total_budget
     && !sellerOptimized
+    && (req.packages !== undefined || req.new_packages !== undefined)
     && aggregateUpdate.total_budget.amount !== projectedPackageBudgetTotal(mb, req)
   ) {
     return {
@@ -10021,6 +10140,23 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     || req.new_packages?.length,
   );
   if (aggregateUpdate.total_budget) {
+    if (fixedRedistribution?.budgets) {
+      for (const pkg of mb.packages) {
+        const nextBudget = fixedRedistribution.budgets.get(pkg.packageId);
+        if (nextBudget === undefined) continue;
+        const oldBudget = pkg.budget;
+        pkg.budget = nextBudget;
+        affectedPackageIds.add(pkg.packageId);
+        mb.history.push({
+          revision: mb.revision,
+          timestamp: now,
+          actor: 'buyer',
+          action: 'budget_updated',
+          summary: `Package ${pkg.packageId} budget proportionally changed from ${oldBudget} to ${nextBudget}`,
+          packageId: pkg.packageId,
+        });
+      }
+    }
     mb.totalBudget = aggregateUpdate.total_budget.amount;
   } else if (
     !sellerOptimized
@@ -10214,7 +10350,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
       ...(supportsGetProductsRejected(servedAdcpVersion) && {
         lifecycle_tools: [...PRODUCT_DISCOVERY_TOOLS],
-        proposal_refinement: { supported_dimensions: [] },
+        proposal_refinement: proposalCapabilitiesForProfile(ctx.proposalNegotiationProfile),
       }),
       supports_proposals: true,
       performance_feedback: {
@@ -12108,6 +12244,284 @@ export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {
 
 type ToolHandler = (args: ToolArgs, ctx: TrainingContext) => object | Promise<object>;
 
+type TrainingProposalRecord = SessionState['proposalRefinementRecords'] extends Map<string, infer T>
+  ? T
+  : never;
+
+function canonicalProposalFromRecord(record: TrainingProposalRecord): CanonicalProposal {
+  if (!record.accepted) return structuredClone(record.proposal);
+  return {
+    ...structuredClone(record.proposal),
+    proposal_status: 'accepted',
+    accepted_at: record.accepted.accepted_at,
+    media_buy_id: record.accepted.media_buy_id,
+    base_media_buy_revision: record.accepted.media_buy_revision,
+  };
+}
+
+function internalProposalFromCanonical(successor: CanonicalProposal, source: Proposal): Proposal {
+  const totalBudget = successor.commercial_terms.total_budget;
+  const purchaseBudgets = successor.commercial_terms.purchases.map(
+    purchase => (purchase as ProposalPurchase & { budget?: number }).budget ?? 0,
+  );
+  const explicitBudgetTotal = purchaseBudgets.reduce((sum, amount) => sum + amount, 0);
+  const allocations = successor.commercial_terms.purchases.map((purchase, index, purchases) => ({
+    product_id: purchase.product_id,
+    pricing_option_id: purchase.pricing_option_id,
+    allocation_percentage: explicitBudgetTotal > 0
+      ? purchaseBudgets[index]! / explicitBudgetTotal * 100
+      : 100 / purchases.length,
+  }));
+  const internal = {
+    ...structuredClone(source),
+    proposal_id: successor.proposal_id,
+    name: successor.name,
+    ...(successor.description !== undefined && { description: successor.description }),
+    ...(successor.brief_alignment !== undefined && { brief_alignment: successor.brief_alignment }),
+    allocations,
+    ...(totalBudget && {
+      total_budget_guidance: {
+        min: totalBudget.amount,
+        max: totalBudget.amount,
+        recommended: totalBudget.amount,
+        currency: totalBudget.currency,
+      },
+    }),
+    proposal_status: successor.proposal_status,
+    ...(successor.expires_at !== undefined && { expires_at: successor.expires_at }),
+    ...(successor.insertion_order !== undefined && { insertion_order: structuredClone(successor.insertion_order) }),
+    __source_proposal_id: successor.parent_proposal_id,
+    __parent_proposal_id: successor.parent_proposal_id,
+    __proposal_kind: successor.proposal_kind,
+    ...(successor.media_buy_id !== undefined && { __media_buy_id: successor.media_buy_id }),
+    ...(successor.base_media_buy_revision !== undefined && {
+      __base_media_buy_revision: successor.base_media_buy_revision,
+    }),
+    __canonical_commercial_terms: structuredClone(successor.commercial_terms),
+    __canonical_terms_digest: successor.terms_digest,
+  } as unknown as Record<string, unknown>;
+  delete internal.__executed;
+  delete internal.__accepted_at;
+  delete internal.__media_buy_revision;
+  delete internal.__opportunity_update;
+  return internal as unknown as Proposal;
+}
+
+function purchaseForTrainingProduct(productId: string, source: CanonicalProposal): ProposalPurchase | undefined {
+  const product = getCatalog().find(entry => entry.product.product_id === productId)?.product;
+  if (!product) return undefined;
+  const pricing = product.pricing_options?.[0];
+  if (!pricing) return undefined;
+  const pricingOptionId = pricing.pricing_option_id;
+  return {
+    product_id: productId,
+    pricing_option_id: pricingOptionId,
+    pricing: canonicalPricingSnapshot(pricing, pricingOptionId) as unknown as ProposalPurchase['pricing'],
+    start_time: source.commercial_terms.start_time,
+    end_time: source.commercial_terms.end_time,
+  };
+}
+
+function proposalProductsForResults(results: readonly object[]): Array<{ product_id: string; name: string }> {
+  const productIds = new Set<string>();
+  for (const rawResult of results) {
+    const result = rawResult as { outcome?: string; proposal?: CanonicalProposal; proposals?: CanonicalProposal[] };
+    const proposals = result.outcome === 'finalized'
+      ? result.proposal ? [result.proposal] : []
+      : result.proposals ?? [];
+    for (const proposal of proposals) {
+      for (const purchase of proposal.commercial_terms.purchases) productIds.add(purchase.product_id);
+    }
+  }
+  return getCatalog()
+    .map(entry => entry.product)
+    .filter(product => productIds.has(product.product_id))
+    .map(product => ({ product_id: product.product_id, name: product.name }));
+}
+
+function proposalStoreForSession(
+  session: SessionState,
+  now: Date,
+): ProposalRefinementStore<CanonicalProposal> {
+  return {
+    get(_scope: Readonly<ProposalRefinementScope>, proposalId: string) {
+      const record = session.proposalRefinementRecords.get(proposalId);
+      if (!record) return null;
+      const activeHold = record.activeHold && Date.parse(record.activeHold.expires_at) > now.getTime()
+        ? structuredClone(record.activeHold)
+        : undefined;
+      return {
+        proposal: canonicalProposalFromRecord(record),
+        version: String(record.version),
+        ...(activeHold && { active_hold: activeHold }),
+      };
+    },
+    begin(
+      _scope: Readonly<ProposalRefinementScope>,
+      expectedSources: readonly ProposalSourceExpectation[],
+    ) {
+      let staged: readonly CanonicalProposal[] = [];
+      return {
+        stage(proposals) {
+          const ids = new Set<string>();
+          for (const proposal of proposals) {
+            if (ids.has(proposal.proposal_id) || session.proposalRefinementRecords.has(proposal.proposal_id)) {
+              throw new Error(`Proposal successor already exists: ${proposal.proposal_id}`);
+            }
+            ids.add(proposal.proposal_id);
+          }
+          staged = structuredClone(proposals);
+        },
+        commit() {
+          const nextRecords = new Map(session.proposalRefinementRecords);
+          const currentInternal = session.lastGetProductsContext?.proposals ?? [];
+          const nextInternal = [...currentInternal];
+          const internalById = new Map(currentInternal.map(proposal => [proposal.proposal_id, proposal]));
+          for (const expected of expectedSources) {
+            const current = nextRecords.get(expected.proposal_id);
+            const version = current ? String(current.version) : null;
+            if (version !== expected.version) {
+              throw new Error(`Proposal source version changed: ${expected.proposal_id}`);
+            }
+            if (
+              expected.action === 'finalize'
+              && current?.activeHold
+              && Date.parse(current.activeHold.expires_at) > now.getTime()
+            ) {
+              throw new Error(`Proposal source already has an active hold: ${expected.proposal_id}`);
+            }
+          }
+          for (const proposal of staged) {
+            const sourceId = proposal.parent_proposal_id;
+            const sourceInternal = sourceId ? internalById.get(sourceId) : undefined;
+            if (!sourceInternal) throw new Error(`Internal source proposal is missing: ${sourceId ?? 'unknown'}`);
+            const internal = internalProposalFromCanonical(proposal, sourceInternal);
+            nextInternal.push(internal);
+            internalById.set(proposal.proposal_id, internal);
+            nextRecords.set(proposal.proposal_id, {
+              proposal: structuredClone(proposal),
+              version: 1,
+            });
+          }
+          for (const expected of expectedSources) {
+            const current = nextRecords.get(expected.proposal_id)!;
+            const hold = expected.action === 'finalize'
+              ? staged.find(proposal => proposal.parent_proposal_id === expected.proposal_id)
+              : undefined;
+            nextRecords.set(expected.proposal_id, {
+              ...current,
+              version: current.version + 1,
+              ...(hold?.expires_at && {
+                activeHold: { proposal_id: hold.proposal_id, expires_at: hold.expires_at },
+              }),
+            });
+          }
+          session.proposalRefinementRecords = nextRecords;
+          session.lastGetProductsContext = {
+            products: session.lastGetProductsContext?.products,
+            proposals: nextInternal,
+          };
+        },
+        rollback() {
+          staged = [];
+        },
+      };
+    },
+  };
+}
+
+async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContext): Promise<object> {
+  const profile = ctx.proposalNegotiationProfile;
+  if (!profile || profile === 'ask-only') {
+    return { errors: [{ code: 'UNSUPPORTED_FEATURE', message: 'Typed proposal negotiation is not enabled.' }] };
+  }
+  const sessionScope = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal ?? 'anonymous');
+  const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
+  const lockPrincipal = 'get-products-session-mutex';
+  const lockKey = `get-products-session:${sessionHash}`;
+  const lockStore = getIdempotencyStore();
+  const claim = await lockStore.check({
+    principal: lockPrincipal,
+    key: lockKey,
+    payload: { session: sessionHash },
+  });
+  if (claim.kind !== 'miss') {
+    return {
+      errors: [{
+        code: 'CONFLICT',
+        message: 'Another proposal lifecycle request is already updating this session. Retry shortly.',
+        recovery: 'transient',
+      }],
+    };
+  }
+  try {
+    evictSessionFromRequestCache(sessionScope);
+    const session = await getSession(sessionScope);
+    const now = new Date();
+    const activeHoldCount = Array.from(session.proposalRefinementRecords.values())
+      .filter(record => record.activeHold && Date.parse(record.activeHold.expires_at) > now.getTime())
+      .length;
+    const policyContext: TrainingProposalPolicyContext = {
+      profile,
+      now,
+      activeHoldCount,
+      purchaseForProduct: purchaseForTrainingProduct,
+    };
+    const handler = createProposalRefinementHandler<
+      CanonicalProposal,
+      { product_id: string; name: string },
+      TrainingProposalPolicyContext
+    >({
+      capabilities: proposalCapabilitiesForProfile(profile),
+      store: proposalStoreForSession(session, now),
+      scope: (): ProposalRefinementScope => ({
+        tenant_id: ctx.tenantId ?? 'sales',
+        principal_id: ctx.principal ?? 'anonymous',
+      }),
+      evaluate: evaluation => evaluateTrainingProposal(evaluation),
+      products: results => proposalProductsForResults(results),
+      now: () => now,
+    });
+    const response = await handler({
+      ...(args as unknown as RefineProposalsRequest),
+      adcp_version: '3.2',
+      adcp_major_version: 3,
+    }, policyContext);
+    await flushDirtySessions();
+    return response;
+  } catch (error) {
+    const structured = error as Error & {
+      code?: string;
+      field?: string;
+      recovery?: string;
+      details?: Record<string, unknown>;
+    };
+    const classifiedDomainFailure =
+      Boolean(structured.code) ||
+      structured.message?.startsWith('Proposal source version changed:') ||
+      structured.message?.startsWith('Proposal source already has an active hold:') ||
+      structured.message?.startsWith('Proposal successor already exists:');
+    if (!classifiedDomainFailure) {
+      logger.error({ error, profile, sessionHash }, 'Unexpected proposal refinement failure');
+    }
+    return {
+      errors: [{
+        code: structured.code ?? 'INVALID_STATE',
+        message: structured.message,
+        ...(structured.field && { field: structured.field }),
+        ...(structured.recovery && { recovery: structured.recovery }),
+        ...(structured.details && { details: structured.details }),
+      }],
+    };
+  } finally {
+    await lockStore.release({
+      principal: lockPrincipal,
+      key: lockKey,
+      claimToken: claim.claimToken,
+    });
+  }
+}
+
 const HANDLER_MAP: Record<string, ToolHandler> = {
   get_products: handleGetProducts,
   list_products: handleGetProducts,
@@ -12139,6 +12553,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   check_governance: handleCheckGovernance,
   report_plan_outcome: handleReportPlanOutcome,
   get_plan_audit_logs: handleGetPlanAuditLogs,
+  search_brands: handleSearchBrands,
   get_brand_identity: handleGetBrandIdentity,
   get_rights: handleGetRights,
   acquire_rights: handleAcquireRights,
@@ -12295,6 +12710,11 @@ type UnsupportedTrainingRefinement = {
   index: number;
 };
 
+function usesTypedProposalNegotiation(ctx: TrainingContext): boolean {
+  return ctx.proposalNegotiationProfile !== undefined
+    && ctx.proposalNegotiationProfile !== 'ask-only';
+}
+
 function unsupportedTrainingProposalRefinement(
   toolName: string,
   args: Record<string, unknown>,
@@ -12352,7 +12772,9 @@ async function executeTrainingAgentToolInContext(
   ) {
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
-  const handler = HANDLER_MAP[toolName];
+  const handler = toolName === 'refine_proposals' && usesTypedProposalNegotiation(ctx)
+    ? handleTypedProposalRefinement
+    : HANDLER_MAP[toolName];
   if (!handler) {
     return { success: false, error: `Unknown tool: ${toolName}` };
   }
@@ -12374,14 +12796,18 @@ async function executeTrainingAgentToolInContext(
   if (aliasValidationError) {
     return { success: false, error: aliasValidationError.message };
   }
-  const unsupportedRefinement = unsupportedTrainingProposalRefinement(toolName, initialHandlerArgs);
+  const unsupportedRefinement = usesTypedProposalNegotiation(ctx)
+    ? undefined
+    : unsupportedTrainingProposalRefinement(toolName, initialHandlerArgs);
   if (unsupportedRefinement) {
     return {
       success: false,
       error: `UNSUPPORTED_FEATURE at refinements.${unsupportedRefinement.index}.${unsupportedRefinement.field}: The training seller does not support the ${unsupportedRefinement.dimension} typed proposal-refinement dimension.`,
     };
   }
-  const normalizedHandlerArgs = normalizeProductDiscoveryArgs(toolName, initialHandlerArgs);
+  const normalizedHandlerArgs = toolName === 'refine_proposals' && usesTypedProposalNegotiation(ctx)
+    ? initialHandlerArgs
+    : normalizeProductDiscoveryArgs(toolName, initialHandlerArgs);
   const authPrincipal = ctx.principal ?? ctx.userId ?? 'anonymous';
   let accountScope: string | undefined;
   try {
@@ -12405,10 +12831,9 @@ async function executeTrainingAgentToolInContext(
   // The read-only legacy/list surfaces permit keyless calls, but they still
   // share the canonical get_products request contract. Validate the logical
   // request before deciding whether this attempt participates in replay.
-  const productValidationError = validateIdempotencyProtectedInput(
-    canonicalProductDiscoveryTool(toolName),
-    handlerArgs,
-  );
+  const productValidationError = toolName === 'refine_proposals' && usesTypedProposalNegotiation(ctx)
+    ? undefined
+    : validateIdempotencyProtectedInput(canonicalProductDiscoveryTool(toolName), handlerArgs);
   if (productValidationError) {
     return { success: false, error: productValidationError.message };
   }
@@ -12561,7 +12986,9 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     const { context: callerContext, ...initialHandlerArgs } = rawArgs;
     const versionResolution = resolveServedAdcpVersionForTool(name, initialHandlerArgs);
 
-    const handler = HANDLER_MAP[name];
+    const handler = name === 'refine_proposals' && usesTypedProposalNegotiation(ctx)
+      ? handleTypedProposalRefinement
+      : HANDLER_MAP[name];
 
     if (!versionResolution.ok) {
       return {
@@ -12628,7 +13055,9 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       };
     }
 
-    const unsupportedRefinement = unsupportedTrainingProposalRefinement(name, initialHandlerArgs);
+    const unsupportedRefinement = usesTypedProposalNegotiation(ctx)
+      ? undefined
+      : unsupportedTrainingProposalRefinement(name, initialHandlerArgs);
     if (unsupportedRefinement) {
       return {
         result: adcpError('UNSUPPORTED_FEATURE', {
@@ -12643,7 +13072,9 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         flushable: true,
       };
     }
-    const normalizedHandlerArgs = normalizeProductDiscoveryArgs(name, initialHandlerArgs);
+    const normalizedHandlerArgs = name === 'refine_proposals' && usesTypedProposalNegotiation(ctx)
+      ? initialHandlerArgs
+      : normalizeProductDiscoveryArgs(name, initialHandlerArgs);
 
     // Check for task-augmented request (explicit `task` field in params).
     // Dry-run requests always return synchronously — there's no reason to
@@ -12704,10 +13135,9 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // Product reads may omit an idempotency key, but keylessness must never
     // weaken their request validation. The split names normalize to the same
     // canonical get_products contract before this check.
-    const productValidationError = validateIdempotencyProtectedInput(
-      canonicalProductDiscoveryTool(name),
-      handlerArgs,
-    );
+    const productValidationError = name === 'refine_proposals' && usesTypedProposalNegotiation(ctx)
+      ? undefined
+      : validateIdempotencyProtectedInput(canonicalProductDiscoveryTool(name), handlerArgs);
     if (productValidationError) {
       return {
         result: adcpError('INVALID_REQUEST', {

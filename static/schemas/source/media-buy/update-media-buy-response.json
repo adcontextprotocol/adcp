@@ -49,6 +49,15 @@
           "description": "Updated hard aggregate lifetime budget, denominated in currency. Echoed when the update affects the shared total or package budgets so buyers can verify the new aggregate without a round-trip to get_media_buys.",
           "minimum": 0
         },
+        "daily_budget_cap": {
+          "type": "number",
+          "description": "Post-update hard aggregate daily spend ceiling. Echoed when the update sets or changes the aggregate daily cap; omitted after the cap is removed.",
+          "minimum": 0
+        },
+        "budget_cap_timezone": {
+          "type": "string",
+          "description": "Post-update IANA timezone shared by every aggregate and package daily cap. Echoed whenever the update affects daily caps or their timezone."
+        },
         "budget_allocation": {
           "allOf": [
             {
@@ -81,7 +90,7 @@
         },
         "affected_packages": {
           "type": "array",
-          "description": "For package-level updates, array of full Package objects showing complete post-update state for each directly modified package. This is a state snapshot, not a sparse delta: sellers MUST NOT return package_id-only stubs. Campaign-level updates that do not modify packages may return an empty array.",
+          "description": "Array of full Package objects showing complete post-update state for each modified package. This includes every active package whose budget was proportionally changed by a fixed-mode total_budget update. This is a state snapshot, not a sparse delta: sellers MUST NOT return package_id-only stubs. Campaign-level updates that do not modify packages may return an empty array.",
           "items": {
             "$ref": "/schemas/core/package.json"
           }

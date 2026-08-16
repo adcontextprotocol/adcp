@@ -1,0 +1,36 @@
+---
+title: decline_proposals
+description: "Terminally decline one or more immutable proposals."
+"og:title": "AdCP decline_proposals Task"
+testable: false
+---
+
+`decline_proposals` records that the buyer evaluated one or more proposals and will not pursue them. The operation is terminal: a seller must reject later [`refine_proposals`](/dist/docs/3.1.14/media-buy/task-reference/refine_proposals) or new logical [`create_media_buy`](/dist/docs/3.1.14/media-buy/task-reference/create_media_buy) attempts for a declined proposal with [`INVALID_STATE`](/dist/docs/3.1.14/building/verification/compliance-catalog#error-code-invalid-state). Exact retries of an earlier successful call still follow the shared idempotency replay contract. A proposal that was already executed cannot subsequently be declined and returns `unable`.
+
+{/* Using latest because this schema is not yet released in any version.
+    Update to the correct version alias after the next release. */}
+**Request schema:** [`/schemas/3.1.14/media-buy/decline-proposals-request.json`](https://adcontextprotocol.org/schemas/3.1.14/media-buy/decline-proposals-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441004",
+  "declines": [
+    {
+      "proposal_id": "proposal_123",
+      "reason": "inventory_fit",
+      "detail": "The available placement mix does not fit this campaign."
+    }
+  ],
+  "opportunity": {
+    "opportunity_id": "opp_spring_launch_2027",
+    "status": "closed",
+    "close_reason": "not_pursued"
+  }
+}
+```
+
+Each result has an explicit `declined` or `unable` outcome and preserves request order. Retrying with the same idempotency key replays the original response. Declining the same proposal again under a new key also returns `declined` while preserving the first recorded reason and detail, making the terminal state semantically idempotent.
+
+When `opportunity` is present, every proposal must belong to its `opportunity_id`. Proposal outcomes are independent, but the opportunity update is applied only if every result is `declined`; any `unable` result leaves the opportunity unchanged.
+
+The request does not carry `proposal_version`. Each `proposal_id` identifies one immutable commercial snapshot; [`refine_proposals`](/dist/docs/3.1.14/media-buy/task-reference/refine_proposals) mints a new ID whenever terms change.

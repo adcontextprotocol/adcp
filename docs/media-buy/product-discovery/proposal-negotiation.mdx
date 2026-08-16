@@ -455,9 +455,19 @@ Record the authenticated buyer, source IDs, successor IDs, idempotency fingerpri
 
 The canonical compliance scenario is `media_buy_seller/typed_proposal_negotiation`. It exercises capability gating, satisfied and unsatisfied constraints, alternatives, immutable lineage, finalize atomicity, exact replay, acceptance, amendment, cancellation, double-finalize rejection, and multi-source ordering.
 
-The public deterministic training profiles are tracked in [#6558](https://github.com/adcontextprotocol/adcp/issues/6558). They intentionally depend on the TypeScript SDK negotiation primitives; the training seller must not grow a separate validator. Official SDK orchestration helpers are tracked from [#6556](https://github.com/adcontextprotocol/adcp/issues/6556).
+The deterministic training profiles use the proposal-negotiation primitives published in `@adcp/sdk` 13.0.0-rc.26. The ordinary `/sales/mcp` route remains the backward-compatible ask-only seller. Three capability-distinct routes are available to local tests and will become public with the 3.2 beta deployment:
 
-Until a language SDK publishes those helpers, implement against the wire schemas and keep the following boundaries in your adapter:
+| Profile | Route | Deterministic behavior |
+| --- | --- | --- |
+| Typed negotiation | `/sales/profiles/typed-negotiation/mcp` | All typed dimensions, up to three alternatives, successful atomic finalize |
+| Constrained seller | `/sales/profiles/constrained-seller/mcp` | USD floors, product conflicts, and at most two available alternatives |
+| Finalization failure | `/sales/profiles/finalization-failure/mcp` | `hold_unavailable` plus `batch_aborted` siblings with no committed successors |
+
+The constrained route is the canonical three-to-two exercise: request a USD 50,000 cap, include and omit products, apply US/Canada criteria, and request three alternatives. Retry the returned `partial` / `alternatives_unavailable` result with two alternatives before selecting and finalizing one. Exact retries reuse the same idempotency key; a changed alternatives count is a new logical request and needs a new key.
+
+For reason-code labs, the semantic ask markers `[commercially-declined]` and `[unsupported-dimension]` select those bounded fixture outcomes. An ordinary untyped ask reaches `uninterpreted`; impossible typed terms reach `constraint_unsatisfiable`; an unknown source reaches `source_unavailable`. The training seller caps each principal at three concurrent unexpired holds.
+
+Keep the following boundaries in your adapter:
 
 - capability preflight is separate from mutation;
 - exact replay is separate from changed-request retry;

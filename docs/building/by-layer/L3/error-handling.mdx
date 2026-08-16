@@ -510,7 +510,7 @@ The wire-level `recovery: "correctable"` on the sandbox-only path is the registe
 | [`BUDGET_TOO_LOW`](/docs/building/verification/compliance-catalog#error-code-budget-too-low) | correctable | Budget below seller's minimum | Increase budget or check `capabilities.media_buy.limits` |
 | [`BUDGET_EXHAUSTED`](/docs/building/verification/compliance-catalog#error-code-budget-exhausted) | terminal | Account or campaign budget fully spent | Buyer must add funds or increase budget cap |
 | `CREATIVE_NOT_FOUND` | correctable | Referenced creative does not exist in the library | Verify `creative_id` via [`list_creatives`](/docs/creative/task-reference/list_creatives), or register it via [`sync_creatives`](/docs/creative/task-reference/sync_creatives) |
-| [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected) | correctable | Creative failed content policy review | Revise per seller's `advertising_policies` |
+| [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected) | correctable | Creative failed content-policy, brand-safety, or accessibility review | Revise according to the applicable policy or validated accessibility criteria |
 
 ### System
 
@@ -681,7 +681,7 @@ const USER_MESSAGES = {
   'PRODUCT_NOT_FOUND': 'One or more products could not be found. Try searching again.',
   'ACCOUNT_SUSPENDED': 'Your account has been suspended. Contact the seller to resolve.',
   'SERVICE_UNAVAILABLE': 'The service is temporarily unavailable. Please try again in a few minutes.',
-  'CREATIVE_REJECTED': 'Your creative did not pass policy review. Check the suggestion for details.',
+  'CREATIVE_REJECTED': 'Your creative did not pass creative review. Check the validated diagnostics for details.',
   'AUDIENCE_TOO_SMALL': 'Your target audience is too small. Try broadening your targeting.'
 };
 

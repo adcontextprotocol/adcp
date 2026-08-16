@@ -50,6 +50,7 @@ const PATH_BEARING_CHECKS = new Set([
   'field_absent',
   'field_pattern',
   'field_contains',
+  'all_fields_in_context_array',
   'envelope_field_present',
   'envelope_field_absent',
   'envelope_field_pattern',
@@ -463,7 +464,11 @@ function lintDoc(doc, filePath, allowlist = []) {
     for (const { v, index: i } of pathValidations) {
       const rawPath = v.path;
       const segments = parsePath(rawPath);
-      if (segments.includes('*') && v.check !== 'field_contains') {
+      if (
+        segments.includes('*') &&
+        v.check !== 'field_contains' &&
+        v.check !== 'all_fields_in_context_array'
+      ) {
         violations.push({
           rule: 'wildcard_unsupported_check',
           filePath,
@@ -558,7 +563,7 @@ const RULE_MESSAGES = {
     'Verify the discriminator value against the response schema.',
   wildcard_unsupported_check: ({ validationPath, check }) =>
     `validations[].path \`${validationPath}\` uses [*] but check \`${check}\` does not support wildcard ` +
-    'runtime semantics. Use `field_contains` for wildcard membership checks, or use a concrete index.',
+    'runtime semantics. Use `field_contains` or `all_fields_in_context_array` for wildcard membership checks, or use a concrete index.',
 };
 
 function formatMessage(violation) {

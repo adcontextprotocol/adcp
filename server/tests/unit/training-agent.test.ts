@@ -1409,6 +1409,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('report_plan_outcome');
     expect(toolNames).toContain('get_plan_audit_logs');
     expect(toolNames).toContain('get_brand_identity');
+    expect(toolNames).toContain('search_brands');
     expect(toolNames).toContain('get_rights');
     expect(toolNames).toContain('acquire_rights');
     expect(toolNames).toContain('update_rights');
@@ -1444,7 +1445,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_collection_list');
     expect(toolNames).toContain('list_collection_lists');
     expect(toolNames).toContain('delete_collection_list');
-    expect(toolNames).toHaveLength(55);
+    expect(toolNames).toHaveLength(56);
 
     const validateInput = tools.find(t => t.name === 'validate_input');
     expect(validateInput?.inputSchema?.properties?.targets?.maxItems).toBe(50);
@@ -7308,6 +7309,65 @@ describe('list_creatives handler', () => {
     expect(pg.total_count).toBe(1);
   });
 
+  it('filters creatives by status and media buy assignment with AND semantics', async () => {
+    const account = {
+      brand: { domain: 'creative-read-filters.example' },
+      operator: 'creative-read-filters.example',
+      sandbox: true,
+    };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    for (const [creativeId, status] of [
+      ['cr_filter_match', 'rejected'],
+      ['cr_filter_wrong_status', 'approved'],
+      ['cr_filter_wrong_buy', 'rejected'],
+    ] as const) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_creative',
+        params: {
+          creative_id: creativeId,
+          fixture: { status, format_kind: 'image' },
+        },
+      });
+    }
+
+    for (const [mediaBuyId, creativeAssignments] of [
+      ['mb_filter_target', ['cr_filter_match', 'cr_filter_wrong_status']],
+      ['mb_filter_other', ['cr_filter_wrong_buy']],
+    ] as const) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_media_buy',
+        params: {
+          media_buy_id: mediaBuyId,
+          fixture: {
+            status: 'active',
+            packages: [{
+              package_id: `${mediaBuyId}_package`,
+              creative_assignments: creativeAssignments,
+            }],
+          },
+        },
+      });
+    }
+
+    const { result } = await simulateCallTool(server, 'list_creatives', {
+      account,
+      adcp_version: '3.1',
+      ext: { adcp: { creative_wire: 'legacy' } },
+      filters: {
+        statuses: ['rejected'],
+        media_buy_ids: ['mb_filter_target'],
+      },
+    });
+
+    expect((result.creatives as Array<{ creative_id: string; status: string }>)).toEqual([
+      expect.objectContaining({ creative_id: 'cr_filter_match', status: 'rejected' }),
+    ]);
+    expect(result.query_summary).toEqual({ total_matching: 1, returned: 1 });
+  });
+
   it('filters by top-level asset type and composes with format_ids', async () => {
     const account = { brand: { domain: 'assetfilters.example' }, operator: 'assetfilters.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -9235,6 +9295,52 @@ describe('create_media_buy package-level date validation', () => {
 });
 
 // ── Paused package delivery ─────────────────────────────────────────
+
+describe('get_media_buy_delivery date validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns VALIDATION_ERROR for an empty half-open date range', async () => {
+    const account = {
+      brand: { domain: 'delivery-date-validation.example' },
+      operator: 'delivery-date-validation.example',
+      sandbox: true,
+    };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_media_buy',
+      params: {
+        media_buy_id: 'delivery_date_validation_buy',
+        fixture: {
+          status: 'active',
+          currency: 'USD',
+          start_time: '2026-01-01T00:00:00Z',
+          end_time: '2026-12-31T00:00:00Z',
+          packages: [{ package_id: 'delivery_date_validation_package', budget: 1000 }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_ids: ['delivery_date_validation_buy'],
+      start_date: '2026-04-15',
+      end_date: '2026-04-15',
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      code: 'VALIDATION_ERROR',
+      field: 'start_date',
+    }));
+  });
+});
 
 describe('paused package delivery', () => {
   beforeEach(() => {
@@ -11208,6 +11314,118 @@ describe('update_media_buy budget validation', () => {
 
     expect(result.code).toBeDefined();
     expect(result.message).toContain('non-negative');
+  });
+
+  it('atomically redistributes a fixed total budget across active packages', async () => {
+    const catalog = buildCatalog();
+    const first = catalog[0].product;
+    const second = catalog[1].product;
+    const firstPricing = first.pricing_options as Array<Record<string, unknown>>;
+    const secondPricing = second.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'total-update.example' }, operator: 'total-update.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'total-update.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [
+        { product_id: first.product_id, pricing_option_id: firstPricing[0].pricing_option_id, budget: 60000 },
+        { product_id: second.product_id, pricing_option_id: secondPricing[0].pricing_option_id, budget: 40000 },
+      ],
+    });
+
+    const { result: updated } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: created.media_buy_id,
+      revision: created.revision,
+      total_budget: { amount: 50000, currency: 'USD' },
+    });
+
+    expect(updated.errors).toBeUndefined();
+    expect(updated.total_budget).toBe(50000);
+    expect(updated.revision).toBe((created.revision as number) + 1);
+    expect((updated.affected_packages as Array<Record<string, unknown>>).map(pkg => pkg.budget)).toEqual([30000, 20000]);
+  });
+
+  it('rejects proportional redistribution when an active package has no committed budget', async () => {
+    const catalog = buildCatalog();
+    const first = catalog[0].product;
+    const second = catalog[1].product;
+    const firstPricing = first.pricing_options as Array<Record<string, unknown>>;
+    const secondPricing = second.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'zero-share.example' }, operator: 'zero-share.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'zero-share.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [
+        { product_id: first.product_id, pricing_option_id: firstPricing[0].pricing_option_id, budget: 100000 },
+        { product_id: second.product_id, pricing_option_id: secondPricing[0].pricing_option_id, budget: 10000 },
+      ],
+    });
+
+    const packages = created.packages as Array<Record<string, unknown>>;
+    const { result: zeroed } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: created.media_buy_id,
+      revision: created.revision,
+      packages: [{ package_id: packages[1].package_id, budget: 0 }],
+    });
+    expect(zeroed.errors).toBeUndefined();
+
+    const { result: rejected } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: created.media_buy_id,
+      revision: zeroed.revision,
+      total_budget: { amount: 50000, currency: 'USD' },
+    });
+
+    expect(rejected.code).toBe('VALIDATION_ERROR');
+    expect(rejected.message).toContain('positive, finite committed budgets');
+  });
+
+  it('rejects total_budget when amount does not equal the explicit package sum', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'total-conflict.example' }, operator: 'total-conflict.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'total-conflict.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+      }],
+    });
+    const packageId = (created.packages as Array<Record<string, unknown>>)[0].package_id;
+
+    // total_budget (40000) does not equal the resulting package sum (99999) → assertion failure
+    const { result: rejected } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: created.media_buy_id,
+      revision: created.revision,
+      total_budget: { amount: 40000, currency: 'USD' },
+      packages: [{ package_id: packageId, budget: 99999 }],
+    });
+    expect(rejected.code).toBe('VALIDATION_ERROR');
+
+    const { result: readback } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: [created.media_buy_id],
+    });
+    const persisted = (readback.media_buys as Array<Record<string, unknown>>)[0];
+    expect(persisted.revision).toBe(created.revision);
+    expect(persisted.total_budget).toBe(50000);
   });
 });
 

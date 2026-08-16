@@ -28,7 +28,7 @@ The proposal already carries the commercial terms, so the request does not repea
 }
 ```
 
-For scalable proposals, include `total_budget`. If the proposal carries a signature-required insertion order, include `io_acceptance`.
+For scalable proposals, include `total_budget`. Acceptance may also set a hard aggregate `daily_budget_cap` and optional shared `budget_cap_timezone`; these constrain execution without changing negotiated pricing. If the proposal carries a signature-required insertion order, include `io_acceptance`.
 
 If the proposal belongs to an `opportunity`, acceptance closes that planning cycle with `accepted_with_seller`; callers may repeat the matching opportunity ID explicitly, while the accepted proposal retains the association.
 

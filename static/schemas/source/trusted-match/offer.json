@@ -30,14 +30,17 @@
       "$ref": "/schemas/core/creative-manifest.json",
       "description": "Full creative details, inline. When present, the publisher has everything needed to render. Inline for small creatives (markdown, product card). For large creatives (VAST, video), the manifest references external assets via URLs."
     },
-    "macros": {
+    "creative_data": {
       "type": "object",
-      "description": "Key-value pairs the buyer passes for dynamic creative rendering or attribution tracking. In the GAM case, these flow as macro values. Not tied to user identity — attribution reconciliation happens via delivery reporting or clean room.",
+      "description": "Optional free-form string enhancements for dynamic creative rendering, such as sponsor labels and promotion codes. The map has no protocol-level key registry or required keys: meanings are package-local, receivers MUST ignore unknown keys, and a missing key MUST NOT make an otherwise renderable offer fail. Required renderable content belongs in creative_manifest assets, so creative_data may complement but never replace a manifest's required assets. This is not ad-server macro substitution or attribution tracking; tracker URLs belong in creative_manifest assets and per-user exposure tracking uses TMPX.",
       "additionalProperties": {
         "type": "string"
       }
     }
   },
   "required": ["package_id"],
+  "not": {
+    "required": ["macros"]
+  },
   "additionalProperties": true
 }

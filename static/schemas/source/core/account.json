@@ -54,6 +54,11 @@
       "pattern": "^[A-Z]{3}$",
       "description": "Immutable transaction currency when the seller's advertiser object is currency-bound. Media buys on this account MUST use this currency. Omit when the account selects currency independently per media buy."
     },
+    "timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Immutable operational timezone for this account, expressed as UTC or an IANA timezone identifier. AdCP 3.2 sellers return it on every account. It is the default calendar-day boundary for account-scoped behavior unless a feature explicitly declares another timezone basis. For buyer-selected account_fixed provisioning it participates in the natural account key."
+    },
     "billing": {
       "$ref": "/schemas/enums/billing-party.json",
       "description": "Who is invoiced on this account. See billing_entity for the invoiced party's business details."

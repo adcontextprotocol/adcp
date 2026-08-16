@@ -47,7 +47,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `CREATIVE_INACCESSIBLE` | correctable | verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit |
 | `CREATIVE_LOCALE_NOT_ACCEPTED` | correctable | supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default |
 | `CREATIVE_NOT_FOUND` | correctable | verify creative_id via list_creatives, or sync_creatives to register it |
-| `CREATIVE_REJECTED` | correctable | revise the creative per the seller's advertising_policies |
+| `CREATIVE_REJECTED` | correctable | revise the creative according to the applicable advertising policy or validated accessibility criteria |
 | `CREATIVE_VALUE_NOT_ALLOWED` | correctable | pick a value from error.details.allowed_values (or re-fetch the format) and resubmit |
 | `CREDENTIAL_IN_ARGS` | terminal | do NOT auto-retry — auto-retry re-logs the credential on each attempt. Move authentication material or caller-supplied trust material out of request args (top-level, <code>{"context"}</code>, <code>{"ext"}</code>, any nested location) onto the relevant transport authentication/trust channel or account provisioning path (Authorization: Bearer, RFC 9421 signature/JWKS, mTLS, MCP/A2A authentication framing); rotate any leaked credential, then resubmit |
 | `EVALUATOR_AGENT_NOT_ACCEPTED` | correctable | replace the evaluator agent_url (evaluator.feature_agent.agent_url or the evaluator agent-form agent_url) with one from the seller's published accepted_verifiers, or drop the evaluator agent pointer to fall back to seller-default ranking |
@@ -116,6 +116,9 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `UNSUPPORTED_GRANULARITY` | correctable | pick a granularity from the product's reporting_capabilities.windowed_pull_granularities (via get_adcp_capabilities) and resubmit, or omit time_granularity to fall back to cumulative date-range pulls |
 | `UNSUPPORTED_PROVISIONING` | correctable | re-issue with the entry shape the seller supports — <code>{"account: {account_id: ...}"}</code> for settings-update sellers with account-id namespaces, or <code>{"brand+operator+billing"}</code> for provisioning sellers; check seller documentation or capability declaration for which modes are implemented |
 | `VALIDATION_ERROR` | correctable | review error details and fix field values |
+| `VAST_PARSE_FAILED` | correctable | inspect error.details.reason (not_xml, no_vast_root, no_ad, no_media_file), fix the VAST document, and resubmit |
+| `VAST_VERSION_MISMATCH` | correctable | re-tag with a version from error.details.supported_versions, or correct the asset's declared vast_version to match the document |
+| `VAST_WRAPPER_DEPTH_EXCEEDED` | correctable | inspect error.details.reason (depth, loop, timeout); flatten the wrapper chain, reduce redirects below the format's max_wrapper_depth, or fix the failing hop |
 | `VERSION_UNSUPPORTED` | correctable | re-pin to a release in supported_versions and retry, or call get_adcp_capabilities without a version pin to discover supported_versions |
 
 ### Full descriptions
@@ -406,7 +409,7 @@ Concurrent modification detected. The resource was modified by another request b
 
 **Suggested action:** check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller
 
-Creative change submitted after the package's creative_deadline. Distinct from CREATIVE_REJECTED (content policy failure). Recovery: correctable (check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller).
+Creative change submitted after the package's creative_deadline. Distinct from CREATIVE_REJECTED (content-policy, brand-safety, or accessibility-review failure). Recovery: correctable (check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller).
 
 </Accordion>
 <a id="error-code-creative-inaccessible"></a>
@@ -415,7 +418,7 @@ Creative change submitted after the package's creative_deadline. Distinct from C
 
 **Suggested action:** verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit
 
-A creative governance agent (get_creative_features) could not retrieve the submitted creative_manifest assets for evaluation — an asset URL was unreachable, returned an error, or required credentials the agent does not hold. Distinct from CREATIVE_NOT_FOUND (a creative_id absent from the agent's library, not an asset-fetch failure) and CREATIVE_REJECTED (assets retrieved but failed policy). Recovery: correctable (verify the asset URLs are reachable without agent-side credentials, then re-submit).
+A creative governance agent (get_creative_features) could not retrieve the submitted creative_manifest assets for evaluation — an asset URL was unreachable, returned an error, or required credentials the agent does not hold. Distinct from CREATIVE_NOT_FOUND (a creative_id absent from the agent's library, not an asset-fetch failure) and CREATIVE_REJECTED (assets retrieved but failed creative review). Recovery: correctable (verify the asset URLs are reachable without agent-side credentials, then re-submit).
 
 </Accordion>
 <a id="error-code-creative-locale-not-accepted"></a>
@@ -440,9 +443,9 @@ Referenced creative does not exist in the agent's creative library. Recovery: co
 
 <Accordion title="CREATIVE_REJECTED — correctable">
 
-**Suggested action:** revise the creative per the seller's advertising_policies
+**Suggested action:** revise the creative according to the applicable advertising policy or validated accessibility criteria
 
-Creative failed content policy review. For deadline violations, see CREATIVE_DEADLINE_EXCEEDED. Recovery: correctable (revise the creative per the seller's advertising_policies).
+Creative failed content-policy, brand-safety, or accessibility review. For deadline violations, see CREATIVE_DEADLINE_EXCEEDED. Accessibility failures SHOULD use structured details conforming to error-details/accessibility-violation.json. Recovery: correctable (revise the creative according to the applicable policy or validated accessibility criteria).
 
 </Accordion>
 <a id="error-code-creative-value-not-allowed"></a>
@@ -451,7 +454,7 @@ Creative failed content policy review. For deadline violations, see CREATIVE_DEA
 
 **Suggested action:** pick a value from error.details.allowed_values (or re-fetch the format) and resubmit
 
-A submitted text-asset value is not in the format's declared <code>{"allowed_values"}</code> list. Distinct from <code>{"CREATIVE_REJECTED"}</code> (generic content-policy failure) by being a closed-set constraint violation that the buyer can resolve mechanically without policy interpretation — the seller has published the complete list of acceptable values on the format, and any value outside that list is rejected by definition. The seller MUST set <code>{"error.field"}</code> to the offending asset's path within the manifest (e.g., <code>{"creatives[0].creative_manifest.assets[0].value"}</code> or the field name declared by the format) and SHOULD include the format's <code>{"allowed_values"}</code> array in <code>{"error.details.allowed_values"}</code> so the buyer agent can re-prompt its LLM with constrained sampling. Recovery: correctable (select a value from <code>{"allowed_values"}</code> and resubmit).
+A submitted text-asset value is not in the format's declared <code>{"allowed_values"}</code> list. Distinct from <code>{"CREATIVE_REJECTED"}</code> (generic creative-review failure) by being a closed-set constraint violation that the buyer can resolve mechanically without policy interpretation — the seller has published the complete list of acceptable values on the format, and any value outside that list is rejected by definition. The seller MUST set <code>{"error.field"}</code> to the offending asset's path within the manifest (e.g., <code>{"creatives[0].creative_manifest.assets[0].value"}</code> or the field name declared by the format) and SHOULD include the format's <code>{"allowed_values"}</code> array in <code>{"error.details.allowed_values"}</code> so the buyer agent can re-prompt its LLM with constrained sampling. Recovery: correctable (select a value from <code>{"allowed_values"}</code> and resubmit).
 
 </Accordion>
 <a id="error-code-credential-in-args"></a>
@@ -919,7 +922,7 @@ Seller's <code>{"creative_policy.provenance_requirements.require_embedded_proven
 
 **Suggested action:** attach a provenance object - at minimum digital_source_type - and resubmit
 
-Seller's <code>{"creative_policy.provenance_required"}</code> is true and the submitted creative has no <code>{"provenance"}</code> object on the manifest, on the creative-asset, or on any individual asset. Distinct from <code>{"CREATIVE_REJECTED"}</code> (generic content-policy failure) by being narrowly about provenance presence. Recovery: correctable (attach a provenance object - at minimum <code>{"digital_source_type"}</code> - and resubmit). <code>{"error.field"}</code> MUST point at the path where provenance was expected (e.g., <code>{"creatives[0].creative_manifest"}</code>).
+Seller's <code>{"creative_policy.provenance_required"}</code> is true and the submitted creative has no <code>{"provenance"}</code> object on the manifest, on the creative-asset, or on any individual asset. Distinct from <code>{"CREATIVE_REJECTED"}</code> (generic creative-review failure) by being narrowly about provenance presence. Recovery: correctable (attach a provenance object - at minimum <code>{"digital_source_type"}</code> - and resubmit). <code>{"error.field"}</code> MUST point at the path where provenance was expected (e.g., <code>{"creatives[0].creative_manifest"}</code>).
 
 </Accordion>
 <a id="error-code-provenance-synthetic-depiction-missing"></a>
@@ -1126,6 +1129,33 @@ The seller does not support the <code>{"sync_accounts"}</code> mode the entry re
 **Suggested action:** review error details and fix field values
 
 Request contains invalid field values or violates business rules beyond schema validation. Recovery: correctable (review error details and fix field values).
+
+</Accordion>
+<a id="error-code-vast-parse-failed"></a>
+
+<Accordion title="VAST_PARSE_FAILED — correctable">
+
+**Suggested action:** inspect error.details.reason (not_xml, no_vast_root, no_ad, no_media_file), fix the VAST document, and resubmit
+
+A submitted <code>{"vast"}</code> asset failed document-level validation: the inline <code>{"content"}</code> (or the document fetched from <code>{"url"}</code>) is not well-formed XML, has no <code>{"<VAST>"}</code> root element, contains no <code>{"<Ad>"}</code> element, or an <code>{"<InLine>"}</code> linear creative carries no <code>{"<MediaFile>"}</code>. Returned by sellers that declare <code>{"creative_specs.vast_validation"}</code> of <code>{"document"}</code> or <code>{"wrapper"}</code>; sellers at the default <code>{"structural"}</code> level do not inspect the VAST document and MUST NOT return this code. Distinct from <code>{"VALIDATION_ERROR"}</code> (manifest-level format validation): the manifest was structurally valid, the VAST document inside it was not. Sellers SHOULD set <code>{"error.field"}</code> to the offending asset path and SHOULD populate <code>{"error.details.reason"}</code> with one of <code>{"not_xml"}</code>, <code>{"no_vast_root"}</code>, <code>{"no_ad"}</code>, <code>{"no_media_file"}</code>. Unresolved ad-server macros in URLs (<code>{"[MACRO]"}</code>, <code>{"${MACRO}"}</code>, <code>{"{UNIVERSAL_MACRO}"}</code>) are opaque tokens, not parse failures. Recovery: correctable (fix the VAST document and resubmit).
+
+</Accordion>
+<a id="error-code-vast-version-mismatch"></a>
+
+<Accordion title="VAST_VERSION_MISMATCH — correctable">
+
+**Suggested action:** re-tag with a version from error.details.supported_versions, or correct the asset's declared vast_version to match the document
+
+A submitted <code>{"vast"}</code> asset's document declares a <code>{"<VAST version>"}</code> attribute that does not match the asset's declared <code>{"vast_version"}</code>, does not satisfy the format's <code>{"vast_version"}</code> requirement, or is not in the seller's declared <code>{"creative_specs.vast_versions"}</code>. Returned by sellers performing document-level VAST validation (<code>{"creative_specs.vast_validation"}</code> of <code>{"document"}</code> or <code>{"wrapper"}</code>). Distinct from <code>{"VERSION_UNSUPPORTED"}</code> (AdCP protocol version negotiation, unrelated to creative documents). Sellers SHOULD set <code>{"error.field"}</code> to the offending asset path and SHOULD include the accepted versions in <code>{"error.details.supported_versions"}</code>. Recovery: correctable (re-tag with an accepted VAST version, or correct the asset's declared <code>{"vast_version"}</code>).
+
+</Accordion>
+<a id="error-code-vast-wrapper-depth-exceeded"></a>
+
+<Accordion title="VAST_WRAPPER_DEPTH_EXCEEDED — correctable">
+
+**Suggested action:** inspect error.details.reason (depth, loop, timeout); flatten the wrapper chain, reduce redirects below the format's max_wrapper_depth, or fix the failing hop
+
+Resolving a <code>{"vast"}</code> asset's wrapper chain failed: the chain exceeded the format's declared <code>{"max_wrapper_depth"}</code>, revisited a <code>{"VASTAdTagURI"}</code> already seen in the chain (a loop), or a hop did not resolve within the seller's per-hop timeout. Returned by sellers that declare <code>{"creative_specs.vast_validation: \"wrapper\""}</code>. Sellers SHOULD set <code>{"error.field"}</code> to the offending asset path and SHOULD populate <code>{"error.details.reason"}</code> with one of <code>{"depth"}</code>, <code>{"loop"}</code>, <code>{"timeout"}</code>, plus <code>{"error.details.depth"}</code> with the depth reached. Recovery: correctable (flatten the chain, reduce redirects below the format's <code>{"max_wrapper_depth"}</code>, or fix the failing hop).
 
 </Accordion>
 <a id="error-code-version-unsupported"></a>

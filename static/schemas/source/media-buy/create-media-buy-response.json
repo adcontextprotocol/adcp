@@ -73,6 +73,15 @@
           "description": "Hard aggregate lifetime budget, denominated in currency. The request encodes total_budget as an object {amount, currency}; this response flattens amount and promotes currency to its sibling field. Present for proposal and seller-optimized modes, and when supplied or deterministically derived in fixed explicit-package mode. Matches subsequent get_media_buys responses.",
           "minimum": 0
         },
+        "daily_budget_cap": {
+          "type": "number",
+          "description": "Accepted hard aggregate daily spend ceiling, denominated in currency. Sellers MUST echo it whenever the request set an aggregate daily cap.",
+          "minimum": 0
+        },
+        "budget_cap_timezone": {
+          "type": "string",
+          "description": "Accepted IANA timezone shared by every aggregate and package daily cap. Sellers MUST echo it whenever any daily cap is set on the media buy."
+        },
         "budget_allocation": {
           "allOf": [
             {

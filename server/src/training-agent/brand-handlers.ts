@@ -1,7 +1,7 @@
 /**
  * Brand protocol tool definitions and handlers for the training agent.
  *
- * Implements get_brand_identity, get_rights, acquire_rights, and
+ * Implements search_brands, get_brand_identity, get_rights, acquire_rights, and
  * update_rights using fictional talent seed data from Loti Entertainment.
  * Responses are deterministic — built from in-memory data, not LLM calls.
  */
@@ -14,6 +14,7 @@ import { getSession, sessionKeyFromArgs } from './state.js';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { resolveGovernanceAgentsForAccount } from './account-handlers.js';
 import { getCanonicalBase } from './canonical-base.js';
+import { decodeOffsetCursor, encodeOffsetCursor } from './pagination.js';
 
 async function governedCommitmentRejection(
   governanceContext: string,
@@ -616,6 +617,31 @@ const ALL_BRAND_IDS = [...BRAND_MAP.keys()].join(', ');
 
 export const BRAND_TOOLS = [
   {
+    name: 'search_brands',
+    description: 'Search the brand agent roster and return lightweight public brand stubs with canonical relationship trust state.',
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', maxLength: 2000, description: 'Natural-language brand search query' },
+        industries: { type: 'array', items: { type: 'string' }, description: 'Optional advertiser-industry filters' },
+        countries: { type: 'array', items: { type: 'string', pattern: '^[A-Z]{2}$' }, description: 'Optional rights-availability market filters' },
+        buyer_brand: { type: 'object', description: 'Optional buyer brand reference for compatibility filtering' },
+        pagination: {
+          type: 'object',
+          properties: {
+            max_results: { type: 'integer', minimum: 1, maximum: 100 },
+            cursor: { type: 'string' },
+          },
+          additionalProperties: false,
+        },
+        context: { type: 'object' },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'get_brand_identity',
     description: `Get brand identity data. Returns public data by default. Set authorized=true to simulate a linked account and see all fields (colors, fonts, tone, voice synthesis, rights). Available brands: ${ALL_BRAND_IDS}.`,
     annotations: { readOnlyHint: true, idempotentHint: true },
@@ -742,6 +768,91 @@ export const BRAND_TOOLS = [
 
 function getTalentName(talent: TalentEntry): string {
   return talent.names[0]?.[Object.keys(talent.names[0])[0]] || talent.brand_id;
+}
+
+export function handleSearchBrands(args: ToolArgs, _ctx: TrainingContext) {
+  const req = args as {
+    query: string;
+    industries?: string[];
+    countries?: string[];
+    pagination?: { max_results?: number; cursor?: string };
+    context?: Record<string, unknown>;
+  };
+  const offset = decodeOffsetCursor('search_brands', req.pagination?.cursor);
+  if (offset === null) {
+    return {
+      status: 'completed',
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: 'pagination.cursor is invalid for search_brands',
+        field: 'pagination.cursor',
+      }],
+      ...(req.context && { context: req.context }),
+    };
+  }
+
+  const queryTerms = (req.query.toLowerCase().match(/[a-z0-9]+/g) ?? [])
+    .filter(term => term.length > 2 && !['and', 'the', 'with', 'brand', 'brands'].includes(term));
+  const requestedIndustries = new Set((req.industries ?? []).map(value => value.toLowerCase()));
+
+  const matches = [...BRAND_MAP.values()]
+    .map((brand, rosterIndex) => {
+      const searchable = [
+        brand.brand_id,
+        brand.description,
+        ...brand.industries,
+        ...brand.names.flatMap(name => Object.values(name)),
+      ].join(' ').toLowerCase();
+      const score = queryTerms.reduce((total, term) => total + (searchable.includes(term) ? 1 : 0), 0);
+      return { brand, rosterIndex, score };
+    })
+    .filter(({ brand, score }) => {
+      if (queryTerms.length > 0 && score === 0) return false;
+      if (requestedIndustries.size > 0 && !brand.industries.some(value => requestedIndustries.has(value.toLowerCase()))) {
+        return false;
+      }
+      if (req.countries?.length) {
+        if (!('rights' in brand)) return false;
+        if (!req.countries.some(country => brand.rights.countries.includes(country))) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => b.score - a.score || a.rosterIndex - b.rosterIndex);
+
+  const maxResults = Math.min(Math.max(req.pagination?.max_results ?? 50, 1), 100);
+  const page = matches.slice(offset, offset + maxResults);
+  const nextOffset = offset + page.length;
+  const hasMore = nextOffset < matches.length;
+  const brands = page.map(({ brand }) => {
+    const managedInline = 'rights' in brand;
+    return {
+      brand_id: brand.brand_id,
+      ...(managedInline && { house: brand.house }),
+      relationship_trust: managedInline ? 'inline' as const : 'standalone' as const,
+      names: brand.names,
+      description: brand.description,
+      industries: brand.industries,
+      keller_type: brand.keller_type,
+      logos: brand.logos,
+      ...('rights' in brand && {
+        rights: {
+          available_uses: brand.rights.available_uses,
+          countries: brand.rights.countries,
+        },
+      }),
+    };
+  });
+
+  return {
+    status: 'completed',
+    brands,
+    pagination: {
+      has_more: hasMore,
+      ...(hasMore && { cursor: encodeOffsetCursor('search_brands', nextOffset) }),
+      total_count: matches.length,
+    },
+    ...(req.context && { context: req.context }),
+  };
 }
 
 // Shape a brand record into the brand.json "brand" definition. Fields not
