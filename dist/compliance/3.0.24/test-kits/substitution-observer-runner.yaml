@@ -1,0 +1,690 @@
+# Substitution Observer Runner — Harness Contract Test Kit
+#
+# Applies to:
+#   - Any storyboard that exercises catalog-item macro substitution and needs
+#     to assert the RFC 3986 percent-encoding rule from
+#     docs/creative/universal-macros.mdx#substitution-safety-catalog-item-macros.
+#   - Current consumers (when phases are gated on this contract):
+#     - specialisms/sales-catalog-driven/index.yaml (substitution_safety phase)
+#     - specialisms/creative-generative/index.yaml (catalog_substitution_safety phase)
+#   - Deferred pending observation-hook design (#2651):
+#     - specialisms/sales-social/index.yaml — social platforms substitute at
+#       serve time in proprietary renderers; no AdCP-level preview hook.
+#   - Future consumers: sales-retail-media (post-retail-media-epic),
+#     sales-broadcast-tv dynamic-creative phases, and anywhere else catalog
+#     values expand into URL contexts through a previewable surface.
+#
+# The #2620 rule: sales agents MUST percent-encode catalog-item macro values
+# such that only RFC 3986 `unreserved` characters remain unescaped before
+# substitution into URL contexts. Nested macro expansion is prohibited.
+#
+# The ATTACK SURFACE is impression-time URL emission. AdCP's API surface does
+# not normally expose substituted output — it happens at serve time outside
+# the protocol. Two observable AdCP-layer hooks exist:
+#
+#   preview_creative responses (preview_html / preview_url)
+#   build_creative responses with include_preview: true
+#
+# This contract defines how a runner consumes those preview artifacts,
+# extracts tracker URLs with substituted catalog-item values, and asserts
+# the values are encoded per the #2620 rule.
+#
+# Clean seam: the runner does NOT reimplement URL parsing, HTML extraction,
+# or the encoding check. It delegates to @adcp/client primitives (proposed:
+# `SubstitutionObserver` with `extract_tracker_urls` and `assert_rfc3986_safe`
+# helpers) so the same library production receivers would use is what the
+# conformance runner exercises. Library fixes cover both.
+
+id: substitution_observer_runner
+# Shape extension vs webhook-receiver-runner: this contract applies to
+# specialisms rather than universals, because catalog-macro substitution is a
+# specialism-scoped behavior (only catalog-accepting sellers emit it). The
+# `applies_to.specialisms` key is a deliberate structural addition for this
+# class of contract.
+applies_to:
+  specialisms:
+    - sales_catalog_driven
+    - creative_generative
+    # sales_social deferred — no AdCP-level preview hook (see #2651).
+  universals: []
+
+description: |
+  Coordination contract between a runner that observes substituted tracker
+  URLs in preview artifacts and an agent under test that emits catalog-driven
+  creatives. The runner ingests preview_html or follows preview_url, extracts
+  tracker URLs bound to catalog-item macros, and asserts RFC 3986 percent-
+  encoding of catalog-item values per docs/creative/universal-macros#substitution-safety-catalog-item-macros.
+
+endpoint_scope: sandbox
+# Storyboards consuming this contract synthesize attacker-shaped catalog
+# values (e.g., title containing `abc&cmd=drop` or `\r\nHost: evil`) and
+# push them via sync_catalogs. Running those against production would
+# pollute live catalogs. Graders MUST target a sandbox/staging endpoint.
+
+harness_mode: black_box
+
+# --- Observation mechanism ---
+#
+# The runner captures preview output from two response shapes (either is
+# sufficient — the storyboard author names which to observe):
+#
+#   preview_html (inline HTML string in the response)
+#     The runner parses the HTML and extracts tracker URLs from the
+#     attribute set enumerated below. Zero network dependency.
+#
+#   preview_url (HTTPS URL the runner fetches subject to the SSRF policy
+#     enumerated below)
+#     The runner performs a single GET against the URL and extracts
+#     identically.
+#
+# Both paths land at the same @adcp/client.SubstitutionObserver.extract_tracker_urls
+# primitive, which returns a deterministic list of `{ url, source_attr, line_hint }`
+# records that storyboards match against.
+
+observation_modes:
+  - mode: html_inline
+    default_for: [lint, fast, full_conformance]
+    description: |
+      Runner reads preview_html from the response and parses it. No network
+      fetch. Appropriate for CI lint gates and SDK self-tests.
+    runner_config:
+      source_path: preview_html
+      html_parser: "@adcp/client.SubstitutionObserver.parse_html"
+
+  - mode: url_fetch
+    default_for: [adcp_verified]
+    description: |
+      Runner fetches preview_url over HTTPS, expects 200 + text/html, and
+      parses the body. Required for AdCP Verified grading where the preview
+      is a live asset.
+    runner_config:
+      source_path: preview_url
+      fetch:
+        method: GET
+        follow_redirects: false
+        max_body_bytes: 262144  # 256 KiB — matches typical creative preview sizes
+        max_connect_seconds: 3
+        timeout_seconds: 10
+        required_content_types: ["text/html", "application/xhtml+xml"]
+      # SSRF policy is NORMATIVE IN THIS CONTRACT (not deferred to a library).
+      # Verified graders MUST enforce every rule below. The runner MAY delegate
+      # the implementation to @adcp/client.SubstitutionObserver.enforce_ssrf_policy
+      # (or equivalent) provided the delegate implements this exact deny list.
+      ssrf_policy:
+        schemes_allowed: ["https"]
+        schemes_denied: ["http", "file", "gopher", "ftp", "ftps", "data", "javascript", "about", "ws", "wss"]
+        hosts_denied_ipv4_cidrs:
+          - "0.0.0.0/8"           # "this network"
+          - "10.0.0.0/8"          # RFC 1918 private
+          - "100.64.0.0/10"       # CGNAT
+          - "127.0.0.0/8"         # loopback
+          - "169.254.0.0/16"      # link-local (incl. 169.254.169.254 IMDS v1/v2)
+          - "172.16.0.0/12"       # RFC 1918 private
+          - "192.0.0.0/24"        # IETF protocol assignments
+          - "192.168.0.0/16"      # RFC 1918 private
+          - "224.0.0.0/4"         # multicast
+          - "240.0.0.0/4"         # reserved
+        hosts_denied_ipv6_cidrs:
+          - "::1/128"             # loopback
+          - "::/128"              # unspecified
+          - "::ffff:0:0/96"       # IPv4-mapped (re-check as IPv4)
+          - "64:ff9b::/96"        # IPv4/IPv6 translation
+          - "fc00::/7"            # unique local
+          - "fe80::/10"           # link-local
+          - "ff00::/8"            # multicast
+        hosts_denied_metadata:
+          # Cloud metadata hosts by name — the IP CIDRs above catch the standard
+          # 169.254.169.254 cases, but some providers expose hostname aliases.
+          - "metadata.google.internal"
+          - "metadata"
+          - "metadata.packet.net"
+          - "fd00:ec2::254"       # IMDS IPv6
+        host_literal_policy_verified: reject
+        # In AdCP Verified grading, reject ANY bare IP literal in preview_url
+        # (both IPv4 and IPv6) regardless of range — forces resolution through
+        # a public DNS name the grader can audit. Local-dev flags MAY relax this.
+        dns_revalidation: required
+        # After DNS resolution, EVERY resolved address MUST be re-checked against
+        # hosts_denied_*. Resolve once, bind to the resolved address for the
+        # request — do NOT pass the hostname to the HTTP client (closes DNS
+        # rebinding between resolve and connect).
+        redirects: follow_false_strict
+        # follow_redirects: false is already set above; this field documents
+        # the companion: if the origin returns 3xx, treat it as a failure
+        # (`preview_url_unusable` + sub-reason `redirect_returned`), do NOT
+        # chase — redirect chasing would require re-running the full SSRF
+        # policy at each hop and is out of scope for v1.
+
+# --- HTML attribute extraction set (normative) ---
+#
+# The runner extracts tracker URLs from the following attributes only. This
+# set is normative — runner MUST NOT under-extract (missing one of these
+# attributes lets a seller hide an unencoded value); runner MUST NOT over-
+# extract (e.g., arbitrary `data-*` attributes whose values happen to parse
+# as URLs but are not trackers). Extension to additional attributes MAY
+# happen in a future contract revision; today's set is closed.
+
+html_attribute_extraction_set:
+  tag_attribute_pairs:
+    - { tag: "a", attr: "href" }
+    - { tag: "img", attr: "src" }
+    - { tag: "img", attr: "srcset" }           # may contain multiple URLs
+    - { tag: "iframe", attr: "src" }
+    - { tag: "source", attr: "src" }
+    - { tag: "source", attr: "srcset" }
+    - { tag: "link", attr: "href" }
+    - { tag: "meta", attr: "content" }         # refresh redirects, og:image, etc.
+    - { tag: "*", attr: "data-impression-url" }
+    - { tag: "*", attr: "data-click-url" }
+    - { tag: "*", attr: "data-tracker-url" }
+    - { tag: "*", attr: "data-vast-url" }
+  srcset_handling: parse_per_descriptor
+  # srcset values are space-separated URL+descriptor pairs (e.g.,
+  # "a.jpg 1x, b.jpg 2x"). The runner MUST extract every URL component.
+  comment_nodes: ignored
+  script_text_content: ignored
+  # Tracker URLs in `<script>`-emitted document.write or similar are out
+  # of scope v1 — if a seller hides substitution inside script text, the
+  # runner does not see it (covered under "preview/serve code-path
+  # divergence" in out-of-scope, below).
+
+# --- Macro-position alignment algorithm (normative) ---
+#
+# The runner needs to map each extracted URL back to a position in the
+# submitted macro_template so it can compare the substituted bytes against
+# the expected_encoded form of the bound catalog-item value. The algorithm:
+#
+#   1. Parse `macro_template` with a WHATWG URL parser (absolute URLs only).
+#      Extract: scheme, host, port, path_segments[], query_pairs[{k,v}],
+#      fragment.
+#   2. Parse each extracted observed URL with the SAME parser. If an
+#      extracted URL is relative in the preview HTML, resolve against a
+#      synthetic base (`https://observer.test/`) so relative-resolution
+#      does not introduce cross-runner variance.
+#   3. Align query_pairs by key. A template pair {k: "sku", v: "{SKU}"}
+#      aligns to the observed pair whose key parses to the same sequence
+#      after percent-decoding `k`. If multiple observed pairs share a key,
+#      align positionally (template pair index N → observed pair index N
+#      among matching-key pairs).
+#   4. Align path_segments positionally. A template segment "{JOB_ID}"
+#      aligns to the observed segment at the same index.
+#   5. For each alignment, the observed value is the substituted output
+#      for that binding. Compare bytes against `expected_encoded` per the
+#      hex-case policy below.
+#
+# This algorithm is deterministic and does NOT depend on substring search
+# or regex — substring alignment fails on attacker values that happen to
+# equal other parts of the URL.
+
+# --- Hex case policy (normative) ---
+#
+# RFC 3986 §2.1 states producers SHOULD use uppercase hex digits in
+# percent-encoded triplets. This contract REQUIRES producers (sellers) to
+# emit uppercase hex (`%C3%A9`, not `%c3%a9`) to match the fixture's
+# expected_encoded values byte-for-byte.
+#
+# However, VERIFIERS (runners performing the byte comparison) MUST apply
+# case-insensitive comparison on the hex digits only — the two hex digits
+# inside a `%NN` triplet compare case-insensitively, every byte outside a
+# triplet compares case-sensitively. This accommodates legitimate producer
+# variation without silently accepting a non-conformant triplet encoding
+# (e.g., `%g7` is invalid regardless of case).
+#
+# Implementation note: @adcp/client.SubstitutionObserver.assert_rfc3986_safe
+# MUST implement the case-insensitive triplet comparison; runners MUST NOT
+# do naive byte-equal comparison.
+
+hex_case_policy:
+  producer_requirement: uppercase
+  verifier_comparison: case_insensitive_hex_digits_only
+
+# --- Attacker-shaped catalog values ---
+#
+# The canonical vectors live in the unit-test fixture at
+# static/test-vectors/catalog-macro-substitution.json. The fixture is the
+# SINGLE SOURCE OF TRUTH for `raw_value` and `expected_encoded` — the
+# runner MUST load the fixture at run time and look up each vector by name.
+# This contract NAMES the vectors a consuming storyboard can reference;
+# it does NOT duplicate the encoded values (they would drift).
+
+attacker_value_catalog:
+  source_fixture: static/test-vectors/catalog-macro-substitution.json
+  canonical_vector_names:
+    - reserved-character-breakout
+    - nested-expansion-preserved-as-literal
+    - crlf-injection-neutralized
+    - non-ascii-utf8-percent-encoding
+    - nfc-normalization-before-encoding
+    - mixed-path-and-query-contexts
+    - bidi-override-neutralized
+    - url-scheme-injection-neutralized
+
+# --- Storyboard-layer step task ---
+#
+# The contract exposes one primary step task:
+#
+#   task: expect_substitution_safe
+#
+# Arguments:
+#   source:
+#     html_inline  | url_fetch
+#     Which observation mode the runner uses. Default: html_inline.
+#   source_path:
+#     JSON-pointer into the previous step's response where the preview
+#     artifact lives. Example: "/creative_manifest/preview_html".
+#   macro_template:
+#     The URL template containing AdCP macros (the value submitted via
+#     sync_creatives). Example: "https://track.example/imp?sku={SKU}"
+#   catalog_bindings:
+#     Array of { macro, catalog_item_id, vector_name } entries. The runner
+#     loads the fixture (by source_fixture path above), looks up each
+#     vector_name, and binds `{macro}` to the vector's raw_value →
+#     expected_encoded pair. Storyboard authors DO NOT duplicate
+#     raw_value/expected_encoded inline; the fixture is authoritative.
+#
+#     Optional override fields for non-canonical vectors (e.g., seller-
+#     specific payloads not in the fixture): `raw_value` and
+#     `expected_encoded` MAY be inlined, and when inlined the runner skips
+#     the fixture lookup. Runners MUST redact `raw_value` from error
+#     reports for inlined custom vectors (treat as potentially sensitive);
+#     canonical fixture values MAY be echoed verbatim because the fixture
+#     is public.
+#   require_every_binding_observed:
+#     Default `true`. When true, the step fails if any declared binding is
+#     not observed in the extracted URLs — catches a seller that silently
+#     strips a macro rather than substituting it. Storyboard authors MUST
+#     explicitly set `false` and document why (e.g., preview shows one
+#     item from a larger catalog) when partial observation is legitimate.
+#     The previous name `require_all_bindings_observed` is deprecated; the
+#     new name disambiguates "every declared binding" from "every URL
+#     matches some binding."
+#
+# Validations (runner-internal; storyboards reference them by name):
+#
+#   substitution_encoded:
+#     For each binding, the observed value at the aligned macro position
+#     MUST equal the fixture's `expected_encoded` under the hex_case_policy
+#     comparison. Raw-value leakage (any byte of `raw_value` appearing
+#     literally at the macro position) fails with
+#     `substitution_encoding_violation` plus the binding, observed URL,
+#     byte offset of divergence, and expected form.
+#
+#   nested_expansion_not_re_scanned:
+#     For the `nested-expansion-preserved-as-literal` vector specifically:
+#     the observed URL MUST contain `%7BDEVICE_ID%7D` (encoded braces) and
+#     MUST NOT contain any resolved value for {DEVICE_ID}. A second-round
+#     expansion fails with `nested_macro_re_expansion`.
+#
+#   url_scheme_preserved:
+#     For the `url-scheme-injection-neutralized` vector at an
+#     href-whole-value macro binding (i.e., the macro occupies the entire
+#     attribute value, like `<a href="{CLICK}">`): the scheme of the
+#     parsed observed URL MUST equal the scheme of the template. A
+#     substituted value that changes the scheme (e.g., `javascript:`
+#     appearing as the scheme of the observed URL) fails with
+#     `substitution_scheme_injection`.
+#
+#   rfc3986_unreserved_only_at_macro_position:
+#     A stricter check than substitution_encoded — verifies that every
+#     byte emitted at the macro position is either unreserved
+#     (ALPHA / DIGIT / "-" / "." / "_" / "~") or a percent-encoded triplet.
+#     Producers using a reserved-char allowlist (rather than
+#     unreserved-whitelist) fail specifically on the CRLF and bidi
+#     vectors.
+
+step_task:
+  name: expect_substitution_safe
+  schema_ref: static/compliance/source/universal/storyboard-schema.yaml
+  error_modes:
+    - substitution_encoding_violation
+    - nested_macro_re_expansion
+    - substitution_scheme_injection
+    - substitution_binding_missing
+    - preview_source_unavailable
+    - preview_url_unusable       # collapses fetch-failed + body-not-html + ssrf-blocked into one code with sub-reasons
+  preview_url_unusable_sub_reasons:
+    - http_status                # non-200 response
+    - content_type               # not text/html or application/xhtml+xml
+    - size_exceeded              # body > max_body_bytes
+    - redirect_returned          # 3xx without follow
+    - ssrf_blocked               # ssrf_policy deny-hit, with specific rule id in the detail
+    - fetch_timeout              # exceeded max_connect_seconds or timeout_seconds
+
+# --- PHASE_TEMPLATE: canonical three-step substitution-safety phase ---
+#
+# This block is ADVISORY documentation, not a runtime-enforced schema. Future
+# storyboard authors adding a third, fourth, or Nth consumer of this contract
+# SHOULD copy the shape below and substitute the placeholders marked with
+# `<<PLACEHOLDER>>` — domain, catalog_id prefix, correlation_id prefix, step-id
+# slug stem, narrative pronoun. Deviating from the template is legitimate
+# (different specialisms have different observation points and format needs);
+# the value is that starting from the template avoids silent drift on the
+# load-bearing fields (`require_every_binding_observed: true`, fixture-lookup
+# binding shape, `requires_contract: substitution_observer_runner`).
+#
+# Existing consumers to reference:
+#   - specialisms/sales-catalog-driven/index.yaml        (substitution_safety)
+#   - specialisms/creative-generative/index.yaml         (catalog_substitution_safety)
+#
+# Placeholders:
+#   <<SPECIALISM_SLUG>>              e.g., sales_catalog_driven, creative_generative
+#   <<BRAND_DOMAIN>>                 fictional brand domain from the chosen test-kit
+#                                    (amsterdam-steakhouse.example, acmeoutdoor.example, …)
+#   <<OPERATOR_DOMAIN>>               typically pinnacle-agency.example across kits
+#   <<CATALOG_ID_PREFIX>>            a stable prefix that will NOT collide with other
+#                                    catalogs synced earlier in the storyboard
+#   <<PHASE_ID>>                     substitution_safety | catalog_substitution_safety | …
+#   <<CORRELATION_ID_PREFIX>>        kebab-slug form of <<SPECIALISM_SLUG>>
+#   <<BUILD_TASK>>                   preview-returning task — typically `build_creative`
+#                                    with `include_preview: true`, or `preview_creative`
+#                                    where native. Match the specialism's existing
+#                                    preview-producing step.
+#   <<BUILD_SCHEMA_REF>>             schema_ref for the build task request
+#   <<BUILD_RESPONSE_SCHEMA_REF>>    response_schema_ref for the build task
+#   <<BUILD_COMPLY_SCENARIO>>        creative_flow (match the existing specialism)
+#   <<TARGET_FORMAT_ID>>             an OBJECT `{ agent_url, id }` the agent advertises —
+#                                    e.g., `{ agent_url: "https://creative.adcontextprotocol.org",
+#                                    id: "product_carousel_3_to_10" }` for DPA shapes. Not a scalar.
+#   <<TEMPLATE_URL>>                 the URL template whose macro positions the runner
+#                                    will observe (must contain the macro used in
+#                                    catalog_bindings)
+#   <<MESSAGE_BRIEF>>                natural-language brief. For generative specialisms,
+#                                    MUST explicitly ask for the literal macro token
+#                                    (unsubstituted) so the observer catches the template;
+#                                    for template-shaped specialisms, describe the
+#                                    catalog-driven render.
+#   <<IDEMPOTENCY_PREFIX>>           convention: `<<SPECIALISM_SLUG>>_<<PHASE_ID>>_<step-id>`
+#                                    for `$generate:uuid_v4#<prefix>` inputs.
+#
+# phase_template:
+#   id: <<PHASE_ID>>
+#   title: "Catalog-item macro substitution safety"
+#   narrative: |
+#     Per docs/creative/universal-macros#substitution-safety-catalog-item-macros,
+#     sales/creative agents MUST normalize catalog-item values to Unicode NFC
+#     and then percent-encode them such that only RFC 3986 `unreserved`
+#     characters remain unescaped before substituting them into a URL context.
+#     Nested macro expansion is prohibited.
+#
+#     This phase exercises the rule with attacker-shaped catalog values drawn
+#     from the fixture at `static/test-vectors/catalog-macro-substitution.json`.
+#     The phase is gated on the `substitution_observer_runner` test-kit
+#     contract — runners that do not advertise it grade the expect step as
+#     `not_applicable` while the earlier sync and build steps still run.
+#
+#     Scope note: this phase validates substitution on the PREVIEW surface
+#     only. Sellers with divergent preview vs impression-time substitution
+#     paths MAY pass here while failing at serve time; serve-time attestation
+#     or log-introspection observability is tracked separately (#2651).
+#
+#   steps:
+#     - id: sync_substitution_probe_catalog
+#       task: sync_catalogs
+#       schema_ref: "media-buy/sync-catalogs-request.json"
+#       response_schema_ref: "media-buy/sync-catalogs-response.json"
+#       doc_ref: "/media-buy/task-reference/sync_catalogs"
+#       stateful: true
+#       sample_request:
+#         account:
+#           brand: { domain: "<<BRAND_DOMAIN>>" }
+#           operator: "<<OPERATOR_DOMAIN>>"
+#         catalogs:
+#           - catalog_id: <<CATALOG_ID_PREFIX>>_substitution_probe_v1
+#             type: "product"
+#             content_id_type: "sku"
+#             items:
+#               # Minimum 3 vectors (canonical baseline). Specialisms with higher
+#               # risk profile (generative, user-text-in-copy) SHOULD add crlf +
+#               # bidi; specialisms with template-bound substitution MAY stay at 3.
+#               - { item_id: "reserved_char_breakout",  sku: "00013&cmd=drop"        , … }
+#               - { item_id: "nested_expansion",        sku: "vacancy-{DEVICE_ID}-42", … }
+#               - { item_id: "non_ascii",               sku: "café-amsterdam"        , … }
+#               # OPTIONAL — add for higher-risk specialisms:
+#               # - { item_id: "crlf_injection",        sku: "abc\r\nHost: evil.ex"  , … }
+#               # - { item_id: "bidi_override",         sku: "VIN-\u202E1234"        , … }
+#               # - { item_id: "nfc_normalization",     sku: "cafe\u0301-amsterdam"  , … }
+#               # Specialisms with whole-value macro binding MAY add url_scheme_injection.
+#         idempotency_key: "$generate:uuid_v4#<<IDEMPOTENCY_PREFIX>>_sync_substitution_probe_catalog"
+#         context: { correlation_id: "<<CORRELATION_ID_PREFIX>>--sync_substitution_probe_catalog" }
+#
+#     - id: build_substitution_probe_creative
+#       task: <<BUILD_TASK>>
+#       schema_ref: <<BUILD_SCHEMA_REF>>
+#       response_schema_ref: <<BUILD_RESPONSE_SCHEMA_REF>>
+#       comply_scenario: <<BUILD_COMPLY_SCENARIO>>
+#       stateful: true
+#       sample_request:
+#         message: <<MESSAGE_BRIEF>>
+#         target_format_id:
+#           agent_url: <<TARGET_FORMAT_ID.agent_url>>
+#           id: <<TARGET_FORMAT_ID.id>>
+#         account:
+#           brand: { domain: "<<BRAND_DOMAIN>>" }
+#           operator: "<<OPERATOR_DOMAIN>>"
+#         quality: "draft"
+#         include_preview: true
+#         idempotency_key: "$generate:uuid_v4#<<IDEMPOTENCY_PREFIX>>_build_substitution_probe_creative"
+#         context: { correlation_id: "<<CORRELATION_ID_PREFIX>>--build_substitution_probe_creative" }
+#
+#     - id: expect_substitution_safe
+#       task: expect_substitution_safe
+#       requires_contract: substitution_observer_runner
+#       source: html_inline
+#       source_path: "/creative_manifest/preview_html"
+#       macro_template: <<TEMPLATE_URL>>
+#       # LOAD-BEARING: Setting `require_every_binding_observed: false` bypasses
+#       # the silent-strip detection called out in the #2647 security review —
+#       # a seller that emits `?sku=` (empty value) instead of substituting the
+#       # macro passes the test with zero observed bindings. Only legitimate
+#       # when partial-catalog preview is a documented specialism feature AND
+#       # the narrative explicitly justifies the deviation.
+#       require_every_binding_observed: true
+#       catalog_bindings:
+#         - { macro: "{SKU}", catalog_item_id: "reserved_char_breakout",  vector_name: "reserved-character-breakout" }
+#         - { macro: "{SKU}", catalog_item_id: "nested_expansion",        vector_name: "nested-expansion-preserved-as-literal" }
+#         - { macro: "{SKU}", catalog_item_id: "non_ascii",               vector_name: "non-ascii-utf8-percent-encoding" }
+#         # Add the corresponding bindings when items above are expanded.
+
+# --- @adcp/client primitives the runner consumes ---
+#
+# The runner does NOT reimplement HTML parsing, URL extraction, or the RFC
+# 3986 encoding check. It consumes library primitives so production code
+# paths match conformance paths.
+#
+# The library surface is deliberately split into `observer/` (runner-side)
+# and `encoder/` (seller-side) modules sharing RFC 3986 primitives
+# underneath. Runners import only observer/; sellers implementing the
+# #2620 rule import only encoder/. Premature coupling is avoided.
+
+client_primitives:
+  substitution_observer:
+    reference: SubstitutionObserver
+    methods:
+      - "parse_html(html: string) -> TrackerUrlRecord[]"
+      - "fetch_and_parse(url: URL) -> Promise<TrackerUrlRecord[]>"
+      - "match_bindings(records: TrackerUrlRecord[], template: URL, bindings: CatalogBinding[]) -> BindingMatch[]"
+      - "assert_rfc3986_safe(match: BindingMatch) -> AssertionResult"
+      - "assert_no_nested_expansion(match: BindingMatch, prohibited_pattern: RegExp) -> AssertionResult"
+      - "assert_scheme_preserved(match: BindingMatch, template_scheme: string) -> AssertionResult"
+      - "enforce_ssrf_policy(url: URL, policy: SsrfPolicy) -> PolicyResult"
+    proposed_location: "@adcp/client/src/substitution/observer/"
+    doc: "To be filed as an adcp-client PR when #2638 lands."
+
+  encoder_companion:
+    # Sibling module for seller-side production use. Shares RFC 3986
+    # primitives with observer/ so a single bug fix covers both.
+    reference: SubstitutionEncoder
+    methods:
+      - "encode_for_url_context(raw_value: string) -> string"
+      - "reject_if_contains_macro(raw_value: string) -> void | throw"
+    proposed_location: "@adcp/client/src/substitution/encoder/"
+    doc: "Seller-facing counterpart to observer/. Same library, disjoint API."
+
+  tracker_url_record:
+    reference: TrackerUrlRecord
+    shape: |
+      {
+        url: URL;                    // parsed URL object
+        source_attr: string;         // 'href' | 'src' | 'srcset' | 'data-impression-url' | …
+        source_tag: string;          // 'a' | 'img' | 'iframe' | 'meta' | …
+        line_hint: number | null;    // best-effort line number in preview HTML
+      }
+
+  catalog_binding:
+    reference: CatalogBinding
+    shape: |
+      {
+        macro: string;                // e.g., "{GTIN}"
+        catalog_item_id: string;      // looks up raw_value from preceding
+                                      // sync_catalogs response + fixture
+        vector_name: string;          // e.g., "reserved-character-breakout"
+        raw_value?: string;           // optional override (custom vectors)
+        expected_encoded?: string;    // optional override (custom vectors)
+      }
+
+# --- Grading decision tree ---
+#
+# A step gated on this contract grades as follows:
+#
+#   not_applicable:
+#     Runner does not advertise substitution_observer_runner in its
+#     capabilities, OR the specialism under test does not expose a preview
+#     surface (preview_html, preview_url, or equivalent). Recorded as
+#     not_applicable with a reason; does NOT contribute to the pass rate.
+#
+#   pass:
+#     Every declared binding in `catalog_bindings` (when
+#     require_every_binding_observed is true — the default) is observed at
+#     an aligned macro position, each byte-equal (under hex_case_policy) to
+#     the fixture's `expected_encoded` for that vector. The nested-expansion
+#     vector additionally passes `nested_expansion_not_re_scanned`.
+#
+#   fail with `substitution_encoding_violation`:
+#     At least one binding's observed value differs from expected_encoded.
+#     Runner MUST include the binding, the observed URL, the offending byte
+#     offset, and the expected encoding in the error report.
+#
+#   fail with `nested_macro_re_expansion`:
+#     The nested-expansion-preserved-as-literal vector's macro position
+#     contains any byte sequence that resolves as a second-round AdCP
+#     macro. Includes the resolved macro name and its unexpected value.
+#
+#   fail with `substitution_scheme_injection`:
+#     A binding at an href-whole-value position produced an observed URL
+#     whose scheme differs from the template's scheme. Includes the
+#     template scheme, observed scheme, and binding.
+#
+#   fail with `substitution_binding_missing`:
+#     `require_every_binding_observed: true` (default) and one or more
+#     bindings are not present in the extracted URLs. Catches a seller
+#     that silently drops the macro.
+#
+#   fail with `preview_source_unavailable`:
+#     The configured `source_path` resolves to null or an empty string in
+#     the observed response. The seller's preview shape does not satisfy
+#     the contract; specialism MAY grade not_applicable if the agent does
+#     not advertise preview support.
+#
+#   fail with `preview_url_unusable`:
+#     The url_fetch path failed. Sub-reason set to one of http_status,
+#     content_type, size_exceeded, redirect_returned, ssrf_blocked, or
+#     fetch_timeout. `ssrf_blocked` includes the specific policy rule id
+#     (e.g., `hosts_denied_ipv4_cidrs:169.254.0.0/16`) so runner operators
+#     can distinguish grader-policy failures from seller bugs.
+
+# --- Error-report payload handling ---
+#
+# Canonical fixture vectors in attacker_value_catalog.canonical_vector_names
+# are public — runners MAY echo raw_value and expected_encoded verbatim in
+# error reports, logs, and grader telemetry.
+#
+# CUSTOM vectors (a storyboard author inlining their own raw_value /
+# expected_encoded for a seller-specific payload) MUST be redacted in error
+# reports: runners MUST replace the raw_value with a SHA-256 hex digest
+# prefixed `sha256:` UNLESS the grader was started with an explicit
+# --include-raw-payloads flag (default-off, disabled in AdCP Verified).
+# This prevents CI logs from becoming a searchable repository of seller-
+# reported attack payloads.
+
+error_report_payload_policy:
+  canonical_vectors: echo_verbatim
+  custom_vectors: redact_to_sha256_unless_flag
+  grader_flag_name: "--include-raw-payloads"
+  grader_flag_default: false
+  verified_mode: flag_disabled
+
+# --- Out of scope v1 ---
+#
+# The following are deliberate non-goals for the initial contract:
+#
+#   - Macros outside the catalog-item class. Trusted macros (MEDIA_BUY_ID,
+#     DEVICE_ID, GEO) are not observed by this contract. Extension to a
+#     universal URL-encoding check across all macros is tracked as a
+#     potential 3.2+ scope, not v1.
+#
+#   - HTML-attribute context assertions for non-URL-bearing attributes.
+#     This contract DOES extract from URL-bearing attributes (the
+#     `html_attribute_extraction_set` above) because those are the
+#     substitution surfaces #2620 governs. Non-URL attribute contexts —
+#     e.g., `<div data-title="{PRODUCT_TITLE}">` where the value goes into
+#     a text context, not a URL context — are the publisher's
+#     HTML-attribute-escaping responsibility and out of AdCP's scope per
+#     the #2620 rule text. A runner that detects a catalog value in a
+#     non-URL attribute SHOULD warn but MUST NOT fail.
+#
+#   - VAST XML bodies. VAST macros use [SQUARE_BRACKETS] and resolve in
+#     the player, not in AdCP. Runners MAY extract tracker URLs from VAST
+#     CDATA blocks for the AdCP-macro check but MUST NOT assert on VAST
+#     macro substitution.
+#
+#   - Non-preview surfaces (post-impression log introspection, direct
+#     ad-server querying). Those require a different contract — not this
+#     one — and are a separate 3.2+ RFC.
+#
+#   - Preview/serve code-path equivalence. This contract assumes the
+#     preview renderer shares substitution implementation with the
+#     impression-time renderer. Sellers with divergent paths (a separate
+#     serving tier, a compiled-ahead-of-time preview cache, etc.) MAY
+#     pass preview conformance while failing at serve time. Post-impression
+#     log introspection (above) is the complementary check. AdCP Verified
+#     grading SHOULD require sellers to attest to shared-path
+#     implementation; until that attestation exists, this contract's
+#     coverage claim is scoped to the preview surface only.
+#
+#   - Script-emitted substitution. Tracker URLs written to the document
+#     via <script> content (document.write, innerHTML, attachShadow) are
+#     not extracted by `html_inline` or `url_fetch`. A seller hiding
+#     substitution inside script text is not caught by v1; the runner
+#     treats script text as opaque (see `html_attribute_extraction_set`
+#     above).
+
+# --- Scope summary (machine-readable) ---
+
+scope:
+  in_scope:
+    - catalog_item_macro_substitution
+    - url_contexts_impression_click_vast_landing
+    - preview_html_observation
+    - preview_url_fetch_observation_with_ssrf_policy
+    - html_attribute_extraction_bounded_set
+    - rfc3986_unreserved_only_byte_comparison
+    - nested_macro_expansion_prohibition
+    - url_scheme_preservation_at_whole_value_position
+  out_of_scope:
+    - non_catalog_macros
+    - non_url_html_attribute_contexts
+    - vast_xml_macro_substitution
+    - post_impression_log_introspection
+    - preview_serve_code_path_equivalence
+    - script_emitted_substitution
+
+# --- References ---
+
+references:
+  spec: docs/creative/universal-macros.mdx#substitution-safety-catalog-item-macros
+  upstream_rule_pr: "#2620"
+  contract_rfc: "#2638"
+  consumer_coverage_rfc: "#2640"
+  unit_test_fixture: static/test-vectors/catalog-macro-substitution.json
+  sibling_contract_webhook: static/compliance/source/test-kits/webhook-receiver-runner.yaml
+  sibling_contract_signed_requests: static/compliance/source/test-kits/signed-requests-runner.yaml
