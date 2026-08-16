@@ -64,7 +64,7 @@
               },
               "adjustments_verified": {
                 "type": "number",
-                "description": "Sum of buyer-accepted decommitments, refunds, and credits."
+                "description": "Sum of buyer-accepted economic reductions in plan currency; accepted makegoods contribute zero."
               },
               "net_cost": {
                 "type": "number",
@@ -129,7 +129,7 @@
               },
               "adjustments_verified": {
                 "type": "integer",
-                "description": "Total adjustment records accepted by the authenticated plan owner."
+                "description": "Count of adjustment records accepted by the plan owner, including makegoods."
               },
               "statuses": {
                 "type": "object",
@@ -491,8 +491,72 @@
                 },
                 "delivery": {
                   "type": "object",
-                  "deprecated": true,
-                  "description": "Deprecated buyer delivery snapshot retained as audit evidence on a delivery outcome.",
+                  "description": "Buyer-attributed observation retained as audit evidence on a delivery outcome. It never overwrites the seller statement.",
+                  "properties": {
+                    "observation_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255,
+                      "description": "Stable buyer-issued identifier for this observation.",
+                      "x-entity": "governance_delivery_observation"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "seller_statement_copy",
+                        "buyer_measurement"
+                      ],
+                      "description": "Whether the buyer is forwarding the seller statement it received or reporting an independently measured observation. A forwarded seller statement is not independent evidence."
+                    },
+                    "observed_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "seller_statement_id": {
+                      "type": "string",
+                      "description": "Seller statement identifier as received by the buyer. Required for seller_statement_copy.",
+                      "x-entity": "governance_delivery_statement"
+                    },
+                    "seller_statement_digest": {
+                      "type": "string",
+                      "pattern": "^sha256:[a-f0-9]{64}$",
+                      "description": "Digest received with the seller statement. Governance compares it to the seller-authenticated canonical digest."
+                    },
+                    "reporting_period": {
+                      "type": "object",
+                      "description": "Start and end timestamps for the reporting window.",
+                      "properties": {
+                        "start": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "end": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "start",
+                        "end"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "cumulative_spend": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Buyer-attributed cumulative spend for the governed action."
+                    },
+                    "currency": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{3}$"
+                    },
+                    "period_closed": {
+                      "type": "boolean",
+                      "default": false,
+                      "description": "Buyer-declared operational closure of this governance reporting period. When true, governance freezes the period after recording this observation. An unresolved mismatch becomes closed_unresolved and no longer blocks later governance. Closure is not final billing or commercial settlement."
+                    },
+                    "impressions": { "type": "integer", "minimum": 0 }
+                  },
                   "additionalProperties": true
                 },
                 "governance_context": {

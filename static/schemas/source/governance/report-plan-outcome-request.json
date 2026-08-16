@@ -165,7 +165,7 @@
         "period_closed": {
           "type": "boolean",
           "default": false,
-          "description": "Buyer-declared operational closure of this governance reporting period. When true, governance freezes the period after recording this observation. An unresolved mismatch becomes closed_unresolved and no longer blocks later governance. Closure is not final billing or commercial settlement."
+          "description": "Buyer-declared operational closure of this governance reporting period. When true, governance freezes the period after recording this observation. An unresolved mismatch becomes closed_unresolved and no longer blocks later governance. Closure is not final billing or commercial settlement. Only the authenticated plan owner may set this to true; the governance agent MUST reject it from any other authenticated reporter."
         },
         "impressions": { "type": "integer", "minimum": 0 }
       },

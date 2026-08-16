@@ -177,7 +177,7 @@ Governance retains both attributed amounts, reports conservative exposure as the
 
 ### Closing an unresolved governance period
 
-The plan owner may submit a new observation for the same seller statement and `reporting_period` with `period_closed: true`. If the values still disagree, the response makes the limited operational meaning explicit:
+The plan owner may submit a new observation for the same seller statement and `reporting_period` with `period_closed: true`. Only the authenticated plan owner can close a period; the governance agent rejects `period_closed: true` from any other authenticated reporter. If the values still disagree, the response makes the limited operational meaning explicit:
 
 ```json
 {
@@ -247,7 +247,7 @@ If the seller rejected the request, report it so the governance agent can update
 | `delivery.reporting_period` | object | For delivery | Exact period compared with the seller statement. |
 | `delivery.cumulative_spend` | number | For delivery | Finite, non-negative buyer-attributed cumulative spend. |
 | `delivery.currency` | string | For delivery | Three-letter currency matching the compared evidence. |
-| `delivery.period_closed` | boolean | No | Defaults to `false`. The authenticated plan owner may close this operational governance period. An unresolved close is retained as `closed_unresolved`; closure is not billing settlement. |
+| `delivery.period_closed` | boolean | No | Defaults to `false`. Only the authenticated plan owner may close this operational governance period; the governance agent rejects the value from any other authenticated reporter. An unresolved close is retained as `closed_unresolved`; closure is not billing settlement. |
 | `delivery.seller_statement_id` | string | For seller copy | ID received with the seller statement. |
 | `delivery.seller_statement_digest` | string | For seller copy | Digest received with the seller statement. |
 | `delivery.impressions` | integer | No | Optional buyer-attributed impressions. |

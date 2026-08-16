@@ -71,7 +71,7 @@ The report response has `adjustment_state: "reported"` and `headroom_restored: 0
 }
 ```
 
-Only the authenticated principal that owns the plan may review. A dispute requires `reason` and produces `adjustment_state: "disputed"` without accounting mutation. An acceptance is rejected while buyer and seller delivery evidence for the governed action is disputed in an open governance period. A historical `closed_unresolved` period does not block a later buyer-reviewed adjustment and does not become a billing determination.
+Only the authenticated principal that owns the plan may review. A dispute requires `reason` and produces `adjustment_state: "disputed"` without accounting mutation. An acceptance is rejected while buyer and seller delivery evidence for the governed action is disputed in an open governance period. A historical `closed_unresolved` period does not block a later buyer-reviewed adjustment and does not become a billing determination. A dispute is terminal: it cannot be re-reviewed and never contributes to net cost, headroom, or the cumulative-adjustment cap; the seller corrects it only by submitting a new report with a new `seller_adjustment_id`.
 
 A decommitment also requires a canonical seller delivery statement. Its amount cannot exceed `authoritative commitment - latest cumulative seller spend`; this prevents a nominal cancellation from releasing budget already reported as delivered.
 

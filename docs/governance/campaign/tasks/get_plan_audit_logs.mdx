@@ -94,13 +94,13 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
           "headroom_restored": 25000,
           "net_committed": 250000,
           "seller_reported_spend": 200000,
-          "buyer_observed_spend": 210000,
+          "buyer_observed_spend": 200000,
           "delivery_reporting_period": {
             "start": "2026-03-01T00:00:00Z",
             "end": "2026-04-01T00:00:00Z"
           },
-          "conservative_exposure": 210000,
-          "delivery_reconciliation_status": "disputed",
+          "conservative_exposure": 200000,
+          "delivery_reconciliation_status": "consistent",
           "delivery_period_state": "open",
           "check_count": 8
         },
@@ -263,7 +263,7 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].budget.accounting_mode` | enum | `gross_commitment` or `verified_net_cost`; controls which verified records restore headroom. |
 | `plans[].budget.gross_committed` | number | Authoritative commitment from completed outcomes before adjustments. |
 | `plans[].budget.adjustments_reported` | number | Sum of all seller-reported adjustment amounts, regardless of review state. |
-| `plans[].budget.adjustments_verified` | number | Buyer-accepted economic reductions; makegoods contribute zero. |
+| `plans[].budget.adjustments_verified` | number | Sum of buyer-accepted economic reductions in plan currency; accepted makegoods contribute zero. |
 | `plans[].budget.net_cost` | number | Gross commitment minus verified economic reductions. |
 | `plans[].budget.headroom_restored` | number | Verified reductions eligible to restore headroom under the accounting mode. |
 | `plans[].budget.ledger_committed` | number | Amount currently charged against plan headroom. |
@@ -295,7 +295,7 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].summary.checks_performed` | number | Total governance checks performed. |
 | `plans[].summary.outcomes_reported` | number | Total outcomes reported. |
 | `plans[].summary.adjustments_reported` | number | Total append-only adjustment records reported. |
-| `plans[].summary.adjustments_verified` | number | Total records accepted by the authenticated plan owner. |
+| `plans[].summary.adjustments_verified` | number | Count of adjustment records accepted by the plan owner, including makegoods. |
 | `plans[].summary.statuses` | object | Count of each governance check status (`approved`, `denied`, `conditions`). Also includes `human_reviewed` as a supplementary count — checks that required human review before resolving. Always a subset of `approved` + `denied`; `conditions` is an agent-issued flow-control state and is never counted here. |
 | `plans[].summary.findings_count` | number | Total findings across all checks and outcomes. |
 | `plans[].summary.escalations` | array | Checks that were escalated for human review and their resolutions. |
