@@ -270,6 +270,7 @@ function createSession(): SessionState {
     rightsGrants: new Map(),
     negotiatedPricingOptions: new Map(),
     proposalLifecycleLinks: new Map(),
+    proposalRefinementRecords: new Map(),
     creatives: new Map(),
     signalActivations: new Map(),
     buildVariantTargets: new Map(),
@@ -496,6 +497,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     rightsGrants: asMap(hydrated.rightsGrants, fresh.rightsGrants),
     negotiatedPricingOptions: asMap(hydrated.negotiatedPricingOptions, fresh.negotiatedPricingOptions),
     proposalLifecycleLinks: asMap(hydrated.proposalLifecycleLinks, fresh.proposalLifecycleLinks),
+    proposalRefinementRecords: asMap(hydrated.proposalRefinementRecords, fresh.proposalRefinementRecords),
     buildVariantTargets: asMap(hydrated.buildVariantTargets, fresh.buildVariantTargets),
     usageRecords: Array.isArray(hydrated.usageRecords) ? hydrated.usageRecords : [],
     complyExtensions: {
