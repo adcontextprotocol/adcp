@@ -113,7 +113,7 @@ jobs:
       - name: Create Release Pull Request or Tag Release
         if: steps.release-relevance.outputs.relevant == 'true' && steps.release-artifacts.outputs.has_release_artifacts != 'true'
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
           version: npm run version
           publish: npx --no-install changeset tag
