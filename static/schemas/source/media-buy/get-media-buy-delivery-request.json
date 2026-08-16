@@ -238,7 +238,7 @@
         },
         "format": {
           "type": "object",
-          "description": "Request delivery broken down by canonical creative format kind. This is a GET-path dimension; webhook payloads do not include requested dimensional breakdowns.",
+          "description": "Request delivery broken down by canonical creative format kind. This dimension is negotiated on the GET path. Reporting webhook configuration does not negotiate or guarantee dimensional breakdowns, although a webhook payload may carry the same fields as an extension.",
           "properties": {
             "limit": {
               "type": "integer",

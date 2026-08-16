@@ -27,6 +27,7 @@ async function compile(schema) {
 describe("canonical format delivery reporting", () => {
   let validateRequest;
   let validateFormatRow;
+  let validateByPackageExtension;
   let validateCapabilities;
 
   before(async () => {
@@ -42,10 +43,16 @@ describe("canonical format delivery reporting", () => {
       (schema) => schema.properties
     );
 
-    [validateRequest, validateFormatRow, validateCapabilities] =
+    [
+      validateRequest,
+      validateFormatRow,
+      validateByPackageExtension,
+      validateCapabilities,
+    ] =
       await Promise.all([
         compile(request),
         compile(byPackageExtension.properties.by_format.items),
+        compile(byPackageExtension),
         compile(readSchema("/schemas/core/reporting-capabilities.json")),
       ]);
   });
@@ -89,6 +96,53 @@ describe("canonical format delivery reporting", () => {
       validateFormatRow({ format_kind: "image", impressions: 10 }),
       false,
       "spend is required"
+    );
+  });
+
+  it("exposes a boolean truncation disclosure for format rows", () => {
+    const packageBase = {
+      package_id: "pkg_format_example",
+      spend: 1700,
+      pricing_model: "cpm",
+      rate: 20,
+      currency: "USD",
+      by_format: [
+        { format_kind: "video_hosted", impressions: 40000, spend: 1250 },
+        { format_kind: "image", impressions: 18000, spend: 450 },
+      ],
+    };
+
+    assert.equal(
+      validateByPackageExtension({
+        ...packageBase,
+        by_format_truncated: false,
+      }),
+      true,
+      JSON.stringify(validateByPackageExtension.errors)
+    );
+    assert.equal(
+      validateByPackageExtension({
+        ...packageBase,
+        by_format_truncated: "false",
+      }),
+      false,
+      "by_format_truncated must be boolean"
+    );
+
+    const response = readSchema(
+      "/schemas/media-buy/get-media-buy-delivery-response.json"
+    );
+    const byPackage =
+      response.properties.media_buy_deliveries.items.properties.by_package.items;
+    const extension = byPackage.allOf.find((schema) => schema.properties);
+    assert.equal(
+      extension.properties.by_format_truncated.type,
+      "boolean",
+      "the response schema exposes the required truncation disclosure"
+    );
+    assert.match(
+      extension.properties.by_format_truncated.description,
+      /MUST return this flag whenever by_format is present/
     );
   });
 

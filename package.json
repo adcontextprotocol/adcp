@@ -27,7 +27,7 @@
     "deploy:cdn-artifacts-cutover:dry-run": "wrangler deploy --config workers/artifact-cdn/wrangler.cutover.toml --dry-run",
     "verify:cdn-artifacts-cutover": "node scripts/verify-cdn-artifacts-cutover.mjs",
     "typecheck": "tsc --project server/tsconfig.json --noEmit",
-    "test:schemas": "node tests/schema-validation.test.cjs && node --test tests/trusted-match-offer-creative-data.test.cjs tests/accessibility-violation-details.test.cjs tests/portfolio-routing-scope.test.cjs tests/catalog-item-availability-updates.test.cjs tests/schema-deprecation-metadata.test.cjs tests/creative-rotation.test.cjs tests/lint-schema-enum-drift.test.cjs tests/synthetic-depiction.test.cjs && npm run test:geo-region-targeting",
+    "test:schemas": "node tests/schema-validation.test.cjs && node --test tests/trusted-match-offer-creative-data.test.cjs tests/accessibility-violation-details.test.cjs tests/portfolio-routing-scope.test.cjs tests/catalog-item-availability-updates.test.cjs tests/schema-deprecation-metadata.test.cjs tests/creative-rotation.test.cjs tests/format-delivery-reporting-contract.test.cjs tests/lint-schema-enum-drift.test.cjs tests/synthetic-depiction.test.cjs && npm run test:geo-region-targeting",
     "test:performance-feedback": "node --test --test-force-exit --test-timeout=30000 tests/performance-feedback-contract.test.cjs",
     "test:dist-schema-version-ids": "node --test --test-force-exit --test-timeout=30000 tests/dist-schema-version-ids.test.cjs",
     "test:examples": "node tests/example-validation-simple.test.cjs && npm run test:tmp-context-merge",

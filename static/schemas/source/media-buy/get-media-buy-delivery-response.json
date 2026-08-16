@@ -402,7 +402,7 @@
                     },
                     "by_format": {
                       "type": "array",
-                      "description": "Delivery by canonical creative format kind within this package. Available only on the GET path when the buyer requests reporting_dimensions.format and the product declares supports_format_breakdown. Each row aggregates every served creative of that format kind and is an independent slice of the package totals. Sellers MUST aggregate all delivery using adopter-defined shapes into one format_kind 'custom' row. Buyers MUST NOT reconcile by_format rows against by_creative rows because the two breakdowns are independently produced at different grains; each breakdown is reconciled against the package totals on its own.",
+                      "description": "Delivery by canonical creative format kind within this package. Negotiated on the GET path when the buyer requests reporting_dimensions.format and the product declares supports_format_breakdown; reporting webhook configuration does not negotiate or guarantee this breakdown. Each row aggregates every served creative of that format kind. Sellers MUST aggregate all delivery using adopter-defined shapes into one format_kind 'custom' row. When by_format_truncated is false, additive metrics such as impressions and spend across the rows SHOULD reconcile to the corresponding package totals, subject to the measurement and attribution semantics of each metric. Buyers MUST NOT expect row-level correspondence between by_format and by_creative because the two breakdowns are independently produced at different grains.",
                       "items": {
                         "allOf": [
                           {
@@ -771,7 +771,7 @@
                 },
                 "by_package": {
                   "type": "array",
-                  "description": "Per-package metrics for this window slice. Same shape as the parent media_buy_deliveries[].by_package row but scoped to the window. Sellers MAY omit when per-package window-level data is unavailable; when present, package_id values MUST match the parent by_package entries.",
+                  "description": "Per-package metrics for this window slice, using the same metric envelope and package identity as the parent media_buy_deliveries[].by_package row but scoped to the window. Requested reporting_dimensions do not apply to these webhook-aligned recovery rows; sellers may include dimensional fields only as webhook payload extensions, not as a guaranteed result of the GET request. Sellers MAY omit by_package when per-package window-level data is unavailable; when present, package_id values MUST match the parent by_package entries.",
                   "items": {
                     "allOf": [
                       {
