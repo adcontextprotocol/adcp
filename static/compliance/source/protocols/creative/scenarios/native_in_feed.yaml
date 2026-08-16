@@ -341,7 +341,7 @@ phases:
           closed enum. This is a closed-set constraint violation — the seller has published
           the complete list of acceptable CTA values and any value outside that list MUST
           be rejected with CREATIVE_VALUE_NOT_ALLOWED. This code is distinct from
-          CREATIVE_REJECTED (generic content-policy failure) because the buyer can resolve
+          CREATIVE_REJECTED (generic creative-review failure) because the buyer can resolve
           mechanically by selecting a value from the published list.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
