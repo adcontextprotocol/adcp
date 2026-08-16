@@ -236,6 +236,23 @@
           },
           "additionalProperties": true
         },
+        "format": {
+          "type": "object",
+          "description": "Request delivery broken down by canonical creative format kind. This is a GET-path dimension; webhook payloads do not include requested dimensional breakdowns.",
+          "properties": {
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of format rows to return. When omitted, all rows are returned because the canonical format-kind vocabulary is small and bounded."
+            },
+            "sort_by": {
+              "$ref": "/schemas/enums/sort-metric.json",
+              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
+              "default": "spend"
+            }
+          },
+          "additionalProperties": true
+        },
         "audience": {
           "type": "object",
           "description": "Request audience segment breakdown.",

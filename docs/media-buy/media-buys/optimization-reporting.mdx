@@ -1275,12 +1275,15 @@ Delivery data can be broken down across multiple dimensions within each package.
 | Geography | `by_geo` | `geo_level`, `geo_code`, `impressions`, `spend` | `system`, `country`, `geo_name` | `supports_geo_breakdown` |
 | Device type | `by_device_type` | `device_type`, `impressions`, `spend` | — | `supports_device_type_breakdown` |
 | Device platform | `by_device_platform` | `device_platform`, `impressions`, `spend` | — | `supports_device_platform_breakdown` |
+| Creative format | `by_format` | `format_kind`, `impressions`, `spend` | Other delivery metrics | `supports_format_breakdown` |
 | Audience | `by_audience` | `audience_id`, `audience_source`, `impressions`, `spend` | `audience_name` | `supports_audience_breakdown` |
 | Demographic | `by_demographic` | `demographic`, `demographic_system`, `impressions`, `spend` | `age`, other delivery metrics | `supports_demographic_breakdown` |
 | Placement | `by_placement` | `placement_id`, `impressions`, `spend` | `publisher_domain`, `placement_name` | `supports_placement_breakdown` |
 | Spot/as-run | `by_spot` | `spot_id`, `aired_at` | `impressions`, `network`, `station`, `daypart`, other delivery metrics | `supports_spot_breakdown` |
 
 Each breakdown entry inherits all fields from `delivery-metrics` (clicks, conversions, and other optional metrics) plus its dimension-specific fields. Every entry requires the fields shown in the required fields column. Check `reporting_capabilities` on the product to discover which dimensions are available; product-level capabilities are authoritative because different products from the same seller may support different breakdowns. `supports_geo_breakdown`, `supports_demographic_breakdown`, and `supports_spot_breakdown` are structured declarations; the other capability declarations in this table are boolean flags. Within `supports_geo_breakdown`, `country` and `region` are booleans, while `metro` is keyed by `metro-system` values and native `postal_area` is keyed by ISO 3166-1 alpha-2 country with arrays of country-local `postal-system` values. Geo rows use `system` for `geo_level: "metro"` and `"postal_area"`; native postal rows also include `country`. Deprecated country-fused postal systems remain accepted for compatibility.
+
+Format breakdowns use the AdCP 3.1 canonical `format_kind` vocabulary and are GET-only. They compare creative shapes such as `video_hosted`, `native_in_feed`, and `image`; duration, dimensions, and other format-option parameters are outside this grain. Sellers combine adopter-defined shapes into one `custom` row. Buyers reconcile `by_format` and `by_creative` independently against package totals rather than against each other.
 
 Demographic targeting and demographic reporting are separate product capabilities. A product may execute an exact buyer predicate while its measurement source reports only fixed buckets. For example, a social product might declare continuous targeting for ages 18–65 but the following reporting capability:
 

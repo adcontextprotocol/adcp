@@ -26,7 +26,7 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 | `status_filter` | string \| string[] | No | Status filter: `"pending_creatives"`, `"pending_start"`, `"active"`, `"paused"`, `"completed"`. Defaults to `["active"]` when omitted. |
 | `start_date` | string | No | Report start date (YYYY-MM-DD), inclusive. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
 | `end_date` | string | No | Report end date (YYYY-MM-DD), **exclusive**. Omit for campaign lifetime data. Only accepted when product supports `date_range`. |
-| `reporting_dimensions` | object | No | Request dimensional breakdowns within `by_package`. Include a key as an empty object (e.g., `"device_type": {}`) to activate with defaults. Keys: `geo`, `device_type`, `device_platform`, `audience`, `demographic`, `placement`, `spot`. Most accept optional `limit` and `sort_by`. Demographic also accepts canonical `age_ranges`, each of which must match the product's independent demographic reporting capability exactly. `spot` accepts only `limit`, returns rows by `aired_at` ascending, and defaults to the complete log for the reporting period. Geo requires `geo_level`; include `system` for metro/postal levels. Unsupported dimensions are silently omitted; unsupported requested demographic ranges return [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); malformed requests return a validation error. |
+| `reporting_dimensions` | object | No | Request dimensional breakdowns within `by_package`. Include a key as an empty object (e.g., `"device_type": {}`) to activate with defaults. Keys: `geo`, `device_type`, `device_platform`, `format`, `audience`, `demographic`, `placement`, `spot`. Most accept optional `limit` and `sort_by`. `format` groups rows by canonical `format_kind`, not duration or other format-option parameters. Demographic also accepts canonical `age_ranges`, each of which must match the product's independent demographic reporting capability exactly. `spot` accepts only `limit`, returns rows by `aired_at` ascending, and defaults to the complete log for the reporting period. Geo requires `geo_level`; include `system` for metro/postal levels. Unsupported dimensions are silently omitted; unsupported requested demographic ranges return [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); malformed requests return a validation error. |
 | `time_granularity` | string | No | Per-window slice granularity for pull recovery, matching `reporting_webhook.reporting_frequency` vocabulary (`hourly`, `daily`, `weekly`, `monthly`, `quarterly`, `post_campaign`). When set, the response includes `windows[]` slices shape-aligned with webhook fires at the same granularity. Capability-scoped — value MUST be in the product's `reporting_capabilities.windowed_pull_granularities`. See [Windowed pull recovery](#windowed-pull-recovery). |
 | `include_window_breakdown` | boolean | No | When `true` (and `time_granularity` is set), include the `windows[]` array on each media buy. Defaults to `false`. Ignored when `time_granularity` is omitted. |
 
@@ -886,6 +886,7 @@ When you include `reporting_dimensions` in the request, the response includes di
   "reporting_dimensions": {
     "geo": { "geo_level": "metro", "system": "nielsen_dma", "limit": 10 },
     "device_type": {},
+    "format": { "sort_by": "spend" },
     "demographic": {
       "age_ranges": [{ "min": 26, "max": 30, "include_unknown": false }]
     },
@@ -895,7 +896,7 @@ When you include `reporting_dimensions` in the request, the response includes di
 }
 ```
 
-Geo, device, audience, demographic, and placement dimensions accept optional `limit` and `sort_by` (any value from the `sort-metric` enum; defaults to `spend`). Geo requires `geo_level` (`country`, `region`, `metro`, `postal_area`). Demographic accepts optional canonical `age_ranges`. Each requested range must be supported by the product's `supports_demographic_breakdown.age`: `exact_predicates` accepts ranges within its declared bounds, while `enumerated_intervals` accepts only exact declared intervals. Unsupported ranges return [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); the seller never substitutes a wider or narrower bucket. Omitting `age_ranges` requests the product's native declared breakdown. The spot log accepts only `limit`; its canonical order is `aired_at` ascending. Breakdowns are per-dimension only — cross-dimensional intersections are not supported.
+Geo, device, format, audience, demographic, and placement dimensions accept optional `limit` and `sort_by` (any value from the `sort-metric` enum; defaults to `spend`). Geo requires `geo_level` (`country`, `region`, `metro`, `postal_area`). Demographic accepts optional canonical `age_ranges`. Each requested range must be supported by the product's `supports_demographic_breakdown.age`: `exact_predicates` accepts ranges within its declared bounds, while `enumerated_intervals` accepts only exact declared intervals. Unsupported ranges return [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); the seller never substitutes a wider or narrower bucket. Omitting `age_ranges` requests the product's native declared breakdown. The spot log accepts only `limit`; its canonical order is `aired_at` ascending. Breakdowns are per-dimension only — cross-dimensional intersections are not supported.
 
 ### Available dimensions
 
@@ -904,12 +905,15 @@ Geo, device, audience, demographic, and placement dimensions accept optional `li
 | Geography | `by_geo` | `geo_level`, `geo_code`, `impressions`, `spend` | `system`, `country`, `geo_name` | `supports_geo_breakdown` |
 | Device type | `by_device_type` | `device_type`, `impressions`, `spend` | — | `supports_device_type_breakdown` |
 | Device platform | `by_device_platform` | `device_platform`, `impressions`, `spend` | — | `supports_device_platform_breakdown` |
+| Creative format | `by_format` | `format_kind`, `impressions`, `spend` | Other delivery metrics | `supports_format_breakdown` |
 | Audience | `by_audience` | `audience_id`, `audience_source`, `impressions`, `spend` | `audience_name` | `supports_audience_breakdown` |
 | Demographic | `by_demographic` | `demographic`, `demographic_system`, `impressions`, `spend` | `age`, other delivery metrics | `supports_demographic_breakdown` |
 | Placement | `by_placement` | `placement_id`, `impressions`, `spend` | `publisher_domain`, `placement_name` | `supports_placement_breakdown` |
 | Spot/as-run | `by_spot` | `spot_id`, `aired_at` | `impressions`, `network`, `station`, `daypart`, other delivery metrics | `supports_spot_breakdown` |
 
 Check `reporting_capabilities` on the product to discover which dimensions are available. Product-level capabilities are authoritative since different products from the same seller may support different breakdowns.
+
+`by_format` uses the AdCP 3.1 canonical `format_kind` vocabulary. It answers cross-kind questions such as how `video_hosted`, `native_in_feed`, and `image` delivery compare; it does not distinguish two creatives that share a format kind but differ by duration, dimensions, or another format-option parameter. Sellers MUST combine adopter-defined shapes into one `custom` row. `by_format` and `by_creative` are independent breakdowns: buyers reconcile each against package totals, not against each other. Requested dimensional breakdowns, including `by_format`, are GET-only and do not appear in reporting webhooks.
 
 `demographic_targeting` declares what the product can execute; `supports_demographic_breakdown` separately declares what it can measure and report. A product can therefore target 26–30 but disclose fixed 25–34 reporting. Buyers MUST NOT infer exact reporting from targeting capability or parse equivalence from a native label. `demographic` uses the notation of its accompanying `demographic_system`; canonical `age`, when present, is the authoritative machine-comparable interval.
 
