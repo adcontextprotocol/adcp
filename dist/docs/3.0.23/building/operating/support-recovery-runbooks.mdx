@@ -1,0 +1,222 @@
+---
+title: "Support recovery runbooks"
+sidebarTitle: "Support recovery"
+description: "Operational runbooks for escalation SLA follow-up, certification completion recovery, domain verification, and registry crawl recovery."
+"og:title": "AdCP - Support recovery runbooks"
+---
+
+# Support recovery runbooks
+
+These runbooks cover support cases that should not sit silently in Addie, certification, or registry queues.
+
+## Escalation SLA follow-up
+
+Addie support requests are visible in the admin escalation dashboard and in the requester's dashboard. The SLA enforcement job runs hourly.
+
+Admin follow-up rules:
+
+- Urgent open requests are re-surfaced to the configured private escalation Slack channel after 4 hours.
+- Other open requests are re-surfaced after 24 hours.
+- Acknowledged or in-progress requests are re-surfaced after 24 hours without an update.
+- Requesters receive a visible dashboard update after 24 hours and can add details or close the request themselves.
+
+Operator checklist:
+
+1. Open `/admin/escalations`.
+2. Filter to active requests and look for "Needs pickup" or "Needs update".
+3. Acknowledge or move the request to in progress when a human owns it.
+4. Add requester-visible notes when the requester needs status.
+5. Resolve the request when fixed, and notify the user when appropriate.
+
+If Slack notifications are missing, configure the escalation channel in `/admin/settings`.
+
+## Certification completion recovery
+
+The certification recovery job runs every 6 hours. It looks for passed attempts that did not finish module or credential reconciliation.
+
+Automatic behavior:
+
+- Reconcile the passed attempt to `learner_progress`.
+- Re-run credential eligibility and awarding.
+- File a deduplicated escalation if automatic repair cannot award the credential.
+
+Manual repair:
+
+1. Open `/admin/certification`.
+2. In "Attempts needing attention", click "Reconcile credentials" for passed attempts.
+3. If the attempt still has warnings, open the learner detail panel.
+4. Use "Admin completion repair" only when there is a teaching checkpoint for the learner, module, and Addie thread.
+5. Run "Issue missing badges" when the local credential exists but Certifier badge fields are missing.
+6. Record the escalation ID or reason in the note field.
+
+Do not create a duplicate manual credential unless the learner record already proves the module completion. Repair the learner record first, then issue or backfill the credential.
+
+## Domain verification recovery
+
+Use admin domain verification recovery when a member has published the WorkOS DNS TXT record but the self-service verify path is blocked, rate-limited, or the webhook did not update local state.
+
+This is an internal support workflow. Use authenticated admin domain tooling or the private ops runbook; public docs should not expose admin endpoint paths, bearer-token examples, or WorkOS challenge-token handling.
+
+Before closing a registry/domain escalation as resolved, confirm the registry state, not just the AAO UI:
+
+- The target domain has a local `organization_domains` row for the intended org.
+- That row is `verified=true`.
+- The row is not attached to the member's personal workspace when the support request is for a company org.
+- The registry no longer returns `member:null` for the relevant domain.
+- The requested agent hostname is covered by a verified domain row on the registering org.
+
+If WorkOS shows a verified domain but the local rows are missing, stale, or attached to another org, run the WorkOS-domain reconciliation action for the intended org. This replays WorkOS as the source of truth, mirrors domains into `organization_domains`, and re-runs brand-registry sync for verified domains. It does not bypass DNS verification; WorkOS still has to know the domain/challenge first.
+
+For personal-workspace/company-org split incidents, run the read-only admin preview first:
+
+- Use the private domain-split preview from the internal ops runbook or admin UI.
+- The preview reports WorkOS state, local `organization_domains`, member-profile presence, org membership, and the next safe action.
+- Only run the reconciliation action when the preview says WorkOS already verifies the domain for the company org.
+- If billing appears attached to the personal workspace, use the separate Stripe customer preview/confirm workflow after human review; do not move billing in the domain repair path.
+
+Outcomes:
+
+- `success: true`: WorkOS confirmed DNS and local `organization_domains` was reconciled.
+- `still_pending`: WorkOS still cannot see the TXT record. Ask the member to confirm the record name and token.
+- `no_challenge`: issue a new domain challenge from the member domain settings or admin domain tooling.
+
+DNS propagation normally takes minutes, but stale provider caches can last longer. Do not keep retrying every few seconds; fix the DNS record and retry after propagation.
+
+If the request is invalid or suspicious, close it as `wont_do` with notes. Do not mark a registry/domain escalation `resolved` while the local domain row is missing, unverified, or attached to the wrong org.
+
+## Registry and heartbeat recovery
+
+Use these triggers after a member fixes `adagents.json`, `brand.json`, authorization, or endpoint health.
+
+Publisher and brand crawl requests require an authenticated member or admin request and a JSON `domain` body:
+
+```bash
+curl -X POST "https://agenticadvertising.org/api/registry/crawl-request" \
+  -H "Content-Type: application/json" \
+  -b "$SESSION_COOKIE" \
+  --data '{"domain":"example.publisher"}'
+```
+
+Expected accepted response:
+
+```json
+{
+  "message": "Crawl request accepted",
+  "domain": "example.publisher",
+  "crawl_request_id": "8d127de4-5568-4756-b66c-dd9b0780fd8f"
+}
+```
+
+Acceptance means the request was committed to the durable PostgreSQL queue; it
+does not mean the crawl has completed. Check the request with the same member
+or admin session:
+
+```bash
+CRAWL_REQUEST_ID="8d127de4-5568-4756-b66c-dd9b0780fd8f"
+curl "https://agenticadvertising.org/api/registry/crawl-request/$CRAWL_REQUEST_ID" \
+  -b "$SESSION_COOKIE"
+```
+
+The lifecycle is `queued` → `running` → `completed` or `invalid`. Transient
+failures move through `retrying`; full-crawl contention produces `deferred`
+without consuming an attempt. `failed` is terminal after the bounded retry
+budget. Request history is retained for 30 days.
+
+If a worker exits while a request is running, its two-minute lease expires and
+another worker reclaims the request. Do not manually change queue rows. For a
+terminal `failed` request, correct the reported error category and submit a new
+crawl request after the per-domain rate-limit window; the old request remains
+as the audit record.
+
+Workers claim at most the configured crawl concurrency per tick. If a periodic
+full crawl is active, claimed requests are persisted as `deferred`, their claim
+attempt is refunded, and they become eligible again after 30 seconds. This
+makes contention visible without spending the retry budget or performing
+origin work. On worker startup, the durable queue starts immediately and the
+initial full crawl waits a fixed 30 seconds. This gives already-due requests a
+bounded opportunity to run after a deploy. After that window, the full crawl
+holds an exclusive PostgreSQL intent lock while waiting for active publisher
+crawls, including across bounded execution-lock timeouts and retries. New
+publisher crawls therefore defer instead of starving the six-hour full crawl.
+Each active publisher crawl holds a PostgreSQL shared global execution lock and
+an exclusive per-domain lock for the fetch/write lifecycle; the periodic full
+crawl holds the exclusive global lock. These session locks use dedicated
+connections outside the application pool, so crawl concurrency does not consume
+the connections needed by heartbeats, status reads, or mirror transactions. A
+lost worker session releases its locks automatically. The locks prevent an
+expired or duplicate attempt from
+overwriting newer mirror state. The mirror transaction
+also verifies the current request lease token before committing. Publisher GET
+requests do not acquire these locks and continue to serve the last committed
+mirror state while crawling is delayed or unavailable.
+
+Routine dedicated lock-session operations are bounded at 10 seconds. Full-crawl
+intent acquisition may wait 10 seconds, with a 10-second socket-operation
+margin. The periodic full crawl may wait up to two minutes for the global lock,
+plus the same operation margin. A missed keepalive or unlock deadline
+invalidates the lock and forcibly closes its dedicated connection so a wedged
+socket cannot hold a queue worker or request lease indefinitely.
+
+For the first deployment, use Fly's `immediate` strategy and leave
+`PUBLISHER_CRAWL_QUEUE_ENABLED=false`. Immediate replacement prevents an old
+image, which does not participate in the new PostgreSQL execution locks, from
+overlapping a new worker. After every machine runs the lock-participating image,
+set the gate to `true` and restart that image before accepting requests. Keep
+that consumer-capable image available for rollback; rolling back to an older
+image pauses queued work and removes status lookup until the new image is
+restored, but does not delete committed requests. Restore the normal rolling
+strategy only after every deployable image participates in these locks.
+
+Admission returns `crawl_queue_at_capacity` with `503` and `Retry-After` when
+10,000 active requests are already queued or running. This is backpressure, not
+acceptance; retry later rather than inserting or editing queue rows manually.
+
+Operational logs include `crawl_request_id`, attempt count,
+`accepted_to_terminal_ms`, queue depth, oldest-due lateness, reclaimed-lease
+count, and final-attempt lease expirations. A `Publisher crawl request queue
+requires attention` warning means a lease is expired or due work is more than
+five minutes late; requests intentionally waiting in retry backoff do not
+trigger it. Confirm that the worker process is healthy, then use the status
+endpoint to determine whether the request recovered before escalating.
+
+For brand manifests, use the same body shape:
+
+```bash
+curl -X POST "https://agenticadvertising.org/api/registry/brand-crawl-request" \
+  -H "Content-Type: application/json" \
+  -b "$SESSION_COOKIE" \
+  --data '{"domain":"example.brand"}'
+```
+
+Expected accepted response:
+
+```json
+{ "message": "Brand crawl request accepted", "domain": "example.brand" }
+```
+
+Agent refresh and heartbeat requeue use an encoded agent URL. The caller must own the agent or be an AAO admin.
+
+```bash
+AGENT_URL="https://seller.example/adcp"
+ENCODED_URL="$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$AGENT_URL")"
+
+curl -X POST "https://agenticadvertising.org/api/registry/agents/$ENCODED_URL/refresh" \
+  -b "$SESSION_COOKIE"
+```
+
+Refresh returns the latest probe result or a `409`, `429`, or `502` error if monitoring is paused, rate-limited, or the probe fails.
+
+Queue heartbeat without synchronous probing when the agent should be checked by the normal monitor:
+
+```bash
+curl -X POST "https://agenticadvertising.org/api/registry/agents/$ENCODED_URL/monitoring/requeue" \
+  -b "$SESSION_COOKIE"
+```
+
+Expected response:
+
+```json
+{ "requeued": true }
+```
+
+Use refresh for a specific agent after endpoint or capability fixes. Use crawl request for publisher authorization changes.
