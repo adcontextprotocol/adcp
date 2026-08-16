@@ -15,7 +15,7 @@ brief; they put machine-representable facts in typed fields.
 |---|---|---|
 | `list_products` | Not accepted | Read matching product offers without seller curation |
 | `request_proposals` | Required | Ask the seller to curate one or more draft plans |
-| `refine_proposals` | Not repeated | Revise a proposal with structured `criteria`, semantic `instructions`, or both; or finalize a draft without changing terms |
+| `refine_proposals` | Not repeated | Revise a proposal with structured fields, a semantic `ask`, or both; or finalize a draft without changing terms |
 | `get_products` | Depends on `buying_mode` | Compatibility facade for the same list, proposal, and refinement behaviors |
 
 For `buying_mode: "brief"`, `brief` is required.
@@ -38,7 +38,7 @@ state behavior, not whether filters apply. The split tasks name them
 | `criteria.targeting_overlay` | Which inventory or impressions may deliver; values known now | `geo_countries: ["US"]` |
 | `criteria.required_overlay_support` | Targeting dimensions the buyer must select independently on packages later | Nielsen DMA support |
 | refinement `criteria` | Structured changes to a referenced proposal | Replace the country overlay |
-| refinement `instructions` | Semantic changes without a structured field | Favor premium adventure contexts |
+| refinement `ask` | Semantic changes without a structured field | Favor premium adventure contexts |
 
 Anything that has a structured AdCP field SHOULD use it. This costs fewer
 tokens, can be validated and applied by code, and avoids lossy prose extraction.
@@ -88,7 +88,7 @@ materially affects product eligibility, pricing, or forecasting, the seller
 MUST confirm that interpretation in response-root
 `targeting_resolution.brief_targeting` for `request_proposals` and
 `get_products`, or in the affected `refine_proposals.results[]` entry when the
-interpretation came from refinement instructions. In other cases the
+interpretation came from the refinement `ask`. In other cases the
 seller SHOULD still confirm it as a best practice. Requirements without a typed
 AdCP representation remain visible in the natural-language response.
 
@@ -165,9 +165,9 @@ Buyers may still send `offer_filters`, `targeting_overlay`, and
 proposal mode. The legacy `get_products` wholesale mode has the same rule.
 
 For `action: "revise"`, refine requests are self-contained through opaque
-product/proposal IDs plus structured `criteria`, semantic `instructions`, or
-both. `action: "finalize"` changes no commercial or targeting terms and cannot
-carry either field. See [Refining products and proposals](/docs/media-buy/product-discovery/refinement).
+product/proposal IDs plus structured fields, a semantic `ask`, or both.
+`action: "finalize"` changes no commercial or targeting terms and cannot carry
+revision fields. See [Refining products and proposals](/docs/media-buy/product-discovery/refinement).
 
 ## Implementation checklist
 

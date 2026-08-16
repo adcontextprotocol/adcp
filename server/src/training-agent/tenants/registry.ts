@@ -181,7 +181,10 @@ function pickStateStore(): AdcpStateStore {
   return new PostgresStateStore(lazyPool);
 }
 
-function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboardCompat']): CreateAdcpServerFromPlatformOptions {
+function buildDefaultServerOptions(
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+  taskRegistry: TaskRegistry = pickTaskRegistry(),
+): CreateAdcpServerFromPlatformOptions {
   const projectionAdapters = creativeProjectionAdapters();
   return {
     name: 'adcp-training-agent',
@@ -196,7 +199,7 @@ function buildDefaultServerOptions(storyboardCompat?: TrainingContext['storyboar
     // default. Preserve the training agent's existing integration contract
     // while its consumers migrate to inline-terminal handling.
     autoEmitCompletionWebhooks: true,
-    taskRegistry: pickTaskRegistry(),
+    taskRegistry,
     taskStore: sharedTrainingTaskStore,
     stateStore: pickStateStore(),
     mergeSeam: 'log-once',
@@ -268,15 +271,16 @@ export function createRegistryHolder(options: { storyboardCompat?: TrainingConte
         const t0 = Date.now();
         logger.info('Tenant registry init starting');
         const hostBase = buildHostBaseUrl();
+        const taskRegistry = pickTaskRegistry();
         const reg = createTenantRegistry({
-          defaultServerOptions: buildDefaultServerOptions(options.storyboardCompat),
+          defaultServerOptions: buildDefaultServerOptions(options.storyboardCompat, taskRegistry),
           jwksValidator: noopJwksValidator,
           autoValidate: true,
         });
         const tCreate = Date.now();
         const configs = [
           { id: 'signals', cfg: buildSignalsTenantConfig(hostBase, options) },
-          { id: 'sales', cfg: buildSalesTenantConfig(hostBase, options) },
+          { id: 'sales', cfg: buildSalesTenantConfig(hostBase, options, taskRegistry) },
           { id: 'governance', cfg: buildGovernanceTenantConfig(hostBase, options) },
           { id: 'creative', cfg: buildCreativeTenantConfig(hostBase, options) },
           { id: 'creative-builder', cfg: buildCreativeBuilderTenantConfig(hostBase, options) },

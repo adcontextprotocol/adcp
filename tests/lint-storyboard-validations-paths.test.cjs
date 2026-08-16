@@ -8,7 +8,8 @@
  *      asserts on a path that doesn't resolve in the response schema.
  *   3. Non-path-bearing checks (error_code, response_schema, http_status,
  *      etc.) are silently skipped — they have no path to validate.
- *   4. The path resolver follows $ref / oneOf / anyOf / allOf / items.
+ *   4. The path resolver follows $ref / oneOf / anyOf / allOf / items and
+ *      schema-valued additionalProperties for typed dynamic maps.
  *   5. Pure extension points (additionalProperties: true with no
  *      properties / variants — like core/context.json and error.details)
  *      accept any further segments without flagging.
@@ -127,6 +128,36 @@ test('field_contains accepts wildcard paths that resolve through array items', (
 
   const violations = lintDoc(doc, '/synth/test.yaml');
   assert.deepEqual(violations, []);
+});
+
+test('pathResolves follows local definitions through typed dynamic maps', () => {
+  const schema = {
+    definitions: {
+      systemSupport: {
+        type: 'object',
+        properties: {
+          countries: {
+            type: 'object',
+            additionalProperties: {
+              type: 'array',
+              items: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    properties: {
+      systems: {
+        type: 'object',
+        additionalProperties: { $ref: '#/definitions/systemSupport' },
+      },
+    },
+  };
+
+  assert.equal(
+    pathResolves(schema, parsePath('systems.geonames.countries.NL[*]')),
+    true,
+  );
 });
 
 test('dependency_impairment verify_impaired matches impairment entries without index coupling', () => {
@@ -264,6 +295,24 @@ test('pure extension points only loosen when there are no defined properties', (
   // `not_a_real_field` does NOT resolve — additionalProperties: true at the
   // root doesn't make typos legal because `properties` is non-empty
   assert.equal(pathResolves(schema, parsePath('not_a_real_field')), false);
+});
+
+test('schema-valued additionalProperties resolves typed dynamic map keys', () => {
+  const schema = loadSchema('protocol/get-adcp-capabilities-response.json');
+  assert.equal(
+    pathResolves(
+      schema,
+      parsePath('media_buy.execution.targeting.geo_places.geonames.catalog.current_version'),
+    ),
+    true,
+  );
+  assert.equal(
+    pathResolves(
+      schema,
+      parsePath('media_buy.execution.targeting.geo_places.geonames.not_a_real_field'),
+    ),
+    false,
+  );
 });
 
 test('pathResolves descends through error.json $ref for errors[0].code', () => {
@@ -517,6 +566,7 @@ test('PATH_BEARING_CHECKS is the documented set', () => {
   assert.ok(PATH_BEARING_CHECKS.has('field_absent'));
   assert.ok(PATH_BEARING_CHECKS.has('field_pattern'));
   assert.ok(PATH_BEARING_CHECKS.has('field_contains'));
+  assert.ok(PATH_BEARING_CHECKS.has('all_fields_in_context_array'));
   assert.ok(PATH_BEARING_CHECKS.has('envelope_field_present'));
   assert.ok(PATH_BEARING_CHECKS.has('envelope_field_absent'));
   assert.ok(PATH_BEARING_CHECKS.has('envelope_field_pattern'));

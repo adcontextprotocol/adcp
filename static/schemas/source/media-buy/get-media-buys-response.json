@@ -24,6 +24,13 @@
             "description": "Seller's unique identifier for the media buy",
             "x-entity": "media_buy"
           },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "\\S",
+            "description": "Persisted human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. Sellers MUST include name when the media buy was created through AdCP with name. Sellers MAY omit it for media buys created outside AdCP or created without name. This display label is not an identifier or financial reference."
+          },
           "accepted_proposal_id": {
             "type": "string",
             "minLength": 1,
@@ -94,6 +101,15 @@
             "type": "number",
             "description": "Hard aggregate lifetime budget, denominated in media_buy.currency",
             "minimum": 0
+          },
+          "daily_budget_cap": {
+            "type": "number",
+            "description": "Current hard aggregate spend ceiling per calendar day, denominated in media_buy.currency. It bounds total spend without allocating or reserving package spend.",
+            "minimum": 0
+          },
+          "budget_cap_timezone": {
+            "type": "string",
+            "description": "IANA timezone defining the shared calendar-day boundary for every aggregate and package daily cap. Present whenever any daily cap is set on the media buy."
           },
           "budget_allocation": {
             "allOf": [
@@ -278,6 +294,11 @@
                   "description": "Accepted soft lifetime spend target for this package under seller-optimized allocation.",
                   "minimum": 0
                 },
+                "daily_budget_cap": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Current hard package spend ceiling per shared media-buy cap day, denominated in media_buy.currency. It is a subordinate ceiling, not a reserved allocation; media_buy.budget_cap_timezone defines the day boundary."
+                },
                 "currency": {
                   "type": "string",
                   "description": "Legacy/readback package denomination for buys created outside the canonical 3.2 path. For AdCP-authored media buys this MUST equal media_buy.currency; canonical package budget and BiddingPolicy values always use media_buy.currency. Snapshot currency may still identify externally reported spend denomination.",
@@ -340,7 +361,7 @@
                 },
                 "targeting_overlay": {
                   "$ref": "/schemas/core/targeting.json",
-                  "description": "Complete effective targeting applied to this package, including configured-product targeting and the most recent package-specific overlay. Sellers SHOULD echo persisted targeting so buyers can verify stored state without replaying requests. Sellers using placement, property-list, or collection-list targeting MUST include the committed inventory selection here. placement_selection mode default SHOULD resolve to mode selected with committed refs when enumerable."
+                  "description": "Complete effective targeting applied to this package, including configured-product targeting and the most recent package-specific overlay. Sellers SHOULD echo persisted targeting so buyers can verify stored state without replaying requests. Sellers MUST echo geo_places and geo_places_exclude whenever either was persisted, including the exact applied system_version and normalized values, so buyers can audit catalog-backed targeting. Sellers using placement, property-list, or collection-list targeting MUST include the committed inventory selection here. placement_selection mode default SHOULD resolve to mode selected with committed refs when enumerable."
                 },
                 "targeting_resolution": {
                   "$ref": "/schemas/core/package-targeting-resolution.json",
@@ -828,7 +849,7 @@
     },
     "errors": {
       "type": "array",
-      "description": "Task-specific errors (e.g., media buy not found)",
+      "description": "Task-specific errors. A read may return media_buys plus nonfatal resource-state errors. If a pinned place target becomes unexecutable, sellers MUST include PLACE_TARGET_UNAVAILABLE with recovery=correctable, field pointing to the exact media_buys[N].packages[M].targeting_overlay.geo_places[_exclude][A].values[V] response path, and details containing media_buy_id, package_id, system, system_version, country, place_type, and value. The persisted target remains echoed until an intentional update replaces it.",
       "items": {
         "$ref": "/schemas/core/error.json"
       }

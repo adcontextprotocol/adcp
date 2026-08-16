@@ -3,6 +3,7 @@
   "$id": "/schemas/account/report-usage-request.json",
   "title": "Report Usage Request",
   "description": "Reports how a vendor's service was consumed after campaign delivery. Used by orchestrators (DSPs, storefronts) to inform vendor agents (signals, governance, creative, or — when the receiving agent is the seller of the media buy itself — a sales agent for buyer-attested or vendor-attested billing reconciliation) what was used so the receiver can track earned revenue and verify billing. Records can span multiple accounts and campaigns in a single request. When the buy's `measurement_terms.billing_measurement.vendor` names a party other than the seller's own ad server, that party (or the buyer on its behalf) pushes final measurements via this task; the seller invoices against those final records. See [Billing authority](/docs/media-buy/advanced-topics/billing-authority) for the end-to-end flow.",
+  "x-tool-summary": "Report vendor-service consumption and final measurements for revenue tracking and billing reconciliation.",
   "type": "object",
   "allOf": [
     {

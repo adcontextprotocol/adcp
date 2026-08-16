@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-overlay-requirements.json",
   "title": "Targeting Overlay Requirements",
-  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request shape deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: a requirement value of true matches either product support true or any valid support object for that dimension; an object requirement matches product support true or a support object in which every requested boolean is true and every requested array is a subset of the corresponding product array. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request, including systems, do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching.",
+  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request shape deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: where a field permits a boolean form, a requirement value of true matches product support true or any valid positive support object, and product support true satisfies every protocol-valid structured requirement. Otherwise, structured product support must contain the structured requirement. For geo_regions and geo_regions_exclude, every requested country must exist; requested all_values requires supported all_values; and requested values must be a subset of supported values unless support declares all_values. For geo_places and geo_places_exclude, every requested system and country key must exist and each requested place-type and system-version array must be a subset of the corresponding product array. Include and exclude fields match independently. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching.",
   "type": "object",
   "definitions": {
     "required": { "type": "boolean", "const": true },
@@ -41,15 +41,58 @@
           "additionalProperties": false
         }
       ]
+    },
+    "browserRequirement": {
+      "anyOf": [
+        { "$ref": "#/definitions/required" },
+        {
+          "type": "object",
+          "description": "Require later package-level selection for the listed canonical browser families. The requirement matches unrestricted true support or structured support containing every requested family.",
+          "properties": {
+            "families": {
+              "type": "array",
+              "items": { "$ref": "/schemas/enums/browser-family.json" },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": ["families"],
+          "additionalProperties": false
+        }
+      ]
     }
   },
   "properties": {
     "geo_countries": { "$ref": "#/definitions/required" },
     "geo_countries_exclude": { "$ref": "#/definitions/required" },
-    "geo_regions": { "$ref": "#/definitions/required" },
-    "geo_regions_exclude": { "$ref": "#/definitions/required" },
+    "geo_regions": {
+      "anyOf": [
+        { "$ref": "#/definitions/required" },
+        {
+          "$ref": "/schemas/core/geo-region-requirement.json",
+          "x-adcp-schema-uri": "/schemas/core/geo-region-requirement.json"
+        }
+      ]
+    },
+    "geo_regions_exclude": {
+      "anyOf": [
+        { "$ref": "#/definitions/required" },
+        {
+          "$ref": "/schemas/core/geo-region-requirement.json",
+          "x-adcp-schema-uri": "/schemas/core/geo-region-requirement.json"
+        }
+      ]
+    },
     "geo_metros": { "$ref": "#/definitions/metroRequirement" },
     "geo_metros_exclude": { "$ref": "#/definitions/metroRequirement" },
+    "geo_places": {
+      "$ref": "/schemas/core/geo-place-requirement.json",
+      "x-adcp-schema-uri": "/schemas/core/geo-place-requirement.json"
+    },
+    "geo_places_exclude": {
+      "$ref": "/schemas/core/geo-place-requirement.json",
+      "x-adcp-schema-uri": "/schemas/core/geo-place-requirement.json"
+    },
     "geo_postal_areas": {
       "anyOf": [
         { "$ref": "#/definitions/required" },
@@ -114,6 +157,8 @@
     "device_platform_exclude": { "$ref": "#/definitions/required" },
     "device_type": { "$ref": "#/definitions/required" },
     "device_type_exclude": { "$ref": "#/definitions/required" },
+    "browser": { "$ref": "#/definitions/browserRequirement" },
+    "browser_exclude": { "$ref": "#/definitions/browserRequirement" },
     "store_catchments": { "$ref": "#/definitions/required" },
     "language": { "$ref": "#/definitions/required" },
     "keyword_targets": { "$ref": "#/definitions/keywordRequirement" },

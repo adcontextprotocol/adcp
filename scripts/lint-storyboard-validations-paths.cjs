@@ -50,6 +50,7 @@ const PATH_BEARING_CHECKS = new Set([
   'field_absent',
   'field_pattern',
   'field_contains',
+  'all_fields_in_context_array',
   'envelope_field_present',
   'envelope_field_absent',
   'envelope_field_pattern',
@@ -182,24 +183,53 @@ function isPureExtensionPoint(node) {
   return true;
 }
 
-function pathResolves(node, segments, seen = new Set()) {
+function resolveLocalRef(root, ref) {
+  if (!root || typeof root !== 'object' || typeof ref !== 'string' || !ref.startsWith('#/')) {
+    return null;
+  }
+  return ref
+    .slice(2)
+    .split('/')
+    .map((token) => token.replace(/~1/g, '/').replace(/~0/g, '~'))
+    .reduce(
+      (current, token) =>
+        current && typeof current === 'object' ? current[token] : undefined,
+      root,
+    );
+}
+
+function pathResolves(node, segments, seen = new Set(), root = node) {
   if (!node || typeof node !== 'object') return false;
   if (segments.length === 0) return true;
 
   if (node.$ref) {
-    if (seen.has(node.$ref)) return false;
+    const refKey = `${root?.$id || '<inline>'}:${node.$ref}`;
+    if (seen.has(refKey)) return false;
     const next = new Set(seen);
-    next.add(node.$ref);
+    next.add(refKey);
+    if (node.$ref.startsWith('#/')) {
+      return pathResolves(resolveLocalRef(root, node.$ref), segments, next, root);
+    }
     const resolved = loadSchema(node.$ref);
-    return pathResolves(resolved, segments, next);
+    return pathResolves(resolved, segments, next, resolved);
   }
 
   const [seg, ...rest] = segments;
 
-  if (/^\d+$/.test(seg) || seg === '*') {
-    if (node.items && pathResolves(node.items, rest, seen)) return true;
-  } else if (node.properties && Object.prototype.hasOwnProperty.call(node.properties, seg)) {
-    if (pathResolves(node.properties[seg], rest, seen)) return true;
+  if ((/^\d+$/.test(seg) || seg === '*') && node.items) {
+    if (pathResolves(node.items, rest, seen, root)) return true;
+  } else {
+    const isDeclaredProperty =
+      node.properties && Object.prototype.hasOwnProperty.call(node.properties, seg);
+    if (isDeclaredProperty) {
+      if (pathResolves(node.properties[seg], rest, seen, root)) return true;
+    } else if (
+      node.additionalProperties &&
+      typeof node.additionalProperties === 'object' &&
+      pathResolves(node.additionalProperties, rest, seen, root)
+    ) {
+      return true;
+    }
   }
 
   // Union semantics across `oneOf` / `anyOf` / `allOf` — see
@@ -207,7 +237,7 @@ function pathResolves(node, segments, seen = new Set()) {
   const variants = node.oneOf || node.anyOf || node.allOf;
   if (Array.isArray(variants)) {
     for (const variant of variants) {
-      if (pathResolves(variant, segments, seen)) return true;
+      if (pathResolves(variant, segments, seen, root)) return true;
     }
   }
 
@@ -434,7 +464,11 @@ function lintDoc(doc, filePath, allowlist = []) {
     for (const { v, index: i } of pathValidations) {
       const rawPath = v.path;
       const segments = parsePath(rawPath);
-      if (segments.includes('*') && v.check !== 'field_contains') {
+      if (
+        segments.includes('*') &&
+        v.check !== 'field_contains' &&
+        v.check !== 'all_fields_in_context_array'
+      ) {
         violations.push({
           rule: 'wildcard_unsupported_check',
           filePath,
@@ -529,7 +563,7 @@ const RULE_MESSAGES = {
     'Verify the discriminator value against the response schema.',
   wildcard_unsupported_check: ({ validationPath, check }) =>
     `validations[].path \`${validationPath}\` uses [*] but check \`${check}\` does not support wildcard ` +
-    'runtime semantics. Use `field_contains` for wildcard membership checks, or use a concrete index.',
+    'runtime semantics. Use `field_contains` or `all_fields_in_context_array` for wildcard membership checks, or use a concrete index.',
 };
 
 function formatMessage(violation) {

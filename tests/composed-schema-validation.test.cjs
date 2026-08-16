@@ -1689,12 +1689,89 @@ async function runTests() {
     '/schemas/protocol/get-adcp-capabilities-response.json',
     {
       ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
       account: {
         supported_billing: ['operator'],
         supported_account_currency_modes: ['account_default']
       }
     },
     'Account currency modes reject non-standard values'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        supported_account_currency_modes: ['fixed'],
+        timezone: {
+          mode: 'account_fixed',
+          account_selection: 'buyer_selected',
+          supported_timezones: ['America/New_York', 'UTC']
+        }
+      }
+    },
+    'Account timezone capability accepts buyer-selected fixed account zones'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        timezone: { mode: 'seller_fixed', fixed_timezone: 'UTC' }
+      }
+    },
+    'Account timezone capability accepts one seller-fixed zone'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        timezone: {
+          mode: 'account_fixed',
+          account_selection: 'seller_assigned'
+        }
+      }
+    },
+    'Account timezone capability accepts seller-assigned account zones'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        timezone: { mode: 'seller_fixed' }
+      }
+    },
+    'Seller-fixed account timezone requires fixed_timezone'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        timezone: {
+          mode: 'account_fixed',
+          account_selection: 'buyer_selected'
+        }
+      }
+    },
+    'Buyer-selected account timezone requires supported_timezones'
   );
 
   await testSchemaValidation(
@@ -3104,11 +3181,12 @@ async function runTests() {
         operator: 'buyer.example',
         operator_unit: { id: '234284238', name: 'Acme EMEA' },
         currency: 'EUR',
+        timezone: 'Europe/Amsterdam',
         sandbox: true
       },
       brief: 'Reach streaming audio listeners in Rome'
     },
-    'request_proposals accepts country, operator-unit, and currency qualifiers in its natural account key'
+    'request_proposals accepts country, operator-unit, currency, and timezone qualifiers in its natural account key'
   );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-request.json',
@@ -3133,10 +3211,509 @@ async function runTests() {
         operator: 'nova-athletics.example',
         operator_unit: { id: '234284238', name: 'Nova EMEA' },
         currency: 'EUR',
+        timezone: 'Europe/Amsterdam',
         billing: 'operator'
       }]
     },
-    'sync_accounts provisions the same advertiser natural key used by compact tools'
+    'sync_accounts provisions currency and timezone qualifiers in the natural key'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-timezone-update-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        timezone: 'Europe/Amsterdam'
+      }]
+    },
+    'sync_accounts rejects immutable timezone changes in settings-update mode'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-identity-update-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        revision: 7,
+        operator_identity: {
+          operator: 'pinnacle-media.example',
+          operator_unit: { id: 'east-coast', name: 'East Coast' }
+        }
+      }]
+    },
+    'sync_accounts settings-update mode accepts a revisioned complete desired operator identity'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-remove-unit-0001',
+      accounts: [{
+        account: {
+          brand: { domain: 'nova-athletics.example' },
+          operator: 'pinnacle-media.example',
+          operator_unit: { id: 'legacy-seat' }
+        },
+        revision: 7,
+        operator_identity: { operator: 'pinnacle-media.example' }
+      }]
+    },
+    'sync_accounts expresses operator-unit removal by omitting the unit from the complete desired identity'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-confused-rekey-0001',
+      accounts: [{
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'pinnacle-media.example',
+        billing: 'operator',
+        operator_identity: { operator: 'new-operator.example' }
+      }]
+    },
+    'sync_accounts rejects identity replacement fields in provisioning mode'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-stale-revision-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        revision: 0,
+        operator_identity: { operator: 'pinnacle-media.example' }
+      }]
+    },
+    'sync_accounts rejects invalid account revisions'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-identity-without-revision-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        operator_identity: { operator: 'pinnacle-media.example' }
+      }]
+    },
+    'sync_accounts requires revision for operator identity changes'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-settings-revision-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        revision: 8,
+        payment_terms: 'net_30'
+      }]
+    },
+    'sync_accounts retains optional revisions on non-identity settings updates'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-provisioning-revision-0001',
+      accounts: [{
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'pinnacle-media.example',
+        billing: 'operator',
+        revision: 8
+      }]
+    },
+    'sync_accounts rejects revisions in provisioning mode'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-operator-handoff-billing-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        revision: 8,
+        operator_identity: { operator: 'new-operator.example' },
+        destination_billing_entity: {
+          legal_name: 'New Operator Example LLC',
+          tax_id: '98-7654321'
+        }
+      }]
+    },
+    'sync_accounts accepts staged destination billing for an operator handoff'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-destination-billing-alone-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        revision: 8,
+        destination_billing_entity: {
+          legal_name: 'New Operator Example LLC'
+        }
+      }]
+    },
+    'sync_accounts rejects destination billing without an operator identity request'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-provisioning-destination-billing-0001',
+      accounts: [{
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'pinnacle-media.example',
+        billing: 'operator',
+        destination_billing_entity: {
+          legal_name: 'New Operator Example LLC'
+        }
+      }]
+    },
+    'sync_accounts rejects staged destination billing in provisioning mode'
+  );
+  await testSchemaValidation(
+    '/schemas/core/account.json',
+    {
+      account_id: 'seller-account-123',
+      name: 'Nova via Pinnacle',
+      status: 'active',
+      brand: { domain: 'nova-athletics.example' },
+      operator: 'pinnacle-media.example',
+      timezone: 'America/New_York',
+      revision: 8,
+      identity_change: {
+        status: 'pending_approval',
+        requested_operator_identity: { operator: 'new-operator.example' }
+      }
+    },
+    'account reads expose canonical identity alongside a pending desired operator transition'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account_id: 'seller-account-123',
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'pinnacle-media.example',
+        timezone: 'America/New_York',
+        revision: 8,
+        identity_change: {
+          status: 'pending_approval',
+          requested_operator_identity: { operator: 'new-operator.example' }
+        },
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts returns canonical identity and revision while a desired transition awaits approval'
+  );
+  await testSchemaRejection(
+    '/schemas/core/account.json',
+    {
+      account_id: 'seller-account-123',
+      name: 'Nova via Pinnacle',
+      status: 'active',
+      operator: 'pinnacle-media.example',
+      revision: 9,
+      identity_change: {
+        status: 'rejected',
+        requested_operator_identity: { operator: 'new-operator.example' }
+      }
+    },
+    'rejected account identity changes require a reason'
+  );
+  await testSchemaValidation(
+    '/schemas/core/account.json',
+    {
+      account_id: 'seller-account-123',
+      name: 'Nova via Pinnacle',
+      status: 'active',
+      operator: 'pinnacle-media.example',
+      revision: 9,
+      identity_change: {
+        status: 'rejected',
+        requested_operator_identity: { operator: 'new-operator.example' },
+        reason: 'Destination operator approval was not received'
+      }
+    },
+    'rejected account identity changes accept a reason'
+  );
+  await testSchemaRejection(
+    '/schemas/core/account.json',
+    {
+      account_id: 'seller-account-123',
+      name: 'Nova via Pinnacle',
+      status: 'active',
+      operator: 'pinnacle-media.example',
+      revision: 9,
+      identity_change: {
+        status: 'pending_approval',
+        requested_operator_identity: { operator: 'new-operator.example' },
+        reason: 'Pending changes do not carry rejection reasons'
+      }
+    },
+    'pending account identity changes reject a rejection reason'
+  );
+  await testSchemaRejection(
+    '/schemas/core/account.json',
+    {
+      account_id: 'seller-account-123',
+      name: 'Nova via Pinnacle',
+      status: 'active',
+      operator: 'pinnacle-media.example',
+      identity_change: {
+        status: 'pending_approval',
+        requested_operator_identity: { operator: 'new-operator.example' }
+      }
+    },
+    'account identity change reads require a revision'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account_id: 'seller-account-123',
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'pinnacle-media.example',
+        identity_change: {
+          status: 'pending_approval',
+          requested_operator_identity: { operator: 'new-operator.example' }
+        },
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts identity change results require a revision'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      dry_run: true,
+      accounts: [{
+        account_id: 'seller-account-123',
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'pinnacle-media.example',
+        revision: 9,
+        identity_change_preview: {
+          outcome: 'would_require_approval',
+          requested_operator_identity: { operator: 'new-operator.example' },
+          impacts: [
+            { area: 'account_id', effect: 'preserved' },
+            { area: 'billing', effect: 'revalidation_required' },
+            { area: 'grants', effect: 'revoke_and_regrant' }
+          ]
+        },
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts dry runs expose identity disposition and resource impacts'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account_id: 'seller-account-123',
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'pinnacle-media.example',
+        revision: 9,
+        identity_change_preview: {
+          outcome: 'would_apply',
+          requested_operator_identity: {
+            operator: 'pinnacle-media.example',
+            operator_unit: { id: 'east-coast' }
+          },
+          impacts: [{ area: 'account_id', effect: 'preserved' }]
+        },
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'sync_accounts rejects identity previews outside dry runs'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      accounts: [{
+        account_id: 'seller-account-123',
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'pinnacle-media.example',
+        revision: 9,
+        destination_billing_entity: {
+          legal_name: 'Destination Operator LLC'
+        },
+        action: 'updated',
+        status: 'pending_approval'
+      }]
+    },
+    'sync_accounts responses reject write-only destination billing identity'
+  );
+  await testSchemaRejection(
+    '/schemas/account/list-accounts-response.json',
+    {
+      accounts: [{
+        account_id: 'seller-account-123',
+        name: 'Nova Athletics',
+        status: 'active',
+        destination_billing_entity: {
+          legal_name: 'Destination Operator LLC'
+        }
+      }]
+    },
+    'list_accounts responses reject write-only destination billing identity'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      dry_run: true,
+      accounts: [{
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'pinnacle-media.example',
+        revision: 9,
+        identity_change_preview: {
+          outcome: 'would_apply',
+          requested_operator_identity: { operator: 'pinnacle-media.example' },
+          impacts: [{ area: 'media_buys', effect: 'blocked' }]
+        },
+        action: 'updated',
+        status: 'active'
+      }]
+    },
+    'non-blocked identity previews reject blocked impacts'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      dry_run: true,
+      accounts: [{
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'pinnacle-media.example',
+        revision: 9,
+        identity_change_preview: {
+          outcome: 'blocked',
+          requested_operator_identity: { operator: 'new-operator.example' },
+          impacts: [{ area: 'account_id', effect: 'preserved' }],
+          blockers: ['An active resource cannot be transferred']
+        },
+        action: 'failed',
+        status: 'active'
+      }]
+    },
+    'blocked identity previews require a blocked impact'
+  );
+  await testSchemaValidation(
+    '/schemas/account/sync-accounts-response.json',
+    {
+      status: 'completed',
+      dry_run: true,
+      accounts: [{
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'pinnacle-media.example',
+        revision: 9,
+        identity_change_preview: {
+          outcome: 'blocked',
+          requested_operator_identity: { operator: 'new-operator.example' },
+          impacts: [
+            { area: 'account_id', effect: 'preserved' },
+            {
+              area: 'billing',
+              effect: 'blocked',
+              reason: 'The requested operator identity conflicts with another account'
+            }
+          ],
+          blockers: ['The requested operator identity conflicts with another account']
+        },
+        action: 'failed',
+        status: 'active'
+      }]
+    },
+    'blocked identity previews identify the blocking resource impact'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: false }
+      },
+      account: {
+        supported_billing: ['operator'],
+        identity_updates: {
+          supported: true,
+          supported_changes: ['operator_unit_name', 'operator_unit', 'operator']
+        }
+      }
+    },
+    'account capabilities advertise supported operator identity transitions'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: false }
+      },
+      account: {
+        supported_billing: ['operator'],
+        identity_updates: {
+          supported: true,
+          supported_changes: ['operator']
+        }
+      }
+    },
+    'operator capability encompasses a complete cross-operator identity replacement'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: false }
+      },
+      account: {
+        supported_billing: ['operator'],
+        identity_updates: {
+          supported: false,
+          supported_changes: ['operator']
+        }
+      }
+    },
+    'unsupported account identity-update capabilities reject supported_changes'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: {
+        ...capabilitiesBase.adcp,
+        idempotency: { supported: false }
+      },
+      account: {
+        supported_billing: ['operator'],
+        identity_updates: { supported: false }
+      }
+    },
+    'account capabilities accept identity updates as unsupported'
+  );
+  await testSchemaValidation(
+    '/schemas/error-details/account-moved.json',
+    {
+      current_account: {
+        brand: { domain: 'nova-athletics.example' },
+        operator: 'new-operator.example'
+      },
+      revision: 8
+    },
+    'ACCOUNT_MOVED details provide an authorized repair reference and current revision'
+  );
+  await testSchemaRejection(
+    '/schemas/error-details/account-moved.json',
+    { revision: 8 },
+    'ACCOUNT_MOVED details require the current canonical account reference'
   );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-request.json',
@@ -3170,18 +3747,134 @@ async function runTests() {
     {
       idempotency_key: 'refine-proposals-0001',
       refinements: [
-        { proposal_id: 'proposal-1', action: 'revise', instructions: 'Prefer video and move budget toward it' },
-        { proposal_id: 'proposal-2', action: 'revise', instructions: 'Use only the premium video product' }
+        { proposal_id: 'proposal-1', action: 'revise', ask: 'Prefer video and move budget toward it' },
+        { proposal_id: 'proposal-2', action: 'revise', ask: 'Use only the premium video product' }
       ]
     },
     'refine_proposals accepts plural proposal-scoped immutable refinements'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-typed-0001',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: { total_budget: { max: 50000, currency: 'USD' } },
+        product_changes: {
+          'premium-video': 'include',
+          'display-ros': 'omit'
+        },
+        alternatives: { count: 3 }
+      }]
+    },
+    'refine_proposals accepts deterministic typed revision dimensions without free text'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-typed-0002',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: {
+          cpm: { max: 18, currency: 'USD' },
+          impressions: { min: 2000000 },
+          flight: { start_no_later_than: '2027-06-01T00:00:00Z', end_no_earlier_than: '2027-06-30T23:59:59Z' }
+        }
+      }]
+    },
+    'refine_proposals accepts rate, volume, and flight hard constraints'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-typed-0003',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: { cpm: { max: 18 } }
+      }]
+    },
+    'refine_proposals cpm constraint requires an explicit currency'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-typed-0004',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: { flight: {} }
+      }]
+    },
+    'refine_proposals flight constraint requires at least one bound'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-too-many-alternatives-0001',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        alternatives: { count: 11 }
+      }]
+    },
+    'refine_proposals rejects alternatives above the protocol maximum'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-oversized-batch-0001',
+      refinements: Array.from({ length: 26 }, (_, index) => ({
+        proposal_id: `proposal-${index + 1}`,
+        action: 'revise',
+        ask: 'Prefer premium video.'
+      }))
+    },
+    'refine_proposals rejects batches above the protocol maximum'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-contradictory-product-0001',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        product_changes: [
+          { product_id: 'premium-video', action: 'include' },
+          { product_id: 'premium-video', action: 'omit' }
+        ]
+      }]
+    },
+    'refine_proposals rejects the array shape that could express contradictory product actions'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-unknown-budget-member-0001',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: { total_budget: { max: 50000, currency: 'USD', tolerance: 0.1 } }
+      }]
+    },
+    'refine_proposals hard budget constraints reject unknown members'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-request.json',
+    {
+      idempotency_key: 'refine-proposals-empty-amendment-0001',
+      refinements: [{ proposal_id: 'proposal-1', action: 'revise', change_kind: 'amendment' }]
+    },
+    'refine_proposals rejects an amendment with no requested change'
   );
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-request.json',
     {
       idempotency_key: 'refine-proposals-missing-action-0001',
       refinements: [
-        { proposal_id: 'proposal-1', instructions: 'Prefer video and move budget toward it' }
+        { proposal_id: 'proposal-1', ask: 'Prefer video and move budget toward it' }
       ]
     },
     'refine_proposals requires an explicit action discriminator'
@@ -3194,7 +3887,7 @@ async function runTests() {
         proposal_id: 'accepted-proposal-1',
         action: 'revise',
         change_kind: 'cancellation',
-        instructions: 'Cancel at the earliest date permitted by the accepted terms.'
+        ask: 'Cancel at the earliest date permitted by the accepted terms.'
       }]
     },
     'refine_proposals forks an accepted proposal into a cancellation proposal'
@@ -3205,7 +3898,7 @@ async function runTests() {
       idempotency_key: 'refine-proposals-0002',
       refinements: [{ proposal_id: 'proposal-1', action: 'finalize' }]
     },
-    'refine_proposals accepts explicit finalization without fake revision instructions'
+    'refine_proposals accepts explicit finalization without a fake revision ask'
   );
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-request.json',
@@ -3213,7 +3906,7 @@ async function runTests() {
       idempotency_key: 'refine-proposals-mixed-finalize-0001',
       refinements: [
         { proposal_id: 'proposal-1', action: 'finalize' },
-        { proposal_id: 'proposal-2', action: 'revise', instructions: 'Change the budget.' }
+        { proposal_id: 'proposal-2', action: 'revise', ask: 'Change the budget.' }
       ]
     },
     'refine_proposals keeps finalize batches exclusive and atomic'
@@ -3524,10 +4217,64 @@ async function runTests() {
     {
       ...splitCapabilityBase,
       media_buy: {
-        lifecycle_tools: ['request_proposals', 'refine_proposals']
+        lifecycle_tools: ['request_proposals', 'refine_proposals'],
+        proposal_refinement: {
+          supported_dimensions: ['total_budget', 'cpm', 'impressions', 'flight', 'product_changes', 'alternatives', 'criteria'],
+          max_alternatives: 4
+        }
       }
     },
-    'compact proposal capability advertises supported split tools'
+    'compact proposal capability advertises typed refinement dimensions'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        lifecycle_tools: ['refine_proposals'],
+        proposal_refinement: { supported_dimensions: [] }
+      }
+    },
+    'compact proposal capability can authoritatively advertise ask-only refinement'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        lifecycle_tools: ['request_proposals'],
+        proposal_refinement: { supported_dimensions: ['total_budget'] }
+      }
+    },
+    'proposal refinement capabilities require the refine_proposals lifecycle tool'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        lifecycle_tools: ['refine_proposals'],
+        proposal_refinement: {
+          supported_dimensions: ['total_budget'],
+          max_alternatives: 4
+        }
+      }
+    },
+    'proposal refinement cannot advertise an alternatives limit without alternatives support'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...splitCapabilityBase,
+      media_buy: {
+        lifecycle_tools: ['refine_proposals'],
+        proposal_refinement: {
+          supported_dimensions: ['alternatives'],
+          max_alternatives: 11
+        }
+      }
+    },
+    'proposal refinement cannot advertise an alternatives limit above the protocol maximum'
   );
   await testSchemaValidation(
     '/schemas/media-buy/list-products-response.json',
@@ -3667,23 +4414,109 @@ async function runTests() {
     },
     'request_proposals success cannot carry rejection fields'
   );
+  const canonicalDraftRevision = {
+    proposal_id: 'proposal-2',
+    parent_proposal_id: 'proposal-1',
+    proposal_kind: 'new_media_buy',
+    proposal_status: 'draft',
+    name: 'Revised premium video plan',
+    commercial_terms: {
+      brand: { domain: 'buyer.example' },
+      purchases: [{
+        product_id: 'premium-video',
+        pricing_option_id: 'fixed-cpm',
+        pricing: { pricing_option_id: 'fixed-cpm', pricing_model: 'cpm', currency: 'USD', fixed_price: 28 },
+        start_time: '2027-06-01T12:00:00Z',
+        end_time: '2027-07-01T00:00:00Z'
+      }],
+      start_time: '2027-06-01T12:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      total_budget: { amount: 50000, currency: 'USD' }
+    },
+    terms_digest: `sha256:${'A'.repeat(43)}`
+  };
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'partial',
+        proposals: [canonicalDraftRevision],
+        reason_code: 'constraint_unsatisfiable',
+        reason: 'The requested budget floor could not be met.',
+        unsatisfied_constraints: ['total_budget', 'cpm']
+      }],
+      products: []
+    },
+    'refine_proposals partial results identify unsatisfied keyed constraints'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'unable',
+        reason_code: 'constraint_unsatisfiable',
+        reason: 'The required product cannot be included.',
+        unsatisfied_product_changes: { 'premium-video': 'include' }
+      }],
+      products: []
+    },
+    'refine_proposals unable results identify unsatisfied keyed product changes'
+  );
   await testSchemaRejection(
     '/schemas/media-buy/refine-proposals-response.json',
     {
       results: [{
         source_proposal_id: 'proposal-1',
         outcome: 'partial',
-        proposal: {
-          proposal_id: 'proposal-2',
-          name: 'Partially revised premium video plan',
-          allocations: [{ product_id: 'premium-video', allocation_percentage: 100 }],
-          proposal_status: 'committed',
-          expires_at: '2027-06-30T23:59:59Z'
-        }
+        proposals: [canonicalDraftRevision],
+        reason_code: 'constraint_unsatisfiable',
+        reason: 'A structured request was not satisfied.'
       }],
       products: []
     },
-    'refine_proposals partial results require explanatory notes'
+    'refine_proposals constraint failures require machine-readable failed identifiers'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'revised',
+        proposals: [
+          canonicalDraftRevision,
+          { ...canonicalDraftRevision, proposal_id: 'proposal-3', terms_digest: `sha256:${'B'.repeat(43)}` }
+        ]
+      }],
+      products: []
+    },
+    'refine_proposals accepts multiple commercially distinct revised alternatives'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'revised',
+        proposals: [canonicalDraftRevision],
+        unsatisfied_constraints: ['total_budget']
+      }],
+      products: []
+    },
+    'refine_proposals cannot label a constraint-violating draft revised'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/refine-proposals-response.json',
+    {
+      results: [{
+        source_proposal_id: 'proposal-1',
+        outcome: 'revised',
+        proposals: [(() => { const { parent_proposal_id, ...orphan } = canonicalDraftRevision; return orphan; })()]
+      }],
+      products: []
+    },
+    'refine_proposals rejects returned proposals without negotiation lineage'
   );
   await testSchemaValidation(
     '/schemas/media-buy/refine-proposals-response.json',
@@ -3693,6 +4526,7 @@ async function runTests() {
         outcome: 'finalized',
         proposal: {
           proposal_id: 'proposal-committed-1',
+          parent_proposal_id: 'proposal-draft-1',
           proposal_kind: 'new_media_buy',
           proposal_status: 'committed',
           expires_at: '2027-06-30T23:59:59Z',
@@ -3724,6 +4558,7 @@ async function runTests() {
         outcome: 'finalized',
         proposal: {
           proposal_id: 'proposal-committed-1',
+          parent_proposal_id: 'proposal-draft-1',
           proposal_kind: 'new_media_buy',
           proposal_status: 'committed',
           expires_at: '2027-06-30T23:59:59Z',
@@ -3745,6 +4580,7 @@ async function runTests() {
       }, {
         source_proposal_id: 'proposal-draft-2',
         outcome: 'unable',
+        reason_code: 'source_unavailable',
         reason: 'Inventory could not be held.'
       }],
       products: []
@@ -4731,6 +5567,230 @@ async function runTests() {
       cancellation_fee: { type: 'none' }
     },
     'Accepts none fee with neither rate nor amount'
+  );
+  log('');
+
+  // daily_budget_cap follows the aggregate/package budget hierarchy (#5983)
+  log('Daily budget cap hierarchy:', 'info');
+  await testSchemaValidation(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'prod_ctv_sports',
+      pricing_option_id: 'po_cpm_fixed',
+      budget: 50000,
+      pacing: 'asap',
+      daily_budget_cap: 2500
+    },
+    'Accepts a subordinate package daily cap with asap pacing'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'prod_ctv_sports',
+      pricing_option_id: 'po_cpm_fixed',
+      budget: 50000,
+      daily_budget_cap: -100
+    },
+    'Rejects negative daily_budget_cap'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'prod_ctv_sports',
+      pricing_option_id: 'po_cpm_fixed',
+      budget: 50000,
+      budget_cap_timezone: 'America/Chicago'
+    },
+    'Rejects package-specific cap timezone overrides'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_001',
+      daily_budget_cap: null
+    },
+    'Accepts removing a package daily cap'
+  );
+  await testSchemaValidation(
+    '/schemas/core/package.json',
+    {
+      package_id: 'pkg_001',
+      product_id: 'prod_ctv_sports',
+      budget: 50000,
+      daily_budget_cap: 2500
+    },
+    'Package readback carries the subordinate daily cap without its own timezone'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'daily-cap-create-0001',
+      account: { account_id: 'acc_daily_cap' },
+      brand: { domain: 'example.com' },
+      packages: [{
+        product_id: 'prod_ctv_sports',
+        pricing_option_id: 'po_cpm_fixed',
+        budget: 50000,
+        daily_budget_cap: 2500
+      }],
+      daily_budget_cap: 4000,
+      budget_cap_timezone: 'America/Chicago',
+      start_time: '2099-08-01T00:00:00Z',
+      end_time: '2099-08-31T23:59:59Z'
+    },
+    'Accepts aggregate and subordinate package daily caps with one shared timezone'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'daily-cap-create-0002',
+      account: { account_id: 'acc_daily_cap' },
+      brand: { domain: 'example.com' },
+      packages: [{
+        product_id: 'prod_ctv_sports',
+        pricing_option_id: 'po_cpm_fixed',
+        budget: 50000
+      }],
+      daily_budget_cap: -1,
+      start_time: '2099-08-01T00:00:00Z',
+      end_time: '2099-08-31T23:59:59Z'
+    },
+    'Rejects a negative aggregate daily cap'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'daily-cap-update-0001',
+      account: { account_id: 'acc_daily_cap' },
+      media_buy_id: 'mb_daily_cap',
+      daily_budget_cap: null,
+      budget_cap_timezone: null
+    },
+    'Accepts removing the aggregate cap and timezone override'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/buy-products-request.json',
+    {
+      idempotency_key: 'daily-cap-buy-products-0001',
+      account: { account_id: 'acc_daily_cap' },
+      brand: { domain: 'example.com' },
+      feed_version: 'feed-daily-cap-1',
+      purchases: [{
+        product_id: 'prod_ctv_sports',
+        pricing_option_id: 'po_cpm_fixed',
+        budget: 50000,
+        daily_budget_cap: 2500
+      }],
+      daily_budget_cap: 4000,
+      budget_cap_timezone: 'America/Chicago',
+      start_time: 'asap',
+      end_time: '2099-08-31T23:59:59Z'
+    },
+    'Compact direct purchase carries aggregate and purchase daily caps'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/control-media-buy-request.json',
+    {
+      idempotency_key: 'daily-cap-control-0001',
+      account: { account_id: 'acc_daily_cap' },
+      media_buy_id: 'mb_daily_cap',
+      revision: 4,
+      daily_budget_cap: null,
+      budget_cap_timezone: null,
+      packages: [{ package_id: 'pkg_001', daily_budget_cap: null }]
+    },
+    'Compact control removes aggregate and package caps atomically'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/accept-proposal-request.json',
+    {
+      idempotency_key: 'daily-cap-accept-0001',
+      account: { account_id: 'acc_daily_cap' },
+      proposal_id: 'proposal_daily_cap',
+      proposal_terms_digest: 'sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      daily_budget_cap: 4000,
+      budget_cap_timezone: 'America/Chicago'
+    },
+    'Compact proposal acceptance can set the aggregate execution cap'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: false }
+      },
+      supported_protocols: ['media_buy'],
+      media_buy: {
+        budget_capping: {
+          supported_scopes: ['media_buy', 'package'],
+          supported_periods: ['day'],
+          timezone_basis: 'account',
+          buyer_timezone_override: true
+        }
+      }
+    },
+    'Accepts hard daily-cap capabilities based on each account timezone'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: false }
+      },
+      supported_protocols: ['media_buy'],
+      media_buy: {
+        budget_capping: {
+          supported_scopes: ['media_buy'],
+          supported_periods: ['day'],
+          timezone_basis: 'fixed',
+          fixed_timezone: 'UTC'
+        }
+      }
+    },
+    'Accepts a seller-fixed daily-cap timezone such as UTC'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: false }
+      },
+      supported_protocols: ['media_buy'],
+      media_buy: {
+        budget_capping: {
+          supported_scopes: ['media_buy'],
+          supported_periods: ['day'],
+          timezone_basis: 'fixed'
+        }
+      }
+    },
+    'Rejects a fixed daily-cap basis without fixed_timezone'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: false }
+      },
+      supported_protocols: ['media_buy'],
+      media_buy: {
+        budget_capping: {
+          supported_scopes: ['media_buy'],
+          supported_periods: ['day'],
+          timezone_basis: 'account',
+          fixed_timezone: 'UTC'
+        }
+      }
+    },
+    'Rejects fixed_timezone when daily caps use the account timezone'
   );
   log('');
 

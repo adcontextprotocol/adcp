@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/control-media-buy-request.json",
   "title": "Control Media Buy Request",
   "description": "Apply operational delivery controls inside the MediaBuy's accepted proposal envelope. Sellers return REQUOTE_REQUIRED when budget, targeting, or another control would change the commercial envelope; the buyer then forks the accepted proposal through refine_proposals. Creative mutation, new products/packages, flight changes, pricing changes, and billing-term changes are not accepted here.",
+  "x-tool-summary": "Pause, resume, cancel, or adjust delivery controls without changing accepted commercial terms.",
   "type": "object",
   "x-mutates-state": true,
   "x-governed-commitment": {
@@ -59,6 +60,16 @@
       "required": ["amount", "currency"],
       "additionalProperties": false
     },
+    "daily_budget_cap": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "Replace the hard aggregate daily cap; null removes it. Numeric changes apply immediately with current-cap-day spend counted and do not redistribute purchase caps."
+    },
+    "budget_cap_timezone": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Replace the shared IANA cap-day timezone override; null restores the default selected by budget_capping.timezone_basis (Account.timezone or fixed_timezone). A timezone change begins at the next boundary under the previously effective timezone."
+    },
     "budget_allocation": {
       "$ref": "/schemas/core/canonical-budget-allocation.json"
     },
@@ -106,6 +117,8 @@
     { "required": ["paused"] },
     { "required": ["canceled"] },
     { "required": ["total_budget"] },
+    { "required": ["daily_budget_cap"] },
+    { "required": ["budget_cap_timezone"] },
     { "required": ["budget_allocation"] },
     { "required": ["pacing"] },
     { "required": ["bidding"] },
@@ -124,6 +137,8 @@
           "anyOf": [
             { "required": ["paused"] },
             { "required": ["total_budget"] },
+            { "required": ["daily_budget_cap"] },
+            { "required": ["budget_cap_timezone"] },
             { "required": ["budget_allocation"] },
             { "required": ["pacing"] },
             { "required": ["bidding"] },

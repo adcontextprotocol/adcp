@@ -103,6 +103,8 @@ const CODE_RECOVERY = {
   AUDIENCE_TOO_SMALL: 'correctable',
   ACCOUNT_SETUP_REQUIRED: 'correctable',
   ACCOUNT_AMBIGUOUS: 'correctable',
+  ACCOUNT_MOVED: 'correctable',
+  ACCOUNT_IDENTITY_CONFLICT: 'correctable',
   COMPLIANCE_UNSATISFIED: 'correctable',
   GOVERNANCE_DENIED: 'correctable',
   ACCOUNT_NOT_FOUND: 'terminal',

@@ -113,6 +113,29 @@ value-specific forecast for every later selection. Rediscover with concrete
 floors remain binding for supported selections; price guidance remains
 non-binding.
 
+ISO subdivision support follows the same split but can be country/value aware:
+
+```json
+{
+  "targeting_overlay": {
+    "geo_regions": ["FR-49"]
+  },
+  "required_overlay_support": {
+    "geo_regions_exclude": {
+      "countries": {
+        "FR": { "values": ["FR-44", "FR-2A"] }
+      }
+    }
+  }
+}
+```
+
+The known `FR-49` constraint scopes the returned configured product and
+forecast. The exclusion requirement is permission to select either candidate
+later; it is not an availability promise for either value. Inclusion and
+exclusion are matched independently. Numeric administrative depth is not used
+because ISO subdivision categories are not uniform across countries.
+
 ## Do not migrate raw ad-server keys
 
 Do not replace legacy targeting-like filters with a `custom`,

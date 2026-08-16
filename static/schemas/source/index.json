@@ -141,6 +141,18 @@
           "$ref": "/schemas/core/account.json",
           "description": "Billing account representing who pays for advertising. Accounts have rate cards, payment terms, and platform mappings."
         },
+        "operator-identity": {
+          "$ref": "/schemas/core/operator-identity.json",
+          "description": "Complete buyer-desired operator domain and optional operator-owned unit for an advertiser account"
+        },
+        "account-identity-change": {
+          "$ref": "/schemas/core/account-identity-change.json",
+          "description": "Pending or rejected operator-identity transition on an existing account"
+        },
+        "account-identity-change-preview": {
+          "$ref": "/schemas/core/account-identity-change-preview.json",
+          "description": "Non-persisted impact and disposition preview for a dry-run account identity transition"
+        },
         "account-with-authorization": {
           "$ref": "/schemas/core/account-with-authorization.json",
           "description": "List-accounts response item combining Account with caller-specific authorization metadata"
@@ -156,6 +168,14 @@
         "targeting-overlay-requirements": {
           "$ref": "/schemas/core/targeting-overlay-requirements.json",
           "description": "Buyer requirements for product-scoped targeting dimensions that must remain selectable on packages"
+        },
+        "geo-region-requirement": {
+          "$ref": "/schemas/core/geo-region-requirement.json",
+          "description": "Buyer country/value requirements for ISO subdivision targeting selected later"
+        },
+        "geo-region-support": {
+          "$ref": "/schemas/core/geo-region-support.json",
+          "description": "Country- and value-aware selectable ISO subdivision targeting support"
         },
         "product-targeting-resolution": {
           "$ref": "/schemas/core/product-targeting-resolution.json",
@@ -184,6 +204,10 @@
         "demographic-targeting-capability": {
           "$ref": "/schemas/core/demographic-targeting-capability.json",
           "description": "Product-scoped demographic execution modes and exact interval capabilities"
+        },
+        "demographic-reporting-capability": {
+          "$ref": "/schemas/core/demographic-reporting-capability.json",
+          "description": "Product-scoped demographic reporting ranges, systems, and suppression posture"
         },
         "demographic-targeting-resolution": {
           "$ref": "/schemas/core/demographic-targeting-resolution.json",
@@ -228,6 +252,10 @@
         "geo-breakdown-support": {
           "$ref": "/schemas/core/geo-breakdown-support.json",
           "description": "Geographic breakdown capability declaration for reporting"
+        },
+        "spot-reporting-capability": {
+          "$ref": "/schemas/core/spot-reporting-capability.json",
+          "description": "Spot-level as-run reporting support and available spot-grain metrics"
         },
         "format": {
           "$ref": "/schemas/core/format.json",
@@ -490,6 +518,46 @@
           "$ref": "/schemas/core/postal-area-support.json",
           "description": "Reusable postal area support map for capabilities and reporting"
         },
+        "geo-place-area": {
+          "$ref": "/schemas/core/geo-place-area.json",
+          "description": "Catalog-backed named place target using stable identifiers in a declared system"
+        },
+        "geo-place-requirement": {
+          "$ref": "/schemas/core/geo-place-requirement.json",
+          "description": "Collision-safe identifier systems, countries, place types, and catalog versions required for later package selection"
+        },
+        "geo-place-support": {
+          "$ref": "/schemas/core/geo-place-support.json",
+          "description": "Countries and place types supported for one place identifier system"
+        },
+        "geo-place-system": {
+          "$ref": "/schemas/core/geo-place-system.json",
+          "description": "Registered geographic place identifier namespaces with HTTPS URI extensions"
+        },
+        "geo-place-type": {
+          "$ref": "/schemas/core/geo-place-type.json",
+          "description": "Registered geographic place classifications with HTTPS URI extensions"
+        },
+        "geo-place-resolver": {
+          "$ref": "/schemas/core/geo-place-resolver.json",
+          "description": "Machine-readable endpoint declaration for resolving place names to seller-accepted IDs"
+        },
+        "get-geo-place-resolution-request": {
+          "$ref": "/schemas/core/get-geo-place-resolution-request.json",
+          "description": "Standard query parameters for geographic place resolution"
+        },
+        "get-geo-place-resolution-response": {
+          "$ref": "/schemas/core/get-geo-place-resolution-response.json",
+          "description": "Paginated geographic place resolver results"
+        },
+        "geo-place-catalog-entry": {
+          "$ref": "/schemas/core/geo-place-catalog-entry.json",
+          "description": "One place identifier with lifecycle and replacement metadata"
+        },
+        "geo-place-catalog-capability": {
+          "$ref": "/schemas/core/geo-place-catalog-capability.json",
+          "description": "Supported versions and resolver for one place identifier system"
+        },
         "asset-group-vocabulary": {
           "$ref": "/schemas/core/asset-group-vocabulary.json",
           "description": "Canonical registry of asset_group_id values with descriptions and v1 alias mapping (e.g., landing_page_url replaces 6 v1 alias names)"
@@ -649,6 +717,14 @@
         "product-filters": {
           "$ref": "/schemas/core/product-filters.json",
           "description": "Structured filters for product discovery"
+        },
+        "budget-range": {
+          "$ref": "/schemas/core/budget-range.json",
+          "description": "Shared currency-denominated inclusive budget bounds"
+        },
+        "product-change-map": {
+          "$ref": "/schemas/core/product-change-map.json",
+          "description": "Contradiction-proof product membership actions keyed by product ID"
         },
         "product-offer-filters": {
           "$ref": "/schemas/core/product-offer-filters.json",
@@ -948,6 +1024,10 @@
         "proposal-decline-reason": {
           "$ref": "/schemas/enums/proposal-decline-reason.json",
           "description": "Machine-readable terminal proposal feedback"
+        },
+        "proposal-refinement-reason": {
+          "$ref": "/schemas/enums/proposal-refinement-reason.json",
+          "description": "Machine-readable partial or unable proposal-refinement outcome"
         },
         "media-buy-status": {
           "$ref": "/schemas/enums/media-buy-status.json",
@@ -1454,6 +1534,10 @@
         "proposal-refinement": {
           "$ref": "/schemas/media-buy/proposal-refinement.json",
           "description": "One immutable proposal revision request"
+        },
+        "proposal-budget-constraint": {
+          "$ref": "/schemas/media-buy/proposal-budget-constraint.json",
+          "description": "Strict inclusive budget bounds for proposal negotiation"
         },
         "proposal-decline": {
           "$ref": "/schemas/media-buy/proposal-decline.json",

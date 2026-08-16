@@ -1,5 +1,5 @@
 id: brand_rights
-version: "1.0.0"
+version: "1.2.0"
 title: "Brand identity and rights licensing"
 protocol: brand
 category: brand_rights
@@ -9,6 +9,7 @@ required_tools:
   - get_brand_identity
 requires_scenarios:
   - brand_rights/governance_denied
+  - brand_rights/update_rights_lifecycle
 
 narrative: |
   You run a brand agent — a system that holds brand identity data (logos, colors, fonts,
@@ -295,14 +296,57 @@ phases:
             path: "context.correlation_id"
             value: "brand_rights--acquire_rights"
             description: "Context correlation_id returned unchanged"
-  # NOTE: update_rights and creative_approval are intentionally absent.
-  # - update_rights has no published JSON request/response schemas yet (spec
-  #   describes it conceptually in rights-terms.json).
-  # - creative_approval is modeled in the spec as a webhook (POST to the
-  #   approval_webhook returned from acquire_rights), not an AdCP tool. Agents
-  #   expose it as a regular HTTP endpoint outside the MCP surface.
-  # Both will be added back as storyboard phases once upstream schemas land
-  # (see https://github.com/adcontextprotocol/adcp for tracking).
+  - id: rights_update
+    title: "Update an acquired rights grant"
+    narrative: |
+      The buyer pauses the acquired grant through `update_rights`. This pins the
+      task's published request/response schemas and verifies that the grant
+      identifier remains stable across the update.
+
+    steps:
+      - id: update_rights
+        title: "Pause the acquired rights grant"
+        task: update_rights
+        schema_ref: "brand/update-rights-request.json"
+        response_schema_ref: "brand/update-rights-response.json"
+        doc_ref: "/brand-protocol/tasks/update_rights"
+        stateful: true
+        expected: |
+          Return the updated rights grant with the same rights_id, updated
+          terms, generation credentials, and rights constraint.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          rights_id: "$context.rights_grant_id"
+          paused: true
+          idempotency_key: "$generate:uuid_v4#brand_rights_rights_update"
+          context:
+            correlation_id: "brand_rights--update_rights"
+
+        validations:
+          - check: response_schema
+            description: "Response matches update_rights schema"
+          - check: field_equals_context
+            path: "rights_id"
+            context_key: "rights_grant_id"
+            description: "Updated grant keeps the acquired rights_id"
+          - check: field_present
+            path: "terms"
+            description: "Response includes updated terms"
+          - check: field_present
+            path: "rights_constraint"
+            description: "Response includes an updated rights constraint"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "brand_rights--update_rights"
+            description: "Context correlation_id returned unchanged"
+
+  # creative_approval is intentionally absent. It is modeled in the spec as a
+  # webhook (POST to the approval_webhook returned from acquire_rights), not an
+  # AdCP tool. Agents expose it as a regular HTTP endpoint outside the MCP surface.
 
   - id: rights_enforcement
     title: "Rights enforcement"

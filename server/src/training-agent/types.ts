@@ -228,6 +228,9 @@ export interface RightsGrantState {
   impressionCap?: number;
   paused: boolean;
   createdAt: string;
+  /** Canonical controller fixture retained so seed retries stay idempotent
+   * even after update_rights mutates lifecycle fields. */
+  seedFingerprint?: string;
 }
 
 export interface ComplyDeliveryAccumulator {
@@ -267,6 +270,13 @@ export interface ComplyDeliveryAccumulator {
     vendor: { domain: string; brand_id?: string };
     metric_id: string;
   }>>;
+  /** Per-call snapshots with a UTC delivery date for deterministic range tests. */
+  datedSimulations?: ComplyDatedDeliverySimulation[];
+}
+
+export interface ComplyDatedDeliverySimulation {
+  deliveryDate: string;
+  metrics: Omit<ComplyDeliveryAccumulator, 'datedSimulations'>;
 }
 
 export interface ComplyBudgetSimulation {

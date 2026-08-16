@@ -1,7 +1,7 @@
 {
   "version": 1,
   "schema": "/schemas/media-buy/get-media-buys-response.json",
-  "description": "Positive wire-level vectors for PackageStatus targeting readback in get_media_buys responses, including audience targeting, purchased inventory selection, and demographic execution under targeting_resolution.demographics. Vectors are dedicated JSON payloads that MUST validate against the bundled schema and whose shape is asserted by SDK code generators. Each vector contains a stable `id` (kebab-case; the stable reference for cross-SDK conformance), a human-readable `description`, the `payload` returned by the seller, and `assertions` — dotted JSON paths that MUST be present with the given value. Downstream tests SHOULD look up vectors by `id`; `description` prose may be revised without notice.",
+  "description": "Positive wire-level vectors for PackageStatus targeting readback in get_media_buys responses, including audience targeting, purchased inventory selection, demographic execution under targeting_resolution.demographics, and the geo-place catalog audit MUST. Vectors are dedicated JSON payloads that MUST validate against the bundled schema and whose shape is asserted by SDK code generators. Each vector contains a stable `id` (kebab-case; the stable reference for cross-SDK conformance), a human-readable `description`, the `payload` returned by the seller, and `assertions` — dotted JSON paths that MUST be present with the given value. Downstream tests SHOULD look up vectors by `id`; `description` prose may be revised without notice.",
   "vectors": [
     {
       "id": "property-and-collection-list-echo",
@@ -128,6 +128,89 @@
         {
           "path": "media_buys[0].packages[0].targeting_overlay.frequency_cap.window.unit",
           "value": "days"
+        }
+      ]
+    },
+    {
+      "id": "geo-place-targeting-echo",
+      "description": "Place-targeting MUST — seller echoes persisted identifier-based geo_places and geo_places_exclude so the buyer can audit the catalog namespace, place type, values, and diagnostic labels that were applied.",
+      "payload": {
+        "status": "completed",
+        "media_buys": [
+          {
+            "media_buy_id": "mb_nova_local_001",
+            "status": "active",
+            "currency": "EUR",
+            "total_budget": 18000,
+            "confirmed_at": "2026-07-01T09:00:00Z",
+            "revision": 1,
+            "start_time": "2026-07-15T00:00:00Z",
+            "end_time": "2026-08-15T23:59:59Z",
+            "created_at": "2026-07-01T09:00:00Z",
+            "updated_at": "2026-07-15T10:30:00Z",
+            "packages": [
+              {
+                "package_id": "pkg_nova_local_video",
+                "product_id": "prod_local_video_nl",
+                "budget": 18000,
+                "currency": "EUR",
+                "start_time": "2026-07-15T00:00:00Z",
+                "end_time": "2026-08-15T23:59:59Z",
+                "targeting_overlay": {
+                  "geo_places": [{
+                    "country": "NL",
+                    "system": "geonames",
+                    "system_version": "2026-05",
+                    "place_type": "city",
+                    "values": ["2759794"],
+                    "value_labels": {
+                      "2759794": "Amsterdam, North Holland, Netherlands"
+                    }
+                  }],
+                  "geo_places_exclude": [{
+                    "country": "NL",
+                    "system": "geonames",
+                    "system_version": "2026-05",
+                    "place_type": "city",
+                    "values": ["2747373"],
+                    "value_labels": {
+                      "2747373": "The Hague, South Holland, Netherlands"
+                    }
+                  }]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "assertions": [
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.geo_places[0].values",
+          "value": ["2759794"]
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.geo_places[0].country",
+          "value": "NL"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.geo_places[0].system",
+          "value": "geonames"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.geo_places[0].system_version",
+          "value": "2026-05"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.geo_places[0].place_type",
+          "value": "city"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.geo_places[0].value_labels.2759794",
+          "value": "Amsterdam, North Holland, Netherlands"
+        },
+        {
+          "path": "media_buys[0].packages[0].targeting_overlay.geo_places_exclude[0].values",
+          "value": ["2747373"]
         }
       ]
     },

@@ -118,6 +118,67 @@ HTML and JavaScript assets are black boxes — the format can't inspect their re
 
 Self-declared accessibility is a trust claim. Platforms may independently validate these properties — that is outside the scope of the protocol.
 
+## Structured Rejection Details
+
+When a creative agent or seller performs an accessibility check and rejects a
+creative, it uses the existing `CREATIVE_REJECTED` code with
+`recovery: "correctable"`. For backward compatibility, the top-level `field`
+identifies the first failing asset in JSONPath-lite form. The optional
+`error.details` object may conform to the experimental
+[`accessibility-violation.json`](https://adcontextprotocol.org/schemas/latest/error-details/accessibility-violation.json)
+shape and batch every failure in `violations[]`:
+
+```json
+{
+  "code": "CREATIVE_REJECTED",
+  "message": "Creative fails the required accessibility level",
+  "field": "creative_manifest.assets.hero_image",
+  "recovery": "correctable",
+  "details": {
+    "violations": [
+      {
+        "pointer": "/creative_manifest/assets/hero_image",
+        "criterion": "1.4.3",
+        "criterion_source": "WCAG21",
+        "required_level": "AA",
+        "failure_kind": "contrast_ratio_insufficient",
+        "remediation": "For normal-sized text, increase contrast to at least 4.5:1; evaluate WCAG exceptions separately."
+      }
+    ]
+  }
+}
+```
+
+`criterion` and `criterion_source` identify the external requirement without
+freezing an AdCP-owned WCAG corpus. Portable consumers use that pair after
+validating the details schema. `failure_kind` is a bounded diagnostic vocabulary;
+vendor extensions use an `x_` prefix. `remediation` remains untrusted advisory
+text. This shape does not activate an accessibility policy by itself and is
+distinct from `error.issues[]`, which is reserved for JSON Schema validation
+output.
+
+To stay within the transport error safety limit, producers include at most four
+complete violations and keep the complete serialized error at or below 4096
+bytes. When additional failures or remediation text are omitted, they set
+`details.truncated: true`. Producers omit whole extra violations or remediation
+text rather than truncating an RFC 6901 pointer token.
+
+Pointers use RFC 6901 and are always rooted at the complete task request, like
+the protocol's core error pointers. They are not rooted at the nested creative
+manifest. Thus `build_creative` uses paths such as
+`/creative_manifest/assets/hero_image`, while a batched `sync_creatives` request
+uses paths such as `/creatives/0/assets/hero_image`. The top-level `error.field`
+projects the first violation into the same request-rooted path using JSONPath-lite
+notation (for example `creative_manifest.assets.hero_image`).
+
+When `build_creative` receives only `creative_id` and resolves the manifest from
+the creative library, the failing asset has no request path. In that case each
+violation uses `/creative_id` and top-level `error.field` is `creative_id`.
+Criterion and remediation fields preserve diagnostic detail, but the
+request-rooted pointer intentionally cannot identify a nested stored asset.
+`/creative_id` is attribution only and MUST NOT be interpreted as a nested
+mutation path.
+
 ### Third-Party Tags
 
 VAST and DAAST assets wrap video and audio delivered by third parties. They carry accessibility fields alongside their existing tag properties.
@@ -163,6 +224,16 @@ This selects formats that claim at least WCAG AA conformance and include an imag
 - When submitting to a format with `accessibility.requires_accessible_assets: true`, include all accessibility fields for your asset types
 - For opaque assets, test accessibility properties before declaring them
 - Provide captions and transcripts as separate hosted files, not embedded in the asset
+- Select the recovery class only from `code` and `recovery`. After validating
+  `details` against `accessibility-violation.json`, portable tooling may group
+  diagnostics by (`criterion_source`, `criterion`); `failure_kind` refines the
+  display but does not select the recovery class.
+- Treat pointers as untrusted references into an immutable copy of the original
+  request. Resolve them without mutation, require an allowlisted creative asset
+  location, and present the validated criterion to controlled repair logic or a
+  human. Never execute a pointer directly as a property-write path, never treat
+  `/creative_id` as an asset path, and never pass raw details or remediation text
+  to an LLM as instructions.
 
 ## Related Documentation
 

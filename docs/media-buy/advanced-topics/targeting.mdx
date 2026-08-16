@@ -39,9 +39,32 @@ An explicit hard requirement does not become optional merely because the buyer p
 
 If both prose and a structured field address the same constraint, buyers SHOULD keep them consistent. Sellers MUST reject contradictory hard requirements with `INVALID_REQUEST`; they do not silently choose one interpretation or turn the conflict into an empty result.
 
-When the buyer wants package-level control over specific selectable signals that the seller offers, use `targeting_overlay.signal_targeting_groups` on the package. Buy-time eligibility comes from the selected product's signal targeting contract: `signal_targeting_allowed`, inline `Product.signal_targeting_options` when present, the seller's `get_signals` feed for wholesale products that omit inline options, and `signal_targeting_rules`. Signals are named targetable dimensions, referenced with `signal_ref`: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined in a data provider's published adagents.json `signals[]`, or `scope: "signal_source"` with `signal_source_url` for source-native signals that are not published in adagents.json `signals[]`. `signal_ref.scope` is the buy-time resolution path, not provenance, and authoritative enrichment lives on the seller, data provider, or source signal definition. Do not overload `audience_include` or `audience_exclude` for this purpose; those fields are only for first-party audiences registered through `sync_audiences`.
+When the buyer wants package-level control over specific selectable signals that the seller offers, use `targeting_overlay.signal_targeting_groups` on the package. Buy-time eligibility comes from the selected product's signal targeting contract: `signal_targeting_allowed`, inline `Product.signal_targeting_options` when present, the seller's [`get_signals`](/docs/signals/tasks/get_signals) feed for wholesale products that omit inline options, and `signal_targeting_rules`. Signals are named targetable dimensions, referenced with `signal_ref`: `scope: "product"` for product-local signal options, `scope: "data_provider"` with `data_provider_domain` for signals defined in a data provider's published adagents.json `signals[]`, or `scope: "signal_source"` with `signal_source_url` for source-native signals that are not published in adagents.json `signals[]`. `signal_ref.scope` is the buy-time resolution path, not provenance, and authoritative enrichment lives on the seller, data provider, or source signal definition. Do not overload `audience_include` or `audience_exclude` for this purpose; those fields are only for first-party audiences registered through [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences).
 
 Products can also expose `included_signals` for signals already bundled into or planned into the product. Those signals are descriptive product metadata, not package-level targeting controls, and buyers do not echo them in `signal_targeting_groups`.
+
+## Browser-family targeting
+
+Use `targeting_overlay.browser` and `targeting_overlay.browser_exclude` for portable browser-family constraints. The fields intentionally stop at families: browser versions, user-agent strings, backend segment IDs, and arbitrary ad-server key/value expressions are not part of the contract.
+
+```json
+{
+  "targeting_overlay": {
+    "browser": ["chrome", "safari", "samsung_internet"],
+    "browser_exclude": ["safari"]
+  }
+}
+```
+
+Values within `browser` use OR semantics, and `browser_exclude` wins on overlap, so this example delivers on Chrome or Samsung Internet but not Safari. When `browser` is present, omitted families are not eligible. The canonical families are `chrome`, `safari`, `firefox`, `edge`, `opera`, `samsung_internet`, `android_webview`, `other`, and `unknown`.
+
+`other` means the seller recognizes the browser family but it is not one of the explicitly named families. For example, a FreeWheel connector can map recognized values such as Amazon Silk, Android Browser, or Internet Explorer to `other`. `unknown` means the seller cannot classify the browser into a recognized family. Include either value explicitly when that traffic should be eligible; omitting it from an inclusion list excludes it. Samsung Internet remains distinct from Chrome even though both are Chromium-based. `android_webview` means the impression itself is reliably classified as rendering in Android WebView; a native-app placement or an in-app browser opened after a click is not automatically Android WebView.
+
+Browser family describes the impression delivery and rendering environment, not the post-click landing-page browser. Sellers must not infer it solely from operating system, device, “Web” or “Mobile Web” inventory, or placement. Sellers advertising browser support map these portable values to their platform controls internally. A social or app-only product with only device, OS, or placement controls omits `overlay_support.browser` and `overlay_support.browser_exclude` rather than approximating browser support.
+
+Browser and device constraints intersect. For example, `browser: ["safari"]` with `device_platform: ["android"]` may have no executable inventory. During discovery, the seller excludes an incompatible product or returns a configured product with a sparse, buyer-visible `targeting_resolution.modifications` alternative. At create or update, it rejects an exact combination it cannot enforce rather than silently broadening delivery.
+
+Inclusion and exclusion are independent product capabilities. Use concrete values in `targeting_overlay` when pricing and forecasts must reflect them now, and use `required_overlay_support.browser` or `required_overlay_support.browser_exclude` when package values will be supplied later. Requirement `true` asks for any positive support; `{ "families": ["chrome", "firefox"] }` requires both named families. A product advertises unrestricted support as `true`, or partial support as `{ "families": [...] }`. Products such as CTV, audio, DOOH, or app inventory can omit browser support entirely.
 
 ## Portable demographic targeting
 
@@ -413,7 +436,11 @@ forecasting; otherwise confirmation remains a best practice.
 `required_overlay_support` asks whether a product lets the buyer choose a
 dimension later. For example, requesting `geo_metros` support asks for products
 that can be narrowed by metro on packages; it does not ask the seller to return
-one product per metro. The product answers with `overlay_support`.
+one product per metro. Named places follow the same rule: known IDs belong in
+`targeting_overlay.geo_places`, while a buyer that will choose them later asks
+for `required_overlay_support.geo_places`. The product answers with binding
+selectable permission in `overlay_support`; that permission is not a
+value-specific availability guarantee.
 
 Support guarantees selectability subject to disclosed limits, not inventory or
 a forecast for every possible value. A forecast returned without concrete metro
@@ -467,12 +494,14 @@ Use geo fields **only** for:
 - `geo_regions`: ISO 3166-2 subdivision codes (e.g., `["US-CA", "GB-SCT"]`)
 - `geo_metros`: Structured metro areas with explicit system (e.g., `nielsen_dma`, `uk_itl2`) — not all publishers support metro-level targeting
 - `geo_postal_areas`: Structured postal areas with explicit country and system (e.g., `US` / `zip`, `GB` / `outward`, `ZA` / `postal_code`) — not all publishers support postal-level targeting
+- `geo_places`: Catalog-backed named places with explicit country, identifier system, place type, and stable IDs — use this for platform place entities such as cities or municipalities, not raw place names
 
 **Exclusion fields** (exclude these locations from delivery):
 - `geo_countries_exclude`: Same format as `geo_countries`
 - `geo_regions_exclude`: Same format as `geo_regions`
 - `geo_metros_exclude`: Same format as `geo_metros`
 - `geo_postal_areas_exclude`: Same format as `geo_postal_areas`
+- `geo_places_exclude`: Same format as `geo_places`
 
 **Note**: Inclusion and exclusion can be combined. Metro and postal targeting require specifying the classification system, enabling international support. Not all geographic granularities are supported by all publishers. Country and region are most widely supported.
 
@@ -695,9 +724,9 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 
 **Cross-level resolution.** Geographic levels form a hierarchy: country > region > metro > postal. Sellers SHOULD resolve hierarchical conflicts such that exclusion at a higher level takes precedence over inclusion at a more specific level. For example, `geo_countries_exclude: ["US"]` combined with `geo_regions: ["US-CA"]` SHOULD result in no US delivery — the country-level exclusion takes precedence.
 
-**Same-value overlap.** Sellers SHOULD reject requests where the same value appears in both the inclusion and exclusion field at the same level (e.g., `geo_countries: ["US"]` with `geo_countries_exclude: ["US"]`) and return a descriptive error.
+**Same-value overlap.** Sellers SHOULD reject requests where the same value appears in both the inclusion and exclusion field at the same level (e.g., `geo_countries: ["US"]` with `geo_countries_exclude: ["US"]`) and return a descriptive error. ISO subdivision and named-place overlaps are stricter: the same identity in `geo_regions` / `geo_regions_exclude` or `geo_places` / `geo_places_exclude` MUST be rejected.
 
-**Capabilities.** Sellers that declare geographic targeting support in `get_adcp_capabilities` SHOULD support both inclusion and exclusion at that level. If a seller only supports one direction, it MUST return a validation error for unsupported fields rather than silently ignoring them.
+**Capabilities.** Inclusion and exclusion support are independent. Sellers declare subdivision inclusion through `geo_regions` and exclusion through `geo_regions_exclude`; support for one MUST NOT be inferred from the other. A legacy boolean in seller-wide capabilities is a coarse, informative rollup. Seller-wide structured values are individual routing claims within the response scope, not a promise that multiple values are jointly composable or available through the same execution route or account. Only Product `overlay_support` supplies the binding set of executable targeting permissions for that Product, and its legacy `true` form retains the targeting-overlay contract's binding unrestricted-support meaning. A seller that cannot honor every protocol-valid value MUST return structured country/value Product support instead. If a seller does not support a requested direction, it MUST return a validation error rather than silently ignore the field.
 
 ### geo_countries
 - **Description**: Restrict delivery to specific countries
@@ -712,16 +741,24 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Use cases**: Regulatory compliance, sanctions
 
 ### geo_regions
-- **Description**: Restrict delivery to specific regions/states
+- **Description**: Restrict delivery to canonical ISO 3166-2 subdivisions, including states, provinces, regions, departments, and overseas subdivisions
 - **Format**: ISO 3166-2 subdivision codes
-- **Examples**: `["US-CA", "US-NY"]`, `["GB-SCT", "GB-ENG"]`
+- **Examples**: `["US-CA", "CA-QC"]`, `["FR-49", "FR-2A", "FR-971", "FR-ARA"]`
 - **Use cases**: State-level compliance, regional testing
 
 ### geo_regions_exclude
-- **Description**: Exclude specific regions/states from delivery
+- **Description**: Exclude canonical ISO 3166-2 subdivisions from delivery
 - **Format**: ISO 3166-2 subdivision codes
 - **Examples**: `["US-CA"]`, `["CA-QC"]`
 - **Use cases**: Regulatory compliance (e.g., cannabis restrictions by province), RCT holdout regions, regions where product is unavailable
+
+ISO subdivision identifiers are the protocol identity. Sellers MUST execute every requested value exactly or reject/propose a disclosed targeting modification; they MUST NOT silently widen a department to an ancestor, drop an unsupported value, or apply only part of a list. A seller MAY translate a canonical subdivision internally to an exact provider-native representation, including a complete postal-area set, while preserving the requested ISO code in package readback. Native-versus-translated execution is diagnostic and does not change conformance.
+
+Known values belong in `get_products.targeting_overlay.geo_regions` and/or `geo_regions_exclude`, so every returned configured product, price, availability result, minimum, guarantee, and aggregate forecast reflects the effective subdivisions. No separate region resolver is required: configured discovery or refinement is the authoritative value-level preflight.
+
+When region values will be chosen later, buyers request `required_overlay_support.geo_regions` and `geo_regions_exclude` independently. A structured requirement keys support by country. `all_values: true` requires every protocol-valid ISO subdivision active in the seller's support snapshot when the declaration is issued; it does not automatically include values introduced by a later catalog revision. `catalog_version` and `as_of` identify that snapshot when supplied. `values` requests an exact finite candidate set. Returned Product `overlay_support` is binding selectable permission. Requirement matching uses country/value containment: support with `all_values: true` satisfies any requirement for that country; finite support satisfies only requested value subsets. Future support does not guarantee value-specific inventory or commercial terms, so buyers that need a value-specific forecast or guarantee refine with the exact overlay before commitment.
+
+At create or update, unsupported dimensions, countries, or values outside Product `overlay_support` produce `UNSUPPORTED_FEATURE`, while malformed or unknown canonical identifiers inside a declared support envelope produce `INVALID_REQUEST` with an exact `error.field`. A supported create-time selection with no executable inventory produces `PRODUCT_UNAVAILABLE`. `REQUOTE_REQUIRED` remains update-only for an executable change outside the accepted price or guarantee envelope; buyers that know commercially distinct region values before commitment rediscover or refine with the exact overlay. Accepted package state echoes the complete effective ISO subdivision overlay. Updates are atomic.
 
 ### geo_metros
 - **Description**: Restrict delivery to specific metro areas
@@ -752,6 +789,53 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Example**: `[{ "country": "US", "system": "zip", "values": ["90210"] }]`
 - **Use cases**: RCT holdout zip codes, restricted delivery areas
 - **Note**: Seller must declare supported systems in `get_adcp_capabilities`; the deprecated legacy form remains accepted during the 3.x migration.
+
+### geo_places
+
+- **Description**: Restrict delivery to named administrative or local places represented by stable catalog identifiers
+- **Format**: Array of objects with required `country`, `system`, `place_type`, and `values`; optional `system_version`, `value_labels`, and `ext`
+- **Systems**: Registered namespaces are `geonames`, `google_ads`, and `microsoft_ads`. Other catalogs use an owner-controlled absolute HTTPS URI, such as `https://seller.example/geo/catalogs/places`. MaxMind `geoname_id` values use the `geonames` namespace; MaxMind is a catalog source/version, not a separate identifier namespace.
+- **Example**: `[{ "country": "NL", "system": "geonames", "system_version": "2026-05", "place_type": "city", "values": ["2759794"], "value_labels": { "2759794": "Amsterdam, North Holland, Netherlands" } }]`
+- **Use cases**: Target a platform's named city, municipality, borough, neighborhood, post town, city region, or county entity without relying on ambiguous names
+- **Note**: `values` are the authoritative targeting keys. Every `value_labels` key MUST appear in `values`; labels exist only for diagnostics and audit readability, and sellers MUST NOT resolve or apply targeting from them. Raw names such as `Amsterdam` are unresolved intent, not valid values.
+
+Within `geo_places`, values and entries have union semantics: delivery may occur in any included place. `geo_places_exclude` subtracts matching places from the current candidate geography, including when no `geo_places` inclusion is present. Inclusion across different geographic dimensions is intersected. Sellers MUST reject the same `(country, system, place_type, value)` in both include and exclude lists, even when the include and exclude entries specify different catalog versions: version is not part of stable place identity. Sellers MAY reject cross-level combinations they cannot resolve safely rather than silently approximating them.
+
+Before sending a place target, buyers inspect `get_adcp_capabilities.media_buy.execution.targeting.geo_places`. Support is declared as exact country/type pairs, not independent lists. Each system also declares `catalog.current_version`, exact `supported_versions`, and an `adcp_geo_place_resolver_v1` endpoint. Buyers resolve raw names—or refresh an existing ID—using an HTTPS GET with exactly one of `q` or `value` from `get-geo-place-resolution-request.json`. The response echoes the normalized request and follows `get-geo-place-resolution-response.json`, carrying machine-readable country/subdivision/type context plus active, removal-planned, or deprecated identifiers and replacements. Ambiguous results require user or agent disambiguation before trafficking.
+
+If `system_version` is omitted from a new target, the seller applies its declared `current_version`. Sellers MUST reject unsupported systems, country/type pairs, versions, deprecated identifiers, and unknown identifiers rather than silently dropping or reinterpreting them. If an identifier is stale, the seller returns a validation error and may surface resolver-provided replacements; it MUST NOT silently substitute a replacement. Sellers MUST echo persisted `geo_places` and `geo_places_exclude` in package `targeting_overlay` state with the exact applied `system_version` and values.
+
+Accepted place targeting is pinned to the echoed `system_version` for the life of the package. Removing that version from `supported_versions` stops new targeting and target-changing updates from using it, but MUST NOT silently mutate, drop, or invalidate an existing package. An unrelated package update preserves the pinned place overlay. If a seller can no longer execute a pinned target, `get_media_buys` MUST still echo it and return a nonfatal `errors[]` entry with `code: "PLACE_TARGET_UNAVAILABLE"`, `recovery: "correctable"`, `field` pointing to the exact `media_buys[N].packages[M].targeting_overlay.geo_places[_exclude][A].values[V]` response path, and `details` containing `media_buy_id`, `package_id`, `system`, `system_version`, `country`, `place_type`, and `value`. The buyer can use resolver `value` lookup against the current catalog to find lifecycle status and proposed replacements, then submit an intentional target update.
+
+Place forecast and delivery breakdown rows are intentionally not part of this release: `geo_level: "place"` remains invalid on reporting surfaces. Package-state echo provides configuration auditability, but not delivery-by-place verification. Place-level forecast, delivery, pacing, and reconciliation require a follow-up reporting RFC.
+
+Known place IDs belong in `get_products.targeting_overlay.geo_places`, so every
+returned product, price, and aggregate forecast reflects that effective
+targeting even though a place-level breakdown is unavailable. If IDs will be
+chosen on packages later, the buyer requests `required_overlay_support.geo_places`
+(and independently `geo_places_exclude`) with the required system,
+country/type pairs, and optional catalog versions. Returned Product
+`overlay_support` is binding selectable permission, not a value-specific
+inventory, price, or forecast guarantee. At create, the seller applies this
+deterministic disposition matrix to the actual place overlay:
+
+| Condition | Result |
+|---|---|
+| The dimension, identifier system, country, place type, or combination is outside the selected Product `overlay_support` | `UNSUPPORTED_FEATURE` |
+| The tuple is supported, but an ID is invalid, unknown, or deprecated, or an explicit `system_version` is not supported | `INVALID_REQUEST`, with `error.field` identifying the offending field |
+| The identifiers are valid and supported, but their effective intersection has no current inventory | `PRODUCT_UNAVAILABLE`; rediscover with the concrete values or choose another product, without silent substitution or repricing |
+
+An accepted create confirms that the returned terms apply to the complete
+effective targeting. `PLACE_TARGET_UNAVAILABLE` is reserved for later
+degradation of a previously accepted, persisted place target; it is not a
+create-time substitute for any result above.
+
+### geo_places_exclude
+
+- **Description**: Exclude catalog-backed named places
+- **Format**: Same as `geo_places`
+- **Example**: `[{ "country": "US", "system": "geonames", "place_type": "city", "values": ["5392171"], "value_labels": { "5392171": "San Jose, California, United States" } }]`
+- **Note**: Seller must declare the system, exact country/type pair, and applied catalog version in `get_adcp_capabilities` and echo the persisted exclusion on package state.
 
 ### axe_include_segment
 - **Description**: Segment ID for inclusion targeting (legacy AXE field)
@@ -891,6 +975,23 @@ For products where inventory and audience planning are inseparable, such as line
 - **Examples**: `["dooh"]`, `["ctv", "dooh"]`
 - **Use cases**: Exclude CTV for app-install campaigns, exclude DOOH for direct-response campaigns
 - **Note**: Supported when seller declares `device_type: true` in `get_adcp_capabilities`
+
+### browser
+
+- **Description**: Restrict impression delivery to canonical browser families
+- **Format**: Non-empty array of `chrome`, `safari`, `firefox`, `edge`, `opera`, `samsung_internet`, `android_webview`, `other`, or `unknown`
+- **Examples**: `["chrome"]`, `["chrome", "firefox"]`, `["safari", "unknown"]`
+- **Semantics**: Values use OR; when present, omitted families are ineligible. The field describes the impression rendering environment, not a post-click browser.
+- **Discovery**: Require any later-selectable family with `required_overlay_support.browser: true`, or require a subset with `required_overlay_support.browser.families`. Products disclose unrestricted support as `true` or partial support with `overlay_support.browser.families`.
+
+### browser_exclude
+
+- **Description**: Exclude canonical browser families from impression delivery
+- **Format**: Non-empty array using the same values as `browser`
+- **Examples**: `["unknown"]`, `["safari", "android_webview"]`
+- **Conflict rule**: Exclusion wins when the same family appears in both browser fields
+- **Discovery**: Inclusion and exclusion support are independent; `required_overlay_support.browser_exclude` and `overlay_support.browser_exclude` use the same `true` or `{ "families": [...] }` capability form.
+- **Failure rule**: A seller that cannot enforce the exclusion rejects the request instead of dropping it
 
 ### language
 - **Description**: Restrict to users with specific language preferences
@@ -1157,7 +1258,7 @@ To remove all keyword targeting while preserving other overlay fields, send the 
 
 ### Publishers MUST:
 
-1. **Support Geographic Targeting**: Handle geographic inclusion and exclusion parameters (`geo_countries`, `geo_countries_exclude`, `geo_regions`, `geo_regions_exclude`, `geo_metros`, `geo_metros_exclude`, `geo_postal_areas`, `geo_postal_areas_exclude`) to the extent your platform supports them. Declare supported metro and postal systems in `get_adcp_capabilities`
+1. **Support Geographic Targeting**: Handle geographic inclusion and exclusion parameters (`geo_countries`, `geo_countries_exclude`, `geo_regions`, `geo_regions_exclude`, `geo_metros`, `geo_metros_exclude`, `geo_postal_areas`, `geo_postal_areas_exclude`, `geo_places`, `geo_places_exclude`) to the extent your platform supports them. Declare supported metro, postal, and place systems in `get_adcp_capabilities`
 2. **Interpret Briefs**: Use briefs to determine appropriate audience and content targeting
 3. **Validate Targeting**: Reject media buys with targeting that cannot be supported
 4. **Document Limitations**: Clearly communicate any geographic targeting limitations in product descriptions

@@ -620,7 +620,7 @@
       "properties": {
         "require_operator_auth": {
           "type": "boolean",
-          "description": "Whether the seller requires operator-level credentials. This declares who must authenticate; it does not by itself declare whether OAuth is used, whether list_accounts is exposed, or which sync_accounts modes are supported. When true, operators authenticate independently with the seller and account-scoped calls use seller/storefront-assigned account_id values because the seller or upstream platform owns the canonical account namespace. If a credential may access more than one account, the seller MUST expose list_accounts and buyers MUST resolve an explicit account_id before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose list_accounts returning that singleton; a seller MAY omit list_accounts only when it provides the same explicit account_id through another declared path or out-of-band onboarding. When false (default, buyer-declared accounts), the seller trusts the agent's identity claims and account-scoped calls use the advertiser natural key: brand + operator + optional operator_unit, fixed currency, and sandbox. operator_unit.id is owned by the operator and is distinct from the seller's account_id. The seller normally provisions through sync_accounts, but MAY lazily provision on the first account-scoped request when billing and other required settings are unambiguous from capabilities or onboarding defaults. A lazy-provisioning seller MUST keep accepting the natural key and MUST expose list_accounts for recovery; if buyer input is needed before use, the seller MUST expose sync_accounts.",
+          "description": "Whether the seller requires operator-level credentials. This declares who must authenticate; it does not by itself declare whether OAuth is used, whether list_accounts is exposed, or which sync_accounts modes are supported. When true, operators authenticate independently with the seller and account-scoped calls use seller/storefront-assigned account_id values because the seller or upstream platform owns the canonical account namespace. If a credential may access more than one account, the seller MUST expose list_accounts and buyers MUST resolve an explicit account_id before the first account-scoped request. If a credential is bound to exactly one account, the seller SHOULD expose list_accounts returning that singleton; a seller MAY omit list_accounts only when it provides the same explicit account_id through another declared path or out-of-band onboarding. When false (default, buyer-declared accounts), the seller trusts the agent's identity claims and account-scoped calls use the advertiser natural key: brand + operator + optional operator_unit, fixed currency, optional buyer-selected account timezone, and sandbox. operator_unit.id is owned by the operator and is distinct from the seller's account_id. The seller normally provisions through sync_accounts, but MAY lazily provision on the first account-scoped request when billing and other required settings are unambiguous from capabilities or onboarding defaults. A lazy-provisioning seller MUST keep accepting the natural key and MUST expose list_accounts for recovery; if buyer input is needed before use, the seller MUST expose sync_accounts.",
           "default": false
         },
         "authorization_endpoint": {
@@ -644,6 +644,10 @@
           },
           "minItems": 1,
           "uniqueItems": true
+        },
+        "timezone": {
+          "$ref": "/schemas/core/account-timezone-capability.json",
+          "description": "Required for sellers implementing AdCP 3.2 advertiser-account provisioning, but optional in the shared 3.x response schema for compatibility. Declares whether the account timezone is seller-wide or fixed per account and whether a buyer must select it during sync_accounts provisioning. Account timezone is the default for account-scoped calendar semantics; feature-specific capability fields explicitly declare exceptions."
         },
         "required_for_products": {
           "type": "boolean",
@@ -728,6 +732,60 @@
             }
           ]
         },
+        "identity_updates": {
+          "type": "object",
+          "description": "Whether the seller accepts buyer-desired operator identity reconciliation through sync_accounts settings-update entries. Sellers declaring support expose the exact identity transitions they implement, MUST return account revisions from sync_accounts and list_accounts, and MUST return identity_change_preview for dry-run identity updates.",
+          "oneOf": [
+            {
+              "title": "AccountIdentityUpdatesSupported",
+              "properties": {
+                "supported": {
+                  "type": "boolean",
+                  "const": true,
+                  "description": "Discriminator. True means the seller accepts operator_identity in sync_accounts settings-update mode."
+                },
+                "supported_changes": {
+                  "type": "array",
+                  "description": "Identity changes the seller accepts. operator_unit_name covers display-name-only reconciliation within the current operator. operator_unit covers adding, removing, or changing the stable unit id within the current operator and also implies name updates. operator covers an inter-entity operator-domain handoff and encompasses the entire replacement operator identity, including any simultaneous unit addition, removal, or change; a seller need not also advertise operator_unit for that cross-operator replacement.",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "operator_unit_name",
+                      "operator_unit",
+                      "operator"
+                    ]
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              },
+              "required": [
+                "supported",
+                "supported_changes"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "title": "AccountIdentityUpdatesUnsupported",
+              "properties": {
+                "supported": {
+                  "type": "boolean",
+                  "const": false,
+                  "description": "Discriminator. False means buyers must not submit operator_identity settings updates."
+                }
+              },
+              "required": [
+                "supported"
+              ],
+              "not": {
+                "required": [
+                  "supported_changes"
+                ]
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
         "sandbox": {
           "type": "boolean",
           "description": "Whether this seller supports sandbox accounts for testing. Buyer-declared accounts use sandbox: true in sync_accounts or, for an unambiguous lazy-provisioning seller, in the natural-key account reference. Sellers with account_id namespaces expose sandbox accounts as pre-existing test accounts through list_accounts or supply them out-of-band. Requests using a sandbox account perform no real platform calls or spend.",
@@ -769,6 +827,39 @@
           },
           "minItems": 1,
           "uniqueItems": true
+        },
+        "proposal_refinement": {
+          "type": "object",
+          "description": "Pre-flight support for typed refine_proposals revision dimensions. These declarations mean the seller can parse and mechanically validate a dimension; they never promise that the seller will commercially concede it. Absence means typed-dimension support is unknown and buyers must handle per-result partial or unable outcomes. A dimension omitted from an explicit supported_dimensions list MUST be rejected at task level with UNSUPPORTED_FEATURE before any proposal is created.",
+          "properties": {
+            "supported_dimensions": {
+              "type": "array",
+              "description": "Typed revision dimensions the seller can parse and validate. An empty list authoritatively means ask-only refinement with no typed dimensions. total_budget, cpm, impressions, and flight cover the same-named constraints keys; product_changes covers product_changes; alternatives covers alternatives.count; criteria covers structured discovery criteria. Free-text ask interpretation is competence, not a capability declared here.",
+              "items": {
+                "type": "string",
+                "enum": ["total_budget", "cpm", "impressions", "flight", "product_changes", "alternatives", "criteria"]
+              },
+              "uniqueItems": true
+            },
+            "max_alternatives": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 10,
+              "description": "Optional maximum alternatives.count the seller accepts, up to the protocol maximum of 10. Valid only when supported_dimensions includes alternatives. Requests above this ceiling fail at task level with VALIDATION_ERROR identifying refinements[i].alternatives.count; sellers MUST NOT silently clamp the request or return alternatives_unavailable for the declared ceiling violation."
+            }
+          },
+          "required": ["supported_dimensions"],
+          "allOf": [
+            {
+              "if": { "required": ["max_alternatives"] },
+              "then": {
+                "properties": {
+                  "supported_dimensions": { "contains": { "const": "alternatives" } }
+                }
+              }
+            }
+          ],
+          "additionalProperties": true
         },
         "reporting_delivery_methods": {
           "type": "array",
@@ -910,18 +1001,7 @@
                   "type": "array",
                   "description": "Surface types this seller supports via TMP.",
                   "items": {
-                    "type": "string",
-                    "enum": [
-                      "website",
-                      "mobile_app",
-                      "ctv_app",
-                      "desktop_app",
-                      "dooh",
-                      "podcast",
-                      "radio",
-                      "streaming_audio",
-                      "ai_assistant"
-                    ]
+                    "$ref": "/schemas/enums/property-type.json"
                   }
                 }
               }
@@ -974,8 +1054,18 @@
                   "description": "Country-level targeting using ISO 3166-1 alpha-2 codes"
                 },
                 "geo_regions": {
-                  "type": "boolean",
-                  "description": "Region/state-level targeting using ISO 3166-2 codes (e.g., US-NY, GB-SCT)"
+                  "description": "ISO 3166-2 subdivision inclusion targeting. A legacy boolean is a coarse seller-wide declaration. Structured country/value entries are individually supported within the response scope, but do not promise joint composability or availability through the same execution route or account. Only Product.overlay_support supplies the binding set of executable targeting permissions for a configured Product.",
+                  "anyOf": [
+                    { "type": "boolean" },
+                    { "$ref": "/schemas/core/geo-region-support.json" }
+                  ]
+                },
+                "geo_regions_exclude": {
+                  "description": "ISO 3166-2 subdivision exclusion targeting, declared independently from inclusion. Structured country/value entries are individually supported within the response scope, but do not promise joint composability or availability through the same execution route or account. Only Product.overlay_support supplies the binding set of executable targeting permissions for a configured Product; absence means buyers cannot infer exclusion support from geo_regions alone.",
+                  "anyOf": [
+                    { "type": "boolean" },
+                    { "$ref": "/schemas/core/geo-region-support.json" }
+                  ]
                 },
                 "geo_metros": {
                   "type": "object",
@@ -999,6 +1089,17 @@
                 "geo_postal_areas": {
                   "description": "Postal area targeting. Prefer the native country-keyed map where each ISO 3166-1 alpha-2 country lists supported country-local postal systems. Deprecated legacy country-fused postal-system boolean aliases may be emitted alongside native country keys during migration.",
                   "$ref": "/schemas/core/postal-area-support.json"
+                },
+                "geo_places": {
+                  "type": "object",
+                  "description": "Place targeting support keyed by collision-safe identifier system. Each system declares exact country-to-place-type combinations, accepted catalog versions, and a machine-readable resolver. Sellers MUST reject unsupported systems, country/type pairs, versions, and identifiers rather than silently dropping them.",
+                  "propertyNames": {
+                    "$ref": "/schemas/core/geo-place-system.json"
+                  },
+                  "additionalProperties": {
+                    "$ref": "/schemas/core/geo-place-support.json"
+                  },
+                  "minProperties": 1
                 },
                 "age_restriction": {
                   "type": "object",
@@ -1368,6 +1469,64 @@
           },
           "additionalProperties": true
         },
+        "budget_capping": {
+          "type": "object",
+          "description": "Hard daily budget-cap capabilities. Presence declares only the scopes listed in supported_scopes; sellers MUST reject a daily_budget_cap at an undeclared scope with UNSUPPORTED_FEATURE before mutation and MUST NOT silently drop or soften it. A cap is always a hard ceiling. Sellers that offer a best-effort pacing target must expose that under a separately named feature rather than interpreting daily_budget_cap as soft. Daily caps are orthogonal to pacing.",
+          "properties": {
+            "supported_scopes": {
+              "type": "array",
+              "description": "Scopes where the seller enforces hard daily caps. media_buy bounds aggregate spend across all packages without allocating it. package bounds one package and remains subordinate to any aggregate cap.",
+              "items": {
+                "type": "string",
+                "enum": ["media_buy", "package"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "supported_periods": {
+              "type": "array",
+              "description": "Cap reset periods the seller enforces. AdCP 3.2 defines day only; the array form reserves room for future periods as an additive change.",
+              "items": {
+                "type": "string",
+                "enum": ["day"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "timezone_basis": {
+              "type": "string",
+              "enum": ["account", "fixed"],
+              "description": "Source of the default cap-day boundary. account uses the selected Account.timezone and therefore supports different boundaries for different accounts. fixed uses fixed_timezone for every media buy regardless of account timezone."
+            },
+            "fixed_timezone": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Feature-specific default cap-day timezone used when timezone_basis is fixed. Use UTC or an IANA timezone identifier."
+            },
+            "buyer_timezone_override": {
+              "type": "boolean",
+              "description": "When true, buyers MAY override the default cap-day boundary via media-buy-level budget_cap_timezone. The accepted timezone applies to aggregate and package caps alike. When false or absent, a submitted override is rejected with UNSUPPORTED_FEATURE."
+            }
+          },
+          "required": ["supported_scopes", "supported_periods", "timezone_basis"],
+          "allOf": [
+            {
+              "if": {
+                "properties": { "timezone_basis": { "const": "fixed" } },
+                "required": ["timezone_basis"]
+              },
+              "then": { "required": ["fixed_timezone"] }
+            },
+            {
+              "if": {
+                "properties": { "timezone_basis": { "const": "account" } },
+                "required": ["timezone_basis"]
+              },
+              "then": { "not": { "required": ["fixed_timezone"] } }
+            }
+          ],
+          "additionalProperties": true
+        },
         "content_standards": {
           "type": "object",
           "description": "Content standards implementation details. Presence of this object indicates the seller supports content_standards configuration including sampling rates and category filtering. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities. This is a seller-side media-buy capability; governance agents providing content standards services declare `specialisms: [\"content-standards\"]` instead.",
@@ -1392,7 +1551,7 @@
         },
         "portfolio": {
           "type": "object",
-          "description": "Information about the seller's media inventory portfolio. Expected for media_buy sellers — buyers use this to understand inventory coverage and verify authorization via adagents.json.",
+          "description": "Information about the seller's media inventory portfolio. Media-buy sellers SHOULD publish primary_channels and primary_countries as their complete brief-routing scope. Buyers use publisher_domains to verify authorization via adagents.json. Omitted routing arrays mean unknown scope and MUST NOT be interpreted as global coverage.",
           "properties": {
             "publisher_domains": {
               "type": "array",
@@ -1405,14 +1564,14 @@
             },
             "primary_channels": {
               "type": "array",
-              "description": "Primary advertising channels in this portfolio",
+              "description": "Complete list of AdCP media channels for which this sales agent accepts and can meaningfully answer product-discovery briefs. When present, this is an exhaustive brief-routing allowlist: buyers MAY skip the agent when a brief's requested channels do not intersect it. Omission means channel scope is unknown and MUST NOT be interpreted as support for every channel. This is a routing pre-filter, not a promise of current product availability.",
               "items": {
                 "$ref": "/schemas/enums/channels.json"
               }
             },
             "primary_countries": {
               "type": "array",
-              "description": "Primary countries (ISO 3166-1 alpha-2) where inventory is concentrated",
+              "description": "Complete list of ISO 3166-1 alpha-2 countries for which this sales agent accepts and can meaningfully answer product-discovery briefs. When present, this is an exhaustive brief-routing allowlist: buyers MAY skip the agent when a brief's requested countries do not intersect it. Omission means country scope is unknown and MUST NOT be interpreted as global coverage. This is a routing pre-filter, not a promise of current product availability and not an executable geo-targeting declaration; media_buy.execution.targeting geo capabilities and each product's overlay_support remain authoritative for targeting execution.",
               "items": {
                 "type": "string",
                 "pattern": "^[A-Z]{2}$"
@@ -1433,6 +1592,15 @@
         }
       },
       "allOf": [
+        {
+          "if": { "required": ["proposal_refinement"] },
+          "then": {
+            "properties": {
+              "lifecycle_tools": { "contains": { "const": "refine_proposals" } }
+            },
+            "required": ["lifecycle_tools"]
+          }
+        },
         {
           "if": {
             "properties": {

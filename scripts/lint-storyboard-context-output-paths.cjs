@@ -128,33 +128,63 @@ function isPureExtensionPoint(node) {
 /**
  * Walk a JSON Schema node to determine whether a dotted path resolves to
  * any defined element. Follows `$ref`, descends through `properties.<name>`
- * for object steps and `items` for numeric-index steps, and accepts any
- * variant of `oneOf` / `anyOf` / `allOf` that resolves. Returns true when
+ * for object steps, schema-valued `additionalProperties` for dynamic map
+ * keys, and `items` for numeric-index steps, and accepts any variant of
+ * `oneOf` / `anyOf` / `allOf` that resolves. Returns true when
  * EVERY segment was either resolved by a defined property/items, accepted
  * by at least one composite variant, or descended into a pure extension
  * point (e.g., `core/context.json`, `error.details`).
  *
  * Empty path resolves trivially (the root itself exists).
  */
-function pathResolves(node, segments, seen = new Set()) {
+function resolveLocalRef(root, ref) {
+  if (!root || typeof root !== 'object' || typeof ref !== 'string' || !ref.startsWith('#/')) {
+    return null;
+  }
+  return ref
+    .slice(2)
+    .split('/')
+    .map((token) => token.replace(/~1/g, '/').replace(/~0/g, '~'))
+    .reduce(
+      (current, token) =>
+        current && typeof current === 'object' ? current[token] : undefined,
+      root,
+    );
+}
+
+function pathResolves(node, segments, seen = new Set(), root = node) {
   if (!node || typeof node !== 'object') return false;
   if (segments.length === 0) return true;
 
   if (node.$ref) {
-    if (seen.has(node.$ref)) return false;
+    const refKey = `${root?.$id || '<inline>'}:${node.$ref}`;
+    if (seen.has(refKey)) return false;
     const next = new Set(seen);
-    next.add(node.$ref);
+    next.add(refKey);
+    if (node.$ref.startsWith('#/')) {
+      return pathResolves(resolveLocalRef(root, node.$ref), segments, next, root);
+    }
     const resolved = loadSchema(node.$ref);
-    return pathResolves(resolved, segments, next);
+    return pathResolves(resolved, segments, next, resolved);
   }
 
   const [seg, ...rest] = segments;
 
   // Numeric — array index. Only valid when this node has `items`.
   if (/^\d+$/.test(seg)) {
-    if (node.items && pathResolves(node.items, rest, seen)) return true;
-  } else if (node.properties && Object.prototype.hasOwnProperty.call(node.properties, seg)) {
-    if (pathResolves(node.properties[seg], rest, seen)) return true;
+    if (node.items && pathResolves(node.items, rest, seen, root)) return true;
+  } else {
+    const isDeclaredProperty =
+      node.properties && Object.prototype.hasOwnProperty.call(node.properties, seg);
+    if (isDeclaredProperty) {
+      if (pathResolves(node.properties[seg], rest, seen, root)) return true;
+    } else if (
+      node.additionalProperties &&
+      typeof node.additionalProperties === 'object' &&
+      pathResolves(node.additionalProperties, rest, seen, root)
+    ) {
+      return true;
+    }
   }
 
   // Composite variants — any variant that resolves the FULL remaining path
@@ -167,7 +197,7 @@ function pathResolves(node, segments, seen = new Set()) {
   const variants = node.oneOf || node.anyOf || node.allOf;
   if (Array.isArray(variants)) {
     for (const variant of variants) {
-      if (pathResolves(variant, segments, seen)) return true;
+      if (pathResolves(variant, segments, seen, root)) return true;
     }
   }
 

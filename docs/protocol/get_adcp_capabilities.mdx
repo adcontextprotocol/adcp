@@ -345,10 +345,12 @@ Account and authentication capabilities. All sellers should declare this section
 |-------|------|-------------|
 | `supported_billing` | string[] | **Required.** Billing models this seller supports: `operator`, `agent`, or `advertiser`. When the buyer calls `sync_accounts`, every entry must select one of these values. |
 | `supported_account_currency_modes` | string[] | **Required for 3.2 advertiser-account provisioning; additive/optional on the shared 3.x wire schema for 3.1 compatibility.** Models this seller supports: `fixed`, `per_media_buy`, or both. A buyer includes `currency` in `sync_accounts` for `fixed` and omits it for `per_media_buy`. When both are advertised, presence or absence selects the model. Absence means an older seller has not exposed currency-mode discovery; it does not imply support for either mode. |
-| `require_operator_auth` | boolean | Default: `false`. Declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported. When `true`, each operator authenticates independently and account-scoped calls use seller/storefront-assigned `account_id` values. When `false`, the agent is trusted and calls use the advertiser natural key: `brand` + `operator` + optional `operator_unit`, fixed `currency`, and `sandbox`. `operator_unit.id` belongs to the operator and is not the seller's `account_id`. Buyer-declared sellers normally provision through `sync_accounts`, MUST continue accepting the natural key, and SHOULD expose `list_accounts` so all key fields can be recovered after a cold start. |
+| `timezone` | object | **Required for 3.2 advertiser-account provisioning; additive/optional on the shared 3.x wire schema for compatibility.** `seller_fixed` advertises one `fixed_timezone` for every account. `account_fixed` declares whether each immutable account timezone is `seller_assigned` or `buyer_selected`; buyer-selected mode also publishes the exact `supported_timezones`. |
+| `require_operator_auth` | boolean | Default: `false`. Declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported. When `true`, each operator authenticates independently and account-scoped calls use seller/storefront-assigned `account_id` values. When `false`, the agent is trusted and calls use the advertiser natural key: `brand` + `operator` + optional `operator_unit`, fixed `currency`, optional buyer-selected `timezone`, and `sandbox`. `operator_unit.id` belongs to the operator and is not the seller's `account_id`. Buyer-declared sellers normally provision through `sync_accounts`, MUST continue accepting the natural key, and SHOULD expose `list_accounts` so all key fields can be recovered after a cold start. |
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
 | `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling [`get_products`](/docs/media-buy/task-reference/get_products). When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. |
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
+| `identity_updates` | object | Optional capability gate for reconciling an existing account's buyer-controlled operator identity through `sync_accounts` settings-update mode. `supported_changes` declares `operator_unit_name`, `operator_unit`, and/or `operator`. |
 | `notifications` | object | Optional. Declares durable account lifecycle webhook support. When `supported: true`, buyers may register `account.status_changed` subscribers with `sync_accounts.accounts[].notification_configs[]` and repair by re-reading `list_accounts`. |
 | `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. Account-id namespaces discover pre-existing test accounts through `list_accounts` or out-of-band setup. Buyer-declared accounts use `sandbox: true` in `sync_accounts`, or in the natural-key account reference when the seller uses unambiguous lazy provisioning — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
 
@@ -361,6 +363,11 @@ Declares whether the seller supports durable account lifecycle invalidation webh
   "account": {
     "supported_billing": ["operator", "agent"],
     "supported_account_currency_modes": ["fixed", "per_media_buy"],
+    "timezone": {
+      "mode": "account_fixed",
+      "account_selection": "buyer_selected",
+      "supported_timezones": ["America/New_York", "Europe/London", "UTC"]
+    },
     "notifications": {
       "supported": true,
       "registration_task": "sync_accounts",
@@ -376,9 +383,35 @@ When `supported: false` or absent, buyers MUST NOT assume durable account status
 
 See [Provision a seller-mediated account](/docs/accounts/provisioning-walkthrough) for the complete discovery, registration, human setup, webhook, and repair sequence.
 
+#### account.timezone
+
+Account timezone is an immutable operational default, not an assumption that every upstream clock is identical. A `seller_fixed` seller advertises one `fixed_timezone` and buyers omit `timezone` during provisioning. An `account_fixed` seller returns a timezone on every account; when `account_selection` is `buyer_selected`, buyers MUST provide one advertised value to `sync_accounts`, and that value participates in the natural account key. When it is `seller_assigned`, buyers omit the field and discover the value from `sync_accounts` or `list_accounts`.
+
+Calendar-day features inherit `Account.timezone` only when their capability says so. Product reporting continues to use `reporting_capabilities.timezone`, account financials use the timezone returned by `get_account_financials`, and daily caps use `budget_capping.timezone_basis`. This prevents a seller from claiming that distinct reporting, billing, and delivery clocks are aligned when the upstream platform does not align them.
+
+#### account.identity_updates
+
+Declares whether the seller accepts a complete desired `operator_identity` on an existing account through `sync_accounts` settings-update mode.
+
+```json
+{
+  "account": {
+    "supported_billing": ["operator", "agent"],
+    "identity_updates": {
+      "supported": true,
+      "supported_changes": ["operator_unit_name", "operator_unit", "operator"]
+    }
+  }
+}
+```
+
+`operator_unit_name` covers display-name-only changes within the current operator. `operator_unit` covers adding, removing, or changing the stable unit ID within the current operator and also implies name changes. `operator` covers an inter-entity operator-domain handoff and encompasses the complete replacement identity, including any simultaneous unit addition, removal, or change; a seller does not also need to advertise `operator_unit` for that cross-operator replacement. Operator-domain handoffs always require seller-mediated approval of the current account authority, verified brand authorization, destination-operator acceptance, and operator-scoped billing and grants. Sellers declaring support MUST return account `revision` from `sync_accounts` and `list_accounts`, require and atomically enforce a submitted revision, preserve account identity and account-scoped resources during rekeying, expose any pending or rejected transition as `identity_change`, and return `identity_change_preview` for `dry_run: true`. When the capability is absent or `supported: false`, buyers MUST NOT submit `operator_identity`; sellers reject it with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature).
+
+See [`sync_accounts` identity reconciliation](/docs/accounts/tasks/sync_accounts#reconciling-operator-identity) for replacement, approval, collision, and stale-key semantics.
+
 #### Auth models
 
-**Buyer-declared accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, and account-scoped calls use that credential plus the advertiser natural key (`brand` + `operator` + optional `operator_unit`, fixed `currency`, and `sandbox`). `brand.countries[]` may qualify the commercial advertiser identity without targeting delivery. Most sellers expose `sync_accounts` so the buyer can declare the relationship and select billing or other settings before use. A seller MAY instead auto-provision on the first account-scoped request when those settings are unambiguous from capabilities or onboarding defaults; in that mode it MUST expose `list_accounts` as the recovery read and MUST keep accepting the natural key. Auto-provisioning is not conformant when buyer input is needed to resolve billing, terms, sandbox setup, notifications, or other account settings before the operation.
+**Buyer-declared accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, and account-scoped calls use that credential plus the advertiser natural key (`brand` + `operator` + optional `operator_unit`, fixed `currency`, optional buyer-selected `timezone`, and `sandbox`). `brand.countries[]` may qualify the commercial advertiser identity without targeting delivery. Most sellers expose `sync_accounts` so the buyer can declare the relationship and select billing or other settings before use. A seller MAY instead auto-provision on the first account-scoped request when those settings are unambiguous from capabilities or onboarding defaults; in that mode it MUST expose `list_accounts` as the recovery read and MUST keep accepting the natural key. Auto-provisioning is not conformant when buyer input is needed to resolve billing, timezone, terms, sandbox setup, notifications, or other account settings before the operation.
 
 **Account-id namespaces** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and passes seller-assigned `account_id` values on subsequent requests. OAuth is credential acquisition, not an account taxonomy axis. Two namespace patterns use the same wire reference: upstream-managed sellers expose `list_accounts`, making explicit account resolution mandatory before account-scoped calls; seller-defined namespaces without `list_accounts` provide account IDs out-of-band. SDKs SHOULD lazily call `list_accounts` when first needed, auto-select a singleton, cache it per credential/session, and still send explicit `AccountRef` values on required-account calls.
 
@@ -393,6 +426,44 @@ Media-buy protocol capabilities. Only present if `media_buy` is in `supported_pr
 #### lifecycle_tools
 
 AdCP 3.2 sellers use `lifecycle_tools` to advertise any supported subset of `get_products`, `list_products`, `request_proposals`, `refine_proposals`, `decline_proposals`, `buy_products`, `accept_proposal`, and `control_media_buy`. When absent, buyers use the legacy `get_products`, `create_media_buy`, and `update_media_buy` facades. The compact tools share the authorization framework with their legacy peers, but grants remain task-specific and each stateful tool has its own idempotency identity: retry with the same tool name and payload. SDKs use the release manifest's `legacy_fallback` metadata to distinguish a direct one-call translation from a stateful orchestration or an unsupported fallback; see [Same-major tool replacements](/docs/building/cross-cutting/version-adaptation#same-major-tool-replacements).
+
+#### proposal_refinement
+
+When `lifecycle_tools` includes `refine_proposals`, `proposal_refinement` optionally advertises which typed revision dimensions the seller can parse and mechanically validate:
+
+| Dimension | Request field | Deterministic check |
+|---|---|---|
+| `total_budget` | `constraints.total_budget` | Compare the inclusive range and currency with `commercial_terms.total_budget`. |
+| `cpm` | `constraints.cpm` | Compare the ceiling and currency with every purchase's fixed `cpm`/`vcpm` `pricing.fixed_price`. |
+| `impressions` | `constraints.impressions` | Sum `commercial_terms.purchases[].impressions` and compare with the minimum. |
+| `flight` | `constraints.flight` | Compare `commercial_terms.start_time` and `end_time` with the window bounds. |
+| `product_changes` | `product_changes` | Check each keyed `include`/`omit` action against `commercial_terms.purchases[].product_id`. |
+| `alternatives` | `alternatives.count` | Count drafts and verify that their `commercial_terms` — and therefore `terms_digest` values — are distinct. |
+| `criteria` | `criteria` | Apply structured discovery changes and preserve omitted criteria from the source proposal. |
+
+`alternatives.count` has a protocol maximum of 10. `max_alternatives` may accompany `alternatives` to publish a lower pre-flight count ceiling and therefore cannot exceed 10. A request whose `alternatives.count` exceeds that declared ceiling MUST fail at task level with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error); `error.field` identifies the offending `refinements[i].alternatives.count`. Sellers MUST NOT silently clamp the count or reinterpret the ceiling as an `alternatives_unavailable` result.
+
+An explicit `supported_dimensions` list is authoritative, including an empty list meaning the seller supports `ask`-only refinement but no typed dimensions. Buyers SHOULD NOT send omitted dimensions, and sellers MUST reject them at task level with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). Such errors SHOULD carry the [`error-details/unsupported-refinement-dimension.json`](https://adcontextprotocol.org/schemas/latest/error-details/unsupported-refinement-dimension.json) shape — `details.unsupported_dimension` and `details.supported_dimensions` — so an authorized buyer can remove or translate unsupported fields without another capability round trip. This task-level rejection applies to the complete request: no sibling refinement succeeds and no proposal is created, even when the unsupported dimension appears after otherwise supported entries. When `proposal_refinement` is absent, support is unknown; sellers report unsupported dimensions through `partial` or `unable` results instead. `proposal_refinement` is valid only when `lifecycle_tools` includes `refine_proposals`.
+
+This capability is about parse and validation support, never commercial willingness. Free-text `ask` interpretation remains seller competence rather than a boolean capability. Multi-proposal finalization deliberately retains its separate failure-as-discovery model through [`MULTI_FINALIZE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-multi-finalize-unsupported): it describes atomic infrastructure topology, while the core typed revision fields must be discoverable before a deterministic buyer constructs a request.
+#### budget_capping
+
+`budget_capping` advertises hard daily caps independently at `media_buy` and `package` scopes. A media-buy cap bounds aggregate daily spend without allocating it; package caps add subordinate ceilings and are never reservations. Sellers MUST reject an undeclared scope with `UNSUPPORTED_FEATURE` before mutation and MUST NOT reinterpret `daily_budget_cap` as a soft pacing target.
+
+```json
+{
+  "media_buy": {
+    "budget_capping": {
+      "supported_scopes": ["media_buy", "package"],
+      "supported_periods": ["day"],
+      "timezone_basis": "account",
+      "buyer_timezone_override": true
+    }
+  }
+}
+```
+
+`timezone_basis: "account"` uses the selected `Account.timezone`, allowing two accounts on the same seller to have different cap days. `timezone_basis: "fixed"` requires `fixed_timezone` and uses that feature-specific boundary for every buy. A buyer override is media-buy-level and applies to every cap on that buy. The accepted effective timezone is echoed as `budget_cap_timezone`; DST transition dates remain one calendar day carrying the full cap. Billing and reporting timezones remain independently explicit and MUST NOT be inferred from the cap basis.
 
 :::note 3.0 breaking changes
 The following fields have been removed from the capabilities response:
@@ -589,9 +660,11 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 | Field | Type | Description |
 |-------|------|-------------|
 | `geo_countries` | boolean | Country-level targeting using ISO 3166-1 alpha-2 codes |
-| `geo_regions` | boolean | Region/state-level targeting using ISO 3166-2 codes (e.g., `US-NY`, `GB-SCT`) |
+| `geo_regions` | boolean or object | ISO 3166-2 subdivision inclusion targeting. Structured entries declare individual country/value support; a boolean is the legacy coarse rollup. |
+| `geo_regions_exclude` | boolean or object | ISO 3166-2 subdivision exclusion targeting, declared independently from inclusion, with structured entries declaring individual country/value support. |
 | `geo_metros` | object | Metro area targeting with system-specific support |
 | `geo_postal_areas` | object | Postal area targeting with country and precision support |
+| `geo_places` | object | Named-place targeting keyed by collision-safe identifier system, with exact country/type support, catalog versions, and resolver metadata |
 | `age_restriction` | object | Age restriction capabilities with `supported` flag and `verification_methods` |
 | `demographics` | object | Seller-wide discovery rollup for canonical demographic targeting. `supported: true` means at least one product supports the surface; inspect each product's `demographic_targeting` declaration for exact execution. |
 | `language` | boolean | Language targeting (ISO 639-1 codes) |
@@ -606,7 +679,7 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 
 Device platform and device type targeting are implied by `media_buy` support. Audience include/exclude targeting is implied by the presence of the `audience_targeting` capabilities object.
 
-Sellers that support a geographic targeting level SHOULD support both inclusion and exclusion at that level. For example, `geo_metros.nielsen_dma: true` SHOULD mean the seller supports both `geo_metros` and `geo_metros_exclude` with Nielsen DMA codes. For **any targeting-overlay list dimension** declared in this table — geo, `collection_list`, or `property_list` — if a seller only supports one direction (e.g., inclusion but not exclusion), it MUST return a validation error for unsupported fields rather than silently ignoring them; silently dropping a brand-safety exclusion list is an unsafe failure mode. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
+Subdivision inclusion and exclusion are declared independently through `geo_regions` and `geo_regions_exclude`. Seller-wide structured values are individual routing claims within the capability response's scope; they do not promise that multiple values are jointly composable or available through the same execution route or account. Only Product `overlay_support` supplies the binding set of executable targeting permissions for that Product. For other geographic levels that retain a combined legacy rollup, sellers SHOULD support both directions. For **any targeting-overlay list dimension** declared in this table — geo, `collection_list`, or `property_list` — if a seller only supports one direction, it MUST return a validation error for unsupported fields rather than silently ignoring them; silently dropping an exclusion is an unsafe failure mode. See [Targeting Overlays](/docs/media-buy/advanced-topics/targeting) for exclusion semantics.
 
 **geo_proximity** specifies which proximity targeting methods are supported:
 
@@ -641,6 +714,94 @@ Sellers that support a geographic targeting level SHOULD support both inclusion 
 
 Use `postal_code` for the normal postal code string in countries without a more specific registered local system. During the 3.x migration, sellers SHOULD emit equivalent deprecated aliases such as `us_zip` alongside native country keys where an alias exists. Buyers and SDKs SHOULD normalize both shapes before making capability decisions.
 
+**geo_places** is keyed by place identifier system. Registered keys are `geonames`, `google_ads`, and `microsoft_ads`; private or additional catalogs use an owner-controlled absolute HTTPS URI. Each system declares exact country-to-place-type support, exact accepted versions, and a machine-readable resolver:
+
+```json
+{
+  "geonames": {
+    "countries": {
+      "US": ["city", "county"],
+      "NL": ["city", "municipality"],
+      "GB": ["city", "post_town"]
+    },
+    "catalog": {
+      "source": "https://seller.example/data-sources/geonames-mirror",
+      "current_version": "2026-05",
+      "supported_versions": ["2026-05", "2026-04"],
+      "resolver": {
+        "url": "https://seller.example/adcp/geo/resolve/geonames",
+        "auth": "seller_credentials",
+        "protocol": "adcp_geo_place_resolver_v1"
+      }
+    }
+  },
+  "https://seller.example/geo/catalogs/places": {
+    "countries": {
+      "NL": ["city"]
+    },
+    "catalog": {
+      "current_version": "2026-q2",
+      "supported_versions": ["2026-q2"],
+      "resolver": {
+        "url": "https://seller.example/adcp/geo/resolve/private",
+        "auth": "seller_credentials",
+        "protocol": "adcp_geo_place_resolver_v1"
+      }
+    }
+  }
+}
+```
+
+If `geo_places` is absent, buyers MUST NOT assume place targeting is available. If present, the seller MUST honor only the explicitly declared country/type pairs and exact `supported_versions`, or return a validation error. `current_version` MUST appear in `supported_versions` and is applied when the buyer omits `system_version` on new targeting. `supported_versions` describes versions accepted for new targets and target-changing updates; removing a version MUST NOT silently mutate, drop, or invalidate existing packages already pinned to that version. Optional `source` identifies a dataset or derivative without creating a new ID namespace—for example, a MaxMind-derived catalog still uses `system: "geonames"`. The resolver accepts an HTTPS GET with `get-geo-place-resolution-request.json` query fields and returns `get-geo-place-resolution-response.json`, including lifecycle status and replacement IDs. Unsupported or deprecated identifiers must be rejected rather than silently ignored or replaced. Display labels are never authoritative targeting keys.
+
+Registered system semantics are exact:
+
+| System | Authoritative `values` namespace | Type mapping |
+|---|---|---|
+| `geonames` | GeoNames `geonameId` integers encoded as strings. MaxMind `geoname_id` uses this same namespace. | The resolver maps GeoNames feature class/code into the registered AdCP type. Populated-place targets such as `PPL`, `PPLA`, `PPLC`, and `PPLG` map to `city`; administrative features map according to their official country-specific meaning. |
+| `google_ads` | Google Ads geo target Criterion IDs encoded as strings | Lowercase snake-case mapping of Google target types to the registered AdCP type when one exists; otherwise use an owner-controlled HTTPS type URI. |
+| `microsoft_ads` | Microsoft Advertising Location IDs encoded as strings | Lowercase snake-case mapping of Microsoft location types to the registered AdCP type when one exists; otherwise use an owner-controlled HTTPS type URI. |
+
+Registered place types are semantic classes, not a universal hierarchy. `city`, `municipality`, and `post_town` are distinct; likewise `borough`, `neighborhood`, `quarter`, and `ward` are not interchangeable. The resolver's country-specific mapping is authoritative for the system/version it serves. Sellers MUST NOT claim a country/type pair unless their resolver returns that type and their execution platform can honor it.
+
+Resolver calls use HTTPS GET. Supply exactly one of `q` for name search or `value` to refresh an existing identifier against a catalog version. For example:
+
+```text
+GET https://seller.example/adcp/geo/resolve/geonames?q=Springfield&country=US&subdivision=US-IL&place_type=city&system_version=2026-05&limit=20
+```
+
+`auth: "seller_credentials"` means the buyer uses the same authorization credentials as the seller's AdCP endpoint and is valid only when the resolver has the same origin as that endpoint. Buyers MUST NOT forward seller credentials cross-origin and MUST apply normal SSRF protections to resolver requests. `auth: "none"` declares a public resolver. A URI-valued `system` is an opaque namespace identifier and is not automatically fetched. Results identify the exact system version and lifecycle state:
+
+```json
+{
+  "request": {
+    "q": "Springfield",
+    "country": "US",
+    "subdivision": "US-IL",
+    "place_type": "city",
+    "system_version": "2026-05",
+    "limit": 20
+  },
+  "system": "geonames",
+  "system_version": "2026-05",
+  "matches": [{
+    "value": "4250542",
+    "country": "US",
+    "subdivision": "US-IL",
+    "place_type": "city",
+    "label": "Springfield",
+    "canonical_name": "Springfield, Illinois, United States",
+    "parent_labels": ["Illinois", "United States"],
+    "status": "active"
+  }]
+}
+```
+
+The response `system` MUST equal the capability-map key that advertised the resolver. Its version MUST equal the requested `system_version`, or the advertised `current_version` when omitted. The response echoes the normalized request, and every match MUST equal its `country` and any requested `subdivision` and `place_type`. `canonical_name` and `parent_labels` are required so same-named results remain distinguishable; `subdivision` is also required on a match when the request constrained it. Registered numeric systems reject non-numeric values and replacement IDs.
+
+Successful searches, including zero matches, return `200` with `Content-Type: application/json` and the response schema above. Invalid queries return `400`; missing or invalid credentials return `401` or `403`; throttling returns `429`; and resolver failures return an appropriate `5xx`. Non-`200` responses MUST NOT be interpreted as an empty result set. Pagination repeats the normalized original request and uses `cursor`/`next_cursor`.
+
+Buyers MUST traffic only an unambiguous `active` result. `removal_planned` results may still describe an existing target but should not be used for a new buy. `deprecated` results are invalid for new targeting; `replaced_by_values` may guide a new resolution, but sellers MUST require the buyer to submit the replacement rather than silently changing intent. To refresh a persisted ID after catalog rollover, query `value=<existing ID>` against the current version. Existing packages remain pinned to their echoed applied version until the buyer intentionally changes targeting; unrelated updates preserve that overlay. If the seller can no longer execute it, `get_media_buys` MUST preserve the echoed target and return nonfatal [`PLACE_TARGET_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-place-target-unavailable) in response-level `errors[]`, with `recovery: "correctable"`, an exact package-target `field` path, and target identity in `details`, rather than silently changing geography.
 #### rights_attestations
 
 Declares how this seller evaluates portable rights-grant credentials carried in creative `rights[]`. Presence requires `adcp.attestations`, and its `accepted_claim_types` MUST include `https://adcontextprotocol.org/claims/rights/grant`.
@@ -713,13 +874,24 @@ Seller-level conversion tracking capabilities. Declares what the seller supports
 
 #### portfolio
 
-Inventory portfolio information:
+Inventory portfolio information. Media-buy sellers SHOULD declare both routing
+arrays. The existing `primary_*` names are retained for 3.x compatibility, but
+a present array is exhaustive for brief routing: buyers MAY skip the agent when
+a brief's requested countries or channels do not intersect it. Omission means
+unknown scope, never global coverage. These are routing pre-filters—not promises
+that a matching product is currently available.
+
+`primary_countries` is not executable geo-targeting capability. It answers
+whether the sales agent accepts a country-scoped discovery brief; the structured
+fields under `media_buy.execution.targeting` and each product's
+`overlay_support` determine whether and how a returned product can execute
+geographic targeting.
 
 | Field                  | Type     | Description                                            |
 | ---------------------- | -------- | ------------------------------------------------------ |
 | `publisher_domains`    | string[] | **Required.** Publisher domains this seller represents |
-| `primary_channels`     | string[] | Main advertising channels                              |
-| `primary_countries`    | string[] | Main countries (ISO codes)                             |
+| `primary_channels`     | string[] | Complete AdCP channel allowlist for briefs this agent accepts; omission means unknown |
+| `primary_countries`    | string[] | Complete ISO 3166-1 alpha-2 country allowlist for briefs this agent accepts; omission means unknown |
 | `description`          | string   | Markdown portfolio description                         |
 | `advertising_policies` | string   | Content policies and restrictions                      |
 
@@ -978,7 +1150,7 @@ Compliance testing capabilities. The presence of this block declares that the ag
 
 | Field       | Type     | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ----------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `scenarios` | string[] | Compliance testing scenarios this agent supports. Values SHOULD include every canonical controller scenario the agent implements, excluding `list_scenarios` because that value is a discovery operation rather than a test capability. Current canonical values include `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_create_media_buy_arm`, `force_task_completion`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`, `seed_creative_format`, `seed_measurement_catalog`, `query_upstream_traffic`, `query_provenance_audit_observations`, and `force_upstream_unavailable`. Values MAY also include implementation-specific scenarios. Runners MUST treat scenario names as open strings — new scenarios may be added in additive releases. |
+| `scenarios` | string[] | Compliance testing scenarios this agent supports. Values SHOULD include every canonical controller scenario the agent implements, excluding `list_scenarios` because that value is a discovery operation rather than a test capability. Current canonical values include `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_create_media_buy_arm`, `force_task_completion`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_rights_grant`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`, `seed_creative_format`, `seed_measurement_catalog`, `query_upstream_traffic`, `query_provenance_audit_observations`, and `force_upstream_unavailable`. Values MAY also include implementation-specific scenarios. Runners MUST treat scenario names as open strings — new scenarios may be added in additive releases. |
 
 Storyboard runners check for the `compliance_testing` block before running deterministic testing steps. If the agent does not include the block, controller-dependent storyboard steps cannot be validated.
 
@@ -1390,7 +1562,8 @@ const buy = await client.createMediaBuy({
   "account": {
     "require_operator_auth": false,
     "supported_billing": ["operator", "agent"],
-    "supported_account_currency_modes": ["fixed", "per_media_buy"]
+    "supported_account_currency_modes": ["fixed", "per_media_buy"],
+    "timezone": { "mode": "seller_fixed", "fixed_timezone": "UTC" }
   },
   "media_buy": {
     "creative_approval_mode": "auto_approve",
@@ -1447,6 +1620,39 @@ const buy = await client.createMediaBuy({
           "GB": ["outward", "full"],
           "CA": ["fsa", "full"],
           "ZA": ["postal_code"]
+        },
+        "geo_places": {
+          "geonames": {
+            "countries": {
+              "US": ["city", "county"],
+              "NL": ["city", "municipality"],
+              "GB": ["city", "post_town"]
+            },
+            "catalog": {
+              "source": "https://seller.example/data-sources/geonames-mirror",
+              "current_version": "2026-05",
+              "supported_versions": ["2026-05", "2026-04"],
+              "resolver": {
+                "url": "https://seller.example/adcp/geo/resolve/geonames",
+                "auth": "seller_credentials",
+                "protocol": "adcp_geo_place_resolver_v1"
+              }
+            }
+          },
+          "https://seller.example/geo/catalogs/places": {
+            "countries": {
+              "NL": ["city"]
+            },
+            "catalog": {
+              "current_version": "2026-q2",
+              "supported_versions": ["2026-q2"],
+              "resolver": {
+                "url": "https://seller.example/adcp/geo/resolve/private",
+                "auth": "seller_credentials",
+                "protocol": "adcp_geo_place_resolver_v1"
+              }
+            }
+          }
         },
         "language": true,
         "keyword_targets": {
@@ -1558,7 +1764,8 @@ An agent can implement multiple protocols from a single endpoint. This is common
   "account": {
     "require_operator_auth": false,
     "supported_billing": ["operator"],
-    "supported_account_currency_modes": ["fixed"]
+    "supported_account_currency_modes": ["fixed"],
+    "timezone": { "mode": "seller_fixed", "fixed_timezone": "UTC" }
   },
   "media_buy": {
     "creative_approval_mode": "require_human",

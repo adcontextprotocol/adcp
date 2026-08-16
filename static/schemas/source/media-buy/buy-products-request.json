@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/buy-products-request.json",
   "title": "Buy Products Request",
   "description": "Create a MediaBuy directly from published product offers. This buyer-composed path accepts published commercial terms, supports targeting and delivery controls, and never accepts inline creatives or creative assignments. The seller records an immutable accepted proposal snapshot so later commercial amendments can use refine_proposals.",
+  "x-tool-summary": "Create a media buy directly from published seller products and record its accepted commercial snapshot.",
   "type": "object",
   "x-mutates-state": true,
   "x-governed-commitment": { "scope": "always" },
@@ -53,6 +54,16 @@
       },
       "required": ["amount", "currency"],
       "additionalProperties": false
+    },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional hard aggregate daily spend ceiling in total_budget.currency or the media buy's derived currency. It bounds the shared daily spend pool without allocating or reserving amounts for purchases."
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional IANA timezone override shared by every aggregate and purchase daily cap. Requires buyer_timezone_override support; otherwise rejected with UNSUPPORTED_FEATURE. When omitted, budget_capping.timezone_basis selects Account.timezone or fixed_timezone."
     },
     "budget_allocation": {
       "$ref": "/schemas/core/canonical-budget-allocation.json"

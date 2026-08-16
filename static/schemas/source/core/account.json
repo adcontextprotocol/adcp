@@ -40,10 +40,24 @@
       "$ref": "/schemas/core/operator-unit.json",
       "description": "Operator-owned business unit, agency seat, or platform account associated with this advertiser account. The id round-trips from the natural key; name is mutable display metadata. This is distinct from account_id, which belongs to the seller/storefront namespace."
     },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonically increasing optimistic-concurrency token for this account. Incremented on every persisted settings change, identity-change request, and identity-change disposition; reads, dry runs, validation failures, and exact idempotency replays do not increment it. Pass the latest observed value in a sync_accounts settings-update entry to prevent lost updates."
+    },
+    "identity_change": {
+      "$ref": "/schemas/core/account-identity-change.json",
+      "description": "Pending or rejected operator-identity transition. While present, the top-level operator and operator_unit remain the current canonical identity. Re-read list_accounts until the request is applied (canonical fields change and this object disappears) or rejected."
+    },
     "currency": {
       "type": "string",
       "pattern": "^[A-Z]{3}$",
       "description": "Immutable transaction currency when the seller's advertiser object is currency-bound. Media buys on this account MUST use this currency. Omit when the account selects currency independently per media buy."
+    },
+    "timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Immutable operational timezone for this account, expressed as UTC or an IANA timezone identifier. AdCP 3.2 sellers return it on every account. It is the default calendar-day boundary for account-scoped behavior unless a feature explicitly declares another timezone basis. For buyer-selected account_fixed provisioning it participates in the natural account key."
     },
     "billing": {
       "$ref": "/schemas/enums/billing-party.json",
@@ -51,7 +65,11 @@
     },
     "billing_entity": {
       "$ref": "/schemas/core/business-entity.json",
-      "description": "Business entity details for the party responsible for payment. Contains the legal name, tax IDs, address, and bank details needed for formal B2B invoicing. Corresponds to whoever billing points to (operator, agent, or advertiser). When this account appears in a response, bank details MUST be omitted (write-only)."
+      "description": "Current canonical business entity for the party responsible for payment. Contains the legal name, tax IDs, and address needed for formal B2B invoicing. Corresponds to whoever billing points to (operator, agent, or advertiser). When this account appears in a response, bank details MUST be omitted and the request-only destination_billing_entity MUST NOT be exposed."
+    },
+    "destination_billing_entity": {
+      "description": "Request-only staging field. It MUST NOT appear in account read models.",
+      "not": {}
     },
     "rate_card": {
       "type": "string",
@@ -236,6 +254,16 @@
     "name",
     "status"
   ],
+  "dependencies": {
+    "identity_change": [
+      "revision"
+    ]
+  },
+  "not": {
+    "required": [
+      "destination_billing_entity"
+    ]
+  },
   "additionalProperties": true,
   "examples": [
     {

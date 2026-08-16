@@ -113,14 +113,31 @@ describe('product discovery MCP schema parity', () => {
     );
     // Structured targeting is intentionally present on listing, proposal, and
     // revision requests. Standalone MCP schemas must bundle those refs, so
-    // retain strict validation while keeping the four-tool surface under 128 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(128 * 1024);
+    // retain strict validation while keeping the four-tool surface under 132 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(132 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);
     expect(criteria.properties.offer_filters).toBeDefined();
     expect(criteria.properties.targeting_overlay).toBeDefined();
     expect(criteria.properties.required_overlay_support).toBeDefined();
+    const targeting = resolveLocalRef(list, criteria.properties.targeting_overlay);
+    expect(targeting.properties.geo_places.items).toMatchObject({
+      type: 'object',
+      'x-adcp-schema-uri': '/schemas/core/geo-place-area.json',
+      additionalProperties: true,
+    });
+    const overlayRequirements = resolveLocalRef(list, criteria.properties.required_overlay_support);
+    expect(overlayRequirements.properties.geo_places).toMatchObject({
+      type: 'object',
+      'x-adcp-schema-uri': '/schemas/core/geo-place-requirement.json',
+      additionalProperties: true,
+    });
+    expect(overlayRequirements.properties.geo_regions.anyOf[1]).toMatchObject({
+      type: 'object',
+      'x-adcp-schema-uri': '/schemas/core/geo-region-requirement.json',
+      additionalProperties: true,
+    });
 
     const request = tools.find(tool => tool.name === 'request_proposals')!.inputSchema as JsonSchema;
     const requestCriteria = resolveLocalRef(request, request.properties.criteria);
@@ -133,7 +150,10 @@ describe('product discovery MCP schema parity', () => {
     expect(refinement.oneOf).toEqual(expect.arrayContaining([
       expect.objectContaining({
         properties: { action: expect.objectContaining({ const: 'revise' }) },
-        anyOf: [{ required: ['instructions'] }, { required: ['criteria'] }],
+        anyOf: expect.arrayContaining([
+          { required: ['ask'] },
+          { required: ['criteria'] },
+        ]),
       }),
     ]));
   });

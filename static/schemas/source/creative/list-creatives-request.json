@@ -3,6 +3,7 @@
   "$id": "/schemas/creative/list-creatives-request.json",
   "title": "List Creatives Request",
   "description": "Request parameters for querying creative assets from a creative library with filtering, sorting, and pagination. Implemented by any agent that hosts a creative library — creative agents (ad servers, creative platforms) and sales agents that manage creatives.",
+  "x-tool-summary": "List creative-library assets with filtering, sorting, and pagination.",
   "type": "object",
   "allOf": [
     {

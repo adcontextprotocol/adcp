@@ -2,7 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/account/sync-accounts-request.json",
   "title": "Sync Accounts Request",
-  "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares the advertiser identity, operator, optional operator-owned buying unit, optional fixed account currency, sandbox disposition, and billing model. The seller provisions or links the corresponding advertiser object via upsert. `brand.countries`, `operator_unit.id`, `currency`, and `sandbox` participate in the buyer-declared natural key when present; `operator_unit.name` is display metadata only. The seller MAY echo a seller-assigned account_id but MUST continue accepting the complete natural-key AccountRef.\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by seller/storefront `account_id` or buyer-declared natural key. The seller updates settable state without provisioning side effects.\n\nExactly one key shape is allowed per entry. Sellers that do not implement one mode return `UNSUPPORTED_PROVISIONING` for that mode.",
+  "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares the advertiser identity, operator, optional operator-owned buying unit, optional fixed account currency, conditionally required buyer-selected account timezone, sandbox disposition, and billing model. The seller provisions or links the corresponding advertiser object via upsert. `brand.countries`, `operator_unit.id`, `currency`, buyer-selected `timezone`, and `sandbox` participate in the buyer-declared natural key when present; `operator_unit.name` is display metadata only. The seller MAY echo a seller-assigned account_id but MUST continue accepting the complete natural-key AccountRef.\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by seller/storefront `account_id` or buyer-declared natural key. The seller updates settable state without provisioning side effects. A complete `operator_identity` value reconciles the existing account to the buyer's desired operator domain and optional operator unit; omission leaves identity unchanged.\n\nExactly one key shape is allowed per entry. Sellers that do not implement one mode return `UNSUPPORTED_PROVISIONING` for that mode. Identity reconciliation is additionally gated by `get_adcp_capabilities.account.identity_updates`.",
+  "x-tool-summary": "Provision advertiser accounts or update settings for existing accounts through declarative synchronization.",
   "type": "object",
   "allOf": [
     {
@@ -20,7 +21,7 @@
     },
     "accounts": {
       "type": "array",
-      "description": "Per-account sync entries. Each entry uses one of two key shapes: the `account` field (AccountRef) for settings-update mode, or the flat `brand` + `operator` + `billing` trio for provisioning mode.",
+      "description": "Per-account sync entries. Each entry uses one of two key shapes: the `account` field (AccountRef) for settings-update mode, or the flat `brand` + `operator` + `billing` trio for provisioning mode. An operator_identity settings update MUST carry the latest account revision.",
       "items": {
         "type": "object",
         "description": "An advertiser account entry — either provisions/upserts a new account (natural key) or updates an existing one (AccountRef key).",
@@ -28,6 +29,19 @@
           "account": {
             "$ref": "/schemas/core/account-ref.json",
             "description": "Settings-update key. When present, this entry targets an existing account by `account_id` (seller-owned account namespace) or natural key (buyer-declared account settings-update against a previously-provisioned account). Mutually exclusive with the flat `brand` + `operator` + `billing` provisioning trio. When `account` is present, the seller MUST NOT create a new account — entries that would otherwise trigger provisioning are rejected with `UNSUPPORTED_PROVISIONING`."
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Expected current account revision for optimistic concurrency in settings-update mode. Required whenever operator_identity is present; optional for existing non-identity settings updates. The seller MUST compare it atomically with the write, reject a mismatch with CONFLICT, and leave the account unchanged. Obtain it from list_accounts or the most recent sync_accounts result. Reads, dry runs, validation failures, and exact idempotency replays do not increment revision; every persisted settings or identity-change state transition does. MUST be absent in provisioning mode."
+          },
+          "operator_identity": {
+            "$ref": "/schemas/core/operator-identity.json",
+            "description": "Complete desired operator identity for settings-update mode. Omit this field to leave operator identity unchanged. When present, omission of operator_unit within the object removes the existing unit. Changing only operator_unit.name updates display metadata; changing operator_unit.id or adding/removing a unit rekeys the same account within the current operator. Changing operator requests an inter-entity handoff and MUST enter pending_approval until the seller verifies the current account authority, verified brand authorization, destination-operator acceptance, and any operator-scoped billing and grant transition. The seller MUST preserve account_id and account-scoped historical resources, MUST reject collisions without merging, and MUST apply no identity change if continuity cannot be preserved. MUST be accompanied by revision and MUST be absent in provisioning mode."
+          },
+          "destination_billing_entity": {
+            "$ref": "/schemas/core/business-entity.json",
+            "description": "Complete staged billing identity for the requested destination operator during an operator-domain handoff on an account whose billing party is operator. This value is write-only while approval is pending and MUST NOT replace or be echoed as the account's canonical billing_entity until the handoff applies atomically. Required by the protocol when an operator-billed account changes operator; otherwise MUST be absent. Requires operator_identity and revision and MUST be absent in provisioning mode."
           },
           "brand": {
             "$ref": "/schemas/core/brand-ref.json",
@@ -46,6 +60,11 @@
             "type": "string",
             "pattern": "^[A-Z]{3}$",
             "description": "Optional immutable ISO 4217 transaction currency for a currency-bound advertiser object. Consult `account.supported_account_currency_modes` before provisioning. When supplied, it participates in the natural key and all media buys on the account use it. Omit for per-media-buy currency selection. MUST be absent in settings-update mode."
+          },
+          "timezone": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Immutable operational timezone selected for an account_fixed advertiser object. Required in provisioning mode when get_adcp_capabilities.account.timezone declares account_selection: buyer_selected, and the value MUST be one of supported_timezones. Omit for seller_fixed or seller_assigned modes. When supplied, it participates in the natural key. MUST be absent in settings-update mode."
           },
           "billing": {
             "$ref": "/schemas/enums/billing-party.json",
@@ -99,17 +118,42 @@
         "oneOf": [
           {
             "title": "ProvisioningMode",
-            "description": "Provisioning-mode entry — natural-key trio is required, `account` is forbidden.",
+            "description": "Provisioning-mode entry — natural-key trio is required; account, revision, and operator_identity are forbidden.",
             "required": [
               "brand",
               "operator",
               "billing"
             ],
-            "not": {
-              "required": [
-                "account"
-              ]
-            }
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "account"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "revision"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "operator_identity"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "destination_billing_entity"
+                  ]
+                }
+              }
+            ]
           },
           {
             "title": "SettingsUpdateMode",
@@ -149,6 +193,13 @@
               {
                 "not": {
                   "required": [
+                    "timezone"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
                     "billing"
                   ]
                 }
@@ -156,6 +207,15 @@
             ]
           }
         ],
+        "dependencies": {
+          "operator_identity": [
+            "revision"
+          ],
+          "destination_billing_entity": [
+            "operator_identity",
+            "revision"
+          ]
+        },
         "additionalProperties": true
       },
       "maxItems": 1000

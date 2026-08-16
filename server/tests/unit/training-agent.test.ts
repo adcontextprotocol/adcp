@@ -37,7 +37,14 @@ import {
   clearIdempotencyCache,
   REPLAY_TTL_SECONDS,
 } from '../../src/training-agent/idempotency.js';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { canonicalize } from '@adcp/sdk';
+
+function resignTermsDigest(proposal: Record<string, unknown>): void {
+  proposal.terms_digest = `sha256:${createHash('sha256')
+    .update(canonicalize(proposal.commercial_terms as Record<string, unknown>), 'utf8')
+    .digest('base64url')}`;
+}
 import { getAgentUrl } from '../../src/training-agent/config.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 import {
@@ -49,7 +56,10 @@ import { TrainingSalesPlatform } from '../../src/training-agent/v6-sales-platfor
 import { TrainingCreativePlatform } from '../../src/training-agent/v6-creative-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../../src/training-agent/v6-creative-builder-platform.js';
 import { clearAudienceStore } from '../../src/training-agent/audience-handlers.js';
-import { validateProductDiscoverySourceResponse } from '../../src/training-agent/source-schema.js';
+import {
+  validateProductDiscoverySourceInput,
+  validateProductDiscoverySourceResponse,
+} from '../../src/training-agent/source-schema.js';
 import {
   projectCreativeForDelivery,
   projectMediaBuyCreativesForDelivery,
@@ -6909,6 +6919,65 @@ describe('list_creatives handler', () => {
     expect(pg.total_count).toBe(1);
   });
 
+  it('filters creatives by status and media buy assignment with AND semantics', async () => {
+    const account = {
+      brand: { domain: 'creative-read-filters.example' },
+      operator: 'creative-read-filters.example',
+      sandbox: true,
+    };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    for (const [creativeId, status] of [
+      ['cr_filter_match', 'rejected'],
+      ['cr_filter_wrong_status', 'approved'],
+      ['cr_filter_wrong_buy', 'rejected'],
+    ] as const) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_creative',
+        params: {
+          creative_id: creativeId,
+          fixture: { status, format_kind: 'image' },
+        },
+      });
+    }
+
+    for (const [mediaBuyId, creativeAssignments] of [
+      ['mb_filter_target', ['cr_filter_match', 'cr_filter_wrong_status']],
+      ['mb_filter_other', ['cr_filter_wrong_buy']],
+    ] as const) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        scenario: 'seed_media_buy',
+        params: {
+          media_buy_id: mediaBuyId,
+          fixture: {
+            status: 'active',
+            packages: [{
+              package_id: `${mediaBuyId}_package`,
+              creative_assignments: creativeAssignments,
+            }],
+          },
+        },
+      });
+    }
+
+    const { result } = await simulateCallTool(server, 'list_creatives', {
+      account,
+      adcp_version: '3.1',
+      ext: { adcp: { creative_wire: 'legacy' } },
+      filters: {
+        statuses: ['rejected'],
+        media_buy_ids: ['mb_filter_target'],
+      },
+    });
+
+    expect((result.creatives as Array<{ creative_id: string; status: string }>)).toEqual([
+      expect.objectContaining({ creative_id: 'cr_filter_match', status: 'rejected' }),
+    ]);
+    expect(result.query_summary).toEqual({ total_matching: 1, returned: 1 });
+  });
+
   it('filters by top-level asset type and composes with format_ids', async () => {
     const account = { brand: { domain: 'assetfilters.example' }, operator: 'assetfilters.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -8836,6 +8905,52 @@ describe('create_media_buy package-level date validation', () => {
 });
 
 // ── Paused package delivery ─────────────────────────────────────────
+
+describe('get_media_buy_delivery date validation', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  it('returns VALIDATION_ERROR for an empty half-open date range', async () => {
+    const account = {
+      brand: { domain: 'delivery-date-validation.example' },
+      operator: 'delivery-date-validation.example',
+      sandbox: true,
+    };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_media_buy',
+      params: {
+        media_buy_id: 'delivery_date_validation_buy',
+        fixture: {
+          status: 'active',
+          currency: 'USD',
+          start_time: '2026-01-01T00:00:00Z',
+          end_time: '2026-12-31T00:00:00Z',
+          packages: [{ package_id: 'delivery_date_validation_package', budget: 1000 }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_ids: ['delivery_date_validation_buy'],
+      start_date: '2026-04-15',
+      end_date: '2026-04-15',
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      code: 'VALIDATION_ERROR',
+      field: 'start_date',
+    }));
+  });
+});
 
 describe('paused package delivery', () => {
   beforeEach(() => {
@@ -10810,6 +10925,118 @@ describe('update_media_buy budget validation', () => {
     expect(result.code).toBeDefined();
     expect(result.message).toContain('non-negative');
   });
+
+  it('atomically redistributes a fixed total budget across active packages', async () => {
+    const catalog = buildCatalog();
+    const first = catalog[0].product;
+    const second = catalog[1].product;
+    const firstPricing = first.pricing_options as Array<Record<string, unknown>>;
+    const secondPricing = second.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'total-update.example' }, operator: 'total-update.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'total-update.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [
+        { product_id: first.product_id, pricing_option_id: firstPricing[0].pricing_option_id, budget: 60000 },
+        { product_id: second.product_id, pricing_option_id: secondPricing[0].pricing_option_id, budget: 40000 },
+      ],
+    });
+
+    const { result: updated } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: created.media_buy_id,
+      revision: created.revision,
+      total_budget: { amount: 50000, currency: 'USD' },
+    });
+
+    expect(updated.errors).toBeUndefined();
+    expect(updated.total_budget).toBe(50000);
+    expect(updated.revision).toBe((created.revision as number) + 1);
+    expect((updated.affected_packages as Array<Record<string, unknown>>).map(pkg => pkg.budget)).toEqual([30000, 20000]);
+  });
+
+  it('rejects proportional redistribution when an active package has no committed budget', async () => {
+    const catalog = buildCatalog();
+    const first = catalog[0].product;
+    const second = catalog[1].product;
+    const firstPricing = first.pricing_options as Array<Record<string, unknown>>;
+    const secondPricing = second.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'zero-share.example' }, operator: 'zero-share.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'zero-share.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [
+        { product_id: first.product_id, pricing_option_id: firstPricing[0].pricing_option_id, budget: 100000 },
+        { product_id: second.product_id, pricing_option_id: secondPricing[0].pricing_option_id, budget: 10000 },
+      ],
+    });
+
+    const packages = created.packages as Array<Record<string, unknown>>;
+    const { result: zeroed } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: created.media_buy_id,
+      revision: created.revision,
+      packages: [{ package_id: packages[1].package_id, budget: 0 }],
+    });
+    expect(zeroed.errors).toBeUndefined();
+
+    const { result: rejected } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: created.media_buy_id,
+      revision: zeroed.revision,
+      total_budget: { amount: 50000, currency: 'USD' },
+    });
+
+    expect(rejected.code).toBe('VALIDATION_ERROR');
+    expect(rejected.message).toContain('positive, finite committed budgets');
+  });
+
+  it('rejects total_budget when amount does not equal the explicit package sum', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'total-conflict.example' }, operator: 'total-conflict.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'total-conflict.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+      }],
+    });
+    const packageId = (created.packages as Array<Record<string, unknown>>)[0].package_id;
+
+    // total_budget (40000) does not equal the resulting package sum (99999) → assertion failure
+    const { result: rejected } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: created.media_buy_id,
+      revision: created.revision,
+      total_budget: { amount: 40000, currency: 'USD' },
+      packages: [{ package_id: packageId, budget: 99999 }],
+    });
+    expect(rejected.code).toBe('VALIDATION_ERROR');
+
+    const { result: readback } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: [created.media_buy_id],
+    });
+    const persisted = (readback.media_buys as Array<Record<string, unknown>>)[0];
+    expect(persisted.revision).toBe(created.revision);
+    expect(persisted.total_budget).toBe(50000);
+  });
 });
 
 // ── Signal provider catalog tests ─────────────────────────────────
@@ -11441,6 +11668,15 @@ describe('activate_signal handler', () => {
 
   it('requires governance for rights services from account registration without a local plan', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
+    const initialGrant = await simulateCallTool(server, 'acquire_rights', {
+      account,
+      rights_id: 'janssen_likeness_voice',
+      pricing_option_id: 'monthly_exclusive',
+      buyer: { domain: 'signal-test.example' },
+      campaign: { description: 'Athletic campaign', uses: ['likeness'] },
+    });
+    expect(initialGrant.result.rights_status).toBe('acquired');
+
     await syncGovernedAccount(server);
 
     const acquired = await simulateCallTool(server, 'acquire_rights', {
@@ -11837,6 +12073,19 @@ describe('get_adcp_capabilities handler', () => {
     expect(result.adcp_version).toBe('3.0');
     expect(result.protocol_version).toBe('3.0');
     expect(result.supported_protocols).toEqual(['media_buy', 'creative', 'governance', 'signals', 'brand']);
+  });
+
+  it('advertises known refinement support when lifecycle tools are available', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {
+      adcp_version: GET_PRODUCTS_REJECTED_ADCP_VERSION,
+    });
+
+    expect(result.adcp_version).toBe(GET_PRODUCTS_REJECTED_ADCP_VERSION);
+    expect(result.media_buy).toMatchObject({
+      lifecycle_tools: expect.arrayContaining(['refine_proposals']),
+      proposal_refinement: { supported_dimensions: [] },
+    });
   });
 
   it('advertises wholesale feed versioning, modes, and webhooks', async () => {
@@ -13042,7 +13291,7 @@ describe('proposal lifecycle', () => {
     });
     expect(refined).toMatchObject({
       isError: true,
-      result: { code: 'UNSUPPORTED_FEATURE', field: 'refinements[0].criteria' },
+      result: { code: 'UNSUPPORTED_FEATURE', field: 'refinements.0.criteria' },
     });
   });
 
@@ -13094,11 +13343,11 @@ describe('proposal lifecycle', () => {
         proposal_id: source.proposal_id,
         action: 'revise',
         change_kind: 'amendment',
-        instructions: 'Prefer the social inventory while preserving the total budget.',
+        ask: 'Prefer the social inventory while preserving the total budget.',
       }, {
         proposal_id: 'proposal-not-visible-to-caller',
         action: 'revise',
-        instructions: 'Use a proposal that is not available in this principal scope.',
+        ask: 'Use a proposal that is not available in this principal scope.',
       }],
     });
     expect(refineError).toBeFalsy();
@@ -13106,9 +13355,10 @@ describe('proposal lifecycle', () => {
     expect(refinement).toMatchObject({
       source_proposal_id: source.proposal_id,
       outcome: 'partial',
-      proposal: { proposal_status: 'draft' },
+      proposals: [{ proposal_status: 'draft' }],
+      reason_code: 'uninterpreted',
     });
-    const revision = refinement.proposal as Record<string, unknown>;
+    const revision = (refinement.proposals as Array<Record<string, unknown>>)[0];
     expect(revision.proposal_id).not.toBe(source.proposal_id);
     expect((refined.results as Array<Record<string, unknown>>)[1]).toMatchObject({
       source_proposal_id: 'proposal-not-visible-to-caller',
@@ -13194,7 +13444,7 @@ describe('proposal lifecycle', () => {
         proposal_id: committed.proposal_id,
         action: 'revise',
         change_kind: 'amendment',
-        instructions: 'Reduce the budget while preserving the accepted flight.',
+        ask: 'Reduce the budget while preserving the accepted flight.',
       }],
     });
     expect(refineAfterExecution.isError).toBeFalsy();
@@ -13202,13 +13452,13 @@ describe('proposal lifecycle', () => {
       results: [{
         source_proposal_id: committed.proposal_id,
         outcome: expect.stringMatching(/^(revised|partial)$/),
-        proposal: {
+        proposals: [{
           proposal_kind: 'media_buy_update',
           proposal_status: 'draft',
           parent_proposal_id: committed.proposal_id,
           media_buy_id: purchased.media_buy_id,
           base_media_buy_revision: 1,
-        },
+        }],
       }],
     });
 
@@ -13217,14 +13467,14 @@ describe('proposal lifecycle', () => {
         proposal_id: committed.proposal_id,
         action: 'revise',
         change_kind: 'cancellation',
-        instructions: 'Cancel by mutual agreement before the next billing period.',
+        ask: 'Cancel by mutual agreement before the next billing period.',
       }],
     });
     expect(cancellationAfterExecution.isError).toBeFalsy();
     expect(cancellationAfterExecution.result).toMatchObject({
       results: [{
         source_proposal_id: committed.proposal_id,
-        proposal: {
+        proposals: [{
           proposal_kind: 'media_buy_cancellation',
           proposal_status: 'draft',
           commercial_terms: {
@@ -13233,7 +13483,7 @@ describe('proposal lifecycle', () => {
               reason: 'Cancel by mutual agreement before the next billing period.',
             },
           },
-        },
+        }],
       }],
     });
     expect(
@@ -13352,11 +13602,11 @@ describe('proposal lifecycle', () => {
       refinements: [{
         proposal_id: source.proposal_id,
         action: 'revise',
-        instructions: 'Prefer social inventory without changing the planning cycle.',
+        ask: 'Prefer social inventory without changing the planning cycle.',
       }],
     });
     expect(refineError).toBeFalsy();
-    const revision = ((refined.results as Array<Record<string, unknown>>)[0].proposal) as Record<string, unknown>;
+    const revision = (((refined.results as Array<Record<string, unknown>>)[0].proposals as Array<Record<string, unknown>>)[0]);
     const compactSessionKey = sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous');
     await runWithSessionContext(async () => {
       const session = await getSession(compactSessionKey);
@@ -13451,7 +13701,7 @@ describe('proposal lifecycle', () => {
       refinements: [{
         proposal_id: committed.proposal_id,
         action: 'revise',
-        instructions: 'Try a different allocation after terminal decline.',
+        ask: 'Try a different allocation after terminal decline.',
       }],
     });
     expect(refineAfterDecline.isError).toBeFalsy();
@@ -13537,7 +13787,7 @@ describe('proposal lifecycle', () => {
     });
   });
 
-  it('omits partial-only notes from a fully revised proposal result', async () => {
+  it('omits partial-only reasons from a fully revised proposal result', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
       brand: account.brand,
@@ -13546,21 +13796,431 @@ describe('proposal lifecycle', () => {
     expect(requestError).toBeFalsy();
     const source = (requested.proposals as Array<Record<string, unknown>>)[0];
 
-    const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
+    const refineRequest = {
       refinements: [{
         proposal_id: source.proposal_id,
         action: 'revise',
-        instructions: 'Provide concrete fixed CPM pricing in USD.',
+        ask: 'Provide concrete fixed CPM pricing in USD.',
       }],
-    });
+    };
+    const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', refineRequest);
     expect(refineError).toBeFalsy();
     const revision = (refined.results as Array<Record<string, unknown>>)[0];
     expect(revision).toMatchObject({
       source_proposal_id: source.proposal_id,
       outcome: 'revised',
-      proposal: { proposal_status: 'draft' },
+      proposals: [{ proposal_status: 'draft' }],
     });
-    expect(revision).not.toHaveProperty('notes');
+    expect(revision).not.toHaveProperty('reason_code');
+    expect(revision).not.toHaveProperty('reason');
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined, refineRequest)).toBeUndefined();
+
+    const duplicateTerms = structuredClone(refined);
+    const duplicateResults = duplicateTerms.results as Array<Record<string, unknown>>;
+    const duplicateProposals = duplicateResults[0].proposals as Array<Record<string, unknown>>;
+    duplicateProposals.push({ ...duplicateProposals[0], proposal_id: 'proposal-duplicate-terms' });
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', duplicateTerms)).toMatchObject({
+      field: 'results.0.proposals.1.commercial_terms',
+    });
+
+    const fabricatedDigest = structuredClone(refined);
+    const fabricatedResults = fabricatedDigest.results as Array<Record<string, unknown>>;
+    const fabricatedProposal = (fabricatedResults[0].proposals as Array<Record<string, unknown>>)[0];
+    fabricatedProposal.terms_digest = `sha256:${'Z'.repeat(43)}`;
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', fabricatedDigest)).toMatchObject({
+      field: 'results.0.proposals.0.terms_digest',
+    });
+
+    const orphanedLineage = structuredClone(refined);
+    const orphanedResults = orphanedLineage.results as Array<Record<string, unknown>>;
+    const orphanedProposal = (orphanedResults[0].proposals as Array<Record<string, unknown>>)[0];
+    orphanedProposal.parent_proposal_id = 'proposal-someone-else';
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', orphanedLineage)).toMatchObject({
+      field: 'results.0.proposals.0.parent_proposal_id',
+    });
+
+    const uniqueAlternatives = structuredClone(refined);
+    const uniqueResults = uniqueAlternatives.results as Array<Record<string, unknown>>;
+    const uniqueProposals = uniqueResults[0].proposals as Array<Record<string, unknown>>;
+    const distinctTerms = structuredClone(uniqueProposals[0].commercial_terms) as Record<string, unknown>;
+    distinctTerms.total_budget = { amount: 42000, currency: 'USD' };
+    uniqueProposals.push({
+      ...uniqueProposals[0],
+      proposal_id: 'proposal-distinct-terms',
+      commercial_terms: distinctTerms,
+      terms_digest: `sha256:${createHash('sha256').update(canonicalize(distinctTerms), 'utf8').digest('base64url')}`,
+    });
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', uniqueAlternatives)).toBeUndefined();
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', uniqueAlternatives, {
+      refinements: [{ ...refineRequest.refinements[0], alternatives: { count: 2 } }],
+    })).toBeUndefined();
+
+    const shortAlternatives = structuredClone(refined);
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', shortAlternatives, {
+      refinements: [{ ...refineRequest.refinements[0], alternatives: { count: 2 } }],
+    })).toMatchObject({ field: 'results.0.proposals' });
+
+    const unrequestedAlternativesFailure = structuredClone(refined);
+    const unrequestedAlternativesResult = (
+      unrequestedAlternativesFailure.results as Array<Record<string, unknown>>
+    )[0];
+    unrequestedAlternativesResult.outcome = 'partial';
+    unrequestedAlternativesResult.reason_code = 'alternatives_unavailable';
+    unrequestedAlternativesResult.reason = 'No alternatives were available.';
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      unrequestedAlternativesFailure,
+      refineRequest,
+    )).toMatchObject({ field: 'results.0.reason_code' });
+
+    const completeAlternativesFailure = structuredClone(uniqueAlternatives);
+    const completeAlternativesResult = (
+      completeAlternativesFailure.results as Array<Record<string, unknown>>
+    )[0];
+    completeAlternativesResult.outcome = 'partial';
+    completeAlternativesResult.reason_code = 'alternatives_unavailable';
+    completeAlternativesResult.reason = 'Both alternatives were available.';
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', completeAlternativesFailure, {
+      refinements: [{ ...refineRequest.refinements[0], alternatives: { count: 2 } }],
+    })).toMatchObject({ field: 'results.0.reason_code' });
+
+    const partialAlternatives = structuredClone(refined);
+    const partialAlternativesResult = (partialAlternatives.results as Array<Record<string, unknown>>)[0];
+    partialAlternativesResult.outcome = 'partial';
+    partialAlternativesResult.reason_code = 'alternatives_unavailable';
+    partialAlternativesResult.reason = 'Only one of two alternatives was available.';
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', partialAlternatives, {
+      refinements: [{ ...refineRequest.refinements[0], alternatives: { count: 2 } }],
+    })).toBeUndefined();
+
+    const unavailableAlternatives = structuredClone(refined);
+    const unavailableAlternativesResult = (unavailableAlternatives.results as Array<Record<string, unknown>>)[0];
+    unavailableAlternativesResult.outcome = 'unable';
+    unavailableAlternativesResult.reason_code = 'alternatives_unavailable';
+    unavailableAlternativesResult.reason = 'No alternatives were available.';
+    delete unavailableAlternativesResult.proposals;
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', unavailableAlternatives, {
+      refinements: [{ ...refineRequest.refinements[0], alternatives: { count: 2 } }],
+    })).toBeUndefined();
+
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined, {
+      refinements: [
+        refineRequest.refinements[0],
+        { ...refineRequest.refinements[0], proposal_id: 'proposal-missing-result' },
+      ],
+    })).toMatchObject({ field: 'results' });
+
+    const extraResult = structuredClone(refined);
+    const extraResults = extraResult.results as Array<Record<string, unknown>>;
+    extraResults.push({ ...extraResults[0], source_proposal_id: 'proposal-extra-result' });
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      extraResult,
+      refineRequest,
+    )).toMatchObject({ field: 'results' });
+
+    const mismatchedResult = structuredClone(refined);
+    const mismatchedResults = mismatchedResult.results as Array<Record<string, unknown>>;
+    mismatchedResults[0].source_proposal_id = 'proposal-out-of-order';
+    for (const proposal of mismatchedResults[0].proposals as Array<Record<string, unknown>>) {
+      proposal.parent_proposal_id = 'proposal-out-of-order';
+    }
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      mismatchedResult,
+      refineRequest,
+    )).toMatchObject({ field: 'results.0.source_proposal_id' });
+
+    const excessivePartial = structuredClone(uniqueAlternatives);
+    const excessivePartialResult = (excessivePartial.results as Array<Record<string, unknown>>)[0];
+    excessivePartialResult.outcome = 'partial';
+    excessivePartialResult.reason_code = 'commercially_declined';
+    excessivePartialResult.reason = 'The seller declined the requested commercial terms.';
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      excessivePartial,
+      refineRequest,
+    )).toMatchObject({ field: 'results.0.proposals' });
+
+    const unrequestedConstraint = structuredClone(refined);
+    const unrequestedConstraintResult = (unrequestedConstraint.results as Array<Record<string, unknown>>)[0];
+    unrequestedConstraintResult.outcome = 'partial';
+    unrequestedConstraintResult.reason_code = 'constraint_unsatisfiable';
+    unrequestedConstraintResult.reason = 'The budget constraint could not be satisfied.';
+    unrequestedConstraintResult.unsatisfied_constraints = ['total_budget'];
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      unrequestedConstraint,
+      refineRequest,
+    )).toMatchObject({ field: 'results.0.unsatisfied_constraints.0' });
+
+    const unrequestedProductChange = structuredClone(refined);
+    const unrequestedProductChangeResult = (unrequestedProductChange.results as Array<Record<string, unknown>>)[0];
+    unrequestedProductChangeResult.outcome = 'partial';
+    unrequestedProductChangeResult.reason_code = 'constraint_unsatisfiable';
+    unrequestedProductChangeResult.reason = 'The product change could not be satisfied.';
+    unrequestedProductChangeResult.unsatisfied_product_changes = { 'unrequested-product': 'include' };
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      unrequestedProductChange,
+      refineRequest,
+    )).toMatchObject({ field: 'results.0.unsatisfied_product_changes.unrequested-product' });
+
+    const matchingFailures = structuredClone(unrequestedConstraint);
+    const matchingFailureResult = (matchingFailures.results as Array<Record<string, unknown>>)[0];
+    matchingFailureResult.unsatisfied_product_changes = { 'social-display': 'include' };
+    expect(validateProductDiscoverySourceResponse('refine-proposals-response', matchingFailures, {
+      refinements: [{
+        ...refineRequest.refinements[0],
+        constraints: { total_budget: { max: 50000, currency: 'USD' } },
+        product_changes: { 'social-display': 'include' },
+      }],
+    })).toBeUndefined();
+
+    const budgetRequest = {
+      refinements: [{
+        ...refineRequest.refinements[0],
+        constraints: { total_budget: { max: 50000, currency: 'USD' } },
+      }],
+    };
+    const budgetedProposal = (
+      ((refined.results as Array<Record<string, unknown>>)[0]).proposals as Array<Record<string, unknown>>
+    )[0];
+    (budgetedProposal.commercial_terms as Record<string, unknown>).total_budget = {
+      amount: 50000,
+      currency: 'USD',
+    };
+    resignTermsDigest(budgetedProposal);
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      refined,
+      budgetRequest,
+    )).toBeUndefined();
+
+    const absentBudget = structuredClone(refined);
+    const absentBudgetProposal = (
+      (absentBudget.results as Array<Record<string, unknown>>)[0].proposals as Array<Record<string, unknown>>
+    )[0];
+    delete (absentBudgetProposal.commercial_terms as Record<string, unknown>).total_budget;
+    resignTermsDigest(absentBudgetProposal);
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      absentBudget,
+      budgetRequest,
+    )).toMatchObject({ field: 'results.0.proposals.0.commercial_terms.total_budget' });
+
+    const mismatchedBudgetCurrency = structuredClone(refined);
+    const mismatchedCurrencyProposal = (
+      (mismatchedBudgetCurrency.results as Array<Record<string, unknown>>)[0].proposals as Array<Record<string, unknown>>
+    )[0];
+    const mismatchedCurrencyTerms = mismatchedCurrencyProposal.commercial_terms as Record<string, unknown>;
+    mismatchedCurrencyTerms.total_budget = { amount: 50000, currency: 'EUR' };
+    resignTermsDigest(mismatchedCurrencyProposal);
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      mismatchedBudgetCurrency,
+      budgetRequest,
+    )).toMatchObject({ field: 'results.0.proposals.0.commercial_terms.total_budget' });
+
+    const excessiveBudget = structuredClone(refined);
+    const excessiveBudgetProposal = (
+      (excessiveBudget.results as Array<Record<string, unknown>>)[0].proposals as Array<Record<string, unknown>>
+    )[0];
+    const excessiveBudgetTerms = excessiveBudgetProposal.commercial_terms as Record<string, unknown>;
+    excessiveBudgetTerms.total_budget = { amount: 50001, currency: 'USD' };
+    resignTermsDigest(excessiveBudgetProposal);
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      excessiveBudget,
+      budgetRequest,
+    )).toMatchObject({ field: 'results.0.proposals.0.commercial_terms.total_budget' });
+
+    const undisclosedBudgetFailure = structuredClone(absentBudget);
+    const undisclosedBudgetResult = (undisclosedBudgetFailure.results as Array<Record<string, unknown>>)[0];
+    undisclosedBudgetResult.outcome = 'partial';
+    undisclosedBudgetResult.reason_code = 'commercially_declined';
+    undisclosedBudgetResult.reason = 'The seller declined the requested commercial terms.';
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      undisclosedBudgetFailure,
+      budgetRequest,
+    )).toMatchObject({ field: 'results.0.proposals.0.commercial_terms.total_budget' });
+
+    const disclosedBudgetFailure = structuredClone(absentBudget);
+    const disclosedBudgetResult = (disclosedBudgetFailure.results as Array<Record<string, unknown>>)[0];
+    disclosedBudgetResult.outcome = 'partial';
+    disclosedBudgetResult.reason_code = 'constraint_unsatisfiable';
+    disclosedBudgetResult.reason = 'The returned draft has no mechanically verifiable total budget.';
+    disclosedBudgetResult.unsatisfied_constraints = ['total_budget'];
+    expect(validateProductDiscoverySourceResponse(
+      'refine-proposals-response',
+      disclosedBudgetFailure,
+      budgetRequest,
+    )).toBeUndefined();
+
+    const impossibleTypedConstraints = [
+      { cpm: { max: 0.01, currency: 'USD' } },
+      { impressions: { min: Number.MAX_SAFE_INTEGER } },
+      { flight: { end_no_earlier_than: '2999-01-01T00:00:00Z' } },
+    ];
+    for (const constraints of impossibleTypedConstraints) {
+      expect(validateProductDiscoverySourceResponse('refine-proposals-response', refined, {
+        refinements: [{ ...refineRequest.refinements[0], constraints }],
+      })).toMatchObject({
+        message: `Invalid refine_proposals_response: revised proposal does not satisfy ${Object.keys(constraints)[0]}`,
+      });
+    }
+  });
+
+  it.each([
+    ['constraints.total_budget', { constraints: { total_budget: { max: 50000, currency: 'USD' } } }, 'total_budget'],
+    ['constraints.cpm', { constraints: { cpm: { max: 18, currency: 'USD' } } }, 'cpm'],
+    ['constraints.impressions', { constraints: { impressions: { min: 1000000 } } }, 'impressions'],
+    ['constraints.flight', { constraints: { flight: { end_no_earlier_than: '2027-06-30T23:59:59Z' } } }, 'flight'],
+    ['product_changes', { product_changes: { 'social-display': 'include' } }, 'product_changes'],
+    ['alternatives', { alternatives: { count: 3 } }, 'alternatives'],
+    ['criteria', { criteria: { targeting_overlay: { geo_countries: ['CA'] } } }, 'criteria'],
+  ] as const)('rejects the unsupported typed %s refinement before mutation', async (field, typedInput, dimension) => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    const source = (requested.proposals as Array<Record<string, unknown>>)[0];
+
+    const storedProposalIds = () => runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      return (session.lastGetProductsContext?.proposals ?? []).map(proposal => proposal.proposal_id);
+    });
+    const before = await storedProposalIds();
+
+    const { result: refined, isError } = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: source.proposal_id,
+        action: 'revise',
+        ...typedInput,
+      }],
+    });
+
+    expect(isError, JSON.stringify(refined)).toBe(true);
+    expect(refined).toMatchObject({
+      code: 'UNSUPPORTED_FEATURE',
+      field: `refinements.0.${field}`,
+      details: {
+        unsupported_dimension: dimension,
+        supported_dimensions: [],
+      },
+    });
+    expect(await storedProposalIds()).toEqual(before);
+  });
+
+  it('rejects a mixed refinement batch task-wide before minting any sibling proposal', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const sources: Array<Record<string, unknown>> = [];
+    for (let index = 0; index < 3; index += 1) {
+      const { result: requested, isError } = await simulateCallTool(server, 'request_proposals', {
+        brand: account.brand,
+        brief: 'social engagement display',
+      });
+      expect(isError, JSON.stringify(requested)).toBeFalsy();
+      sources.push((requested.proposals as Array<Record<string, unknown>>)[0]);
+    }
+
+    const storedProposalIds = () => runWithSessionContext(async () => {
+      const session = await getSession(
+        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+      );
+      return (session.lastGetProductsContext?.proposals ?? []).map(proposal => proposal.proposal_id);
+    });
+    const before = await storedProposalIds();
+
+    const { result: refined, isError } = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: sources[0].proposal_id,
+        action: 'revise',
+        ask: 'Prefer premium video.',
+      }, {
+        proposal_id: sources[1].proposal_id,
+        action: 'revise',
+        ask: 'Prefer premium audio.',
+      }, {
+        proposal_id: sources[2].proposal_id,
+        action: 'revise',
+        constraints: { total_budget: { max: 50000, currency: 'USD' } },
+      }],
+    });
+
+    expect(isError, JSON.stringify(refined)).toBe(true);
+    expect(refined).toMatchObject({
+      code: 'UNSUPPORTED_FEATURE',
+      field: 'refinements.2.constraints.total_budget',
+      details: {
+        unsupported_dimension: 'total_budget',
+        supported_dimensions: [],
+      },
+    });
+    expect(refined).not.toHaveProperty('results');
+    expect(await storedProposalIds()).toEqual(before);
+  });
+
+  it.each([
+    ['constraints.total_budget', { constraints: { total_budget: { max: 50000, currency: 'USD' } } }, 'total_budget'],
+    ['constraints.cpm', { constraints: { cpm: { max: 18, currency: 'USD' } } }, 'cpm'],
+    ['constraints.impressions', { constraints: { impressions: { min: 1000000 } } }, 'impressions'],
+    ['constraints.flight', { constraints: { flight: { end_no_earlier_than: '2027-06-30T23:59:59Z' } } }, 'flight'],
+    ['product_changes', { product_changes: { 'social-display': 'include' } }, 'product_changes'],
+    ['alternatives', { alternatives: { count: 3 } }, 'alternatives'],
+    ['criteria', { criteria: { targeting_overlay: { geo_countries: ['CA'] } } }, 'criteria'],
+  ] as const)(
+    'rejects the unsupported typed %s refinement through direct execution before mutation',
+    async (field, typedInput, dimension) => {
+      const requested = await executeTrainingAgentTool('request_proposals', {
+        idempotency_key: `direct-refinement-request-${field}-0001`,
+        brand: account.brand,
+        brief: 'social engagement display',
+      }, DEFAULT_CTX);
+      expect(requested.success, requested.error).toBe(true);
+      const source = (requested.data?.proposals as Array<Record<string, unknown>>)[0];
+
+      const storedProposalIds = () => runWithSessionContext(async () => {
+        const session = await getSession(
+          sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+        );
+        return (session.lastGetProductsContext?.proposals ?? []).map(proposal => proposal.proposal_id);
+      });
+      const before = await storedProposalIds();
+
+      const refined = await executeTrainingAgentTool('refine_proposals', {
+        idempotency_key: `direct-refinement-reject-${field}-0001`,
+        refinements: [{
+          proposal_id: source.proposal_id,
+          action: 'revise',
+          ...typedInput,
+        }],
+      }, DEFAULT_CTX);
+
+      expect(refined.success).toBe(false);
+      expect(refined.error).toContain('UNSUPPORTED_FEATURE');
+      expect(refined.error).toContain(`refinements.0.${field}`);
+      expect(refined.error).toContain(dimension);
+      expect(await storedProposalIds()).toEqual(before);
+    },
+  );
+
+  it('rejects inverted hard budget ranges through shared source semantics', () => {
+    const invalid = validateProductDiscoverySourceInput('refine-proposals-request', {
+      idempotency_key: 'inverted-hard-budget-range-0001',
+      refinements: [{
+        proposal_id: 'proposal-1',
+        action: 'revise',
+        constraints: { total_budget: { min: 50000, max: 10000, currency: 'USD' } },
+      }],
+    });
+    expect(invalid).toMatchObject({
+      field: 'refinements.0.constraints.total_budget',
+    });
   });
 
   it('binds compact proposals to both the seller account and full BrandKey', async () => {

@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/get-media-buys-request.json",
   "title": "Get Media Buys Request",
   "description": "Request parameters for retrieving media buy status, creative approval state, and optional delivery snapshots",
+  "x-tool-summary": "List media buys with current status, creative approval state, and optional delivery snapshots.",
   "type": "object",
   "allOf": [
     {

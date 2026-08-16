@@ -34,7 +34,8 @@
   "not": {
     "anyOf": [
       { "required": ["capability_ids"] },
-      { "required": ["bidding", "bid_price"] }
+      { "required": ["bidding", "bid_price"] },
+      { "required": ["budget_cap_timezone"] }
     ]
   },
   "properties": {
@@ -103,6 +104,11 @@
       "type": "number",
       "description": "Impression goal for this package",
       "minimum": 0
+    },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional hard package daily spend ceiling in the media-buy currency. It is subordinate, not a reserved allocation; package caps need not sum to the aggregate cap. Uses the media buy's cap timezone. Requires advertised package budget-capping scope; otherwise rejected with UNSUPPORTED_FEATURE."
     },
     "start_time": {
       "type": "string",
@@ -234,7 +240,20 @@
     },
     "creative_assignments": {
       "type": "array",
-      "description": "Assign existing library creatives to this package with optional weights and placement targeting",
+      "description": "Assign existing library creatives to this package with optional rotation, grouping, weights, and placement targeting. rotation_mode is package-scoped: omission resolves to weighted, and every assignment MUST resolve to the same effective mode. In sequential mode, sequence_position MUST be unique within each package-local group. Sellers reject conflicts with VALIDATION_ERROR before creating the package.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "package_rotation_policy": {
+            "effective_mode": "assignment.rotation_mode_or_weighted_default",
+            "mode_consistency": "all_assignments_equal",
+            "sequence_positions": "required_and_unique_per_effective_group_when_sequential",
+            "effective_group": "assignment.group_id_or_package_default",
+            "group_namespace": "package_id",
+            "on_violation": "reject_before_mutation_with_VALIDATION_ERROR"
+          }
+        },
+        "spec": "docs/reference/migration/creatives.mdx#rotation-modes-and-groups"
+      },
       "items": {
         "$ref": "/schemas/core/creative-assignment.json"
       },

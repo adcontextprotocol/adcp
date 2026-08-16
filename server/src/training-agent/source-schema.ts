@@ -1,9 +1,15 @@
+import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
 import addFormats from 'ajv-formats';
+import { canonicalize } from '@adcp/sdk';
 
 type JsonSchema = Record<string, unknown>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 const schemaRoot = join(process.cwd(), 'static/schemas/source');
 const parsedSchemas = new Map<string, JsonSchema>();
@@ -216,6 +222,96 @@ function errorField(error: ErrorObject): string | undefined {
   return typeof missing === 'string' ? missing : undefined;
 }
 
+function proposalSatisfiesBudgetConstraint(
+  proposal: Record<string, unknown>,
+  constraint: Record<string, unknown>,
+): boolean {
+  const commercialTerms = isRecord(proposal.commercial_terms) ? proposal.commercial_terms : undefined;
+  const totalBudget = isRecord(commercialTerms?.total_budget) ? commercialTerms.total_budget : undefined;
+  if (!totalBudget || typeof totalBudget.amount !== 'number' || typeof totalBudget.currency !== 'string') {
+    return false;
+  }
+  if (totalBudget.currency !== constraint.currency) return false;
+  if (typeof constraint.min === 'number' && totalBudget.amount < constraint.min) return false;
+  if (typeof constraint.max === 'number' && totalBudget.amount > constraint.max) return false;
+  return true;
+}
+
+function commercialTermsPurchases(proposal: Record<string, unknown>): Record<string, unknown>[] | undefined {
+  const commercialTerms = isRecord(proposal.commercial_terms) ? proposal.commercial_terms : undefined;
+  const purchases = Array.isArray(commercialTerms?.purchases) ? commercialTerms.purchases : undefined;
+  if (!purchases || purchases.length === 0 || !purchases.every(isRecord)) return undefined;
+  return purchases as Record<string, unknown>[];
+}
+
+function proposalSatisfiesCpmConstraint(
+  proposal: Record<string, unknown>,
+  constraint: Record<string, unknown>,
+): boolean {
+  const purchases = commercialTermsPurchases(proposal);
+  const maxRate = constraint.max;
+  const currency = constraint.currency;
+  if (!purchases || typeof maxRate !== 'number' || typeof currency !== 'string') return false;
+  return purchases.every(purchase => {
+    const pricing = isRecord(purchase.pricing) ? purchase.pricing : undefined;
+    return pricing !== undefined
+      && (pricing.pricing_model === 'cpm' || pricing.pricing_model === 'vcpm')
+      && pricing.currency === currency
+      && typeof pricing.fixed_price === 'number'
+      && pricing.fixed_price <= maxRate;
+  });
+}
+
+function proposalSatisfiesImpressionsConstraint(
+  proposal: Record<string, unknown>,
+  constraint: Record<string, unknown>,
+): boolean {
+  const purchases = commercialTermsPurchases(proposal);
+  if (!purchases || typeof constraint.min !== 'number') return false;
+  let total = 0;
+  for (const purchase of purchases) {
+    if (typeof purchase.impressions !== 'number') return false;
+    total += purchase.impressions;
+  }
+  return total >= constraint.min;
+}
+
+function proposalSatisfiesFlightConstraint(
+  proposal: Record<string, unknown>,
+  constraint: Record<string, unknown>,
+): boolean {
+  const commercialTerms = isRecord(proposal.commercial_terms) ? proposal.commercial_terms : undefined;
+  if (!commercialTerms) return false;
+  if (typeof constraint.start_no_later_than === 'string') {
+    if (typeof commercialTerms.start_time !== 'string' || commercialTerms.start_time === 'asap') return false;
+    const start = Date.parse(commercialTerms.start_time);
+    const bound = Date.parse(constraint.start_no_later_than);
+    if (Number.isNaN(start) || Number.isNaN(bound) || start > bound) return false;
+  }
+  if (typeof constraint.end_no_earlier_than === 'string') {
+    if (typeof commercialTerms.end_time !== 'string') return false;
+    const end = Date.parse(commercialTerms.end_time);
+    const bound = Date.parse(constraint.end_no_earlier_than);
+    if (Number.isNaN(end) || Number.isNaN(bound) || end < bound) return false;
+  }
+  return true;
+}
+
+const refinementConstraintChecks: Array<[
+  string,
+  (proposal: Record<string, unknown>, constraint: Record<string, unknown>) => boolean,
+]> = [
+  ['total_budget', proposalSatisfiesBudgetConstraint],
+  ['cpm', proposalSatisfiesCpmConstraint],
+  ['impressions', proposalSatisfiesImpressionsConstraint],
+  ['flight', proposalSatisfiesFlightConstraint],
+];
+
+function expectedTermsDigest(proposal: Record<string, unknown>): string | undefined {
+  if (!isRecord(proposal.commercial_terms)) return undefined;
+  return `sha256:${createHash('sha256').update(canonicalize(proposal.commercial_terms), 'utf8').digest('base64url')}`;
+}
+
 /** Validate the actual split-tool call against the normative source schema.
  * MCP tools/list intentionally projects large linked objects to compact type
  * hints, so dispatch must still enforce the complete canonical contract. */
@@ -224,13 +320,30 @@ export function validateProductDiscoverySourceInput(
   args: Record<string, unknown>,
 ): { message: string; field?: string } | undefined {
   const validator = productDiscoverySourceValidator(fileName);
-  if (validator(args)) return undefined;
-  const error = validator.errors?.[0];
-  const field = error && errorField(error);
-  return {
-    message: `Invalid ${fileName.replaceAll('-', '_')}${field ? ` at ${field}` : ''}: ${error?.message ?? 'schema validation failed'}`,
-    ...(field && { field }),
-  };
+  if (!validator(args)) {
+    const error = validator.errors?.[0];
+    const field = error && errorField(error);
+    return {
+      message: `Invalid ${fileName.replaceAll('-', '_')}${field ? ` at ${field}` : ''}: ${error?.message ?? 'schema validation failed'}`,
+      ...(field && { field }),
+    };
+  }
+  if (fileName === 'refine-proposals-request' && Array.isArray(args.refinements)) {
+    for (let index = 0; index < args.refinements.length; index += 1) {
+      const refinement = args.refinements[index];
+      if (!isRecord(refinement) || !isRecord(refinement.constraints)) continue;
+      const budget = refinement.constraints.total_budget;
+      if (!isRecord(budget)) continue;
+      if (typeof budget.min === 'number' && typeof budget.max === 'number' && budget.min > budget.max) {
+        const field = `refinements.${index}.constraints.total_budget`;
+        return {
+          message: 'Invalid refine_proposals_request: total_budget min must be less than or equal to max',
+          field,
+        };
+      }
+    }
+  }
+  return undefined;
 }
 
 /** Validate a split-tool response against its normative source schema. This
@@ -239,13 +352,173 @@ export function validateProductDiscoverySourceInput(
 export function validateProductDiscoverySourceResponse(
   fileName: string,
   response: Record<string, unknown>,
+  request?: Record<string, unknown>,
 ): { message: string; field?: string } | undefined {
   const validator = productDiscoverySourceValidator(fileName);
-  if (validator(response)) return undefined;
-  const error = validator.errors?.[0];
-  const field = error && errorField(error);
-  return {
-    message: `Invalid ${fileName.replaceAll('-', '_')}${field ? ` at ${field}` : ''}: ${error?.message ?? 'schema validation failed'}`,
-    ...(field && { field }),
-  };
+  if (!validator(response)) {
+    const error = validator.errors?.[0];
+    const field = error && errorField(error);
+    return {
+      message: `Invalid ${fileName.replaceAll('-', '_')}${field ? ` at ${field}` : ''}: ${error?.message ?? 'schema validation failed'}`,
+      ...(field && { field }),
+    };
+  }
+  if (fileName === 'refine-proposals-response' && Array.isArray(response.results)) {
+    let requestedRefinements: Record<string, unknown>[] | undefined;
+    if (request && Array.isArray(request.refinements)) {
+      const validRefinements = request.refinements.filter(
+        (refinement): refinement is Record<string, unknown> => (
+          isRecord(refinement) && typeof refinement.proposal_id === 'string'
+        ),
+      );
+      if (validRefinements.length === request.refinements.length) {
+        requestedRefinements = validRefinements;
+      }
+    }
+    if (requestedRefinements && response.results.length !== requestedRefinements.length) {
+      return {
+        message: 'Invalid refine_proposals_response: results must contain one ordered entry per requested refinement',
+        field: 'results',
+      };
+    }
+    for (let resultIndex = 0; resultIndex < response.results.length; resultIndex += 1) {
+      const result = response.results[resultIndex];
+      if (!isRecord(result)) continue;
+      const sourceProposalId = typeof result.source_proposal_id === 'string' ? result.source_proposal_id : undefined;
+      const returnedProposals: Array<[Record<string, unknown>, string]> = [];
+      if (Array.isArray(result.proposals)) {
+        for (let proposalIndex = 0; proposalIndex < result.proposals.length; proposalIndex += 1) {
+          const proposal = result.proposals[proposalIndex];
+          if (!isRecord(proposal)) continue;
+          returnedProposals.push([proposal, `results.${resultIndex}.proposals.${proposalIndex}`]);
+        }
+      }
+      if (isRecord(result.proposal)) {
+        returnedProposals.push([result.proposal, `results.${resultIndex}.proposal`]);
+      }
+      const canonicalTerms = new Set<string>();
+      for (const [proposal, proposalField] of returnedProposals) {
+        const expectedDigest = expectedTermsDigest(proposal);
+        if (expectedDigest !== undefined && proposal.terms_digest !== expectedDigest) {
+          return {
+            message: 'Invalid refine_proposals_response: terms_digest must be the sha256 of the JCS-canonicalized commercial_terms',
+            field: `${proposalField}.terms_digest`,
+          };
+        }
+        if (isRecord(proposal.commercial_terms)) {
+          const canonical = canonicalize(proposal.commercial_terms);
+          if (canonicalTerms.has(canonical)) {
+            return {
+              message: 'Invalid refine_proposals_response: alternative proposals must have distinct commercial_terms',
+              field: `${proposalField}.commercial_terms`,
+            };
+          }
+          canonicalTerms.add(canonical);
+        }
+        if (sourceProposalId !== undefined && proposal.parent_proposal_id !== sourceProposalId) {
+          return {
+            message: 'Invalid refine_proposals_response: returned proposals must carry parent_proposal_id equal to source_proposal_id',
+            field: `${proposalField}.parent_proposal_id`,
+          };
+        }
+      }
+      if (typeof result.source_proposal_id !== 'string') continue;
+      const requested = requestedRefinements?.[resultIndex];
+      if (!requested) continue;
+      if (result.source_proposal_id !== requested.proposal_id) {
+        const field = `results.${resultIndex}.source_proposal_id`;
+        return {
+          message: 'Invalid refine_proposals_response: result source proposal IDs must preserve request order',
+          field,
+        };
+      }
+      const requestedConstraints = isRecord(requested.constraints) ? requested.constraints : undefined;
+      if (Array.isArray(result.unsatisfied_constraints)) {
+        for (let constraintIndex = 0; constraintIndex < result.unsatisfied_constraints.length; constraintIndex += 1) {
+          const constraint = result.unsatisfied_constraints[constraintIndex];
+          if (typeof constraint === 'string' && !Object.hasOwn(requestedConstraints ?? {}, constraint)) {
+            const field = `results.${resultIndex}.unsatisfied_constraints.${constraintIndex}`;
+            return {
+              message: 'Invalid refine_proposals_response: unsatisfied constraint was not present in the request',
+              field,
+            };
+          }
+        }
+      }
+      const requestedProductChanges = isRecord(requested.product_changes) ? requested.product_changes : undefined;
+      if (isRecord(result.unsatisfied_product_changes)) {
+        for (const [productId, action] of Object.entries(result.unsatisfied_product_changes)) {
+          if (!requestedProductChanges || requestedProductChanges[productId] !== action) {
+            const field = `results.${resultIndex}.unsatisfied_product_changes.${productId}`;
+            return {
+              message: 'Invalid refine_proposals_response: unsatisfied product change was not present in the request',
+              field,
+            };
+          }
+        }
+      }
+      const alternatives = isRecord(requested.alternatives) ? requested.alternatives : undefined;
+      const requestedAlternativeCount = alternatives && typeof alternatives.count === 'number'
+        ? alternatives.count
+        : undefined;
+      if (result.reason_code === 'alternatives_unavailable') {
+        const returnedProposalCount = Array.isArray(result.proposals) ? result.proposals.length : 0;
+        if (requestedAlternativeCount === undefined || returnedProposalCount >= requestedAlternativeCount) {
+          return {
+            message: 'Invalid refine_proposals_response: alternatives_unavailable requires fewer proposals than requested',
+            field: `results.${resultIndex}.reason_code`,
+          };
+        }
+      }
+      if (!Array.isArray(result.proposals)) continue;
+
+      for (const [constraintKey, satisfiesConstraint] of refinementConstraintChecks) {
+        const requestedConstraint = isRecord(requestedConstraints?.[constraintKey])
+          ? requestedConstraints[constraintKey] as Record<string, unknown>
+          : undefined;
+        if (!requestedConstraint) continue;
+        const unsatisfiedProposalIndex = result.proposals.findIndex(proposal => (
+          isRecord(proposal) && !satisfiesConstraint(proposal, requestedConstraint)
+        ));
+        if (unsatisfiedProposalIndex === -1) continue;
+        const field = `results.${resultIndex}.proposals.${unsatisfiedProposalIndex}.commercial_terms${
+          constraintKey === 'total_budget' ? '.total_budget' : ''
+        }`;
+        if (result.outcome === 'revised') {
+          return {
+            message: `Invalid refine_proposals_response: revised proposal does not satisfy ${constraintKey}`,
+            field,
+          };
+        }
+        if (
+          result.outcome === 'partial'
+          && (
+            result.reason_code !== 'constraint_unsatisfiable'
+            || !Array.isArray(result.unsatisfied_constraints)
+            || !result.unsatisfied_constraints.includes(constraintKey)
+          )
+        ) {
+          return {
+            message: `Invalid refine_proposals_response: an unsatisfied ${constraintKey} requires constraint_unsatisfiable and unsatisfied_constraints`,
+            field,
+          };
+        }
+      }
+
+      const expectedCount = requestedAlternativeCount ?? 1;
+      const invalidCount = result.outcome === 'revised'
+        ? result.proposals.length !== expectedCount
+        : result.outcome === 'partial' && result.proposals.length > expectedCount;
+      if (invalidCount) {
+        const field = `results.${resultIndex}.proposals`;
+        return {
+          message: result.outcome === 'revised'
+            ? `Invalid refine_proposals_response: revised result requires exactly ${expectedCount} proposal${expectedCount === 1 ? '' : 's'}`
+            : `Invalid refine_proposals_response: partial result permits at most ${expectedCount} proposal${expectedCount === 1 ? '' : 's'}`,
+          field,
+        };
+      }
+    }
+  }
+  return undefined;
 }

@@ -26,10 +26,12 @@ const {
   MAX_SCHEMA_OBJECTS,
   MCP_PROTOCOL_VERSION,
   assertLocalRefsResolve,
+  buildRuntimeToolsList,
   collectExternalRefs,
   compactDraft07Schema,
   measureSchema,
   projectDraft07Node,
+  selectRuntimeToolNames,
   stripPresentationAnnotations,
   stripModelContextAnnotations,
 } = require('../scripts/mcp-schema-projection.cjs');
@@ -184,6 +186,15 @@ test('model-context presentation keeps request shape and omits validation-only d
         'x-adcp-validation': { verifier: 'uri' },
       },
       mode: { type: 'string', enum: ['direct', 'proposal'] },
+      strict: {
+        type: 'object',
+        properties: { value: { type: 'string' } },
+        additionalProperties: false,
+      },
+      extensions: {
+        type: 'object',
+        additionalProperties: true,
+      },
     },
     required: ['destination'],
     oneOf: [
@@ -200,6 +211,8 @@ test('model-context presentation keeps request shape and omits validation-only d
   assert.equal(projected.properties.destination['x-adcp-validation'], undefined);
   assert.deepEqual(projected.required, ['destination']);
   assert.deepEqual(projected.properties.mode.enum, ['direct', 'proposal']);
+  assert.equal(projected.properties.strict.additionalProperties, undefined);
+  assert.equal(projected.properties.extensions.additionalProperties, true);
   assert.equal(projected.oneOf[1].not.required[0], 'mode');
 });
 
@@ -804,6 +817,100 @@ test('generated production profile exposes the active 3.2 surface without compli
   assert.ok(profileBytes < canonicalBytes * 0.65, `${profileBytes} should be materially smaller than ${canonicalBytes}`);
 });
 
+test('runtime selection fails closed on unknown, unimplemented, and production-only capability claims', () => {
+  const manifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
+  const implementedTools = ['get_adcp_capabilities', 'list_products'];
+
+  assert.deepEqual(selectRuntimeToolNames(manifest, { implementedTools }), implementedTools);
+  assert.deepEqual(selectRuntimeToolNames(manifest, {
+    implementedTools,
+    capabilityProtocols: [],
+    capabilityTools: [],
+  }), []);
+  assert.throws(
+    () => selectRuntimeToolNames(manifest, {
+      implementedTools,
+      capabilityTools: ['request_proposals'],
+    }),
+    /advertises unimplemented tool request_proposals/
+  );
+  assert.throws(
+    () => selectRuntimeToolNames(manifest, {
+      implementedTools: [...implementedTools, 'not_an_adcp_tool'],
+    }),
+    /unknown tool not_an_adcp_tool/
+  );
+  assert.throws(
+    () => selectRuntimeToolNames(manifest, {
+      implementedTools: ['comply_test_controller'],
+      capabilityTools: ['comply_test_controller'],
+    }),
+    /cannot select compliance tool/
+  );
+});
+
+test('representative capability-selected media-buy runtime exposes only selected input schemas', () => {
+  const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
+  const productionManifest = readJson(path.join(PRODUCTION_PROFILE_DIR, 'manifest.json'));
+  const selectedToolNames = selectRuntimeToolNames(canonicalManifest, {
+    implementedTools: MCP_ROLE_PROFILE_TOOLS['media-buy'],
+    capabilityProtocols: ['media_buy'],
+    capabilityTools: ['get_adcp_capabilities', 'get_task_status'],
+  });
+
+  assert.ok(selectedToolNames.includes('list_products'));
+  assert.ok(selectedToolNames.includes('request_proposals'));
+  assert.ok(selectedToolNames.includes('get_adcp_capabilities'));
+  assert.ok(selectedToolNames.includes('get_task_status'));
+  assert.ok(!selectedToolNames.includes('sync_creatives'));
+  assert.ok(!selectedToolNames.includes('sync_accounts'));
+  assert.ok(
+    selectedToolNames.length < Object.keys(productionManifest.tools).length / 3,
+    `${selectedToolNames.length} selected tools should be materially fewer than `
+      + `${Object.keys(productionManifest.tools).length} production tools`
+  );
+
+  const runtimeTools = buildRuntimeToolsList(
+    productionManifest,
+    selectedToolNames,
+    relativePath => readJson(path.join(PRODUCTION_PROFILE_DIR, relativePath))
+  );
+  assert.deepEqual(runtimeTools.map(tool => tool.name), selectedToolNames);
+  for (const tool of runtimeTools) {
+    assert.equal(tool.description, canonicalManifest.tools[tool.name].summary);
+    assert.ok(tool.description.length > 0);
+    assert.equal(tool.inputSchema['x-tool-summary'], undefined);
+    assert.equal(tool.outputSchema, undefined);
+    assert.equal(tool.inputSchema.$schema, JSON_SCHEMA_2020_12);
+    assert.deepEqual(collectExternalRefs(tool.inputSchema), []);
+  }
+
+  const storyboardFixtures = collectStoryboardRequestFixtures();
+  const draft07 = createValidator(AjvDraft07);
+  const draft2020 = createValidator(Ajv2020);
+  let parityCases = 0;
+  for (const toolName of selectedToolNames) {
+    const sourceRelativePath = canonicalManifest.tools[toolName].request_schema;
+    const fixtures = storyboardFixtures.get(sourceRelativePath) || [];
+    if (fixtures.length === 0) continue;
+    const sourcePath = path.join(SOURCE_DIR, sourceRelativePath);
+    const sourceSchema = readJson(sourcePath);
+    const compactSource = compactDraft07Schema(sourceSchema, sourcePath, SOURCE_DIR);
+    const projectedSchema = runtimeTools.find(tool => tool.name === toolName).inputSchema;
+    const validateSource = draft07.compile(compactSource);
+    const validateProjected = draft2020.compile(projectedSchema);
+    for (const [index, fixture] of fixtures.entries()) {
+      assert.equal(
+        validateProjected(fixture),
+        validateSource(fixture),
+        `${toolName} runtime projection changed storyboard fixture ${index}`
+      );
+      parityCases++;
+    }
+  }
+  assert.ok(parityCases >= 25, `expected at least 25 selected-schema parity cases, saw ${parityCases}`);
+});
+
 test('generated role profiles are active validation catalogs with bounded model-context views', () => {
   const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
 
@@ -856,6 +963,13 @@ test('generated role profiles are active validation catalogs with bounded model-
     for (const toolName of expectedTools) {
       const fullTool = profile.tools[toolName];
       const modelTool = modelContext.tools[toolName];
+      assert.ok(canonicalManifest.tools[toolName].summary, `${toolName} must provide a runtime summary`);
+      assert.ok(
+        canonicalManifest.tools[toolName].summary.length <= 160,
+        `${toolName} runtime summary must stay concise`
+      );
+      assert.equal(fullTool.summary, canonicalManifest.tools[toolName].summary);
+      assert.equal(modelTool.summary, fullTool.summary);
       assert.equal(fullTool.protocol, canonicalManifest.tools[toolName].protocol);
       assert.equal(modelTool.protocol, fullTool.protocol);
       assert.equal(modelTool.inputSchema, fullTool.inputSchema);
@@ -867,8 +981,8 @@ test('generated role profiles are active validation catalogs with bounded model-
       modelContextBytes += Buffer.byteLength(JSON.stringify(readJson(modelInputPath)));
     }
     assert.ok(
-      modelContextBytes < 384 * 1024,
-      `${profileName} model-context inputs exceed 384 KiB: ${modelContextBytes}`
+      modelContextBytes < 388 * 1024,
+      `${profileName} model-context inputs exceed 388 KiB: ${modelContextBytes}`
     );
   }
 

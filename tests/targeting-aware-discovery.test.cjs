@@ -113,7 +113,7 @@ test("split discovery tasks carry targeting through shared criteria", async () =
       refinements: [{ proposal_id: "proposal_123", action: "revise" }],
     }),
     false,
-    "a refinement still needs structured criteria or semantic instructions"
+    "a refinement still needs structured criteria or a semantic ask"
   );
   assert.equal(
     validateRefine({
@@ -205,6 +205,129 @@ test("device-platform exclusion is typed and independently discoverable", async 
   );
   assert.match(targetingSchema, /exclusion wins/i);
   assert.match(targetingSchema, /MUST reject/);
+});
+
+test("browser-family inclusion and exclusion are typed and independently discoverable", async () => {
+  const [validateTargeting, validateRequirements, validateSupport] =
+    await Promise.all([
+      compile("/schemas/core/targeting.json"),
+      compile("/schemas/core/targeting-overlay-requirements.json"),
+      compile("/schemas/core/targeting-overlay-support.json"),
+    ]);
+  const canonicalFamilies = [
+    "chrome",
+    "safari",
+    "firefox",
+    "edge",
+    "opera",
+    "samsung_internet",
+    "android_webview",
+    "other",
+    "unknown",
+  ];
+
+  assert.equal(
+    validateTargeting({
+      browser: canonicalFamilies,
+      browser_exclude: ["safari", "unknown"],
+    }),
+    true,
+    errors(validateTargeting)
+  );
+  for (const invalid of [
+    { browser: [] },
+    { browser: ["internet_explorer"] },
+    { browser: ["chrome", "chrome"] },
+    { browser_exclude: [] },
+    { browser_exclude: ["chromium"] },
+  ]) {
+    assert.equal(
+      validateTargeting(invalid),
+      false,
+      `invalid browser targeting must fail: ${JSON.stringify(invalid)}`
+    );
+  }
+  assert.equal(
+    validateRequirements({ browser: true, browser_exclude: true }),
+    true,
+    errors(validateRequirements)
+  );
+  assert.equal(
+    validateRequirements({
+      browser: { families: ["chrome", "firefox"] },
+      browser_exclude: { families: ["unknown"] },
+    }),
+    true,
+    errors(validateRequirements)
+  );
+  assert.equal(
+    validateSupport({ browser: true, browser_exclude: true }),
+    true,
+    errors(validateSupport)
+  );
+  assert.equal(
+    validateSupport({
+      browser: { families: ["chrome", "firefox"] },
+      browser_exclude: { families: ["unknown"] },
+    }),
+    true,
+    errors(validateSupport)
+  );
+  for (const invalid of [
+    { browser: {} },
+    { browser: { families: [] } },
+    { browser: { families: ["internet_explorer"] } },
+    { browser_exclude: { families: ["unknown", "unknown"] } },
+  ]) {
+    assert.equal(
+      validateRequirements(invalid),
+      false,
+      `invalid browser requirement must fail: ${JSON.stringify(invalid)}`
+    );
+    assert.equal(
+      validateSupport(invalid),
+      false,
+      `invalid browser support must fail: ${JSON.stringify(invalid)}`
+    );
+  }
+  assert.equal(
+    validateRequirements({ browser: false }),
+    false,
+    "browser support requirements are positive capabilities"
+  );
+  assert.equal(
+    validateSupport({ browser: true }),
+    true,
+    errors(validateSupport)
+  );
+  assert.equal(
+    validateSupport({ browser_exclude: true }),
+    true,
+    errors(validateSupport)
+  );
+
+  const browserEnum = JSON.parse(
+    fs.readFileSync(
+      path.join(SCHEMA_ROOT, "enums", "browser-family.json"),
+      "utf8"
+    )
+  );
+  assert.deepEqual(browserEnum.enum, canonicalFamilies);
+  assert.match(browserEnum.description, /other means a seller-recognized/i);
+  assert.match(browserEnum.description, /unknown means the seller cannot classify/i);
+  assert.match(browserEnum.description, /impression delivery and rendering environment/i);
+  assert.match(browserEnum.description, /MUST NOT be inferred solely/i);
+  assert.match(browserEnum.description, /android_webview means an impression reliably classified/i);
+
+  const targeting = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "core", "targeting.json"), "utf8")
+  );
+  assert.match(targeting.properties.browser.description, /families not listed are ineligible/i);
+  assert.match(targeting.properties.browser.description, /exclusion wins/i);
+  assert.match(targeting.properties.browser.description, /Browser and device constraints intersect/i);
+  assert.match(targeting.properties.browser.description, /not the post-click landing-page browser/i);
+  assert.match(targeting.properties.browser.description, /MUST reject/i);
+  assert.match(targeting.properties.browser_exclude.description, /exclusion wins/i);
 });
 
 test("seller targeting rollups are explicit true-valued routing hints", async () => {
@@ -482,6 +605,29 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
     ["fire_os"]
   );
   assert.deepEqual(
+    step("get_exact_targeted_product").sample_request.targeting_overlay.browser,
+    ["chrome", "safari", "unknown"],
+    "exact discovery must exercise named, overlapping, and unclassifiable browser families"
+  );
+  assert.deepEqual(
+    step("get_exact_targeted_product").sample_request.targeting_overlay
+      .browser_exclude,
+    ["safari"],
+    "exact discovery must exercise exclusion-wins semantics"
+  );
+  assert.deepEqual(
+    step("get_exact_targeted_product").sample_request.required_overlay_support
+      .browser,
+    { families: ["chrome", "firefox"] },
+    "discovery must require later browser inclusion for the selected families"
+  );
+  assert.deepEqual(
+    step("get_exact_targeted_product").sample_request.required_overlay_support
+      .browser_exclude,
+    { families: ["unknown"] },
+    "discovery must require later browser exclusion independently"
+  );
+  assert.deepEqual(
     step("get_exact_targeted_product").sample_request.required_overlay_support
       .keyword_targets,
     { supported_match_types: ["exact"] },
@@ -506,6 +652,64 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
     ),
     true,
     "support true must satisfy an object requirement"
+  );
+  for (const field of [
+    "browser",
+    "browser_exclude",
+  ]) {
+    const validation = step("get_exact_targeted_product").validations.find(
+      (candidate) =>
+        candidate.check === "field_value" &&
+        candidate.path === `products[0].overlay_support.${field}`
+    );
+    assert.deepEqual(
+      validation?.value,
+      { families: ["chrome", "safari", "firefox", "unknown"] },
+      `${field} support must be graded independently by family`
+    );
+  }
+  assert.deepEqual(
+    storyboard.fixtures.products[0].browser_inventory,
+    {
+      forecastable_families: ["chrome", "firefox", "unknown"],
+      unavailable_families: ["safari"],
+      platform_compatibility: { safari: ["ios", "macos"] },
+    },
+    "browser discovery outcomes must be grounded in deterministic seeded inventory"
+  );
+
+  assert.deepEqual(
+    step("get_modified_age_product").sample_request.targeting_overlay.browser,
+    ["chrome", "safari"]
+  );
+  assert.equal(
+    hasCheck(
+      "get_modified_age_product",
+      "field_value",
+      "products[0].targeting_resolution.modifications[1].operation",
+      "remove_values"
+    ),
+    true,
+    "browser alternatives must use sparse set removal"
+  );
+  assert.equal(
+    hasCheck(
+      "get_modified_age_product",
+      "field_value",
+      "products[0].targeting_resolution.modifications[1].path",
+      "/browser"
+    ),
+    true,
+    "the browser modification path must be graded"
+  );
+  assert.equal(
+    hasCheck(
+      "create_from_modified_product",
+      "field_absent",
+      "packages[0].targeting_overlay.browser[1]"
+    ),
+    true,
+    "booked readback must prove the removed browser was not restored"
   );
 
   const briefConfirmation = step("get_brief_targeted_product").validations.find(
@@ -619,6 +823,85 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
       `${id} must grade persistence of the concrete platform exclusion`
     );
   }
+  for (const [id, path, value] of [
+    ["create_feed_package", "packages[0].targeting_overlay.browser[*]", "chrome"],
+    ["create_feed_package", "packages[0].targeting_overlay.browser[*]", "safari"],
+    ["create_feed_package", "packages[0].targeting_overlay.browser[*]", "unknown"],
+    ["create_feed_package", "packages[0].targeting_overlay.browser_exclude[*]", "safari"],
+    ["read_updated_placement", "media_buys[0].packages[0].targeting_overlay.browser[*]", "chrome"],
+    ["read_updated_placement", "media_buys[0].packages[0].targeting_overlay.browser[*]", "firefox"],
+    ["read_updated_placement", "media_buys[0].packages[0].targeting_overlay.browser_exclude[*]", "unknown"],
+  ]) {
+    assert.equal(
+      hasCheck(id, "field_contains", path, value),
+      true,
+      `${id} must grade browser value ${value}`
+    );
+  }
+  for (const [id, path] of [
+    ["create_feed_package", "packages[0].targeting_overlay.browser[3]"],
+    ["create_feed_package", "packages[0].targeting_overlay.browser_exclude[1]"],
+    ["update_to_short_video", "affected_packages[0].targeting_overlay.browser[2]"],
+    ["update_to_short_video", "affected_packages[0].targeting_overlay.browser_exclude[1]"],
+    ["read_updated_placement", "media_buys[0].packages[0].targeting_overlay.browser[2]"],
+    ["read_updated_placement", "media_buys[0].packages[0].targeting_overlay.browser_exclude[1]"],
+  ]) {
+    assert.equal(
+      hasCheck(id, "field_absent", path),
+      true,
+      `${id} must grade browser set cardinality at ${path}`
+    );
+  }
+  assert.deepEqual(
+    step("update_to_short_video").sample_request.packages[0].targeting_overlay.browser,
+    ["chrome", "firefox"],
+    "update must exercise later package-level browser selection"
+  );
+  assert.deepEqual(
+    step("update_to_short_video").sample_request.packages[0].targeting_overlay
+      .browser_exclude,
+    ["unknown"],
+    "update must exercise later package-level browser exclusion"
+  );
+  assert.equal(
+    hasCheck(
+      "reject_incompatible_browser_platform",
+      "error_code",
+      undefined,
+      "UNSUPPORTED_FEATURE"
+    ),
+    true,
+    "an unenforceable browser and device intersection must be rejected"
+  );
+  assert.deepEqual(
+    step("reject_incompatible_browser_platform").sample_request.packages[0]
+      .targeting_overlay,
+    {
+      geo_countries: ["US"],
+      device_platform: ["android"],
+      device_platform_exclude: ["fire_os"],
+      browser: ["safari"],
+      browser_exclude: ["unknown"],
+      property_list: {
+        agent_url: "https://governance.pinnacle-agency.example",
+        list_id: "acme_outdoor_allowlist_v1",
+      },
+      collection_list: {
+        agent_url: "https://governance.pinnacle-agency.example",
+        list_id: "acme_outdoor_collections_v1",
+      },
+      placement_selection: {
+        mode: "selected",
+        placement_refs: [
+          {
+            publisher_domain: "pinnacle-media.example",
+            placement_id: "short_video",
+          },
+        ],
+      },
+    },
+    "the negative vector must be otherwise-complete replacement targeting"
+  );
 
   for (const [path, contextKey] of [
     ["media_buys[0].media_buy_id", "placement_media_buy_id"],
@@ -813,6 +1096,18 @@ test("targeting modifications are sparse and use semantic set operations", async
           values: ["fire_os"],
           reason: "The configured offer cannot preserve this exclusion.",
         },
+        {
+          operation: "remove_values",
+          path: "/browser",
+          values: ["safari"],
+          reason: "No forecastable Safari inventory is available for the discovery scope.",
+        },
+        {
+          operation: "remove_values",
+          path: "/browser_exclude",
+          values: ["unknown"],
+          reason: "The configured offer cannot preserve this exclusion.",
+        },
       ],
     }),
     true,
@@ -962,6 +1257,109 @@ test("product identity and forecast semantics distinguish wholesale from custom 
   assert.match(product.properties.pricing_options.description, /uniform-price promise/);
   assert.match(product.properties.product_id.description, /new pricing_option_id/);
   assert.match(product.properties.expires_at.description, /PRODUCT_NOT_FOUND/);
+});
+
+test("named-place targeting supports known-now and declared-later discovery", async () => {
+  const [validateRequest, validateRequirements, validateSupport] =
+    await Promise.all([
+      compile("/schemas/media-buy/get-products-request.json"),
+      compile("/schemas/core/targeting-overlay-requirements.json"),
+      compile("/schemas/core/targeting-overlay-support.json"),
+    ]);
+
+  const placeRequirement = {
+    systems: {
+      geonames: {
+        countries: { NL: ["city", "municipality"] },
+        system_versions: ["2026-05"],
+      },
+      "https://places.meridiangeo.example/catalog": {
+        countries: { GB: ["city_region"] },
+      },
+    },
+  };
+
+  assert.equal(
+    validateRequest({
+      buying_mode: "brief",
+      brief: "Local municipal campaign",
+      targeting_overlay: {
+        geo_places: [
+          {
+            country: "NL",
+            system: "geonames",
+            system_version: "2026-05",
+            place_type: "city",
+            values: ["2759794"],
+          },
+        ],
+      },
+      required_overlay_support: {
+        geo_places_exclude: placeRequirement,
+      },
+    }),
+    true,
+    errors(validateRequest)
+  );
+
+  assert.equal(
+    validateRequirements({ geo_places: placeRequirement }),
+    true,
+    errors(validateRequirements)
+  );
+  assert.equal(
+    validateRequirements({ geo_places: true }),
+    false,
+    "future named-place support must bind an identifier system and country/type pairs"
+  );
+  assert.equal(
+    validateRequirements({
+      geo_places: {
+        systems: { geonames: { countries: { Netherlands: ["city"] } } },
+      },
+    }),
+    false,
+    "country keys use collision-safe ISO alpha-2 identifiers"
+  );
+
+  const placeSupport = {
+    systems: {
+      geonames: {
+        countries: { NL: ["city", "municipality"] },
+        current_version: "2026-05",
+        system_versions: ["2026-05", "2025-11"],
+      },
+      "https://places.meridiangeo.example/catalog": {
+        countries: { GB: ["city_region"] },
+        current_version: "2026-Q2",
+        system_versions: ["2026-Q2"],
+      },
+    },
+    max_values_per_package: 50,
+    max_packages: 20,
+  };
+  assert.equal(
+    validateSupport({
+      geo_places: placeSupport,
+      geo_places_exclude: placeSupport,
+    }),
+    true,
+    errors(validateSupport)
+  );
+  assert.equal(
+    validateSupport({
+      geo_places: {
+        systems: {
+          geonames: {
+            countries: { NL: ["city"] },
+            system_versions: ["2026-05"],
+          },
+        },
+      },
+    }),
+    false,
+    "product support discloses the current catalog version used for omitted package versions"
+  );
 });
 
 test("product and package targeting resolutions reject cross-lifecycle fields", async () => {

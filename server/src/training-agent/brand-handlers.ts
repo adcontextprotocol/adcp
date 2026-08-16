@@ -8,7 +8,7 @@
 
 import type { TrainingContext, ToolArgs } from './types.js';
 import { createHash } from 'node:crypto';
-import { canonicalize } from '@adcp/sdk';
+import { canonicalize, enforceMapCap } from '@adcp/sdk';
 import { getSandboxBrands } from '@adcp/sdk/testing';
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
@@ -1234,6 +1234,21 @@ export async function handleAcquireRights(
     });
   }
 
+  enforceMapCap(session.rightsGrants, rightsId, 'rights grants');
+  session.rightsGrants.set(rightsId, {
+    grantId: rightsId,
+    rightsId,
+    brandId: talent.brand_id,
+    buyerDomain: buyer.domain,
+    status: 'acquired',
+    pricingOptionId,
+    startDate,
+    endDate,
+    ...(pricingOption.impression_cap !== undefined && { impressionCap: pricingOption.impression_cap }),
+    paused: false,
+    createdAt: new Date().toISOString(),
+  });
+
   return {
     rights_id: rightsId,
     status: 'completed',
@@ -1304,11 +1319,18 @@ export async function handleUpdateRights(
   const impressionCap = req.impression_cap;
   const paused = req.paused;
 
+  const accountSessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(accountSessionKey);
+  const grant = session.rightsGrants.get(rightsId);
+  if (!grant || grant.status !== 'acquired') {
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No active grant with id '${rightsId}'` }] };
+  }
+
   let talent: TalentEntry | undefined;
   let offering: RightsOffering | undefined;
   for (const t of TALENT) {
-    const o = t.rights_offerings.find(r => r.rights_id === rightsId);
-    if (o) {
+    const o = t.rights_offerings.find(r => r.rights_id === grant.rightsId);
+    if (o && t.brand_id === grant.brandId) {
       talent = t;
       offering = o;
       break;
@@ -1319,9 +1341,8 @@ export async function handleUpdateRights(
     return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No active grant with id '${rightsId}'` }] };
   }
 
-  const defaultWindow = defaultRightsWindow();
-  const currentEndDate = defaultWindow.endDate;
-  const currentStartDate = defaultWindow.startDate;
+  const currentEndDate = grant.endDate;
+  const currentStartDate = grant.startDate;
   if (endDate && endDate < currentEndDate) {
     return { errors: [{ code: 'INVALID_REQUEST', message: 'New end_date must be >= current end_date' }] };
   }
@@ -1331,14 +1352,16 @@ export async function handleUpdateRights(
     return { errors: [{ code: 'INVALID_REQUEST', message: `New impression_cap (${impressionCap}) must be >= impressions already delivered (${deliveredImpressions})` }] };
   }
 
-  const pricingOption = offering.pricing_options[0];
+  const pricingOption = offering.pricing_options.find(option => option.pricing_option_id === grant.pricingOptionId);
+  if (!pricingOption) {
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `Pricing option for grant '${rightsId}' is no longer available` }] };
+  }
   const effectiveEndDate = endDate || currentEndDate;
-  const effectiveImpressionCap = impressionCap ?? pricingOption.impression_cap;
-  const increasesObligation = paused === false
+  const effectiveImpressionCap = impressionCap ?? grant.impressionCap;
+  const effectivePaused = paused ?? grant.paused;
+  const increasesObligation = paused === false && grant.paused
     || Boolean(endDate && endDate > currentEndDate)
-    || Boolean(impressionCap !== undefined && impressionCap > (pricingOption.impression_cap ?? 0));
-  const accountSessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
-  const session = await getSession(accountSessionKey);
+    || Boolean(impressionCap !== undefined && impressionCap > (grant.impressionCap ?? 0));
   const registeredGovernanceAgents = resolveGovernanceAgentsForAccount(
     accountSessionKey,
     ctx.principal,
@@ -1380,7 +1403,7 @@ export async function handleUpdateRights(
 
   const generationCredentials: GenerationCredential[] = [];
 
-  if (paused !== true && campaignUses.includes('likeness')) {
+  if (!effectivePaused && campaignUses.includes('likeness')) {
     generationCredentials.push({
       provider: 'midjourney',
       rights_key: `rk_mj_sandbox_${talent.brand_id}_${Date.now().toString(36)}`,
@@ -1389,7 +1412,7 @@ export async function handleUpdateRights(
     });
   }
 
-  if (paused !== true && campaignUses.includes('voice') && talent.voice_synthesis) {
+  if (!effectivePaused && campaignUses.includes('voice') && talent.voice_synthesis) {
     generationCredentials.push({
       provider: 'elevenlabs',
       rights_key: `rk_el_sandbox_${talent.brand_id}_${Date.now().toString(36)}`,
@@ -1397,6 +1420,12 @@ export async function handleUpdateRights(
       expires_at: `${effectiveEndDate}T23:59:59Z`,
     });
   }
+
+  // Commit only after every validation and governance check succeeds. Invalid
+  // updates leave the persisted grant unchanged.
+  grant.endDate = effectiveEndDate;
+  grant.impressionCap = effectiveImpressionCap;
+  grant.paused = effectivePaused;
 
   return {
     rights_id: rightsId,
@@ -1425,7 +1454,7 @@ export async function handleUpdateRights(
       uses: campaignUses,
       countries: offering.countries,
       impressionCap: effectiveImpressionCap,
-      grantStatus: paused === true ? 'paused' : 'active',
+      grantStatus: effectivePaused ? 'paused' : 'active',
       restrictions,
       disclosure,
       creativeApprovalRequired: true,

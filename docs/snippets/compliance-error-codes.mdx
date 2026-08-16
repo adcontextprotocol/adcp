@@ -13,6 +13,8 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | Code | Recovery | Suggested action |
 |------|----------|------------------|
 | `ACCOUNT_AMBIGUOUS` | correctable | pass explicit account_id or a more specific natural key |
+| `ACCOUNT_IDENTITY_CONFLICT` | correctable | choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged |
+| `ACCOUNT_MOVED` | correctable | replace the stale reference with error.details.current_account, refresh through list_accounts, and retry with a fresh idempotency key |
 | `ACCOUNT_NOT_FOUND` | terminal | verify account via list_accounts or contact seller |
 | `ACCOUNT_PAYMENT_REQUIRED` | terminal | buyer must resolve billing |
 | `ACCOUNT_REQUIRED` | correctable | pass account, or reference an existing resource whose owning account the service can resolve |
@@ -45,7 +47,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `CREATIVE_INACCESSIBLE` | correctable | verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit |
 | `CREATIVE_LOCALE_NOT_ACCEPTED` | correctable | supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default |
 | `CREATIVE_NOT_FOUND` | correctable | verify creative_id via list_creatives, or sync_creatives to register it |
-| `CREATIVE_REJECTED` | correctable | revise the creative per the seller's advertising_policies |
+| `CREATIVE_REJECTED` | correctable | revise the creative according to the applicable advertising policy or validated accessibility criteria |
 | `CREATIVE_VALUE_NOT_ALLOWED` | correctable | pick a value from error.details.allowed_values (or re-fetch the format) and resubmit |
 | `CREDENTIAL_IN_ARGS` | terminal | do NOT auto-retry — auto-retry re-logs the credential on each attempt. Move authentication material or caller-supplied trust material out of request args (top-level, <code>{"context"}</code>, <code>{"ext"}</code>, any nested location) onto the relevant transport authentication/trust channel or account provisioning path (Authorization: Bearer, RFC 9421 signature/JWKS, mTLS, MCP/A2A authentication framing); rotate any leaked credential, then resubmit |
 | `EVALUATOR_AGENT_NOT_ACCEPTED` | correctable | replace the evaluator agent_url (evaluator.feature_agent.agent_url or the evaluator agent-form agent_url) with one from the seller's published accepted_verifiers, or drop the evaluator agent pointer to fall back to seller-default ranking |
@@ -77,6 +79,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `PERMISSION_DENIED` | correctable | call check_governance to mint a valid token, or contact the seller to resolve the underlying permission; when error.details.scope is 'agent' with reason 'sandbox_only' the rejection is terminal-pending-onboarding — surface to a human rather than auto-retrying. For suspended/blocked agent relationships, sellers emit AGENT_SUSPENDED / AGENT_BLOCKED instead (those codes carry recovery: terminal directly). |
 | `PIXEL_TRACKER_LOSSY_DOWNGRADE` | correctable | advisory — emitted alongside the v1 downgrade emission: SDK collapsed a pixel_tracker asset to v1 <code>{"{asset_type: url, url_type: tracker_pixel}"}</code> for a seller that doesn't support pixel_tracker natively. The URL still fires; what's lost is in <code>{"error.details.lost_fields"}</code> (event variant, method:js execution context, or custom event timing). Buyer decision: accept the loss (most counter pixels survive), or fail the buy and route to a 3.1-capable seller. Non-fatal — do not auto-retry |
 | `PIXEL_TRACKER_UPGRADE_INFERRED` | correctable | advisory — emitted when a 3.1 SDK upgrades a v1 url+tracker_pixel asset to pixel_tracker by inferring event and method from asset_id conventions. The inference may not match the buyer's original intent; check <code>{"error.details.inferred_event"}</code> / <code>{"inferred_method"}</code> and re-prompt the seller for explicit values if precise measurement matters. Non-fatal — do not auto-retry |
+| `PLACE_TARGET_UNAVAILABLE` | correctable | resolve the pinned value against the current catalog, review any replacement, and submit an intentional package targeting update |
 | `PLAN_NOT_FOUND` | correctable | verify plan_id via sync_plans, or register the plan first |
 | `POLICY_VIOLATION` | correctable | review policy requirements in the error details |
 | `PRIVATE_FIELD_IN_PUBLIC_PLACEMENT` | correctable | seller-side fix needed: remove private operational fields (<code>{"visibility"}</code>, <code>{"source"}</code>, <code>{"origin"}</code>, <code>{"delivery_mappings"}</code>, or similar) from public placement objects. Consumers MUST fail closed for the affected placement and alert operators; do not echo private field values in logs or error details |
@@ -91,6 +94,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `PROVENANCE_DISCLOSURE_MISSING` | correctable | set provenance.disclosure.required and, when true, populate disclosure.jurisdictions |
 | `PROVENANCE_EMBEDDED_MISSING` | correctable | attach at least one embedded_provenance entry from a supported provider and resubmit |
 | `PROVENANCE_REQUIRED` | correctable | attach a provenance object - at minimum digital_source_type - and resubmit |
+| `PROVENANCE_SYNTHETIC_DEPICTION_MISSING` | correctable | assess the creative, set provenance.synthetic_depiction to true or false, and resubmit |
 | `PROVENANCE_VERIFIER_NOT_ACCEPTED` | correctable | replace verify_agent.agent_url with one from the seller's published accepted_verifiers, drop verify_agent if the embedding is self-verifiable, or re-embed with a verifier the seller accepts |
 | `RATE_LIMITED` | transient | wait top-level error.retry_after seconds when present, then retry |
 | `READ_ONLY_SCOPE` | correctable | use a non-mutating alternative, or surface to the operator to request a scope that permits mutation |
@@ -102,6 +106,9 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `SESSION_TERMINATED` | correctable | initiate a new session via si_initiate_session |
 | `SIGNAL_NOT_FOUND` | correctable | verify signal_id via get_signals, or confirm the signal is available from this agent |
 | `SIGNAL_TARGETING_INCOMPATIBLE` | correctable | assign the creative to a package whose signal targeting matches the creative's signal_condition, or rebuild the creative for the package's condition; match on shared signal_ref identity (compare signal_agent_segment_id exactly when both carry it, else categorical signal_ref + value) |
+| `SIGNED_RESPONSE_ENVELOPE_EXPIRED` | transient | re-invoke the designated task (verify_brand_claim or verify_brand_claims) to obtain a freshly signed response with a current exp window |
+| `SIGNED_RESPONSE_REQUEST_HASH_MISMATCH` | correctable | re-invoke the designated task with the intended request parameters — the signed response's request_hash does not match the verifier's recomputed hash of the actual request; if the mismatch persists across retries, investigate JCS request-binding canonicalization between caller and responder |
+| `SIGNED_RESPONSE_TENANT_MISMATCH` | correctable | verify the request targeted the correct brand domain and agent_url, then re-invoke; if the mismatch persists, the responding agent's server-side tenant resolution may be misconfigured |
 | `STALE_RESPONSE` | transient | advisory — emitted alongside a populated payload that was served from cache past the seller's freshness target because an upstream or sub-agent was unreachable. The response is usable; treat as non-fatal. Inspect <code>{"error.details.cache_age_seconds"}</code> to decide whether to immediately retry for fresh data or accept the cached value; the seller's own service is healthy, so retry is safe (it does not amplify the upstream failure) |
 | `TERMS_REJECTED` | correctable | adjust the proposed terms and retry, or omit measurement_terms to accept the product's defaults |
 | `UNPRICEABLE_OUTPUT` | correctable | target an output format the transformer prices, or have the seller add a pricing option covering it |
@@ -121,6 +128,24 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 **Suggested action:** pass explicit account_id or a more specific natural key
 
 Natural key resolves to multiple accounts. Recovery: correctable (pass explicit account_id or a more specific natural key).
+
+</Accordion>
+<a id="error-code-account-identity-conflict"></a>
+
+<Accordion title="ACCOUNT_IDENTITY_CONFLICT — correctable">
+
+**Suggested action:** choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged
+
+The complete operator_identity requested through sync_accounts would rekey the account onto a natural key already owned by another account. The seller MUST reject the change atomically, MUST NOT merge the accounts, and MUST preserve both accounts and every account-scoped resource unchanged. Distinct from CONFLICT, which reports a transient stale revision or concurrent write. Recovery: correctable (choose a different operator or operator_unit identity, or retain the account's current identity; do not retry the same desired identity unchanged).
+
+</Accordion>
+<a id="error-code-account-moved"></a>
+
+<Accordion title="ACCOUNT_MOVED — correctable">
+
+**Suggested action:** replace the stale reference with error.details.current_account, refresh through list_accounts, and retry with a fresh idempotency key
+
+An authorized caller used a former natural key that was tombstoned after the same account was rekeyed through sync_accounts. The seller MUST return the current canonical reference in error.details.current_account, conforming to error-details/account-moved.json, and MUST NOT provision or resolve a second account from the former key. Sellers retain the tombstone while the account or any account-scoped historical resources are retained. To avoid a cross-tenant existence oracle, sellers return ACCOUNT_MOVED only when the caller is authorized to resolve the current account; otherwise they return ACCOUNT_NOT_FOUND. Recovery: correctable (replace the stale account reference with details.current_account, refresh through list_accounts, and retry with a fresh idempotency key).
 
 </Accordion>
 <a id="error-code-account-not-found"></a>
@@ -381,7 +406,7 @@ Concurrent modification detected. The resource was modified by another request b
 
 **Suggested action:** check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller
 
-Creative change submitted after the package's creative_deadline. Distinct from CREATIVE_REJECTED (content policy failure). Recovery: correctable (check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller).
+Creative change submitted after the package's creative_deadline. Distinct from CREATIVE_REJECTED (content-policy, brand-safety, or accessibility-review failure). Recovery: correctable (check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller).
 
 </Accordion>
 <a id="error-code-creative-inaccessible"></a>
@@ -390,7 +415,7 @@ Creative change submitted after the package's creative_deadline. Distinct from C
 
 **Suggested action:** verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit
 
-A creative governance agent (get_creative_features) could not retrieve the submitted creative_manifest assets for evaluation — an asset URL was unreachable, returned an error, or required credentials the agent does not hold. Distinct from CREATIVE_NOT_FOUND (a creative_id absent from the agent's library, not an asset-fetch failure) and CREATIVE_REJECTED (assets retrieved but failed policy). Recovery: correctable (verify the asset URLs are reachable without agent-side credentials, then re-submit).
+A creative governance agent (get_creative_features) could not retrieve the submitted creative_manifest assets for evaluation — an asset URL was unreachable, returned an error, or required credentials the agent does not hold. Distinct from CREATIVE_NOT_FOUND (a creative_id absent from the agent's library, not an asset-fetch failure) and CREATIVE_REJECTED (assets retrieved but failed creative review). Recovery: correctable (verify the asset URLs are reachable without agent-side credentials, then re-submit).
 
 </Accordion>
 <a id="error-code-creative-locale-not-accepted"></a>
@@ -415,9 +440,9 @@ Referenced creative does not exist in the agent's creative library. Recovery: co
 
 <Accordion title="CREATIVE_REJECTED — correctable">
 
-**Suggested action:** revise the creative per the seller's advertising_policies
+**Suggested action:** revise the creative according to the applicable advertising policy or validated accessibility criteria
 
-Creative failed content policy review. For deadline violations, see CREATIVE_DEADLINE_EXCEEDED. Recovery: correctable (revise the creative per the seller's advertising_policies).
+Creative failed content-policy, brand-safety, or accessibility review. For deadline violations, see CREATIVE_DEADLINE_EXCEEDED. Accessibility failures SHOULD use structured details conforming to error-details/accessibility-violation.json. Recovery: correctable (revise the creative according to the applicable policy or validated accessibility criteria).
 
 </Accordion>
 <a id="error-code-creative-value-not-allowed"></a>
@@ -426,7 +451,7 @@ Creative failed content policy review. For deadline violations, see CREATIVE_DEA
 
 **Suggested action:** pick a value from error.details.allowed_values (or re-fetch the format) and resubmit
 
-A submitted text-asset value is not in the format's declared <code>{"allowed_values"}</code> list. Distinct from <code>{"CREATIVE_REJECTED"}</code> (generic content-policy failure) by being a closed-set constraint violation that the buyer can resolve mechanically without policy interpretation — the seller has published the complete list of acceptable values on the format, and any value outside that list is rejected by definition. The seller MUST set <code>{"error.field"}</code> to the offending asset's path within the manifest (e.g., <code>{"creatives[0].creative_manifest.assets[0].value"}</code> or the field name declared by the format) and SHOULD include the format's <code>{"allowed_values"}</code> array in <code>{"error.details.allowed_values"}</code> so the buyer agent can re-prompt its LLM with constrained sampling. Recovery: correctable (select a value from <code>{"allowed_values"}</code> and resubmit).
+A submitted text-asset value is not in the format's declared <code>{"allowed_values"}</code> list. Distinct from <code>{"CREATIVE_REJECTED"}</code> (generic creative-review failure) by being a closed-set constraint violation that the buyer can resolve mechanically without policy interpretation — the seller has published the complete list of acceptable values on the format, and any value outside that list is rejected by definition. The seller MUST set <code>{"error.field"}</code> to the offending asset's path within the manifest (e.g., <code>{"creatives[0].creative_manifest.assets[0].value"}</code> or the field name declared by the format) and SHOULD include the format's <code>{"allowed_values"}</code> array in <code>{"error.details.allowed_values"}</code> so the buyer agent can re-prompt its LLM with constrained sampling. Recovery: correctable (select a value from <code>{"allowed_values"}</code> and resubmit).
 
 </Accordion>
 <a id="error-code-credential-in-args"></a>
@@ -762,6 +787,15 @@ Surface: SDK MUST augment the response's <code>{"errors[]"}</code> with <code>{"
 Recovery: warning — non-fatal, no retry. Seller-side: upgrade emit path to ship pixel_tracker shape directly when 3.1-capable; until then, conventional asset_id values give the SDK enough signal to upgrade without losing critical semantics.
 
 </Accordion>
+<a id="error-code-place-target-unavailable"></a>
+
+<Accordion title="PLACE_TARGET_UNAVAILABLE — correctable">
+
+**Suggested action:** resolve the pinned value against the current catalog, review any replacement, and submit an intentional package targeting update
+
+A place identifier previously accepted and pinned on a package can no longer be executed. This is a nonfatal resource-state error returned in get_media_buys.errors[] alongside the affected buy. error.field MUST point to the exact media_buys[N].packages[M].targeting_overlay.geo_places[_exclude][A].values[V] response path. error.details MUST include media_buy_id, package_id, system, system_version, country, place_type, and value. The seller MUST preserve and echo the pinned target rather than silently changing geography. Recovery: correctable (look up the value through the declared resolver at the current catalog version and submit an intentional targeting update).
+
+</Accordion>
 <a id="error-code-plan-not-found"></a>
 
 <Accordion title="PLAN_NOT_FOUND — correctable">
@@ -885,7 +919,16 @@ Seller's <code>{"creative_policy.provenance_requirements.require_embedded_proven
 
 **Suggested action:** attach a provenance object - at minimum digital_source_type - and resubmit
 
-Seller's <code>{"creative_policy.provenance_required"}</code> is true and the submitted creative has no <code>{"provenance"}</code> object on the manifest, on the creative-asset, or on any individual asset. Distinct from <code>{"CREATIVE_REJECTED"}</code> (generic content-policy failure) by being narrowly about provenance presence. Recovery: correctable (attach a provenance object - at minimum <code>{"digital_source_type"}</code> - and resubmit). <code>{"error.field"}</code> MUST point at the path where provenance was expected (e.g., <code>{"creatives[0].creative_manifest"}</code>).
+Seller's <code>{"creative_policy.provenance_required"}</code> is true and the submitted creative has no <code>{"provenance"}</code> object on the manifest, on the creative-asset, or on any individual asset. Distinct from <code>{"CREATIVE_REJECTED"}</code> (generic creative-review failure) by being narrowly about provenance presence. Recovery: correctable (attach a provenance object - at minimum <code>{"digital_source_type"}</code> - and resubmit). <code>{"error.field"}</code> MUST point at the path where provenance was expected (e.g., <code>{"creatives[0].creative_manifest"}</code>).
+
+</Accordion>
+<a id="error-code-provenance-synthetic-depiction-missing"></a>
+
+<Accordion title="PROVENANCE_SYNTHETIC_DEPICTION_MISSING — correctable">
+
+**Suggested action:** assess the creative, set provenance.synthetic_depiction to true or false, and resubmit
+
+Seller's <code>{"creative_policy.provenance_requirements.require_synthetic_depiction"}</code> is true and the submitted creative's resolved provenance (after inheritance) has no <code>{"synthetic_depiction"}</code> boolean. Both <code>{"true"}</code> and <code>{"false"}</code> satisfy the requirement; absence means unassessed. Distinct from <code>{"PROVENANCE_REQUIRED"}</code> (no provenance object at all) and from <code>{"PROVENANCE_CLAIM_CONTRADICTED"}</code> (an independent verifier actively refuted a declared value). Recovery: correctable (assess the creative, set <code>{"provenance.synthetic_depiction"}</code> to true or false, and resubmit). <code>{"error.field"}</code> MUST point at the resolved <code>{"provenance.synthetic_depiction"}</code> path. The declaration does not establish consent, legality, or verification.
 
 </Accordion>
 <a id="error-code-provenance-verifier-not-accepted"></a>
@@ -987,6 +1030,33 @@ Referenced signal does not exist in the agent's catalog. Recovery: correctable (
 A creative carrying a signal_condition (from build_creative signal_conditions fan-out, #5240) was assigned to a package whose signal targeting is incompatible — e.g. a sun creative routed to a rain-targeted package. The trafficking-compatibility invariant: a creative built FOR one signal condition MUST NOT serve into a package targeting an incompatible condition. Enforced reject-at-trafficking on the sales side (create_media_buy / sync_creatives), NOT at build_creative (per #5280, signal pointers are advisory at the build layer; enforcement lives at the trafficking boundary). Compatibility is matched on shared signal_ref identity: when both sides carry signal_agent_segment_id, compare the opaque handle exactly; when both carry only categorical &#123;signal_id,value&#125;, compare signal_ref + value-set semantics; equal categorical labels from DIFFERENT providers are NOT compatible absent an explicit equivalence mechanism; when one side has a segment handle and the other only a categorical value, the seller MAY accept only if it can resolve both to the same provider-issued segment, else reject/warn. For value_type:numeric the comparison is range-overlap (WG-open: range-overlap vs exact-match — see RFC #5240 open decisions). error.field SHOULD point at the offending assignment path (e.g. packages[N].creative_assignments[M] or creatives[N]); error.details SHOULD carry the creative's signal_condition and the package's incompatible signal targeting so the buyer can re-route. Distinct from SIGNAL_NOT_FOUND (signal unknown/inaccessible) by being a compatibility mismatch between a known creative condition and a known package condition. Recovery: correctable (assign the creative to a package whose signal targeting matches its signal_condition, or rebuild for the package's condition).
 
 </Accordion>
+<a id="error-code-signed-response-envelope-expired"></a>
+
+<Accordion title="SIGNED_RESPONSE_ENVELOPE_EXPIRED — transient">
+
+**Suggested action:** re-invoke the designated task (verify_brand_claim or verify_brand_claims) to obtain a freshly signed response with a current exp window
+
+The <code>{"signed_response.payload.exp"}</code> timestamp is at or past the current time after applying the verifier's clock-skew tolerance. The signed envelope was valid when issued but the verification window has closed. Raised by verifiers consuming a designated-task signed response (<code>{"verify_brand_claim"}</code> / <code>{"verify_brand_claims"}</code>) during step 7 of the [response-signing verifier checklist](/docs/building/by-layer/L1/security#verifier-checklist-responses). Online verifiers MUST reject expired envelopes; audit verifiers MAY verify after <code>{"exp"}</code> as historical evidence that the brand-agent signed the payload during the stated <code>{"iat"}</code>/<code>{"exp"}</code> window, but MUST NOT treat the result as current truth. Distinct from <code>{"STALE_RESPONSE"}</code> (cache-staleness advisory on a populated success payload) by being a cryptographic freshness failure on a signed response envelope. Recovery: transient (re-invoke the designated task to obtain a freshly signed response with a current <code>{"exp"}</code> window).
+
+</Accordion>
+<a id="error-code-signed-response-request-hash-mismatch"></a>
+
+<Accordion title="SIGNED_RESPONSE_REQUEST_HASH_MISMATCH — correctable">
+
+**Suggested action:** re-invoke the designated task with the intended request parameters — the signed response's request_hash does not match the verifier's recomputed hash of the actual request; if the mismatch persists across retries, investigate JCS request-binding canonicalization between caller and responder
+
+The <code>{"signed_response.payload.request_hash"}</code> does not match the verifier's recomputed SHA-256 hash of the canonical request-binding object <code>{"{ task, brand_domain, agent_url, caller_identity, request }"}</code> for the actual request sent. Raised during step 8 of the [response-signing verifier checklist](/docs/building/by-layer/L1/security#verifier-checklist-responses). This indicates either a replay of a signed response from a different request, a JCS request-binding canonicalization divergence between signer and verifier, or payload tampering. Verifiers MUST reject the envelope when the recomputed hash does not byte-match the signed <code>{"request_hash"}</code>. <code>{"error.details"}</code> SHOULD carry <code>{"expected_request_hash"}</code> (the verifier's recomputed value) when safe to disclose — the hash binds the response to the exact request that produced it, and divergence is the signal that the binding has been broken. Recovery: correctable (re-invoke the designated task with the intended request parameters; if the mismatch persists across retries, investigate JCS request-binding canonicalization between the caller and the responding agent).
+
+</Accordion>
+<a id="error-code-signed-response-tenant-mismatch"></a>
+
+<Accordion title="SIGNED_RESPONSE_TENANT_MISMATCH — correctable">
+
+**Suggested action:** verify the request targeted the correct brand domain and agent_url, then re-invoke; if the mismatch persists, the responding agent's server-side tenant resolution may be misconfigured
+
+The <code>{"signed_response.payload.brand_domain"}</code> does not match the verifier's resolved or expected brand tenant for this verification call. Raised during step 9 of the [response-signing verifier checklist](/docs/building/by-layer/L1/security#verifier-checklist-responses). The responding brand agent derives <code>{"brand_domain"}</code> from server-side tenant resolution, not from caller-supplied request fields (per the response-signing profile in security.mdx), so a mismatch indicates cross-tenant replay, a multi-brand agent routing error, or a mismatch between the verifier's tenant resolution and the responder's. Distinct from <code>{"SIGNED_RESPONSE_REQUEST_HASH_MISMATCH"}</code> (request-binding divergence) by being narrowly about the tenant identity — <code>{"brand_domain"}</code> is a field inside the signed payload that the responder derives independently, not an echo of any caller-supplied value. Recovery: correctable (verify that the request targeted the correct brand domain and agent; re-invoke with the correct brand reference if the request was mis-routed; if the mismatch persists, the responding agent's server-side tenant resolution may be misconfigured).
+
+</Accordion>
 <a id="error-code-stale-response"></a>
 
 <Accordion title="STALE_RESPONSE — transient">
@@ -1028,7 +1098,7 @@ A creative transformer build targets an output capability that no pricing option
 
 **Suggested action:** check get_adcp_capabilities and remove unsupported fields
 
-A requested feature or field is not supported by this seller. Recovery: correctable (check get_adcp_capabilities and remove unsupported fields).
+A requested feature or field is not supported by this seller. When rejecting a <code>{"refine_proposals"}</code> request that uses a typed dimension omitted from an explicit <code>{"proposal_refinement.supported_dimensions"}</code> declaration, the error details SHOULD follow <code>{"error-details/unsupported-refinement-dimension.json"}</code> — <code>{"unsupported_dimension"}</code> names the offending dimension and <code>{"supported_dimensions"}</code> echoes the seller's declaration so the buyer can remove or translate the field without another capability round trip. Recovery: correctable (check get_adcp_capabilities and remove unsupported fields).
 
 </Accordion>
 <a id="error-code-unsupported-granularity"></a>

@@ -3,6 +3,7 @@
   "$id": "/schemas/creative/preview-creative-request.json",
   "title": "Preview Creative Request",
   "description": "Request to generate previews of creative manifests. Uses request_type to select single, batch, or variant mode.",
+  "x-tool-summary": "Generate single, batch, or variant previews of creative manifests.",
   "type": "object",
   "allOf": [
     {

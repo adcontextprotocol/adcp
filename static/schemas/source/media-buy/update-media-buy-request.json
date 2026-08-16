@@ -126,6 +126,13 @@
       "description": "Seller's ID of the media buy to update",
       "x-entity": "media_buy"
     },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "\\S",
+      "description": "Replacement human-readable name for this media buy, used for trafficking UI display and operational communication. Sellers that cannot update name mid-flight SHOULD echo the prior unchanged value in the success response rather than silently dropping the field. This display label is not an identifier or financial reference."
+    },
     "revision": {
       "type": "integer",
       "description": "Expected current revision for optimistic concurrency. Optional for backward compatibility. When provided, sellers MUST reject the update with CONFLICT if the media buy's current revision does not match, and MUST enforce that comparison atomically with the write. Obtain from get_media_buys or the most recent create/update response.",
@@ -155,7 +162,7 @@
     },
     "total_budget": {
       "type": "object",
-      "description": "Updated hard aggregate lifetime budget. currency MUST equal the existing media-buy currency; an update does not redenominate a buy. In fixed mode the amount MUST equal the sum of package budgets after applying this update. In seller-optimized mode this changes the shared pool; already-spent amounts still count against the new total.",
+      "description": "Updated hard aggregate lifetime budget. currency MUST equal the existing media-buy currency; an update does not redenominate a buy. When supplied alone (without packages or new_packages), in fixed mode the seller MUST atomically scale every active package budget in proportion to its current committed budget, rejecting the entire request if any derived budget cannot be accepted. When supplied with packages or new_packages, the amount MUST equal the resulting fixed-mode package sum; the seller applies the explicit package mutations and rejects with VALIDATION_ERROR if the total is inconsistent. In seller-optimized mode this changes the shared pool without converting package caps into allocations. Already-spent amounts still count against the new total.",
       "properties": {
         "amount": {
           "type": "number",
@@ -171,6 +178,16 @@
         "currency"
       ],
       "additionalProperties": false
+    },
+    "daily_budget_cap": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "Replace the hard aggregate daily cap; null removes it. Numeric changes apply immediately with current-day spend counted. A cap below that spend pauses delivery for the day. Package caps are unchanged. Requires advertised media_buy scope; otherwise rejected with UNSUPPORTED_FEATURE."
+    },
+    "budget_cap_timezone": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Replace the shared IANA cap-day timezone; null restores the default selected by budget_capping.timezone_basis (Account.timezone or fixed_timezone). Requires buyer_timezone_override. Changes start at the next boundary in the previously effective timezone; numeric cap changes remain immediate."
     },
     "budget_allocation": {
       "allOf": [

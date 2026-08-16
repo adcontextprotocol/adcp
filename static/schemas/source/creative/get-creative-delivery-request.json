@@ -3,6 +3,7 @@
   "$id": "/schemas/creative/get-creative-delivery-request.json",
   "title": "Get Creative Delivery Request",
   "description": "Request parameters for retrieving creative delivery data including variant-level metrics from a creative agent. At least one scoping filter (media_buy_ids or creative_ids) is required.",
+  "x-tool-summary": "Retrieve creative and variant-level delivery metrics scoped to media buys or creative IDs.",
   "type": "object",
   "allOf": [
     {

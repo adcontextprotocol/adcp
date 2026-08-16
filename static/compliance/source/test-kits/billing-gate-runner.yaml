@@ -5,14 +5,10 @@
 # The billing-gate-dispatch storyboard validates the two-gate dispatch on
 # `sync_accounts.billing` rejection — seller-wide capability gate
 # (BILLING_NOT_SUPPORTED) vs per-buyer-agent commercial-relationship gate
-# (BILLING_NOT_PERMITTED_FOR_AGENT). Two of the four phases depend on
-# preconditions the runner cannot establish via the protocol:
+# (BILLING_NOT_PERMITTED_FOR_AGENT). The runner derives unsupported billing
+# probes directly from `account.supported_billing`; only the per-agent phases
+# depend on a precondition the runner cannot establish via the protocol:
 #
-#   capability_gate         — runner needs a `billing` value the seller does
-#                             NOT support, so it can probe a rejection. Skipped
-#                             if the seller supports all three values
-#                             ("operator", "agent", "advertiser") at the
-#                             capability level.
 #   per_agent_gate_reject   — runner needs the calling buyer agent to be
 #                             registered with the seller as passthrough-only
 #                             (no payments relationship). The seller's
@@ -35,14 +31,7 @@ description: |
   Coordination contract between the billing-gate-dispatch runner and a seller
   agent under test.
 
-  The runner reads two precondition fields from this kit:
-
-    account.unsupported_billing_probe — (optional) the value the runner will
-      submit on the capability-gate phase. MUST be a value the seller's
-      `account.supported_billing` does NOT include, so the seller rejects
-      with BILLING_NOT_SUPPORTED. Sellers whose `supported_billing` is the
-      full set of three values omit this field; the capability-gate phase
-      grades `not_applicable` in that case.
+  The runner reads one precondition field from this kit:
 
     commercial_relationship — (optional) declares the calling buyer agent's
       onboarded commercial state with the seller. When set to
@@ -99,14 +88,6 @@ brand:
     domain: "acmeoutdoor.example"
     name: "Acme Outdoor"
   brand_id: "acme_outdoor"
-
-# Account-shape preconditions for the capability-gate phase. Sellers whose
-# `account.supported_billing` is a strict subset of ["operator", "agent",
-# "advertiser"] declare the unsupported value here. Sellers whose capability
-# is the full set leave this commented out and the capability-gate phase
-# grades not_applicable.
-account:
-  # unsupported_billing_probe: "advertiser"  # uncomment + set for capability-gate
 
 # Per-buyer-agent commercial-relationship precondition for the per-agent
 # gate phases. When set to "passthrough_only", the runner exercises the

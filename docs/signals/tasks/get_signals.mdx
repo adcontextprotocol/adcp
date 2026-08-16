@@ -14,6 +14,8 @@ description: "get_signals is the AdCP task for discovering audience and contextu
 
 The `get_signals` task returns both signal metadata and real-time deployment status across platforms, allowing agents to understand availability and guide the activation process.
 
+On a media buy, select a seller- or source-native result through [`targeting_overlay.signal_targeting_groups`](/docs/media-buy/advanced-topics/targeting#signal_targeting_groups), preserving its `signal_ref` and any supplied execution, pricing, or activation identity. Do not copy a `signal_agent_segment_id` into `audience_include` or `audience_exclude`: those fields accept only buyer-managed `audience_id` values registered through [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences).
+
 ## Request Parameters
 
 | Parameter | Type | Required | Description |

@@ -20,6 +20,7 @@ import {
   stopSessionCleanup,
 } from '../state.js';
 import { clearSiSessions } from '../si-handlers.js';
+import { clearForcedTaskCompletions } from '../comply-test-controller.js';
 import { getAgentUrl } from '../config.js';
 import { projectV1ProductToV2 } from '@adcp/sdk/v2/projection';
 
@@ -139,12 +140,14 @@ describe('tenant routing smoke', () => {
     clearSessions();
     clearAccountStore();
     clearSiSessions();
+    clearForcedTaskCompletions();
   });
 
   afterEach(() => {
     clearSessions();
     clearAccountStore();
     clearSiSessions();
+    clearForcedTaskCompletions();
     stopSessionCleanup();
   });
 
@@ -338,6 +341,108 @@ describe('tenant routing smoke', () => {
       expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(
         expect.arrayContaining(SALES_CURRENT_SCENARIOS),
       );
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('reconciles a forced create_media_buy task through submitted and completed states', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'async-lifecycle.example' },
+        operator: 'pinnacle-agency.example',
+        sandbox: true,
+      };
+      const taskId = 'task_training_async_lifecycle';
+      const completion = {
+        media_buy_id: 'mb_training_async_lifecycle',
+        media_buy_status: 'pending_creatives',
+        confirmed_at: '2026-08-15T12:00:00Z',
+        revision: 1,
+        currency: 'USD',
+        packages: [{
+          package_id: 'pkg_training_async_lifecycle',
+          product_id: 'async_lifecycle_video_q3',
+          pricing_option_id: 'async_lifecycle_cpm',
+          budget: 30_000,
+          paused: false,
+        }],
+      };
+      const payload = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+
+      const forced = payload(await callTenantTool(url, 2, 'comply_test_controller', {
+        account,
+        scenario: 'force_create_media_buy_arm',
+        params: { arm: 'submitted', task_id: taskId },
+      }));
+      expect(forced?.success).toBe(true);
+
+      const submitted = payload(await callTenantTool(url, 3, 'create_media_buy', {
+        account,
+        brand: account.brand,
+        start_time: 'asap',
+        end_time: '2099-09-30T23:59:59Z',
+        packages: [{
+          product_id: 'async_lifecycle_video_q3',
+          pricing_option_id: 'async_lifecycle_cpm',
+          budget: 30_000,
+        }],
+        idempotency_key: 'training-async-lifecycle-create-0001',
+      }));
+      expect(submitted).toMatchObject({ status: 'submitted', task_id: taskId });
+
+      const pendingRead = payload(await callTenantTool(url, 4, 'get_task_status', {
+        account,
+        task_id: taskId,
+      }));
+      expect(pendingRead).toMatchObject({
+        task_id: taskId,
+        task_type: 'create_media_buy',
+        protocol: 'media-buy',
+        status: 'submitted',
+      });
+
+      const pendingList = payload(await callTenantTool(url, 5, 'list_tasks', {
+        account,
+        filters: { task_ids: [taskId], task_type: 'create_media_buy' },
+        pagination: { max_results: 1 },
+      }));
+      expect(pendingList?.tasks).toEqual([
+        expect.objectContaining({ task_id: taskId, task_type: 'create_media_buy', status: 'submitted' }),
+      ]);
+
+      const completed = payload(await callTenantTool(url, 6, 'comply_test_controller', {
+        account,
+        scenario: 'force_task_completion',
+        params: { task_id: taskId, result: completion },
+      }));
+      expect(completed).toMatchObject({ success: true, current_state: 'completed' });
+
+      const terminalRead = payload(await callTenantTool(url, 7, 'get_task_status', {
+        account,
+        task_id: taskId,
+        include_result: true,
+      }));
+      expect(terminalRead).toMatchObject({
+        task_id: taskId,
+        task_type: 'create_media_buy',
+        status: 'completed',
+        result: completion,
+      });
+
+      const terminalList = payload(await callTenantTool(url, 8, 'list_tasks', {
+        account,
+        filters: { task_ids: [taskId], task_type: 'create_media_buy', status: 'completed' },
+        pagination: { max_results: 1 },
+      }));
+      expect(terminalList?.tasks).toEqual([
+        expect.objectContaining({ task_id: taskId, task_type: 'create_media_buy', status: 'completed' }),
+      ]);
     } finally {
       await close();
     }
@@ -1302,6 +1407,31 @@ describe('tenant routing smoke', () => {
         const toolNames = (body.result?.tools ?? []).map(tool => tool.name);
         expect(toolNames).not.toContain('validate_input');
       }
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('does not expose the post-3.0 brand compliance controller in 3.0 storyboard compat mode', async () => {
+    stageLatestThreeZeroSchemaBundle();
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      const url = `${baseUrl}/brand/mcp`;
+      await initializeTenant(url);
+      const list = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+      });
+      const body = await list.json() as {
+        result?: { tools?: Array<{ name: string }> };
+      };
+      const toolNames = (body.result?.tools ?? []).map(tool => tool.name);
+      expect(toolNames).not.toContain('comply_test_controller');
     } finally {
       await close();
     }

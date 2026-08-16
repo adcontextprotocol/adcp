@@ -21,7 +21,7 @@ import {
   type ComplyControllerConfig,
   type ComplyControllerContext,
 } from '@adcp/sdk/testing';
-import { TOOL_INPUT_SHAPE } from '@adcp/sdk/server';
+import { TOOL_INPUT_SHAPE, type TaskRegistry } from '@adcp/sdk/server';
 import { handleComplyTestController } from '../comply-test-controller.js';
 import type { ToolArgs, TrainingContext } from '../types.js';
 
@@ -123,10 +123,15 @@ function seedAdapter(scenario: string, storyboardCompat?: TrainingContext['story
   };
 }
 
-function forceAdapter(scenario: string, storyboardCompat?: TrainingContext['storyboardCompat']): AdapterShim {
+function forceAdapter(
+  scenario: string,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+  afterSuccess?: (params: Record<string, unknown>) => Promise<void>,
+): AdapterShim {
   return async (params, ctx) => {
     const result = await dispatchV5(scenario, params as Record<string, unknown>, ctx.input, storyboardCompat);
     throwOnFailure(result);
+    await afterSuccess?.(params as Record<string, unknown>);
     return result;
   };
 }
@@ -228,6 +233,7 @@ export function buildCreativeComplyConfig(
 
 export function buildSalesComplyConfig(
   storyboardCompat?: TrainingContext['storyboardCompat'],
+  taskRegistry?: TaskRegistry,
 ): ComplyControllerConfig {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cast = (a: AdapterShim) => a as any;
@@ -250,7 +256,22 @@ export function buildSalesComplyConfig(
       media_buy_status: cast(forceAdapter('force_media_buy_status', storyboardCompat)),
       create_media_buy_arm: cast(forceAdapter('force_create_media_buy_arm', storyboardCompat)),
       get_products_arm: cast(forceAdapter('force_get_products_arm', storyboardCompat)),
-      task_completion: cast(forceAdapter('force_task_completion', storyboardCompat)),
+      task_completion: cast(forceAdapter(
+        'force_task_completion',
+        storyboardCompat,
+        async params => {
+          if (!taskRegistry) return;
+          const taskId = params.task_id;
+          const result = params.result;
+          if (typeof taskId === 'string' && result && typeof result === 'object' && !Array.isArray(result)) {
+            // The controller response is not returned until the buyer-visible
+            // registry reflects completion, avoiding a race with the next
+            // get_task_status storyboard step. The handoff worker performs
+            // the same idempotent completion after its waiter resolves.
+            await taskRegistry.complete(taskId, result);
+          }
+        },
+      )),
       // force_creative_status drives dependency_impairment storyboards —
       // toggles creative.status and propagates to dependent media buys'
       // impairments[] via the v5 store's propagateCreativeImpairment.

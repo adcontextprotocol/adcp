@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/build-creative-request.json",
   "title": "Build Creative Request",
   "description": "Request to transform, generate, refine, or retrieve a creative manifest. Supports four modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) refinement of a prior produced variant via refine_from_build_variant_id (re-build with a natural-language message + config delta), (4) retrieval from a creative library by creative_id. Produces target manifest(s) through canonical capabilities advertised in `get_adcp_capabilities.creative.supported_formats[]`. In 3.2, provide `target_capability_id` for one output or `target_capability_ids` for multiple outputs. Legacy `target_format_id` / `target_format_ids` remain accepted during the 3.x compatibility window but are deprecated.",
+  "x-tool-summary": "Generate, transform, refine, retrieve, or adapt creative manifests for advertised creative capabilities.",
   "type": "object",
   "allOf": [
     {

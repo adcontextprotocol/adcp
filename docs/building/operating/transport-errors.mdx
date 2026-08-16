@@ -345,6 +345,8 @@ const CODE_RECOVERY = {
   CREATIVE_REJECTED: 'correctable',
   UNSUPPORTED_FEATURE: 'correctable',
   AUDIENCE_TOO_SMALL: 'correctable',
+  ACCOUNT_MOVED: 'correctable',
+  ACCOUNT_IDENTITY_CONFLICT: 'correctable',
   ACCOUNT_SETUP_REQUIRED: 'correctable',
   ACCOUNT_AMBIGUOUS: 'correctable',
   COMPLIANCE_UNSATISFIED: 'correctable',
@@ -476,6 +478,12 @@ The `details` field is an open object. To prevent interoperability divergence, s
 
 ### `CREATIVE_REJECTED`
 
+This code covers content-policy, brand-safety, and accessibility-review
+failures. Policy failures may use the legacy policy detail keys below.
+Accessibility failures SHOULD instead use the bounded experimental
+[`accessibility-violation.json`](https://adcontextprotocol.org/schemas/latest/error-details/accessibility-violation.json)
+shape.
+
 ```json
 {
   "code": "CREATIVE_REJECTED",
@@ -494,6 +502,14 @@ The `details` field is an open object. To prevent interoperability divergence, s
 | `policy_id` | string | Identifier for the violated policy |
 | `policy_url` | string | URL where the full policy can be reviewed |
 | `reasons` | string[] | Specific reasons the creative was rejected |
+
+Structured accessibility details are diagnostic data, not recovery commands.
+Clients select the recovery class from `code` and `recovery` only. After schema
+validation, they may resolve a violation pointer against an immutable copy of
+the original request for UI highlighting or controlled repair, but only when it
+targets an allowlisted creative asset location. They MUST NOT execute the
+pointer as a dynamic mutation path, treat `/creative_id` as a nested asset path,
+or pass raw remediation text to an LLM as instructions.
 
 ### `POLICY_VIOLATION`
 
@@ -547,12 +563,23 @@ JSON Schemas for all recommended `details` shapes are published alongside the er
 - [`/schemas/v3/error-details/rate-limited.json`](https://adcontextprotocol.org/schemas/v3/error-details/rate-limited.json)
 - [`/schemas/v3/error-details/budget-too-low.json`](https://adcontextprotocol.org/schemas/v3/error-details/budget-too-low.json)
 - [`/schemas/v3/error-details/audience-too-small.json`](https://adcontextprotocol.org/schemas/v3/error-details/audience-too-small.json)
+<!-- Using latest because account-moved.json is not yet released in any version.
+     Update to the correct version alias after the next release. -->
+- [`/schemas/latest/error-details/account-moved.json`](https://adcontextprotocol.org/schemas/latest/error-details/account-moved.json)
 - [`/schemas/v3/error-details/account-setup-required.json`](https://adcontextprotocol.org/schemas/v3/error-details/account-setup-required.json)
 - [`/schemas/v3/error-details/creative-rejected.json`](https://adcontextprotocol.org/schemas/v3/error-details/creative-rejected.json)
+- [`/schemas/latest/error-details/accessibility-violation.json`](https://adcontextprotocol.org/schemas/latest/error-details/accessibility-violation.json) (experimental `CREATIVE_REJECTED` details)
 - [`/schemas/v3/error-details/policy-violation.json`](https://adcontextprotocol.org/schemas/v3/error-details/policy-violation.json)
 - [`/schemas/v3/error-details/conflict.json`](https://adcontextprotocol.org/schemas/v3/error-details/conflict.json)
 
-These schemas are recommended, not required. Sellers that omit `details` entirely are conformant. Agents MUST NOT require specific `details` keys — fall back to `code`, `message`, and `recovery` when `details` is absent or has unexpected shape.
+Accessibility violation pointers follow the same request-rooted convention as
+core error pointers: `/creative_manifest/assets/hero_image` for
+`build_creative`, or `/creatives/0/assets/hero_image` for a batched
+`sync_creatives` request. They are never relative to the nested manifest.
+When a stored manifest is addressed only by `creative_id`, use `/creative_id`;
+the request contains no valid nested asset path.
+
+These schemas are recommended unless the code's canonical definition explicitly requires a repair field. `ACCOUNT_MOVED`, for example, requires `details.current_account`; without it the caller cannot repair a tombstoned natural-key reference safely. For codes without such a requirement, sellers that omit `details` entirely are conformant and agents fall back to `code`, `message`, and `recovery` when details are absent or unexpected.
 
 ## Seller-Specific Error Codes
 

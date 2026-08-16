@@ -11,6 +11,7 @@
 
 import {
   TestControllerError,
+  SESSION_ENTRY_CAP,
   createSeedFixtureCache,
   enforceMapCap,
   handleTestControllerRequest,
@@ -27,6 +28,7 @@ import type {
   PackageState,
   CreativeState,
   GovernancePlanState,
+  RightsGrantState,
   AccountRef,
   BrandRef,
   ComplyDeliveryAccumulator,
@@ -207,6 +209,40 @@ export function getDeliverySimulation(session: SessionState, mediaBuyId: string)
   return session.complyExtensions.deliverySimulations.get(mediaBuyId);
 }
 
+/**
+ * Get simulated delivery attributable to a half-open reporting period.
+ * Undated legacy simulations retain their cumulative behavior until a caller
+ * starts supplying delivery_date snapshots for the media buy.
+ */
+export function getDeliverySimulationForPeriod(
+  session: SessionState,
+  mediaBuyId: string,
+  start: Date,
+  end: Date,
+): ComplyDeliveryAccumulator | undefined {
+  const cumulative = getDeliverySimulation(session, mediaBuyId);
+  if (!cumulative?.datedSimulations?.length) return cumulative;
+
+  const filtered: ComplyDeliveryAccumulator = {
+    impressions: 0,
+    clicks: 0,
+    reportedSpend: { amount: 0, currency: cumulative.reportedSpend.currency },
+    conversions: 0,
+  };
+  for (const simulation of cumulative.datedSimulations) {
+    const timestamp = new Date(`${simulation.deliveryDate}T00:00:00.000Z`).getTime();
+    if (timestamp < start.getTime() || timestamp >= end.getTime()) continue;
+    const { impressions, clicks, conversions, reportedSpend, ...extensions } = simulation.metrics;
+    filtered.impressions += impressions;
+    filtered.clicks += clicks;
+    filtered.conversions += conversions;
+    filtered.reportedSpend.amount += reportedSpend.amount;
+    filtered.reportedSpend.currency = reportedSpend.currency;
+    Object.assign(filtered, extensions);
+  }
+  return filtered;
+}
+
 /** Get budget simulation data for an entity (used by get_account_financials). */
 export function getBudgetSimulation(session: SessionState, entityId: string): ComplyBudgetSimulation | undefined {
   return session.complyExtensions.budgetSimulations.get(entityId);
@@ -226,6 +262,33 @@ function getOrCreateDeliveryAccumulator(session: SessionState, mediaBuyId: strin
     ext.deliverySimulations.set(mediaBuyId, cumulative);
   }
   return cumulative;
+}
+
+function isCanonicalDeliveryDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function deliverySimulationSnapshot(
+  params: Record<string, unknown>,
+  currency: string,
+): Omit<ComplyDeliveryAccumulator, 'datedSimulations'> {
+  const reportedSpend = isRecord(params.reported_spend) ? params.reported_spend : undefined;
+  const snapshot: Omit<ComplyDeliveryAccumulator, 'datedSimulations'> = {
+    impressions: typeof params.impressions === 'number' ? params.impressions : 0,
+    clicks: typeof params.clicks === 'number' ? params.clicks : 0,
+    conversions: typeof params.conversions === 'number' ? params.conversions : 0,
+    reportedSpend: {
+      amount: typeof reportedSpend?.amount === 'number' ? reportedSpend.amount : 0,
+      currency: typeof reportedSpend?.currency === 'string' ? reportedSpend.currency : currency,
+    },
+  };
+  applyExtendedDeliveryParams(snapshot, params);
+  if (Array.isArray(params.vendor_metric_values)) {
+    snapshot.vendorMetricValues = params.vendor_metric_values;
+  }
+  return snapshot;
 }
 
 type VendorMetricIdentity = {
@@ -805,6 +868,19 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       const reportedSpend = params.reported_spend;
       const typedParams = params as Record<string, unknown>;
 
+      const deliveryDate = typedParams.delivery_date;
+      if (deliveryDate !== undefined && !isCanonicalDeliveryDate(deliveryDate)) {
+        throw new TestControllerError('INVALID_PARAMS', 'delivery_date must be a real calendar date in YYYY-MM-DD format');
+      }
+
+      const existing = getDeliverySimulation(session, mediaBuyId);
+      if (deliveryDate !== undefined && (existing?.datedSimulations?.length ?? 0) >= SESSION_ENTRY_CAP) {
+        throw new TestControllerError(
+          'INVALID_STATE',
+          `Cannot add more than ${SESSION_ENTRY_CAP} dated delivery simulations to one media buy`,
+        );
+      }
+
       const cumulative = getOrCreateDeliveryAccumulator(session, mediaBuyId, reportedSpend?.currency || mb.currency);
 
       cumulative.impressions += impressions;
@@ -815,6 +891,13 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
         cumulative.reportedSpend.currency = reportedSpend.currency;
       }
       applyExtendedDeliveryParams(cumulative, typedParams);
+      if (deliveryDate !== undefined) {
+        cumulative.datedSimulations ??= [];
+        cumulative.datedSimulations.push({
+          deliveryDate,
+          metrics: deliverySimulationSnapshot(typedParams, reportedSpend?.currency || mb.currency),
+        });
+      }
 
       const simulated: Record<string, unknown> = {};
       if (impressions) simulated.impressions = impressions;
@@ -830,6 +913,7 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       if (typedParams.is_final !== undefined) simulated.is_final = typedParams.is_final;
       if (typedParams.finalized_at !== undefined) simulated.finalized_at = typedParams.finalized_at;
       if (typedParams.measurement_window !== undefined) simulated.measurement_window = typedParams.measurement_window;
+      if (deliveryDate !== undefined) simulated.delivery_date = deliveryDate;
 
       return {
         success: true,
@@ -1058,6 +1142,7 @@ const LOCAL_SCENARIOS = [
   'force_creative_purge',
   'force_wholesale_feed_webhook',
   'seed_account',
+  'seed_rights_grant',
   'seed_creative_format',
   'seed_measurement_catalog',
   'query_provenance_audit_observations',
@@ -1067,7 +1152,7 @@ const LOCAL_SCENARIOS = [
 
 function localScenariosFor(ctx: TrainingContext): string[] {
   return ctx.storyboardCompat?.version === '3.0'
-    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'query_provenance_audit_observations')
+    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations')
     : [...LOCAL_SCENARIOS];
 }
 
@@ -1221,6 +1306,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   const targetsControllerFixtureState = scenario === 'seed_product'
     || scenario === 'seed_pricing_option'
     || scenario === 'seed_measurement_catalog';
+  const targetsPublicTaskState = scenario === 'seed_media_buy'
+    || scenario === 'seed_creative';
   // The frozen 3.0 runner injects a synthetic natural account into controller
   // and fixture calls, sometimes without copying its brand to the top level.
   // Platform methods on that compatibility surface historically key by brand.
@@ -1235,7 +1322,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     ? args.account.account_id
     : undefined;
   let staticFixtureAccount: ToolArgs['account'] | undefined;
-  if (targetsControllerFixtureState && ctx.principal?.startsWith('static:') && args.account) {
+  let staticTaskAccount: ToolArgs['account'] | undefined;
+  if ((targetsControllerFixtureState || targetsPublicTaskState) && ctx.principal?.startsWith('static:') && args.account) {
     try {
       const canonical = canonicalizeAccountRef(args.account);
       if (canonical.kind === 'natural' && canonical.sandbox) {
@@ -1244,11 +1332,20 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
         // task examples may name the buyer operator. Canonicalize only this
         // fixture projection to the brand-owned sandbox partition; real
         // principals keep the complete natural account identity.
-        staticFixtureAccount = {
+        const brandOwnedAccount = {
           brand: canonical.brand,
           operator: canonical.brand.domain,
-          sandbox: true,
         };
+        if (targetsControllerFixtureState) {
+          staticFixtureAccount = { ...brandOwnedAccount, sandbox: true };
+        } else {
+          // The SDK strips the controller-only sandbox assertion before
+          // ordinary media-buy reads. Store public demo entity fixtures in
+          // that exact brand-owned task partition so seed_media_buy and
+          // seed_creative remain observable without projecting entity state
+          // across the isolated controller-fixture boundary.
+          staticTaskAccount = { ...brandOwnedAccount, sandbox: false };
+        }
       }
     } catch {
       staticFixtureAccount = undefined;
@@ -1266,7 +1363,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       ? { ...args, account: { account_id: opaqueAccountId }, brand: undefined }
       : staticFixtureAccount
         ? { ...args, account: staticFixtureAccount }
-        : args;
+        : staticTaskAccount
+          ? { ...args, account: staticTaskAccount }
+          : args;
   let sessionKey = targetsGetProductsState
     ? getProductsSessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId)
     : sessionKeyFromArgs(
@@ -1408,6 +1507,55 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
   if (scenario === 'seed_account') {
     return seedAccountFixture(rawArgs as ToolArgs, ctx);
+  }
+  if (scenario === 'seed_rights_grant') {
+    const params = (rawArgs.params ?? {}) as Record<string, unknown>;
+    const rightsId = typeof params.rights_id === 'string' ? params.rights_id : undefined;
+    if (!rightsId) {
+      return { success: false, error: 'INVALID_PARAMS', error_detail: 'params.rights_id is required for seed_rights_grant' };
+    }
+    const fixture = isRecord(params.fixture) ? params.fixture : {};
+    const seeded: RightsGrantState = {
+      grantId: rightsId,
+      rightsId,
+      brandId: typeof fixture.brand_id === 'string' ? fixture.brand_id : 'daan_janssen',
+      buyerDomain: typeof fixture.buyer_domain === 'string' ? fixture.buyer_domain : 'pinnacle-agency.example',
+      status: 'acquired',
+      pricingOptionId: typeof fixture.pricing_option_id === 'string' ? fixture.pricing_option_id : 'monthly_exclusive',
+      startDate: typeof fixture.start_date === 'string' ? fixture.start_date : '2099-04-01',
+      endDate: typeof fixture.end_date === 'string' ? fixture.end_date : '2099-06-30',
+      ...(typeof fixture.impression_cap === 'number' && { impressionCap: fixture.impression_cap }),
+      paused: fixture.paused === true,
+      createdAt: typeof fixture.created_at === 'string' ? fixture.created_at : '2099-01-01T00:00:00Z',
+    };
+    const seedFingerprint = JSON.stringify(seeded);
+    seeded.seedFingerprint = seedFingerprint;
+    // The SDK runner intentionally normalizes controller calls to the
+    // brand-owned sandbox operator. Rights grants belong to the acquiring
+    // buyer, so seed the partition named by fixture.buyer_domain instead;
+    // update_rights then reaches the same account-scoped state.
+    const grantAccount = args.account?.brand
+      ? { ...args.account, operator: seeded.buyerDomain }
+      : args.account;
+    const grantSessionKey = sessionKeyFromArgs(
+      { ...args, account: grantAccount },
+      ctx.mode,
+      ctx.userId,
+      ctx.moduleId,
+    );
+    const grantSession = grantSessionKey === sessionKey
+      ? session
+      : await getSession(grantSessionKey);
+    const existing = grantSession.rightsGrants.get(rightsId);
+    if (existing) {
+      if (existing.seedFingerprint !== seedFingerprint) {
+        return { success: false, error: 'INVALID_STATE', error_detail: `rights_id "${rightsId}" was already seeded with a different fixture — seed_rights_grant is idempotent` };
+      }
+      return { success: true, message: `rights_id "${rightsId}" already seeded with the same fixture` };
+    }
+    enforceMapCap(grantSession.rightsGrants, rightsId, 'rights grants');
+    grantSession.rightsGrants.set(rightsId, seeded);
+    return { success: true, message: `Rights grant "${rightsId}" seeded` };
   }
   if (scenario === 'seed_measurement_catalog') {
     return handleSeedMeasurementCatalog(session, rawArgs);
@@ -2149,22 +2297,70 @@ function handleForceGetProductsRejection(
  * result are idempotent no-ops; tasks at any other terminal state return
  * INVALID_TRANSITION.
  *
- * Buyer-side observability via tasks/get is intentionally **deferred** to a
- * follow-up. The MCP SDK's TaskStore generates task_ids server-side and exposes
- * no API for caller-supplied IDs, and the SDK's auto-registered tasks/get
- * returns the MCP Task shape rather than the AdCP `tasks-get-response.json`
- * shape — both gaps need fixing before a storyboard polling phase against the
- * training-agent can pass. This commit ships the controller-side primitive
- * (the directive write) so other reference sellers and the upstream SDK have a
- * concrete behavior to mirror; the storyboard extension lands once the
- * polling integration exists. See PR description for the deferred tracking.
+ * The v6 sales facade registers forced submitted tasks through handoffToTask
+ * and waits on waitForForcedTaskCompletion below. Resolving that waiter lets
+ * the SDK project the same task through get_task_status and list_tasks; the
+ * tenant controller adapter also completes the shared registry before it
+ * returns so the next polling step cannot race the background handoff.
  */
 const FORCED_TASK_COMPLETIONS = new Map<string, { result: Record<string, unknown>; ownerKey: string; completedAt: string }>();
 const MAX_FORCED_TASK_COMPLETIONS = 1000;
+const FORCED_TASK_COMPLETION_TIMEOUT_MS = 15 * 60 * 1000;
+interface PendingForcedTaskCompletion {
+  ownerKey: string;
+  resolve: (result: Record<string, unknown>) => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+const PENDING_FORCED_TASK_COMPLETIONS = new Map<string, PendingForcedTaskCompletion>();
+
+/**
+ * Register the background half of a forceable async task. The v6 task
+ * framework owns the buyer-visible task registry; resolving this promise lets
+ * that framework write the terminal result to get_task_status/list_tasks.
+ */
+export function waitForForcedTaskCompletion(
+  taskId: string,
+  ownerKey: string,
+): Promise<Record<string, unknown>> {
+  const completed = FORCED_TASK_COMPLETIONS.get(taskId);
+  if (completed) {
+    if (completed.ownerKey !== ownerKey) {
+      return Promise.reject(new Error(`Task "${taskId}" belongs to another sandbox account`));
+    }
+    return Promise.resolve(completed.result);
+  }
+
+  const pending = PENDING_FORCED_TASK_COMPLETIONS.get(taskId);
+  if (pending) {
+    if (pending.ownerKey !== ownerKey) {
+      return Promise.reject(new Error(`Task "${taskId}" is already registered for another sandbox account`));
+    }
+    return Promise.reject(new Error(`Task "${taskId}" already has a pending completion waiter`));
+  }
+
+  if (PENDING_FORCED_TASK_COMPLETIONS.size >= MAX_FORCED_TASK_COMPLETIONS) {
+    return Promise.reject(new Error(`Pending forced-completion cap reached (${MAX_FORCED_TASK_COMPLETIONS})`));
+  }
+
+  return new Promise<Record<string, unknown>>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      PENDING_FORCED_TASK_COMPLETIONS.delete(taskId);
+      reject(new Error(`Task "${taskId}" was not completed within the 15-minute compliance window`));
+    }, FORCED_TASK_COMPLETION_TIMEOUT_MS);
+    timeout.unref();
+    PENDING_FORCED_TASK_COMPLETIONS.set(taskId, { ownerKey, resolve, reject, timeout });
+  });
+}
 
 /** Test-only: clear the forced-completion pool. */
 export function clearForcedTaskCompletions(): void {
   FORCED_TASK_COMPLETIONS.clear();
+  for (const pending of PENDING_FORCED_TASK_COMPLETIONS.values()) {
+    clearTimeout(pending.timeout);
+    pending.reject(new Error('Forced task completion state was reset'));
+  }
+  PENDING_FORCED_TASK_COMPLETIONS.clear();
 }
 
 /** Test-only: read the forced-completion pool. */
@@ -2247,6 +2443,15 @@ function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, u
     };
   }
 
+  const pending = PENDING_FORCED_TASK_COMPLETIONS.get(taskId);
+  if (pending && pending.ownerKey !== sessionKey) {
+    return {
+      success: false,
+      error: 'NOT_FOUND',
+      error_detail: `Task "${taskId}" was not registered for this sandbox account`,
+    };
+  }
+
   if (FORCED_TASK_COMPLETIONS.size >= MAX_FORCED_TASK_COMPLETIONS) {
     return {
       success: false,
@@ -2260,6 +2465,11 @@ function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, u
     ownerKey: sessionKey,
     completedAt: new Date().toISOString(),
   });
+  if (pending) {
+    clearTimeout(pending.timeout);
+    PENDING_FORCED_TASK_COMPLETIONS.delete(taskId);
+    pending.resolve(result as Record<string, unknown>);
+  }
 
   return {
     success: true,

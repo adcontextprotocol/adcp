@@ -221,6 +221,8 @@ Non-normative implementation note: a single-query pattern like `SELECT ... WHERE
 | [`AUTH_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-auth-required) | correctable* | Authentication is required, or presented credentials were rejected | Provide credentials when missing; escalate to operator when rejected — see the warning below |
 | [`CREDENTIAL_IN_ARGS`](/docs/building/verification/compliance-catalog#error-code-credential-in-args) | terminal | Authentication material or caller-supplied trust material was placed in request args (top-level, `context`, `ext`, or any nested location) instead of the relevant transport authentication or trust channel. This includes inbound buyer-principal credentials and evaluator-call credentials or JWK/JWKS/JWKS-URI material smuggled into evaluator payload fields. | Do NOT auto-retry — auto-retry re-logs the credential. Move the credential onto the relevant transport authentication/trust channel ([Credential placement](/docs/building/by-layer/L2/authentication#credential-placement)), rotate any leaked credential, then resubmit |
 | `ACCOUNT_NOT_FOUND` | terminal | Account reference could not be resolved | Verify via [`list_accounts`](/docs/accounts/tasks/list_accounts) or contact seller |
+| [`ACCOUNT_MOVED`](/docs/building/verification/compliance-catalog#error-code-account-moved) | correctable | Authorized caller used a tombstoned former natural key after the account was rekeyed | Replace the reference with `details.current_account`, refresh through [`list_accounts`](/docs/accounts/tasks/list_accounts), and retry with a fresh idempotency key |
+| [`ACCOUNT_IDENTITY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-account-identity-conflict) | correctable | Requested identity is already the natural key of another account | Choose another operator identity or retain the current identity; do not retry unchanged |
 | [`ACCOUNT_SETUP_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-account-setup-required) | correctable | Account needs setup before use | Check `details.setup` for URL or instructions |
 | [`ACCOUNT_AMBIGUOUS`](/docs/building/verification/compliance-catalog#error-code-account-ambiguous) | correctable | Natural key resolves to multiple accounts | Pass explicit `account_id` or a more specific natural key |
 | [`ACCOUNT_PAYMENT_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-account-payment-required) | terminal | Outstanding balance requires payment | Buyer must resolve billing |
@@ -508,7 +510,7 @@ The wire-level `recovery: "correctable"` on the sandbox-only path is the registe
 | [`BUDGET_TOO_LOW`](/docs/building/verification/compliance-catalog#error-code-budget-too-low) | correctable | Budget below seller's minimum | Increase budget or check `capabilities.media_buy.limits` |
 | [`BUDGET_EXHAUSTED`](/docs/building/verification/compliance-catalog#error-code-budget-exhausted) | terminal | Account or campaign budget fully spent | Buyer must add funds or increase budget cap |
 | `CREATIVE_NOT_FOUND` | correctable | Referenced creative does not exist in the library | Verify `creative_id` via [`list_creatives`](/docs/creative/task-reference/list_creatives), or register it via [`sync_creatives`](/docs/creative/task-reference/sync_creatives) |
-| [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected) | correctable | Creative failed content policy review | Revise per seller's `advertising_policies` |
+| [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected) | correctable | Creative failed content-policy, brand-safety, or accessibility review | Revise according to the applicable policy or validated accessibility criteria |
 
 ### System
 
@@ -679,7 +681,7 @@ const USER_MESSAGES = {
   'PRODUCT_NOT_FOUND': 'One or more products could not be found. Try searching again.',
   'ACCOUNT_SUSPENDED': 'Your account has been suspended. Contact the seller to resolve.',
   'SERVICE_UNAVAILABLE': 'The service is temporarily unavailable. Please try again in a few minutes.',
-  'CREATIVE_REJECTED': 'Your creative did not pass policy review. Check the suggestion for details.',
+  'CREATIVE_REJECTED': 'Your creative did not pass creative review. Check the validated diagnostics for details.',
   'AUDIENCE_TOO_SMALL': 'Your target audience is too small. Try broadening your targeting.'
 };
 

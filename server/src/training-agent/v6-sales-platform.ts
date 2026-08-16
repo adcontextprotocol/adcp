@@ -47,6 +47,8 @@ import {
 import { handleSyncAudiences } from './audience-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
+import { waitForForcedTaskCompletion } from './comply-test-controller.js';
+import { sessionKeyFromArgs } from './state.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 interface TrainingSalesMeta {
@@ -551,10 +553,10 @@ export class TrainingSalesPlatform
       // the submitted arm is `ctx.handoffToTask`. Pass the directive's
       // task_id through `TaskHandoffOptions.task_id` so the response
       // echoes the caller-supplied id (adcp-client#1554, SDK 6.11+).
-      // The handoff fn throws because the test directive only asserts
-      // on the immediate submitted envelope; no buyer polls completion
-      // in this scenario, so the throw surfaces a clean error if anyone
-      // ever does.
+      // Keep the handoff pending until force_task_completion resolves the
+      // controller-side waiter. The framework then writes the same result to
+      // its task registry, which makes get_task_status and list_tasks converge
+      // on the controller-driven terminal state.
       if (
         v5Result &&
         typeof v5Result === 'object' &&
@@ -562,16 +564,10 @@ export class TrainingSalesPlatform
         typeof (v5Result as { task_id?: unknown }).task_id === 'string'
       ) {
         const submitted = v5Result as { task_id: string; message?: string };
+        const completionOwnerKey = sessionKeyFromArgs(args, 'open');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return ctx.handoffToTask(
-          async () => {
-            throw new AdcpError('NOT_IMPLEMENTED', {
-              recovery: 'terminal',
-              message:
-                'force_create_media_buy_arm directive issued the submitted envelope; ' +
-                'the test directive does not register a completion handler.',
-            });
-          },
+          async () => await waitForForcedTaskCompletion(submitted.task_id, completionOwnerKey),
           { task_id: submitted.task_id },
         ) as any;
       }

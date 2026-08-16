@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod';
-import type { TenantConfig } from '@adcp/sdk/server';
+import type { TaskRegistry, TenantConfig } from '@adcp/sdk/server';
 import {
   TrainingSalesPlatform,
   legacyGetProductsHandler,
@@ -72,7 +72,11 @@ const SYNC_GOVERNANCE_SCHEMA = {
   context: z.any().optional(),
 };
 
-export function buildSalesTenantConfig(host: string, options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): {
+export function buildSalesTenantConfig(
+  host: string,
+  options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {},
+  taskRegistry?: TaskRegistry,
+): {
   tenantId: string;
   config: TenantConfig;
 } {
@@ -136,7 +140,7 @@ export function buildSalesTenantConfig(host: string, options: { storyboardCompat
             }),
           }),
         },
-        complyTest: buildSalesComplyConfig(options.storyboardCompat),
+        complyTest: buildSalesComplyConfig(options.storyboardCompat, taskRegistry),
       },
     },
   };

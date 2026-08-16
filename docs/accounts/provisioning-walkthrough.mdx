@@ -87,6 +87,11 @@ Sam calls `get_adcp_capabilities` before choosing an account workflow. The relev
     "require_operator_auth": false,
     "supported_billing": ["operator", "agent", "advertiser"],
     "supported_account_currency_modes": ["fixed", "per_media_buy"],
+    "timezone": {
+      "mode": "account_fixed",
+      "account_selection": "buyer_selected",
+      "supported_timezones": ["Europe/London", "UTC"]
+    },
     "notifications": {
       "supported": true,
       "registration_task": "sync_accounts",
@@ -98,7 +103,7 @@ Sam calls `get_adcp_capabilities` before choosing an account workflow. The relev
 }
 ```
 
-`require_operator_auth: false` selects buyer-declared provisioning. `supported_billing` tells Sam which invoiced parties the seller accepts at the capability level; it does not guarantee that every authenticated buyer agent is commercially authorized for every advertised value. `supported_account_currency_modes` tells Sam whether to include one immutable account `currency`, omit it for per-media-buy selection, or choose either model.
+`require_operator_auth: false` selects buyer-declared provisioning. `supported_billing` tells Sam which invoiced parties the seller accepts at the capability level; it does not guarantee that every authenticated buyer agent is commercially authorized for every advertised value. `supported_account_currency_modes` tells Sam whether to include one immutable account `currency`, omit it for per-media-buy selection, or choose either model. The timezone capability requires Sam to choose one advertised immutable account timezone and include it in the natural key.
 
 The `notifications` block selects the preferred observation strategy: register a durable subscriber during provisioning, treat each webhook as an invalidation signal, and repair from `list_accounts`. If the block is absent or `supported` is `false`, poll instead.
 
@@ -120,6 +125,7 @@ Sam sends a fresh `idempotency_key`, the Nova Motors brand, Pinnacle Agency as o
         "domain": "novamotors.example"
       },
       "operator": "pinnacle-agency.example",
+      "timezone": "Europe/London",
       "billing": "advertiser",
       "billing_entity": {
         "legal_name": "Nova Motors Ltd.",
@@ -176,6 +182,7 @@ The account needs a human credit and legal review, so StreamHaus returns `pendin
         "domain": "novamotors.example"
       },
       "operator": "pinnacle-agency.example",
+      "timezone": "Europe/London",
       "action": "created",
       "status": "pending_approval",
       "billing": "advertiser",

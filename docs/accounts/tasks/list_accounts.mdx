@@ -69,7 +69,7 @@ seller-assigned `account_id` or by the complete buyer-declared natural key.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `account` | object | No | Exact account filter. Pass `{ "account_id": "..." }` after seller/storefront discovery, or the complete natural key (`brand`, `operator`, and optional `operator_unit`, `currency`, and `sandbox`) for buyer-declared accounts. The seller returns only matching accounts visible to the authenticated caller. |
+| `account` | object | No | Exact account filter. Pass `{ "account_id": "..." }` after seller/storefront discovery, or the complete natural key (`brand`, `operator`, and optional `operator_unit`, `currency`, buyer-selected `timezone`, and `sandbox`) for buyer-declared accounts. The seller returns only matching accounts visible to the authenticated caller. |
 | `status` | string | No | Filter by account status: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed`. |
 | `sandbox` | boolean | No | When true, return only sandbox accounts. When false, return only production accounts. Omit to return both. Primarily used with account-id namespaces where sandbox accounts are pre-existing test accounts on the platform. |
 | `include_webhook_activity` | boolean | No | When true, request recent webhook delivery attempts for each returned account in `webhook_activity[]`. |
@@ -93,7 +93,10 @@ seller-assigned `account_id` or by the complete buyer-declared natural key.
 | `brand` | Brand reference: `domain`, optional `brand_id`, and optional commercial-identity `countries[]`. Countries are not delivery targeting. |
 | `operator` | Operator domain. Always present — when the brand operates directly, `operator` equals the brand's domain. |
 | `operator_unit` | Optional operator-owned unit. `id` is stable identity; `name` is mutable display metadata. |
+| `revision` | Current account optimistic-concurrency revision. Sellers advertising `account.identity_updates.supported: true` always return it; pass it in the next [`sync_accounts`](/docs/accounts/tasks/sync_accounts) settings update. |
+| `identity_change` | Pending or rejected desired operator identity. While present, `operator` and `operator_unit` remain the current canonical identity. Poll until the change applies or is rejected. |
 | `currency` | Optional immutable account currency. When present, media buys on the account must use it. |
+| `timezone` | Immutable operational timezone for the account. It is the default for account-scoped calendar behavior unless a feature explicitly declares another timezone basis. |
 | `status` | Current account state: `active`, `pending_approval`, `rejected`, `payment_required`, `suspended`, or `closed` |
 | `billing` | Billing model in effect: `operator` or `agent` |
 | `account_scope` | How the seller scoped this account: `operator`, `brand`, `operator_brand`, or `agent`. See [account scope](/docs/building/by-layer/L2/accounts-and-agents#account-scope). |
@@ -104,7 +107,7 @@ seller-assigned `account_id` or by the complete buyer-declared natural key.
 | `notification_configs` | Account-level webhook subscribers registered via [`sync_accounts`](/docs/accounts/tasks/sync_accounts#account-level-webhook-subscriptions). Each entry carries `subscriber_id`, `url`, `event_types[]`, and `active`. Present when the account has any persisted subscribers. `subscriber_id` is the account-scoped logical key; re-registering the same subscriber replaces that subscriber's config. `authentication.credentials` is omitted on every entry (write-only). Use this surface to verify what's active after a sync, audit fan-out across multiple subscribers, and detect drift between buyer-side expectations and seller-side persisted state. `account.status_changed` subscribers receive status invalidation fires and repair by re-reading this `status` field. |
 | `webhook_activity` | Optional recent webhook delivery attempts for this account, returned when `include_webhook_activity: true` and the seller exposes the debug log. Omitted means unsupported or not requested; `[]` means supported but no retained fires; non-empty records are most recent first. |
 
-For buyer-declared accounts, `list_accounts` MUST return the natural-key fields needed to use the account again. A stateless buyer can therefore take `brand`, `operator`, `operator_unit`, `currency`, and `sandbox` from the response and send the same shape as `account` on a later task. `operator_unit.name` may change without changing which account the key identifies.
+For buyer-declared accounts, `list_accounts` MUST return the current canonical natural-key fields needed to use the account again. A stateless buyer can therefore take `brand`, `operator`, `operator_unit`, `currency`, buyer-selected `timezone`, and `sandbox` from the response and send the same shape as `account` on a later task. `operator_unit.name` may change without changing which account the key identifies. A requested identity in `identity_change` is not a usable account reference until it becomes canonical.
 
 ### Single-publisher cardinality
 

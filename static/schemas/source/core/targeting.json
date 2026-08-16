@@ -3,6 +3,14 @@
   "$id": "/schemas/core/targeting.json",
   "title": "Targeting Overlay",
   "description": "Concrete delivery constraints used during product discovery and media-buy execution. Targeting includes both audience eligibility and purchased-inventory selection: geography, demographics, placements, properties, collections, device compatibility, language, keywords, and other explicit controls. Sellers resolve requested outcomes against inherent product scope or selectable execution. A fresh create/update request MUST be applied exactly or rejected; get_products may instead return a request-scoped configured product with sparse, buyer-reviewable targeting_resolution modifications.",
+  "x-adcp-validation": {
+    "disjoint_place_fields": {
+      "include": "geo_places",
+      "exclude": "geo_places_exclude",
+      "identity": ["country", "system", "place_type", "value"]
+    },
+    "description": "JSON Schema draft-07 cannot compare values across sibling arrays. Conformance tooling MUST reject any place identity present in both geo_places and geo_places_exclude. Catalog version is deliberately not part of place identity: a stable ID cannot be both included and excluded by assigning different versions."
+  },
   "type": "object",
   "properties": {
     "geo_countries": {
@@ -25,7 +33,7 @@
     },
     "geo_regions": {
       "type": "array",
-      "description": "Restrict delivery to specific regions/states. ISO 3166-2 subdivision codes (e.g., 'US-CA', 'GB-SCT').",
+      "description": "Restrict delivery to exact canonical ISO 3166-2 subdivisions (states, provinces, regions, departments, or other subdivision categories). Unknown identifiers are invalid. At create or update, sellers MUST reject unsupported identifiers and MUST NOT silently widen, drop, or partially apply the list. During get_products, a seller may instead return a sparse, buyer-reviewable targeting_resolution modification for a valid but unsupported requested outcome. Exact internal translation preserves accepted identifiers in package readback.",
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
@@ -34,7 +42,11 @@
     },
     "geo_regions_exclude": {
       "type": "array",
-      "description": "Exclude specific regions/states from delivery. ISO 3166-2 subdivision codes (e.g., 'US-CA', 'GB-SCT').",
+      "description": "Exclude exact canonical ISO 3166-2 subdivisions. Support is independent from geo_regions inclusion support. Unknown identifiers and values also present in geo_regions are invalid. At create or update, sellers MUST reject unsupported identifiers and partial application; during get_products, a seller may instead return a sparse, buyer-reviewable targeting_resolution modification for a valid but unsupported requested outcome.",
+      "x-adcp-validation": {
+        "disjoint_with": "geo_regions",
+        "spec": "docs/media-buy/advanced-topics/targeting.mdx#geo_regions_exclude"
+      },
       "items": {
         "type": "string",
         "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
@@ -102,6 +114,24 @@
       "description": "Exclude specific postal areas from delivery. Prefer the native country + postal system form. The deprecated legacy country-fused postal-system tokens remain accepted for compatibility. Seller must declare supported systems in get_adcp_capabilities.",
       "items": {
         "$ref": "/schemas/core/postal-area.json"
+      },
+      "minItems": 1
+    },
+    "geo_places": {
+      "type": "array",
+      "description": "Restrict delivery to catalog-backed named places. Values MUST be stable identifiers in the declared system, not display names. Sellers must declare supported systems, countries, and place types in get_adcp_capabilities and reject unsupported entries rather than silently dropping them.",
+      "items": {
+        "$ref": "/schemas/core/geo-place-area.json",
+        "x-adcp-schema-uri": "/schemas/core/geo-place-area.json"
+      },
+      "minItems": 1
+    },
+    "geo_places_exclude": {
+      "type": "array",
+      "description": "Exclude catalog-backed named places. Uses the same identifier-based shape as geo_places. Sellers MUST reject overlap with geo_places for the same country, system, place_type, and value.",
+      "items": {
+        "$ref": "/schemas/core/geo-place-area.json",
+        "x-adcp-schema-uri": "/schemas/core/geo-place-area.json"
       },
       "minItems": 1
     },
@@ -237,6 +267,24 @@
         "$ref": "/schemas/enums/device-type.json"
       },
       "minItems": 1
+    },
+    "browser": {
+      "type": "array",
+      "description": "Restrict delivery to specific canonical browser families in the impression delivery and rendering environment, not the post-click landing-page browser. Values MUST NOT be inferred solely from operating system, device, web/mobile-web inventory, or placement. Values in this array use OR semantics. When browser is supplied, families not listed are ineligible: other includes a seller-recognized family that is not explicitly enumerated, while unknown includes a browser the seller cannot classify into a recognized family. When the same family appears in browser and browser_exclude, exclusion wins. Browser and device constraints intersect; a seller that cannot enforce the exact combination MUST exclude or explicitly reconfigure the product during discovery and MUST reject it at create or update rather than silently widening delivery. Browser versions and seller-native IDs are intentionally unsupported.",
+      "items": {
+        "$ref": "/schemas/enums/browser-family.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "browser_exclude": {
+      "type": "array",
+      "description": "Exclude specific canonical browser families from delivery. other excludes seller-recognized families that are not explicitly enumerated; unknown excludes browsers the seller cannot classify into a recognized family. When the same family appears in browser and browser_exclude, exclusion wins. Sellers MUST reject a request they cannot enforce rather than silently dropping the exclusion.",
+      "items": {
+        "$ref": "/schemas/enums/browser-family.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
     },
     "store_catchments": {
       "type": "array",

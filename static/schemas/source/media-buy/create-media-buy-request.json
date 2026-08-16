@@ -119,6 +119,16 @@
       ],
       "additionalProperties": false
     },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional hard aggregate daily spend ceiling in the media-buy currency. It limits total spend without allocating package amounts. Package caps are subordinate and need not sum to it. Requires advertised media_buy budget-capping scope; otherwise rejected with UNSUPPORTED_FEATURE."
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional shared IANA day boundary override for all caps. Requires buyer_timezone_override; otherwise rejected with UNSUPPORTED_FEATURE. When omitted, budget_capping.timezone_basis selects Account.timezone or the advertised fixed_timezone."
+    },
     "budget_allocation": {
       "allOf": [
         {
@@ -181,6 +191,13 @@
     "po_number": {
       "type": "string",
       "description": "Purchase order number for tracking"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "\\S",
+      "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. When supplied, the seller MUST persist it and echo it unchanged on the create success response and subsequent get_media_buys reads. This display label is not an identifier or financial reference."
     },
     "agency_estimate_number": {
       "type": "string",

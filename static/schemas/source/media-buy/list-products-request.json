@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/list-products-request.json",
   "title": "List Products Request",
   "description": "Read seller offers with structured discovery criteria. Each invocation completes synchronously, while durable wholesale product-feed webhooks registered through sync_accounts keep buyer mirrors current without polling. list_products is the authoritative bootstrap and repair read for those subscriptions; proposal creation is handled by request_proposals.",
+  "x-tool-summary": "List seller products that match structured discovery criteria.",
   "type": "object",
   "x-operation-family": "list_products",
   "x-added-in": "3.2.0",

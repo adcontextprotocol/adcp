@@ -98,6 +98,90 @@ test('runStoryboard skips a contains-gated phase when the array omits the requir
   assert.match(result.phases[0].steps[0].error, /must contain "agent"/);
 });
 
+test('runStoryboard skips a not_contains-gated phase when the array contains the excluded value', async () => {
+  const storyboard = {
+    id: 'phase_not_contains_regression',
+    version: '1.0',
+    title: 'Phase not-contains regression',
+    category: 'error_compliance',
+    summary: 'Regression',
+    narrative: 'Regression',
+    agent: { interaction_model: 'single_agent', capabilities: [] },
+    caller: { role: 'buyer' },
+    phases: [
+      {
+        id: 'unsupported_operator_billing',
+        title: 'Unsupported operator billing',
+        requires_capability: {
+          path: 'account.supported_billing',
+          not_contains: 'operator',
+        },
+        steps: [
+          {
+            id: 'noop',
+            title: 'Noop',
+            task: 'sync_accounts',
+            sample_request: { accounts: [] },
+          },
+        ],
+      },
+    ],
+  };
+
+  const result = await runStoryboard('https://agent.example/mcp', storyboard, {
+    _profile: {
+      tools: ['get_adcp_capabilities', 'sync_accounts'],
+      raw_capabilities: { account: { supported_billing: ['operator'] } },
+    },
+    agentTools: ['get_adcp_capabilities', 'sync_accounts'],
+  });
+
+  assert.equal(result.overall_passed, true);
+  assert.equal(result.skipped_count, 1);
+  assert.equal(result.phases[0].steps[0].skip_reason, 'not_applicable');
+  assert.match(result.phases[0].steps[0].error, /must not contain "operator"/);
+});
+
+test('runStoryboard structurally matches object-valued governance task gates', async () => {
+  const storyboardPath = path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'specialisms',
+    'signal-marketplace',
+    'scenarios',
+    'governance_denied.yaml'
+  );
+  const storyboard = YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
+  const profile = {
+    tools: ['get_adcp_capabilities', ...storyboard.required_tools],
+    raw_capabilities: {
+      adcp: {
+        governance_enforcement: {
+          tasks: [{ modes: ['signed_context'], task: 'activate_signal' }],
+        },
+      },
+    },
+  };
+
+  // Strip executable work to isolate the affirmative gate path without
+  // dispatching any storyboard steps over the network.
+  const result = await runStoryboard(
+    'https://agent.example/mcp',
+    { ...storyboard, prerequisites: undefined, phases: [] },
+    {
+      _profile: profile,
+      agentTools: profile.tools,
+    }
+  );
+
+  assert.equal(result.overall_passed, true);
+  assert.equal(result.phases[0].phase_id, 'no_phases');
+  assert.equal(result.phases[0].steps[0].skip_reason, 'no_phases');
+});
+
 test('billing gate skips per-agent phases when agent billing is not supported', () => {
   const storyboardPath = path.join(
     __dirname,

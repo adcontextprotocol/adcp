@@ -254,8 +254,11 @@ The buyer request contains dimensions and required systems, never seller maxima.
 A requirement value of `true` matches product support `true` or any valid
 support object. An object requirement matches support `true` or a support object
 where every requested boolean is true and every requested array is a subset of
-the corresponding product array. Unrequested object fields and numeric seller
-limits do not participate. Missing or unknown requirements do not match.
+the corresponding product array. For `geo_places` and `geo_places_exclude`,
+every requested identifier system and country key must exist, and requested
+place-type and catalog-version arrays must be subsets of the corresponding
+product support arrays. Unrequested object fields and numeric seller limits do
+not participate. Missing or unknown requirements do not match.
 
 Support guarantees the ability to select a value subject to disclosed limits;
 it does not guarantee inventory or forecast every possible value. Forecasts
@@ -269,6 +272,20 @@ rediscovery. They cannot reinterpret a selected `pricing_option_id` at a new
 price. If a supported selection has no current inventory, creation returns
 [`PRODUCT_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-product-unavailable)
 rather than silently substituting or repricing it.
+
+For ISO subdivisions, known values belong in
+`targeting_overlay.geo_regions` / `geo_regions_exclude` and therefore scope the
+configured product's price and aggregate forecast. Values intentionally chosen
+later use structured `required_overlay_support` independently for inclusion and
+exclusion. Each country requirement uses either `all_values: true` or an exact
+candidate `values` set. A matching Product `overlay_support` must contain every
+requested country and value; product support with `all_values: true` satisfies
+any finite requirement for that country. `all_values` is evaluated against the
+seller's support snapshot when the declaration is issued and does not
+automatically include values introduced by a later catalog revision.
+Configured discovery or refinement
+with the exact overlay is the authoritative value-level preflight—there is no
+separate region resolver task.
 
 If the seller can honor a structured overlay exactly, the returned product
 omits Product `targeting_resolution`. Request-level brief confirmation appears
@@ -379,6 +396,50 @@ Seller behavior is normative:
 - Buyers inspect `media_buy.audience_evidence` capabilities first. Sellers MUST NOT silently ignore unsupported hard requirement or presence modes; they return a structured unsupported/invalid-request error. A preferred mode the seller does not support may be omitted by the buyer or explicitly rejected by the seller, but is never misrepresented as applied.
 
 Audience evidence does not populate `targeting_overlay`, `demographic_targeting`, or an age-verification field. If the buyer also needs exact execution, it requests that independently through the corresponding product and package targeting surfaces.
+
+Known place IDs belong in `targeting_overlay`, so the returned product's
+availability, pricing, and forecast are scoped to the effective place
+constraint. If the buyer will choose IDs later, `required_overlay_support`
+asks for the country, identifier system, place type, and optional catalog
+version that the product must let the buyer select:
+
+```json
+{
+  "$schema": "/schemas/media-buy/get-products-request.json",
+  "buying_mode": "brief",
+  "brief": "Local video inventory for a municipal services campaign",
+  "targeting_overlay": {
+    "geo_places": [{
+      "country": "NL",
+      "system": "geonames",
+      "system_version": "2026-05",
+      "place_type": "city",
+      "values": ["2759794"]
+    }]
+  },
+  "required_overlay_support": {
+    "geo_places": {
+      "systems": {
+        "geonames": {
+          "countries": { "NL": ["city"] },
+          "system_versions": ["2026-05"]
+        }
+      }
+    }
+  }
+}
+```
+
+The returned Product `overlay_support.geo_places` is binding permission to
+supply matching place IDs on packages later, subject to disclosed limits. It
+does not guarantee value-specific inventory or preserve an earlier forecast
+before the IDs are provided. Fixed prices and floors retain their binding
+semantics for every value within declared support; price guidance remains
+non-binding. If the eventual values have no current inventory, create returns
+[`PRODUCT_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-product-unavailable)
+without silent substitution or repricing. Inclusion and exclusion permission
+are independent; request `geo_places_exclude` separately when exclusions will
+be chosen later.
 
 ### Placement fields
 
