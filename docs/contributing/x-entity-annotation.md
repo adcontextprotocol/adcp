@@ -108,7 +108,7 @@ High-level groupings (see the registry for full descriptions). *Categories below
 | Media buy | `media_buy`, `package`, `product`, `proposal`, `product_pricing_option`, `spot_airing` |
 | Creative | `creative`, `creative_format` |
 | Data & targeting | `audience`, `audience_evidence`, `audience_evidence_snapshot`, `signal`, `signal_activation_id`, `demographic_interval_id`, `event_source` |
-| Lists & catalogs | `collection_list`, `property_list`, `catalog`, `property` |
+| Lists & catalogs | `collection_list`, `property_list`, `catalog`, `catalog_generation`, `catalog_item`, `property` |
 | Plans & governance | `media_plan`, `governance_plan`, `governance_registry_policy`, `governance_inline_policy`, `governance_check`, `content_standards`, `task`, `attestation_credential` |
 | Vendor services | `vendor_pricing_option`, `vendor_metric` |
 | SI | `si_session`, `offering` |

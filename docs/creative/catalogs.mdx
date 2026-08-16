@@ -17,6 +17,7 @@ Catalogs also connect directly to measurement. Push your store catalog and a sel
 
 - **Formats declare** what catalog types they need as `catalog` asset types in their `assets` array
 - **Buyers sync** catalogs to seller accounts via `sync_catalogs`, with platform review and approval
+- **Buyers can immediately suppress or restore items** in their synced catalogs through `sync_catalogs.item_availability_updates`, without waiting for the next scheduled feed fetch
 - **Creatives reference** synced catalogs by `catalog_id` in the manifest's `assets` map instead of embedding items inline
 
 ## Which catalog type should I use?
@@ -44,6 +45,8 @@ Each vertical type (job through app) has a defined AdCP schema with examples —
 ## Where sync_catalogs fits
 
 `sync_catalogs` is a **buyer-to-seller** task. The buyer pushes catalog feeds to the seller's account, and the seller reviews and approves them before they can be used in campaigns.
+
+That ownership direction also governs real-time availability. When an item in a buyer-managed feed becomes unavailable or available again, the buyer can push an immediate `suppress` or `restore` overlay through [`item_availability_updates`](/docs/media-buy/task-reference/sync_catalogs#immediate-item-availability). This is distinct from seller-owned wholesale inventory and from seller-initiated policy withdrawal. A buyer restore never overrides the seller's review or eligibility controls.
 
 ### The actors
 

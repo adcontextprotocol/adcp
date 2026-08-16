@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/sync-catalogs-response.json",
   "title": "Sync Catalogs Response",
-  "description": "Response from catalog sync operation. Exactly one of three shapes: (1) synchronous success — per-catalog results in the catalogs array (best-effort processing, may include per-catalog failures); (2) terminal failure — errors array with no catalogs processed; (3) submitted task envelope — status 'submitted' with task_id when the whole operation is queued (e.g., batch catalog ingestion and deduplication). The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive — a response has exactly one. Platforms may approve, reject, or flag individual items within each catalog (similar to Google Merchant Center product review).",
+  "description": "Response from catalog sync or item availability operation. Exactly one of three shapes: (1) synchronous success — per-catalog results, availability update acknowledgements, and/or current-state query results; (2) terminal failure — errors array with no resources processed; (3) submitted task envelope — status 'submitted' with task_id when a catalog-only operation is queued. The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive — a response has exactly one.",
   "type": "object",
   "allOf": [
     {
@@ -18,6 +18,11 @@
       "description": "Success response - sync operation processed catalogs (may include per-catalog failures)",
       "type": "object",
       "properties": {
+        "status": {
+          "type": "string",
+          "const": "completed",
+          "description": "Availability and synchronous catalog results are terminal and complete."
+        },
         "dry_run": {
           "type": "boolean",
           "description": "Whether this was a dry run (no actual changes made)"
@@ -32,6 +37,13 @@
                 "type": "string",
                 "description": "Catalog ID from the request",
                 "x-entity": "catalog"
+              },
+              "catalog_generation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Opaque token for this catalog incarnation. Sellers declaring catalog_item_availability_updates MUST return it for every accessible buyer-managed catalog result, including discovery. It remains stable across ordinary upserts and feed refreshes, changes after deletion and recreation, and is never reused for the same resolved account and catalog_id.",
+                "x-entity": "catalog_generation"
               },
               "action": {
                 "$ref": "/schemas/enums/catalog-action.json",
@@ -152,6 +164,22 @@
             ]
           }
         },
+        "item_availability_updates": {
+          "type": "array",
+          "description": "Acknowledgements for item_availability_updates. The array length MUST equal the request array length; entry N MUST have request_index N, occupy position N, and exactly echo catalog_id, catalog_generation, item_id, and action from request entry N. Buyers MUST reject the response as non-conformant if count, ordering, request_index, or echoed identity differs. Lenient-mode failures stay in their request positions. In strict mode, any per-entry failure instead produces the operation-level error branch before mutation and this array is absent.",
+          "items": {
+            "$ref": "/schemas/core/catalog-item-availability-update-result.json"
+          },
+          "minItems": 1,
+          "maxItems": 1000
+        },
+        "item_availability_states": {
+          "type": "array",
+          "description": "Current-state results for item_availability_queries, evaluated after updates in a mixed request. The array length MUST equal the request query length; entry N MUST have request_index N, occupy position N, and exactly echo catalog_id, catalog_generation, and item_id. Buyers MUST reject any mismatch. A replayed response is historical; use a fresh query idempotency_key before treating it as current after time-dependent expiry or catalog deletion/recreation.",
+          "items": { "$ref": "/schemas/core/catalog-item-availability-state.json" },
+          "minItems": 1,
+          "maxItems": 1000
+        },
         "sandbox": {
           "type": "boolean",
           "description": "When true, this response contains simulated data from sandbox mode."
@@ -182,7 +210,28 @@
           "type": "array",
           "description": "Operation-level errors that prevented processing any catalogs (e.g., authentication failure, service unavailable, invalid request format)",
           "items": {
-            "$ref": "/schemas/core/error.json"
+            "allOf": [
+              { "$ref": "/schemas/core/error.json" },
+              {
+                "if": {
+                  "properties": { "code": { "const": "REFERENCE_NOT_FOUND" } },
+                  "required": ["code"]
+                },
+                "then": {
+                  "description": "Availability lookups use the closed error variant; the field-qualified branch preserves the established catalog_ids filter error.",
+                  "anyOf": [
+                    { "$ref": "/schemas/core/catalog-item-reference-not-found-error.json" },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "field": { "const": "catalog_ids" }
+                    },
+                    "required": ["field"]
+                  }
+                  ]
+                }
+              }
+            ]
           },
           "minItems": 1
         },
@@ -197,11 +246,48 @@
         "errors"
       ],
       "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "errors": {
+                "contains": {
+                  "$ref": "/schemas/core/catalog-item-reference-not-found-error.json"
+                }
+              }
+            },
+            "required": ["errors"]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": ["status", "errors", "adcp_error", "message", "context", "context_id", "timestamp", "replayed", "adcp_version", "adcp_major_version"]
+            },
+            "properties": {
+              "errors": {
+                "maxItems": 1,
+                "items": { "$ref": "/schemas/core/catalog-item-reference-not-found-error.json" }
+              },
+              "adcp_error": { "$ref": "/schemas/core/catalog-item-reference-not-found-error.json" },
+              "message": { "type": "string", "const": "Catalog item not found" }
+            }
+          }
+        }
+      ],
       "not": {
         "anyOf": [
           {
             "required": [
               "catalogs"
+            ]
+          },
+          {
+            "required": [
+              "item_availability_updates"
+            ]
+          },
+          {
+            "required": [
+              "item_availability_states"
             ]
           },
           {
@@ -229,7 +315,7 @@
     },
     {
       "title": "SyncCatalogsSubmitted",
-      "description": "Async task envelope returned when sync_catalogs cannot be confirmed before the response — for example, when catalog ingestion and deduplication are queued for batch processing. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the per-catalog results land on the completion artifact, not this envelope.",
+      "description": "Async task envelope returned when a catalog-only sync cannot be confirmed before the response — for example, when catalog ingestion and deduplication are queued for batch processing. A request containing item_availability_updates or item_availability_queries MUST NOT return this branch because availability operations are synchronous; mixed requests whose catalog work cannot finish synchronously and atomically fail before mutation and are retried as separate calls. For catalog-only requests, the buyer polls tasks/get with task_id or receives a webhook when the task completes; the per-catalog results land on the completion artifact, not this envelope.",
       "type": "object",
       "properties": {
         "status": {
@@ -267,8 +353,10 @@
       ],
       "additionalProperties": true,
       "not": {
-        "required": [
-          "catalogs"
+        "anyOf": [
+          { "required": ["catalogs"] },
+          { "required": ["item_availability_updates"] },
+          { "required": ["item_availability_states"] }
         ]
       }
     }
