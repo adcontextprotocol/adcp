@@ -97,3 +97,4 @@ jobs:
           app-private-key: ${{ secrets.SECRETARIAT_APP_PRIVATE_KEY }}
           # Optional; defaults to the review action's pinned model.
           model: claude-opus-4-8
+          skip-bot-authors: dependabot[bot],renovate[bot],github-actions[bot],aao-release-bot[bot]
