@@ -67,6 +67,7 @@ import type {
 import { CreativeAssetSchema, CreativeManifestSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getCanonicalBase } from './canonical-base.js';
+import { ctvSemanticViolations } from './ctv-experience-matrix.js';
 
 /** Escape HTML special characters to prevent injection in generated HTML responses. */
 function escapeHtmlAttr(s: string): string {
@@ -270,6 +271,7 @@ const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
     { asset_group_id: 'display_url', asset_type: 'text' },
     { asset_group_id: 'rating', asset_type: 'text' },
     { asset_group_id: 'price', asset_type: 'text' },
+    { asset_group_id: 'video', asset_type: 'vast' },
     { asset_group_id: 'impression_tracker', asset_type: 'pixel_tracker' },
     { asset_group_id: 'viewability_tracker', asset_type: 'pixel_tracker' },
     { asset_group_id: 'click_tracker', asset_type: 'pixel_tracker' },
@@ -7484,7 +7486,10 @@ function validateProductTarget(
     ? declaration.params as Record<string, unknown>
     : {};
   const slots = normalizeCanonicalSlots(params.slots) ?? CANONICAL_FORMAT_SLOTS[formatKind] ?? [];
-  const violations = validateManifestSlots(manifest, slots);
+  const violations = [
+    ...validateManifestSlots(manifest, slots),
+    ...ctvSemanticViolations(formatKind, params, slots),
+  ];
   if (params.synthesis_nondeterministic === true) {
     const sourceViolation = nondeterministicSourceViolation(params);
     if (sourceViolation) {

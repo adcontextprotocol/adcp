@@ -67,6 +67,15 @@
           }
         }
       ]
+    },
+    {
+      "if": { "required": ["ctv_ad_experience"] },
+      "then": {
+        "properties": {
+          "ctv_ad_experience": { "enum": ["pause", "screensaver"] },
+          "motion_level": { "enum": ["static", "limited_motion"] }
+        }
+      }
     }
   ],
   "properties": {
@@ -178,7 +187,28 @@
       "enum": ["accepted", "rejected"],
       "default": "accepted",
       "description": "Whether the product accepts buyer-uploaded assets. When `rejected`, the buyer cannot ship pre-rendered bytes directly — they must use build_creative (or sync_creatives with brief inputs or reference assets) so the seller produces or resolves the asset. Combined with `asset_source`, lets a product declare 'I produce assets from briefs and refuse buyer uploads' (asset_source=`seller_pre_rendered_from_brief`, buyer_asset_acceptance=`rejected`) or 'I accept existing post references, not uploaded bytes' (asset_source=`publisher_owned_reference`, buyer_asset_acceptance=`rejected`)."
+    },
+    "ctv_ad_experience": {
+      "$ref": "/schemas/enums/ctv-ad-experience.json",
+      "description": "CTV experience this option serves. On `image` only `pause` and `screensaver` are valid — the image-plus-copy contract the major pause-ad sellers ingest (seller composites the frame; typical canvas 1920×1080 or a transparent-region overlay). Other experiences route per the matrix in docs/creative/ctv-experiences.mdx."
+    },
+    "motion_level": {
+      "$ref": "/schemas/enums/motion-level.json",
+      "description": "Accepted motion class (AdCOM attrs 21-22; `full_motion` is invalid on a static image canonical)."
+    },
+    "activation_methods": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "/schemas/enums/activation-method.json" },
+      "description": "Viewer activation mechanisms this option offers (e.g. `qr_code` on a pause frame). Activations are engagement events, not impressions."
     }
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "ctv_experience_matrix": "ctv_ad_experience on image must be pause or screensaver",
+      "motion_level_static_canonical": "motion_level full_motion is rejected on image"
+    },
+    "spec": "docs/creative/ctv-experiences.mdx"
   },
   "additionalProperties": true
 }
