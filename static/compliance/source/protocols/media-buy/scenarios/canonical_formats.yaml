@@ -340,7 +340,6 @@ phases:
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: schema_compliance
-        response_projection: raw
         stateful: true
         expected: |
           Return products including the seeded canonical_formats_mrec_display
@@ -446,7 +445,6 @@ phases:
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: schema_compliance
-        response_projection: raw
         stateful: true
         expected: |
           Return the seeded canonical_formats_ids_only_display product with a
@@ -497,7 +495,6 @@ phases:
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: schema_compliance
-        response_projection: raw
         stateful: true
         expected: |
           Return the seeded canonical_formats_options_only_display product with
@@ -556,7 +553,6 @@ phases:
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: schema_compliance
-        response_projection: raw
         stateful: true
         expected: |
           Return the seeded canonical_formats_custom_takeover product with a
@@ -623,7 +619,6 @@ phases:
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: schema_compliance
-        response_projection: raw
         stateful: true
         expected: |
           Return the seeded canonical_formats_experimental_display product with
@@ -688,7 +683,6 @@ phases:
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: schema_compliance
-        response_projection: raw
         auth:
           type: api_key
           from_test_kit: true
@@ -750,7 +744,6 @@ phases:
         response_schema_ref: "media-buy/get-products-response.json"
         doc_ref: "/media-buy/task-reference/get_products"
         comply_scenario: schema_compliance
-        response_projection: raw
         stateful: true
         expected: |
           Return the seeded canonical_formats_mrec_display product so create-time
