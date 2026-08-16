@@ -76,6 +76,24 @@ function containsDirectSlackInvite(content) {
   return urls.some(isDirectSlackInvite);
 }
 
+function isLiveDocsVersionCompatible(liveVersion, packageVersion) {
+  const liveMatch = /^(\d+)\.(\d+)$/.exec(liveVersion);
+  const packageMatch = /^(\d+)\.(\d+)\.\d+(?:-([0-9A-Za-z.-]+))?$/.exec(packageVersion);
+  if (!liveMatch || !packageMatch) return false;
+
+  const liveLine = [Number(liveMatch[1]), Number(liveMatch[2])];
+  const packageLine = [Number(packageMatch[1]), Number(packageMatch[2])];
+  if (!packageMatch[3]) {
+    return liveLine[0] === packageLine[0] && liveLine[1] === packageLine[1];
+  }
+
+  // A prerelease package does not make that release line the live docs line.
+  // Keep the latest stable docs active until the release is promoted, while
+  // still rejecting a docs label from a future line.
+  return liveLine[0] < packageLine[0]
+    || (liveLine[0] === packageLine[0] && liveLine[1] <= packageLine[1]);
+}
+
 // --- Run tests ---
 
 log('\n🧪 Docs Navigation Validation Tests');
@@ -103,13 +121,28 @@ test('default version is first in the versions array', () => {
   }
 });
 
+test('live docs version matching keeps prerelease packages unreleased', () => {
+  if (!isLiveDocsVersionCompatible('3.1', '3.1.14')) {
+    throw new Error('A stable package must accept its matching live docs line');
+  }
+  if (isLiveDocsVersionCompatible('3.0', '3.1.14')) {
+    throw new Error('A stable package must reject an older live docs line');
+  }
+  if (!isLiveDocsVersionCompatible('3.1', '3.2.0-beta.0')) {
+    throw new Error('A prerelease package must preserve the prior stable live docs line');
+  }
+  if (isLiveDocsVersionCompatible('3.3', '3.2.0-beta.0')) {
+    throw new Error('A prerelease package must reject a future live docs line');
+  }
+});
+
 test('one release-labeled version owns the live docs tree', () => {
   const liveVersions = navigation.versions.filter(versionEntry =>
     collectPages(versionEntry.groups).some(page => page.startsWith('docs/'))
   );
-  const expectedVersion = JSON.parse(
+  const packageVersion = JSON.parse(
     fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8')
-  ).version.split('.').slice(0, 2).join('.');
+  ).version;
 
   if (liveVersions.length !== 1) {
     throw new Error(`Expected one live docs owner, found ${liveVersions.length}`);
@@ -119,9 +152,9 @@ test('one release-labeled version owns the live docs tree', () => {
   if (liveVersion !== navigation.versions[0] || !liveVersion.default) {
     throw new Error('The live docs owner must be the first and default version');
   }
-  if (liveVersion.version !== expectedVersion) {
+  if (!isLiveDocsVersionCompatible(liveVersion.version, packageVersion)) {
     throw new Error(
-      `Live docs version "${liveVersion.version}" must match package release "${expectedVersion}"`
+      `Live docs version "${liveVersion.version}" is incompatible with package release "${packageVersion}"`
     );
   }
   if (liveVersion.tag !== 'Latest') {
@@ -381,6 +414,7 @@ test('temporary snapshot redirects cover every available live page', () => {
     'docs/protocol/language-and-localization',
     'docs/protocol/sync_agent_notification_configs',
     'docs/accounts/provisioning-walkthrough',
+    'docs/media-buy/product-discovery/proposal-negotiation',
     'docs/media-buy/media-buys/indicators',
     'docs/media-buy/task-reference/list_products',
     'docs/media-buy/task-reference/request_proposals',

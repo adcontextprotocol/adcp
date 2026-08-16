@@ -205,6 +205,10 @@
           "$ref": "/schemas/core/demographic-targeting-capability.json",
           "description": "Product-scoped demographic execution modes and exact interval capabilities"
         },
+        "demographic-reporting-capability": {
+          "$ref": "/schemas/core/demographic-reporting-capability.json",
+          "description": "Product-scoped demographic reporting ranges, systems, and suppression posture"
+        },
         "demographic-targeting-resolution": {
           "$ref": "/schemas/core/demographic-targeting-resolution.json",
           "description": "Requested, applied, execution, and exact-equivalence demographic readback"
@@ -248,6 +252,10 @@
         "geo-breakdown-support": {
           "$ref": "/schemas/core/geo-breakdown-support.json",
           "description": "Geographic breakdown capability declaration for reporting"
+        },
+        "spot-reporting-capability": {
+          "$ref": "/schemas/core/spot-reporting-capability.json",
+          "description": "Spot-level as-run reporting support and available spot-grain metrics"
         },
         "format": {
           "$ref": "/schemas/core/format.json",

@@ -1131,7 +1131,71 @@ async function runTests() {
     return true;
   });
 
-  // Test 11: Validate comply_test_controller accepts the JCS non-finite error code
+  // Test 11: Validate the 3.2 removal of body-level lifecycle status
+  await test('create/update success reserve status for the task envelope', async () => {
+    const createSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-response.json'));
+    const updateSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/update-media-buy-response.json'));
+    const createSuccess = createSchema.oneOf.find(branch => branch.title === 'CreateMediaBuySuccess');
+    const updateSuccess = updateSchema.oneOf.find(branch => branch.title === 'UpdateMediaBuySuccess');
+
+    if (createSuccess?.properties?.status) {
+      return 'CreateMediaBuySuccess still declares deprecated body-level status';
+    }
+    if (updateSuccess?.properties?.status) {
+      return 'UpdateMediaBuySuccess still declares deprecated body-level status';
+    }
+
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+    const validateCreate = await testAjv.compileAsync(createSchema);
+    const validateUpdate = await testAjv.compileAsync(updateSchema);
+
+    const createResponse = {
+      status: 'completed',
+      media_buy_id: 'mb_status_split',
+      media_buy_status: 'active',
+      confirmed_at: '2026-08-15T12:00:00Z',
+      revision: 1,
+      packages: [{ package_id: 'pkg_status_split' }]
+    };
+    if (!validateCreate(createResponse)) {
+      return `Canonical create response unexpectedly failed validation: ${validateCreate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const legacyCreate = structuredClone(createResponse);
+    delete legacyCreate.media_buy_status;
+    legacyCreate.status = 'active';
+    if (validateCreate(legacyCreate)) {
+      return 'create_media_buy accepted legacy top-level MediaBuyStatus';
+    }
+
+    const updateResponse = {
+      status: 'completed',
+      media_buy_id: 'mb_status_split',
+      media_buy_status: 'paused',
+      revision: 2
+    };
+    if (!validateUpdate(updateResponse)) {
+      return `Canonical update response unexpectedly failed validation: ${validateUpdate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+
+    const legacyUpdate = structuredClone(updateResponse);
+    delete legacyUpdate.media_buy_status;
+    legacyUpdate.status = 'paused';
+    if (validateUpdate(legacyUpdate)) {
+      return 'update_media_buy accepted legacy top-level MediaBuyStatus';
+    }
+
+    return true;
+  });
+
+  // Test 12: Validate comply_test_controller accepts the JCS non-finite error code
   await test('Comply controller response accepts JCS non-finite controller error', async () => {
     const testAjv = new Ajv({
       allErrors: true,
@@ -2694,6 +2758,40 @@ async function runTests() {
     };
     if (!validate(transformer)) {
       return validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ');
+    }
+    return true;
+  });
+
+  await test('search_brands carries canonical relationship trust without treating absence as standalone', async () => {
+    const schema = loadSchema(path.join(SCHEMA_BASE_DIR, 'brand/search-brands-response.json'));
+    const testAjv = new Ajv({ allErrors: true, verbose: true, strict: false, discriminator: true, loadSchema: loadExternalSchema });
+    addFormats(testAjv);
+    const validate = await testAjv.compileAsync(schema);
+    const baseBrand = {
+      brand_id: 'leaf_brand',
+      names: [{ en: 'Leaf Brand' }]
+    };
+    const response = brands => ({ status: 'completed', brands });
+
+    if (!validate(response([baseBrand]))) {
+      return `unknown trust state was rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (!validate(response([{
+        ...baseBrand,
+        house: { domain: 'house.example', name: 'Example House' },
+        relationship_trust: 'mutual',
+        relationship_verified_at: '2026-08-15T12:00:00Z'
+      }]))) {
+      return `mutual trust result was rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (!validate(response([{
+        ...baseBrand,
+        relationship_trust: 'house_only'
+      }]))) {
+      return `house-only trust result was rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;
+    }
+    if (validate(response([{ ...baseBrand, relationship_trust: 'mutual_assertion' }]))) {
+      return 'obsolete RFC-era relationship trust vocabulary must be rejected';
     }
     return true;
   });

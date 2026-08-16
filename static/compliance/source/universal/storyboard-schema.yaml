@@ -1684,7 +1684,8 @@
 #       on_out_of_scope: warn
 #
 # Cross-step comparison — use `check: field_less_than` /
-# `field_equals_context` / `field_in_context_array`:
+# `field_equals_context` / `field_in_context_array` /
+# `all_fields_in_context_array`:
 #   These checks compare a field in THIS step's response against a value
 #   captured by a PRIOR step via `context_outputs`. Without them, every existing
 #   `check:` is single-step (`field_value` resolves the comparand at YAML
@@ -1705,12 +1706,13 @@
 #       a member of the supported_billing array captured during discovery.
 #
 #   Fields:
-#     check: field_less_than | field_equals_context | field_in_context_array
+#     check: field_less_than | field_equals_context | field_in_context_array | all_fields_in_context_array
 #     path: string                  # JSON path on this step's response.
 #     context_key: string           # name set by a prior step's
 #                                   # `context_outputs[].name`. Required for
 #                                   # `field_equals_context` and
-#                                   # `field_in_context_array`. Optional for
+#                                   # `field_in_context_array` and
+#                                   # `all_fields_in_context_array`. Optional for
 #                                   # `field_less_than` — when omitted, the
 #                                   # check falls back to the literal `value`
 #                                   # (so authors can compare against a
@@ -1718,7 +1720,7 @@
 #     value: number                 # Literal comparand for `field_less_than`
 #                                   # when `context_key` is not set. Ignored on
 #                                   # `field_equals_context` and
-#                                   # `field_in_context_array` (which always
+#                                   # membership checks (which always
 #                                   # read from context).
 #     description: string
 #
@@ -1727,8 +1729,14 @@
 #     or absent values fail the check with a type error in the validation_result.
 #     `field_equals_context` deep-equals the response value against the captured
 #     comparand using the same equality semantics as `field_value`.
-#     `field_in_context_array` requires the captured comparand to be an array
-#     and passes when the response value is deep-equal to one array member.
+#     `field_in_context_array` requires the captured comparand to be an array and
+#     a scalar path; it passes when the response value deep-equals one member.
+#     `all_fields_in_context_array` requires an array comparand and a wildcard
+#     path; it passes only when EVERY resolved terminal value belongs to the
+#     captured array. A path resolving no terminal values passes vacuously; pair
+#     it with field_present when an empty response is not allowed. Older runners
+#     that do not implement this additive check grade it not_applicable under the
+#     runner forward-compatibility contract rather than producing a false failure.
 #
 #   Absent context_key — context_key_absent observation:
 #     When `context_key` is set but the named entry is missing from the
@@ -1778,6 +1786,12 @@
 #       path: "accounts[0].billing"
 #       context_key: "supported_billing"
 #       description: "Applied billing belongs to the advertised set"
+#
+#     # Exhaustive routing scope: every returned product channel was advertised.
+#     - check: all_fields_in_context_array
+#       path: "products[*].channels[*]"
+#       context_key: "portfolio_channels"
+#       description: "Returned product channels stay inside portfolio scope"
 #
 #     # Static threshold (single-step form — no context_key).
 #     # NOTE: `field_less_than` is primarily a cross-step check; the literal-

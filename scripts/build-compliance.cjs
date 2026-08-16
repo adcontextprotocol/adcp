@@ -260,8 +260,10 @@ function lintStoryboardIdempotency(sourceDir, schemasDir) {
     'universal/webhook-emission.yaml',
   ]);
   const duplicateGeneratedKeyAllowedReplayKeys = new Set([
+    'protocols/media-buy/scenarios/catalog_item_availability_updates.yaml:$generate:uuid_v4#catalog_item_availability_suppress',
     'protocols/media-buy/scenarios/get_products_async.yaml:$context.submitted_products_idempotency_key',
     'protocols/media-buy/scenarios/proposal_finalize.yaml:$context.finalize_idempotency_key',
+    'protocols/media-buy/scenarios/typed_proposal_negotiation.yaml:$context.finalize_idempotency_key',
   ]);
 
   function isGeneratedIdempotencyKey(value, generatedContextNames) {

@@ -33,7 +33,7 @@
         },
         "timezone": {
           "type": "string",
-          "description": "IANA timezone of the seller's billing day boundaries (e.g., 'America/New_York'). All dates in this response — period, invoice periods, due dates — are calendar dates in this timezone. Buyers in a different timezone should expect spend boundaries to differ from their own calendar day."
+          "description": "IANA timezone of the seller's billing day boundaries (e.g., 'America/New_York'). All dates in this response — period, invoice periods, due dates — are calendar dates in this timezone. This may differ from Account.timezone or a feature-specific cap/reporting timezone when the upstream platform uses distinct clocks; buyers MUST use this value for financial periods rather than infer equality."
         },
         "spend": {
           "type": "object",

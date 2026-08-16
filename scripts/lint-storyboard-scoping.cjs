@@ -48,8 +48,6 @@ const TENANT_SCOPED_TASKS = new Set([
   'get_products',
   'list_products',
   'request_proposals',
-  'refine_proposals',
-  'decline_proposals',
   'get_signals',
   'activate_signal',
   'sync_audiences',
@@ -107,13 +105,15 @@ const TENANT_SCOPED_TASKS = new Set([
  *       - `validate_content_delivery` — required `standards_id`
  *       - `validate_property_delivery` — required `list_id` (schema also
  *                                         has optional `account`)
+ *       - `refine_proposals`          — required proposal IDs in `refinements`
+ *       - `decline_proposals`         — required proposal IDs in `declines`
  *
- *     Storyboard authors still carry envelope identity on these tasks as a
- *     sandbox routing convention — `sessionKeyFromArgs` routes by envelope
- *     identity, so a storyboard that drops it would land in `open:default`.
- *     The lint simply doesn't require it. Production sellers resolve the ID
- *     via the authenticated principal, not the envelope payload, so there is
- *     no spec-level gap to close. See docs/contributing/storyboard-authoring.md.
+ *     Most legacy storyboards still carry envelope identity on these tasks as
+ *     a sandbox routing convention. `refine_proposals` and `decline_proposals`
+ *     deliberately forbid it; the training agent reverse-resolves their
+ *     proposal IDs. Production sellers resolve every such ID via the
+ *     authenticated principal, not an envelope payload. See
+ *     docs/contributing/storyboard-authoring.md.
  */
 const EXEMPT_FROM_LINT = new Set([
   // (a) Payload-array-keyed sync tasks
@@ -128,6 +128,7 @@ const EXEMPT_FROM_LINT = new Set([
   'list_creative_formats',
   'list_accounts',
   // (b) Global brand/rights catalog reads
+  'search_brands',
   'get_brand_identity',
   'get_rights',
   'update_rights',
@@ -141,6 +142,8 @@ const EXEMPT_FROM_LINT = new Set([
   'calibrate_content',
   'validate_content_delivery',
   'validate_property_delivery',
+  'refine_proposals',
+  'decline_proposals',
 ]);
 
 // Compatibility-only handlers that are not AdCP tasks. creative_approval is

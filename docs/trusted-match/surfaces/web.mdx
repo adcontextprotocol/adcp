@@ -72,7 +72,7 @@ The router fans out to each buyer agent and merges the responses. Each buyer ret
 Key points:
 
 - `offers` contains one entry per activated package. The provider's synced set for this placement included three packages — these two matched the kitchen/sustainability context, the third (`pkg-display-0103`) did not and is absent.
-- For web/GAM activation, offers are simple — just `package_id`. Richer fields (`brand`, `price`, `summary`, `creative_manifest`, `macros`) are available for integrations that need them but are not required.
+- For web/GAM activation, offers are simple — just `package_id`. Richer fields (`brand`, `price`, `summary`, `creative_manifest`, `creative_data`) are available for integrations that need them but are not required.
 - `signals_by_provider` preserves which provider emitted each targeting pair. The Prebid module resolves each `(provider_id, key)` through the publisher's [`targeting_kv_mapping`](/docs/trusted-match/specification#publisher-targeting-kv-mapping) before setting the resulting GAM key. Unmapped tuples are dropped.
 
 ## Identity Match

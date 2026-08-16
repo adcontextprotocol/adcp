@@ -11,6 +11,7 @@
 
 import {
   TestControllerError,
+  SESSION_ENTRY_CAP,
   createSeedFixtureCache,
   enforceMapCap,
   handleTestControllerRequest,
@@ -208,6 +209,40 @@ export function getDeliverySimulation(session: SessionState, mediaBuyId: string)
   return session.complyExtensions.deliverySimulations.get(mediaBuyId);
 }
 
+/**
+ * Get simulated delivery attributable to a half-open reporting period.
+ * Undated legacy simulations retain their cumulative behavior until a caller
+ * starts supplying delivery_date snapshots for the media buy.
+ */
+export function getDeliverySimulationForPeriod(
+  session: SessionState,
+  mediaBuyId: string,
+  start: Date,
+  end: Date,
+): ComplyDeliveryAccumulator | undefined {
+  const cumulative = getDeliverySimulation(session, mediaBuyId);
+  if (!cumulative?.datedSimulations?.length) return cumulative;
+
+  const filtered: ComplyDeliveryAccumulator = {
+    impressions: 0,
+    clicks: 0,
+    reportedSpend: { amount: 0, currency: cumulative.reportedSpend.currency },
+    conversions: 0,
+  };
+  for (const simulation of cumulative.datedSimulations) {
+    const timestamp = new Date(`${simulation.deliveryDate}T00:00:00.000Z`).getTime();
+    if (timestamp < start.getTime() || timestamp >= end.getTime()) continue;
+    const { impressions, clicks, conversions, reportedSpend, ...extensions } = simulation.metrics;
+    filtered.impressions += impressions;
+    filtered.clicks += clicks;
+    filtered.conversions += conversions;
+    filtered.reportedSpend.amount += reportedSpend.amount;
+    filtered.reportedSpend.currency = reportedSpend.currency;
+    Object.assign(filtered, extensions);
+  }
+  return filtered;
+}
+
 /** Get budget simulation data for an entity (used by get_account_financials). */
 export function getBudgetSimulation(session: SessionState, entityId: string): ComplyBudgetSimulation | undefined {
   return session.complyExtensions.budgetSimulations.get(entityId);
@@ -227,6 +262,33 @@ function getOrCreateDeliveryAccumulator(session: SessionState, mediaBuyId: strin
     ext.deliverySimulations.set(mediaBuyId, cumulative);
   }
   return cumulative;
+}
+
+function isCanonicalDeliveryDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function deliverySimulationSnapshot(
+  params: Record<string, unknown>,
+  currency: string,
+): Omit<ComplyDeliveryAccumulator, 'datedSimulations'> {
+  const reportedSpend = isRecord(params.reported_spend) ? params.reported_spend : undefined;
+  const snapshot: Omit<ComplyDeliveryAccumulator, 'datedSimulations'> = {
+    impressions: typeof params.impressions === 'number' ? params.impressions : 0,
+    clicks: typeof params.clicks === 'number' ? params.clicks : 0,
+    conversions: typeof params.conversions === 'number' ? params.conversions : 0,
+    reportedSpend: {
+      amount: typeof reportedSpend?.amount === 'number' ? reportedSpend.amount : 0,
+      currency: typeof reportedSpend?.currency === 'string' ? reportedSpend.currency : currency,
+    },
+  };
+  applyExtendedDeliveryParams(snapshot, params);
+  if (Array.isArray(params.vendor_metric_values)) {
+    snapshot.vendorMetricValues = params.vendor_metric_values;
+  }
+  return snapshot;
 }
 
 type VendorMetricIdentity = {
@@ -806,6 +868,19 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       const reportedSpend = params.reported_spend;
       const typedParams = params as Record<string, unknown>;
 
+      const deliveryDate = typedParams.delivery_date;
+      if (deliveryDate !== undefined && !isCanonicalDeliveryDate(deliveryDate)) {
+        throw new TestControllerError('INVALID_PARAMS', 'delivery_date must be a real calendar date in YYYY-MM-DD format');
+      }
+
+      const existing = getDeliverySimulation(session, mediaBuyId);
+      if (deliveryDate !== undefined && (existing?.datedSimulations?.length ?? 0) >= SESSION_ENTRY_CAP) {
+        throw new TestControllerError(
+          'INVALID_STATE',
+          `Cannot add more than ${SESSION_ENTRY_CAP} dated delivery simulations to one media buy`,
+        );
+      }
+
       const cumulative = getOrCreateDeliveryAccumulator(session, mediaBuyId, reportedSpend?.currency || mb.currency);
 
       cumulative.impressions += impressions;
@@ -816,6 +891,13 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
         cumulative.reportedSpend.currency = reportedSpend.currency;
       }
       applyExtendedDeliveryParams(cumulative, typedParams);
+      if (deliveryDate !== undefined) {
+        cumulative.datedSimulations ??= [];
+        cumulative.datedSimulations.push({
+          deliveryDate,
+          metrics: deliverySimulationSnapshot(typedParams, reportedSpend?.currency || mb.currency),
+        });
+      }
 
       const simulated: Record<string, unknown> = {};
       if (impressions) simulated.impressions = impressions;
@@ -831,6 +913,7 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       if (typedParams.is_final !== undefined) simulated.is_final = typedParams.is_final;
       if (typedParams.finalized_at !== undefined) simulated.finalized_at = typedParams.finalized_at;
       if (typedParams.measurement_window !== undefined) simulated.measurement_window = typedParams.measurement_window;
+      if (deliveryDate !== undefined) simulated.delivery_date = deliveryDate;
 
       return {
         success: true,
@@ -1227,6 +1310,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   const targetsControllerFixtureState = scenario === 'seed_product'
     || scenario === 'seed_pricing_option'
     || scenario === 'seed_measurement_catalog';
+  const targetsPublicTaskState = scenario === 'seed_media_buy'
+    || scenario === 'seed_creative';
   // The frozen 3.0 runner injects a synthetic natural account into controller
   // and fixture calls, sometimes without copying its brand to the top level.
   // Platform methods on that compatibility surface historically key by brand.
@@ -1241,7 +1326,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     ? args.account.account_id
     : undefined;
   let staticFixtureAccount: ToolArgs['account'] | undefined;
-  if (targetsControllerFixtureState && ctx.principal?.startsWith('static:') && args.account) {
+  let staticTaskAccount: ToolArgs['account'] | undefined;
+  if ((targetsControllerFixtureState || targetsPublicTaskState) && ctx.principal?.startsWith('static:') && args.account) {
     try {
       const canonical = canonicalizeAccountRef(args.account);
       if (canonical.kind === 'natural' && canonical.sandbox) {
@@ -1250,11 +1336,20 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
         // task examples may name the buyer operator. Canonicalize only this
         // fixture projection to the brand-owned sandbox partition; real
         // principals keep the complete natural account identity.
-        staticFixtureAccount = {
+        const brandOwnedAccount = {
           brand: canonical.brand,
           operator: canonical.brand.domain,
-          sandbox: true,
         };
+        if (targetsControllerFixtureState) {
+          staticFixtureAccount = { ...brandOwnedAccount, sandbox: true };
+        } else {
+          // The SDK strips the controller-only sandbox assertion before
+          // ordinary media-buy reads. Store public demo entity fixtures in
+          // that exact brand-owned task partition so seed_media_buy and
+          // seed_creative remain observable without projecting entity state
+          // across the isolated controller-fixture boundary.
+          staticTaskAccount = { ...brandOwnedAccount, sandbox: false };
+        }
       }
     } catch {
       staticFixtureAccount = undefined;
@@ -1272,7 +1367,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       ? { ...args, account: { account_id: opaqueAccountId }, brand: undefined }
       : staticFixtureAccount
         ? { ...args, account: staticFixtureAccount }
-        : args;
+        : staticTaskAccount
+          ? { ...args, account: staticTaskAccount }
+          : args;
   let sessionKey = targetsGetProductsState
     ? getProductsSessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId)
     : sessionKeyFromArgs(

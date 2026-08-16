@@ -41,6 +41,11 @@
       "description": "Updated impression goal for this package",
       "minimum": 0
     },
+    "daily_budget_cap": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "Replace this package's hard daily cap; null removes it. Numeric changes apply immediately with current-day package spend counted. A cap below that spend pauses the package for the day; the aggregate cap remains independently binding."
+    },
     "start_time": {
       "type": "string",
       "format": "date-time",
@@ -249,6 +254,7 @@
       { "required": ["params"] },
       { "required": ["capability_ids"] },
       { "required": ["pricing_option_id"] },
+      { "required": ["budget_cap_timezone"] },
       {
         "properties": { "bidding": { "type": "object" } },
         "required": ["bidding", "bid_price"]

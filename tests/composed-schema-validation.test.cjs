@@ -1689,12 +1689,89 @@ async function runTests() {
     '/schemas/protocol/get-adcp-capabilities-response.json',
     {
       ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
       account: {
         supported_billing: ['operator'],
         supported_account_currency_modes: ['account_default']
       }
     },
     'Account currency modes reject non-standard values'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        supported_account_currency_modes: ['fixed'],
+        timezone: {
+          mode: 'account_fixed',
+          account_selection: 'buyer_selected',
+          supported_timezones: ['America/New_York', 'UTC']
+        }
+      }
+    },
+    'Account timezone capability accepts buyer-selected fixed account zones'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        timezone: { mode: 'seller_fixed', fixed_timezone: 'UTC' }
+      }
+    },
+    'Account timezone capability accepts one seller-fixed zone'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        timezone: {
+          mode: 'account_fixed',
+          account_selection: 'seller_assigned'
+        }
+      }
+    },
+    'Account timezone capability accepts seller-assigned account zones'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        timezone: { mode: 'seller_fixed' }
+      }
+    },
+    'Seller-fixed account timezone requires fixed_timezone'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        timezone: {
+          mode: 'account_fixed',
+          account_selection: 'buyer_selected'
+        }
+      }
+    },
+    'Buyer-selected account timezone requires supported_timezones'
   );
 
   await testSchemaValidation(
@@ -3104,11 +3181,12 @@ async function runTests() {
         operator: 'buyer.example',
         operator_unit: { id: '234284238', name: 'Acme EMEA' },
         currency: 'EUR',
+        timezone: 'Europe/Amsterdam',
         sandbox: true
       },
       brief: 'Reach streaming audio listeners in Rome'
     },
-    'request_proposals accepts country, operator-unit, and currency qualifiers in its natural account key'
+    'request_proposals accepts country, operator-unit, currency, and timezone qualifiers in its natural account key'
   );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-request.json',
@@ -3133,10 +3211,22 @@ async function runTests() {
         operator: 'nova-athletics.example',
         operator_unit: { id: '234284238', name: 'Nova EMEA' },
         currency: 'EUR',
+        timezone: 'Europe/Amsterdam',
         billing: 'operator'
       }]
     },
-    'sync_accounts provisions the same advertiser natural key used by compact tools'
+    'sync_accounts provisions currency and timezone qualifiers in the natural key'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-timezone-update-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        timezone: 'Europe/Amsterdam'
+      }]
+    },
+    'sync_accounts rejects immutable timezone changes in settings-update mode'
   );
   await testSchemaValidation(
     '/schemas/account/sync-accounts-request.json',
@@ -3283,6 +3373,7 @@ async function runTests() {
       status: 'active',
       brand: { domain: 'nova-athletics.example' },
       operator: 'pinnacle-media.example',
+      timezone: 'America/New_York',
       revision: 8,
       identity_change: {
         status: 'pending_approval',
@@ -3299,6 +3390,7 @@ async function runTests() {
         account_id: 'seller-account-123',
         brand: { domain: 'nova-athletics.example' },
         operator: 'pinnacle-media.example',
+        timezone: 'America/New_York',
         revision: 8,
         identity_change: {
           status: 'pending_approval',
@@ -5475,6 +5567,230 @@ async function runTests() {
       cancellation_fee: { type: 'none' }
     },
     'Accepts none fee with neither rate nor amount'
+  );
+  log('');
+
+  // daily_budget_cap follows the aggregate/package budget hierarchy (#5983)
+  log('Daily budget cap hierarchy:', 'info');
+  await testSchemaValidation(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'prod_ctv_sports',
+      pricing_option_id: 'po_cpm_fixed',
+      budget: 50000,
+      pacing: 'asap',
+      daily_budget_cap: 2500
+    },
+    'Accepts a subordinate package daily cap with asap pacing'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'prod_ctv_sports',
+      pricing_option_id: 'po_cpm_fixed',
+      budget: 50000,
+      daily_budget_cap: -100
+    },
+    'Rejects negative daily_budget_cap'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/package-request.json',
+    {
+      product_id: 'prod_ctv_sports',
+      pricing_option_id: 'po_cpm_fixed',
+      budget: 50000,
+      budget_cap_timezone: 'America/Chicago'
+    },
+    'Rejects package-specific cap timezone overrides'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/package-update.json',
+    {
+      package_id: 'pkg_001',
+      daily_budget_cap: null
+    },
+    'Accepts removing a package daily cap'
+  );
+  await testSchemaValidation(
+    '/schemas/core/package.json',
+    {
+      package_id: 'pkg_001',
+      product_id: 'prod_ctv_sports',
+      budget: 50000,
+      daily_budget_cap: 2500
+    },
+    'Package readback carries the subordinate daily cap without its own timezone'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'daily-cap-create-0001',
+      account: { account_id: 'acc_daily_cap' },
+      brand: { domain: 'example.com' },
+      packages: [{
+        product_id: 'prod_ctv_sports',
+        pricing_option_id: 'po_cpm_fixed',
+        budget: 50000,
+        daily_budget_cap: 2500
+      }],
+      daily_budget_cap: 4000,
+      budget_cap_timezone: 'America/Chicago',
+      start_time: '2099-08-01T00:00:00Z',
+      end_time: '2099-08-31T23:59:59Z'
+    },
+    'Accepts aggregate and subordinate package daily caps with one shared timezone'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/create-media-buy-request.json',
+    {
+      idempotency_key: 'daily-cap-create-0002',
+      account: { account_id: 'acc_daily_cap' },
+      brand: { domain: 'example.com' },
+      packages: [{
+        product_id: 'prod_ctv_sports',
+        pricing_option_id: 'po_cpm_fixed',
+        budget: 50000
+      }],
+      daily_budget_cap: -1,
+      start_time: '2099-08-01T00:00:00Z',
+      end_time: '2099-08-31T23:59:59Z'
+    },
+    'Rejects a negative aggregate daily cap'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/update-media-buy-request.json',
+    {
+      idempotency_key: 'daily-cap-update-0001',
+      account: { account_id: 'acc_daily_cap' },
+      media_buy_id: 'mb_daily_cap',
+      daily_budget_cap: null,
+      budget_cap_timezone: null
+    },
+    'Accepts removing the aggregate cap and timezone override'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/buy-products-request.json',
+    {
+      idempotency_key: 'daily-cap-buy-products-0001',
+      account: { account_id: 'acc_daily_cap' },
+      brand: { domain: 'example.com' },
+      feed_version: 'feed-daily-cap-1',
+      purchases: [{
+        product_id: 'prod_ctv_sports',
+        pricing_option_id: 'po_cpm_fixed',
+        budget: 50000,
+        daily_budget_cap: 2500
+      }],
+      daily_budget_cap: 4000,
+      budget_cap_timezone: 'America/Chicago',
+      start_time: 'asap',
+      end_time: '2099-08-31T23:59:59Z'
+    },
+    'Compact direct purchase carries aggregate and purchase daily caps'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/control-media-buy-request.json',
+    {
+      idempotency_key: 'daily-cap-control-0001',
+      account: { account_id: 'acc_daily_cap' },
+      media_buy_id: 'mb_daily_cap',
+      revision: 4,
+      daily_budget_cap: null,
+      budget_cap_timezone: null,
+      packages: [{ package_id: 'pkg_001', daily_budget_cap: null }]
+    },
+    'Compact control removes aggregate and package caps atomically'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/accept-proposal-request.json',
+    {
+      idempotency_key: 'daily-cap-accept-0001',
+      account: { account_id: 'acc_daily_cap' },
+      proposal_id: 'proposal_daily_cap',
+      proposal_terms_digest: 'sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      daily_budget_cap: 4000,
+      budget_cap_timezone: 'America/Chicago'
+    },
+    'Compact proposal acceptance can set the aggregate execution cap'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: false }
+      },
+      supported_protocols: ['media_buy'],
+      media_buy: {
+        budget_capping: {
+          supported_scopes: ['media_buy', 'package'],
+          supported_periods: ['day'],
+          timezone_basis: 'account',
+          buyer_timezone_override: true
+        }
+      }
+    },
+    'Accepts hard daily-cap capabilities based on each account timezone'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: false }
+      },
+      supported_protocols: ['media_buy'],
+      media_buy: {
+        budget_capping: {
+          supported_scopes: ['media_buy'],
+          supported_periods: ['day'],
+          timezone_basis: 'fixed',
+          fixed_timezone: 'UTC'
+        }
+      }
+    },
+    'Accepts a seller-fixed daily-cap timezone such as UTC'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: false }
+      },
+      supported_protocols: ['media_buy'],
+      media_buy: {
+        budget_capping: {
+          supported_scopes: ['media_buy'],
+          supported_periods: ['day'],
+          timezone_basis: 'fixed'
+        }
+      }
+    },
+    'Rejects a fixed daily-cap basis without fixed_timezone'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: false }
+      },
+      supported_protocols: ['media_buy'],
+      media_buy: {
+        budget_capping: {
+          supported_scopes: ['media_buy'],
+          supported_periods: ['day'],
+          timezone_basis: 'account',
+          fixed_timezone: 'UTC'
+        }
+      }
+    },
+    'Rejects fixed_timezone when daily caps use the account timezone'
   );
   log('');
 

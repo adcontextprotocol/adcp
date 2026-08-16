@@ -73,7 +73,7 @@ The buyer agent evaluates each package against the context. Package B is homepag
           }
         }
       },
-      "macros": {
+      "creative_data": {
         "sponsor_label": "Sponsored by Blue Bottle"
       }
     },
@@ -101,7 +101,7 @@ The buyer agent evaluates each package against the context. Package B is homepag
 }
 ```
 
-The buyer returns an offer per matched package. Each offer carries a `package_id` and optionally a `brand`, `price`, `summary`, `creative_manifest`, and `macros`. The `summary` gives the publisher enough to judge relevance. When the creative manifest is present inline, the publisher has everything needed to render. For large creatives (e.g., VAST video), the manifest references external assets via URLs rather than embedding them. This provider-hop response validates against `provider-context-match-response.json`. Targeting pairs use `signals.targeting_kvs`; the router preserves them unchanged under `signals_by_provider[provider_id].targeting_kvs` in the `context-match-response.json` shape returned to the publisher.
+The buyer returns an offer per matched package. Each offer carries a `package_id` and optionally a `brand`, `price`, `summary`, `creative_manifest`, and `creative_data`. The `summary` gives the publisher enough to judge relevance. When the creative manifest is present inline, the publisher has everything needed to render. For large creatives (e.g., VAST video), the manifest references external assets via URLs rather than embedding them. This provider-hop response validates against `provider-context-match-response.json`. Targeting pairs use `signals.targeting_kvs`; the router preserves them unchanged under `signals_by_provider[provider_id].targeting_kvs` in the `context-match-response.json` shape returned to the publisher.
 
 ### What Context Match never carries
 
@@ -194,9 +194,9 @@ The publisher already knows how to render Package A — it maps to a sponsored c
 
 ## The Offer Model
 
-TMP's response model is the offer. An offer carries a `package_id` (required) and optional fields: `brand`, `price`, `summary`, `creative_manifest`, and `macros` (a key-value map for dynamic values).
+TMP's response model is the offer. An offer carries a `package_id` (required) and optional fields: `brand`, `price`, `summary`, `creative_manifest`, and `creative_data` (a key-value map for dynamic rendering values).
 
-**Simple case (GAM/Prebid)**: The offer carries `package_id`. The provider may return a provider-local package targeting pair in `signals.targeting_kvs`; the router attributes it in `signals_by_provider`, and the publisher maps `(provider_id, key)` to its GAM key for line item matching. The `macros` map carries dynamic values (e.g., sponsor labels, promo text) that GAM can insert into the creative at render time.
+**Simple case (GAM/Prebid)**: The offer carries `package_id`. The provider may return a provider-local package targeting pair in `signals.targeting_kvs`; the router attributes it in `signals_by_provider`, and the publisher maps `(provider_id, key)` to its GAM key for line item matching. The optional `creative_data` map carries package-local presentation enhancements (e.g., sponsor labels or promo text); it is not an ad-server macro namespace. There are no protocol-required keys: publishers ignore unknown keys, and missing keys do not invalidate an otherwise renderable offer.
 
 **Rich case (AI assistants, dynamic retail)**: The offer includes a `summary` ("50% off cold brew — recipe integration") so the publisher can judge relevance, and an inline `creative_manifest` with everything needed to render. For large creatives (e.g., VAST video), the manifest references external assets via URLs rather than embedding the full payload.
 
@@ -204,7 +204,7 @@ TMP's response model is the offer. An offer carries a `package_id` (required) an
 
 **Variable pricing**: When the product supports variable pricing, the buyer can include a `price` on the offer.
 
-The creative manifest carries catalog items, text, images, and everything else needed for rendering. This reuses the existing CreativeManifest schema.
+The creative manifest carries catalog items, text, images, and everything else required for rendering. Optional `creative_data` may enhance that presentation but cannot replace required manifest assets. This reuses the existing CreativeManifest schema.
 
 Per-user exposure tracking flows through the TMPX macro — an encrypted token from Identity Match that the publisher substitutes into creative tracking URLs. The buyer's impression pixel decrypts the token and logs per-user exposures in real time. Aggregate delivery reporting via `get_media_buy_delivery` provides reconciliation and pacing data.
 

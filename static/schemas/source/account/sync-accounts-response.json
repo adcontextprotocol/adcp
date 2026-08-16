@@ -63,6 +63,11 @@
                 "pattern": "^[A-Z]{3}$",
                 "description": "Immutable account currency, echoed when the advertiser object is currency-bound."
               },
+              "timezone": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Immutable operational timezone for this account. AdCP 3.2 sellers echo it on created, updated, and unchanged results. For buyer-selected account_fixed provisioning it participates in the natural key."
+              },
               "name": {
                 "type": "string",
                 "description": "Human-readable account name assigned by the seller"

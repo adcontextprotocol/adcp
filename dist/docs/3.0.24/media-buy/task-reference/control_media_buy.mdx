@@ -1,0 +1,48 @@
+---
+title: control_media_buy
+description: "Apply operational delivery controls within accepted MediaBuy terms."
+"og:title": "AdCP control_media_buy Task"
+testable: true
+---
+
+`control_media_buy` applies operational changes that remain inside the immutable commercial envelope accepted for the MediaBuy. It requires the current `revision` for optimistic concurrency.
+
+Supported controls include:
+
+- pause, resume, and an already-permitted unilateral cancellation;
+- total, aggregate-daily, and package budget controls;
+- budget allocation, pacing, and bidding;
+- package targeting, catalog references, keyword, impression, and optimization controls; and
+- reporting-webhook configuration.
+
+It does not accept creatives, creative assignments, new products/packages, flight-date changes, pricing changes, or billing-term changes. Those concerns use their dedicated lifecycle or a proposal refinement.
+
+**Request schema:** [`/schemas/3.0.24/media-buy/control-media-buy-request.json`](https://adcontextprotocol.org/schemas/3.0.24/media-buy/control-media-buy-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441012",
+  "account": { "account_id": "account_123" },
+  "media_buy_id": "media_buy_789",
+  "revision": 4,
+  "daily_budget_cap": 5000,
+  "pacing": "even",
+  "packages": [
+    {
+      "package_id": "package_video",
+      "daily_budget_cap": 3000,
+      "paused": true
+    }
+  ]
+}
+```
+
+Daily-cap changes apply immediately and atomically with spend already incurred in the current cap day counted. Lowering a cap below current-day spend pauses further applicable delivery without reversing prior spend. `null` removes an aggregate or package cap. A media-buy `budget_cap_timezone` change starts at the next boundary under the previously effective timezone; package controls never carry their own timezone.
+
+When an otherwise valid control would exceed the accepted budget, targeting, or delivery envelope, the seller returns [`REQUOTE_REQUIRED`](/dist/docs/3.0.24/building/verification/compliance-catalog#error-code-requote-required). The buyer reads `accepted_proposal_id` from [`get_media_buys`](/dist/docs/3.0.24/media-buy/task-reference/get_media_buys), passes it to [`refine_proposals`](/dist/docs/3.0.24/media-buy/task-reference/refine_proposals) to create a draft amendment, finalizes that draft into a committed hold, and applies it through [`accept_proposal`](/dist/docs/3.0.24/media-buy/task-reference/accept_proposal). This pointer survives SDK restart and moves atomically after each accepted amendment.
+
+A completed in-envelope control MAY include `warnings[]` for non-blocking observations, such as a material inventory shortfall forecast observed after the applied control. A continuing condition is also readable as an indicator through `get_media_buys`. Failed and submitted controls never carry this warning surface. Flight-date changes are not controls; a `flight_change_creates_pacing_risk` warning belongs on the completed `accept_proposal` response that applies the amendment.
+
+`canceled: true` is direct only when the accepted cancellation policy already grants the caller that right. A cancellation requiring counterparty agreement uses `refine_proposals` with `change_kind: "cancellation"`.
+
+Seller-initiated cancellation does not call a buyer tool. The seller advances the MediaBuy revision and records `cancellation.canceled_by: "seller"`; `get_media_buys` is the normative recovery surface. A durable compact-lifecycle status-change webhook is intentionally not inferred from the per-operation async callback and remains 4.0 work.
