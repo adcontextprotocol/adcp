@@ -812,6 +812,7 @@
 # response_schema_ref: string (path to response schema)
 # doc_ref: string (path to documentation page)
 # comply_scenario: string (maps to @adcp/client testing scenario, e.g., "creative_sync")
+# response_projection: raw (optional — grade the SDK's unprojected response without changing the authored request wire; use only for compatibility storyboards that assert legacy and canonical fields together)
 # expected: string (human-readable description of expected behavior)
 # stateful: boolean (does this step depend on state from a previous step?)
 #
