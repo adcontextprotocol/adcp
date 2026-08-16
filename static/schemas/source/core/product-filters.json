@@ -256,53 +256,101 @@
       "type": "array",
       "description": "Filter to products whose audience_activation.methods matches at least one requested entry (OR across entries). Within an entry every specified field must match (AND); omitted optional fields are wildcards; directions matches on non-empty intersection; vendor matches on domain, plus brand_id when specified. Sellers MUST exclude products with no audience_activation declaration when this filter is present, reported via filter_diagnostics.excluded_by.",
       "items": {
-        "type": "object",
-        "properties": {
-          "pattern": {
-            "type": "string",
-            "enum": [
-              "sync_audiences",
-              "tmp_identity_match",
-              "file_transfer",
-              "dataset_query",
-              "clean_room",
-              "platform_distribution"
-            ],
-            "description": "Activation pattern to match."
-          },
-          "vendor": {
-            "$ref": "/schemas/core/brand-ref.json",
-            "description": "Require the method's vendor to match this reference."
-          },
-          "transport": {
-            "$ref": "/schemas/enums/cloud-storage-protocol.json",
-            "description": "Require this storage protocol (file_transfer only)."
-          },
-          "directions": {
-            "type": "array",
-            "description": "Require a non-empty intersection with the method's declared directions (file_transfer only).",
-            "items": {
-              "type": "string",
-              "enum": ["buyer_to_seller", "seller_to_buyer"]
-            },
-            "minItems": 1,
-            "uniqueItems": true
-          },
-          "buyer_agent": {
+        "oneOf": [
+          {
             "type": "object",
-            "description": "Require this buyer agent on tmp_identity_match entries. Buyers typically filter on their own agent_url.",
+            "description": "Filter by AdCP audience sync path.",
             "properties": {
-              "agent_url": {
-                "type": "string",
-                "format": "uri"
+              "pattern": { "type": "string", "const": "sync_audiences" }
+            },
+            "required": ["pattern"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "Filter by TMP identity-match path, optionally pinned to a specific buyer agent.",
+            "properties": {
+              "pattern": { "type": "string", "const": "tmp_identity_match" },
+              "buyer_agent": {
+                "type": "object",
+                "description": "Require this buyer agent on tmp_identity_match entries. Buyers typically filter on their own agent_url.",
+                "properties": {
+                  "agent_url": { "type": "string", "format": "uri" }
+                },
+                "required": ["agent_url"],
+                "additionalProperties": false
               }
             },
-            "required": ["agent_url"],
+            "required": ["pattern"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "Filter by bucket-addressed file exchange, optionally pinning transport, directions, or vendor.",
+            "properties": {
+              "pattern": { "type": "string", "const": "file_transfer" },
+              "transport": {
+                "$ref": "/schemas/enums/cloud-storage-protocol.json",
+                "description": "Require this storage protocol (file_transfer only)."
+              },
+              "directions": {
+                "type": "array",
+                "description": "Require a non-empty intersection with the method's declared directions (file_transfer only).",
+                "items": {
+                  "type": "string",
+                  "enum": ["buyer_to_seller", "seller_to_buyer"]
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "vendor": {
+                "$ref": "/schemas/core/brand-ref.json",
+                "description": "Require the method's vendor to match this reference."
+              }
+            },
+            "required": ["pattern"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "Filter by vendor-mediated dataset query path.",
+            "properties": {
+              "pattern": { "type": "string", "const": "dataset_query" },
+              "vendor": {
+                "$ref": "/schemas/core/brand-ref.json",
+                "description": "Require the method's vendor to match this reference."
+              }
+            },
+            "required": ["pattern"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "Filter by clean-room path.",
+            "properties": {
+              "pattern": { "type": "string", "const": "clean_room" },
+              "vendor": {
+                "$ref": "/schemas/core/brand-ref.json",
+                "description": "Require the method's vendor to match this reference."
+              }
+            },
+            "required": ["pattern"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "Filter by platform distribution path.",
+            "properties": {
+              "pattern": { "type": "string", "const": "platform_distribution" },
+              "vendor": {
+                "$ref": "/schemas/core/brand-ref.json",
+                "description": "Require the method's vendor to match this reference."
+              }
+            },
+            "required": ["pattern"],
             "additionalProperties": false
           }
-        },
-        "required": ["pattern"],
-        "additionalProperties": false
+        ]
       },
       "minItems": 1,
       "uniqueItems": true
