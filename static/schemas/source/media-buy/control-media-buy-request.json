@@ -68,7 +68,7 @@
     "budget_cap_timezone": {
       "type": ["string", "null"],
       "minLength": 1,
-      "description": "Replace the shared IANA cap-day timezone override; null returns to the seller default. A timezone change begins at the next boundary under the previously effective timezone."
+      "description": "Replace the shared IANA cap-day timezone override; null restores the default selected by budget_capping.timezone_basis (Account.timezone or fixed_timezone). A timezone change begins at the next boundary under the previously effective timezone."
     },
     "budget_allocation": {
       "$ref": "/schemas/core/canonical-budget-allocation.json"

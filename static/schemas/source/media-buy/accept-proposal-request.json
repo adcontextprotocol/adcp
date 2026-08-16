@@ -56,7 +56,7 @@
     "budget_cap_timezone": {
       "type": "string",
       "minLength": 1,
-      "description": "Optional shared IANA cap-day timezone override. Requires buyer_timezone_override support."
+      "description": "Optional shared IANA cap-day timezone override. Requires buyer_timezone_override support. When omitted, budget_capping.timezone_basis selects Account.timezone or fixed_timezone."
     },
     "io_acceptance": {
       "type": "object",

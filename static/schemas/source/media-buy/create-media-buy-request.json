@@ -127,7 +127,7 @@
     "budget_cap_timezone": {
       "type": "string",
       "minLength": 1,
-      "description": "Optional shared IANA day boundary for all caps. Requires buyer_timezone_override; otherwise rejected with UNSUPPORTED_FEATURE. Defaults to effective_timezone."
+      "description": "Optional shared IANA day boundary override for all caps. Requires buyer_timezone_override; otherwise rejected with UNSUPPORTED_FEATURE. When omitted, budget_capping.timezone_basis selects Account.timezone or the advertised fixed_timezone."
     },
     "budget_allocation": {
       "allOf": [

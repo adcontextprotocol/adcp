@@ -1689,12 +1689,89 @@ async function runTests() {
     '/schemas/protocol/get-adcp-capabilities-response.json',
     {
       ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
       account: {
         supported_billing: ['operator'],
         supported_account_currency_modes: ['account_default']
       }
     },
     'Account currency modes reject non-standard values'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        supported_account_currency_modes: ['fixed'],
+        timezone: {
+          mode: 'account_fixed',
+          account_selection: 'buyer_selected',
+          supported_timezones: ['America/New_York', 'UTC']
+        }
+      }
+    },
+    'Account timezone capability accepts buyer-selected fixed account zones'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        timezone: { mode: 'seller_fixed', fixed_timezone: 'UTC' }
+      }
+    },
+    'Account timezone capability accepts one seller-fixed zone'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        timezone: {
+          mode: 'account_fixed',
+          account_selection: 'seller_assigned'
+        }
+      }
+    },
+    'Account timezone capability accepts seller-assigned account zones'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        timezone: { mode: 'seller_fixed' }
+      }
+    },
+    'Seller-fixed account timezone requires fixed_timezone'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      account: {
+        supported_billing: ['operator'],
+        timezone: {
+          mode: 'account_fixed',
+          account_selection: 'buyer_selected'
+        }
+      }
+    },
+    'Buyer-selected account timezone requires supported_timezones'
   );
 
   await testSchemaValidation(
@@ -3104,11 +3181,12 @@ async function runTests() {
         operator: 'buyer.example',
         operator_unit: { id: '234284238', name: 'Acme EMEA' },
         currency: 'EUR',
+        timezone: 'Europe/Amsterdam',
         sandbox: true
       },
       brief: 'Reach streaming audio listeners in Rome'
     },
-    'request_proposals accepts country, operator-unit, and currency qualifiers in its natural account key'
+    'request_proposals accepts country, operator-unit, currency, and timezone qualifiers in its natural account key'
   );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-request.json',
@@ -3133,10 +3211,22 @@ async function runTests() {
         operator: 'nova-athletics.example',
         operator_unit: { id: '234284238', name: 'Nova EMEA' },
         currency: 'EUR',
+        timezone: 'Europe/Amsterdam',
         billing: 'operator'
       }]
     },
-    'sync_accounts provisions the same advertiser natural key used by compact tools'
+    'sync_accounts provisions currency and timezone qualifiers in the natural key'
+  );
+  await testSchemaRejection(
+    '/schemas/account/sync-accounts-request.json',
+    {
+      idempotency_key: 'sync-accounts-timezone-update-0001',
+      accounts: [{
+        account: { account_id: 'seller-account-123' },
+        timezone: 'Europe/Amsterdam'
+      }]
+    },
+    'sync_accounts rejects immutable timezone changes in settings-update mode'
   );
   await testSchemaValidation(
     '/schemas/account/sync-accounts-request.json',
@@ -3283,6 +3373,7 @@ async function runTests() {
       status: 'active',
       brand: { domain: 'nova-athletics.example' },
       operator: 'pinnacle-media.example',
+      timezone: 'America/New_York',
       revision: 8,
       identity_change: {
         status: 'pending_approval',
@@ -3299,6 +3390,7 @@ async function runTests() {
         account_id: 'seller-account-123',
         brand: { domain: 'nova-athletics.example' },
         operator: 'pinnacle-media.example',
+        timezone: 'America/New_York',
         revision: 8,
         identity_change: {
           status: 'pending_approval',
@@ -5634,12 +5726,71 @@ async function runTests() {
         budget_capping: {
           supported_scopes: ['media_buy', 'package'],
           supported_periods: ['day'],
-          effective_timezone: 'America/New_York',
+          timezone_basis: 'account',
           buyer_timezone_override: true
         }
       }
     },
-    'Accepts hard daily-cap capabilities with explicit supported scopes'
+    'Accepts hard daily-cap capabilities based on each account timezone'
+  );
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: false }
+      },
+      supported_protocols: ['media_buy'],
+      media_buy: {
+        budget_capping: {
+          supported_scopes: ['media_buy'],
+          supported_periods: ['day'],
+          timezone_basis: 'fixed',
+          fixed_timezone: 'UTC'
+        }
+      }
+    },
+    'Accepts a seller-fixed daily-cap timezone such as UTC'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: false }
+      },
+      supported_protocols: ['media_buy'],
+      media_buy: {
+        budget_capping: {
+          supported_scopes: ['media_buy'],
+          supported_periods: ['day'],
+          timezone_basis: 'fixed'
+        }
+      }
+    },
+    'Rejects a fixed daily-cap basis without fixed_timezone'
+  );
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      status: 'completed',
+      adcp: {
+        major_versions: [3],
+        idempotency: { supported: false }
+      },
+      supported_protocols: ['media_buy'],
+      media_buy: {
+        budget_capping: {
+          supported_scopes: ['media_buy'],
+          supported_periods: ['day'],
+          timezone_basis: 'account',
+          fixed_timezone: 'UTC'
+        }
+      }
+    },
+    'Rejects fixed_timezone when daily caps use the account timezone'
   );
   log('');
 
