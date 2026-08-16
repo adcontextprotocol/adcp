@@ -676,13 +676,45 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": { "const": "catalog_item_availability_probe" }
+        },
+        "required": ["scenario"]
+      },
+      "then": {
+        "required": ["params"],
+        "properties": {
+          "params": {
+            "required": ["operation", "catalog_id", "item_id"],
+            "allOf": [
+              {
+                "if": {
+                  "properties": { "operation": { "enum": ["query_eligibility", "advance_time", "recreate_catalog"] } },
+                  "required": ["operation"]
+                },
+                "then": { "required": ["catalog_generation"] }
+              },
+              {
+                "if": {
+                  "properties": { "operation": { "const": "advance_time" } },
+                  "required": ["operation"]
+                },
+                "then": { "required": ["target_time"] }
+              }
+            ]
+          }
+        }
+      }
     }
   ],
   "x-mutates-state": true,
   "properties": {
     "scenario": {
       "type": "string",
-      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'force_creative_purge' destroys or tombstones a sandbox creative so account-level `creative.purged` webhooks can be observed where the seller supports the lifecycle surface. 'force_create_media_buy_arm', 'force_get_products_arm', and 'force_get_signals_arm' register one-shot response-arm directives for the next matching operation from the caller's authenticated sandbox account + principal pair. 'seed_*' scenarios pre-populate fixtures (account, product, pricing option, creative, plan, media buy, rights grant, creative format, measurement catalog) so storyboards can reference fixture IDs and external-catalog facts without implementers guessing which fixtures the conformance suite expects. 'query_upstream_traffic' returns outbound HTTP calls the agent has made since session start (or since a caller-supplied timestamp), so storyboard runners can assert upstream side-effects via `check: upstream_traffic`. 'query_provenance_audit_observations' returns sandbox-only audit observations recorded for a submitted creative so storyboards can assert non-blocking governance observations without exposing an internal audit log on public seller responses. 'force_upstream_unavailable' marks a named upstream dependency as unreachable for the duration of the compliance session (or until the seller resets it), so storyboards can exercise stale-cache fallback paths - see the `stale_response_advisory` universal storyboard. The contract raises the bar against unintentional facades - adapters that satisfy AdCP schema requirements with synthetic placeholders. It is NOT an adversarial integrity check: adopters self-report their own traffic. Adopters MUST scope the response to traffic caused by the requesting principal's session/auth context - cross-caller traffic MUST NOT be returned, regardless of the supplied since_timestamp. Multi-tenant sandboxes MUST key the recording buffer on the comply_test_controller invocation's auth principal. Runners and sellers MUST accept unknown scenario strings - new scenarios may be added in additive releases."
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'catalog_item_availability_probe' provides deterministic sandbox operations for cross-principal reference seeding, actual eligibility observation, clock advancement, and catalog delete/recreate generation tests. 'force_creative_purge' destroys or tombstones a sandbox creative so account-level `creative.purged` webhooks can be observed where the seller supports the lifecycle surface. 'force_create_media_buy_arm', 'force_get_products_arm', and 'force_get_signals_arm' register one-shot response-arm directives for the next matching operation from the caller's authenticated sandbox account + principal pair. 'seed_*' scenarios pre-populate fixtures (account, product, pricing option, creative, plan, media buy, rights grant, creative format, measurement catalog) so storyboards can reference fixture IDs and external-catalog facts without implementers guessing which fixtures the conformance suite expects. 'query_upstream_traffic' returns outbound HTTP calls the agent has made since session start (or since a caller-supplied timestamp), so storyboard runners can assert upstream side-effects via `check: upstream_traffic`. 'query_provenance_audit_observations' returns sandbox-only audit observations recorded for a submitted creative so storyboards can assert non-blocking governance observations without exposing an internal audit log on public seller responses. 'force_upstream_unavailable' marks a named upstream dependency as unreachable for the duration of the compliance session (or until the seller resets it), so storyboards can exercise stale-cache fallback paths - see the `stale_response_advisory` universal storyboard. The contract raises the bar against unintentional facades - adapters that satisfy AdCP schema requirements with synthetic placeholders. It is NOT an adversarial integrity check: adopters self-report their own traffic. Adopters MUST scope the response to traffic caused by the requesting principal's session/auth context - cross-caller traffic MUST NOT be returned, regardless of the supplied since_timestamp. Multi-tenant sandboxes MUST key the recording buffer on the comply_test_controller invocation's auth principal. Runners and sellers MUST accept unknown scenario strings - new scenarios may be added in additive releases."
     },
     "params": {
       "type": "object",
@@ -731,6 +763,37 @@
           "type": "object",
           "description": "Arbitrary fixture payload carried by seed_* scenarios. Shape matches the domain object the seed scenario creates (account, product, creative, plan, media buy, pricing option, rights grant). Seller MAY reject malformed fixtures with INVALID_PARAMS. Kept permissive so storyboard authors can declare the minimum shape each test needs without the spec locking down every field.",
           "additionalProperties": true
+        },
+        "operation": {
+          "type": "string",
+          "enum": ["seed_inaccessible_item", "query_eligibility", "advance_time", "recreate_catalog"],
+          "description": "Operation for catalog_item_availability_probe. seed_inaccessible_item creates the named catalog/item under a distinct synthetic principal and returns its generation without granting the caller access. query_eligibility observes the seller's actual selection, dynamic-rendering, and lineage-known derived-creative gates. advance_time processes automatic expiry through target_time. recreate_catalog deletes and recreates the named catalog with the same item content and returns a new generation and initial revision."
+        },
+        "catalog_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Catalog operated on by catalog_item_availability_probe.",
+          "x-entity": "catalog"
+        },
+        "catalog_generation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Catalog incarnation operated on by catalog_item_availability_probe.",
+          "x-entity": "catalog_generation"
+        },
+        "item_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Catalog item operated on by catalog_item_availability_probe.",
+          "x-entity": "catalog_item"
+        },
+        "target_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Deterministic sandbox clock target used by catalog_item_availability_probe advance_time."
         },
         "status": {
           "type": "string",
