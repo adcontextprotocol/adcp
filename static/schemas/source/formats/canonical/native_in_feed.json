@@ -11,14 +11,20 @@
     },
     {
       "if": { "anyOf": [{ "required": ["menu_placement"] }, { "required": ["focus_behavior"] }] },
-      "then": { "required": ["ctv_ad_experience"] }
+      "then": {
+        "properties": {
+          "ctv_ad_experience": { "const": "menu" }
+        },
+        "required": ["ctv_ad_experience"]
+      }
     }
   ],
   "x-adcp-validation": {
     "verifier_constraints": {
       "ctv_experience_matrix": "ctv_ad_experience on native_in_feed must be menu or overlay",
       "menu_profile_fields": "menu_placement and focus_behavior require ctv_ad_experience menu",
-      "focus_video_pairing": "focus_behavior autoplay_muted or autoplay_sound requires the effective slots to include the video asset group"
+      "focus_video_pairing": "focus_behavior autoplay_muted or autoplay_sound requires the effective slots to include the video asset group",
+      "ctv_activation_copy_slots": "push_notification activation_methods requires an activation_message slot; text_message requires an activation_text_message slot; email requires activation_email_subject and activation_email_body slots (SHOULD — downgraded to warning once warnings[] channel lands)"
     },
     "spec": "docs/creative/ctv-experiences.mdx"
   },

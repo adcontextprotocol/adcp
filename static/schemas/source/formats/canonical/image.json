@@ -72,9 +72,13 @@
       "if": { "required": ["ctv_ad_experience"] },
       "then": {
         "properties": {
-          "ctv_ad_experience": { "enum": ["pause", "screensaver"] },
-          "motion_level": { "enum": ["static", "limited_motion"] }
+          "ctv_ad_experience": { "enum": ["pause", "screensaver"] }
         }
+      }
+    },
+    {
+      "properties": {
+        "motion_level": { "enum": ["static", "limited_motion"] }
       }
     }
   ],
@@ -206,7 +210,8 @@
   "x-adcp-validation": {
     "verifier_constraints": {
       "ctv_experience_matrix": "ctv_ad_experience on image must be pause or screensaver",
-      "motion_level_static_canonical": "motion_level full_motion is rejected on image"
+      "motion_level_static_canonical": "motion_level full_motion is rejected on image",
+      "ctv_activation_copy_slots": "push_notification activation_methods requires an activation_message slot; text_message requires an activation_text_message slot; email requires activation_email_subject and activation_email_body slots (SHOULD — downgraded to warning once warnings[] channel lands)"
     },
     "spec": "docs/creative/ctv-experiences.mdx"
   },

@@ -28,13 +28,24 @@
 # checks against `params`), not a generic JSON Schema compiled at request
 # time.
 #
-# Step `reject_focus_autoplay_without_video_slot` is the only vector with NO
-# JSON Schema enforcement at all: native_in_feed.json documents
-# `focus_video_pairing` in `x-adcp-validation.verifier_constraints` prose but
-# has no `allOf` conditional checking that `focus_behavior: autoplay_*`
-# requires a `video` entry in the format option's effective `slots[]`. This
-# step is graded purely on the runtime's semantic interpretation of that
-# prose rule.
+# Two steps have NO JSON Schema enforcement at all — they are graded purely on
+# the runtime's semantic interpretation of the `x-adcp-validation.verifier_constraints`
+# prose rules:
+#
+# `reject_focus_autoplay_without_video_slot` — native_in_feed.json documents
+# `focus_video_pairing` in verifier_constraints prose but has no `allOf`
+# conditional checking that `focus_behavior: autoplay_*` requires a `video`
+# entry in the format option's effective `slots[]`.
+#
+# `reject_pause_on_html5` — html5.json carries no CTV `allOf` conditional at
+# all; the semantic validator's `ctv_experience_matrix` check is the only layer
+# that rejects a `ctv_ad_experience` value on a canonical not listed in the
+# matrix (such as `html5`).
+#
+# Duration floors (`reject_overlay_short_duration`) are also semantic-only:
+# the numeric thresholds live in `VIDEO_VAST_DURATION_FLOOR_MS` in the
+# reference validator, not in a JSON Schema `allOf` conditional, so a schema-
+# only validator would not catch a 5-second overlay product declaration.
 
 id: ctv_experience_validate_input
 version: "1.0.0"
@@ -61,11 +72,13 @@ narrative: |
   This storyboard seeds one product per matrix row via `comply_test_controller`
   and calls `validate_input` with `targets: [{ kind: "product", id: ... }]`
   so the agent under test evaluates the buyer's manifest against that
-  product's declared CTV parameters. Six pairings validate; seven seeded
+  product's declared CTV parameters. Six pairings validate; eight seeded
   products carry an experience/canonical or constraint pairing that never
-  should have been authored, testing whether the runtime still catches it;
-  and one of those seven exercises the menu focus/video pairing, which is
-  documented but not schema-enforced.
+  should have been authored, testing whether the runtime still catches it.
+  Two of those eight are purely semantic — no JSON Schema enforcement backs
+  them: the focus/video pairing (`reject_focus_autoplay_without_video_slot`)
+  and the unlisted-canonical matrix row (`reject_pause_on_html5`, where
+  `html5` has no CTV allOf conditional at all).
 
 agent:
   interaction_model: creative
@@ -81,9 +94,9 @@ caller:
 
 prerequisites:
   description: |
-    The runner seeds thirteen fictional CTV products for the StreamHaus
+    The runner seeds fourteen fictional CTV products for the StreamHaus
     publisher via `comply_test_controller`: six with valid experience/canonical
-    pairings (one per matrix row) and seven with intentionally invalid
+    pairings (one per matrix row) and eight with intentionally invalid
     pairings or constraint values used only for the defense-in-depth phase
     (see the grading notes above).
   test_kit: "test-kits/acme-outdoor.yaml"
@@ -433,7 +446,7 @@ fixtures:
 
     - product_id: "ctv_invalid_pause_full_motion"
       name: "CTV Invalid — Pause image with motion_level full_motion"
-      description: "Seeded product whose format_option declares ctv_ad_experience: pause with motion_level: full_motion; image narrows motion_level to static/limited_motion whenever ctv_ad_experience is set — used only to test runtime defense in depth."
+      description: "Seeded product whose format_option declares ctv_ad_experience: pause with motion_level: full_motion; image narrows motion_level to static/limited_motion unconditionally — used only to test runtime defense in depth."
       publisher_properties:
         - publisher_domain: "tv.streamhaus.example"
           selection_type: "all"
@@ -487,6 +500,36 @@ fixtures:
           pricing_model: "cpm"
           currency: "USD"
           fixed_price: 40
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    - product_id: "ctv_invalid_pause_html5"
+      name: "CTV Invalid — Pause on html5 (unlisted canonical)"
+      description: "Seeded product whose format_option declares ctv_ad_experience: pause on html5, a canonical absent from the experience-to-canonical matrix entirely — used only to test runtime defense in depth against the semantic-layer ctv_experience_matrix check for unlisted canonicals (html5.json has no CTV allOf conditional)."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "html5"
+          format_option_id: "ctv_invalid_pause_html5_option"
+          params:
+            ctv_ad_experience: "pause"
+            width: 1920
+            height: 1080
+            slots:
+              - { asset_group_id: "html5_bundle", asset_type: "zip", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_invalid_pause_html5_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 30
       reporting_capabilities:
         available_reporting_frequencies: ["daily"]
         expected_delay_minutes: 60
@@ -1005,7 +1048,7 @@ phases:
           - check: field_value
             path: "results[0].result_kind"
             value: "validated_fail"
-            description: "image narrows motion_level to static or limited_motion whenever ctv_ad_experience is set"
+            description: "image narrows motion_level to static or limited_motion unconditionally — the image canonical never accepts full_motion regardless of whether ctv_ad_experience is declared"
           - check: field_value
             path: "results[0].violations[0].rule"
             value: "motion_level_static_canonical"
@@ -1066,3 +1109,44 @@ phases:
             path: "results[0].violations[0].field"
             value: "params.focus_behavior"
             description: "Violation points at the seeded product's own focus_behavior declaration, not the manifest"
+
+      - id: reject_pause_on_html5
+        title: "Reject pause declared on an html5 product (unlisted canonical)"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#experience-to-canonical-matrix"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "html5"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_invalid_pause_html5_option"
+            assets:
+              html5_bundle:
+                asset_type: "zip"
+                url: "https://cdn.acmeoutdoor.example/ctv/pause-invalid.zip"
+          targets:
+            - kind: "product"
+              id: "ctv_invalid_pause_html5"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_fail"
+            description: "html5 is absent from the experience-to-canonical matrix entirely; the semantic validator's ctv_experience_matrix check is the only layer that rejects this pairing — html5.json has no CTV allOf conditional"
+          - check: field_value
+            path: "results[0].violations[0].rule"
+            value: "ctv_experience_matrix"
+            description: "Violation cites the semantic ctv_experience_matrix rule (no allOf conditional on html5 — semantic layer only)"
+          - check: field_value
+            path: "results[0].violations[0].field"
+            value: "params.ctv_ad_experience"
+            description: "Violation points at the seeded product's own ctv_ad_experience declaration, not the manifest"

@@ -25,7 +25,7 @@ One format option declares at most one value from this list.
 
 ## Experience-to-canonical matrix
 
-Validation rejects any `ctv_ad_experience` value on a canonical format that isn't listed below — each canonical's schema enforces its own row via `x-adcp-validation.verifier_constraints.ctv_experience_matrix`. The matrix is deliberately plural where the market is: two sellers can both legitimately claim `pause`, one shipping an image and the other a VAST tag.
+Validation rejects any `ctv_ad_experience` value on a canonical format that isn't listed below — each of the five listed canonicals enforces its own row via `x-adcp-validation.verifier_constraints.ctv_experience_matrix` schema conditionals; the reference validator's `ctv_experience_matrix` check covers unlisted canonicals (e.g. `html5`) through the semantic layer. The matrix is deliberately plural where the market is: two sellers can both legitimately claim `pause`, one shipping an image and the other a VAST tag.
 
 | Experience | Permitted canonicals | Why |
 |---|---|---|
@@ -74,9 +74,9 @@ A menu hero remains `native_in_feed` rather than `video_hosted` or `video_vast` 
 
 Two shared vocabularies carry the interaction layer across every CTV-capable canonical.
 
-**`motion_level`** — one of `static`, `limited_motion`, `full_motion`, mapping 1:1 to the ratified AdCOM creative attributes 21–23. Sellers constrain the accepted level on a format option; buyers declare the level their creative carries. `image` narrows `motion_level` to `static` or `limited_motion` whenever `ctv_ad_experience` is set — `full_motion` has no meaning on a static-image canonical rendering a pause or screensaver frame.
+**`motion_level`** — one of `static`, `limited_motion`, `full_motion`, mapping 1:1 to the ratified AdCOM creative attributes 21–23. Sellers constrain the accepted level on a format option; buyers declare the level their creative carries. `image` always narrows `motion_level` to `static` or `limited_motion` — `full_motion` maps to Full-Motion Video (AdCOM attr 23), which has no meaning on a static-image canonical regardless of whether a CTV experience is declared.
 
-**`activation_methods`** — the array of viewer activation mechanisms a format option offers, drawn from `qr_code`, `deep_link`, `push_notification`, `email`, `tune_in`, `text_message`. Formats offering copy-bearing activations declare character-limited slots via `slots_override` (for example `activation_message` for an SMS or push body, or `activation_email_subject` / `activation_email_body`). Absent a dedicated slot, the activation resolves through the manifest's `landing_page_url`.
+**`activation_methods`** — the array of viewer activation mechanisms a format option offers, drawn from `qr_code`, `deep_link`, `push_notification`, `email`, `tune_in`, `text_message`. Formats offering copy-bearing activations declare normative character-limited copy slots via `slots_override`: `push_notification` → `activation_message`; `text_message` → `activation_text_message`; `email` → `activation_email_subject` + `activation_email_body`. Absent a dedicated slot, the activation resolves through the manifest's `landing_page_url`.
 
 **Activations are engagement events, never impressions.** A viewer scanning a QR code, following a deep link, or responding to a push notification generates an engagement event on top of the one rendered ad impression — it does not create a second impression. See [Measurement](#measurement).
 
@@ -89,7 +89,7 @@ This means `validate_input` checks two different things depending on the target:
 - **`targets: [{ kind: "canonical", id: "video_vast" }]`** validates manifest structure only — asset types, VAST delivery shape, and any asset-level hints such as `duration_ms` on the `vast_tag` asset. It cannot evaluate `ctv_ad_experience`, because the manifest doesn't carry it.
 - **`targets: [{ kind: "product", id: "..." }]`** validates the manifest against that product's specific format-option declaration, including its experience and duration constraints. A `vast_tag` asset whose `duration_ms` hint is below an `overlay` product's 10-second floor returns `validated_fail` with a `duration_ms_range`-style violation citing the product's declared floor.
 
-Whether a given format option's `ctv_ad_experience` pairing is legal at all — the matrix, the duration floors, `in_scene`'s no-interactivity rule, and the `focus_video_pairing` slot check — is evaluated when the format option itself is authored and validated against the canonical's schema, before any buyer manifest exists to check. See [Canonical formats — validate_input](/docs/creative/canonical-formats#validation-flow--validate_input) for the general `validate_input` contract.
+Whether a given format option's `ctv_ad_experience` pairing is legal at all is evaluated when the format option itself is authored, before any buyer manifest exists to check. The enforcement is two-layer: **JSON Schema conditionals** (in the canonical's `allOf`) reject categorically invalid pairings — an unlisted experience value, `menu` on `video_vast`, missing `creative_type: "nonlinear"`, or `vpaid_enabled: true` on `in_scene`; **the semantic validator** (`ctv_experience_matrix` check) enforces everything else — duration floors (overlay/squeezeback ≥ 10 s, in_scene ≥ 3 s), the matrix row for unlisted canonicals such as `html5`, the `focus_video_pairing` slot check, and the `ctv_activation_copy_slots` slot check. Rules appear in one place only: numeric duration constants live exclusively in the semantic validator, not duplicated into schema conditionals. See [Canonical formats — validate_input](/docs/creative/canonical-formats#validation-flow--validate_input) for the general `validate_input` contract.
 
 ## OpenRTB and AdCOM signaling annex
 
