@@ -873,13 +873,24 @@ Seller-level conversion tracking capabilities. Declares what the seller supports
 
 #### portfolio
 
-Inventory portfolio information:
+Inventory portfolio information. Media-buy sellers SHOULD declare both routing
+arrays. The existing `primary_*` names are retained for 3.x compatibility, but
+a present array is exhaustive for brief routing: buyers MAY skip the agent when
+a brief's requested countries or channels do not intersect it. Omission means
+unknown scope, never global coverage. These are routing pre-filters—not promises
+that a matching product is currently available.
+
+`primary_countries` is not executable geo-targeting capability. It answers
+whether the sales agent accepts a country-scoped discovery brief; the structured
+fields under `media_buy.execution.targeting` and each product's
+`overlay_support` determine whether and how a returned product can execute
+geographic targeting.
 
 | Field                  | Type     | Description                                            |
 | ---------------------- | -------- | ------------------------------------------------------ |
 | `publisher_domains`    | string[] | **Required.** Publisher domains this seller represents |
-| `primary_channels`     | string[] | Main advertising channels                              |
-| `primary_countries`    | string[] | Main countries (ISO codes)                             |
+| `primary_channels`     | string[] | Complete AdCP channel allowlist for briefs this agent accepts; omission means unknown |
+| `primary_countries`    | string[] | Complete ISO 3166-1 alpha-2 country allowlist for briefs this agent accepts; omission means unknown |
 | `description`          | string   | Markdown portfolio description                         |
 | `advertising_policies` | string   | Content policies and restrictions                      |
 
