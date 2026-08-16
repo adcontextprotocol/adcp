@@ -1068,9 +1068,17 @@ export function createCreativeAgentServer(agentBaseUrl: string, principalId = 'i
 
     try {
       const result = handler((args as ToolArgs) || {});
+      const reportedErrors = Array.isArray((result as { errors?: unknown[] }).errors)
+        ? (result as { errors: unknown[] }).errors.length
+        : 0;
       return {
         structuredContent: result,
-        content: [{ type: 'text' as const, text: JSON.stringify(result) }],
+        content: [{
+          type: 'text' as const,
+          text: reportedErrors > 0
+            ? `${name} completed with ${reportedErrors} reported error${reportedErrors === 1 ? '' : 's'}.`
+            : `${name} completed successfully.`,
+        }],
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Internal error';

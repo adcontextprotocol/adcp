@@ -83,6 +83,7 @@ Specialisms are grouped below by parent protocol.
 | `sales-proposal-mode` | deprecated | **Deprecated in 3.1.** Drop this claim and replace with `sales-guaranteed` + `media_buy.supports_proposals: true`. See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823). |
 | `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
 | `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
+| `sales-dooh` | stable | Digital out-of-home, non-guaranteed venue and screen inventory |
 | `sales-social` | stable | Social media advertising platform with self-service flows |
 | `governance-aware-seller` | stable | Seller composes with the buyer's campaign-governance agent after baseline registration — calls [`check_governance`](/docs/governance/campaign/tasks/check_governance) and propagates approvals, conditions, and denials unchanged. Optional claim for the full governance-check loop. |
 | `audience-sync` | stable | Syncs buyer-provided audience segments into a platform for activation (uses [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences), [`list_accounts`](/docs/accounts/tasks/list_accounts)) |
@@ -142,13 +143,17 @@ The `sales-*` specialisms are not mutually exclusive — a hybrid platform with 
 
 <Step title="Is your inventory channel-specific?">
 
-Three specialisms apply to specific delivery channels and have their own storyboards. If you only sell one of these channel types, claim only the matching specialism. If you also sell general display or video inventory outside these channels, continue to Step 2.
+Four specialisms apply to specific delivery channels and have their own storyboards. If you only sell one of these channel types, claim only the matching specialism. If you also sell general display or video inventory outside these channels, continue to Step 2.
 
 | If you operate… | Claim |
 |---|---|
 | Broadcast linear TV with FCC cancellation rules | `sales-broadcast-tv` |
 | Catalog-driven dynamic ads (product listings, restaurant menus, hotel listings, local commerce) | `sales-catalog-driven` |
+| Non-guaranteed digital out-of-home venue and screen inventory | `sales-dooh` |
+| Guaranteed-only digital out-of-home inventory | `sales-guaranteed` |
 | Social platform with platform-managed creative | `sales-social` |
+
+`sales-dooh` is the non-guaranteed DOOH profile. Guaranteed-only DOOH sellers still route `dooh` briefs through their portfolio declaration, but claim `sales-guaranteed` until a dedicated guaranteed DOOH profile exists.
 
 </Step>
 
@@ -289,6 +294,7 @@ The kebab↔snake swap between wire specialism IDs and storyboard categories is 
 | Specialism ID (wire) | Channel / tool family | Storyboard category | Variant scenarios |
 |----------------------|-----------------------|---------------------|-------------------|
 | `sales-broadcast-tv` | `channels: ['linear_tv']` | [`sales_broadcast_tv`](/compliance/latest/specialisms/sales-broadcast-tv/index.yaml) | — |
+| `sales-dooh` | `channels: ['dooh']` | [`sales_dooh`](/compliance/latest/specialisms/sales-dooh/index.yaml) | — |
 | `sales-social` | `channels: ['social']` | [`sales_social`](/compliance/latest/specialisms/sales-social/index.yaml) | — |
 | `audience-sync` | [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) tool | [`audience_sync`](/compliance/latest/specialisms/audience-sync/index.yaml) | — |
 | `property-lists` | `property_list` tools | [`property_lists`](/compliance/latest/specialisms/property-lists/index.yaml) | — |

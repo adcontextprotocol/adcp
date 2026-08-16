@@ -35,4 +35,119 @@ DOOH uses `image` or `video_hosted`, narrowed to the screen's pixel dimensions, 
 
 Most DOOH renderers cannot fire browser pixels or accept clickthrough interaction. Declare only slots and macros the runtime can actually support. Delivery and measurement come from screen logs, venue counts, panels, or other sources on the product/package.
 
+## Declaring a non-guaranteed DOOH seller
+
+DOOH uses three existing declarations for three different jobs:
+
+- `media_buy.portfolio.primary_channels` routes suitable briefs to the seller.
+- `specialisms: ["sales-dooh"]` opts into the executable non-guaranteed DOOH compliance storyboard.
+- Each returned product carries `channels: ["dooh"]` and its own `delivery_type`.
+
+A seller whose inventory is exclusively non-guaranteed DOOH declares:
+
+```json
+{
+  "supported_protocols": ["media_buy"],
+  "specialisms": ["sales-dooh"],
+  "media_buy": {
+    "portfolio": {
+      "publisher_domains": ["metro-media.example"],
+      "primary_channels": ["dooh"]
+    }
+  }
+}
+```
+
+`sales-dooh` is explicitly the **digital out-of-home — non-guaranteed** profile, not a universal claim for every DOOH seller. A guaranteed-only DOOH seller claims `sales-guaranteed` and routes `dooh` briefs through `media_buy.portfolio.primary_channels`; it does not claim `sales-dooh` unless a future guaranteed DOOH profile defines that contract. A seller that also offers general display or video auction inventory claims `sales-non-guaranteed` as well; the generic claim is not required merely because the DOOH products use `delivery_type: "non_guaranteed"`.
+
+## Model venue and screen inventory with products and placements
+
+DOOH does not require a separate Product subtype. Use publisher properties for the inventory estate, public placements for buyer-addressable screens or loop positions, and canonical format options for creative eligibility:
+
+```json
+{
+  "product_id": "metro_concourse_portrait_loop",
+  "name": "Metro concourse portrait loop",
+  "description": "Portrait screens bundled across fictional metro concourses.",
+  "channels": ["dooh"],
+  "delivery_type": "non_guaranteed",
+  "publisher_properties": [{
+    "publisher_domain": "metro-media.example",
+    "selection_type": "by_tag",
+    "property_tags": ["transit_venues"]
+  }],
+  "placements": [{
+    "kind": "seller_inline",
+    "publisher_domain": "metro-media.example",
+    "placement_id": "central_concourse_portrait_screens",
+    "name": "Central concourse portrait screens",
+    "mode": "included",
+    "tags": ["transit", "concourse", "portrait"]
+  }],
+  "format_options": [{
+    "format_option_id": "portrait_image_1080x1920",
+    "format_kind": "image",
+    "params": {
+      "width": 1080,
+      "height": 1920,
+      "max_file_size_kb": 10240
+    }
+  }],
+  "pricing_options": [{
+    "pricing_option_id": "metro_concourse_cpm",
+    "pricing_model": "cpm",
+    "currency": "USD",
+    "floor_price": 8
+  }],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 240,
+    "timezone": "UTC",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "spend", "plays", "dooh_metrics"],
+    "date_range_support": "date_range"
+  }
+}
+```
+
+Set a placement to `targetable` only when the buyer can select it through the product's declared placement-selection overlay. Use `included` for screens or loop inventory already bundled into the product. Seller-private player IDs and ad-server mappings are not public placement IDs.
+
+If loop position, share of voice, or scheduling changes what the buyer can purchase, expose it as a distinct product or public placement with the applicable commercial terms. Existing fixed-allocation DOOH offers can declare `pricing_options[].parameters` on a `flat_rate` option with `type: "dooh"`, plus `sov_percentage`, `loop_duration_seconds`, `min_plays_per_hour`, `venue_package`, `duration_hours`, and `daypart`. Guaranteed-only offers use the `sales-guaranteed` profile.
+
+For CPM discovery, use existing `forecast`, `delivery_measurement`, and `measurement_terms` fields to explain projected plays or impressions, the audience currency and methodology, and which measurement governs billing. AdCP does not yet have an equivalent standard machine-readable loop/allocation block on auction CPM pricing. Until that gap is addressed, put the material terms in distinct product or placement identity plus buyer-readable descriptions, and do not imply that free text is structurally comparable across sellers. When inventory is assembled only for one discovery request, return an `is_custom: true` product with `expires_at` rather than inventing a persistent catalog identity.
+
+## Canonical formats on every 3.2 path
+
+New AdCP 3.2 products author creative requirements in `format_options[]`. The shared 3.x schema still reads deprecated `format_ids[]` for migration, but schema validity alone does not make a named format resolvable.
+
+An intermediary importing or passing through DOOH products therefore returns canonical `format_options[]`, or first resolves every legacy reference through its authoritative format catalog and translates the resolved constraints losslessly or with explicit narrowing. It must not guess dimensions, slots, codecs, durations, or other constraints from an ID. If resolution or safe translation fails, it omits or rejects the product with an actionable error; it must not forward a legacy-only product from a path that does not fetch the referenced catalog. The `sales-dooh` storyboard checks the canonical declaration on the exact 3.2 product-list path.
+
+## Optional attention without impression identity
+
+Attention measurement is optional and is not required to claim `sales-dooh`. When a product does offer anonymous people-in-frame or gaze/attention measurement, do not coerce it into `impressions`. Declare the measurement vendor's metrics under `reporting_capabilities.vendor_metrics`, then report values through `vendor_metric_values`:
+
+```json
+{
+  "reporting_capabilities": {
+    "vendor_metrics": [
+      { "vendor": { "domain": "vision-metrics.example" }, "metric_id": "people_in_frame" },
+      { "vendor": { "domain": "vision-metrics.example" }, "metric_id": "gaze_attention_seconds" }
+    ]
+  }
+}
+```
+
+The vendor's measurement-agent catalog defines units, methodology, accreditations, and whether the metric is observed or modeled. The existing `media_buy_seller/vendor_metric_accountability` scenario verifies declaration, commitment, and delivery for sellers whose conformance profile selects that contract; it is not part of the core `sales-dooh` claim. Ordinary play-reporting DOOH sellers do not need vendor metrics. AdCP does not require a persistent person or device identifier for these aggregate observations. A seller must not manufacture one merely to fit an impression-oriented workflow. Standard DOOH delivery facts such as raw plays, screens used, screen time, share of voice, and venue breakdown use `plays` and `dooh_metrics`.
+
+## Storyboard coverage
+
+The [`sales-dooh` storyboard](/compliance/latest/specialisms/sales-dooh/index.yaml) verifies the channel-specific path:
+
+1. The seller declares `sales-dooh` and routes `dooh` briefs.
+2. Exact product listing returns non-guaranteed DOOH inventory with canonical screen formats, publisher scope, and public placements.
+3. When supported, the buyer preflights a screen-compatible creative against the product; the required flow syncs it and creates a sandbox media buy using the returned product, pricing option, and bid.
+4. Deterministically injected play and screen activity reconciles to the purchased package through `plays` and `dooh_metrics`.
+
+Generic media-buy storyboards continue to test lifecycle and error semantics. The DOOH specialism does not require vendor attention measurement, clicks, conversions, browser pixels, or persistent audience identifiers.
+
 See [Canonical formats](/docs/creative/canonical-formats), [Accessibility](/docs/creative/accessibility), and [Media products](/docs/media-buy/product-discovery/media-products).
