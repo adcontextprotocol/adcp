@@ -135,7 +135,21 @@ When products are returned from `get_products`, each product's `channels` array 
 
 ## Declaring channel support in capabilities
 
-Buyers should call `get_adcp_capabilities` to discover which channels a seller supports before filtering `get_products` requests. The `portfolio.primary_channels` field lists the seller's main channels.
+Buyers should call `get_adcp_capabilities` before filtering `get_products`
+requests. When present, `portfolio.primary_channels` is the seller's complete
+brief-routing channel allowlist, so a buyer may skip the seller when no requested
+channel intersects it. Omission means unknown scope, not support for every
+channel. A match is not an availability guarantee; call `get_products` to
+resolve current inventory and the rest of the brief.
+
+AdCP 3.2 applies the same exhaustive routing meaning to
+`portfolio.primary_countries`. Sellers upgrading from 3.1 that populated either
+`primary_*` array with only representative values MUST expand it to the complete
+brief-routing scope or omit it until they can do so. Empty and duplicate arrays
+remain wire-valid in 3.2 for compatibility but produce Canary advisories; 4.0 is
+expected to require non-empty, unique declarations. The country array does not
+replace `media_buy.execution.targeting` geo capabilities or product
+`overlay_support`.
 
 ## Migration steps
 

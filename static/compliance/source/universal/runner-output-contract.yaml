@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.10.0"
+version: "2.11.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -64,6 +64,7 @@ authored_check_kinds:
   - field_less_than
   - field_equals_context
   - field_in_context_array
+  - all_fields_in_context_array
   - upstream_traffic
   - canonical_format_satisfaction
 
@@ -198,6 +199,7 @@ validation_result:
                               # any_of | refs_resolve |
                               # a2a_submitted_artifact | field_less_than |
                               # field_equals_context | field_in_context_array |
+                              # all_fields_in_context_array |
                               # upstream_traffic |
                               # canonical_format_satisfaction |
                               # cross_response_field_equal |
@@ -285,9 +287,15 @@ validation_result:
                               #                          `validation.context_key` in the
                               #                          storyboard accumulator.
                               #   field_in_context_array → array captured from
+                              #                          `validation.context_key`; the
+                              #                          scalar observed field MUST be
+                              #                          a member.
+                              #   all_fields_in_context_array → array captured from
                               #                          `validation.context_key`;
-                              #                          the observed field MUST be
-                              #                          a member of this array.
+                              #                          EVERY terminal value resolved
+                              #                          by the wildcard path MUST be a
+                              #                          member. Zero terminal values
+                              #                          pass vacuously.
                               #   capture_path_not_resolvable → the context_outputs path
                               #                          string that failed to resolve
                               #                          (e.g. "signals[0].signal_agent_segment_id")
@@ -359,9 +367,10 @@ validation_result:
                               #   field_equals_context → the observed value at `path`
                               #                          (any JSON type, null when the
                               #                          field was missing).
-                              #   field_in_context_array → the observed value at
-                              #                          `path` (any JSON type, null
-                              #                          when the field was missing).
+                              #   field_in_context_array → the observed scalar value.
+                              #   all_fields_in_context_array → array of all resolved
+                              #                          terminal values (empty when
+                              #                          none resolve).
                               #   capture_path_not_resolvable → the value that was
                               #                          resolved at the path, or null
                               #                          when the path did not exist.
@@ -428,7 +437,8 @@ validation_result:
       signal_agent_segment_id"). For unresolved_substitution, json_pointer MUST
       be null (the substitution is pre-wire and no response path is implicated).
     cross_step_comparison_checks: |
-      field_less_than, field_equals_context, and field_in_context_array are
+      field_less_than, field_equals_context, field_in_context_array, and
+      all_fields_in_context_array are
       authored checks that compare
       a field on this step's response against a value from the storyboard
       accumulator (populated by prior steps' `context_outputs`). Three

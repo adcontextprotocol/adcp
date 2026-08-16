@@ -106,7 +106,14 @@ Sales agents use the [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilit
 
 1. **Transparency**: Buyers can see what publishers an agent represents
 2. **Validation enablement**: Provides publisher domains for buyers to verify authorization via `adagents.json`
-3. **Portfolio overview**: Includes primary channels, countries, and portfolio description
+3. **Brief routing**: Present primary-channel and primary-country arrays are exhaustive allowlists for briefs the agent accepts. Omission means unknown scope, not global coverage.
+
+The routing arrays do not guarantee inventory availability. Buyers may skip an
+agent when a brief has no country/channel intersection, but matching scope still
+requires `get_products` to resolve account access, dates, formats, policy, and
+current inventory. Intermediaries MUST NOT present inferred upstream scope as if
+the upstream sales agent declared it; they may advertise a narrower scope as
+their own operator-confirmed routing constraint.
 
 ### Property Declaration Example
 

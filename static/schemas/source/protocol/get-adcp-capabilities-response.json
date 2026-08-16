@@ -1543,7 +1543,7 @@
         },
         "portfolio": {
           "type": "object",
-          "description": "Information about the seller's media inventory portfolio. Expected for media_buy sellers — buyers use this to understand inventory coverage and verify authorization via adagents.json.",
+          "description": "Information about the seller's media inventory portfolio. Media-buy sellers SHOULD publish primary_channels and primary_countries as their complete brief-routing scope. Buyers use publisher_domains to verify authorization via adagents.json. Omitted routing arrays mean unknown scope and MUST NOT be interpreted as global coverage.",
           "properties": {
             "publisher_domains": {
               "type": "array",
@@ -1556,14 +1556,14 @@
             },
             "primary_channels": {
               "type": "array",
-              "description": "Primary advertising channels in this portfolio",
+              "description": "Complete list of AdCP media channels for which this sales agent accepts and can meaningfully answer product-discovery briefs. When present, this is an exhaustive brief-routing allowlist: buyers MAY skip the agent when a brief's requested channels do not intersect it. Omission means channel scope is unknown and MUST NOT be interpreted as support for every channel. This is a routing pre-filter, not a promise of current product availability.",
               "items": {
                 "$ref": "/schemas/enums/channels.json"
               }
             },
             "primary_countries": {
               "type": "array",
-              "description": "Primary countries (ISO 3166-1 alpha-2) where inventory is concentrated",
+              "description": "Complete list of ISO 3166-1 alpha-2 countries for which this sales agent accepts and can meaningfully answer product-discovery briefs. When present, this is an exhaustive brief-routing allowlist: buyers MAY skip the agent when a brief's requested countries do not intersect it. Omission means country scope is unknown and MUST NOT be interpreted as global coverage. This is a routing pre-filter, not a promise of current product availability and not an executable geo-targeting declaration; media_buy.execution.targeting geo capabilities and each product's overlay_support remain authoritative for targeting execution.",
               "items": {
                 "type": "string",
                 "pattern": "^[A-Z]{2}$"
