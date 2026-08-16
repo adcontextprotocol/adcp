@@ -26,7 +26,7 @@
     },
     "timezone": {
       "type": "string",
-      "description": "Timezone for reporting periods. Use 'UTC' or IANA timezone (e.g., 'America/New_York'). Critical for daily/monthly frequency alignment.",
+      "description": "Timezone for this product's reporting periods. Use 'UTC' or an IANA timezone (e.g., 'America/New_York'). This explicit reporting clock may equal Account.timezone or differ when the upstream platform reports on a separate boundary; buyers MUST use this value for daily/monthly report alignment.",
       "examples": [
         "UTC",
         "America/New_York",

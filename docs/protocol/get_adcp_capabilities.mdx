@@ -345,7 +345,8 @@ Account and authentication capabilities. All sellers should declare this section
 |-------|------|-------------|
 | `supported_billing` | string[] | **Required.** Billing models this seller supports: `operator`, `agent`, or `advertiser`. When the buyer calls `sync_accounts`, every entry must select one of these values. |
 | `supported_account_currency_modes` | string[] | **Required for 3.2 advertiser-account provisioning; additive/optional on the shared 3.x wire schema for 3.1 compatibility.** Models this seller supports: `fixed`, `per_media_buy`, or both. A buyer includes `currency` in `sync_accounts` for `fixed` and omits it for `per_media_buy`. When both are advertised, presence or absence selects the model. Absence means an older seller has not exposed currency-mode discovery; it does not imply support for either mode. |
-| `require_operator_auth` | boolean | Default: `false`. Declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported. When `true`, each operator authenticates independently and account-scoped calls use seller/storefront-assigned `account_id` values. When `false`, the agent is trusted and calls use the advertiser natural key: `brand` + `operator` + optional `operator_unit`, fixed `currency`, and `sandbox`. `operator_unit.id` belongs to the operator and is not the seller's `account_id`. Buyer-declared sellers normally provision through `sync_accounts`, MUST continue accepting the natural key, and SHOULD expose `list_accounts` so all key fields can be recovered after a cold start. |
+| `timezone` | object | **Required for 3.2 advertiser-account provisioning; additive/optional on the shared 3.x wire schema for compatibility.** `seller_fixed` advertises one `fixed_timezone` for every account. `account_fixed` declares whether each immutable account timezone is `seller_assigned` or `buyer_selected`; buyer-selected mode also publishes the exact `supported_timezones`. |
+| `require_operator_auth` | boolean | Default: `false`. Declares who must authenticate; it does not by itself declare whether OAuth is used, whether `list_accounts` is exposed, or which `sync_accounts` modes are supported. When `true`, each operator authenticates independently and account-scoped calls use seller/storefront-assigned `account_id` values. When `false`, the agent is trusted and calls use the advertiser natural key: `brand` + `operator` + optional `operator_unit`, fixed `currency`, optional buyer-selected `timezone`, and `sandbox`. `operator_unit.id` belongs to the operator and is not the seller's `account_id`. Buyer-declared sellers normally provision through `sync_accounts`, MUST continue accepting the natural key, and SHOULD expose `list_accounts` so all key fields can be recovered after a cold start. |
 | `authorization_endpoint` | string | OAuth URL for operator authentication. Present when the seller supports OAuth for operator authentication. Relevant when `require_operator_auth: true`; if absent, operators obtain credentials out-of-band (seller portal, API key). |
 | `required_for_products` | boolean | Default: `false`. When `true`, the buyer must establish an account before calling [`get_products`](/docs/media-buy/task-reference/get_products). When `false`, the buyer can browse products without an account — useful for price comparison and discovery before committing to a seller. |
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
@@ -362,6 +363,11 @@ Declares whether the seller supports durable account lifecycle invalidation webh
   "account": {
     "supported_billing": ["operator", "agent"],
     "supported_account_currency_modes": ["fixed", "per_media_buy"],
+    "timezone": {
+      "mode": "account_fixed",
+      "account_selection": "buyer_selected",
+      "supported_timezones": ["America/New_York", "Europe/London", "UTC"]
+    },
     "notifications": {
       "supported": true,
       "registration_task": "sync_accounts",
@@ -376,6 +382,12 @@ Declares whether the seller supports durable account lifecycle invalidation webh
 When `supported: false` or absent, buyers MUST NOT assume durable account status webhooks are available. They can still use the one-shot `sync_accounts.push_notification_config` callback for the initial provisioning result when offered, and poll `list_accounts` for later account status changes.
 
 See [Provision a seller-mediated account](/docs/accounts/provisioning-walkthrough) for the complete discovery, registration, human setup, webhook, and repair sequence.
+
+#### account.timezone
+
+Account timezone is an immutable operational default, not an assumption that every upstream clock is identical. A `seller_fixed` seller advertises one `fixed_timezone` and buyers omit `timezone` during provisioning. An `account_fixed` seller returns a timezone on every account; when `account_selection` is `buyer_selected`, buyers MUST provide one advertised value to `sync_accounts`, and that value participates in the natural account key. When it is `seller_assigned`, buyers omit the field and discover the value from `sync_accounts` or `list_accounts`.
+
+Calendar-day features inherit `Account.timezone` only when their capability says so. Product reporting continues to use `reporting_capabilities.timezone`, account financials use the timezone returned by `get_account_financials`, and daily caps use `budget_capping.timezone_basis`. This prevents a seller from claiming that distinct reporting, billing, and delivery clocks are aligned when the upstream platform does not align them.
 
 #### account.identity_updates
 
@@ -399,7 +411,7 @@ See [`sync_accounts` identity reconciliation](/docs/accounts/tasks/sync_accounts
 
 #### Auth models
 
-**Buyer-declared accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, and account-scoped calls use that credential plus the advertiser natural key (`brand` + `operator` + optional `operator_unit`, fixed `currency`, and `sandbox`). `brand.countries[]` may qualify the commercial advertiser identity without targeting delivery. Most sellers expose `sync_accounts` so the buyer can declare the relationship and select billing or other settings before use. A seller MAY instead auto-provision on the first account-scoped request when those settings are unambiguous from capabilities or onboarding defaults; in that mode it MUST expose `list_accounts` as the recovery read and MUST keep accepting the natural key. Auto-provisioning is not conformant when buyer input is needed to resolve billing, terms, sandbox setup, notifications, or other account settings before the operation.
+**Buyer-declared accounts** (`require_operator_auth: false`) — The seller trusts the agent's identity claims. The agent authenticates once with its own bearer token, and account-scoped calls use that credential plus the advertiser natural key (`brand` + `operator` + optional `operator_unit`, fixed `currency`, optional buyer-selected `timezone`, and `sandbox`). `brand.countries[]` may qualify the commercial advertiser identity without targeting delivery. Most sellers expose `sync_accounts` so the buyer can declare the relationship and select billing or other settings before use. A seller MAY instead auto-provision on the first account-scoped request when those settings are unambiguous from capabilities or onboarding defaults; in that mode it MUST expose `list_accounts` as the recovery read and MUST keep accepting the natural key. Auto-provisioning is not conformant when buyer input is needed to resolve billing, timezone, terms, sandbox setup, notifications, or other account settings before the operation.
 
 **Account-id namespaces** (`require_operator_auth: true`) — Each operator must authenticate with the seller directly. The agent obtains a credential per operator — via OAuth using `authorization_endpoint`, or out-of-band — opens a per-operator session, and passes seller-assigned `account_id` values on subsequent requests. OAuth is credential acquisition, not an account taxonomy axis. Two namespace patterns use the same wire reference: upstream-managed sellers expose `list_accounts`, making explicit account resolution mandatory before account-scoped calls; seller-defined namespaces without `list_accounts` provide account IDs out-of-band. SDKs SHOULD lazily call `list_accounts` when first needed, auto-select a singleton, cache it per credential/session, and still send explicit `AccountRef` values on required-account calls.
 
@@ -434,6 +446,24 @@ When `lifecycle_tools` includes `refine_proposals`, `proposal_refinement` option
 An explicit `supported_dimensions` list is authoritative, including an empty list meaning the seller supports `ask`-only refinement but no typed dimensions. Buyers SHOULD NOT send omitted dimensions, and sellers MUST reject them at task level with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). Such errors SHOULD carry the [`error-details/unsupported-refinement-dimension.json`](https://adcontextprotocol.org/schemas/latest/error-details/unsupported-refinement-dimension.json) shape — `details.unsupported_dimension` and `details.supported_dimensions` — so an authorized buyer can remove or translate unsupported fields without another capability round trip. This task-level rejection applies to the complete request: no sibling refinement succeeds and no proposal is created, even when the unsupported dimension appears after otherwise supported entries. When `proposal_refinement` is absent, support is unknown; sellers report unsupported dimensions through `partial` or `unable` results instead. `proposal_refinement` is valid only when `lifecycle_tools` includes `refine_proposals`.
 
 This capability is about parse and validation support, never commercial willingness. Free-text `ask` interpretation remains seller competence rather than a boolean capability. Multi-proposal finalization deliberately retains its separate failure-as-discovery model through [`MULTI_FINALIZE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-multi-finalize-unsupported): it describes atomic infrastructure topology, while the core typed revision fields must be discoverable before a deterministic buyer constructs a request.
+#### budget_capping
+
+`budget_capping` advertises hard daily caps independently at `media_buy` and `package` scopes. A media-buy cap bounds aggregate daily spend without allocating it; package caps add subordinate ceilings and are never reservations. Sellers MUST reject an undeclared scope with `UNSUPPORTED_FEATURE` before mutation and MUST NOT reinterpret `daily_budget_cap` as a soft pacing target.
+
+```json
+{
+  "media_buy": {
+    "budget_capping": {
+      "supported_scopes": ["media_buy", "package"],
+      "supported_periods": ["day"],
+      "timezone_basis": "account",
+      "buyer_timezone_override": true
+    }
+  }
+}
+```
+
+`timezone_basis: "account"` uses the selected `Account.timezone`, allowing two accounts on the same seller to have different cap days. `timezone_basis: "fixed"` requires `fixed_timezone` and uses that feature-specific boundary for every buy. A buyer override is media-buy-level and applies to every cap on that buy. The accepted effective timezone is echoed as `budget_cap_timezone`; DST transition dates remain one calendar day carrying the full cap. Billing and reporting timezones remain independently explicit and MUST NOT be inferred from the cap basis.
 
 :::note 3.0 breaking changes
 The following fields have been removed from the capabilities response:
@@ -1520,7 +1550,8 @@ const buy = await client.createMediaBuy({
   "account": {
     "require_operator_auth": false,
     "supported_billing": ["operator", "agent"],
-    "supported_account_currency_modes": ["fixed", "per_media_buy"]
+    "supported_account_currency_modes": ["fixed", "per_media_buy"],
+    "timezone": { "mode": "seller_fixed", "fixed_timezone": "UTC" }
   },
   "media_buy": {
     "creative_approval_mode": "auto_approve",
@@ -1705,7 +1736,8 @@ An agent can implement multiple protocols from a single endpoint. This is common
   "account": {
     "require_operator_auth": false,
     "supported_billing": ["operator"],
-    "supported_account_currency_modes": ["fixed"]
+    "supported_account_currency_modes": ["fixed"],
+    "timezone": { "mode": "seller_fixed", "fixed_timezone": "UTC" }
   },
   "media_buy": {
     "creative_approval_mode": "require_human",

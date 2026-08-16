@@ -102,6 +102,15 @@
             "description": "Hard aggregate lifetime budget, denominated in media_buy.currency",
             "minimum": 0
           },
+          "daily_budget_cap": {
+            "type": "number",
+            "description": "Current hard aggregate spend ceiling per calendar day, denominated in media_buy.currency. It bounds total spend without allocating or reserving package spend.",
+            "minimum": 0
+          },
+          "budget_cap_timezone": {
+            "type": "string",
+            "description": "IANA timezone defining the shared calendar-day boundary for every aggregate and package daily cap. Present whenever any daily cap is set on the media buy."
+          },
           "budget_allocation": {
             "allOf": [
               {
@@ -284,6 +293,11 @@
                   "type": "number",
                   "description": "Accepted soft lifetime spend target for this package under seller-optimized allocation.",
                   "minimum": 0
+                },
+                "daily_budget_cap": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Current hard package spend ceiling per shared media-buy cap day, denominated in media_buy.currency. It is a subordinate ceiling, not a reserved allocation; media_buy.budget_cap_timezone defines the day boundary."
                 },
                 "currency": {
                   "type": "string",

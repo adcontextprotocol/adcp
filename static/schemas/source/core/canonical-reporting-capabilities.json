@@ -7,7 +7,10 @@
   "properties": {
     "available_reporting_frequencies": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-frequency.json" }, "minItems": 1, "uniqueItems": true },
     "expected_delay_minutes": { "type": "integer", "minimum": 0 },
-    "timezone": { "type": "string" },
+    "timezone": {
+      "type": "string",
+      "description": "Explicit reporting-period timezone for this product. It may equal Account.timezone or differ when the upstream platform reports on a separate boundary."
+    },
     "supports_webhooks": { "type": "boolean" },
     "available_metrics": { "type": "array", "items": { "$ref": "/schemas/enums/available-metric.json" }, "uniqueItems": true },
     "vendor_metrics": {
