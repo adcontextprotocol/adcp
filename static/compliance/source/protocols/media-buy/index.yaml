@@ -42,6 +42,13 @@ requires_scenarios:
   - media_buy_seller/typed_proposal_negotiation
   - media_buy_seller/portfolio_routing_scope
   - media_buy_seller/catalog_item_availability_updates
+  - media_buy_seller/account_timezone_seller_fixed
+  - media_buy_seller/account_timezone_buyer_selected
+  - media_buy_seller/account_timezone_seller_assigned
+  - media_buy_seller/budget_cap_timezone_account
+  - media_buy_seller/budget_cap_timezone_fixed
+  - media_buy_seller/budget_cap_timezone_override
+  - media_buy_seller/budget_cap_timezone_override_rejected
 
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that
@@ -162,6 +169,10 @@ phases:
 
   - id: account_setup
     title: "Account setup"
+    depends_on: []
+    requires_capability:
+      path: account.timezone.supported_timezones
+      present: false
     narrative: |
       Before buying anything, the buyer establishes an account relationship with
       your platform. This is the handshake: the buyer tells you which brand and
@@ -192,7 +203,7 @@ phases:
         stateful: true
         expected: |
           Return the account with:
-          - account_id: your platform's identifier for this relationship
+          - account_id: your platform's identifier for this relationship, when the seller echoes one during provisioning
           - action: created or updated
           - status: active (instant approval) or pending_approval (requires human review)
           - account_scope: operator, brand, operator_brand, or agent
@@ -207,6 +218,7 @@ phases:
               operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
+              sandbox: true
           idempotency_key: "$generate:uuid_v4#media_buy_seller_account_setup_sync_accounts"
           context:
             correlation_id: "media_buy_seller--sync_accounts"
@@ -214,9 +226,10 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches sync-accounts-response.json schema"
-          - check: field_present
-            path: "accounts[0].account_id"
-            description: "Account has a platform-assigned ID"
+          - check: field_value
+            path: "accounts[0].action"
+            allowed_values: ["created", "updated", "unchanged"]
+            description: "Account setup succeeds instead of returning a per-account failure"
           - check: field_present
             path: "accounts[0].status"
             description: "Account has a status (active or pending_approval)"
@@ -228,8 +241,74 @@ phases:
             value: "media_buy_seller--sync_accounts"
             description: "Context correlation_id returned unchanged"
 
+  - id: buyer_selected_account_setup
+    title: "Buyer-selected timezone account setup"
+    depends_on: []
+    requires_capability:
+      path: account.timezone.account_selection
+      equals: buyer_selected
+    narrative: |
+      Buyer-selected account-fixed sellers require one advertised timezone in
+      the provisioning natural key. The buyer discovers that allowlist before
+      establishing the account, resolves the new account through its complete
+      natural key, and carries that complete natural key through the rest of
+      this lifecycle.
+    steps:
+      - id: discover_buyer_selected_timezone
+        title: "Choose an advertised account timezone"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request: {}
+        context_outputs:
+          - name: account_timezone
+            path: "account.timezone.supported_timezones[0]"
+        validations:
+          - check: response_schema
+            description: "Capability response matches the canonical schema"
+          - check: field_present
+            path: "account.timezone.supported_timezones[0]"
+            description: "Buyer has at least one valid provisioning timezone"
+
+      - id: sync_accounts_buyer_selected_timezone
+        title: "Establish the timezone-bound account relationship"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              timezone: "$context.account_timezone"
+              billing: "operator"
+              payment_terms: "net_30"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_buyer_selected_account_setup"
+          context:
+            correlation_id: "media_buy_seller--sync_accounts_buyer_selected"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_value
+            path: "accounts[0].action"
+            allowed_values: ["created", "updated", "unchanged"]
+            description: "Timezone-bound account setup succeeds"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "account_timezone"
+            description: "Seller echoes the chosen immutable timezone"
+
   - id: governance_setup
     title: "Governance agent registration"
+    depends_on: [account_setup]
+    requires_capability:
+      path: account.timezone.supported_timezones
+      present: false
     narrative: |
       The buyer registers their governance agent with your platform. This tells your
       platform where to call check_governance before confirming media buys.
@@ -254,9 +333,11 @@ phases:
         sample_request:
           accounts:
             - account:
+                &media_buy_lifecycle_account
                 brand:
                   domain: "acmeoutdoor.example"
                 operator: "pinnacle-agency.example"
+                sandbox: true
               governance_agents:
                 - url: "$context.governance_agent_url"
                   authentication:
@@ -282,6 +363,10 @@ phases:
 
   - id: product_discovery
     title: "Product discovery"
+    depends_on: [account_setup]
+    requires_capability:
+      path: account.timezone.supported_timezones
+      present: false
     narrative: |
       The buyer sends a natural-language brief describing what they want to buy.
       Your platform interprets the brief against your inventory and returns products —
@@ -331,10 +416,7 @@ phases:
           brief: "Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US and Canada."
           pagination:
             max_results: 5
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+          account: *media_buy_lifecycle_account
           context:
             correlation_id: "media_buy_seller--get_products_brief"
 
@@ -376,6 +458,10 @@ phases:
             description: "Products include publisher_properties"
   - id: create_buy
     title: "Create the media buy"
+    depends_on: [product_discovery]
+    requires_capability:
+      path: account.timezone.supported_timezones
+      present: false
     narrative: |
       The buyer is satisfied with the products and creates a media buy. This is the
       equivalent of signing an IO — the buyer commits to specific products, budgets,
@@ -444,11 +530,7 @@ phases:
         sample_request:
           brand:
             domain: "acmeoutdoor.example"
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            sandbox: true
+          account: *media_buy_lifecycle_account
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -514,10 +596,7 @@ phases:
           - valid_actions should include sync_creatives
 
         sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+          account: *media_buy_lifecycle_account
           media_buy_ids:
             - "$context.media_buy_id"
           context:
@@ -547,6 +626,10 @@ phases:
 
   - id: creative_sync
     title: "Creative sync"
+    depends_on: [create_buy]
+    requires_capability:
+      path: account.timezone.supported_timezones
+      present: false
     narrative: |
       With the media buy confirmed, the buyer syncs creative assets to your platform.
       Each package in the buy has creative format requirements — the buyer discovered
@@ -587,10 +670,7 @@ phases:
           The first creative uses the canonical format_kind extracted from get_products.
 
         sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+          account: *media_buy_lifecycle_account
           creatives:
             - creative_id: "video_30s_trail_pro"
               name: "Trail Pro 3000 - 30s CTV Spot"
@@ -633,6 +713,10 @@ phases:
 
   - id: delivery_monitoring
     title: "Delivery and reporting"
+    depends_on: [create_buy, creative_sync]
+    requires_capability:
+      path: account.timezone.supported_timezones
+      present: false
     narrative: |
       The campaign is live. The buyer monitors delivery through two tasks:
       get_media_buys for status and get_media_buy_delivery for performance metrics.
@@ -665,16 +749,327 @@ phases:
           - Budget utilization: spent vs. committed
 
         sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+          account: *media_buy_lifecycle_account
           media_buy_ids:
             - "$context.media_buy_id"
           include_package_daily_breakdown: true
           context:
             correlation_id: "media_buy_seller--get_delivery"
 
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries"
+            description: "Response contains media buy delivery data"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_seller--get_delivery"
+            description: "Context correlation_id returned unchanged"
+
+  # The buyer-selected branch repeats the lifecycle with the complete
+  # timezone-bearing natural AccountRef. The request bodies are explicit so
+  # authored-storyboard consumers do not need YAML merge-key support.
+  - id: buyer_selected_governance_setup
+    title: "Buyer-selected timezone governance registration"
+    depends_on: [buyer_selected_account_setup]
+    requires_capability:
+      path: account.timezone.account_selection
+      equals: buyer_selected
+    steps:
+      - id: sync_governance_buyer_selected_timezone
+        title: "Register governance agents for the timezone-bound account"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        requires_tool: sync_governance
+        stateful: true
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+                timezone: "$context.account_timezone"
+                sandbox: true
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_buyer_timezone_sync_governance"
+          context:
+            correlation_id: "media_buy_seller--sync_governance"
+          ext:
+            test_platform:
+              governance_tier: "standard"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_seller--sync_governance"
+            description: "Context correlation_id returned unchanged"
+
+  - id: buyer_selected_product_discovery
+    title: "Buyer-selected timezone product discovery"
+    depends_on: [buyer_selected_account_setup]
+    requires_capability:
+      path: account.timezone.account_selection
+      equals: buyer_selected
+    steps:
+      - id: get_products_brief_buyer_selected_timezone
+        title: "Send a brief for the timezone-bound account"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_buyer_timezone_get_products"
+          buying_mode: "brief"
+          brief: "Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US and Canada."
+          pagination:
+            max_results: 5
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            timezone: "$context.account_timezone"
+            sandbox: true
+          context:
+            correlation_id: "media_buy_seller--get_products_brief"
+        context_outputs:
+          - name: product_format_kind
+            path: 'products[0].format_options[0].format_kind'
+          - name: product_id
+            path: 'products[0].product_id'
+          - name: pricing_option_id
+            path: 'products[0].pricing_options[0].pricing_option_id'
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains a products array"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "Each product has a product_id"
+          - check: field_present
+            path: "products[0].delivery_type"
+            description: "Each product declares guaranteed or non_guaranteed delivery"
+          - check: field_present
+            path: "products[0].format_options"
+            description: "Products include canonical format_options for creative requirements"
+          - check: field_present
+            path: "products[0].format_options[0].format_kind"
+            description: "Every canonical product option declares format_kind"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_seller--get_products_brief"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "products[0].publisher_properties"
+            description: "Products include publisher_properties"
+
+  - id: buyer_selected_create_buy
+    title: "Buyer-selected timezone media buy"
+    depends_on: [buyer_selected_product_discovery]
+    requires_capability:
+      path: account.timezone.account_selection
+      equals: buyer_selected
+    steps:
+      - id: create_media_buy_buyer_selected_timezone
+        title: "Create a buy for the timezone-bound account"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            timezone: "$context.account_timezone"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "sports_preroll_q2"
+              budget: 25000
+              pricing_option_id: "cpm_non_guaranteed"
+              creative_assignments:
+                - creative_id: "video_30s_trail_pro"
+            - product_id: "lifestyle_display_q2"
+              budget: 15000
+              pricing_option_id: "cpm_standard"
+          push_notification_config:
+            url: "https://buyer.example/webhooks/adcp"
+            authentication:
+              schemes:
+                - "HMAC-SHA256"
+              credentials: "media-buy-seller-webhook-secret-token"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_buyer_timezone_create_media_buy"
+          context:
+            correlation_id: "media_buy_seller--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: 'media_buy_id'
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_seller--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+
+      - id: check_buy_status_buyer_selected_timezone
+        title: "Check the timezone-bound media buy"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            timezone: "$context.account_timezone"
+            sandbox: true
+          media_buy_ids:
+            - "$context.media_buy_id"
+          context:
+            correlation_id: "media_buy_seller--check_buy_status"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_present
+            path: "media_buys[0].status"
+            description: "Each media buy has a status"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_seller--check_buy_status"
+            description: "Context correlation_id returned unchanged"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "media_buy_id"
+            description: "get_media_buys returns the media_buy_id created earlier"
+          - check: field_value
+            path: "media_buys[0].context.correlation_id"
+            value: "media_buy_seller--create_media_buy"
+            description: "get_media_buys includes persisted media-buy context from create_media_buy"
+
+  - id: buyer_selected_creative_sync
+    title: "Buyer-selected timezone creative sync"
+    depends_on: [buyer_selected_create_buy]
+    requires_capability:
+      path: account.timezone.account_selection
+      equals: buyer_selected
+    steps:
+      - id: sync_creatives_buyer_selected_timezone
+        title: "Push creative assets for the timezone-bound account"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            timezone: "$context.account_timezone"
+            sandbox: true
+          creatives:
+            - creative_id: "video_30s_trail_pro"
+              name: "Trail Pro 3000 - 30s CTV Spot"
+              format_kind: "$context.product_format_kind"
+              assets:
+                video:
+                  asset_type: "video"
+                  url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4"
+                  width: 1920
+                  height: 1080
+                  duration_ms: 30000
+                  mime_type: "video/mp4"
+            - creative_id: "display_trail_pro_300x250"
+              name: "Trail Pro 3000 - Display 300x250"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_buyer_timezone_sync_creatives"
+          context:
+            correlation_id: "media_buy_seller--sync_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].action"
+            description: "Each creative has an action (created/updated)"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_seller--sync_creatives"
+            description: "Context correlation_id returned unchanged"
+
+  - id: buyer_selected_delivery_monitoring
+    title: "Buyer-selected timezone delivery and reporting"
+    depends_on: [buyer_selected_create_buy, buyer_selected_creative_sync]
+    requires_capability:
+      path: account.timezone.account_selection
+      equals: buyer_selected
+    steps:
+      - id: get_delivery_buyer_selected_timezone
+        title: "Check delivery for the timezone-bound account"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            timezone: "$context.account_timezone"
+            sandbox: true
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+          context:
+            correlation_id: "media_buy_seller--get_delivery"
         validations:
           - check: response_schema
             description: "Response matches get-media-buy-delivery-response.json schema"
