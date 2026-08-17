@@ -33,3 +33,30 @@ export function computeGovernanceOutcomeHash(payload: Record<string, unknown>): 
     .update(canonicalize(replayPayload))
     .digest('base64url');
 }
+
+/** Exact report_plan_adjustment replay identity. */
+export function computeGovernanceAdjustmentHash(payload: Record<string, unknown>): string {
+  const replayPayload = Object.fromEntries(
+    Object.entries(payload).filter(([key]) => key !== 'idempotency_key' && key !== 'context'),
+  );
+  return createHash('sha256')
+    .update(canonicalize(replayPayload))
+    .digest('base64url');
+}
+
+/**
+ * Portable digest for a seller delivery statement. The seller-assigned
+ * resource identifier is included so the same metrics cannot be replayed
+ * against another governed resource. The digest field itself is excluded.
+ */
+export function computeDeliveryStatementDigest(
+  sellerReference: string,
+  deliveryMetrics: Record<string, unknown>,
+): string {
+  const statement = Object.fromEntries(
+    Object.entries(deliveryMetrics).filter(([key]) => key !== 'statement_digest'),
+  );
+  return `sha256:${createHash('sha256')
+    .update(canonicalize({ seller_reference: sellerReference, delivery_metrics: statement }))
+    .digest('hex')}`;
+}

@@ -139,6 +139,7 @@ Each plan item a buyer supplies here is the preimage the governance agent hashes
 | `plans[].budget` | object | Yes | Budget parameters. |
 | `plans[].budget.total` | number | Yes | Total authorized budget. |
 | `plans[].budget.currency` | string | Yes | ISO 4217 currency code. |
+| `plans[].budget.accounting_mode` | enum | No | `gross_commitment` (default) restores reusable headroom only for verified decommitments. `verified_net_cost` also restores it for verified refunds and credits. Both preserve original gross commitments for anti-fragmentation history. |
 | `plans[].budget.reallocation_threshold` | number | Yes | Amount the agent may reallocate without escalation. `0` requires human approval for every reallocation; a value at or above `budget.total` is effectively unlimited. See [specification](/docs/governance/campaign/specification#budget-reallocation). |
 | `plans[].budget.per_seller_max_pct` | number | No | Maximum percentage of budget that can go to a single seller. |
 | `plans[].budget.allocations` | object | No | Optional per-purchase-type budget partitions. Keys are purchase types (`media_buy`, `rights_license`, `signal_activation`, `creative_services`), values are objects with `amount`. When present, the governance agent validates spend against both the per-type allocation and the overall total. When absent, all spend counts against the single total regardless of purchase type. Allocations are guardrails, not hard partitions -- the sum of allocations MAY differ from the total. |

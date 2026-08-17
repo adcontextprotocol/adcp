@@ -1727,6 +1727,7 @@ import {
   handleSyncPlans,
   handleCheckGovernance,
   handleReportPlanOutcome,
+  handleReportPlanAdjustment,
   handleGetPlanAuditLogs,
 } from './governance-handlers.js';
 import {
@@ -12547,6 +12548,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   sync_plans: handleSyncPlans,
   check_governance: handleCheckGovernance,
   report_plan_outcome: handleReportPlanOutcome,
+  report_plan_adjustment: handleReportPlanAdjustment,
   get_plan_audit_logs: handleGetPlanAuditLogs,
   search_brands: handleSearchBrands,
   get_brand_identity: handleGetBrandIdentity,

@@ -470,6 +470,7 @@
                           "docs/governance/campaign/tasks/index",
                           "docs/governance/campaign/tasks/sync_plans",
                           "docs/governance/campaign/tasks/report_plan_outcome",
+                          "docs/governance/campaign/tasks/report_plan_adjustment",
                           "docs/governance/campaign/tasks/check_governance",
                           "docs/governance/campaign/tasks/get_plan_audit_logs"
                         ]

@@ -84,6 +84,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   sync_plans: ['governance'],
   check_governance: ['governance'],
   report_plan_outcome: ['governance'],
+  report_plan_adjustment: ['governance'],
   get_plan_audit_logs: ['governance'],
 
   // governance — property lists

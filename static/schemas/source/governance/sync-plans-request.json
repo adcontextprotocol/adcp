@@ -51,6 +51,15 @@
                 "type": "string",
                 "description": "ISO 4217 currency code."
               },
+              "accounting_mode": {
+                "type": "string",
+                "enum": [
+                  "gross_commitment",
+                  "verified_net_cost"
+                ],
+                "default": "gross_commitment",
+                "description": "Controls which verified adjustments restore reusable plan headroom. gross_commitment allows verified decommitments only; verified_net_cost also allows buyer-accepted refunds and credits. Both modes retain the original commitment in anti-fragmentation history and expose economic net cost separately."
+              },
               "per_seller_max_pct": {
                 "type": "number",
                 "description": "Maximum percentage of budget that can go to a single seller."

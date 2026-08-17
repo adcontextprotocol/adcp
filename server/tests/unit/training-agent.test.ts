@@ -46,6 +46,7 @@ function resignTermsDigest(proposal: Record<string, unknown>): void {
     .digest('base64url')}`;
 }
 import { getAgentUrl } from '../../src/training-agent/config.js';
+import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 import {
   HUMAN_REVIEW_CATEGORIES,
@@ -1407,6 +1408,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('sync_plans');
     expect(toolNames).toContain('check_governance');
     expect(toolNames).toContain('report_plan_outcome');
+    expect(toolNames).toContain('report_plan_adjustment');
     expect(toolNames).toContain('get_plan_audit_logs');
     expect(toolNames).toContain('get_brand_identity');
     expect(toolNames).toContain('search_brands');
@@ -1445,7 +1447,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_collection_list');
     expect(toolNames).toContain('list_collection_lists');
     expect(toolNames).toContain('delete_collection_list');
-    expect(toolNames).toHaveLength(56);
+    expect(toolNames).toHaveLength(57);
 
     const validateInput = tools.find(t => t.name === 'validate_input');
     expect(validateInput?.inputSchema?.properties?.targets?.maxItems).toBe(50);
@@ -12441,7 +12443,7 @@ describe('governance tools expose session-key fields in inputSchema', () => {
   const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
   const listHandler = requestHandlers.get('tools/list')!;
 
-  it.each(['check_governance', 'report_plan_outcome', 'get_plan_audit_logs'])(
+  it.each(['check_governance', 'report_plan_outcome', 'report_plan_adjustment', 'get_plan_audit_logs'])(
     '%s declares account and brand at the top level',
     async (toolName) => {
       const response = await listHandler({ method: 'tools/list', params: {} }, {}) as {
@@ -15516,6 +15518,18 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     });
     const ctx = initial.governance_context as string;
 
+    const deliveryMetrics = {
+      statement_id: 'stmt_mb_delivery_monitor_0001',
+      sequence: 1,
+      issued_at: '2026-05-16T00:00:00Z',
+      reporting_period: { start: '2026-04-01T00:00:00Z', end: '2026-05-15T23:59:59Z' },
+      spend: 20000,
+      cumulative_spend: 20000,
+      currency: 'USD',
+      impressions: 2500000,
+      cumulative_impressions: 2500000,
+      pacing: 'ahead' as const,
+    };
     // Delivery phase re-check (from governance_delivery_monitor storyboard)
     const { result, isError } = await simulateCallTool(server, 'check_governance', {
       caller: 'https://buying.pinnacle-agency.example',
@@ -15528,12 +15542,8 @@ describe('storyboard governance sample_requests accepted by training agent', () 
         currency: 'USD',
       },
       delivery_metrics: {
-        reporting_period: { start: '2026-04-01T00:00:00Z', end: '2026-05-15T23:59:59Z' },
-        spend: 20000,
-        cumulative_spend: 20000,
-        impressions: 2500000,
-        cumulative_impressions: 2500000,
-        pacing: 'ahead',
+        ...deliveryMetrics,
+        statement_digest: computeDeliveryStatementDigest('mb_delivery_monitor', deliveryMetrics),
       },
     });
 
