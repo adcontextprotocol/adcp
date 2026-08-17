@@ -82,6 +82,7 @@ phases:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
               billing: "operator"
+              sandbox: true
           idempotency_key: "$generate:uuid_v4#account_timezone_seller_fixed_provision"
         validations:
           - check: response_schema
@@ -119,6 +120,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
         validations:
           - check: response_schema
             description: "Account read matches the canonical schema"

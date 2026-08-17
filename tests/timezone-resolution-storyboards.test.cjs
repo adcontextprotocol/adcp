@@ -127,6 +127,11 @@ test('account timezone scenarios cover all three advertised authority modes', ()
     '$context.account_timezone'
   );
   assert.equal(step(sellerAssigned, 'provision_without_timezone').sample_request.accounts[0].timezone, undefined);
+  for (const scenario of [sellerFixed, sellerAssigned]) {
+    assert.equal(step(scenario, 'provision_without_timezone').sample_request.accounts[0].sandbox, true);
+  }
+  assert.equal(step(sellerFixed, 'list_seller_fixed_account').sample_request.account.sandbox, true);
+  assert.equal(step(sellerAssigned, 'list_seller_assigned_account').sample_request.account.sandbox, true);
   assert.equal(
     step(buyerSelected, 'list_by_natural_key').sample_request.account.timezone,
     '$context.account_timezone'
@@ -300,6 +305,7 @@ test('seller-fixed UTC ignores West/East buyer preferences on both write and rea
     assert.deepEqual(valid.listRequests[0].account, {
       brand: { domain: 'acmeoutdoor.example' },
       operator: 'pinnacle-agency.example',
+      sandbox: true,
     });
   }
 
