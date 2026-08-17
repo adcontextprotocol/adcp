@@ -13,7 +13,7 @@ description: "Every published AdCP version, its status, and its end-of-life date
 
 | Status | Versions | Wire pin | What it means |
 |---|---|---|---|
-| **Pending beta** | 3.2 (`beta.0` protocol-first; beta.1 converges protocol and SDKs) | Exact prerelease after publication, such as `"3.2-beta.0"` | Development and staging only. Follow the [3.2 beta program](/docs/reference/3-2-beta). |
+| **Beta** | 3.2 (current prerelease: `beta.0`; beta.1 converges protocol and SDKs) | `"3.2-beta.0"` | Development and staging only. Follow the [3.2 beta program](/docs/reference/3-2-beta). |
 | **Active** | 3.1 (current stable: 3.1.15) | `"3.1"` | Current production minor release. See [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1) for the feature set. |
 | **Maintained** | 3.0 (current stable: 3.0.24) | `"3.0"` | Supported previous minor for existing production integrations. Receives compatibility and security patches. |
 | **End of life** | 2.0.0, 2.1.0, 2.5.0–2.5.3 | — | No patches. Migrate to 3.0. See [v2 sunset](/docs/reference/v2-sunset). |
@@ -22,12 +22,6 @@ description: "Every published AdCP version, its status, and its end-of-life date
 **Wire values are release-precision only.** Send `"3.1"` for the stable 3.1 line or `"3.0"` for the maintained 3.0 line. Do not send patch components like `"3.0.19"` or full semver pre-release values like `"3.1.0-rc.15"`. Historical prerelease pins such as `"3.1-rc.15"` remain valid only for agents that explicitly advertise those prerelease values. See [patches are not negotiated](/docs/reference/versioning#patches-are-not-negotiated).
 
 *Status legend: Pending beta = announced but not yet published. Beta = immutable prerelease checkpoints for development and staging. Active = current stable generation. Maintained = supported previous minor. Security-only = patches for security issues only, no features. End of life = no patches. Planned = not yet released.*
-
-## Pending prerelease
-
-| Version | Status | Notes |
-|---|---|---|
-| 3.2.0-beta.0 | Pending first cut | Protocol-first beta input for SDK work. Do not use the artifact or `"3.2-beta.0"` wire pin until the GitHub prerelease and signed bundle are published. Move this row into the published prerelease table with its release date in the beta.0 Version Packages PR. |
 
 ## All published versions
 
@@ -51,6 +45,7 @@ Supported patches don't change the wire contract. Upgrading within 3.0.x is alwa
 
 | Version | Released | Notes |
 |---|---|---|
+| **3.2.0-beta.0** | 2026-08-17 | Protocol-first beta input for SDK work. Use the exact `"3.2-beta.0"` wire pin only when both peers explicitly advertise it. |
 | 3.1.0-rc.1 through 3.1.0-rc.15 | 2026-05-29 to 2026-06-16 | Superseded by 3.1.0 GA. These artifacts remain available for pinned prerelease adopters and release forensics. |
 | 3.0.0-beta.1 through rc.2 | 2026-01-26 to 2026-03-15 | Superseded. |
 | 3.0.0-rc.3 | 2026-04-01 | Superseded by GA. See [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades) if you adopted rc.3. |

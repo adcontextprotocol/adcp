@@ -16,7 +16,7 @@ Revision may target a draft, committed, or accepted proposal; finalization must 
 
 {/* Using latest because this schema is not yet released in any version.
     Update to the correct version alias after the next release. */}
-**Request schema:** [`/schemas/latest/media-buy/refine-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/refine-proposals-request.json)
+**Request schema:** [`/schemas/3.2.0-beta.0/media-buy/refine-proposals-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.0/media-buy/refine-proposals-request.json)
 
 ```json
 {
@@ -67,7 +67,7 @@ Typed fields are deliberately small and mechanically verifiable:
 
 Each present `criteria` field replaces that field from the source proposal; omitted fields remain bound to the revision. This makes a targeting change deterministic and ensures the revised proposal's price and forecast use the new effective overlay. When hard targeting appears only in `ask`, the seller confirms any structured interpretation that materially affects the revision in that result's `targeting_resolution.brief_targeting`. Exact structured targeting is not repeated; product-specific alternatives remain sparse modifications on the returned configured products.
 
-**Response schema:** [`/schemas/latest/media-buy/refine-proposals-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/refine-proposals-response.json)
+**Response schema:** [`/schemas/3.2.0-beta.0/media-buy/refine-proposals-response.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.0/media-buy/refine-proposals-response.json)
 
 The response contains one ordered `results[]` entry per requested source proposal. Each entry echoes `source_proposal_id`; buyers cross-check by that echo rather than by position alone. Every returned proposal carries `parent_proposal_id` equal to the entry's `source_proposal_id`, so negotiation lineage survives in the proposals themselves:
 
