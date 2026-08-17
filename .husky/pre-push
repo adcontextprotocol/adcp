@@ -30,7 +30,7 @@ case "$BRANCH_NAME" in
         grep -Eq '^\.changeset/[^/]+\.md$'; then
         echo "Missing protocol changeset. Add one with 'npx changeset' before pushing."
         echo "Run the full CI-equivalent check with:"
-        echo "  npx --yes @changesets/cli@^2.31.0 status --since=$CHANGESET_BASE"
+        echo "  npx --yes @changesets/cli@^3.0.0 status --since=$CHANGESET_BASE"
         exit 1
       else
         echo "✅ Protocol changeset present"

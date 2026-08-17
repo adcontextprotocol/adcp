@@ -113,15 +113,15 @@ jobs:
       - name: Create Release Pull Request or Tag Release
         if: steps.release-relevance.outputs.relevant == 'true' && steps.release-artifacts.outputs.has_release_artifacts != 'true'
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
-          version: npm run version
-          publish: npx --no-install changeset tag
-          commit: 'Version Packages'
-          title: 'Version Packages'
-          createGithubReleases: true
+          github-token: ${{ steps.app-token.outputs.token }}
+          version-script: npm run version
+          publish-script: npx --no-install changeset git-tag
+          commit-message: 'Version Packages'
+          pr-title: 'Version Packages'
+          create-github-releases: true
         env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           HUSKY: '0'
 
       - name: Sign local protocol tarball if needed

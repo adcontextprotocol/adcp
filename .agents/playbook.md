@@ -320,7 +320,7 @@ the same gates CI uses:
 ```bash
 git add .changeset/<descriptive-name>.md
 node scripts/check-changeset-protocol-scope.cjs origin/main
-npx --yes @changesets/cli@^2.31.0 status --since=origin/main
+npx --yes @changesets/cli@^3.0.0 status --since=origin/main
 ```
 
 The changesets CLI ignores untracked files, so the local check can still fail
