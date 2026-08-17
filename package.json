@@ -137,7 +137,7 @@
     "precommit": "bash scripts/with-timeout.sh 180 npm run test:unit && npm run test:test-dynamic-imports && npm run test:format-identity-boundaries && npm run test:callapi-state-change && bash scripts/with-timeout.sh 240 npm run precommit:server-unit && npm run typecheck",
     "test:storyboards": "bash scripts/run-storyboards-matrix.sh",
     "test:storyboards:3.0-compat": "bash scripts/run-storyboards-3-0-compat.sh",
-    "prepare": "husky",
+    "prepare": "sh scripts/configure-git-hooks.sh",
     "changeset": "changeset",
     "version": "changeset version && npm install --package-lock-only --ignore-scripts && npm run build:schemas -- --release && npm run build:compliance -- --release && npm run build:protocol-tarball -- --release && npm run sign:protocol-tarball",
     "sign:protocol-tarball": "bash scripts/sign-protocol-tarball.sh",

@@ -1,5 +1,10 @@
 #!/bin/sh
 
+HUSKY_INIT="${XDG_CONFIG_HOME:-$HOME/.config}/husky/init.sh"
+[ -f "$HUSKY_INIT" ] && . "$HUSKY_INIT"
+[ "${HUSKY-}" = "0" ] && exit 0
+export PATH="node_modules/.bin:$PATH"
+
 # Verify version sync before pushing
 npm run verify-version-sync
 
