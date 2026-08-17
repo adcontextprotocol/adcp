@@ -69,8 +69,43 @@ describe("canonical format delivery reporting", () => {
       JSON.stringify(validateRequest.errors)
     );
     assert.equal(
+      validateRequest({
+        reporting_dimensions: {
+          format: { sort_by: "completed_views", sort_direction: "asc" },
+        },
+      }),
+      true,
+      JSON.stringify(validateRequest.errors)
+    );
+    assert.equal(
+      validateRequest({
+        reporting_dimensions: { format: { sort_direction: "ascending" } },
+      }),
+      false
+    );
+    assert.equal(
       validateRequest({ reporting_dimensions: { format: { limit: 0 } } }),
       false
+    );
+  });
+
+  it("echoes the applied sort for format rows", () => {
+    const response = readSchema(
+      "/schemas/media-buy/get-media-buy-delivery-response.json"
+    );
+    const extension = response.properties.media_buy_deliveries.items.properties
+      .by_package.items.allOf.find((schema) => schema.properties);
+    assert.equal(
+      extension.properties.by_format_sorted_by.$ref,
+      "/schemas/enums/sort-metric.json"
+    );
+    assert.equal(
+      extension.properties.by_format_sort_direction.$ref,
+      "/schemas/enums/sort-direction.json"
+    );
+    assert.match(
+      extension.properties.by_format_sorted_by.description,
+      /MUST return this field whenever by_format is present/
     );
   });
 
