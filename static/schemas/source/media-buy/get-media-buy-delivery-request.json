@@ -56,7 +56,7 @@
     },
     "requested_metrics": {
       "type": "array",
-      "description": "Optional list of metrics to include in the response. When omitted, all available metrics are included (unchanged behavior). Applies to every metrics-bearing object in the response: totals, by_package, daily and window slices, and breakdown rows. impressions and spend are always included regardless of this list. Requesting a leaf metric identity returns its canonical nested carrier — e.g. requesting viewable_rate returns the viewability object, requesting quartile_75 returns quartile_data — never a flat duplicate. Metrics requested but not available for this buy are omitted from the response without error; contract accountability is unchanged — missing_metrics still reconciles against committed_metrics, but sellers MUST NOT list a metric in missing_metrics when its absence is solely due to this narrowing. Must be a subset of the product's reporting_capabilities.available_metrics; values outside the declared set are ignored. Same semantics as reporting_webhook.requested_metrics.",
+      "description": "Optional list of metrics to include in the response. When omitted, all available metrics are included (unchanged behavior). Applies to every metrics-bearing object in the response: totals, by_package, daily and window slices, and breakdown rows. impressions and spend are always included regardless of this list. Requesting a leaf metric identity returns its canonical nested carrier — e.g. requesting viewable_rate returns the viewability object, requesting quartile_75 returns quartile_data — never a flat duplicate. Metrics requested but not available for this buy are omitted from the response without error; contract accountability is unchanged — missing_metrics still reconciles against committed_metrics, but sellers MUST NOT list a metric in missing_metrics when its absence is solely due to this narrowing. Must be a subset of the product's reporting_capabilities.available_metrics; values outside the declared set are ignored. Subset evaluation follows the container-subsumption rule in enums/available-metric.json. Sort is evaluated before narrowing: excluding a metric from this list never triggers the sort_by fallback, and breakdown rows may be ordered by a metric absent from the narrowed payload — the applied-sort echo still names it. Same semantics as reporting_webhook.requested_metrics.",
       "items": { "$ref": "/schemas/enums/available-metric.json" },
       "uniqueItems": true,
       "minItems": 1
@@ -136,12 +136,12 @@
             },
             "sort_by": {
               "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
+              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
               "default": "spend"
             },
             "sort_direction": {
               "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull.",
+              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
               "default": "desc"
             }
           },
@@ -225,12 +225,12 @@
             },
             "sort_by": {
               "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
+              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
               "default": "spend"
             },
             "sort_direction": {
               "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull.",
+              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
               "default": "desc"
             }
           },
@@ -247,12 +247,12 @@
             },
             "sort_by": {
               "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
+              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
               "default": "spend"
             },
             "sort_direction": {
               "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull.",
+              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
               "default": "desc"
             }
           },
@@ -270,12 +270,12 @@
             },
             "sort_by": {
               "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
+              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
               "default": "spend"
             },
             "sort_direction": {
               "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull.",
+              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
               "default": "desc"
             }
           },
@@ -302,12 +302,12 @@
             },
             "sort_by": {
               "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
+              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
               "default": "spend"
             },
             "sort_direction": {
               "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull.",
+              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
               "default": "desc"
             }
           },
@@ -337,12 +337,12 @@
             },
             "sort_by": {
               "$ref": "/schemas/enums/sort-metric.json",
-              "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
+              "description": "Metric to sort breakdown rows by, in `sort_direction` order (descending by default). Falls back to 'spend' when the seller does not report the requested metric at this breakdown's row grain; on fallback the sort direction resets to 'desc'. Rows lacking a value for the applied sort metric order last regardless of direction. The applied sort is echoed in the response.",
               "default": "spend"
             },
             "sort_direction": {
               "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull.",
+              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
               "default": "desc"
             }
           },
