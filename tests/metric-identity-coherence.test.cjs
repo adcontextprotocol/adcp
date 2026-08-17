@@ -120,8 +120,12 @@ describe("metric identity coherence", () => {
   it("only conditions delivery-metric-aggregate on representable metric_ids", () => {
     const aggregate = readSchema("/schemas/core/delivery-metric-aggregate.json");
     const standardBranch = aggregate.oneOf.find(
-      (branch) => branch.properties.scope.const === "standard"
+      (branch) =>
+        branch.properties &&
+        branch.properties.scope &&
+        branch.properties.scope.const === "standard"
     );
+    assert.ok(standardBranch, "no standard-scope branch in delivery-metric-aggregate");
     for (const conditional of standardBranch.allOf) {
       const metricId = conditional.if.properties.metric_id.const;
       assert.ok(
