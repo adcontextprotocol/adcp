@@ -343,7 +343,7 @@ Terminal and submitted responses never include `warnings`. Each success warning 
 
 ### Submitted Response
 
-Returned when the buy cannot be confirmed synchronously — e.g., guaranteed buys awaiting IO signing, governance review queued, or batched processing. The completion artifact (delivered through AdCP polling or a push-notification webhook) carries `media_buy_id` and `packages`. A2A profile callers poll with `get_task_status`; MCP sellers may also expose the legacy AdCP `tasks/get` name.
+Returned when the buy cannot be confirmed synchronously — e.g., guaranteed buys awaiting IO signing, governance review queued, or batched processing. The completion artifact (delivered through AdCP polling or a push-notification webhook) carries `media_buy_id` and `packages`. A2A profile callers poll with [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json); MCP sellers may also expose the legacy AdCP `tasks/get` name.
 
 There is no proposal-specific acceptance webhook. Proposal execution that needs human approval, IO signing, or asynchronous processing uses this same submitted task envelope and the standard task/webhook completion path.
 

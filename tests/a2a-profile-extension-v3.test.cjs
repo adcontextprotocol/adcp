@@ -53,10 +53,10 @@ function validateAdvertisement(agentCard) {
 
 function activated(headers) {
   if (headers?.['A2A-Version'] !== '1.0') return false;
-  return String(headers?.['A2A-Extensions'] ?? '')
+  const activatedExtensions = new Set(String(headers?.['A2A-Extensions'] ?? '')
     .split(',')
-    .map(value => value.trim())
-    .includes(URI);
+    .map(value => value.trim()));
+  return activatedExtensions.has(URI);
 }
 
 function validateInvocation(vector) {

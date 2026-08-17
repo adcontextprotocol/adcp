@@ -391,7 +391,7 @@ Responses use discriminated unions — a response has exactly one of three shape
 **3. Submitted task envelope** — whole operation queued asynchronously (batch ingestion, governance review gating the sync):
 
 - `status` - Always `"submitted"`
-- `task_id` - Handle for polling via `get_task_status` on the A2A profile (or the advertised AdCP polling task on MCP), or receiving a webhook on completion
+- `task_id` - Handle for polling via [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) on the A2A profile (or the advertised AdCP polling task on MCP), or receiving a webhook on completion
 - `message` - Optional human-readable explanation of the queue state
 
 The final per-creative `creatives` array lands on the task completion artifact, not on the submitted envelope. Per-item async review (one creative in `pending_review` while the rest of the sync resolves synchronously) belongs on the synchronous success branch with `status: "pending_review"` on that item, not here.
@@ -895,7 +895,7 @@ Two distinct async patterns — match the right one to the agent's behavior:
 - `message` — optional human-readable explanation
 - No `creatives` array on this envelope
 
-Invoke `get_task_status` on the A2A profile (or the advertised AdCP polling task on MCP), or wait for the webhook. The completion artifact carries the `creatives` array with per-item `action`/`status` results; operation-level failures surface as `status: "failed"` on the task.
+Invoke [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) on the A2A profile (or the advertised AdCP polling task on MCP), or wait for the webhook. The completion artifact carries the `creatives` array with per-item `action`/`status` results; operation-level failures surface as `status: "failed"` on the task.
 
 **See:** [Webhooks](/docs/building/by-layer/L3/webhooks) for webhook configuration.
 
