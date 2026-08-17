@@ -77,12 +77,12 @@ A mutating tool can return one of three shapes:
 
 AdCP task state is an **application-layer** contract. MCP and A2A may wrap, stream, or transport an AdCP response, but their native task mechanisms do not replace the AdCP `task_id`, status values, webhook payloads, or polling/reconciliation surfaces. A transport task can complete after delivering an AdCP response whose payload still says `status: 'submitted'`.
 
-When you see `status: 'submitted'`, the work is **not** complete. In 3.x, poll via the legacy AdCP `tasks/get` surface using the returned `task_id`. Sellers MAY also advertise the non-colliding [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) alias; callers MAY use that alias when it appears in discovery. Both AdCP polling names use the same snake_case payload shape, including the optional `account` scope for multi-account credentials. Do not confuse either AdCP polling shape with transport-native MCP/A2A `tasks/get`, which uses the transport's own task wire shape.
+When you see `status: 'submitted'`, the work is **not** complete. Under the [AdCP A2A Profile Extension v3](/docs/building/by-layer/L0/a2a-profile-extension), the caller MUST poll by sending fresh structured invocations of [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) with the returned AdCP `task_id`. The enclosing A2A Task is already completed and MUST NOT be polled as a proxy for the AdCP operation. MCP implementations may continue to expose the legacy AdCP `tasks/get` surface; both AdCP polling names use the same snake_case payload shape, including the optional `account` scope for multi-account credentials.
 
 Pass `include_result: true` when polling so the seller includes the completion payload once status transitions to `completed`:
 
 ```json
-// tasks/get request (same payload as optional get_task_status alias)
+// get_task_status request
 {
   "task_id": "task_456",
   "include_result": true,
@@ -93,7 +93,7 @@ Pass `include_result: true` when polling so the seller includes the completion p
   }
 }
 
-// tasks/get response — completed
+// get_task_status response — completed
 {
   "task_id": "task_456",
   "task_type": "create_media_buy",
@@ -157,16 +157,16 @@ Every validation failure produces an envelope shaped like:
 | `keyword: 'type'` or `additionalProperties` at `/budget` | Sent `{amount, currency}` | `budget` is a number. Currency is implied by `pricing_option_id`. |
 | `enum` at `/format_kind` | Sent a non-canonical format kind | Choose a registered canonical kind or use a valid `custom` declaration. |
 | `keyword: 'enum'` at `/destinations/*/type` | Made-up destination type | Use `'platform'` (with `platform`) or `'agent'` (with `agent_url`). |
-| Response carries `status: 'submitted'` and `task_id` | Async — work is queued, NOT done | Poll with legacy `tasks/get`, or [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json) when the seller advertises the alias. |
+| Response carries `status: 'submitted'` and `task_id` | Async — work is queued, NOT done | On the AdCP v3 A2A profile, invoke [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json). On MCP, use the advertised AdCP polling task. |
 
 ## Transport notes
 
 - **MCP**: `tools/call` with `{ name: 'tool_name', arguments: {...} }`. Read `structuredContent` for the typed response.
-- **A2A**: `message/send` with a `DataPart` of shape `{ skill: 'tool_name', input: {...} }`. The typed response is at `task.artifacts[0].parts[0].data`.
+- **A2A 1.0**: advertise and activate `https://adcontextprotocol.org/extensions/adcp/v3`, then Send Message with exactly one invocation DataPart shaped `{ skill: 'tool_name', input: {...} }`; optional TextParts are advisory. Read the authoritative response DataPart from the completed Task artifact.
 
 Both transports share idempotency, error shape, schema enforcement, and handler semantics. If a call works on one, the equivalent call works on the other.
 
-A common trap: **A2A `Task.status.state: 'completed'` is not the same as AdCP completion.** A2A task state describes the transport call lifecycle; AdCP-level completion is in the artifact's payload (`structuredContent.status` or `data.status`). A `completed` A2A task can still carry a `submitted` AdCP response. It also carries structured business outcomes that are not transport failures, such as `GetProductsRejected`: A2A remains `completed`, while the artifact payload contains `status: "rejected"`, `reason`, and optional `suggestions[]`.
+A common trap: **A2A `Task.status.state: 'completed'` is not the same as AdCP completion.** A2A task state describes the transport invocation; AdCP-level completion is in the artifact DataPart. A `completed` A2A task can carry a `submitted` AdCP response, whose `task_id` remains only in that DataPart and is polled through [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json). It also carries structured business outcomes that are not transport failures, such as `GetProductsRejected`: A2A remains `completed`, while the artifact payload contains `status: "rejected"`, `reason`, and optional `suggestions[]`.
 
 ## Related
 

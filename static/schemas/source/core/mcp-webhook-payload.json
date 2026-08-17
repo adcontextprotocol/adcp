@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/mcp-webhook-payload.json",
   "title": "MCP Webhook Payload",
-  "description": "Standard envelope for HTTP-based push notifications (MCP). This defines the wire format sent to the URL configured in `pushNotificationConfig`. NOTE: This envelope is NOT used in A2A integration, which uses native Task/TaskStatusUpdateEvent messages with the AdCP payload nested in `status.message.parts[].data`.",
+  "description": "Standard envelope for AdCP application-layer HTTP push notifications. This defines the wire format sent to the URL configured in task input `push_notification_config`, including when that task was invoked through the AdCP A2A profile. It is distinct from A2A transport notifications registered through `configuration.taskPushNotificationConfig`, which use native StreamResponse branches.",
   "type": "object",
   "allOf": [
     {

@@ -57,11 +57,14 @@ This trips people up. There are two naming conventions in play:
 | Context | Field name | Example |
 |---------|-----------|---------|
 | **MCP task arguments** (AdCP JSON) | `push_notification_config` | `{ push_notification_config: { url: ..., operation_id: ... } }` |
-| **A2A configuration object** | `pushNotificationConfig` | `configuration: { pushNotificationConfig: { url: ..., operation_id: ... } }` |
+| **A2A transport configuration** | `taskPushNotificationConfig` | `configuration: { taskPushNotificationConfig: { id: ..., url: ... } }` |
 
 The AdCP field name is always **`push_notification_config`** (snake_case). It goes in the task request body alongside your other task parameters.
 
-For A2A, the A2A protocol wraps it in a `configuration` envelope using camelCase — but the object's contents are identical.
+The two objects are not aliases. `push_notification_config` registers an AdCP
+application webhook and includes `operation_id`. A2A
+`taskPushNotificationConfig` registers delivery for the A2A transport Task and
+does not define `operation_id`.
 
 ## Adding push_notification_config to a request
 
@@ -86,29 +89,42 @@ Include `push_notification_config` as a task argument, merged with the rest of y
 
 ### A2A
 
-For A2A, skill parameters stay in `message.parts[].data.parameters`. The push notification config goes in the top-level `configuration` object:
+For a durable AdCP operation invoked through the v3 A2A profile, keep the AdCP
+webhook registration inside the typed task input:
 
 ```json
 {
   "message": {
+    "messageId": "msg-create-001",
+    "role": "ROLE_USER",
     "parts": [{
-      "kind": "data",
       "data": {
         "skill": "create_media_buy",
-        "parameters": {
-          "packages": [...]
+        "input": {
+          "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+          "account": { "account_id": "acc_demo_001" },
+          "brand": { "domain": "brand.example" },
+          "proposal_id": "proposal_001",
+          "total_budget": { "amount": 100000, "currency": "USD" },
+          "start_time": "asap",
+          "end_time": "2027-06-30T23:59:59Z",
+          "push_notification_config": {
+            "url": "https://you.example/webhooks/adcp/create-media-buy",
+            "operation_id": "op_abc123"
+          }
         }
       }
     }]
-  },
-  "configuration": {
-    "pushNotificationConfig": {
-      "url": "https://you.com/webhooks/adcp/create_media_buy/route_abc123",
-      "operation_id": "op_abc123"
-    }
   }
 }
 ```
+
+If the buyer also wants updates while the A2A handler itself is running, it
+may separately set `configuration.taskPushNotificationConfig` with the A2A
+fields `id`, `url`, optional `token`, and optional `authentication`. On an
+initial `SendMessage`, omit `taskId`; the server has not assigned it yet. That
+transport registration ends with the A2A Task and does not replace AdCP
+polling or the application webhook above.
 
 ## Operation IDs and URL templates
 
@@ -262,27 +278,28 @@ A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for pro
 
 ```json
 {
-  "id": "task_456",
-  "contextId": "ctx_123",
-  "status": {
-    "state": "completed",
-    "timestamp": "2025-01-22T10:30:00Z"
-  },
-  "artifacts": [{
-    "artifactId": "result",
-    "parts": [
-      { "kind": "text", "text": "Media buy created successfully" },
-      {
-        "kind": "data",
-        "data": {
-          "media_buy_id": "mb_12345",
-          "packages": [
-            { "package_id": "pkg_001", "context": { "line_item": "li_ctv_sports" } }
-          ]
+  "task": {
+    "id": "task_456",
+    "contextId": "ctx_123",
+    "status": {
+      "state": "TASK_STATE_COMPLETED",
+      "timestamp": "2025-01-22T10:30:00.000Z"
+    },
+    "artifacts": [{
+      "artifactId": "result",
+      "parts": [
+        { "text": "Media buy created successfully" },
+        {
+          "data": {
+            "media_buy_id": "mb_12345",
+            "packages": [
+              { "package_id": "pkg_001", "context": { "line_item": "li_ctv_sports" } }
+            ]
+          }
         }
-      }
-    ]
-  }]
+      ]
+    }]
+  }
 }
 ```
 
@@ -290,7 +307,7 @@ A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for pro
 
 | | MCP | A2A |
 |---|---|---|
-| **Config field** | `push_notification_config` (in task args) | `configuration.pushNotificationConfig` (separate from skill params) |
+| **Config field** | `push_notification_config` (in task args) | `configuration.taskPushNotificationConfig` (separate from skill params) |
 | **Envelope** | `mcp-webhook-payload.json` | Native `Task` / `TaskStatusUpdateEvent` |
 | **Result location** | `result` field | `.artifacts[0].parts[].data` (final) / `status.message.parts[].data` (interim) |
 | **Data schemas** | Identical AdCP schemas | Identical AdCP schemas |
@@ -302,7 +319,7 @@ Webhook envelope shape is determined by **which registration mechanism the buyer
 | Registered via | Delivered envelope |
 |---|---|
 | AdCP `push_notification_config` (task argument, MCP/A2A/REST) | [`mcp-webhook-payload.json`](#mcp) |
-| A2A `TaskPushNotificationConfig` ([`CreateTaskPushNotificationConfig`](https://a2a-protocol.org/latest/specification/) RPC, or inline `task_push_notification_config` on `SendMessage`) | A2A native `Task` / `TaskStatusUpdateEvent` per A2A 1.0 §4.3.3 |
+| A2A `TaskPushNotificationConfig` ([`CreateTaskPushNotificationConfig`](https://a2a-protocol.org/latest/specification/) RPC, or inline `configuration.taskPushNotificationConfig` on `SendMessage`) | A2A native `Task` / `TaskStatusUpdateEvent` per A2A 1.0 §4.3.3 |
 | Account-level `sync_accounts.accounts[].notification_configs[]` | Event-specific payloads such as `creative-status-changed-webhook.json`, `creative-assignment-changed-webhook.json`, `indicators-changed-webhook.json`, `account-status-changed-webhook.json`, or `wholesale-feed-webhook.json` |
 | Agent-level `sync_agent_notification_configs.notification_configs[]` | Event-specific AdCP payload schemas such as `capabilities-changed-webhook.json` |
 

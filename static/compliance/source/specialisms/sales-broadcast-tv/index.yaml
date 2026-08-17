@@ -297,8 +297,9 @@ phases:
           and billing against C7 ratings.
 
           The response may be synchronous (buy confirmed) or — when traffic-manager
-          review is needed — the A2A task returns submitted with a task_id, and the
-          buyer waits on a webhook or tasks/get poll until the order is scheduled.
+          review is needed — the completed A2A invocation carries an AdCP Submitted
+          response with a task_id, and the buyer waits on a webhook or get_task_status
+          invocation until the order is scheduled.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -314,10 +315,13 @@ phases:
           - measurement_terms: confirmed guarantee window (c7)
           - valid_actions: sync_creatives as the next step
 
-          If traffic-manager review is needed, return an A2A task envelope instead:
-          - status: submitted (task-level — not a MediaBuy status)
-          - task_id / taskId: handle the buyer polls or receives webhooks on
+          If traffic-manager review is needed, return a completed A2A task envelope
+          whose artifact DataPart contains:
+          - status: submitted (AdCP application-level status, not a MediaBuy status)
+          - task_id: AdCP handle the buyer passes to get_task_status or receives webhooks on
           - message (optional): explanation that the traffic manager is reviewing
+
+          Do not duplicate task_id as the A2A Task id, taskId, or artifact metadata.
 
           Do NOT use a "pending_approval" media buy status — that value is not in the
           MediaBuy.status enum. IO / traffic-manager review is modelled at the task layer.

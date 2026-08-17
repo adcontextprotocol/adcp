@@ -1580,6 +1580,10 @@
   },
   "redirects": [
     {
+      "source": "/extensions/adcp/v3",
+      "destination": "/docs/building/by-layer/L0/a2a-profile-extension"
+    },
+    {
       "source": "/docs/intro",
       "destination": "/dist/docs/3.1.2/intro",
       "permanent": false

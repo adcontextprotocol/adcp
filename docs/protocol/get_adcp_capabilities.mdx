@@ -47,24 +47,24 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 
 ## Tool-Based Discovery
 
-AdCP uses native MCP/A2A tool discovery. **The presence of `get_adcp_capabilities` in an agent's tool list indicates AdCP support.**
+AdCP uses native MCP tool discovery and the [AdCP A2A Profile Extension v3](/docs/building/by-layer/L0/a2a-profile-extension) on A2A 1.0. **The presence of `get_adcp_capabilities` in an agent's tool or skill list indicates that runtime AdCP discovery is available.**
 
 ```
 Discovery Flow:
-1. Browse agent's tool list (MCP) or skills (A2A)
-2. See 'get_adcp_capabilities' tool → Agent supports AdCP
+1. Browse the agent's tool list (MCP), or find and activate the versioned AdCP profile in AgentCard.capabilities.extensions[] (A2A)
+2. See the get_adcp_capabilities tool/skill → Runtime AdCP discovery is available
 3. Call get_adcp_capabilities → Get version, protocols, features, capabilities
 4. Proceed based on returned capabilities
 ```
 
 This approach:
 
-- Uses standard MCP/A2A mechanisms (no custom extensions)
+- Uses native MCP discovery or A2A 1.0's standard extension mechanism
 - Always returns current capabilities (not stale metadata)
 - Single source of truth for all capability information
 
 :::note
-The agent card extension (`adcp-extension.json`) has been removed in v3. Use tool-based discovery instead.
+The A2A profile declaration identifies only the wire binding. Its `params` member is omitted or empty. Do not place AdCP versions, domains, or feature flags there: `get_adcp_capabilities` remains the single runtime authority for those values. The unversioned v2 `adcp-extension.json` capability payload remains removed.
 :::
 
 ## Version Negotiation

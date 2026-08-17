@@ -22,17 +22,16 @@ narrative: |
   routing the request through IO signing, batch processing, or any out-of-band human
   workflow — the task layer carries the result, not the response. The seller emits the
   submitted task envelope: status='submitted', task_id present, no media_buy_id, no
-  packages. The buyer then polls tasks/get with task_id (or waits for a webhook) until
-  the task completes and the media_buy_id arrives on the completion artifact.
+  packages. The buyer then invokes get_task_status with task_id (or waits for a webhook)
+  until the task completes and the media_buy_id arrives in the terminal result.
 
   This scenario anchors the AdCP-payload-level invariant for that envelope. Three things
   matter and are easy to regress:
 
   1. status MUST be the literal string 'submitted' (not 'pending', not a MediaBuyStatus
      value, not omitted)
-  2. task_id MUST be present at the top of the payload, snake_case (A2A adapters MAY
-     surface it as taskId on the wire, but the payload field emitted by the agent is
-     task_id)
+  2. task_id MUST be present at the top of the payload in snake_case on every transport;
+     it is distinct from an A2A transport Task id
   3. media_buy_id and packages MUST NOT appear on the envelope — they land on the task's
      completion artifact, not here. Sellers that return media_buy_id with status='submitted'
      break the buyer's polling contract; buyers cannot tell whether the buy is queued or
@@ -51,12 +50,12 @@ narrative: |
   storyboard catches sellers that fabricate a fresh task_id instead of honoring the
   registered directive.
 
-  Out of scope (by design). Transport-level wire-shape assertions — A2A Task.state and
-  artifact.metadata.adcp_task_id placement, MCP structuredContent envelope details — are
-  runner-side concerns, not storyboard assertions. The runner exercises this scenario
-  against both transports and probes the transport envelope independently. See
-  adcp-client#904 for the runner-side probes; this storyboard provides the deterministic
-  driver.
+  Out of scope (by design). Transport-level wire-shape assertions — including the A2A
+  completed-Task mapping and the prohibition on duplicating task_id in artifact metadata,
+  plus MCP structuredContent envelope details — are runner-side concerns, not storyboard
+  assertions. The runner exercises this scenario against both transports and probes the
+  transport envelope independently. See adcp-client#904 for the runner-side probes; this
+  storyboard provides the deterministic driver.
 
   The submitted → completed transition (forcing the task to resolve and asserting the
   completion artifact carries media_buy_id) is deferred to a follow-up scenario. It needs
@@ -236,7 +235,7 @@ phases:
             description: "Status is the literal 'submitted' task-status value, not a MediaBuyStatus"
           - check: field_present
             path: "task_id"
-            description: "task_id is present at the top of the envelope (snake_case payload field, even when the A2A adapter surfaces it as taskId on the wire)"
+            description: "task_id is present at the top of the AdCP envelope in snake_case and remains distinct from any A2A transport Task id"
           - check: field_value
             path: "task_id"
             value: "$context.forced_task_id"

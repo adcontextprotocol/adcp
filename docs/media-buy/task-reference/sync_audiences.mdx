@@ -54,7 +54,7 @@ const validated = SyncAudiencesResponseSchema.parse(result.data);
 
 // Three-shape discriminated union: errors | submitted | audiences
 if ("status" in validated && validated.status === "submitted") {
-  // Whole sync queued asynchronously — poll tasks/get with task_id or await webhook
+  // Whole sync queued asynchronously — invoke get_task_status with task_id or await webhook
   console.log(`Sync queued as task ${validated.task_id}: ${validated.message ?? ""}`);
 } else if ("errors" in validated && validated.errors && !("audiences" in validated)) {
   throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
@@ -94,7 +94,7 @@ async def main():
 
     # Three-shape discriminated union: errors | submitted | audiences
     if getattr(result, 'status', None) == 'submitted':
-        # Whole sync queued asynchronously — poll tasks/get with task_id or await webhook
+        # Whole sync queued asynchronously — invoke get_task_status with task_id or await webhook
         print(f"Sync queued as task {result.task_id}: {getattr(result, 'message', '') or ''}")
         return
 
@@ -166,7 +166,7 @@ Responses use discriminated unions — a response has exactly one of three shape
 **3. Submitted task envelope** — whole operation queued asynchronously (batch ingestion, governance-gated upload, clean-room flows where the seller cannot return per-audience results before the response is emitted):
 
 - `status` — Always `"submitted"`
-- `task_id` — Handle for polling via `tasks/get` or receiving a webhook on completion
+- `task_id` — Handle for polling via `get_task_status` on the A2A profile (or the advertised AdCP polling task on MCP), or receiving a webhook on completion
 - `message` — Optional human-readable explanation of the queue state
 
 The final per-audience `audiences` array lands on the task completion artifact, not on the submitted envelope. Per-audience asynchronous matching (one audience in `processing` while the rest of the sync resolves synchronously) belongs on the synchronous success branch with `status: "processing"` on that item, not on the submitted envelope. Matching latency on the per-audience [audience-status](#audience-status) enum is the common case; the submitted envelope is for the less-common operation-level async case.
@@ -516,7 +516,7 @@ Sellers MUST emit `too_small` whenever `matched_count < minimum_size`. Returning
 
 **Webhook (recommended)**: Configure `push_notification_config` at the protocol level before uploading. The task stays active while the seller's platform matches members. When matching completes, the task completes and the webhook fires with the final result — `status: "ready"` or `status: "too_small"`. Check [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) → `audience_targeting.matching_latency_hours` to set realistic expectations (typically 1–48 hours).
 
-**Polling fallback**: If not using webhooks, poll with discovery-only calls (omit `audiences`) no more frequently than every 15 minutes. Use `tasks/get` with the `task_id` to check task status — the task will be `submitted` while matching is in progress and `completed` when the audience is ready or too small.
+**Polling fallback**: If not using webhooks, poll with discovery-only calls (omit `audiences`) no more frequently than every 15 minutes. A2A profile callers use `get_task_status` with the `task_id`; MCP callers use the advertised AdCP polling task. The task will be `submitted` while matching is in progress and `completed` when the audience is ready or too small.
 
 **Agent workflow**: Upload with `push_notification_config` set. Externalize the `audience_id` and `account_id` before the session ends. When the webhook fires with `status: "ready"`, resume and proceed to [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy).
 
@@ -532,7 +532,7 @@ Two distinct async patterns — match the right one to the seller's behavior:
 - `message` — optional human-readable explanation
 - No `audiences` array on this envelope
 
-Poll `tasks/get` or wait for the webhook. The completion artifact carries the `audiences` array with per-item `action`/`status` results; operation-level failures surface as `status: "failed"` on the task.
+Invoke `get_task_status` on the A2A profile (or the advertised AdCP polling task on MCP), or wait for the webhook. The completion artifact carries the `audiences` array with per-item `action`/`status` results; operation-level failures surface as `status: "failed"` on the task.
 
 **See:** [Webhooks](/docs/building/by-layer/L3/webhooks) for webhook configuration.
 

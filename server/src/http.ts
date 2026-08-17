@@ -1408,6 +1408,13 @@ export class HTTPServer {
       });
     });
 
+    // Permanent A2A extension identifier. Keep the identifier on the AdCP
+    // origin while serving the maintained normative document from Mintlify.
+    this.app.get('/extensions/adcp/v3', (_req, res) => {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.redirect(302, 'https://docs.adcontextprotocol.org/docs/building/by-layer/L0/a2a-profile-extension');
+    });
+
     // Serve other static files (robots.txt, images, etc.)
     const staticPath = process.env.NODE_ENV === 'production'
       ? path.join(__dirname, "../static")

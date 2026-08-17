@@ -64,7 +64,7 @@ if ("errors" in validated && validated.errors && !("creatives" in validated) && 
 }
 
 if ("status" in validated && validated.status === "submitted") {
-  // Whole sync queued asynchronously — poll tasks/get with task_id or await webhook
+  // Whole sync queued asynchronously — invoke get_task_status with task_id or await webhook
   console.log(`Sync queued as task ${validated.task_id}: ${validated.message ?? ""}`);
 } else if ("creatives" in validated) {
   console.log(`Synced ${validated.creatives.length} creatives`);
@@ -108,7 +108,7 @@ async def main():
 
     # Three-shape discriminated union: errors | submitted | creatives
     if getattr(result, 'status', None) == 'submitted':
-        # Whole sync queued asynchronously — poll tasks/get with task_id or await webhook
+        # Whole sync queued asynchronously — invoke get_task_status with task_id or await webhook
         print(f"Sync queued as task {result.task_id}: {getattr(result, 'message', '') or ''}")
         return
 
@@ -391,7 +391,7 @@ Responses use discriminated unions — a response has exactly one of three shape
 **3. Submitted task envelope** — whole operation queued asynchronously (batch ingestion, governance review gating the sync):
 
 - `status` - Always `"submitted"`
-- `task_id` - Handle for polling via `tasks/get` or receiving a webhook on completion
+- `task_id` - Handle for polling via `get_task_status` on the A2A profile (or the advertised AdCP polling task on MCP), or receiving a webhook on completion
 - `message` - Optional human-readable explanation of the queue state
 
 The final per-creative `creatives` array lands on the task completion artifact, not on the submitted envelope. Per-item async review (one creative in `pending_review` while the rest of the sync resolves synchronously) belongs on the synchronous success branch with `status: "pending_review"` on that item, not here.
@@ -895,7 +895,7 @@ Two distinct async patterns — match the right one to the agent's behavior:
 - `message` — optional human-readable explanation
 - No `creatives` array on this envelope
 
-Poll `tasks/get` or wait for the webhook. The completion artifact carries the `creatives` array with per-item `action`/`status` results; operation-level failures surface as `status: "failed"` on the task.
+Invoke `get_task_status` on the A2A profile (or the advertised AdCP polling task on MCP), or wait for the webhook. The completion artifact carries the `creatives` array with per-item `action`/`status` results; operation-level failures surface as `status: "failed"` on the task.
 
 **See:** [Webhooks](/docs/building/by-layer/L3/webhooks) for webhook configuration.
 
