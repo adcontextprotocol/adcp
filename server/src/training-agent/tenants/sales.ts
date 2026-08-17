@@ -15,12 +15,11 @@ import {
 } from '../v6-sales-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
-import { listAccountsTool } from './account-tools.js';
+import { listAccountsTool, syncGovernanceTool } from './account-tools.js';
 import { reportUsageTool } from './report-usage-tool.js';
 import { validateInputTool } from './validate-input-tool.js';
 import { buildCreativeTool, previewCreativeTool } from './creative-tools.js';
 import { customToolFor } from './custom-tool-helper.js';
-import { handleSyncGovernance } from '../account-handlers.js';
 import { handleSyncCatalogs } from '../catalog-event-handlers.js';
 import type { TrainingContext } from '../types.js';
 
@@ -55,21 +54,6 @@ const SYNC_CATALOGS_SCHEMA = {
   dry_run: z.boolean().optional(),
   context: z.any().optional(),
   ext: z.any().optional(),
-};
-
-const SYNC_GOVERNANCE_SCHEMA = {
-  accounts: z.array(z.object({
-    account: ACCOUNT_REF,
-    governance_agents: z.array(z.object({
-      url: z.string(),
-      authentication: z.object({
-        schemes: z.array(z.string()),
-        credentials: z.string(),
-      }),
-    })).min(1),
-  })),
-  idempotency_key: z.string().optional(),
-  context: z.any().optional(),
 };
 
 export function buildSalesTenantConfig(
@@ -117,12 +101,7 @@ export function buildSalesTenantConfig(
           // and fail the older response schema. Gate it off 3.0 like the
           // creative tools below. (/signals keeps it across versions.)
           ...(options.storyboardCompat?.version === '3.0' ? {} : {
-            sync_governance: customToolFor(
-              'sync_governance',
-              'Register governance agent endpoints on accounts. The seller calls these agents via check_governance during media buy lifecycle events. Uses replace semantics: each call replaces previously synced agents on the specified accounts.',
-              SYNC_GOVERNANCE_SCHEMA,
-              handleSyncGovernance,
-            ),
+            sync_governance: syncGovernanceTool(options.storyboardCompat),
             build_creative: buildCreativeTool({
               tenantId: TENANT_ID,
               creativeBillsThroughAdcp: false,

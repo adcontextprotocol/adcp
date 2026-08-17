@@ -23,6 +23,9 @@ import { clearSiSessions } from '../si-handlers.js';
 import { clearForcedTaskCompletions } from '../comply-test-controller.js';
 import { getAgentUrl } from '../config.js';
 import { projectV1ProductToV2 } from '@adcp/sdk/v2/projection';
+import { TrainingBrandPlatform } from '../v6-brand-platform.js';
+import { TrainingCreativeBuilderPlatform } from '../v6-creative-builder-platform.js';
+import { TrainingCreativePlatform } from '../v6-creative-platform.js';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
@@ -149,6 +152,22 @@ describe('tenant routing smoke', () => {
     clearSiSessions();
     clearForcedTaskCompletions();
     stopSessionCleanup();
+  });
+
+  it('keeps authenticated no-account sandbox resolution public while retaining principal identity', async () => {
+    const principal = 'authenticated-no-account-caller';
+    const platforms = [
+      new TrainingBrandPlatform(),
+      new TrainingCreativePlatform(),
+      new TrainingCreativeBuilderPlatform(),
+    ];
+
+    for (const platform of platforms) {
+      const account = await platform.accounts.resolve(undefined, {
+        authInfo: { clientId: principal },
+      });
+      expect(account?.authInfo).toEqual({ kind: 'public', principal });
+    }
   });
 
   it('serves brand.json with tenant public keys', async () => {
@@ -289,6 +308,320 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 15000);
+
+  it('validates and idempotently applies the sync_governance write boundary', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/signals/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: {
+          domain: 'tenant-sync-governance.example',
+          industries: ['outdoor-recreation'],
+          data_subject_contestation: {
+            url: 'https://tenant-sync-governance.example/privacy/contest',
+            email: 'privacy@tenant-sync-governance.example',
+            languages: ['en'],
+          },
+        },
+        operator: 'pinnacle-agency.example',
+      };
+      await callTenantTool(url, 2, 'sync_accounts', {
+        accounts: [{ ...account, billing: 'operator', payment_terms: 'net_30' }],
+        idempotency_key: 'tenant-sync-governance-accounts',
+      });
+      const payload = {
+        accounts: [{
+          account,
+          governance_agents: [{
+            url: 'https://governance.tenant-sync-governance.example/mcp',
+            authentication: {
+              schemes: ['Bearer'],
+              credentials: 'gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+            },
+          }],
+        }],
+        idempotency_key: 'tenant-sync-governance-idempotency',
+      };
+
+      const missingKey = await callTenantTool(url, 3, 'sync_governance', {
+        accounts: payload.accounts,
+      }) as { result?: { isError?: boolean; content?: Array<{ text?: string }> } };
+      expect(missingKey.result?.isError).toBe(true);
+      expect(missingKey.result?.content?.[0]?.text).toContain('idempotency_key');
+
+      for (const [id, governanceAgent] of [
+        [4, { url: 'http://governance.example/mcp', authentication: payload.accounts[0].governance_agents[0].authentication }],
+        [5, { url: 'https://governance.example/mcp', authentication: { schemes: ['Basic'], credentials: 'short' } }],
+      ] as const) {
+        const invalid = await callTenantTool(url, id, 'sync_governance', {
+          ...payload,
+          idempotency_key: `${payload.idempotency_key}-${id}`,
+          accounts: [{ account, governance_agents: [governanceAgent] }],
+        }) as { result?: { isError?: boolean } };
+        expect(invalid.result?.isError).toBe(true);
+      }
+
+      const invalidAccount = await callTenantTool(url, 10, 'list_accounts', {
+        account: {
+          brand: { domain: 'Not A Canonical Domain' },
+          operator: 'pinnacle-agency.example',
+        },
+      }) as { result?: { isError?: boolean } };
+      expect(invalidAccount.result?.isError).toBe(true);
+
+      const first = await callTenantTool(url, 7, 'sync_governance', payload) as {
+        result?: { structuredContent?: { accounts?: Array<{ status?: string }>; replayed?: boolean } };
+      };
+      const replay = await callTenantTool(url, 8, 'sync_governance', payload) as {
+        result?: { structuredContent?: { accounts?: Array<{ status?: string }>; replayed?: boolean } };
+      };
+      expect(first.result?.structuredContent?.accounts?.[0]?.status).toBe('synced');
+      expect(first.result?.structuredContent?.replayed).toBeUndefined();
+      expect(replay.result?.structuredContent?.replayed).toBe(true);
+
+      const conflict = await callTenantTool(url, 9, 'sync_governance', {
+        ...payload,
+        accounts: [{
+          account,
+          governance_agents: [{
+            ...payload.accounts[0].governance_agents[0],
+            url: 'https://different-governance.example/mcp',
+          }],
+        }],
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string } } } };
+      expect(conflict.result?.structuredContent?.adcp_error?.code).toBe('IDEMPOTENCY_CONFLICT');
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('advertises exact governance-enforcement task claims on each enforcing tenant', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const expected: Record<string, string[]> = {
+        sales: ['create_media_buy'],
+        signals: ['activate_signal'],
+        brand: ['acquire_rights'],
+        creative: ['build_creative'],
+        'creative-builder': ['build_creative'],
+      };
+      for (const [index, [tenant, tasks]] of Object.entries(expected).entries()) {
+        const url = `${baseUrl}/${tenant}/mcp`;
+        await initializeTenant(url);
+        const response = await callTenantTool(url, 20 + index, 'get_adcp_capabilities', {}) as {
+          result?: { structuredContent?: {
+            adcp?: { governance_enforcement?: { tasks?: Array<{ task?: string; modes?: string[] }> } };
+            experimental_features?: string[];
+            specialisms?: string[];
+          } };
+        };
+        const capabilities = response.result?.structuredContent;
+        expect(capabilities?.adcp?.governance_enforcement?.tasks).toEqual(
+          tasks.map(task => ({ task, modes: ['signed_context'] })),
+        );
+        expect(capabilities?.experimental_features).toContain('governance.campaign');
+        if (tenant === 'creative-builder') {
+          expect(capabilities?.specialisms).toContain('creative-transformers');
+        }
+      }
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('rejects a governed rights acquisition without persisting a grant', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/brand/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'tenant-rights-gov.example' },
+        operator: 'pinnacle-agency.example',
+      };
+      await callTenantTool(url, 2, 'sync_accounts', {
+        accounts: [{ ...account, billing: 'operator', payment_terms: 'net_30' }],
+        idempotency_key: 'tenant-rights-gov-sync-accounts',
+      });
+      await callTenantTool(url, 3, 'sync_governance', {
+        accounts: [{
+          account,
+          governance_agents: [{
+            url: 'https://governance.tenant-rights-gov.example/mcp',
+            authentication: {
+              schemes: ['Bearer'],
+              credentials: 'gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+            },
+          }],
+        }],
+        idempotency_key: 'tenant-rights-gov-sync-governance',
+      });
+      const catalog = await callTenantTool(url, 4, 'get_rights', {
+        buyer: { domain: 'pinnacle-agency.example' },
+        query: 'commercial rights',
+        uses: ['commercial'],
+      }) as { result?: { structuredContent?: { rights?: Array<{
+        rights_id?: string;
+        pricing_options?: Array<{ pricing_option_id?: string }>;
+      }> } } };
+      const rightsId = catalog.result?.structuredContent?.rights?.[0]?.rights_id;
+      const pricingOptionId = catalog.result?.structuredContent?.rights?.[0]?.pricing_options?.[0]?.pricing_option_id;
+      expect(rightsId).toBeDefined();
+      expect(pricingOptionId).toBeDefined();
+
+      const denied = await callTenantTool(url, 5, 'acquire_rights', {
+        account,
+        rights_id: rightsId,
+        pricing_option_id: pricingOptionId,
+        buyer: { domain: 'pinnacle-agency.example' },
+        campaign: {
+          description: 'Governance denial smoke test',
+          uses: ['commercial'],
+          countries: ['US'],
+          estimated_impressions: 1_000_000,
+          start_date: '2099-04-01',
+          end_date: '2099-06-30',
+        },
+        revocation_webhook: {
+          url: 'https://pinnacle-agency.example/webhooks/revocation',
+          authentication: { schemes: ['Bearer'], credentials: 'revocation-token-xxxxxxxxxxxxxxxx' },
+        },
+        idempotency_key: 'tenant-rights-gov-acquire-denied',
+      }) as { result?: { structuredContent?: { rights_status?: string; reason?: string } } };
+      expect(denied.result?.structuredContent?.rights_status).toBe('rejected');
+      expect(denied.result?.structuredContent?.reason).toMatch(/governance approval/i);
+
+      const update = await callTenantTool(url, 6, 'update_rights', {
+        account,
+        rights_id: rightsId,
+        paused: true,
+        idempotency_key: 'tenant-rights-gov-no-grant-update',
+      }) as { result?: { structuredContent?: {
+        errors?: Array<{ code?: string }>;
+        adcp_error?: { code?: string };
+      } } };
+      const updateError = update.result?.structuredContent?.adcp_error?.code
+        ?? update.result?.structuredContent?.errors?.[0]?.code;
+      expect(updateError).toBe('REFERENCE_NOT_FOUND');
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('rejects paid creative execution without governance authorization', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/creative-builder/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'tenant-creative-gov.example' },
+        operator: 'pinnacle-agency.example',
+      };
+      await callTenantTool(url, 2, 'sync_accounts', {
+        accounts: [{ ...account, billing: 'operator', payment_terms: 'net_30' }],
+        idempotency_key: 'tenant-creative-gov-sync-accounts',
+      });
+      await callTenantTool(url, 3, 'sync_governance', {
+        accounts: [{
+          account,
+          governance_agents: [{
+            url: 'https://governance.tenant-creative-gov.example/mcp',
+            authentication: {
+              schemes: ['Bearer'],
+              credentials: 'gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+            },
+          }],
+        }],
+        idempotency_key: 'tenant-creative-gov-sync-governance',
+      });
+      const transformers = await callTenantTool(url, 4, 'list_transformers', {
+        account,
+        include_pricing: true,
+      }) as { result?: { structuredContent?: { transformers?: Array<{
+        transformer_id?: string;
+        output_capability_ids?: string[];
+      }> } } };
+      const transformer = transformers.result?.structuredContent?.transformers?.[0];
+      expect(transformer?.transformer_id).toBeDefined();
+      expect(transformer?.output_capability_ids?.[0]).toBeDefined();
+
+      const denied = await callTenantTool(url, 5, 'build_creative', {
+        account,
+        mode: 'execute',
+        transformer_id: transformer?.transformer_id,
+        target_capability_id: transformer?.output_capability_ids?.[0],
+        message: 'Produce a 30-second voiceover.',
+        idempotency_key: 'tenant-creative-gov-build-denied',
+      }) as { result?: { structuredContent?: { errors?: Array<{
+        code?: string;
+        details?: { findings?: Array<{ category_id?: string }> };
+      }> } } };
+      const error = denied.result?.structuredContent?.errors?.[0];
+      expect(error?.code).toBe('PERMISSION_DENIED');
+      expect(error?.details?.findings?.[0]?.category_id).toBe('governance_context');
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('inherits paid transformer governance when refining a retained build variant', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/creative-builder/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'tenant-creative-refine-gov.example' },
+        operator: 'pinnacle-agency.example',
+      };
+      await callTenantTool(url, 2, 'sync_accounts', {
+        accounts: [{ ...account, billing: 'operator', payment_terms: 'net_30' }],
+        idempotency_key: 'tenant-creative-refine-sync-accounts',
+      });
+      const transformers = await callTenantTool(url, 3, 'list_transformers', {
+        account,
+        include_pricing: true,
+      }) as { result?: { structuredContent?: { transformers?: Array<{
+        transformer_id?: string;
+        output_capability_ids?: string[];
+      }> } } };
+      const transformer = transformers.result?.structuredContent?.transformers?.[0];
+      const parent = await callTenantTool(url, 4, 'build_creative', {
+        account,
+        mode: 'execute',
+        transformer_id: transformer?.transformer_id,
+        target_capability_id: transformer?.output_capability_ids?.[0],
+        message: 'Produce the original 30-second voiceover.',
+        idempotency_key: 'tenant-creative-refine-parent-build',
+      }) as { result?: { structuredContent?: { build_variant_id?: string } } };
+      const buildVariantId = parent.result?.structuredContent?.build_variant_id;
+      expect(buildVariantId).toBeDefined();
+
+      await callTenantTool(url, 5, 'sync_governance', {
+        accounts: [{
+          account,
+          governance_agents: [{
+            url: 'https://governance.tenant-creative-refine-gov.example/mcp',
+            authentication: {
+              schemes: ['Bearer'],
+              credentials: 'gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+            },
+          }],
+        }],
+        idempotency_key: 'tenant-creative-refine-sync-governance',
+      });
+
+      const denied = await callTenantTool(url, 6, 'build_creative', {
+        account,
+        mode: 'execute',
+        refine_from_build_variant_id: buildVariantId,
+        message: 'Make the delivery warmer.',
+        idempotency_key: 'tenant-creative-refine-denied',
+      }) as { result?: { structuredContent?: { errors?: Array<{ code?: string }> } } };
+      expect(denied.result?.structuredContent?.errors?.[0]?.code).toBe('PERMISSION_DENIED');
+    } finally {
+      await close();
+    }
+  }, 30000);
 
   it('advertises sales vendor-metric optimization capabilities', async () => {
     const { baseUrl, close } = await bootServer();
@@ -1453,6 +1786,13 @@ describe('tenant routing smoke', () => {
       expect(creative).not.toHaveProperty('supports_refinement');
       expect(creative).not.toHaveProperty('refinable_retention_seconds');
       expect(creative).not.toHaveProperty('multiplicity');
+
+      const builderUrl = `${baseUrl}/creative-builder/mcp`;
+      await initializeTenant(builderUrl);
+      const builderCapabilities = await callTenantTool(builderUrl, 3, 'get_adcp_capabilities', {}) as {
+        result?: { structuredContent?: { specialisms?: string[] } };
+      };
+      expect(builderCapabilities.result?.structuredContent?.specialisms).not.toContain('creative-transformers');
     } finally {
       await close();
     }

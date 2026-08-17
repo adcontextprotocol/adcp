@@ -182,6 +182,40 @@ test('runStoryboard structurally matches object-valued governance task gates', a
   assert.equal(result.phases[0].steps[0].skip_reason, 'no_phases');
 });
 
+test('online media-buy governance proofs do not apply to signed-context-only sellers', async () => {
+  const storyboardPath = path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'protocols',
+    'media-buy',
+    'scenarios',
+    'governance_conditions.yaml'
+  );
+  const storyboard = YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
+  const baseProfile = {
+    tools: ['get_adcp_capabilities', ...storyboard.required_tools],
+    raw_capabilities: {
+      adcp: {
+        governance_enforcement: {
+          tasks: [{ task: 'create_media_buy', modes: ['signed_context'] }],
+        },
+      },
+    },
+  };
+  const nonExecutable = { ...storyboard, prerequisites: undefined, phases: [] };
+
+  const signedOnly = await runStoryboard('https://agent.example/mcp', nonExecutable, {
+    _profile: baseProfile,
+    agentTools: baseProfile.tools,
+  });
+  assert.equal(signedOnly.overall_passed, true);
+  assert.equal(signedOnly.phases[0].phase_id, 'capability_unsupported');
+  assert.equal(signedOnly.phases[0].steps[0].skip_reason, 'capability_unsupported');
+});
+
 test('billing gate skips per-agent phases when agent billing is not supported', () => {
   const storyboardPath = path.join(
     __dirname,

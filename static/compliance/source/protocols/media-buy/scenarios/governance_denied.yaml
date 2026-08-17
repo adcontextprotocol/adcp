@@ -12,14 +12,15 @@ required_tools:
   - get_products
   - create_media_buy
 
-# Capability gate: this scenario asserts the seller produces GOVERNANCE_DENIED
-# after consulting a registered governance agent, so it runs only for sellers
-# that declare media_buy.governance_aware: true. Sellers without outbound
-# governance consultation grade not_applicable rather than false-failing on a
-# denial they have no mechanism to produce.
+# Capability gate: run only for sellers claiming signed-context enforcement of
+# create_media_buy. Non-claiming sellers grade not_applicable.
 requires_capability:
-  path: media_buy.governance_aware
-  equals: true
+  path: adcp.governance_enforcement.tasks
+  contains:
+    task: create_media_buy
+    modes:
+      - signed_context
+      - online_execution_check
 
 narrative: |
   This is a multi-agent test. The test harness sets up a governance plan on a governance

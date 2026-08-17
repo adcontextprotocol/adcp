@@ -19,8 +19,12 @@ required_tools:
   - report_plan_outcome
 
 requires_capability:
-  path: media_buy.governance_aware
-  equals: true
+  path: adcp.governance_enforcement.tasks
+  contains:
+    task: create_media_buy
+    modes:
+      - signed_context
+      - online_execution_check
 
 narrative: |
   This multi-agent test sets up a governance plan whose CTV reporting policy

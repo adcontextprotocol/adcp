@@ -61,3 +61,23 @@ Validate generated SDK signers and verifiers against the published [`governance-
 Until an SDK release contains this schema bundle, its generated `check_governance` validators are stale. The training agent deliberately uses passthrough MCP tool schemas with framework request/response validation disabled for this experimental tenant, then validates in the source-aligned handler. Production integrations MUST regenerate or pin a compatible SDK rather than copying that compatibility overlay.
 
 Pin experimental integrations to the matching 3.2 schema bundle until the surface graduates.
+
+## Conformance coverage
+
+The [cross-role governance index](/compliance/latest/universal/governance.yaml)
+connects this contract to the executable proof for each service role. It is an
+index, not one universal workflow: each service storyboard runs only when the
+agent advertises the exact task and mode in
+`adcp.governance_enforcement.tasks[]`.
+
+| Service role | Governed task | Capability-gated proof |
+|---|---|---|
+| Media buy | `create_media_buy` | [signed approval plus tamper rejection](/compliance/latest/protocols/media-buy/scenarios/governance_approved.yaml); agents also claiming `online_execution_check` run the [conditions](/compliance/latest/protocols/media-buy/scenarios/governance_conditions.yaml) and [denied](/compliance/latest/protocols/media-buy/scenarios/governance_denied.yaml) paths |
+| Signals | `activate_signal` | [signed activation and persisted-deployment proof](/compliance/latest/specialisms/signal-marketplace/scenarios/governance_approved.yaml), plus [unauthorized paid activation and no-upstream-call proof](/compliance/latest/specialisms/signal-marketplace/scenarios/governance_denied.yaml) |
+| Brand rights | `acquire_rights` | [signed grant and persisted-state proof](/compliance/latest/specialisms/brand-rights/scenarios/governance_approved.yaml), plus [unauthorized acquisition and no-grant proof](/compliance/latest/specialisms/brand-rights/scenarios/governance_denied.yaml) |
+| Creative | `build_creative` | [signed paid-render artifact proof](/compliance/latest/specialisms/creative-transformers/scenarios/governance_approved.yaml), plus [unauthorized paid render and no-upstream-call proof](/compliance/latest/specialisms/creative-transformers/scenarios/governance_denied.yaml) |
+
+Governance providers and enforcing services remain separate roles. Provider
+responses prove verdict semantics; service storyboards prove that signed intent
+is checked before a role-specific side effect. Merely returning or echoing
+`governance_context` is not enforcement evidence.

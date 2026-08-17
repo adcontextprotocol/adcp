@@ -10279,17 +10279,11 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     ...(!isThreeZeroStoryboardCompat(ctx) ? ['query_provenance_audit_observations'] : []),
   ];
   const governanceEnforcementTasks = ctx.tenantId === 'sales'
-    ? [
-      { task: 'create_media_buy', modes: ['signed_context'] },
-      { task: 'update_media_buy', modes: ['signed_context'] },
-    ]
+    ? [{ task: 'create_media_buy', modes: ['signed_context'] }]
     : ctx.tenantId === 'signals'
       ? [{ task: 'activate_signal', modes: ['signed_context'] }]
       : ctx.tenantId === 'brand'
-        ? [
-          { task: 'acquire_rights', modes: ['signed_context'] },
-          { task: 'update_rights', modes: ['signed_context'] },
-        ]
+        ? [{ task: 'acquire_rights', modes: ['signed_context'] }]
         : ctx.tenantId === 'creative' || ctx.tenantId === 'creative-builder'
           ? [{ task: 'build_creative', modes: ['signed_context'] }]
           : [];
@@ -10988,6 +10982,7 @@ export async function handleGetCreativeDelivery(args: ToolArgs, ctx: TrainingCon
 
 interface BuildCreativeArgs {
   account?: unknown;
+  mode?: 'execute' | 'estimate';
   creative_id?: string;
   creative_manifest?: {
     format_id?: FormatID;
@@ -11074,6 +11069,42 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
   const formats = getFormats();
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
+  const parentGovernance = req.refine_from_build_variant_id
+    ? session.buildVariantGovernance.get(req.refine_from_build_variant_id)
+    : undefined;
+  const effectiveTransformerId = req.transformer_id ?? parentGovernance?.transformerId;
+  const selectedTransformer = effectiveTransformerId
+    ? getTransformers().find(transformer => transformer.transformer_id === effectiveTransformerId)
+    : undefined;
+  const selectedPricing = parentGovernance
+    ? { unit_price: parentGovernance.unitPrice, currency: parentGovernance.currency }
+    : selectedTransformer?.pricing_options?.find(option => {
+      const unitPrice = (option as { unit_price?: unknown }).unit_price;
+      return typeof unitPrice === 'number' && unitPrice > 0;
+    }) as { unit_price?: number; currency?: string } | undefined;
+  const effectiveAccount = (parentGovernance?.account ?? req.account) as AccountRef | undefined;
+  // The training voiceover transformer emits fixed 30-second audio. Match the
+  // renderer's axis precedence and fan-out clamp so token verification uses
+  // the same paid leaf count the handler will actually produce.
+  const governedVariantCount = Math.min(
+    Math.max(1, req.variant_axis?.values?.length ?? req.max_variants ?? 1),
+    TRANSFORMER_MAX_VARIANTS_LIMIT,
+  );
+  const governedAmount = (selectedPricing?.unit_price ?? 0) * 30 * governedVariantCount;
+  const isPaidExecution = req.mode !== 'estimate' && governedAmount > 0;
+  if (isPaidExecution && !effectiveAccount) {
+    return buildCreativeCompleted({
+      errors: [{
+        code: 'ACCOUNT_REQUIRED',
+        message: 'account is required to determine whether governance applies to paid creative execution.',
+      }],
+    });
+  }
+  const registeredGovernanceAgents = resolveGovernanceAgentsForAccount(
+    creativeSessionKey(req as unknown as ToolArgs, ctx),
+    ctx.principal,
+    effectiveAccount as AccountRef | undefined,
+  );
   if (governanceContext) {
     const commitmentError = await governedCommitmentError(
       governanceContext,
@@ -11081,14 +11112,29 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       'build_creative',
       `${getCanonicalBase()}/${ctx.tenantId === 'creative-builder' ? 'creative-builder' : 'creative'}`,
       governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
-      0,
-      'USD',
+      governedAmount,
+      selectedPricing?.currency ?? 'USD',
     );
     if (commitmentError) {
       return buildCreativeCompleted({
         errors: [{ code: commitmentError.code, message: commitmentError.message }],
       });
     }
+  } else if (isPaidExecution && registeredGovernanceAgents.length > 0) {
+    const message = 'Paid creative execution requires governance approval. Call check_governance first — a governance agent is registered for this account.';
+    return buildCreativeCompleted({
+      errors: [{
+        code: 'PERMISSION_DENIED',
+        message,
+        details: {
+          findings: [{
+            category_id: 'governance_context',
+            severity: 'critical',
+            explanation: message,
+          }],
+        },
+      }],
+    });
   }
   const validFormatIds = new Map(formats.map(f => [f.format_id.id, f]));
   const canonicalBuildsEnabled = includeThreeOneFields(ctx);
@@ -11262,6 +11308,14 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     if (!wantsVariantShape && req.transformer_id) {
       const singleVariantId = `bv_${idemSeed}_0`;
       session.buildVariantTargets.set(singleVariantId, target);
+      if (selectedPricing?.unit_price !== undefined && effectiveTransformerId) {
+        session.buildVariantGovernance.set(singleVariantId, {
+          transformerId: effectiveTransformerId,
+          ...(effectiveAccount ? { account: effectiveAccount } : {}),
+          unitPrice: selectedPricing.unit_price,
+          currency: selectedPricing.currency ?? 'USD',
+        });
+      }
       return buildCreativeCompleted({
         creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent transformer ${escapeHtmlAttr(req.transformer_id)} -->`, usesCanonicalTargets || !usesLegacyTargets),
         build_variant_id: singleVariantId,
@@ -11285,6 +11339,14 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
     const variants = Array.from({ length: variantCount }, (_unused, i) => {
       const variantId = `bv_${idemSeed}_${i}`;
       session.buildVariantTargets.set(variantId, target);
+      if (selectedPricing?.unit_price !== undefined && effectiveTransformerId) {
+        session.buildVariantGovernance.set(variantId, {
+          transformerId: effectiveTransformerId,
+          ...(effectiveAccount ? { account: effectiveAccount } : {}),
+          unitPrice: selectedPricing.unit_price,
+          currency: selectedPricing.currency ?? 'USD',
+        });
+      }
       const leaf: Record<string, unknown> = {
         build_variant_id: variantId,
         creative_manifest: transformerManifest(target, `<!-- AdCP Training Agent variant ${i} -->`, usesCanonicalTargets || !usesLegacyTargets),
