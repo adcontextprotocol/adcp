@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/view-threshold-basis.json",
+  "title": "View Threshold Basis",
+  "description": "Basis governing when the clock runs for a time-threshold view count. 'play_time' counts continuous playback time regardless of viewport measurement (the platform-counted model: 2-second and 6-second video views on social/olv inventory). 'in_view' counts continuous in-view time under the viewability standard governing measurement (the IAB/MRC viewable-video model: 50% of pixels for 2 continuous seconds). Counts under different bases are not comparable and MUST NOT be summed. Extensible: additional bases (e.g., an audible-playback basis for audio verified-listen thresholds) ship explicitly in future minors.",
+  "type": "string",
+  "enum": ["play_time", "in_view"]
+}
