@@ -17,8 +17,10 @@ required_tools:
 
 narrative: |
   In seller-assigned account-fixed mode, the buyer does not choose a timezone.
-  The seller assigns the upstream account clock, returns it from provisioning,
-  and keeps it stable on later account reads.
+  The seller assigns or recovers the upstream account clock, returns it from
+  provisioning, and keeps it stable on later account reads. A buyer connecting
+  to an existing upstream account must use the returned canonical timezone even
+  when its own current preference differs.
 
 agent:
   interaction_model: media_buy_seller
@@ -79,8 +81,6 @@ phases:
               billing: "operator"
           idempotency_key: "$generate:uuid_v4#account_timezone_seller_assigned_provision"
         context_outputs:
-          - name: account_id
-            path: "accounts[0].account_id"
           - name: account_timezone
             path: "accounts[0].timezone"
         validations:
@@ -93,6 +93,14 @@ phases:
           - check: field_present
             path: "accounts[0].timezone"
             description: "Seller returns the assigned immutable timezone"
+          - check: field_value
+            path: "accounts[0].brand.domain"
+            value: "acmeoutdoor.example"
+            description: "Provisioning echoes the reusable brand natural key"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-agency.example"
+            description: "Provisioning echoes the reusable operator natural key"
 
   - id: readback
     title: "Discover the assigned timezone again"
@@ -107,14 +115,12 @@ phases:
         stateful: false
         sample_request:
           account:
-            account_id: "$context.account_id"
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
         validations:
           - check: response_schema
             description: "Account read matches the canonical schema"
-          - check: field_equals_context
-            path: "accounts[0].account_id"
-            context_key: "account_id"
-            description: "Read resolves the provisioned account"
           - check: field_equals_context
             path: "accounts[0].timezone"
             context_key: "account_timezone"

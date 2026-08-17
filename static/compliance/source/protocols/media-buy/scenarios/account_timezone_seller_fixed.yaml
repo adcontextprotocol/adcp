@@ -19,6 +19,9 @@ narrative: |
   A seller-fixed account clock is one seller-wide operational timezone. The
   capability must declare that value, buyers omit timezone during provisioning,
   and the seller echoes the effective value on both sync and list surfaces.
+  Buyer-local labels or preferences such as West Coast and East Coast never
+  override this contract: when the seller is fixed to UTC, both buyer teams use
+  UTC for the account even though their own local clocks differ.
 
 agent:
   interaction_model: media_buy_seller
@@ -80,9 +83,6 @@ phases:
               operator: "pinnacle-agency.example"
               billing: "operator"
           idempotency_key: "$generate:uuid_v4#account_timezone_seller_fixed_provision"
-        context_outputs:
-          - name: account_id
-            path: "accounts[0].account_id"
         validations:
           - check: response_schema
             description: "Provisioning response matches the canonical schema"
@@ -90,13 +90,18 @@ phases:
             path: "accounts[0].action"
             allowed_values: ["created", "updated", "unchanged"]
             description: "Provisioning succeeds instead of returning a per-account failure"
-          - check: field_present
-            path: "accounts[0].account_id"
-            description: "Seller returns an account handle"
           - check: field_equals_context
             path: "accounts[0].timezone"
             context_key: "account_timezone"
             description: "Provisioning echoes the seller-wide timezone"
+          - check: field_value
+            path: "accounts[0].brand.domain"
+            value: "acmeoutdoor.example"
+            description: "Provisioning echoes the reusable brand natural key"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-agency.example"
+            description: "Provisioning echoes the reusable operator natural key"
 
   - id: readback
     title: "Read back the immutable account timezone"
@@ -111,14 +116,12 @@ phases:
         stateful: false
         sample_request:
           account:
-            account_id: "$context.account_id"
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
         validations:
           - check: response_schema
             description: "Account read matches the canonical schema"
-          - check: field_equals_context
-            path: "accounts[0].account_id"
-            context_key: "account_id"
-            description: "Read resolves the provisioned account"
           - check: field_equals_context
             path: "accounts[0].timezone"
             context_key: "account_timezone"
