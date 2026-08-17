@@ -9,6 +9,7 @@ import type {
   LegacyFormatID as FormatID,
   LegacyCreateMediaBuyRequest as CreateMediaBuyRequest,
   EventType,
+  CanonicalProposal,
 } from '@adcp/sdk';
 
 // SpecialCategory for episodes (e.g., premiere, finale) — not yet in @adcp/sdk types
@@ -20,6 +21,14 @@ export type TalentRole = typeof TALENT_ROLES[number];
 
 /** First wire release that carries the get_products business-rejection arm. */
 export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.0' as const;
+
+export const PROPOSAL_NEGOTIATION_PROFILES = [
+  'ask-only',
+  'typed-negotiation',
+  'constrained-seller',
+  'finalization-failure',
+] as const;
+export type ProposalNegotiationProfile = (typeof PROPOSAL_NEGOTIATION_PROFILES)[number];
 
 export function supportsGetProductsRejected(servedVersion: string | undefined): boolean {
   if (!servedVersion) return false;
@@ -68,6 +77,10 @@ export interface TrainingContext {
    *  presence-gated signing at the auth layer. Default `/mcp` does not
    *  advertise request signing, so unsigned bearer callers keep working. */
   strict?: boolean;
+  /** Deterministic proposal-negotiation policy selected by the trusted route.
+   * The public `/sales/mcp` endpoint remains ask-only; beta-gated profile
+   * routes set one of the other values without trusting buyer input. */
+  proposalNegotiationProfile?: ProposalNegotiationProfile;
   /** Local storyboard-runner compatibility shims. Never set in deployed routes. */
   storyboardCompat?: { version: '3.0' };
   /** Whether creative usage is billed through AdCP. Defaults to true for legacy/shared routes. */
@@ -354,6 +367,7 @@ export interface SessionState {
   governancePlans: Map<string, GovernancePlanState>;
   governanceChecks: Map<string, GovernanceCheckState>;
   governanceOutcomes: Map<string, GovernanceOutcomeState>;
+  governanceAdjustments: Map<string, GovernanceAdjustmentState>;
   propertyLists: Map<string, PropertyListState>;
   collectionLists: Map<string, CollectionListState>;
   contentStandards: Map<string, ContentStandardsState>;
@@ -373,6 +387,15 @@ export interface SessionState {
     operation: 'finalize';
     idempotencyKey: string;
     successorProposalId: string;
+  }>;
+  /** Canonical proposal snapshots consumed by the SDK negotiation engine.
+   * Sources are immutable; only the compare-and-swap version and active hold
+   * metadata advance when a successor batch commits. */
+  proposalRefinementRecords: Map<string, {
+    proposal: CanonicalProposal;
+    version: number;
+    activeHold?: { proposal_id: string; expires_at: string };
+    accepted?: { accepted_at: string; media_buy_id: string; media_buy_revision: number };
   }>;
   usageRecords: UsageRecord[];
   /** Maps build_variant_id → the FormatID target used to produce it.
@@ -681,6 +704,7 @@ export interface GovernancePlanState {
     currency: string;
     reallocationThreshold: number;
     reallocationUnlimited: boolean;
+    accountingMode: 'gross_commitment' | 'verified_net_cost';
     perSellerMaxPct?: number;
     allocations?: Record<string, { amount?: number; maxPct?: number }>;
   };
@@ -697,6 +721,7 @@ export interface GovernancePlanState {
     mode: GovernancePlanState['mode'];
     reallocationThreshold: number;
     reallocationUnlimited: boolean;
+    accountingMode: 'gross_commitment' | 'verified_net_cost';
     policyCategories?: string[];
     policyIds?: string[];
     /**
@@ -775,6 +800,20 @@ export interface GovernanceCheckState {
   policiesEvaluated: string[];
   timestamp: string;
   expiresAt?: string;
+  deliveryStatement?: {
+    statementId: string;
+    statementDigest: string;
+    sequence: number;
+    issuedAt: string;
+    sellerReference: string;
+    cumulativeSpend: number;
+    currency: string;
+    reportingPeriod: { start: string; end: string };
+    canonicalPayload: {
+      seller_reference: string;
+      delivery_metrics: Record<string, unknown>;
+    };
+  };
 }
 
 export interface GovernanceFinding {
@@ -783,7 +822,13 @@ export interface GovernanceFinding {
   explanation: string;
   policyId?: string;
   confidence?: number;
-  details?: { field?: string; expected?: unknown; actual?: unknown };
+  details?: {
+    field?: string;
+    expected?: unknown;
+    actual?: unknown;
+    seller_stated?: unknown;
+    buyer_observed?: unknown;
+  };
 }
 
 export interface GovernanceCondition {
@@ -813,9 +858,51 @@ export interface GovernanceOutcomeState {
   requestPayloadHash?: string;
   /** Exact successful response returned for idempotent replay. */
   response?: Record<string, unknown>;
-  /** Deprecated buyer delivery snapshot retained as audit evidence only. */
+  /** Buyer-attributed delivery observation retained independently of seller evidence. */
   delivery?: Record<string, unknown>;
+  deliveryReconciliationStatus?: 'consistent' | 'measurement_variance' | 'disputed' | 'unmatched' | 'closed_unresolved';
+  /** Operational governance-window state; closure is not a billing settlement. */
+  deliveryPeriodState?: 'open' | 'closed';
   findings: GovernanceFinding[];
+  timestamp: string;
+}
+
+export type GovernanceAdjustmentType = 'decommitment' | 'refund' | 'credit' | 'makegood';
+
+export interface GovernanceAdjustmentState {
+  adjustmentId: string;
+  planId: string;
+  planOwnerAgentUrl: string;
+  outcomeId: string;
+  governanceBindingId?: string;
+  governanceContext?: string;
+  purchaseType: string;
+  sellerReference: string;
+  sellerAdjustmentId: string;
+  adjustmentType: GovernanceAdjustmentType;
+  amount: number;
+  currency: string;
+  headroomRestored: number;
+  verifiedAmount: number;
+  verificationState: 'reported' | 'verified' | 'disputed';
+  evidence: {
+    evidenceId: string;
+    evidenceType: 'decommitment_agreement' | 'refund_settlement' | 'credit_note' | 'makegood_agreement';
+    digest: string;
+    issuedAt: string;
+  };
+  reason: string;
+  effectiveAt: string;
+  idempotencyKey: string;
+  reporterSeller: string;
+  requestPayloadHash: string;
+  response: Record<string, unknown>;
+  reviewIdempotencyKey?: string;
+  reviewPayloadHash?: string;
+  reviewResponse?: Record<string, unknown>;
+  reviewerBuyer?: string;
+  reviewReason?: string;
+  reviewedAt?: string;
   timestamp: string;
 }
 

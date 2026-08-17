@@ -668,7 +668,7 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 | `geo_places` | object | Named-place targeting keyed by collision-safe identifier system, with exact country/type support, catalog versions, and resolver metadata |
 | `age_restriction` | object | Age restriction capabilities with `supported` flag and `verification_methods` |
 | `demographics` | object | Seller-wide discovery rollup for canonical demographic targeting. `supported: true` means at least one product supports the surface; inspect each product's `demographic_targeting` declaration for exact execution. |
-| `language` | boolean | Language targeting (ISO 639-1 codes) |
+| `language` | boolean or object | Language-preference targeting. The structured form may declare `supported` and exact selectable BCP 47 ranges in `supported_languages`; the boolean is the legacy coarse declaration. |
 | `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
 | `negative_keywords` | object | Negative keyword targeting with `supported_match_types` array. Presence indicates support. |
 | `collection_list` | boolean | Collection list inclusion targeting. `true` is a seller-wide rollup; inspect each product's `overlay_support`. |
@@ -1654,7 +1654,10 @@ const buy = await client.createMediaBuy({
             }
           }
         },
-        "language": true,
+        "language": {
+          "supported": true,
+          "supported_languages": ["en", "fr-CA", "es"]
+        },
         "keyword_targets": {
           "supported_match_types": ["broad", "phrase", "exact"]
         },

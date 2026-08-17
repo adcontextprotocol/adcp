@@ -245,7 +245,12 @@ function setCORSHeaders(res: Response): void {
  * (`test-agent.adcontextprotocol.org/sales/mcp`) and the local mount
  * (`/api/training-agent/sales/mcp`).
  */
-function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCompat?: TrainingContext['storyboardCompat']) {
+function tenantMcpHandler(
+  holder: RegistryHolder,
+  tenantId: string,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+  proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'],
+) {
   return async (req: Request, res: Response): Promise<void> => {
     setCORSHeaders(res);
 
@@ -375,7 +380,14 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string, storyboardCo
       if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {
         return;
       }
-      if (await tryHandleProductDiscoveryRequest(req, res, resolved.tenantId, principal, storyboardCompat)) {
+      if (await tryHandleProductDiscoveryRequest(
+        req,
+        res,
+        resolved.tenantId,
+        principal,
+        storyboardCompat,
+        proposalNegotiationProfile,
+      )) {
         return;
       }
 
@@ -416,6 +428,7 @@ async function tryHandleProductDiscoveryRequest(
   tenantId: string,
   principal: string | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
+  proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'],
 ): Promise<boolean> {
   if (tenantId !== 'sales') return false;
   if (storyboardCompat?.version === '3.0') return false;
@@ -491,6 +504,7 @@ async function tryHandleProductDiscoveryRequest(
         tenantId: 'sales' as const,
         principal: principal ?? 'anonymous',
       };
+    nativeContext.proposalNegotiationProfile = proposalNegotiationProfile ?? 'ask-only';
   } catch (error) {
     logger.error({ error, toolName }, 'Native sales request context resolution failed');
     res.json({
@@ -976,6 +990,24 @@ export interface TenantRouteMiddleware {
   storyboardCompat?: TrainingContext['storyboardCompat'];
 }
 
+export const PROPOSAL_NEGOTIATION_PROFILE_ROUTES = [
+  { path: '/sales/profiles/typed-negotiation/mcp', profile: 'typed-negotiation' },
+  { path: '/sales/profiles/constrained-seller/mcp', profile: 'constrained-seller' },
+  { path: '/sales/profiles/finalization-failure/mcp', profile: 'finalization-failure' },
+] as const satisfies ReadonlyArray<{
+  path: string;
+  profile: Exclude<NonNullable<TrainingContext['proposalNegotiationProfile']>, 'ask-only'>;
+}>;
+
+/** Keep the new training surfaces dark in production until the 3.2 beta cut. */
+export function proposalNegotiationProfilesEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const configured = env.ENABLE_ADCP_3_2_PROPOSAL_PROFILES;
+  if (configured !== undefined) return configured === '1' || configured.toLowerCase() === 'true';
+  return env.NODE_ENV !== 'production';
+}
+
 export function mountTenantRoutes(
   parent: Router,
   tenantIds: readonly string[],
@@ -1026,6 +1058,33 @@ export function mountTenantRoutes(
         error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
       });
     });
+  }
+
+  if (
+    tenantIds.includes('sales')
+    && middleware.storyboardCompat?.version !== '3.0'
+    && proposalNegotiationProfilesEnabled()
+  ) {
+    for (const { path, profile } of PROPOSAL_NEGOTIATION_PROFILE_ROUTES) {
+      parent.options(path, (_req, res) => {
+        setCORSHeaders(res);
+        res.status(204).end();
+      });
+      parent.post(
+        path,
+        ...mw,
+        tenantMcpHandler(holder, 'sales', middleware.storyboardCompat, profile),
+      );
+      parent.get(path, (_req, res) => {
+        setCORSHeaders(res);
+        res.setHeader('Allow', 'POST, OPTIONS');
+        res.status(405).json({
+          jsonrpc: '2.0',
+          id: null,
+          error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
+        });
+      });
+    }
   }
 
   // brand.json discovery is mounted at the parent training-agent router in

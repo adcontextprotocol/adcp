@@ -52,7 +52,7 @@ The seller-side check sends:
 | `governance_context` | Yes | The signed, opaque context from the buyer-side approval. It is the authoritative plan binding. |
 | `planned_delivery` | Yes | The seller's actual planned execution: budget, dates, channels, geography, placements, pacing, and other delivery parameters. |
 | `phase` | Yes for lifecycle clarity | Indicates whether this is a purchase, modification, or delivery check. |
-| `delivery_metrics` | Delivery phase | Required when `phase` is `delivery`; carries actual delivery performance data for pacing, spend, geography, channel, and audience-drift checks. |
+| `delivery_metrics` | Delivery phase | Required when `phase` is `delivery`; carries the seller-attributed canonical statement used for pacing, spend, geography, channel, and audience-drift checks. |
 
 The seller must not treat the buyer's intent check as sufficient by itself. The seller checks what it will actually deliver, which may differ from the buyer's request because of inventory availability, seller defaults, or implementation constraints.
 
@@ -61,6 +61,8 @@ The execution check is binary. If the governance agent denies it, the seller mus
 ## Outcome reporting
 
 After a seller responds, the buyer-side orchestrator calls [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome). This lets the governance agent reconcile the approved action with the seller's actual response and update budget state from confirmed outcomes.
+
+For periodic delivery, the buyer names the exact seller delivery check and submits either the seller statement copy it received or an independently measured buyer observation. Governance keeps both sources attributed, and a discrepancy is never resolved by last-writer-wins. A forwarded copy that does not match the canonical statement is a dispute and blocks adjustment acceptance; buyer measurement variance is recorded without blocking, and the higher amount bounds conservative exposure and decommitments.
 
 Outcome reporting is what prevents the governance agent from counting attempted actions as committed spend. The governance agent tracks the state that actually happened.
 

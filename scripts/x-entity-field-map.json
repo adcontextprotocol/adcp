@@ -9,7 +9,6 @@
     "spot_id": "spot_airing",
     "creative_id": "creative",
     "audience_id": "audience",
-    "evidence_id": "audience_evidence",
     "snapshot_id": "audience_evidence_snapshot",
     "event_source_id": "event_source",
     "catalog_id": "catalog",
@@ -24,6 +23,13 @@
     "policy_id": "__ambiguous__",
     "source_plan_id": "governance_plan",
     "check_id": "governance_check",
+    "statement_id": "governance_delivery_statement",
+    "seller_statement_id": "governance_delivery_statement",
+    "observation_id": "governance_delivery_observation",
+    "outcome_id": "governance_outcome",
+    "adjustment_id": "governance_adjustment",
+    "seller_adjustment_id": "seller_adjustment",
+    "evidence_id": "__scope_specific__",
     "session_id": "si_session",
     "offering_id": "offering",
     "property_id": "property",
@@ -31,5 +37,5 @@
     "credential_id": "attestation_credential",
     "pricing_option_id": "__scope_specific__"
   },
-  "$comment_ambiguous": "`list_id` is ambiguous (property_list vs collection_list); annotate via shared type refs (core/property-list-ref.json, core/collection-list-ref.json) or per-site. `plan_id` splits governance_plan vs media_plan and must be scope-specific. `pricing_option_id` splits product_pricing_option vs vendor_pricing_option. `policy_id` splits governance_registry_policy vs governance_inline_policy — policy-entry.json is tagged inline at the shared type; string-array use sites (policy_ids, shared_policy_ids, registry_policy_ids) are registry; findings and audit entries are deliberately un-annotated with $comment (see #2685). The patch script must be run with `--scope <dir>` and a per-scope overlay map for these."
+  "$comment_ambiguous": "`list_id` is ambiguous (property_list vs collection_list); annotate via shared type refs (core/property-list-ref.json, core/collection-list-ref.json) or per-site. `plan_id` splits governance_plan vs media_plan and must be scope-specific. `pricing_option_id` splits product_pricing_option vs vendor_pricing_option. `evidence_id` is scope-specific because audience evidence and governance adjustment evidence are distinct. `policy_id` splits governance_registry_policy vs governance_inline_policy — policy-entry.json is tagged inline at the shared type; string-array use sites (policy_ids, shared_policy_ids, registry_policy_ids) are registry; findings and audit entries are deliberately un-annotated with $comment (see #2685). The patch script must be run with `--scope <dir>` and a per-scope overlay map for these."
 }
