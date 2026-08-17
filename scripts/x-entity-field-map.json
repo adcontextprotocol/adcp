@@ -9,7 +9,6 @@
     "spot_id": "spot_airing",
     "creative_id": "creative",
     "audience_id": "audience",
-    "evidence_id": "audience_evidence",
     "snapshot_id": "audience_evidence_snapshot",
     "event_source_id": "event_source",
     "catalog_id": "catalog",
