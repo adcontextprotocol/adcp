@@ -403,6 +403,15 @@ export interface SessionState {
    * subsequent refine_from_build_variant_id request can inherit the parent
    * leaf's format target rather than falling back to the audio_vo default. */
   buildVariantTargets: Map<string, FormatID>;
+  /** Billing and governance metadata inherited by refinements. A refinement
+   * omits transformer_id by schema, so the parent variant is the only trusted
+   * source for deciding whether the next render is a governed paid action. */
+  buildVariantGovernance: Map<string, {
+    transformerId: string;
+    account?: AccountRef;
+    unitPrice: number;
+    currency: string;
+  }>;
   /** Data set by comply_test_controller. Persisted so scenarios survive the
    * serialize/deserialize round trip that every request does, even in the
    * single-request case with the InMemoryStateStore. */

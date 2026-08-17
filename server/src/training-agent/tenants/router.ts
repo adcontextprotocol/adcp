@@ -255,7 +255,7 @@ function tenantMcpHandler(
     setCORSHeaders(res);
 
     wrapTenantToolDiscoveryProjection(req, res, tenantId, storyboardCompat);
-    wrapSalesCapabilitiesProjection(req, res, tenantId, storyboardCompat);
+    wrapTenantCapabilitiesProjection(req, res, tenantId, storyboardCompat);
 
     // Bridge `res.locals.trainingPrincipal` (set by the upstream
     // `requireAuth` middleware) onto `req.auth` so the framework's MCP
@@ -612,7 +612,7 @@ async function tryHandleLocalComplyScenario(
   return true;
 }
 
-function wrapSalesCapabilitiesProjection(
+function wrapTenantCapabilitiesProjection(
   req: Request,
   res: Response,
   tenantId: string,
@@ -635,7 +635,7 @@ function wrapSalesCapabilitiesProjection(
   (res as unknown as { end: (...args: unknown[]) => Response }).end = (chunk?: unknown, ...rest: unknown[]) => {
     if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
     const body = Buffer.concat(chunks);
-    const patched = projectSalesCapabilities(body, tenantId, storyboardCompat);
+    const patched = projectTenantCapabilities(body, tenantId, storyboardCompat);
     if (patched !== body && !res.headersSent) {
       res.setHeader('content-length', String(patched.length));
     }
@@ -776,7 +776,7 @@ function stripContentLengthOnWriteHead(res: Response): void {
   };
 }
 
-function projectSalesCapabilities(
+function projectTenantCapabilities(
   body: Buffer,
   tenantId: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
@@ -816,6 +816,29 @@ function projectSalesCapabilities(
         ? adcp.supported_versions
         : [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
     };
+    if (storyboardCompat?.version !== '3.0') {
+      const governanceTasks: Record<string, Array<{ task: string; modes: ['signed_context'] }>> = {
+        sales: [{ task: 'create_media_buy', modes: ['signed_context'] }],
+        signals: [{ task: 'activate_signal', modes: ['signed_context'] }],
+        brand: [{ task: 'acquire_rights', modes: ['signed_context'] }],
+        creative: [{ task: 'build_creative', modes: ['signed_context'] }],
+        'creative-builder': [{ task: 'build_creative', modes: ['signed_context'] }],
+      };
+      const tasks = governanceTasks[tenantId];
+      if (tasks) {
+        structured.adcp = {
+          ...structured.adcp,
+          governance_enforcement: { tasks },
+        };
+        const experimentalFeatures = Array.isArray(structured.experimental_features)
+          ? structured.experimental_features.filter((feature): feature is string => typeof feature === 'string')
+          : [];
+        if (!experimentalFeatures.includes('governance.campaign')) {
+          experimentalFeatures.push('governance.campaign');
+        }
+        structured.experimental_features = experimentalFeatures;
+      }
+    }
     if ((tenantId === 'creative' || tenantId === 'creative-builder') && storyboardCompat?.version !== '3.0') {
       const creative = structured.creative && typeof structured.creative === 'object'
         ? structured.creative

@@ -87,7 +87,12 @@ function translateV5Result<T extends object>(result: unknown): T {
 
 const trainingCreativeAccounts: AccountStore<TrainingCreativeMeta> = {
   resolution: 'explicit',
-  resolve: async (ref, _ctx) => {
+  resolve: async (ref, ctx) => {
+    const principal = ctx?.authInfo?.clientId;
+    const authInfo = {
+      kind: 'api_key' as const,
+      ...(principal && { principal }),
+    };
     if (ref == null) {
       return {
         id: 'public_sandbox',
@@ -96,7 +101,7 @@ const trainingCreativeAccounts: AccountStore<TrainingCreativeMeta> = {
         mode: 'sandbox',
         ctx_metadata: {},
         sandbox: true,
-        authInfo: { kind: 'public' },
+        authInfo: principal ? authInfo : { kind: 'public' as const },
       };
     }
     const brandDomain =
@@ -115,7 +120,7 @@ const trainingCreativeAccounts: AccountStore<TrainingCreativeMeta> = {
       ...('operator' in ref && typeof ref.operator === 'string' && { operator: ref.operator }),
       ctx_metadata: { brand_domain: brandDomain },
       sandbox: true,
-      authInfo: { kind: 'api_key' },
+      authInfo,
     };
   },
   upsert: syncAccountsUpsert,

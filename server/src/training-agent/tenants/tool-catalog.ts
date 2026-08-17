@@ -67,10 +67,10 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   preview_creative: ['sales', 'creative', 'creative-builder'],
   get_creative_delivery: ['creative'],
 
-  // sync_governance rides customTools on both /sales (every media_buy_seller
-  // specialism registers a buyer governance agent before spend moves) and
-  // /signals (signal-marketplace governance-denial pattern).
-  sync_governance: ['sales', 'signals'],
+  // sync_governance is exposed by each service role that advertises a
+  // task-scoped governance-enforcement claim. /governance is the provider
+  // role and intentionally remains separate.
+  sync_governance: ['sales', 'signals', 'creative', 'creative-builder', 'brand'],
   get_signals: ['signals'],
   activate_signal: ['signals'],
 
@@ -135,8 +135,8 @@ export function toolsForTenant(
       // 3.0-compat exclusions. The split product-discovery tools are introduced
       // in 3.2, while validate_input / list_transformers are gated off on every
       // tenant that serves them. sync_governance is a 3.1+ account task gated
-      // off /sales under 3.0 (the released 3.0.x sales scenarios skip it), but
-      // /signals keeps it across versions.
+      // off all current service roles under 3.0 except /signals, whose released
+      // compatibility storyboards already rely on it.
       if (
         tool === 'search_brands'
         || tool === 'list_products'
@@ -145,7 +145,7 @@ export function toolsForTenant(
         || tool === 'decline_proposals'
       ) return false;
       if (tool === 'validate_input' || tool === 'list_transformers') return false;
-      if (tool === 'sync_governance' && tenantId === 'sales') return false;
+      if (tool === 'sync_governance' && tenantId !== 'signals') return false;
       return true;
     })
     .sort();

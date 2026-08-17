@@ -8,6 +8,7 @@ track: core
 required_tools:
   - get_brand_identity
 requires_scenarios:
+  - brand_rights/governance_approved
   - brand_rights/governance_denied
   - brand_rights/update_rights_lifecycle
 

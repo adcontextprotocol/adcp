@@ -209,9 +209,10 @@ The declaration is part of the experimental `governance.campaign` surface, so an
 
 Advertising a task also commits the service to deterministic applicability. It resolves the commercial account from the request or existing resource before the side effect; when it cannot do so, it returns [`ACCOUNT_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-account-required). It never treats a missing token as evidence that the buyer is ungoverned. Conditional task annotations use `trigger_overrides_exemption`: any commitment-increasing part of a mixed atomic update requires governance.
 
-Current conformance runners continue to grade the legacy `media_buy.governance_aware` create path. Task-scoped grading for this new block will land with role-specific observable workflows; until then, registries MUST NOT present the experimental declaration as a certified claim.
-
-The legacy `media_buy.governance_aware` boolean remains the compatibility claim for the historically graded `create_media_buy` consultation path. Agents use the core block for explicit task-scoped claims.
+AdCP 3.2 conformance selects role-specific governance workflows from exact
+entries in `adcp.governance_enforcement.tasks[]`. The legacy
+`media_buy.governance_aware` boolean remains a compatibility signal for older
+runners, but it is not the 3.2 certification gate.
 
 ### adcp.attestations
 

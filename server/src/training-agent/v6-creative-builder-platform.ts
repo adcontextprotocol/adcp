@@ -84,7 +84,12 @@ function translateV5Result<T extends object>(result: unknown): T {
 
 const trainingBuilderAccounts: AccountStore<TrainingCreativeBuilderMeta> = {
   resolution: 'explicit',
-  resolve: async (ref, _ctx) => {
+  resolve: async (ref, ctx) => {
+    const principal = ctx?.authInfo?.clientId;
+    const authInfo = {
+      kind: 'api_key' as const,
+      ...(principal && { principal }),
+    };
     if (ref == null) {
       return {
         id: 'public_sandbox',
@@ -93,7 +98,7 @@ const trainingBuilderAccounts: AccountStore<TrainingCreativeBuilderMeta> = {
         mode: 'sandbox',
         ctx_metadata: {},
         sandbox: true,
-        authInfo: { kind: 'public' },
+        authInfo: principal ? authInfo : { kind: 'public' as const },
       };
     }
     const brandDomain =
@@ -112,7 +117,7 @@ const trainingBuilderAccounts: AccountStore<TrainingCreativeBuilderMeta> = {
       ...('operator' in ref && typeof ref.operator === 'string' && { operator: ref.operator }),
       ctx_metadata: { brand_domain: brandDomain },
       sandbox: true,
-      authInfo: { kind: 'api_key' },
+      authInfo,
     };
   },
   upsert: syncAccountsUpsert,
@@ -134,7 +139,9 @@ export class TrainingCreativeBuilderPlatform
 
   get capabilities() {
     return {
-    specialisms: ['creative-template', 'creative-generative'] as const,
+    specialisms: this.storyboardCompat?.version === '3.0'
+      ? ['creative-template', 'creative-generative'] as const
+      : ['creative-template', 'creative-generative', 'creative-transformers'] as const,
     creative_agents: [],
     channels: [] as const,
     pricingModels: ['cpm', 'cpa'] as const,

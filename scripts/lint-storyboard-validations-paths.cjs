@@ -50,6 +50,7 @@ const PATH_BEARING_CHECKS = new Set([
   'field_absent',
   'field_pattern',
   'field_contains',
+  'field_greater_than',
   'all_fields_in_context_array',
   'envelope_field_present',
   'envelope_field_absent',

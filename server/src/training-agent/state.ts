@@ -275,6 +275,7 @@ function createSession(): SessionState {
     creatives: new Map(),
     signalActivations: new Map(),
     buildVariantTargets: new Map(),
+    buildVariantGovernance: new Map(),
     usageRecords: [],
     complyExtensions: {
       accountStatuses: new Map(),
@@ -501,6 +502,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     proposalLifecycleLinks: asMap(hydrated.proposalLifecycleLinks, fresh.proposalLifecycleLinks),
     proposalRefinementRecords: asMap(hydrated.proposalRefinementRecords, fresh.proposalRefinementRecords),
     buildVariantTargets: asMap(hydrated.buildVariantTargets, fresh.buildVariantTargets),
+    buildVariantGovernance: asMap(hydrated.buildVariantGovernance, fresh.buildVariantGovernance),
     usageRecords: Array.isArray(hydrated.usageRecords) ? hydrated.usageRecords : [],
     complyExtensions: {
       accountStatuses: asMap(hydratedComply.accountStatuses, fresh.complyExtensions.accountStatuses),

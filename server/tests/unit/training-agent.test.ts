@@ -2196,6 +2196,10 @@ describe('creative transformers handler', () => {
 
   it('rejects plural transformer targets outside the transformer output set', async () => {
     const result = await handleBuildCreative({
+      account: {
+        brand: { domain: 'transformer-target-validation.example' },
+        operator: 'pinnacle-agency.example',
+      },
       transformer_id: 'audiostack_voiceover',
       target_capability_ids: ['training_image_generation'],
       max_variants: 2,
@@ -12227,7 +12231,6 @@ describe('get_adcp_capabilities handler', () => {
     expect((result.adcp as Record<string, any>).governance_enforcement).toEqual({
       tasks: [
         { task: 'create_media_buy', modes: ['signed_context'] },
-        { task: 'update_media_buy', modes: ['signed_context'] },
       ],
     });
     expect(result.experimental_features).toContain('governance.campaign');

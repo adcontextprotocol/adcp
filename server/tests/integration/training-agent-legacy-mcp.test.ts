@@ -363,6 +363,98 @@ describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)'
     const activatedBody = activated.body.result?.structuredContent;
     expect(activatedBody?.adcp_error, JSON.stringify(activated.body)).toBeUndefined();
     expect(activatedBody?.deployments?.[0]?.is_live).toBe(true);
+
+    const rightsCatalog = await call('brand', 'get_rights', {
+      buyer: { domain: brand.domain },
+      query: 'Sofia Reyes commercial likeness rights',
+      uses: ['commercial', 'likeness'],
+    });
+    const rightsOffering = rightsCatalog.body.result?.structuredContent?.rights?.find(
+      (offering: { pricing_options?: Array<{ currency?: string }> }) =>
+        offering.pricing_options?.some(option => option.currency === 'USD'),
+    );
+    expect(rightsOffering?.rights_id, JSON.stringify(rightsCatalog.body)).toEqual(expect.any(String));
+    const rightsPricing = rightsOffering?.pricing_options?.find(
+      (option: { currency?: string }) => option.currency === 'USD',
+    );
+    const rightsPayload = {
+      idempotency_key: `rights-${randomUUID()}`,
+      account,
+      rights_id: rightsOffering.rights_id,
+      pricing_option_id: rightsPricing.pricing_option_id,
+      buyer: { domain: brand.domain },
+      campaign: {
+        description: 'Approved fitness campaign featuring Sofia Reyes',
+        uses: ['likeness', 'commercial'],
+        countries: ['US'],
+        estimated_impressions: 1_000_000,
+        start_date: '2027-06-01',
+        end_date: '2027-07-01',
+      },
+      revocation_webhook: {
+        url: `https://${brand.domain}/webhooks/rights-revocation`,
+        authentication: { schemes: ['Bearer'], credentials: 'rights-revocation-secret-xxxxxxxxxxxx' },
+      },
+    };
+    const rightsIntent = await call('governance', 'check_governance', {
+      idempotency_key: `check-${randomUUID()}`,
+      brand,
+      plan_id: planId,
+      caller,
+      target_agent: `${getCanonicalBase()}/brand`,
+      purchase_type: 'rights_license',
+      proposed_commitment: { amount: 10_000, currency: 'USD' },
+      tool: 'acquire_rights',
+      payload: rightsPayload,
+    });
+    const rightsContext = rightsIntent.body.result?.structuredContent?.governance_context;
+    expect(rightsContext, JSON.stringify(rightsIntent.body)).toEqual(expect.any(String));
+    const acquired = await call('brand', 'acquire_rights', {
+      ...rightsPayload,
+      governance_context: rightsContext,
+    });
+    expect(acquired.body.result?.structuredContent?.rights_status, JSON.stringify(acquired.body)).toBe('acquired');
+
+    const transformers = await call('creative-builder', 'list_transformers', {
+      account,
+      include_pricing: true,
+    });
+    const transformer = transformers.body.result?.structuredContent?.transformers?.[0];
+    const transformerPricing = transformer?.pricing_options?.[0];
+    expect(transformer?.transformer_id, JSON.stringify(transformers.body)).toEqual(expect.any(String));
+    expect(transformerPricing?.unit_price).toBeGreaterThan(0);
+    const creativePayload = {
+      idempotency_key: `creative-${randomUUID()}`,
+      account,
+      mode: 'execute',
+      transformer_id: transformer.transformer_id,
+      target_capability_id: transformer.output_capability_ids[0],
+      message: 'Produce an approved 30-second campaign voiceover.',
+    };
+    const creativeIntent = await call('governance', 'check_governance', {
+      idempotency_key: `check-${randomUUID()}`,
+      brand,
+      plan_id: planId,
+      caller,
+      target_agent: `${getCanonicalBase()}/creative-builder`,
+      purchase_type: 'creative_services',
+      proposed_commitment: {
+        amount: 10_000,
+        currency: 'USD',
+      },
+      tool: 'build_creative',
+      payload: creativePayload,
+    });
+    const creativeContext = creativeIntent.body.result?.structuredContent?.governance_context;
+    expect(creativeContext, JSON.stringify(creativeIntent.body)).toEqual(expect.any(String));
+    const built = await call('creative-builder', 'build_creative', {
+      ...creativePayload,
+      governance_context: creativeContext,
+    });
+    const builtBody = built.body.result?.structuredContent;
+    expect(builtBody?.errors, JSON.stringify(built.body)).toBeUndefined();
+    expect(builtBody?.creative_manifest).toBeDefined();
+    expect(builtBody?.build_variant_id).toEqual(expect.any(String));
   });
 
   it('returns signing headers on tenant OPTIONS preflight', async () => {
