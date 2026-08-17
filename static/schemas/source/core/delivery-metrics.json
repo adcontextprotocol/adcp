@@ -189,7 +189,7 @@
     },
     "quartile_data": {
       "type": ["object", "null"],
-      "description": "Audio/video quartile completion data. Null indicates the metric is not applicable to this package/buy (e.g. quartile data on a non-video buy).",
+      "description": "Audio/video quartile completion data. Null indicates the metric is not applicable to this package/buy (e.g. quartile data on a non-video buy). Individual quartiles are addressable via the leaf metric identities `quartile_25` (q1_views), `quartile_50` (q2_views), `quartile_75` (q3_views), and `quartile_100` (q4_views) for declaration, commitments, aggregates, and breakdown sorting; this object remains the canonical carrier of the values. Quartiles are player-fired events (VAST firstQuartile/midpoint/thirdQuartile/complete). `quartile_100` counts 100%-of-duration completions and is distinct from `completed_views`, which counts completions at the seller's billable view threshold (`view_duration_seconds`) when one is set.",
       "properties": {
         "q1_views": {
           "type": "number",
@@ -288,7 +288,7 @@
     },
     "viewability": {
       "type": "object",
-      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — since duration is governed by the same viewability threshold (`standard`) and shares the same `measurable_impressions` denominator. Sellers SHOULD include `standard` whenever measured viewability values are reported because MRC and GroupM rows are not interchangeable.",
+      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — since duration is governed by the same viewability threshold (`standard`) and shares the same `measurable_impressions` denominator. Sellers SHOULD include `standard` whenever measured viewability values are reported because MRC and GroupM rows are not interchangeable. The numeric leaves are addressable via the leaf metric identities `viewable_rate`, `viewable_impressions`, `measurable_impressions`, and `viewed_seconds` for declaration, commitments, aggregates, and breakdown sorting; this object remains the canonical carrier of the values. When a buy reports under more than one standard, contract a specific standard via the `viewability_standard` qualifier on `committed_metrics`; when the package's `committed_metrics` carry a `viewability_standard` qualifier, sellers MUST populate `standard` on reported viewability objects so reconciliation can match the qualifier.",
       "properties": {
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",

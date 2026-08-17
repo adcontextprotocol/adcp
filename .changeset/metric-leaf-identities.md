@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Add leaf metric identities so nested delivery values are individually declarable, committable, aggregatable, and sortable: `quartile_25`–`quartile_100` (resolving to `quartile_data.q1_views`–`q4_views`) and `viewable_rate`, `viewable_impressions`, `measurable_impressions`, `viewed_seconds` (resolving to the same-named `viewability` fields) join `available-metric` and `sort-metric`. This closes an existing contradiction: `committed-metric` qualifier rules and `delivery-metric-aggregate` conditionals already referenced these metric_ids, and the shipped `committed_metrics` / `metric_aggregates` examples were invalid against their own schemas. Also adds the missing flat transactional scalars (`commissionable_value`, `plays`, `cost_per_completed_view`, `cpm`, `downloads`, `units_sold`, `new_to_brand_units`) to `sort-metric`, with survey/model-based lift scalars documented as intentionally sort-excluded. Leaf identities resolve to the nested canonical values — no duplicate flat response fields are introduced. A metric-identity coherence contract test now enforces enum/schema/example agreement.
