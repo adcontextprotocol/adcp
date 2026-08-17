@@ -163,7 +163,7 @@
     "@anthropic-ai/sdk": "^0.115.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.8.3",
-    "@google-cloud/kms": "^5.7.0",
+    "@google-cloud/kms": "^6.0.0",
     "@google/generative-ai": "^0.24.1",
     "@googleapis/calendar": "^16.0.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
