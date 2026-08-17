@@ -252,7 +252,7 @@
             },
             "sort_direction": {
               "$ref": "/schemas/enums/sort-direction.json",
-              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
+              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull. Sellers MUST apply the requested direction to the applied sort metric — direction has no availability fallback.",
               "default": "desc"
             }
           },
