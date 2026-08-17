@@ -287,8 +287,8 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].governed_actions[].seller_reported_spend` | number | Latest canonical seller cumulative spend. |
 | `plans[].governed_actions[].buyer_observed_spend` | number | Latest buyer-attributed cumulative spend. |
 | `plans[].governed_actions[].delivery_reporting_period` | object | Current seller reporting period summarized for this action. |
-| `plans[].governed_actions[].conservative_exposure` | number | Highest credible amount while evidence is unresolved. |
-| `plans[].governed_actions[].delivery_reconciliation_status` | enum | `consistent`, `disputed`, `unmatched`, or `closed_unresolved`. |
+| `plans[].governed_actions[].conservative_exposure` | number | Greater of seller-reported and buyer-observed spend while evidence disagrees. |
+| `plans[].governed_actions[].delivery_reconciliation_status` | enum | `consistent`, `measurement_variance`, `disputed`, `unmatched`, or `closed_unresolved`. |
 | `plans[].governed_actions[].delivery_period_state` | enum | `open` or `closed`; closure is operational and does not settle billing. |
 | `plans[].governed_actions[].check_count` | integer | Number of governance checks performed. |
 | `plans[].summary` | object | Aggregate validation and outcome statistics. |
@@ -339,7 +339,7 @@ You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans
 | `plans[].entries[].seller_reference` | string | Seller resource identifier retained with the outcome, such as a media-buy ID. |
 | `plans[].entries[].delivery_statement` | object | Canonical seller-attributed statement retained on a delivery check, including ID, digest, sequence, period, cumulative spend, currency, and the exact digest-verifiable payload. |
 | `plans[].entries[].delivery` | object | Buyer-attributed observation retained on a `delivery` outcome. It never overwrites the seller statement. |
-| `plans[].entries[].delivery_reconciliation_status` | enum | `consistent`, `disputed`, `unmatched`, or `closed_unresolved`. Only an open dispute blocks adjustment verification. |
+| `plans[].entries[].delivery_reconciliation_status` | enum | `consistent`, `measurement_variance`, `disputed`, `unmatched`, or `closed_unresolved`. Only an open dispute blocks adjustment verification; measurement variance is recorded and priced into conservative exposure. |
 | `plans[].entries[].delivery_period_state` | enum | `open` or `closed`. Closed evidence is immutable but not a final billing record. |
 | `plans[].entries[].outcome_status` | string | Outcome status (present for `outcome` entries). |
 | `plans[].entries[].outcome_id` | string | Source completed outcome (present for `adjustment` entries). |

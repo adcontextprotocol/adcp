@@ -150,7 +150,9 @@ Authoritative seller monitoring uses [`check_governance`](/docs/governance/campa
 }
 ```
 
-### Response (seller and buyer disagree)
+### Response (forwarded seller copy does not match the canonical statement)
+
+A `seller_statement_copy` whose statement ID or digest differs from what the seller filed with governance means the seller told two different stories. This is a dispute, and it blocks adjustment acceptance while the period is open:
 
 ```json
 {
@@ -162,18 +164,47 @@ Authoritative seller monitoring uses [`check_governance`](/docs/governance/campa
     {
       "category_id": "delivery_evidence_conflict",
       "severity": "critical",
-      "explanation": "Buyer-attributed delivery evidence conflicts with the seller statement retained by governance.",
+      "explanation": "The forwarded seller statement does not match the canonical statement retained by governance.",
       "details": {
-        "field": "delivery.cumulative_spend",
-        "expected": 100,
-        "actual": 200
+        "field": "delivery.seller_statement_digest",
+        "expected": "sha256:4b55f1157094ed8df2635250f71568701d294cb0da57845eba886a62e5434633",
+        "actual": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
       }
     }
   ]
 }
 ```
 
-Governance retains both attributed amounts, reports conservative exposure as the higher credible amount in [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs), and blocks adjustment acceptance while the governance period is open. It never averages the claims or applies a last-writer-wins rule.
+A forwarded copy whose digest matches the canonical statement but whose values differ is internally inconsistent — the digest covers the period, spend, and currency — and is rejected as a [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) rather than recorded as a dispute.
+
+### Response (buyer measurement differs from the seller statement)
+
+A `buyer_measurement` with a matching period and currency but a different `cumulative_spend` is expected measurement noise, not equivocation. It is recorded, attributed, and non-blocking:
+
+```json
+{
+  "outcome_id": "out_del_004",
+  "outcome_state": "findings",
+  "delivery_reconciliation_status": "measurement_variance",
+  "delivery_period_state": "open",
+  "findings": [
+    {
+      "category_id": "delivery_measurement_variance",
+      "severity": "warning",
+      "explanation": "Buyer-measured delivery differs from the seller statement; the higher amount is used as conservative exposure and as the delivered figure for decommitment bounds.",
+      "details": {
+        "field": "delivery.cumulative_spend",
+        "seller_stated": 12500,
+        "buyer_observed": 12384
+      }
+    }
+  ]
+}
+```
+
+A `buyer_measurement` whose reporting period or currency differs from the canonical statement is not comparable and produces `disputed`, as for a mismatched forwarded copy.
+
+In every disagreement, governance retains both attributed amounts and reports `max(seller_reported_spend, buyer_observed_spend)` as conservative exposure in [`get_plan_audit_logs`](/docs/governance/campaign/tasks/get_plan_audit_logs). The same conservative figure bounds verified decommitments, so neither side gains anything from manufacturing a disagreement. Only a `disputed` state blocks adjustment acceptance; `measurement_variance` never does. Governance never averages the claims or applies a last-writer-wins rule.
 
 ### Closing an unresolved governance period
 
@@ -263,7 +294,7 @@ If the seller rejected the request, report it so the governance agent can update
 | `outcome_id` | string | Unique identifier for this outcome record. |
 | `outcome_state` | enum | `accepted` (state updated, no issues) or `findings` (issues detected). |
 | `committed_budget` | number | Governance-authorized budget reserved by this completed outcome. |
-| `delivery_reconciliation_status` | enum | `consistent`, `disputed`, `unmatched`, or `closed_unresolved`; present for delivery observations. |
+| `delivery_reconciliation_status` | enum | `consistent`, `measurement_variance`, `disputed`, `unmatched`, or `closed_unresolved`; present for delivery observations. Only `disputed` blocks adjustment acceptance. |
 | `delivery_period_state` | enum | `open` or `closed`. Closure freezes governance evidence but does not settle billing. |
 | `findings` | array | Present only when `outcome_state` is `findings`. |
 | `findings[].category_id` | string | Which validation category flagged the issue. |

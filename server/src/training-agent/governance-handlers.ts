@@ -2398,32 +2398,111 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
       seller_statement_digest?: string;
       period_closed?: boolean;
     };
-    const statementConflict = observation.source === 'seller_statement_copy'
-      && (
-        observation.seller_statement_id !== sellerStatement.statementId
-        || observation.seller_statement_digest !== sellerStatement.statementDigest
-      );
-    const valueConflict = observation.cumulative_spend !== sellerStatement.cumulativeSpend
-      || observation.currency !== sellerStatement.currency
-      || observation.reporting_period.start !== sellerStatement.reportingPeriod.start
-      || observation.reporting_period.end !== sellerStatement.reportingPeriod.end;
     deliveryPeriodState = observation.period_closed === true ? 'closed' : 'open';
-    deliveryReconciliationStatus = statementConflict || valueConflict
-      ? deliveryPeriodState === 'closed' ? 'closed_unresolved' : 'disputed'
-      : 'consistent';
-    if (deliveryReconciliationStatus === 'disputed' || deliveryReconciliationStatus === 'closed_unresolved') {
+
+    // How governance classifies a disagreement depends on the evidence
+    // source (see "Evidence authority and reconciliation" in the campaign
+    // governance specification):
+    //  - seller_statement_copy: an ID/digest mismatch means the seller told
+    //    two different stories -> disputed. A copy whose ID and digest both
+    //    match the canonical statement but whose period/spend/currency
+    //    differ is internally inconsistent (the digest covers those values)
+    //    -> rejected as a validation error, not recorded.
+    //  - buyer_measurement: a structural mismatch (period or currency) is
+    //    incomparable -> disputed. A cumulative_spend difference with a
+    //    matching period/currency is expected measurement noise ->
+    //    measurement_variance (recorded, attributed, non-blocking).
+    let baseStatus: 'consistent' | 'disputed' | 'measurement_variance';
+    let conflictFinding: GovernanceFinding | undefined;
+
+    if (observation.source === 'seller_statement_copy') {
+      const idMismatch = observation.seller_statement_id !== sellerStatement.statementId;
+      const digestMismatch = observation.seller_statement_digest !== sellerStatement.statementDigest;
+      if (idMismatch || digestMismatch) {
+        baseStatus = 'disputed';
+        conflictFinding = {
+          categoryId: 'delivery_evidence_conflict',
+          severity: 'critical',
+          explanation: 'The forwarded seller statement does not match the canonical statement retained by governance.',
+          details: idMismatch
+            ? {
+              field: 'delivery.seller_statement_id',
+              expected: sellerStatement.statementId,
+              actual: observation.seller_statement_id,
+            }
+            : {
+              field: 'delivery.seller_statement_digest',
+              expected: sellerStatement.statementDigest,
+              actual: observation.seller_statement_digest,
+            },
+        };
+      } else {
+        const valueConflict = observation.cumulative_spend !== sellerStatement.cumulativeSpend
+          || observation.currency !== sellerStatement.currency
+          || observation.reporting_period.start !== sellerStatement.reportingPeriod.start
+          || observation.reporting_period.end !== sellerStatement.reportingPeriod.end;
+        if (valueConflict) {
+          return validationError(
+            'seller_statement_copy values do not match the statement they cite; the statement digest covers period, spend, and currency.',
+          );
+        }
+        baseStatus = 'consistent';
+      }
+    } else {
+      const structuralMismatch = observation.reporting_period.start !== sellerStatement.reportingPeriod.start
+        || observation.reporting_period.end !== sellerStatement.reportingPeriod.end
+        || observation.currency !== sellerStatement.currency;
+      if (structuralMismatch) {
+        baseStatus = 'disputed';
+        conflictFinding = {
+          categoryId: 'delivery_evidence_conflict',
+          severity: 'critical',
+          explanation: 'Buyer-attributed delivery evidence has a different reporting period or currency than the seller statement, making the records incomparable.',
+          details: observation.currency !== sellerStatement.currency
+            ? { field: 'delivery.currency', expected: sellerStatement.currency, actual: observation.currency }
+            : {
+              field: 'delivery.reporting_period',
+              expected: sellerStatement.reportingPeriod,
+              actual: observation.reporting_period,
+            },
+        };
+      } else if (observation.cumulative_spend !== sellerStatement.cumulativeSpend) {
+        baseStatus = 'measurement_variance';
+        conflictFinding = {
+          categoryId: 'delivery_measurement_variance',
+          severity: 'warning',
+          explanation: 'Buyer-measured delivery differs from the seller statement; the higher amount is used as conservative exposure and as the delivered figure for decommitment bounds.',
+          details: {
+            field: 'delivery.cumulative_spend',
+            seller_stated: sellerStatement.cumulativeSpend,
+            buyer_observed: observation.cumulative_spend,
+          },
+        };
+      } else {
+        baseStatus = 'consistent';
+      }
+    }
+
+    // Closing the period while the current state disagrees (disputed or
+    // measurement_variance) freezes it as closed_unresolved regardless of
+    // which evidence source produced the disagreement.
+    deliveryReconciliationStatus = deliveryPeriodState === 'closed' && baseStatus !== 'consistent'
+      ? 'closed_unresolved'
+      : baseStatus;
+
+    if (deliveryReconciliationStatus === 'closed_unresolved') {
       findings.push({
         categoryId: 'delivery_evidence_conflict',
         severity: 'critical',
-        explanation: deliveryPeriodState === 'closed'
-          ? 'The governance period closed with unresolved buyer and seller delivery evidence.'
-          : 'Buyer-attributed delivery evidence conflicts with the seller statement retained by governance.',
-        details: {
+        explanation: 'The governance period closed with unresolved buyer and seller delivery evidence.',
+        details: conflictFinding?.details ?? {
           field: 'delivery.cumulative_spend',
           expected: sellerStatement.cumulativeSpend,
           actual: observation.cumulative_spend,
         },
       });
+    } else if (conflictFinding) {
+      findings.push(conflictFinding);
     }
   }
 
@@ -2543,6 +2622,7 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
         category_id: f.categoryId,
         severity: f.severity,
         explanation: f.explanation,
+        ...(f.details && { details: f.details }),
       })),
     }),
     ...(deliveryReconciliationStatus && {
@@ -2731,7 +2811,20 @@ export async function handleReportPlanAdjustment(args: ToolArgs, ctx: TrainingCo
         if (!latestStatement) {
           return { errors: [{ code: 'CONFLICT', message: 'A canonical seller delivery statement is required before decommitment can be verified.' }] };
         }
-        const remainingObligation = (sourceOutcomeForAdjustment?.committedBudget ?? 0) - latestStatement.cumulativeSpend;
+        // The conservative ceiling prices in whichever side reported the
+        // higher cumulative spend, so neither a seller understating its
+        // statement nor a buyer inflating an observation can manufacture
+        // decommitment room. latestBuyerObservedCumulativeSpend is the
+        // delivery.cumulative_spend of the latest delivery outcome recorded
+        // for this binding (0 if none), independent of evidence source.
+        const latestDeliveryOutcome = deliveryOutcomesForBinding.reduce<GovernanceOutcomeState | undefined>(
+          (latest, current) => (!latest || current.timestamp > latest.timestamp ? current : latest),
+          undefined,
+        );
+        const latestObservationSpend = (latestDeliveryOutcome?.delivery as { cumulative_spend?: unknown } | undefined)?.cumulative_spend;
+        const latestBuyerObservedCumulativeSpend = typeof latestObservationSpend === 'number' ? latestObservationSpend : 0;
+        const conservativeDeliveredFigure = Math.max(latestStatement.cumulativeSpend, latestBuyerObservedCumulativeSpend);
+        const remainingObligation = (sourceOutcomeForAdjustment?.committedBudget ?? 0) - conservativeDeliveredFigure;
         const priorVerifiedDecommitments = [...session.governanceAdjustments.values()]
           .filter(existing =>
             existing.adjustmentId !== adjustment?.adjustmentId

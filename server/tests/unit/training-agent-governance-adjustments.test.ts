@@ -329,6 +329,10 @@ describe('report_plan_adjustment', () => {
       const { intent, outcome } = await settle();
       const sellerDelivery = await reportSellerDelivery(intent.governance_context, 60, 'conflict');
       const statement = sellerDelivery.delivery_statement;
+      // A seller_statement_copy whose digest does not match the canonical
+      // statement is a dispute (the seller told two different stories),
+      // unlike a buyer_measurement value difference, which is
+      // measurement_variance and does not block acceptance.
       const buyerDelivery = await handleReportPlanOutcome({
         plan_id: PLAN.plan_id,
         check_id: sellerDelivery.check_id,
@@ -337,11 +341,13 @@ describe('report_plan_adjustment', () => {
         outcome: 'delivery',
         delivery: {
           observation_id: 'buyer_observation_conflict',
-          source: 'buyer_measurement',
+          source: 'seller_statement_copy',
           observed_at: '2027-02-01T11:05:00Z',
           reporting_period: statement.reporting_period,
           cumulative_spend: 80,
           currency: 'USD',
+          seller_statement_id: statement.statement_id,
+          seller_statement_digest: `sha256:${'e'.repeat(64)}`,
         },
       }, BUYER_CTX) as Record<string, any>;
       expect(buyerDelivery.delivery_reconciliation_status).toBe('disputed');
@@ -401,6 +407,10 @@ describe('report_plan_adjustment', () => {
       const { intent, outcome } = await settle();
       const sellerDelivery = await reportSellerDelivery(intent.governance_context, 60, 'period_close');
       const statement = sellerDelivery.delivery_statement;
+      // A seller_statement_copy with a digest that does not match the
+      // canonical statement is a dispute (the seller told two different
+      // stories); a buyer_measurement value difference would instead be
+      // measurement_variance, which never blocks acceptance.
       const openDispute = await handleReportPlanOutcome({
         plan_id: PLAN.plan_id,
         check_id: sellerDelivery.check_id,
@@ -409,11 +419,13 @@ describe('report_plan_adjustment', () => {
         outcome: 'delivery',
         delivery: {
           observation_id: 'buyer_observation_period_open',
-          source: 'buyer_measurement',
+          source: 'seller_statement_copy',
           observed_at: '2027-02-01T11:05:00Z',
           reporting_period: statement.reporting_period,
           cumulative_spend: 80,
           currency: 'USD',
+          seller_statement_id: statement.statement_id,
+          seller_statement_digest: `sha256:${'e'.repeat(64)}`,
         },
       }, BUYER_CTX) as Record<string, any>;
       expect(openDispute).toMatchObject({
@@ -433,11 +445,13 @@ describe('report_plan_adjustment', () => {
         outcome: 'delivery',
         delivery: {
           observation_id: 'buyer_observation_period_close',
-          source: 'buyer_measurement',
+          source: 'seller_statement_copy',
           observed_at: '2027-02-02T00:00:00Z',
           reporting_period: statement.reporting_period,
           cumulative_spend: 80,
           currency: 'USD',
+          seller_statement_id: statement.statement_id,
+          seller_statement_digest: `sha256:${'e'.repeat(64)}`,
           period_closed: true,
         },
       }, BUYER_CTX) as Record<string, any>;
@@ -791,6 +805,10 @@ describe('report_plan_adjustment', () => {
       const { intent, outcome } = await settle();
       const p1 = { start: '2027-01-01T00:00:00Z', end: '2027-02-01T00:00:00Z' };
       const p1Check = await reportSellerDelivery(intent.governance_context, 40, 'multi_period_p1', 1, p1);
+      const p1Statement = p1Check.delivery_statement;
+      // A seller_statement_copy with a mismatched digest is a dispute; a
+      // buyer_measurement value difference would instead be
+      // measurement_variance, which does not block acceptance.
       const p1Dispute = await handleReportPlanOutcome({
         plan_id: PLAN.plan_id,
         check_id: p1Check.check_id,
@@ -799,11 +817,13 @@ describe('report_plan_adjustment', () => {
         outcome: 'delivery',
         delivery: {
           observation_id: 'multi_period_p1_obs',
-          source: 'buyer_measurement',
+          source: 'seller_statement_copy',
           observed_at: '2027-02-01T00:05:00Z',
           reporting_period: p1,
           cumulative_spend: 90,
           currency: 'USD',
+          seller_statement_id: p1Statement.statement_id,
+          seller_statement_digest: `sha256:${'e'.repeat(64)}`,
         },
       }, BUYER_CTX) as Record<string, any>;
       expect(p1Dispute).toMatchObject({ delivery_reconciliation_status: 'disputed', delivery_period_state: 'open' });
@@ -846,11 +866,13 @@ describe('report_plan_adjustment', () => {
         outcome: 'delivery',
         delivery: {
           observation_id: 'multi_period_p1_obs_close',
-          source: 'buyer_measurement',
+          source: 'seller_statement_copy',
           observed_at: '2027-02-02T00:00:00Z',
           reporting_period: p1,
           cumulative_spend: 90,
           currency: 'USD',
+          seller_statement_id: p1Statement.statement_id,
+          seller_statement_digest: `sha256:${'e'.repeat(64)}`,
           period_closed: true,
         },
       }, BUYER_CTX) as Record<string, any>;
@@ -990,6 +1012,187 @@ describe('report_plan_adjustment', () => {
 
       const lowerSequence = await reportSellerDelivery(intent.governance_context, 46, 'sequence_regression_lower', 1);
       expect(lowerSequence.errors?.[0]).toMatchObject({ code: 'CONFLICT' });
+    });
+  });
+});
+
+describe('measurement_variance and the conservative decommitment ceiling', () => {
+  beforeEach(() => clearSessions());
+  afterEach(() => clearSessions());
+
+  async function settleWithBudget(total: number, amount: number) {
+    await handleSyncPlans({
+      plans: [{ ...PLAN, budget: { total, currency: 'USD', reallocation_threshold: total } }],
+    }, BUYER_CTX);
+    const intent = await handleCheckGovernance({
+      plan_id: PLAN.plan_id,
+      caller: BUYER_CTX.authenticatedAgentUrl,
+      target_agent: SELLER_CTX.authenticatedAgentUrl,
+      tool: 'create_media_buy',
+      payload: { total_budget: { amount, currency: 'USD' } },
+    }, BUYER_CTX) as Record<string, any>;
+    const outcome = await handleReportPlanOutcome({
+      plan_id: PLAN.plan_id,
+      check_id: intent.check_id,
+      governance_context: intent.governance_context,
+      idempotency_key: `outcome_${intent.check_id}_adjustment`,
+      outcome: 'completed',
+      seller_response: { seller_reference: 'mb_adjustable_001', committed_budget: amount },
+    }, BUYER_CTX) as Record<string, any>;
+    expect(outcome.errors, JSON.stringify(outcome)).toBeUndefined();
+    return { intent, outcome };
+  }
+
+  async function reportBuyerMeasurement(
+    checkResult: Record<string, any>,
+    cumulativeSpend: number,
+    suffix: string,
+    reportingPeriod = { start: '2027-01-01T00:00:00Z', end: '2027-02-01T00:00:00Z' },
+    periodClosed = false,
+  ) {
+    return handleReportPlanOutcome({
+      plan_id: PLAN.plan_id,
+      check_id: checkResult.check_id,
+      governance_context: checkResult.governance_context,
+      idempotency_key: `variance_${suffix}_0001`,
+      outcome: 'delivery',
+      delivery: {
+        observation_id: `variance_obs_${suffix}`,
+        source: 'buyer_measurement',
+        observed_at: '2027-01-08T01:05:00Z',
+        reporting_period: reportingPeriod,
+        cumulative_spend: cumulativeSpend,
+        currency: 'USD',
+        ...(periodClosed ? { period_closed: true } : {}),
+      },
+    }, BUYER_CTX) as Promise<Record<string, any>>;
+  }
+
+  it('records measurement_variance and still allows the adjustment to be accepted', async () => {
+    await runWithSessionContext(async () => {
+      const { intent, outcome } = await settle();
+      const sellerDelivery = await reportSellerDelivery(intent.governance_context, 60, 'variance_accept');
+      const variance = await reportBuyerMeasurement(sellerDelivery, 65, 'accept');
+      expect(variance).toMatchObject({
+        outcome_state: 'findings',
+        delivery_reconciliation_status: 'measurement_variance',
+        delivery_period_state: 'open',
+        findings: [{
+          category_id: 'delivery_measurement_variance',
+          severity: 'warning',
+          details: { field: 'delivery.cumulative_spend', seller_stated: 60, buyer_observed: 65 },
+        }],
+      });
+
+      const reported = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'refund', 10, 'variance_accept'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      const accepted = await handleReportPlanAdjustment(
+        reviewRequest(reported.adjustment_id, 'accept', 'variance_accept'),
+        BUYER_CTX,
+      ) as Record<string, any>;
+
+      expect(accepted).toMatchObject({ adjustment_state: 'verified', headroom_restored: 0 });
+    });
+  });
+
+  it('holds the conservative ceiling down to the higher buyer-observed figure', async () => {
+    await runWithSessionContext(async () => {
+      // Commitment 200; seller states 100; buyer observes 150. The ceiling is
+      // 200 - max(100, 150) = 50, so a 100 decommitment is rejected but a 50
+      // decommitment is accepted.
+      const { intent, outcome } = await settleWithBudget(200, 200);
+      const sellerDelivery = await reportSellerDelivery(intent.governance_context, 100, 'ceiling_buyer_higher');
+      const variance = await reportBuyerMeasurement(sellerDelivery, 150, 'ceiling_buyer_higher');
+      expect(variance.delivery_reconciliation_status).toBe('measurement_variance');
+
+      const tooLarge = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'decommitment', 100, 'ceiling_buyer_higher_too_large'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      const rejected = await handleReportPlanAdjustment(
+        reviewRequest(tooLarge.adjustment_id, 'accept', 'ceiling_buyer_higher_too_large'),
+        BUYER_CTX,
+      ) as Record<string, any>;
+      expect(rejected.errors?.[0]).toMatchObject({ code: 'VALIDATION_ERROR' });
+
+      const withinCeiling = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'decommitment', 50, 'ceiling_buyer_higher_within'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      const accepted = await handleReportPlanAdjustment(
+        reviewRequest(withinCeiling.adjustment_id, 'accept', 'ceiling_buyer_higher_within'),
+        BUYER_CTX,
+      ) as Record<string, any>;
+      expect(accepted).toMatchObject({ adjustment_state: 'verified', headroom_restored: 50 });
+    });
+  });
+
+  it('does not let a lower buyer-observed figure manufacture decommitment room', async () => {
+    await runWithSessionContext(async () => {
+      // Commitment 200; seller states 150; buyer observes 100. The ceiling
+      // stays at 200 - max(150, 100) = 50 -- the buyer's lower figure cannot
+      // widen it.
+      const { intent, outcome } = await settleWithBudget(200, 200);
+      const sellerDelivery = await reportSellerDelivery(intent.governance_context, 150, 'ceiling_buyer_lower');
+      const variance = await reportBuyerMeasurement(sellerDelivery, 100, 'ceiling_buyer_lower');
+      expect(variance.delivery_reconciliation_status).toBe('measurement_variance');
+
+      const tooLarge = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'decommitment', 51, 'ceiling_buyer_lower_too_large'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      const rejected = await handleReportPlanAdjustment(
+        reviewRequest(tooLarge.adjustment_id, 'accept', 'ceiling_buyer_lower_too_large'),
+        BUYER_CTX,
+      ) as Record<string, any>;
+      expect(rejected.errors?.[0]).toMatchObject({ code: 'VALIDATION_ERROR' });
+
+      const withinCeiling = await handleReportPlanAdjustment(
+        adjustmentRequest(outcome.outcome_id, 'decommitment', 50, 'ceiling_buyer_lower_within'),
+        SELLER_CTX,
+      ) as Record<string, any>;
+      const accepted = await handleReportPlanAdjustment(
+        reviewRequest(withinCeiling.adjustment_id, 'accept', 'ceiling_buyer_lower_within'),
+        BUYER_CTX,
+      ) as Record<string, any>;
+      expect(accepted).toMatchObject({ adjustment_state: 'verified', headroom_restored: 50 });
+    });
+  });
+
+  it('freezes a measurement_variance period as closed_unresolved once the plan owner closes it', async () => {
+    await runWithSessionContext(async () => {
+      const { intent } = await settle();
+      const sellerDelivery = await reportSellerDelivery(intent.governance_context, 60, 'variance_close');
+      const variance = await reportBuyerMeasurement(sellerDelivery, 65, 'close_open');
+      expect(variance).toMatchObject({ delivery_reconciliation_status: 'measurement_variance', delivery_period_state: 'open' });
+
+      const closed = await reportBuyerMeasurement(
+        sellerDelivery,
+        65,
+        'close_final',
+        { start: '2027-01-01T00:00:00Z', end: '2027-02-01T00:00:00Z' },
+        true,
+      );
+      expect(closed).toMatchObject({ delivery_reconciliation_status: 'closed_unresolved', delivery_period_state: 'closed' });
+    });
+  });
+
+  it('exposes measurement_variance and the higher conservative_exposure in the audit view', async () => {
+    await runWithSessionContext(async () => {
+      const { intent } = await settle();
+      const sellerDelivery = await reportSellerDelivery(intent.governance_context, 60, 'variance_audit');
+      const variance = await reportBuyerMeasurement(sellerDelivery, 65, 'audit');
+      expect(variance.delivery_reconciliation_status).toBe('measurement_variance');
+
+      const logs = await audit();
+      expect(logs.plans[0].governed_actions[0]).toMatchObject({
+        seller_reported_spend: 60,
+        buyer_observed_spend: 65,
+        conservative_exposure: 65,
+        delivery_reconciliation_status: 'measurement_variance',
+      });
     });
   });
 });

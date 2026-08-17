@@ -602,7 +602,7 @@
                 },
                 "delivery_reconciliation_status": {
                   "type": "string",
-                  "enum": ["consistent", "disputed", "unmatched", "closed_unresolved"]
+                  "enum": ["consistent", "measurement_variance", "disputed", "unmatched", "closed_unresolved"]
                 },
                 "delivery_period_state": {
                   "type": "string",
@@ -713,7 +713,7 @@
                 },
                 "delivery_reconciliation_status": {
                   "type": "string",
-                  "enum": ["consistent", "disputed", "unmatched", "closed_unresolved"]
+                  "enum": ["consistent", "measurement_variance", "disputed", "unmatched", "closed_unresolved"]
                 },
                 "delivery_period_state": {
                   "type": "string",

@@ -710,6 +710,20 @@ async function runTests() {
     })) {
       return `closed unresolved outcome response rejected: ${testAjv.errorsText(validateOutcomeResponse.errors)}`;
     }
+    if (!validateOutcomeResponse({
+      outcome_id: 'outcome_variance_1',
+      outcome_state: 'findings',
+      delivery_reconciliation_status: 'measurement_variance',
+      delivery_period_state: 'open',
+      findings: [{
+        category_id: 'delivery_measurement_variance',
+        severity: 'warning',
+        explanation: 'Buyer-measured delivery differs from the seller statement.',
+        details: { field: 'delivery.cumulative_spend', seller_stated: 12500, buyer_observed: 12384 }
+      }]
+    })) {
+      return `measurement variance outcome response rejected: ${testAjv.errorsText(validateOutcomeResponse.errors)}`;
+    }
     if (validateOutcome({ ...legacyDelivery, check_id: 'check_1' })
       || validateOutcome({ ...legacyDelivery, governance_context: 'signed.context.token' })) {
       return 'delivery observations must provide check_id and governance_context together';

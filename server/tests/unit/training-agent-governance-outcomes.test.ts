@@ -650,3 +650,146 @@ describe('delivery observation reporting authority', () => {
     });
   });
 });
+
+describe('evidence-source-dependent delivery reconciliation', () => {
+  beforeEach(() => clearSessions());
+  afterEach(() => clearSessions());
+
+  async function setupCanonicalStatement(cumulativeSpend = 500) {
+    const intent = await setupIntent(1_000);
+    await report(intent, 1_000);
+    const deliveryMetrics = {
+      statement_id: 'stmt_variance_0001',
+      sequence: 1,
+      issued_at: '2027-01-08T01:00:00Z',
+      reporting_period: { start: '2027-01-01T00:00:00Z', end: '2027-01-08T00:00:00Z' },
+      cumulative_spend: cumulativeSpend,
+      currency: 'USD',
+    };
+    const sellerStatement = await handleCheckGovernance({
+      caller: SELLER_CTX.authenticatedAgentUrl,
+      governance_context: intent.governance_context,
+      phase: 'delivery',
+      planned_delivery: { media_buy_id: 'mb_variance', total_budget: 1_000, currency: 'USD' },
+      delivery_metrics: {
+        ...deliveryMetrics,
+        statement_digest: computeDeliveryStatementDigest('mb_variance', deliveryMetrics),
+      },
+    }, SELLER_CTX) as Record<string, any>;
+    expect(sellerStatement.check_id, JSON.stringify(sellerStatement)).toBeTruthy();
+    return { intent, sellerStatement, deliveryMetrics };
+  }
+
+  it('records measurement_variance -- not disputed -- for a buyer_measurement spend difference with matching period and currency', async () => {
+    await runWithSessionContext(async () => {
+      const { sellerStatement, deliveryMetrics } = await setupCanonicalStatement(500);
+      const result = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: sellerStatement.check_id,
+        governance_context: sellerStatement.governance_context,
+        idempotency_key: 'variance_buyer_measurement_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'obs_variance_buyer_measurement',
+          source: 'buyer_measurement',
+          observed_at: '2027-01-08T01:05:00Z',
+          reporting_period: deliveryMetrics.reporting_period,
+          cumulative_spend: 520,
+          currency: 'USD',
+        },
+      }, BUYER_CTX) as Record<string, any>;
+
+      expect(result).toMatchObject({
+        outcome_state: 'findings',
+        delivery_reconciliation_status: 'measurement_variance',
+        delivery_period_state: 'open',
+        findings: [{
+          category_id: 'delivery_measurement_variance',
+          severity: 'warning',
+          details: {
+            field: 'delivery.cumulative_spend',
+            seller_stated: 500,
+            buyer_observed: 520,
+          },
+        }],
+      });
+    });
+  });
+
+  it('marks a buyer_measurement with a mismatched reporting_period as disputed, not measurement_variance', async () => {
+    await runWithSessionContext(async () => {
+      const { sellerStatement, deliveryMetrics } = await setupCanonicalStatement(500);
+      const result = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: sellerStatement.check_id,
+        governance_context: sellerStatement.governance_context,
+        idempotency_key: 'variance_period_mismatch_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'obs_period_mismatch',
+          source: 'buyer_measurement',
+          observed_at: '2027-01-08T01:05:00Z',
+          reporting_period: { start: deliveryMetrics.reporting_period.start, end: '2027-01-09T00:00:00Z' },
+          cumulative_spend: 500,
+          currency: 'USD',
+        },
+      }, BUYER_CTX) as Record<string, any>;
+
+      expect(result).toMatchObject({
+        outcome_state: 'findings',
+        delivery_reconciliation_status: 'disputed',
+        delivery_period_state: 'open',
+      });
+    });
+  });
+
+  it('rejects a seller_statement_copy with matching identity but different values as a validation error, recording no outcome', async () => {
+    await runWithSessionContext(async () => {
+      const { sellerStatement, deliveryMetrics } = await setupCanonicalStatement(500);
+      const canonicalDigest = sellerStatement.delivery_statement.statement_digest;
+      const inconsistentCopy = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: sellerStatement.check_id,
+        governance_context: sellerStatement.governance_context,
+        idempotency_key: 'variance_inconsistent_copy_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'obs_inconsistent_copy',
+          source: 'seller_statement_copy',
+          observed_at: '2027-01-08T01:05:00Z',
+          reporting_period: deliveryMetrics.reporting_period,
+          cumulative_spend: 600,
+          currency: 'USD',
+          seller_statement_id: deliveryMetrics.statement_id,
+          seller_statement_digest: canonicalDigest,
+        },
+      }, BUYER_CTX) as Record<string, any>;
+
+      expect(inconsistentCopy.errors?.[0]).toMatchObject({ code: 'VALIDATION_ERROR' });
+
+      const logs = await audit();
+      const deliveryEntries = logs.plans[0].entries.filter((entry: any) => entry.outcome === 'delivery');
+      expect(deliveryEntries).toHaveLength(0);
+
+      // A subsequent, internally-consistent replay of the same statement still works.
+      const validCopy = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: sellerStatement.check_id,
+        governance_context: sellerStatement.governance_context,
+        idempotency_key: 'variance_valid_copy_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'obs_valid_copy',
+          source: 'seller_statement_copy',
+          observed_at: '2027-01-08T01:10:00Z',
+          reporting_period: deliveryMetrics.reporting_period,
+          cumulative_spend: deliveryMetrics.cumulative_spend,
+          currency: 'USD',
+          seller_statement_id: deliveryMetrics.statement_id,
+          seller_statement_digest: canonicalDigest,
+        },
+      }, BUYER_CTX) as Record<string, any>;
+      expect(validCopy).toMatchObject({ delivery_reconciliation_status: 'consistent' });
+    });
+  });
+});

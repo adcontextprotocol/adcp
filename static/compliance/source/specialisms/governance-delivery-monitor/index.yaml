@@ -863,12 +863,13 @@ phases:
             description: "Context correlation_id returned unchanged"
 
       - id: buyer_delivery_dispute
-        title: "Buyer reports a conflicting delivery observation"
+        title: "Buyer forwards a seller statement copy that does not match the canonical statement"
         narrative: |
-          The buyer's independently measured cumulative spend ($25,000) disagrees with
-          the seller's canonical delivery statement ($20,000) for the same reporting
-          period. Governance MUST mark the governed action disputed and retain both
-          attributed values rather than averaging or picking a last writer.
+          The buyer forwards a copy of a seller delivery statement, but its digest does
+          not match the canonical statement governance retained for the same reporting
+          period — the seller told two different stories. Governance MUST mark the
+          governed action disputed and retain both attributed values rather than
+          averaging or picking a last writer.
         task: report_plan_outcome
         schema_ref: "governance/report-plan-outcome-request.json"
         response_schema_ref: "governance/report-plan-outcome-response.json"
@@ -888,13 +889,15 @@ phases:
           outcome: "delivery"
           delivery:
             observation_id: "obs_mb_acme_q2_2026_dispute_01"
-            source: "buyer_measurement"
+            source: "seller_statement_copy"
             observed_at: "2099-05-24T00:00:00Z"
             reporting_period:
               start: "2099-05-01T00:00:00Z"
               end: "2099-05-15T00:00:00Z"
             cumulative_spend: 25000
             currency: "USD"
+            seller_statement_id: "governance_delivery_monitor_0001"
+            seller_statement_digest: "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
 
           idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_dispute_blocks_acceptance_buyer_delivery_dispute"
           context:
@@ -909,7 +912,7 @@ phases:
           - check: field_value
             path: "delivery_reconciliation_status"
             value: "disputed"
-            description: "governance specification (Evidence authority and reconciliation): a conflicting buyer/seller record MUST mark the governed action disputed"
+            description: "specification.mdx (Evidence authority and reconciliation): a seller_statement_copy whose digest does not match the canonical statement means the seller told two different stories, so governance MUST mark the governed action disputed"
           - check: field_value
             path: "delivery_period_state"
             value: "open"
@@ -985,13 +988,15 @@ phases:
           outcome: "delivery"
           delivery:
             observation_id: "obs_mb_acme_q2_2026_close_01"
-            source: "buyer_measurement"
+            source: "seller_statement_copy"
             observed_at: "2099-05-25T00:00:00Z"
             reporting_period:
               start: "2099-05-01T00:00:00Z"
               end: "2099-05-15T00:00:00Z"
             cumulative_spend: 25000
             currency: "USD"
+            seller_statement_id: "governance_delivery_monitor_0001"
+            seller_statement_digest: "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
             period_closed: true
 
           idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_dispute_blocks_acceptance_close_reporting_period"
@@ -1076,4 +1081,261 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "governance_delivery_monitor--review_accept_after_closure"
+            description: "Context correlation_id returned unchanged"
+
+  - id: adjustment_measurement_variance_non_blocking
+    title: "Buyer measurement variance never blocks adjustment acceptance"
+    narrative: |
+      The seller files a canonical delivery statement for a later reporting period.
+      The buyer's own measurement of that same period agrees on reporting period and
+      currency but differs slightly in cumulative spend — expected measurement noise,
+      not equivocation. Governance records measurement_variance rather than disputed,
+      and unlike a dispute, a recorded variance never blocks a later adjustment from
+      being accepted.
+
+    steps:
+      - id: seller_statement_variance_period
+        title: "Seller reports a canonical delivery statement for a later period"
+        narrative: |
+          A new reporting period following the closed period above. Its digest becomes
+          the canonical figure the buyer's measurement is compared against.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Record the canonical delivery statement for the new period:
+          - verdict: approved
+        sample_request:
+          caller: "https://seller.example.com"
+          phase: "delivery"
+          governance_context: "$context.governance_context"
+          planned_delivery:
+            media_buy_id: "mb_governance_delivery_monitor"
+            geo:
+              countries: ["US"]
+            channels: ["display", "olv"]
+            total_budget: 40000
+            currency: "USD"
+          delivery_metrics:
+            statement_id: "governance_delivery_monitor_0002"
+            statement_digest: "sha256:511d4229097028b41eed7179c0c8e13cb430c0798797ac0f95dc8858511df8fc"
+            sequence: 2
+            issued_at: "2099-05-30T00:00:00Z"
+            reporting_period:
+              start: "2099-05-16T00:00:00Z"
+              end: "2099-05-31T00:00:00Z"
+            spend: 12000
+            cumulative_spend: 12000
+            currency: "USD"
+            channel_distribution:
+              ctv: 70
+              video: 30
+            pacing: "on_track"
+
+          context:
+            correlation_id: "governance_delivery_monitor--seller_statement_variance_period"
+        context_outputs:
+          - name: variance_check_id
+            path: "check_id"
+          - name: variance_governance_context
+            path: "governance_context"
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+          - check: field_value
+            path: "verdict"
+            value: "approved"
+            description: "A new, higher-sequence canonical statement for a new reporting period is accepted"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--seller_statement_variance_period"
+            description: "Context correlation_id returned unchanged"
+
+      - id: buyer_measurement_variance
+        title: "Buyer's independent measurement differs slightly from the seller statement"
+        narrative: |
+          The buyer's own measurement ($12,150) agrees with the seller's canonical
+          statement ($12,000) on reporting period and currency but differs on
+          cumulative spend by a small margin. specification.mdx (Evidence authority
+          and reconciliation): this is expected measurement noise, not equivocation,
+          so governance MUST record measurement_variance rather than disputed.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Record the variance without treating it as a dispute:
+          - outcome_state: findings
+          - delivery_reconciliation_status: measurement_variance
+          - delivery_period_state: open
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          check_id: "$context.variance_check_id"
+          governance_context: "$context.variance_governance_context"
+          outcome: "delivery"
+          delivery:
+            observation_id: "obs_mb_acme_q2_2026_variance_01"
+            source: "buyer_measurement"
+            observed_at: "2099-06-01T00:00:00Z"
+            reporting_period:
+              start: "2099-05-16T00:00:00Z"
+              end: "2099-05-31T00:00:00Z"
+            cumulative_spend: 12150
+            currency: "USD"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_measurement_variance_non_blocking_buyer_measurement_variance"
+          context:
+            correlation_id: "governance_delivery_monitor--buyer_measurement_variance"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema (delivery_reconciliation_status enum includes measurement_variance)"
+          - check: field_value
+            path: "outcome_state"
+            value: "findings"
+            description: "A buyer measurement variance is recorded with findings, not silently accepted"
+          - check: field_value
+            path: "delivery_reconciliation_status"
+            value: "measurement_variance"
+            description: "specification.mdx (Evidence authority and reconciliation): a buyer_measurement with matching period and currency but a different cumulative_spend MUST be recorded as measurement_variance, not disputed"
+          - check: field_value
+            path: "delivery_period_state"
+            value: "open"
+            description: "The period is still open — no period_closed was submitted"
+          - check: field_present
+            path: "findings"
+            description: "measurement_variance MUST surface a finding (schema: findings present when outcome_state is findings)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--buyer_measurement_variance"
+            description: "Context correlation_id returned unchanged"
+
+      - id: report_variance_credit
+        title: "Seller reports a credit against the outcome"
+        narrative: |
+          A $2,000 credit, reported and evidenced independently of the decommitment and
+          refund already verified above. Cumulative reported adjustments
+          ($5,000 + $3,000 + $2,000 = $10,000) stay well under the $40,000 commitment.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Record the credit report without touching accounting state:
+          - adjustment_state: reported
+          - headroom_restored: 0
+
+        sample_request:
+          action: "report"
+          plan_id: "$context.plan_id"
+          outcome_id: "$context.outcome_id"
+          seller_reference: "$context.media_buy_id"
+          seller_adjustment_id: "credit_mb_acme_q2_2026_01"
+          adjustment_type: "credit"
+          amount:
+            amount: 2000
+            currency: "USD"
+          reason: "Goodwill credit for the under-delivered placement."
+          effective_at: "2099-06-01T09:30:00Z"
+          evidence:
+            evidence_id: "credit_note_mb_acme_q2_2026_01"
+            evidence_type: "credit_note"
+            digest: "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            issued_at: "2099-06-01T09:25:00Z"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_measurement_variance_non_blocking_report_variance_credit"
+          context:
+            correlation_id: "governance_delivery_monitor--report_variance_credit"
+        context_outputs:
+          - name: adjustment_id_variance_credit
+            path: "adjustment_id"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-adjustment-response.json schema"
+          - check: field_value
+            path: "adjustment_state"
+            value: "reported"
+            description: "A seller report alone lands in reported state"
+          - check: field_value
+            path: "headroom_restored"
+            value: 0
+            description: "Reporting alone never changes plan headroom"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--report_variance_credit"
+            description: "Context correlation_id returned unchanged"
+
+      - id: review_accept_variance_credit
+        title: "Acceptance succeeds despite the open measurement_variance period"
+        narrative: |
+          Unlike the disputed period earlier in this scenario, a recorded
+          measurement_variance never blocks adjustment acceptance — its difference is
+          priced into the conservative decommitment ceiling instead of freezing
+          acceptance. The plan owner accepts the credit while the variance period is
+          still open.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Verify the credit without restoring ledger headroom:
+          - adjustment_state: verified
+          - headroom_restored: 0
+
+        sample_request:
+          action: "review"
+          plan_id: "$context.plan_id"
+          adjustment_id: "$context.adjustment_id_variance_credit"
+          decision: "accept"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_measurement_variance_non_blocking_review_accept_variance_credit"
+          context:
+            correlation_id: "governance_delivery_monitor--review_accept_variance_credit"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-adjustment-response.json schema"
+          - check: field_value
+            path: "adjustment_state"
+            value: "verified"
+            description: "report_plan_outcome.mdx (Evidence authority and reconciliation): 'Only a disputed state blocks adjustment acceptance; measurement_variance never does' — the open variance period does not block this acceptance"
+          - check: field_value
+            path: "headroom_restored"
+            value: 0
+            description: "Verified credits restore headroom only under budget.accounting_mode verified_net_cost; this plan uses the default gross_commitment"
+          - check: field_value
+            path: "plan_summary.adjustments_verified"
+            value: 10000
+            description: "The decommitment (5000), refund (3000), and this credit (2000) are all verified"
+          - check: field_value
+            path: "plan_summary.ledger_committed"
+            value: 35000
+            description: "ledger_committed is unchanged from the decommitment-only state — the credit does not restore headroom under gross_commitment"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--review_accept_variance_credit"
             description: "Context correlation_id returned unchanged"

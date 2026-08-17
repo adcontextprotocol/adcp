@@ -62,7 +62,7 @@ The execution check is binary. If the governance agent denies it, the seller mus
 
 After a seller responds, the buyer-side orchestrator calls [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome). This lets the governance agent reconcile the approved action with the seller's actual response and update budget state from confirmed outcomes.
 
-For periodic delivery, the buyer names the exact seller delivery check and submits either the seller statement copy it received or an independently measured buyer observation. Governance keeps both sources attributed. A discrepancy is explicit and blocks adjustment acceptance; it is not resolved by last-writer-wins.
+For periodic delivery, the buyer names the exact seller delivery check and submits either the seller statement copy it received or an independently measured buyer observation. Governance keeps both sources attributed, and a discrepancy is never resolved by last-writer-wins. A forwarded copy that does not match the canonical statement is a dispute and blocks adjustment acceptance; buyer measurement variance is recorded without blocking, and the higher amount bounds conservative exposure and decommitments.
 
 Outcome reporting is what prevents the governance agent from counting attempted actions as committed spend. The governance agent tracks the state that actually happened.
 

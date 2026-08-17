@@ -800,7 +800,13 @@ export interface GovernanceFinding {
   explanation: string;
   policyId?: string;
   confidence?: number;
-  details?: { field?: string; expected?: unknown; actual?: unknown };
+  details?: {
+    field?: string;
+    expected?: unknown;
+    actual?: unknown;
+    seller_stated?: unknown;
+    buyer_observed?: unknown;
+  };
 }
 
 export interface GovernanceCondition {
@@ -832,7 +838,7 @@ export interface GovernanceOutcomeState {
   response?: Record<string, unknown>;
   /** Buyer-attributed delivery observation retained independently of seller evidence. */
   delivery?: Record<string, unknown>;
-  deliveryReconciliationStatus?: 'consistent' | 'disputed' | 'unmatched' | 'closed_unresolved';
+  deliveryReconciliationStatus?: 'consistent' | 'measurement_variance' | 'disputed' | 'unmatched' | 'closed_unresolved';
   /** Operational governance-window state; closure is not a billing settlement. */
   deliveryPeriodState?: 'open' | 'closed';
   findings: GovernanceFinding[];

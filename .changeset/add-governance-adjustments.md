@@ -2,7 +2,7 @@
 "adcontextprotocol": minor
 ---
 
-Add attributed delivery reconciliation and a two-party, append-only campaign adjustment lifecycle for AdCP 3.2. Sellers report canonical delivery statements and evidence-bound adjustments; buyers submit separate observations, close operational governance periods without asserting final billing truth, and accept or dispute adjustments. Audit logs expose discrepancies, period state, conservative exposure, gross commitment, verified economic reductions, and accounting-mode-specific headroom without weakening sticky trailing-window fragmentation defense.
+Add attributed delivery reconciliation and a two-party, append-only campaign adjustment lifecycle for AdCP 3.2. Disagreement handling splits by evidence source: a forwarded seller-statement copy whose ID or digest mismatches the canonical statement is `disputed` and blocks adjustment acceptance, while buyer measurement variance is a recorded, non-blocking `measurement_variance` — the higher of seller-stated and buyer-observed spend bounds both conservative exposure and the verified-decommitment ceiling, so manufactured variance can only shrink what either side can extract. Sellers report canonical delivery statements and evidence-bound adjustments; buyers submit separate observations, close operational governance periods without asserting final billing truth, and accept or dispute adjustments. Audit logs expose discrepancies, period state, conservative exposure, gross commitment, verified economic reductions, and accounting-mode-specific headroom without weakening sticky trailing-window fragmentation defense.
 
 ## Migration
 
