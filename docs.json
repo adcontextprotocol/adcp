@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
   "banner": {
-    "content": "AdCP 3.1 is released — [see what's new →](/docs/reference/whats-new-in-3-1)",
+    "content": "AdCP 3.2 beta is starting protocol-first — [join the beta program →](/docs/reference/3-2-beta)",
     "dismissible": true
   },
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
@@ -89,9 +89,12 @@
                 "pages": [
                   "docs/reference/whats-new-in-v3",
                   "docs/reference/whats-new-in-3-1",
+                  "docs/reference/whats-new-in-3-2",
+                  "docs/reference/3-2-beta",
                   "docs/reference/migration/v3-readiness",
                   "docs/reference/migration/index",
                   "docs/reference/migration/3-0-to-3-1",
+                  "docs/reference/migration/3-1-to-3-2",
                   "docs/reference/migration/prerelease-upgrades",
                   "docs/reference/migration/channels",
                   "docs/reference/migration/pricing",
@@ -105,6 +108,7 @@
                   "docs/reference/migration/audiences",
                   "docs/reference/migration/attribution",
                   "docs/reference/migration/media-buy-status",
+                  "docs/reference/migration/targeting-aware-discovery",
                   "docs/reference/migration/asset-access",
                   "docs/reference/migration/cross-role-governance-enforcement"
                 ]
