@@ -182,7 +182,7 @@
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "axios": "^1.19.0",
-    "canonicalize": "3.0.0",
+    "canonicalize": "4.0.0",
     "cookie-parser": "^1.4.7",
     "csv-parse": "^7.0.2",
     "dotenv": "^17.4.2",
