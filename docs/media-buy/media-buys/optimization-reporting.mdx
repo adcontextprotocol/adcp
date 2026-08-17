@@ -324,7 +324,7 @@ The numeric values inside `viewability` and `quartile_data` are individually add
 - **`new_to_brand_units`**: Unit-volume parallel to `new_to_brand_rate` — count of units sold to first-time brand buyers
 - **`plays`**: Raw play count for DOOH/broadcast inventory (mirrors `forecastable-metric.plays`); distinct from `dooh_metrics.loop_plays` (per-screen rotation) and `impressions` (multiplied audience figure)
 
-Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs.
+Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs. The same field exists on the [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery#requesting-a-metric-subset) request with identical semantics, giving the GET path the same narrowing the webhook already has.
 
 For `completion_rate` and `quartile_data`, sellers MAY return `null` to signal the metric does not apply (e.g. on a non-video buy), and clients MUST accept `null` as a valid value for these two fields. Every other metric signals "not applicable" by omission — sellers omit it rather than sending `null`.
 
