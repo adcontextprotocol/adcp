@@ -535,7 +535,7 @@ Two Apps, two trust surfaces: release machinery uses the release App above; the 
 
 - `.agents/shortcuts/cut-patch.md` — cutting a `3.1.X` patch
 - `RELEASING.md` — current `3.2.0-beta.N` pre-mode operation and release verification
-- `.agents/shortcuts/cut-beta.md` — historical 3.1 beta/GA transition notes
+- `.agents/shortcuts/cut-beta.md` — active 3.2 beta.0 → SDKs → beta.1 runbook
 - `.agents/shortcuts/cut-major.md` — cutting a major (4.0 when its time comes)
 
 ### Addie Code Version

@@ -13,21 +13,37 @@ For the layered model behind this — what each layer contains and what an SDK a
 
 What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cross-cutting/sdk-stack#what-an-sdk-at-each-layer-should-provide).
 
-*Last updated: 2026-05-03.*
+*Last updated: 2026-08-17.*
 
-| SDK | Production GA | Beta / dev | L0 | L1 | L2 | L3 |
+| SDK | Current package | 3.2 beta support | L0 | L1 | L2 | L3 |
 |---|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/sdk`** (TS) | `6.9.0` | — | ✅ | ✅ | ✅ | ✅ |
-| **`adcp`** (Python) | `3.x` | `4.x` | ✅ | ⚠️ | ⚠️ | ⚠️ |
-| **`adcp-go`** | — | `v1.x` | ⚠️ | ❌ | ❌ | ❌ |
+| **`@adcp/sdk`** (TypeScript) | `13.0.0` | Pending beta.0 ingestion | ✅ | ✅ | ✅ | ✅ |
+| **`adcp`** (Python) | `7.0.2` | Pending beta.0 ingestion | ✅ | ⚠️ | ⚠️ | ⚠️ |
+| **`adcp/v3`** (Go) | `v3.0.0` | Pending beta.0 ingestion | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
 
-Legend: ✅ shipped · ⚠️ partial / in flight · ❌ not yet covered. **Production GA** is the line you should pin to today. **Beta / dev** is what's in flight on the next major.
+Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. The L0–L3 columns describe the current package, not a 3.2 support claim.
 
-**`@adcp/sdk` 6.x ships full L0–L3** on AdCP 3.0 — adopters write L4 only. The 5.x line is on security-only support and not recommended for new builds; cut over to 6.x. **`adcp` (Python) 3.x is the production line** with full L0 type coverage; the 4.x rewrite (in beta on PyPI) closes the L1–L3 gap — outbound RFC 9421 signing, brand-resolution helpers, webhook emission. Track [adcp-client-python releases](https://github.com/adcontextprotocol/adcp-client-python/releases) for the 4.0 GA cut. **`adcp-go`** is in active development; types + transport land first, see [adcp-go README](https://github.com/adcontextprotocol/adcp-go) for what's in scope per release.
+<Warning>
+**The 3.2 SDK wave follows beta.0.** None of the current-package rows above is
+an exact 3.2 beta support statement yet. Beta.0 publishes the signed protocol
+input; SDK maintainers then publish package versions and supported-role details.
+Beta.1 incorporates that feedback and becomes SDK-backed only after a second
+SDK refresh against the exact beta.1 bundle. See the [3.2 beta program](/docs/reference/3-2-beta).
+</Warning>
+
+The TypeScript SDK currently provides the broadest L0–L3 surface. Python is a
+first-class SDK with complete schema/type coverage and role-dependent higher
+layers. The Go `adcp/v3` module provides typed AdCP 3.x surfaces, signing, and
+transport/server building blocks with role-dependent coverage. Check the
+release links below for changes after this matrix date.
 
 Pre-3.0 callers should work through the [3.0 migration guide](/docs/reference/migration/index) before upgrading. For the at-a-glance status of every published protocol version, see [Versions & Compatibility](/docs/reference/versions). For procurement-grade context on the support window, see the [v2 sunset timeline](/docs/reference/v2-sunset) and [versioning & governance](/docs/reference/versioning).
 
-**Python and TypeScript carry full L0–L4 coverage as the first-class supported languages.** **Go** is moving in the same direction. **Other languages** are not on the official roadmap; community-maintained ports are welcome — see the [Builders Working Group](/docs/community/working-group) and the [Slack community](/docs/community/joining-slack).
+**TypeScript and Python are the first-class supported languages**, with the
+layer coverage shown in the matrix above. **Go** is moving in the same
+direction. **Other languages** are not on the official roadmap;
+community-maintained ports are welcome — see the [Builders Working Group](/docs/community/working-group)
+and the [Slack community](/docs/community/joining-slack).
 
 ## JavaScript / TypeScript
 
@@ -104,10 +120,13 @@ result = await client.get_products(
 ## Go
 
 ```bash
-go get github.com/adcontextprotocol/adcp-go/adcp
+go get github.com/adcontextprotocol/adcp-go/adcp/v3@v3.0.0
 ```
 
-The Go SDK provides typed tool registration, response builders, and a compliance test controller. Types are generated from canonical AdCP schemas.
+The Go SDK's `adcp/v3` module provides typed tool registration, response
+builders, signing, and a compliance test controller. Types are generated from
+canonical AdCP schemas. The `/v3` suffix is required by Go semantic import
+versioning.
 
 | Component | Import |
 |-----------|--------|

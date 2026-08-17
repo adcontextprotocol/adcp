@@ -1,0 +1,184 @@
+---
+title: Migrating from 3.1 to 3.2
+sidebarTitle: 3.1 to 3.2
+description: "Role-based migration checklist for adopting the AdCP 3.2 beta while preserving 3.1 compatibility."
+"og:title": "AdCP — Migrating from 3.1 to 3.2"
+---
+
+# Migrating from 3.1 to 3.2
+
+<Warning>
+**3.2 is in beta.** Beta.0 publishes canonical protocol artifacts before the
+SDK wave. Beta.1 incorporates SDK feedback, then becomes the first exact-version
+SDK-backed checkpoint after SDKs ingest beta.1. Keep production traffic pinned
+to `"3.1"` while validating 3.2 in staging.
+</Warning>
+
+3.2 is a minor release over 3.1. Existing integrations do not need to adopt the
+new compact tools immediately: `get_products`, `create_media_buy`, and
+`update_media_buy` remain the 3.x compatibility facades. A caller opts into 3.2
+only after the peer advertises the exact release in `supported_versions`.
+
+For the feature narrative, start with [What's New in AdCP 3.2](/docs/reference/whats-new-in-3-2).
+For prerelease artifacts and SDK timing, use the [3.2 beta program](/docs/reference/3-2-beta).
+
+## Upgrade checklist
+
+| Step | Who | Action |
+|---|---|---|
+| 1 | Everyone | Keep production on `"3.1"`; choose an exact 3.2 beta artifact for staging. |
+| 2 | SDK and codegen maintainers | Generate from the signed `3.2.0-beta.0` protocol tarball, not `main` or `/schemas/latest/`. |
+| 3 | Sellers and agents | Advertise the exact prerelease in `adcp.supported_versions` and echo the release actually served. |
+| 4 | Buyers | Send `adcp_version: "3.2-beta.N"` only after exact capability discovery; never silently move between beta pins. |
+| 5 | Media-buy implementations | Move create/update success handling completely to `media_buy_status`. |
+| 6 | Signing implementations | Require `content-digest` coverage and migrate request `Signature` and `Content-Digest` binary values to RFC 8941 padded Base64. |
+| 7 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
+| 8 | Compliance operators | Use beta.0 for protocol implementation feedback; wait until the exact beta.1 SDK refresh and integration evidence are published before treating beta.1 as SDK-backed. |
+
+## Required to claim 3.2 behavior
+
+### Serve and echo the exact release
+
+During beta, prerelease matching is exact. A seller serving beta.0 advertises
+`"3.2-beta.0"`; beta.1 advertises `"3.2-beta.1"`. Do not advertise stable
+`"3.2"` before GA and do not treat a major-only declaration as evidence of
+3.2 support.
+
+The 3.2 compliance posture makes missing `supported_versions` or a missing
+response echo a blocking failure for a 3.2 claim, even though the fields remain
+optional at the 3.x schema level for compatibility.
+
+### Use `media_buy_status` on create/update success
+
+AdCP 3.2 removes the deprecated body-level MediaBuyStatus named `status` from
+`create_media_buy` and `update_media_buy` success schemas. Root `status` is the
+task-envelope state. Read and emit `media_buy_status` for the buy lifecycle.
+
+Nested `media_buys[].status` and `media_buy_deliveries[].status` do not change
+until 4.0. See [Migrating to `media_buy_status`](/docs/reference/migration/media-buy-status)
+for cross-version decoder code.
+
+### Bind every signed request body
+
+Request signing is still optional in 3.2. When a 3.2 endpoint does support
+request signing, however, it must advertise
+`covers_content_digest: "required"`. Every accepted signature on a request with
+a body covers `content-digest`; a signed body without coverage is rejected.
+
+Keep legacy `"either"` or `"forbidden"` behavior on a separately configured
+3.0/3.1 compatibility endpoint or disable signing for that endpoint. A field
+inside an untrusted request body cannot select a weaker verifier posture.
+
+The request-profile binary encoding also changes in 3.2. Emit `Signature` and
+`Content-Digest` values as RFC 8941 `sf-binary`: standard RFC 4648 Base64 using
+the `+` and `/` alphabet and required `=` padding inside the `:<base64>:` token.
+The 3.0/3.1 request profile used unpadded Base64URL. A 3.2 verifier must reject
+that legacy alphabet rather than retrying it through a permissive decoder.
+
+Select the parser from the trusted negotiated endpoint and signing profile, not
+from a version field inside the untrusted body. Keep an explicitly routed
+3.0/3.1 request endpoint if legacy request signing is required. The separate
+`adcp/webhook-signing/v1` profile retains its legacy unpadded Base64URL binary
+encoding throughout AdCP 3.x; do not apply the request-profile migration to
+webhook receivers. See [Signed requests](/docs/building/by-layer/L1/security#signed-requests-transport-layer).
+
+### Emit integer retry delays
+
+3.2 producers emit `error.retry_after` as an integer number of seconds. Clients
+that still receive a legacy fractional value should round up before applying
+their bounded retry policy. Do not read `retry_after` from `error.data`.
+
+## Adopt by capability
+
+### Compact product and MediaBuy lifecycle
+
+Read `get_adcp_capabilities.media_buy.lifecycle_tools` before choosing a tool.
+Use:
+
+- `list_products` for published offer listing;
+- `request_proposals`, `refine_proposals`, and `decline_proposals` for immutable
+  proposal negotiation;
+- `buy_products` for direct purchase;
+- `accept_proposal` for committed new-buy, amendment, or negotiated-cancellation
+  terms;
+- `control_media_buy` for operational controls inside accepted terms.
+
+Absence of the declaration means use the 3.x compatibility facades. Retry a
+stateful request with the same tool name, idempotency key, and payload; an
+idempotency key does not create replay identity across old and new task names.
+
+### Targeting-aware discovery
+
+Move structured delivery constraints from briefs and legacy filters into
+`targeting_overlay`. Use `required_overlay_support` only for dimensions whose
+values will be supplied later. Treat returned configured product IDs as scoped
+to their declared lineage, account, cache scope, and expiry.
+
+Follow the complete field map in [Targeting-aware product discovery](/docs/reference/migration/targeting-aware-discovery).
+
+### Canonical creative discovery
+
+For new integrations:
+
+- sales agents expose accepted `format_options[]` on products;
+- creative agents expose `creative.supported_formats` with stable capability
+  IDs and supported operations;
+- build and transformer calls select the canonical capability;
+- buyers do not require `list_creative_formats` when canonical discovery is
+  available.
+
+The compatibility task remains functional on its own schedule. Exact plural
+`format_ids` is deprecated in 3.2 for removal in 4.0; singular legacy
+`format_id` mappings retain their separate compatibility path.
+
+### Secured assets
+
+Stop producing inline `service_account.credentials`. Prefer a short-lived
+asset-scoped signed URL, pre-authorized workload identity, or a bounded bearer
+token when the origin requires an Authorization header. Continue parsing the
+legacy shape for 3.x compatibility, but never activate received credentials
+automatically. See [Migrating secured asset access](/docs/reference/migration/asset-access).
+
+### Experimental governance
+
+If you implement `governance.campaign`, update authenticated caller binding,
+task-scoped enforcement, intent/execution separation, payload and commitment
+binding, and outcome reconciliation together. Do not partially adopt the new
+authorization semantics under an old capability declaration.
+
+See [Cross-role governance enforcement](/docs/reference/migration/cross-role-governance-enforcement).
+
+## Role-based minimums
+
+| Role | Minimum before advertising or sending 3.2 |
+|---|---|
+| Hand-rolled buyer | Exact prerelease discovery/pin, beta-aware schema validation, `media_buy_status` handling, open error-code decoding, and capability gates for every new tool/field. |
+| SDK buyer | An SDK version that names the exact 3.2 bundle, plus the same capability and prerelease negotiation checks. |
+| Seller | Exact release advertisement and echo, 3.1 compatibility routing, canonical status emission, integer retry delays, and truthful task/targeting/format capabilities. |
+| Creative agent | Canonical supported-format capabilities, operation selection, and explicit compatibility handling for legacy named formats. |
+| Signals or measurement agent | Exact beta pin and only the attestation, targeting, or feedback capabilities actually implemented. |
+| Governance provider/service | Exact beta pin, `governance.campaign` experimental declaration, and the complete cross-role authorization migration. |
+| SDK maintainer | Signed bundle ingestion, generated-type/validator tests, exact support matrix entry, and protocol feedback destined for beta.1. |
+| Compliance operator | Matching beta assets end to end; no 3.2 badge from beta.0. |
+
+## Rollback
+
+Keep the 3.1 handler and schema bundle available throughout beta. If a 3.2
+staging integration fails:
+
+1. Stop advertising the affected 3.2 prerelease.
+2. Re-pin the peer to `"3.1"` only if it advertises 3.1.
+3. Route through the 3.x compatibility facades and 3.1 schemas.
+4. Preserve the failed beta payload and exact artifact version for diagnosis.
+
+Do not retry a 3.2 payload under a 3.1 pin without applying an explicit
+version adapter; additive fields and compact task names may not exist in the
+3.1 contract.
+
+## Related
+
+- [3.2 beta program](/docs/reference/3-2-beta)
+- [What's New in AdCP 3.2](/docs/reference/whats-new-in-3-2)
+- [Release Notes](/docs/reference/release-notes#version-3-2-0)
+- [Versions & Compatibility](/docs/reference/versions)
+- [Version Adaptation](/docs/building/cross-cutting/version-adaptation)
