@@ -313,8 +313,6 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`profile_visits`**: Visits to the brand's in-platform page
 - **`viewability`**: Viewability data (measurable_impressions, viewable_impressions, viewable_rate, viewed_seconds, standard, vendor). Separates MRC and GroupM standards. `viewed_seconds` is the average in-view duration per measurable impression — reporting-side counterpart to the `viewed_seconds` optimization goal, governed by the same `standard` threshold as `viewable_rate`. The optional `vendor` field carries a `BrandRef` so the row is self-describing — buyer agents reading delivery in isolation can attribute the numbers to a measurement vendor without joining back to `package.committed_metrics` or `package.performance_standards`.
 - **`quartile_data`**: Video quartile completion data (q1-q4); `null` when not applicable (e.g. a non-video buy)
-
-The numeric values inside `viewability` and `quartile_data` are individually addressable through leaf metric identities — `viewable_rate`, `viewable_impressions`, `measurable_impressions`, `viewed_seconds`, and `quartile_25`/`quartile_50`/`quartile_75`/`quartile_100` (which resolve to `quartile_data.q1_views`–`q4_views`). Leaf identities appear in `available_metrics` declarations, `committed_metrics` contracts, `metric_aggregates` rows, and breakdown `sort_by`; the nested object remains the only carrier of the values in delivery reports. Note that `quartile_100` counts 100%-of-duration completions (VAST `complete`), which is distinct from `completed_views` when the buy defines a shorter billable view threshold.
 - **`dooh_metrics`**: DOOH-specific metrics (loop plays, screens, venue breakdown)
 - **`cost_per_click`**: Cost per click (`spend / clicks`)
 - **`cost_per_completed_view`**: Cost per completed view (`spend / completed_views`); CPCV pricing scalar for video/audio inventory
@@ -323,6 +321,8 @@ The numeric values inside `viewability` and `quartile_data` are individually add
 - **`units_sold`**: Items sold attributed to delivery (retail-media commerce scalar; distinct from `conversions` — one transaction may carry multiple units; attribution-window declared via `measurement_terms`)
 - **`new_to_brand_units`**: Unit-volume parallel to `new_to_brand_rate` — count of units sold to first-time brand buyers
 - **`plays`**: Raw play count for DOOH/broadcast inventory (mirrors `forecastable-metric.plays`); distinct from `dooh_metrics.loop_plays` (per-screen rotation) and `impressions` (multiplied audience figure)
+
+The numeric values inside `viewability` and `quartile_data` are individually addressable through leaf metric identities — `viewable_rate`, `viewable_impressions`, `measurable_impressions`, `viewed_seconds`, and `quartile_25`/`quartile_50`/`quartile_75`/`quartile_100` (which resolve to `quartile_data.q1_views`–`q4_views`). Leaf identities appear in `available_metrics` declarations, `committed_metrics` contracts, `metric_aggregates` rows, and breakdown `sort_by`; the nested object remains the only carrier of the values in delivery reports. In every metric set operation (declaration, filtering, intersection, selection) a container token subsumes its leaf identities — declaring `viewability` satisfies `viewable_rate`. Note that `quartile_100` counts 100%-of-duration completions (VAST `complete`), which is distinct from `completed_views` when the buy defines a shorter billable view threshold.
 
 Buyers can optionally request a subset via `requested_metrics` to reduce payload size and focus on relevant KPIs.
 
