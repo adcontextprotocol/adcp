@@ -23,6 +23,9 @@ import { clearSiSessions } from '../si-handlers.js';
 import { clearForcedTaskCompletions } from '../comply-test-controller.js';
 import { getAgentUrl } from '../config.js';
 import { projectV1ProductToV2 } from '@adcp/sdk/v2/projection';
+import { TrainingBrandPlatform } from '../v6-brand-platform.js';
+import { TrainingCreativeBuilderPlatform } from '../v6-creative-builder-platform.js';
+import { TrainingCreativePlatform } from '../v6-creative-platform.js';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
@@ -149,6 +152,22 @@ describe('tenant routing smoke', () => {
     clearSiSessions();
     clearForcedTaskCompletions();
     stopSessionCleanup();
+  });
+
+  it('keeps authenticated no-account sandbox resolution public while retaining principal identity', async () => {
+    const principal = 'authenticated-no-account-caller';
+    const platforms = [
+      new TrainingBrandPlatform(),
+      new TrainingCreativePlatform(),
+      new TrainingCreativeBuilderPlatform(),
+    ];
+
+    for (const platform of platforms) {
+      const account = await platform.accounts.resolve(undefined, {
+        authInfo: { clientId: principal },
+      });
+      expect(account?.authInfo).toEqual({ kind: 'public', principal });
+    }
   });
 
   it('serves brand.json with tenant public keys', async () => {

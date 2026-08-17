@@ -101,7 +101,7 @@ const trainingCreativeAccounts: AccountStore<TrainingCreativeMeta> = {
         mode: 'sandbox',
         ctx_metadata: {},
         sandbox: true,
-        authInfo: principal ? authInfo : { kind: 'public' as const },
+        authInfo: { kind: 'public' as const, ...(principal && { principal }) },
       };
     }
     const brandDomain =
