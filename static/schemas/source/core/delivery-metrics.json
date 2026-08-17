@@ -215,7 +215,7 @@
     },
     "time_based_views": {
       "type": "array",
-      "description": "Time-threshold video view counts. Each entry reports views that met a continuous duration threshold under a stated basis, rather than a completion percentage (percentage-based completion is quartile_data). Thresholds of 2 and 6 seconds are RECOMMENDED cross-platform reporting points; any seller-defined threshold is permitted. One entry per (threshold_seconds, basis) pair per reporting period — sellers MUST de-duplicate before emission and MUST NOT emit the same pair twice; buyers MAY treat duplicate pairs as a seller-side conformance bug. Entries under different bases are different metrics and MUST NOT be summed (see view-threshold-basis). Primarily an autoplay/skippable-video metric (social, olv, in-feed video); completion metrics remain the currency for lean-back CTV/cinema inventory. Distinct from `views` (the single billable-threshold scalar) and from `viewability.viewed_seconds` (average in-view duration, not a threshold count). Array entries are not individually sortable in breakdown sort_by.",
+      "description": "Time-threshold video view counts. Each entry reports views that met a continuous duration threshold under a stated basis, rather than a completion percentage (percentage-based completion is quartile_data). Thresholds of 2 and 6 seconds are RECOMMENDED cross-platform reporting points; any seller-defined threshold is permitted. One entry per (threshold_seconds, basis) pair per reporting period — sellers MUST de-duplicate before emission and MUST NOT emit the same pair twice; buyers MAY treat duplicate pairs as a seller-side conformance bug. Entries under different bases are different metrics and MUST NOT be summed (see view-threshold-basis). Primarily an autoplay/skippable-video metric (social, olv, in-feed video); completion metrics remain the currency for lean-back CTV/cinema inventory. Distinct from `views` (the single billable-threshold scalar) and from `viewability.viewed_seconds` (average in-view duration, not a threshold count). Array entries are not individually sortable in breakdown sort_by. Disclosure-grade surface: (threshold_seconds, basis) is not part of the committed-metric qualifier vocabulary, so a `committed_metrics` entry for `time_based_views` contracts the array's presence, not specific thresholds.",
       "items": {
         "type": "object",
         "properties": {
@@ -232,6 +232,10 @@
             "type": "number",
             "minimum": 0,
             "description": "Count of views meeting this entry's threshold and basis."
+          },
+          "standard": {
+            "$ref": "/schemas/enums/viewability-standard.json",
+            "description": "Viewability standard governing the in-view clock for this entry. RECOMMENDED when basis is 'in_view' (MRC and GroupM thresholds differ); not applicable to play_time entries."
           }
         },
         "required": ["threshold_seconds", "basis", "views"],
@@ -313,7 +317,7 @@
     },
     "viewability": {
       "type": "object",
-      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — since duration is governed by the same viewability threshold (`standard`) and shares the same `measurable_impressions` denominator. Sellers SHOULD include `standard` whenever measured viewability values are reported because MRC and GroupM rows are not interchangeable. The numeric leaves are addressable via the leaf metric identities `viewable_rate`, `viewable_impressions`, `measurable_impressions`, and `viewed_seconds` for declaration, commitments, aggregates, and breakdown sorting; this object remains the canonical carrier of the values. When a buy reports under more than one standard, contract a specific standard via the `viewability_standard` qualifier on `committed_metrics`.",
+      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — since duration is governed by the same viewability threshold (`standard`) and shares the same `measurable_impressions` denominator. Sellers SHOULD include `standard` whenever measured viewability values are reported because MRC and GroupM rows are not interchangeable. The numeric leaves are addressable via the leaf metric identities `viewable_rate`, `viewable_impressions`, `measurable_impressions`, and `viewed_seconds` for declaration, commitments, aggregates, and breakdown sorting; this object remains the canonical carrier of the values. When a buy reports under more than one standard, contract a specific standard via the `viewability_standard` qualifier on `committed_metrics`; when the package's `committed_metrics` carry a `viewability_standard` qualifier, sellers MUST populate `standard` on reported viewability objects so reconciliation can match the qualifier.",
       "properties": {
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",
