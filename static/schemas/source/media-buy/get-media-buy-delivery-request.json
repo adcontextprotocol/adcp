@@ -131,6 +131,11 @@
               "$ref": "/schemas/enums/sort-metric.json",
               "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
               "default": "spend"
+            },
+            "sort_direction": {
+              "$ref": "/schemas/enums/sort-direction.json",
+              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull.",
+              "default": "desc"
             }
           },
           "required": [
@@ -215,6 +220,11 @@
               "$ref": "/schemas/enums/sort-metric.json",
               "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
               "default": "spend"
+            },
+            "sort_direction": {
+              "$ref": "/schemas/enums/sort-direction.json",
+              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull.",
+              "default": "desc"
             }
           },
           "additionalProperties": true
@@ -232,6 +242,11 @@
               "$ref": "/schemas/enums/sort-metric.json",
               "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
               "default": "spend"
+            },
+            "sort_direction": {
+              "$ref": "/schemas/enums/sort-direction.json",
+              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull.",
+              "default": "desc"
             }
           },
           "additionalProperties": true
@@ -250,6 +265,11 @@
               "$ref": "/schemas/enums/sort-metric.json",
               "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
               "default": "spend"
+            },
+            "sort_direction": {
+              "$ref": "/schemas/enums/sort-direction.json",
+              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull.",
+              "default": "desc"
             }
           },
           "additionalProperties": true
@@ -277,6 +297,11 @@
               "$ref": "/schemas/enums/sort-metric.json",
               "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
               "default": "spend"
+            },
+            "sort_direction": {
+              "$ref": "/schemas/enums/sort-direction.json",
+              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull.",
+              "default": "desc"
             }
           },
           "additionalProperties": false
@@ -307,6 +332,11 @@
               "$ref": "/schemas/enums/sort-metric.json",
               "description": "Metric to sort breakdown rows by (descending). Falls back to 'spend' if the seller does not report the requested metric.",
               "default": "spend"
+            },
+            "sort_direction": {
+              "$ref": "/schemas/enums/sort-direction.json",
+              "description": "Direction for sort_by ordering. Defaults to 'desc' (largest first). 'asc' enables bottom-N queries (e.g., the 25 worst placements by viewable_rate) that cannot be recovered from a truncated descending pull.",
+              "default": "desc"
             }
           },
           "additionalProperties": true

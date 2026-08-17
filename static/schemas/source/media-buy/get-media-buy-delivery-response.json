@@ -418,6 +418,14 @@
                       "type": "boolean",
                       "description": "Whether by_geo was truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_geo is present (false means the list is complete)."
                     },
+                    "by_geo_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_geo rows. Sellers MUST return this field whenever by_geo is present. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric."
+                    },
+                    "by_geo_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_geo ordering. Sellers MUST return this field whenever by_geo is present alongside by_geo_sorted_by."
+                    },
                     "by_device_type": {
                       "type": "array",
                       "description": "Delivery by device form factor within this package. Available when the buyer requests device_type breakdown via reporting_dimensions and the seller supports it.",
@@ -447,6 +455,14 @@
                       "type": "boolean",
                       "description": "Whether by_device_type was truncated. Sellers MUST return this flag whenever by_device_type is present (false means the list is complete)."
                     },
+                    "by_device_type_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_device_type rows. Sellers MUST return this field whenever by_device_type is present. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric."
+                    },
+                    "by_device_type_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_device_type ordering. Sellers MUST return this field whenever by_device_type is present alongside by_device_type_sorted_by."
+                    },
                     "by_device_platform": {
                       "type": "array",
                       "description": "Delivery by operating system within this package. Available when the buyer requests device_platform breakdown via reporting_dimensions and the seller supports it. Useful for CTV campaigns where tvOS vs Roku OS vs Fire OS matters.",
@@ -475,6 +491,14 @@
                     "by_device_platform_truncated": {
                       "type": "boolean",
                       "description": "Whether by_device_platform was truncated. Sellers MUST return this flag whenever by_device_platform is present (false means the list is complete)."
+                    },
+                    "by_device_platform_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_device_platform rows. Sellers MUST return this field whenever by_device_platform is present. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric."
+                    },
+                    "by_device_platform_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_device_platform ordering. Sellers MUST return this field whenever by_device_platform is present alongside by_device_platform_sorted_by."
                     },
                     "by_audience": {
                       "type": "array",
@@ -515,6 +539,14 @@
                       "type": "boolean",
                       "description": "Whether by_audience was truncated. Sellers MUST return this flag whenever by_audience is present (false means the list is complete)."
                     },
+                    "by_audience_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_audience rows. Sellers MUST return this field whenever by_audience is present. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric."
+                    },
+                    "by_audience_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_audience ordering. Sellers MUST return this field whenever by_audience is present alongside by_audience_sorted_by."
+                    },
                     "by_demographic": {
                       "type": "array",
                       "description": "Delivery by demographic within this package. Available when the buyer requests demographic breakdown and the product declares supports_demographic_breakdown. A free-form measurement code does not prove alignment with buyer targeting. When age is present it is the authoritative machine-comparable interval; for requested age_ranges, sellers MUST echo the exact requested interval and MUST NOT substitute a wider or narrower native bucket.",
@@ -554,6 +586,14 @@
                     "by_demographic_truncated": {
                       "type": "boolean",
                       "description": "Whether non-suppressed by_demographic rows were truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_demographic is present. False means every non-suppressed row is present; inspect by_demographic_suppressed separately before reconciling rows to package totals."
+                    },
+                    "by_demographic_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_demographic rows. Sellers MUST return this field whenever by_demographic is present. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric."
+                    },
+                    "by_demographic_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_demographic ordering. Sellers MUST return this field whenever by_demographic is present alongside by_demographic_sorted_by."
                     },
                     "by_demographic_suppressed": {
                       "type": "boolean",
@@ -597,6 +637,14 @@
                     "by_placement_truncated": {
                       "type": "boolean",
                       "description": "Whether by_placement was truncated. Sellers MUST return this flag whenever by_placement is present (false means the list is complete)."
+                    },
+                    "by_placement_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_placement rows. Sellers MUST return this field whenever by_placement is present. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric."
+                    },
+                    "by_placement_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_placement ordering. Sellers MUST return this field whenever by_placement is present alongside by_placement_sorted_by."
                     },
                     "by_spot": {
                       "type": "array",
