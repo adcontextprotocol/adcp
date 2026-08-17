@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/media-buy/accept-proposal-response.json",
+  "title": "Accept Proposal Response",
+  "description": "Compact proposal-acceptance result containing the resulting MediaBuy identity and accepted immutable proposal snapshot.",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/media-buy/media-buy-commitment-response.json"
+    }
+  ]
+}
