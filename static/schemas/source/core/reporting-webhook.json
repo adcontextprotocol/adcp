@@ -52,7 +52,7 @@
     },
     "requested_metrics": {
       "type": "array",
-      "description": "Optional list of metrics to include in webhook notifications. If omitted, all available metrics are included. Must be subset of product's available_metrics. Subset evaluation and leaf resolution follow the container-subsumption rule in `enums/available-metric.json`: requesting a leaf identity selects its canonical carrier object in the payload.",
+      "description": "Optional list of metrics to include in webhook notifications. If omitted, all available metrics are included. impressions and spend are always included regardless of this list. Must be subset of product's available_metrics. Subset evaluation and leaf resolution follow the container-subsumption rule in `enums/available-metric.json`: requesting a leaf identity selects its canonical carrier object in the payload. Same narrowing semantics as get_media_buy_delivery's requested_metrics (which additionally requires at least one entry when present).",
       "items": {
         "$ref": "/schemas/enums/available-metric.json"
       },
