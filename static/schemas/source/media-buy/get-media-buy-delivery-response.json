@@ -424,7 +424,7 @@
                     },
                     "by_geo_sort_direction": {
                       "$ref": "/schemas/enums/sort-direction.json",
-                      "description": "The direction actually applied to by_geo ordering. Sellers MUST return this field whenever by_geo is present alongside by_geo_sorted_by."
+                      "description": "The direction actually applied to by_geo ordering. Sellers MUST return this field whenever by_geo is present."
                     },
                     "by_device_type": {
                       "type": "array",
@@ -461,7 +461,7 @@
                     },
                     "by_device_type_sort_direction": {
                       "$ref": "/schemas/enums/sort-direction.json",
-                      "description": "The direction actually applied to by_device_type ordering. Sellers MUST return this field whenever by_device_type is present alongside by_device_type_sorted_by."
+                      "description": "The direction actually applied to by_device_type ordering. Sellers MUST return this field whenever by_device_type is present."
                     },
                     "by_device_platform": {
                       "type": "array",
@@ -498,7 +498,7 @@
                     },
                     "by_device_platform_sort_direction": {
                       "$ref": "/schemas/enums/sort-direction.json",
-                      "description": "The direction actually applied to by_device_platform ordering. Sellers MUST return this field whenever by_device_platform is present alongside by_device_platform_sorted_by."
+                      "description": "The direction actually applied to by_device_platform ordering. Sellers MUST return this field whenever by_device_platform is present."
                     },
                     "by_audience": {
                       "type": "array",
@@ -545,7 +545,7 @@
                     },
                     "by_audience_sort_direction": {
                       "$ref": "/schemas/enums/sort-direction.json",
-                      "description": "The direction actually applied to by_audience ordering. Sellers MUST return this field whenever by_audience is present alongside by_audience_sorted_by."
+                      "description": "The direction actually applied to by_audience ordering. Sellers MUST return this field whenever by_audience is present."
                     },
                     "by_demographic": {
                       "type": "array",
@@ -593,7 +593,7 @@
                     },
                     "by_demographic_sort_direction": {
                       "$ref": "/schemas/enums/sort-direction.json",
-                      "description": "The direction actually applied to by_demographic ordering. Sellers MUST return this field whenever by_demographic is present alongside by_demographic_sorted_by."
+                      "description": "The direction actually applied to by_demographic ordering. Sellers MUST return this field whenever by_demographic is present."
                     },
                     "by_demographic_suppressed": {
                       "type": "boolean",
@@ -644,7 +644,7 @@
                     },
                     "by_placement_sort_direction": {
                       "$ref": "/schemas/enums/sort-direction.json",
-                      "description": "The direction actually applied to by_placement ordering. Sellers MUST return this field whenever by_placement is present alongside by_placement_sorted_by."
+                      "description": "The direction actually applied to by_placement ordering. Sellers MUST return this field whenever by_placement is present."
                     },
                     "by_spot": {
                       "type": "array",

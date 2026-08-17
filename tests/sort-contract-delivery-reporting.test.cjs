@@ -144,4 +144,37 @@ describe("delivery reporting sort contract", () => {
     assert.equal(spotSchema.properties.sort_by, undefined);
     assert.equal(spotSchema.properties.sort_direction, undefined);
   });
+
+  // Self-enforcing invariant: any dimension that gains sort_by (present or
+  // future — e.g. format, creative, keyword, catalog_item) must carry the
+  // full sort contract, so a new sortable dimension cannot ship with an
+  // invisible spend fallback.
+  it("every dimension with sort_by carries sort_direction and both response echoes", () => {
+    const dimensions =
+      requestJson.properties.reporting_dimensions.properties;
+    const responseProperties = byPackageExtension.properties;
+    for (const [name, schema] of Object.entries(dimensions)) {
+      if (!schema.properties || !schema.properties.sort_by) continue;
+      assert.equal(
+        schema.properties.sort_by.$ref,
+        "/schemas/enums/sort-metric.json",
+        `${name}.sort_by $ref`
+      );
+      assert.equal(
+        schema.properties.sort_direction?.$ref,
+        "/schemas/enums/sort-direction.json",
+        `${name} has sort_by but no sort_direction`
+      );
+      assert.equal(
+        responseProperties[`by_${name}_sorted_by`]?.$ref,
+        "/schemas/enums/sort-metric.json",
+        `by_${name}_sorted_by echo missing`
+      );
+      assert.equal(
+        responseProperties[`by_${name}_sort_direction`]?.$ref,
+        "/schemas/enums/sort-direction.json",
+        `by_${name}_sort_direction echo missing`
+      );
+    }
+  });
 });

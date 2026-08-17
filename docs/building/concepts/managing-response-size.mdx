@@ -96,7 +96,7 @@ Response:
 | `false` | All rows are present |
 | `true` | Additional rows exist beyond what was returned |
 
-When a flag is `true`, the returned rows are sorted by the requested metric descending — you have the most significant breakdowns, and the tail is omitted. This is by design: delivery breakdowns are for optimization decisions, not archival reporting. If you need the full dataset, use the seller's native reporting API.
+When a flag is `true`, the returned rows are ordered by the applied sort metric in the applied direction (descending by default — the most significant breakdowns; `sort_direction: "asc"` deliberately returns the least significant, e.g. worst performers) and the tail is omitted. The response echoes the applied sort per breakdown (`by_X_sorted_by` / `by_X_sort_direction`), so a fallback to spend is visible. This is by design: delivery breakdowns are for optimization decisions, not archival reporting. If you need the full dataset, use the seller's native reporting API.
 
 ## Putting it together
 
