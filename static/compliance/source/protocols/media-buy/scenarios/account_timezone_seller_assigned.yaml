@@ -1,0 +1,121 @@
+id: media_buy_seller/account_timezone_seller_assigned
+version: "1.0.0"
+title: "Seller-assigned account timezone discovery"
+category: media_buy_seller
+summary: "Verifies that buyers omit timezone input and discover the seller-assigned immutable value from account readback."
+track: media_buy
+introduced_in: "3.2"
+
+requires_capability:
+  path: account.timezone.account_selection
+  equals: seller_assigned
+
+required_tools:
+  - get_adcp_capabilities
+  - sync_accounts
+  - list_accounts
+
+narrative: |
+  In seller-assigned account-fixed mode, the buyer does not choose a timezone.
+  The seller assigns the upstream account clock, returns it from provisioning,
+  and keeps it stable on later account reads.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - seller_assigned_account_timezone
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The seller advertises account_fixed timezone assignment by the seller."
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discover_and_provision
+    title: "Provision without buyer timezone input"
+    steps:
+      - id: discover_assignment_mode
+        title: "Confirm seller assignment"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request: {}
+        validations:
+          - check: response_schema
+            description: "Capability response matches the canonical schema"
+          - check: field_value
+            path: "account.timezone.mode"
+            value: "account_fixed"
+            description: "Seller assignment is an account-fixed mode"
+          - check: field_value
+            path: "account.timezone.account_selection"
+            value: "seller_assigned"
+            description: "Seller owns timezone assignment"
+          - check: field_absent
+            path: "account.timezone.supported_timezones"
+            description: "Seller assignment exposes no buyer allowlist"
+          - check: field_absent
+            path: "account.timezone.fixed_timezone"
+            description: "Different accounts may use different assigned timezones"
+
+      - id: provision_without_timezone
+        title: "Let the seller assign the account timezone"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#account_timezone_seller_assigned_provision"
+        context_outputs:
+          - name: account_id
+            path: "accounts[0].account_id"
+          - name: account_timezone
+            path: "accounts[0].timezone"
+        validations:
+          - check: response_schema
+            description: "Provisioning response matches the canonical schema"
+          - check: field_value
+            path: "accounts[0].action"
+            allowed_values: ["created", "updated", "unchanged"]
+            description: "Provisioning succeeds instead of returning a per-account failure"
+          - check: field_present
+            path: "accounts[0].timezone"
+            description: "Seller returns the assigned immutable timezone"
+
+  - id: readback
+    title: "Discover the assigned timezone again"
+    depends_on: [discover_and_provision]
+    steps:
+      - id: list_seller_assigned_account
+        title: "Read the provisioned account"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "$context.account_id"
+        validations:
+          - check: response_schema
+            description: "Account read matches the canonical schema"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "account_id"
+            description: "Read resolves the provisioned account"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "account_timezone"
+            description: "Readback preserves the assigned timezone"

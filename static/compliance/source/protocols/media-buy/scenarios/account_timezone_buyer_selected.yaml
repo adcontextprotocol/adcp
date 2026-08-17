@@ -1,0 +1,136 @@
+id: media_buy_seller/account_timezone_buyer_selected
+version: "1.0.0"
+title: "Buyer-selected account timezone resolution"
+category: media_buy_seller
+summary: "Verifies advertised timezone selection, provisioning echo, list readback, and natural AccountRef round-trip."
+track: media_buy
+introduced_in: "3.2"
+
+requires_capability:
+  path: account.timezone.account_selection
+  equals: buyer_selected
+
+required_tools:
+  - get_adcp_capabilities
+  - sync_accounts
+  - list_accounts
+
+narrative: |
+  In buyer-selected account-fixed mode, the buyer chooses one advertised
+  timezone while provisioning. That immutable value participates in the
+  natural account key and must survive sync_accounts, list_accounts, and a
+  subsequent exact natural-key lookup.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - buyer_selected_account_timezone
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The seller advertises account_fixed timezone selection by the buyer."
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discover_and_provision
+    title: "Choose an advertised account timezone"
+    steps:
+      - id: discover_supported_timezones
+        title: "Read the account timezone allowlist"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request: {}
+        context_outputs:
+          - name: account_timezone
+            path: "account.timezone.supported_timezones[0]"
+        validations:
+          - check: response_schema
+            description: "Capability response matches the canonical schema"
+          - check: field_value
+            path: "account.timezone.mode"
+            value: "account_fixed"
+            description: "Buyer selection is an account-fixed mode"
+          - check: field_value
+            path: "account.timezone.account_selection"
+            value: "buyer_selected"
+            description: "Buyer selects the immutable account timezone"
+          - check: field_present
+            path: "account.timezone.supported_timezones[0]"
+            description: "At least one selectable timezone is advertised"
+          - check: field_absent
+            path: "account.timezone.fixed_timezone"
+            description: "Account-fixed mode does not declare a seller-wide timezone"
+
+      - id: provision_selected_timezone
+        title: "Provision with one advertised timezone"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              timezone: "$context.account_timezone"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#account_timezone_buyer_selected_provision"
+        context_outputs:
+          - name: account_id
+            path: "accounts[0].account_id"
+        validations:
+          - check: response_schema
+            description: "Provisioning response matches the canonical schema"
+          - check: field_value
+            path: "accounts[0].action"
+            allowed_values: ["created", "updated", "unchanged"]
+            description: "Provisioning succeeds instead of returning a per-account failure"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "account_timezone"
+            description: "Provisioning echoes the buyer-selected timezone"
+
+  - id: natural_key_roundtrip
+    title: "Round-trip the timezone-bearing natural AccountRef"
+    depends_on: [discover_and_provision]
+    steps:
+      - id: list_by_natural_key
+        title: "Resolve the account by its complete natural key"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            timezone: "$context.account_timezone"
+        validations:
+          - check: response_schema
+            description: "Natural-key read matches the canonical schema"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "account_id"
+            description: "The selected timezone resolves the original account"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "account_timezone"
+            description: "Readback preserves the natural-key timezone"
+          - check: field_value
+            path: "accounts[0].brand.domain"
+            value: "acmeoutdoor.example"
+            description: "Readback exposes the reusable brand key"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-agency.example"
+            description: "Readback exposes the reusable operator key"

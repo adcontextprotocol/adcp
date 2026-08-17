@@ -42,6 +42,13 @@ requires_scenarios:
   - media_buy_seller/typed_proposal_negotiation
   - media_buy_seller/portfolio_routing_scope
   - media_buy_seller/catalog_item_availability_updates
+  - media_buy_seller/account_timezone_seller_fixed
+  - media_buy_seller/account_timezone_buyer_selected
+  - media_buy_seller/account_timezone_seller_assigned
+  - media_buy_seller/budget_cap_timezone_account
+  - media_buy_seller/budget_cap_timezone_fixed
+  - media_buy_seller/budget_cap_timezone_override
+  - media_buy_seller/budget_cap_timezone_override_rejected
 
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that
@@ -162,6 +169,10 @@ phases:
 
   - id: account_setup
     title: "Account setup"
+    depends_on: []
+    requires_capability:
+      path: account.timezone.supported_timezones
+      present: false
     narrative: |
       Before buying anything, the buyer establishes an account relationship with
       your platform. This is the handshake: the buyer tells you which brand and
@@ -207,13 +218,22 @@ phases:
               operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
+              sandbox: true
           idempotency_key: "$generate:uuid_v4#media_buy_seller_account_setup_sync_accounts"
           context:
             correlation_id: "media_buy_seller--sync_accounts"
 
+        context_outputs:
+          - name: account_id
+            path: "accounts[0].account_id"
+
         validations:
           - check: response_schema
             description: "Response matches sync-accounts-response.json schema"
+          - check: field_value
+            path: "accounts[0].action"
+            allowed_values: ["created", "updated", "unchanged"]
+            description: "Account setup succeeds instead of returning a per-account failure"
           - check: field_present
             path: "accounts[0].account_id"
             description: "Account has a platform-assigned ID"
@@ -227,6 +247,73 @@ phases:
             path: "context.correlation_id"
             value: "media_buy_seller--sync_accounts"
             description: "Context correlation_id returned unchanged"
+
+  - id: buyer_selected_account_setup
+    title: "Buyer-selected timezone account setup"
+    depends_on: []
+    requires_capability:
+      path: account.timezone.account_selection
+      equals: buyer_selected
+    narrative: |
+      Buyer-selected account-fixed sellers require one advertised timezone in
+      the provisioning natural key. The buyer discovers that allowlist before
+      establishing the account and carries the returned account ID into later
+      account-scoped calls.
+    steps:
+      - id: discover_buyer_selected_timezone
+        title: "Choose an advertised account timezone"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request: {}
+        context_outputs:
+          - name: account_timezone
+            path: "account.timezone.supported_timezones[0]"
+        validations:
+          - check: response_schema
+            description: "Capability response matches the canonical schema"
+          - check: field_present
+            path: "account.timezone.supported_timezones[0]"
+            description: "Buyer has at least one valid provisioning timezone"
+
+      - id: sync_accounts_buyer_selected_timezone
+        title: "Establish the timezone-bound account relationship"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              timezone: "$context.account_timezone"
+              billing: "operator"
+              payment_terms: "net_30"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_buyer_selected_account_setup"
+          context:
+            correlation_id: "media_buy_seller--sync_accounts_buyer_selected"
+        context_outputs:
+          - name: account_id
+            path: "accounts[0].account_id"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_value
+            path: "accounts[0].action"
+            allowed_values: ["created", "updated", "unchanged"]
+            description: "Timezone-bound account setup succeeds"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "account_timezone"
+            description: "Seller echoes the chosen immutable timezone"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Seller returns an account handle for later calls"
 
   - id: governance_setup
     title: "Governance agent registration"
@@ -254,9 +341,7 @@ phases:
         sample_request:
           accounts:
             - account:
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
+                account_id: "$context.account_id"
               governance_agents:
                 - url: "$context.governance_agent_url"
                   authentication:
@@ -332,9 +417,7 @@ phases:
           pagination:
             max_results: 5
           account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            account_id: "$context.account_id"
           context:
             correlation_id: "media_buy_seller--get_products_brief"
 
@@ -445,10 +528,7 @@ phases:
           brand:
             domain: "acmeoutdoor.example"
           account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            sandbox: true
+            account_id: "$context.account_id"
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -515,9 +595,7 @@ phases:
 
         sample_request:
           account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            account_id: "$context.account_id"
           media_buy_ids:
             - "$context.media_buy_id"
           context:
@@ -588,9 +666,7 @@ phases:
 
         sample_request:
           account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            account_id: "$context.account_id"
           creatives:
             - creative_id: "video_30s_trail_pro"
               name: "Trail Pro 3000 - 30s CTV Spot"
@@ -666,9 +742,7 @@ phases:
 
         sample_request:
           account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            account_id: "$context.account_id"
           media_buy_ids:
             - "$context.media_buy_id"
           include_package_daily_breakdown: true
