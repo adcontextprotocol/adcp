@@ -36,20 +36,61 @@ Examples below use **1.0 wire format** (no `kind` field, ProtoJSON enums). For a
 
 ## A2A Client Setup
 
-### 1. Initialize A2A Client
+Deterministic AdCP invocation on A2A 1.0 uses the [AdCP A2A Profile Extension v3](/docs/building/by-layer/L0/a2a-profile-extension), identified by `https://adcontextprotocol.org/extensions/adcp/v3`. Clients activate it on every request with `A2A-Extensions`.
+
+### 1. Initialize an A2A 1.0 client
 
 ```javascript
-const a2a = new A2AClient({
-  endpoint: 'https://adcp.example.com/a2a',
-  auth: {
-    type: 'bearer',
-    token: process.env.ADCP_API_KEY
+const endpoint = 'https://seller.example/a2a/jsonrpc';
+const profileUri = 'https://adcontextprotocol.org/extensions/adcp/v3';
+
+function normalizeState(state) {
+  return state?.replace(/^TASK_STATE_/, '').toLowerCase().replaceAll('_', '-');
+}
+
+// Minimal JSON-RPC binding used by this guide. Production SDKs should
+// encapsulate the same headers, messageId generation, and response unwrapping.
+const a2a = {
+  async getAgentCard() {
+    const response = await fetch('https://seller.example/.well-known/agent-card.json');
+    if (!response.ok) throw new Error(`Agent Card failed: ${response.status}`);
+    return response.json();
   },
-  agent: {
-    name: "AdCP Media Buyer",
-    version: "1.0.0"
+  async send({ message, configuration }) {
+    const wireMessage = {
+      ...message,
+      messageId: message.messageId ?? crypto.randomUUID()
+    };
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'authorization': `Bearer ${process.env.ADCP_API_KEY}`,
+        'A2A-Version': '1.0',
+        'A2A-Extensions': profileUri
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: crypto.randomUUID(),
+        method: 'SendMessage',
+        params: { message: wireMessage, ...(configuration && { configuration }) }
+      })
+    });
+    const envelope = await response.json();
+    if (envelope.error) throw new Error(envelope.error.message);
+    const task = envelope.result.task;
+    if (!task) throw new Error('Expected the SendMessage response task branch');
+    const summary = task.status.message?.parts?.find(part => typeof part.text === 'string')?.text
+      ?? task.artifacts?.[0]?.parts?.find(part => typeof part.text === 'string')?.text;
+    return {
+      ...task,
+      taskId: task.id,
+      a2aStatus: task.status,
+      status: normalizeState(task.status.state),
+      message: summary
+    };
   }
-});
+};
 ```
 
 ### 2. Verify Agent Card
@@ -57,7 +98,11 @@ const a2a = new A2AClient({
 ```javascript
 // Check available skills
 const agentCard = await a2a.getAgentCard();
-console.log(agentCard.skills.map(s => s.name));
+const adcpProfile = agentCard.capabilities.extensions?.find(
+  ext => ext.uri === 'https://adcontextprotocol.org/extensions/adcp/v3'
+);
+if (!adcpProfile) throw new Error('Agent does not advertise the AdCP A2A profile');
+console.log(agentCard.skills.map(s => s.id));
 // ["get_products", "create_media_buy", "sync_creatives", ...]
 ```
 
@@ -66,9 +111,16 @@ console.log(agentCard.skills.map(s => s.name));
 ```javascript
 const response = await a2a.send({
   message: {
+    messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [{
-      text: "Find video products for pet food campaign"
+      data: {
+        skill: "get_products",
+        input: {
+          buying_mode: "brief",
+          brief: "Find video products for a pet food campaign"
+        }
+      }
     }]
   }
 });
@@ -80,32 +132,33 @@ console.log(response.message);  // Human-readable summary
 
 ## Message Structure (A2A-Specific)
 
-### Multi-Part Messages
+### Profile Invocation Messages
 
-A2A's key advantage is multi-part messages combining text, data, and files:
+A profile invocation contains exactly one authoritative DataPart with `{ skill, input }`. It may also contain advisory TextParts. Text never overrides the structured input:
 
 ```javascript
-// Text + structured data + file
+// SDK-generated display label + authoritative structured invocation
 const response = await a2a.send({
   message: {
+    messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [
       {
-        text: "Create campaign with these assets"
+        text: "AdCP task: create_media_buy"
       },
       {
         data: {
           skill: "create_media_buy",
-          parameters: {
-            packages: ["pkg_001"],
-            total_budget: 100000
+          input: {
+            idempotency_key: "550e8400-e29b-41d4-a716-446655440000",
+            account: { account_id: "acc_demo_001" },
+            brand: { domain: "brand.example" },
+            proposal_id: "proposal_001",
+            total_budget: { amount: 100000, currency: "USD" },
+            start_time: "asap",
+            end_time: "2027-06-30T23:59:59Z"
           }
         }
-      },
-      {
-        url: "https://cdn.example.com/hero-video.mp4",
-        filename: "hero_video_30s.mp4",
-        mediaType: "video/mp4"
       }
     ]
   }
@@ -114,32 +167,26 @@ const response = await a2a.send({
 
 ### Skill Invocation Methods
 
-#### Natural Language (Flexible)
-```javascript
-// Agent interprets intent
-const task = await a2a.send({
-  message: {
-    role: "ROLE_USER",
-    parts: [{
-      text: "Find premium CTV inventory under $50 CPM"
-    }]
-  }
-});
-```
+#### Natural Language (Separate Interface)
+
+The Agent Card used above marks the AdCP profile `required: true`, so a
+text-only request is invalid on that interface. An agent that also supports
+generic conversation publishes a separate Agent Card/interface without the
+required profile. Context correlation does not turn text into typed AdCP input.
 
 #### Explicit Skill (Deterministic)
 ```javascript
-// Explicit skill with exact parameters
+// Explicit skill with an exact task request
 const task = await a2a.send({
   message: {
+    messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [{
       data: {
         skill: "get_products",
-        parameters: {
-          max_cpm: 50,
-          channels: ["ctv"],
-          tier: "premium"
+        input: {
+          buying_mode: "brief",
+          brief: "Premium CTV inventory under $50 CPM"
         }
       }
     }]
@@ -147,23 +194,23 @@ const task = await a2a.send({
 });
 ```
 
-#### Hybrid Approach (Recommended)
+#### Structured Invocation with Generated Display Text
 ```javascript
-// Context + explicit execution for best results
+// Display text contains no information beyond the structured invocation
 const task = await a2a.send({
   message: {
+    messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [
       {
-        text: "Looking for inventory for spring campaign targeting millennials"
+        text: "AdCP task: get_products"
       },
       {
         data: {
           skill: "get_products",
-          parameters: {
-            audience: "millennials",
-            season: "Q2_2024",
-            max_cpm: 45
+          input: {
+            buying_mode: "brief",
+            brief: "Premium CTV inventory for a spring campaign under $45 CPM"
           }
         }
       }
@@ -172,20 +219,26 @@ const task = await a2a.send({
 });
 ```
 
+The profile rejects `parameters` as an alias and rejects ambiguous messages with multiple invocation DataParts. SDKs should omit TextParts by default or generate a display-only label; implementers should never put instructions there. File and resource references belong in fields defined by the selected AdCP request schema. See the [profile specification](/docs/building/by-layer/L0/a2a-profile-extension#invocation-message) for the normative rules.
+
 **Status Handling**: See [Task Lifecycle](/docs/building/by-layer/L3/task-lifecycle) for complete status handling patterns.
 
 ## A2A Response Format
 
 **New in AdCP 1.6.0**: All responses include unified status field.
 
-### Canonical Response Structure
+### Normalized SDK Response Structure
 
 AdCP responses over A2A **MUST** include at least one DataPart (a Part carrying a `data` field) containing the task response. A TextPart (a Part carrying a `text` field) for human-readable messages is **recommended** but optional.
 
+The following is the normalized `@adcp/sdk` client shape. It flattens raw A2A
+`Task.status.state` to lowercase `status` and exposes the A2A Task `id` as
+`taskId`; it is not the raw A2A 1.0 wire object.
+
 ```json
 {
-  "status": "completed",        // AdCP unified status (see Core Concepts)
-  "taskId": "task-123",         // A2A task identifier
+  "status": "completed",        // Normalized A2A transport status
+  "taskId": "task-123",         // Raw A2A Task.id
   "contextId": "ctx-456",       // Automatic context management
   "artifacts": [{               // A2A-specific artifact structure
     "artifactId": "artifact-product-catalog-abc",
@@ -196,6 +249,8 @@ AdCP responses over A2A **MUST** include at least one DataPart (a Part carrying 
       },
       {
         "data": {
+          "status": "completed",
+          "cache_scope": "account",
           "products": [...],
           "total": 12
         }
@@ -209,8 +264,8 @@ The A2A 1.0 wire format carries no `kind` discriminator — the Part's content t
 
 **For complete canonical format specification, see [A2A Response Format](/docs/building/by-layer/L0/a2a-response-format).**
 
-### A2A-Specific Fields
-- **taskId**: A2A task identifier for streaming updates
+### Normalized A2A Fields
+- **taskId**: A2A Task `id`, renamed by the SDK adapter
 - **contextId**: Automatically managed by A2A protocol
 - **artifacts**: Multi-part deliverables with text and data parts
 - **status**: AdCP's unified lowercase shorthand, mapped from A2A's `status.state` (see [A2A Response Extraction](/docs/building/by-layer/L0/a2a-response-extraction#wire-format-compatibility))
@@ -229,7 +284,7 @@ if (artifact) {
   const isData = (p) => p.data != null || p.kind === 'data';
 
   const message = artifact.parts?.find(isText)?.text;
-  const data = artifact.parts?.find(isData)?.data;
+  const data = artifact.parts?.filter(isData).at(-1)?.data;
 
   return {
     artifactId: artifact.artifactId,
@@ -244,140 +299,81 @@ return { status: response.status };
 
 **For complete response structure requirements, error handling, and implementation patterns, see [A2A Response Format](/docs/building/by-layer/L0/a2a-response-format).**
 
-## Push Notifications (A2A-Specific)
+## Push Notifications and AdCP Webhooks
 
-A2A defines push notifications natively via `PushNotificationConfig`. When you configure a webhook URL, the server will POST task updates directly to your endpoint instead of requiring you to poll.
+A2A transport notifications and AdCP application webhooks have different
+lifetimes. `configuration.taskPushNotificationConfig` asks A2A to deliver
+updates for the current A2A Task. It does not track a durable AdCP operation
+after that Task completes. For an AdCP Submitted result, put
+`push_notification_config` inside the task's typed `input`; its
+`operation_id` is the durable webhook correlation key.
 
-### Correlation: payload field, not URL
-
-Correlate incoming notifications using `operation_id` (and `task_type`) from the payload body — **never** by parsing `pushNotificationConfig.url`. The URL is opaque to the server; the wire-level source of truth for correlation is the payload field. See [Webhooks — Operation IDs and URL templates](/docs/building/by-layer/L3/webhooks#operation-ids-and-url-templates) for the full normative wire contract (it applies to both MCP and A2A — every comparable async-notification protocol in ad tech makes the URL opaque to the firing entity).
-
-Buyers MAY encode `operation_id` in the URL path or query as a routing aid for their own HTTP server — many web frameworks dispatch on path segments before parsing the body — but that's a buyer-side server design choice, not part of the wire contract. A buyer's server-routing template is not visible to the seller; the seller reads `operation_id` only from the buyer-supplied `pushNotificationConfig.operation_id` field and echoes it verbatim in the payload.
-
-**URL templates (buyer-side server routing only):**
-
-```javascript
-// Path parameters
-url: `https://buyer.com/webhooks/a2a/${taskType}/${operationId}`
-
-// Query parameters
-url: `https://buyer.com/webhooks/a2a?task=${taskType}&op=${operationId}`
-
-// Or fully opaque — the seller doesn't care about URL shape
-url: `https://buyer.com/webhooks/${randomToken}`
-```
-
-**Example Configuration:**
+**Durable AdCP webhook:**
 
 ```javascript
-const operationId = "op_nike_q1_2025";
-const taskType = "create_media_buy";
+const operationId = crypto.randomUUID();
 
 await a2a.send({
   message: {
+    messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [{
       data: {
         skill: "create_media_buy",
-        parameters: { /* task params */ }
+        input: {
+          idempotency_key: crypto.randomUUID(),
+          account: { account_id: "acc_demo_001" },
+          brand: { domain: "brand.example" },
+          proposal_id: "proposal_001",
+          total_budget: { amount: 100000, currency: "USD" },
+          start_time: "asap",
+          end_time: "2027-06-30T23:59:59Z",
+          push_notification_config: {
+            url: "https://buyer.example/webhooks/adcp",
+            operation_id: operationId
+          }
+        }
       }
     }]
-  },
-  pushNotificationConfig: {
-    url: `https://buyer.com/webhooks/a2a/${taskType}/${operationId}`,
-    operation_id: operationId,  // canonical correlation channel — seller echoes verbatim
-    token: "client-validation-token",  // Optional: for client-side validation
-    authentication: {
-      schemes: ["bearer"],
-      credentials: "shared_secret_32_chars"
-    }
   }
 });
 ```
+
+When transport-level delivery is useful while the handler is still running,
+pass the separate A2A 1.0 configuration:
+
+```javascript
+configuration: {
+  taskPushNotificationConfig: {
+    id: crypto.randomUUID(),
+    url: "https://buyer.example/webhooks/a2a",
+    token: "client-validation-token"
+  }
+}
+```
+
+An initial `SendMessage` request does not set `taskId` in that configuration;
+the A2A server assigns the transport Task ID. A2A's configuration has no
+AdCP `operation_id` field.
 
 For webhook payload formats, protocol comparison, and detailed handling examples, see [Webhooks](/docs/building/by-layer/L3/webhooks).
 
 ## SSE Streaming (A2A-Specific)
 
-A2A's key advantage is real-time updates via Server-Sent Events:
+A2A streaming uses the protocol operations `SendStreamingMessage` and
+`SubscribeToTask`, whose SSE events each contain a `StreamResponse` branch.
+Clients must send the same authentication, `A2A-Version`, and `A2A-Extensions`
+service parameters required by non-streaming calls. A bare browser
+`EventSource` cannot set those headers and is not a portable profile client.
 
-AdCP still owns the application-layer task lifecycle on A2A. A2A `Task`, `taskId`, SSE, and push-notification frames are transport delivery mechanics; the durable business operation remains the AdCP payload keyed by AdCP `task_id`. A completed A2A task can still carry an AdCP response whose payload says `status: 'submitted'`.
-
-### Task Monitoring
-
-```javascript
-class A2aTaskMonitor {
-  constructor(taskId) {
-    this.taskId = taskId;
-    this.events = new EventSource(`/a2a/tasks/${taskId}/events`);
-    
-    this.events.addEventListener('status', (e) => {
-      const update = JSON.parse(e.data);
-      this.handleStatusUpdate(update);
-    });
-    
-    this.events.addEventListener('progress', (e) => {
-      const data = JSON.parse(e.data);
-      console.log(`${data.percentage}% - ${data.message}`);
-    });
-  }
-  
-  handleStatusUpdate(update) {
-    switch (update.status) {
-      case 'input-required':
-        // Handle clarification/approval needed
-        this.emit('input-required', update);
-        break;
-      case 'completed':
-        this.events.close();
-        this.emit('completed', update);
-        break;
-      case 'failed':
-        this.events.close();
-        this.emit('failed', update);
-        break;
-    }
-  }
-}
-```
-
-### Real-Time Updates Example
-
-```javascript
-// Start long-running operation
-const response = await a2a.send({
-  message: {
-    role: "ROLE_USER",
-    parts: [{
-      data: {
-        skill: "create_media_buy",
-        parameters: { packages: ["pkg_001"], total_budget: 100000 }
-      }
-    }]
-  }
-});
-
-// Monitor A2A transport progress in real time via SSE
-if (response.status === 'working' || response.status === 'submitted') {
-  const monitor = new A2aTaskMonitor(response.taskId);
-  
-  monitor.on('progress', (data) => {
-    updateUI(`${data.percentage}%: ${data.message}`);
-  });
-  
-  monitor.on('completed', (final) => {
-    // Extract last DataPart from the artifact — don't assume a positional index.
-    const parts = final.artifacts[0].parts;
-    const dataParts = parts.filter(p => p.data != null || p.kind === 'data');
-    const payload = dataParts[dataParts.length - 1]?.data;
-    if (payload?.status === 'submitted') {
-      // A2A delivery completed, but the AdCP operation is still queued.
-      return pollAdcpTask(payload.task_id);
-    }
-    console.log('Created:', payload?.media_buy_id);
-  });
-}
-```
+The minimal helper earlier in this guide implements non-streaming
+`SendMessage`. With the default `returnImmediately: false`, that operation
+waits for a terminal or interrupted A2A state. A streaming-capable adapter
+should expose the official streaming operations and parse `{ task }`,
+`{ statusUpdate }`, `{ artifactUpdate }`, and `{ message }` frames. If an AdCP
+handler ultimately returns `status: "submitted"`, the final A2A Task is still
+completed; poll the durable operation with fresh typed `get_task_status`
+invocations.
 
 ### A2A Webhook Payload Examples
 
@@ -395,6 +391,7 @@ When a task finishes, the server sends the full `Task` object wrapped in the A2A
       "timestamp": "2026-01-22T10:30:00.000Z"
     },
     "artifacts": [{
+      "artifactId": "media-buy-result",
       "name": "task_result",
       "parts": [
         {
@@ -402,7 +399,10 @@ When a task finishes, the server sends the full `Task` object wrapped in the A2A
         },
         {
           "data": {
+            "status": "completed",
             "media_buy_id": "mb_12345",
+            "confirmed_at": "2026-01-22T10:30:00.000Z",
+            "revision": 1,
             "creative_deadline": "2026-01-30T23:59:59.000Z",
             "packages": [
               {
@@ -420,7 +420,7 @@ When a task finishes, the server sends the full `Task` object wrapped in the A2A
 
 **CRITICAL**: For **`completed`, `failed`, or `rejected`** status, the AdCP task result **MUST** be in `.artifacts[0].parts[]`. If the server has only a free-text fatal message (no structured payload), it MAY fall back to `status.message.parts[]` — clients handle both.
 
-The A2A 1.0 `StreamResponse` oneof wraps every SSE frame and push-notification payload with exactly one of: `{ task }`, `{ statusUpdate }`, `{ artifactUpdate }`, `{ message }` (A2A 1.0 §3.2.3, §4.3.3). Non-streaming responses from `tasks/get` and v0.3 servers deliver the bare object. Clients unwrap before reading fields.
+The A2A 1.0 `StreamResponse` oneof wraps every SSE frame and push-notification payload with exactly one of: `{ task }`, `{ statusUpdate }`, `{ artifactUpdate }`, `{ message }` (A2A 1.0 §3.2.3, §4.3.3). Non-streaming responses from the native A2A Get Task operation and v0.3 servers deliver the bare object. Clients unwrap before reading fields.
 
 **Example 2: `TaskStatusUpdateEvent` for progress updates**
 
@@ -434,6 +434,9 @@ During execution, interim status updates can include optional data in `status.me
     "status": {
       "state": "TASK_STATE_INPUT_REQUIRED",
       "message": {
+        "messageId": "msg-input-required-001",
+        "taskId": "task_456",
+        "contextId": "ctx_123",
         "role": "ROLE_AGENT",
         "parts": [
           { "text": "Campaign budget $150K requires VP approval" },
@@ -450,7 +453,7 @@ During execution, interim status updates can include optional data in `status.me
 }
 ```
 
-**All status payloads use AdCP schemas**: Both final statuses (completed/failed) and interim statuses (working, input-required, submitted) have corresponding AdCP schemas referenced in [`async-response-data.json`](https://adcontextprotocol.org/schemas/v3/core/async-response-data.json). Note that interim status schemas are evolving and may change in future versions, so implementors may choose to handle them more loosely.
+**Do not conflate the two `submitted` values.** Native A2A `TASK_STATE_SUBMITTED` is an interim transport state and may appear in a `TaskStatusUpdateEvent` before an AdCP handler returns. An AdCP response whose DataPart contains `status: "submitted"` is instead pinned inside an A2A `TASK_STATE_COMPLETED` Task by the AdCP v3 profile. Observe that durable AdCP operation with `get_task_status`.
 
 ### A2A Webhook Payload Types
 
@@ -459,7 +462,7 @@ Per the [A2A 1.0 specification](https://a2a-protocol.org/latest/specification/#4
 | Envelope Key | Inner Payload | When Used | What It Contains |
 |--------------|---------------|-----------|------------------|
 | `task` | `Task` | Final states (`completed`, `failed`, `canceled`, `rejected`) or when full context needed | Complete task object with all history and artifact data |
-| `statusUpdate` | `TaskStatusUpdateEvent` | Status transitions during execution (`working`, `input-required`, `auth-required`, `submitted`) | Lightweight status change with message parts |
+| `statusUpdate` | `TaskStatusUpdateEvent` | Native A2A transitions during handler execution (`working`, `input-required`, `auth-required`, `submitted`) | Lightweight transport status with message parts |
 | `artifactUpdate` | `TaskArtifactUpdateEvent` | Streaming artifact updates | Artifact chunk with `append` / `lastChunk` flags |
 | `message` | `Message` | Out-of-band agent messages | A message unattached to a task status transition |
 
@@ -467,7 +470,7 @@ For AdCP, most webhooks will be:
 - `{ task }` for final results (`completed`, `failed`, `rejected`)
 - `{ statusUpdate }` for progress updates (`working`, `input-required`, `auth-required`)
 
-Clients unwrap the single-key envelope before reading fields. Non-streaming responses (e.g., `tasks/get`) deliver the bare payload — unwrapping a single-key envelope is a no-op there.
+Clients unwrap the single-key envelope before reading fields. Non-streaming responses (for example, native A2A Get Task) deliver the bare payload — unwrapping a single-key envelope is a no-op there.
 
 **Envelope semantics:**
 - **`{ artifactUpdate }`** frames carry incremental artifact chunks with boolean flags `append` (concatenate parts onto the named artifact) and `lastChunk` (marks the final chunk). AdCP clients consuming streams SHOULD accumulate these into the target artifact, then apply the extraction algorithm when the `{ task }` frame arrives with a terminal state. Clients consuming push notifications typically receive the already-merged `Task` object and can ignore individual `artifactUpdate` frames. See A2A 1.0 §7.3.
@@ -478,10 +481,12 @@ Clients unwrap the single-key envelope before reading fields. Non-streaming resp
 Webhooks are sent when **all** of these conditions are met:
 
 1. **Task type supports async** (e.g., `create_media_buy`, `sync_creatives`, `get_products`)
-2. **`pushNotificationConfig` is provided** in the request
-3. **Task runs asynchronously** — initial response is `working` or `submitted`
+2. **`configuration.taskPushNotificationConfig` is provided** in the request
+3. **The A2A transport task runs asynchronously** — initial A2A state is `working` or native `submitted`
 
 If the initial response is already terminal (`completed`, `failed`, `rejected`), no webhook is sent—you already have the result.
+
+An AdCP `status: "submitted"` DataPart does not keep the A2A Task open and does not turn A2A push notifications into AdCP-operation notifications. The profile returns it inside a completed A2A Task; use `get_task_status` (or an AdCP webhook explicitly defined by the task schema) for the durable operation.
 
 **Status changes that trigger webhooks:**
 - `working` → Progress update (task actively processing)
@@ -504,7 +509,7 @@ The DataPart `data` field in A2A webhooks uses status-specific schemas:
 | `working` | `[task]-async-response-working.json` | Progress info (`percentage`, `step`) |
 | `input-required` | `[task]-async-response-input-required.json` | Requirements, approval data |
 | `auth-required` (1.0) | `[task]-async-response-auth-required.json` | Auth challenge (scheme, URL, scopes) |
-| `submitted` | `[task]-async-response-submitted.json` | Acknowledgment (usually minimal) |
+| native A2A `submitted` | Transport status payload | Handler has not yet returned an AdCP response |
 
 Schema reference: [`async-response-data.json`](https://adcontextprotocol.org/schemas/v3/core/async-response-data.json)
 
@@ -556,7 +561,7 @@ app.post('/webhooks/a2a/:taskType/:operationId', async (req, res) => {
   if (FINAL.includes(normalizedStatus)) {
     // FINAL STATES: Extract from .artifacts (fallback to status.message.parts)
     const artifactParts = webhook.artifacts?.[0]?.parts;
-    const dataPart = artifactParts?.find(isDataPart)
+    const dataPart = artifactParts?.filter(isDataPart).at(-1)
       ?? webhook.status?.message?.parts?.find(isDataPart);
     const textPart = artifactParts?.find(isTextPart)
       ?? webhook.status?.message?.parts?.find(isTextPart);
@@ -646,105 +651,83 @@ app.post('/webhooks/a2a/:taskType/:operationId', async (req, res) => {
 
 ## Context Management (A2A-Specific)
 
-**Key Advantage**: A2A handles context automatically - no manual context_id management needed.
-
-### Automatic Context
+A2A assigns `contextId` on the first exchange. A client continues that context
+by placing the returned value inside the next `Message`. The typed invocation
+remains complete and authoritative on every turn.
 
 ```javascript
-// First request - A2A creates context automatically
+// First request: the server assigns a contextId.
 const response1 = await a2a.send({
   message: {
+    messageId: crypto.randomUUID(),
     role: "ROLE_USER",
-    parts: [{ text: "Find premium video products" }]
+    parts: [{ data: {
+      skill: "get_products",
+      input: { buying_mode: "brief", brief: "Find premium video products" }
+    }}]
   }
 });
 
-// Follow-up - A2A remembers context automatically
+// Follow-up: contextId is a Message field, not a sibling of message.
 const response2 = await a2a.send({
   message: {
+    messageId: crypto.randomUUID(),
+    contextId: response1.contextId,
     role: "ROLE_USER",
-    parts: [{ text: "Filter for sports content" }]
-  }
-});
-// System automatically connects this to previous request
-```
-
-### Explicit Context (Optional)
-
-```javascript
-// When you need explicit control
-const response2 = await a2a.send({
-  contextId: response1.contextId,  // Optional - A2A tracks this anyway
-  message: {
-    role: "ROLE_USER",
-    parts: [{ text: "Refine those results" }]
+    parts: [{ data: {
+      skill: "get_products",
+      input: { buying_mode: "brief", brief: "Premium sports video products" }
+    }}]
   }
 });
 ```
 
-**vs. MCP**: Unlike MCP's manual context_id management, A2A handles session continuity at the protocol level.
+## File and Multi-Modal Inputs
 
-## Multi-Modal Messages (A2A-Specific)
-
-A2A's unique capability - combine text, data, and files in one message:
+Generic A2A messages can combine text, data, and files. The activated AdCP v3 A2A profile deliberately narrows invocation messages to one structured DataPart plus optional advisory TextParts. Put resource references in the selected AdCP task's typed `input`; do not add a FilePart that the task schema cannot validate.
 
 ### Creative Upload with Context
 
 ```javascript
-// Upload creative with campaign context in single message
+// The asset URL is part of the typed AdCP request.
 const response = await a2a.send({
   message: {
+    messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [
       {
-        text: "Add this hero video to the premium sports campaign"
+        text: "AdCP task: sync_creatives"
       },
       {
         data: {
           skill: "sync_creatives",
-          parameters: {
-            media_buy_id: "mb_12345",
-            action: "upload_and_assign"
+          input: {
+            idempotency_key: crypto.randomUUID(),
+            account: { account_id: "acc_demo_001" },
+            creatives: [{
+              creative_id: "cr_hero_30s",
+              name: "Sports hero 30s",
+              format_kind: "video_hosted",
+              assets: {
+                video_main: {
+                  asset_type: "video",
+                  url: "https://cdn.example.com/hero-30s.mp4",
+                  mime_type: "video/mp4",
+                  duration_ms: 30000,
+                  width: 1920,
+                  height: 1080
+                }
+              }
+            }]
           }
         }
-      },
-      {
-        url: "https://cdn.example.com/hero-30s.mp4",
-        filename: "sports_hero_30s.mp4",
-        mediaType: "video/mp4"
       }
     ]
   }
 });
 ```
 
-### Campaign Brief + Assets
-
-```javascript
-// Submit comprehensive campaign brief
-await a2a.send({
-  message: {
-    role: "ROLE_USER",
-    parts: [
-      {
-        text: "Campaign brief and assets for Q1 launch"
-      },
-      {
-        url: "https://docs.google.com/campaign-brief.pdf",
-        filename: "Q1_campaign_brief.pdf",
-        mediaType: "application/pdf"
-      },
-      {
-        data: {
-          budget: 250000,
-          kpis: ["reach", "awareness", "conversions"],
-          target_launch: "2026-01-15"
-        }
-      }
-    ]
-  }
-});
-```
+If a task schema does not define a field for the file or resource, that input is not supported by the AdCP v3 A2A profile. Use a separate generic A2A interface or first transform the resource into schema-valid AdCP fields.
 
 ## Available Skills
 
@@ -757,12 +740,13 @@ All AdCP tasks are available as A2A skills. Use explicit invocation for determin
 // Standard pattern for explicit skill invocation
 await a2a.send({
   message: {
+    messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [{
       data: {
-        skill: "skill_name",        // Exact name from Agent Card
-        parameters: {              // Task-specific parameters
-          // See task documentation for parameters
+        skill: "skill_id",          // Exact AgentSkill.id from Agent Card
+        input: {                   // Task-specific request
+          // See task documentation for request fields
         }
       }
     }]
@@ -779,7 +763,7 @@ await a2a.send({
 
 ## Agent Cards
 
-A2A agents advertise capabilities via Agent Cards at `.well-known/agent.json`.
+A2A 1.0 agents advertise capabilities via Agent Cards at `.well-known/agent-card.json`.
 
 ### Discovering Agent Cards
 ```javascript
@@ -787,11 +771,11 @@ A2A agents advertise capabilities via Agent Cards at `.well-known/agent.json`.
 const agentCard = await a2a.getAgentCard();
 
 // List available skills
-const skillNames = agentCard.skills.map(skill => skill.name);
-console.log('Available skills:', skillNames);
+const skillIds = agentCard.skills.map(skill => skill.id);
+console.log('Available skill IDs:', skillIds);
 
 // Get skill details
-const getProductsSkill = agentCard.skills.find(s => s.name === 'get_products');
+const getProductsSkill = agentCard.skills.find(s => s.id === 'get_products');
 console.log('Examples:', getProductsSkill.examples);
 
 // Pick a transport interface (1.0)
@@ -812,11 +796,15 @@ In 1.0, the top-level `url` and `protocolVersion` fields from v0.3 are replaced 
   "version": "1.0.0",
   "securitySchemes": {
     "bearerAuth": {
-      "type": "http",
-      "scheme": "bearer"
+      "httpAuthSecurityScheme": {
+        "scheme": "Bearer",
+        "bearerFormat": "JWT"
+      }
     }
   },
-  "security": [{"bearerAuth": []}],
+  "securityRequirements": [{
+    "schemes": { "bearerAuth": { "list": [] } }
+  }],
   "supportedInterfaces": [
     {
       "url": "https://sales.example.com/a2a/jsonrpc",
@@ -824,33 +812,36 @@ In 1.0, the top-level `url` and `protocolVersion` fields from v0.3 are replaced 
       "protocolVersion": "1.0"
     }
   ],
-  "defaultInputModes": ["text/plain", "application/json"],
+  "defaultInputModes": ["application/json"],
   "defaultOutputModes": ["application/json"],
   "capabilities": {
     "streaming": true,
     "pushNotifications": true,
-    "extendedAgentCard": false
+    "extendedAgentCard": false,
+    "extensions": [
+      {
+        "uri": "https://adcontextprotocol.org/extensions/adcp/v3",
+        "description": "AdCP structured task invocation profile",
+        "required": true
+      }
+    ]
   },
   "skills": [
     {
-      "name": "get_products",
+      "id": "get_adcp_capabilities",
+      "name": "Discover AdCP capabilities",
+      "description": "Discover runtime AdCP versions, protocols, and features",
+      "tags": ["adcp"]
+    },
+    {
+      "id": "get_products",
+      "name": "Discover advertising products",
       "description": "Discover available advertising products",
+      "tags": ["adcp", "media-buy"],
       "examples": [
         "Find premium CTV inventory for sports fans",
         "Show me video products under $50 CPM"
       ]
-    }
-  ],
-  "extensions": [
-    {
-      "uri": "https://adcontextprotocol.org/extensions/adcp",
-      "description": "AdCP media buying protocol support",
-      "required": false,
-      "params": {
-        "adcp_version": "2.6.0",
-        "protocols_supported": ["media_buy"],
-        "extensions_supported": ["sustainability"]
-      }
     }
   ]
 }
@@ -882,64 +873,67 @@ Python SDK servers must also pass `enable_v0_3_compat=True` when constructing ro
 ### AdCP Extension
 
 <Note>
-**Recommended**: Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) for runtime capability discovery. The agent card extension provides static metadata for agent registries and discovery services.
+Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) for runtime capability discovery. The Agent Card extension declaration identifies the A2A wire profile only.
 </Note>
 
-Include the AdCP extension in your agent card's `extensions` array to declare AdCP support programmatically.
+Include the versioned AdCP profile under `capabilities.extensions[]` and activate it on every invocation with `A2A-Extensions: https://adcontextprotocol.org/extensions/adcp/v3`.
 
-The A2A protocol uses an `extensions` array where each extension has:
-- **`uri`**: Extension identifier (use `https://adcontextprotocol.org/extensions/adcp`)
+The A2A protocol's `AgentExtension` has:
+- **`uri`**: Extension identifier (`https://adcontextprotocol.org/extensions/adcp/v3`)
 - **`description`**: Human-readable description of how you use AdCP
-- **`required`**: Whether clients must support this extension (typically `false` for AdCP)
-- **`params`**: AdCP-specific configuration (see schema below)
+- **`required`**: `true` on an interface that requires the structured AdCP profile
+- **`params`**: Omitted or empty for this profile
 
 ```javascript
 // Check if agent supports AdCP
-const agentCard = await fetch('https://sales.example.com/.well-known/agent.json')
+const agentCard = await fetch('https://sales.example.com/.well-known/agent-card.json')
   .then(r => r.json());
 
-// Find the AdCP extension in the extensions array
-const adcpExt = agentCard.extensions?.find(
-  ext => ext.uri === 'https://adcontextprotocol.org/extensions/adcp'
+// Find the AdCP profile under AgentCapabilities.
+const adcpExt = agentCard.capabilities.extensions?.find(
+  ext => ext.uri === 'https://adcontextprotocol.org/extensions/adcp/v3'
 );
 
 if (adcpExt) {
-  console.log('AdCP Version:', adcpExt.params.adcp_version);
-  console.log('Supported domains:', adcpExt.params.protocols_supported);
-  // ["media_buy", "creative", "signals"]
-  console.log('Typed extensions:', adcpExt.params.extensions_supported);
-  // ["sustainability"]
+  // Activate the profile, then call the runtime discovery task.
+  const capabilities = await a2a.send({
+    message: {
+      messageId: crypto.randomUUID(),
+      role: 'ROLE_USER',
+      parts: [{ data: { skill: 'get_adcp_capabilities', input: {} } }]
+    }
+  });
+  console.log(capabilities);
 }
 ```
 
-**Extension Params**: The `adcp-extension.json` schema was used in v2 to describe these params, but was removed in v3. For v3+ agents, use the `get_adcp_capabilities` task for runtime capability discovery instead. The extension `params` object above shows the typical structure.
+The profile forbids copying AdCP versions, supported domains, or feature flags into extension params. Those values change at runtime and remain authoritative only in `get_adcp_capabilities`. The unversioned v2 `adcp-extension.json` capability payload is not part of this profile.
 
 :::note
 The `adcp_version` field in agent card metadata is a v2 convention and is not part of the v3 spec. For v3 version negotiation, the buyer sends release-precision `adcp_version` (e.g., `"3.1"`) on every request, and the seller advertises supported releases via `adcp.supported_versions` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) and echoes `adcp_version` at the envelope root on every response. The legacy integer-only `adcp_major_version` field is still accepted for backwards compatibility. See [versioning.mdx § Version negotiation](/docs/reference/versioning#version-negotiation) for the full contract.
 :::
 
 **Benefits**:
-- Clients can discover AdCP capabilities without making test calls
-- Declare which protocol domains you implement (media_buy, creative, signals)
-- Enable compatibility checks based on version
+- Clients can negotiate one versioned, deterministic AdCP message shape
+- Runtime capability discovery has one authority: `get_adcp_capabilities`
+- Breaking profile changes negotiate through a new extension URI rather than ambiguous params
 
 ## Integration Example
 
 ```javascript
-// Initialize A2A client  
-const a2a = new A2AClient({ /* config */ });
-
 // Use unified status handling (see Core Concepts)
-async function handleA2aResponse(response) {
+async function handleA2aResponse(response, invocation) {
   switch (response.status) {
     case 'input-required':
-      // Handle clarification (see Core Concepts for patterns)
-      const input = await promptUser(response.message);
+      // Collect fields and rebuild a complete, schema-valid typed request.
+      const refinedInput = await collectTypedInput(invocation.input, response.message);
       return a2a.send({
-        contextId: response.contextId,
         message: {
+          messageId: crypto.randomUUID(),
+          taskId: response.taskId,
+          contextId: response.contextId,
           role: "ROLE_USER",
-          parts: [{ text: input }]
+          parts: [{ data: { skill: invocation.skill, input: refinedInput } }]
         }
       });
 
@@ -961,13 +955,14 @@ async function handleA2aResponse(response) {
 // Example usage with multi-modal message
 const result = await a2a.send({
   message: {
+    messageId: crypto.randomUUID(),
     role: "ROLE_USER",
     parts: [
-      { text: "Find luxury car inventory" },
+      { text: "AdCP task: get_products" },
       {
         data: {
           skill: "get_products",
-          parameters: {
+          input: {
             idempotency_key: "550e8400-e29b-41d4-a716-446655442071",
             buying_mode: "brief",
             brief: "Luxury car inventory for in-market shoppers"
@@ -978,7 +973,14 @@ const result = await a2a.send({
   }
 });
 
-const finalResult = await handleA2aResponse(result);
+const finalResult = await handleA2aResponse(result, {
+  skill: "get_products",
+  input: {
+    idempotency_key: "550e8400-e29b-41d4-a716-446655442071",
+    buying_mode: "brief",
+    brief: "Luxury car inventory for in-market shoppers"
+  }
+});
 ```
 
 ## A2A-Specific Considerations

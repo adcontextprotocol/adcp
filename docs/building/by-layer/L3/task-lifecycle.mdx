@@ -9,7 +9,7 @@ Every AdCP response includes a `status` field that tells you exactly what state 
 :::note Application-layer task state
 The status values and lifecycle described here are transport-independent AdCP application state. MCP and A2A task mechanisms may wrap, stream, or deliver an AdCP response, but they do not replace AdCP's `task_id`, webhook payloads, or polling/reconciliation surfaces.
 
-For `submitted` operations, observe the AdCP task with [push notifications](/docs/building/by-layer/L3/webhooks) or the AdCP polling surface. In 3.x, that polling surface is legacy `tasks/get`, with optional `get_task_status` when the seller advertises the alias. Transport-native MCP/A2A `tasks/*` methods use their own wire shapes and are separate from AdCP task polling.
+For `submitted` operations, observe the AdCP task with [push notifications](/docs/building/by-layer/L3/webhooks) or the AdCP polling surface. The [AdCP v3 A2A profile](/docs/building/by-layer/L0/a2a-profile-extension) standardizes fresh `get_task_status` invocations; MCP sellers may expose either `get_task_status` or the legacy AdCP `tasks/get` alias. Transport-native MCP/A2A task methods use their own wire shapes and are separate from AdCP task polling.
 :::
 
 ## Status Values

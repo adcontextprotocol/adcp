@@ -1000,10 +1000,12 @@
 #               # in sample_request / context_inputs.
 #
 #   Special path prefix `task_completion.<inner>`: when the immediate response
-#   is a non-terminal task envelope (status `submitted` / `working` /
-#   `input-required`, carrying a `task_id`), the runner polls `tasks/get`
-#   until the task reaches a terminal state and resolves `<inner>` against
-#   the completion artifact's `data` instead of the immediate response. Use
+#   carries a non-terminal AdCP response (status `submitted` / `working` /
+#   `input-required`, carrying a `task_id`), the runner polls the AdCP task
+#   until it reaches a terminal state and resolves `<inner>` against the
+#   completion result instead of the immediate response. On the AdCP v3 A2A profile,
+#   this means fresh `get_task_status` invocations; MCP may use its advertised
+#   AdCP polling task, including the legacy `tasks/get` alias. Use
 #   for captures whose value only exists on the completion artifact — e.g.
 #   the seller-assigned `media_buy_id` on an IO-signing / async-signed HITL
 #   flow where `create_media_buy` returns `submitted` and the ID lands on
@@ -1027,8 +1029,8 @@
 #     See runner-output-contract.yaml > validation_result for the output shape.
 #   - The accumulator is storyboard-run-scoped; values do not leak across runs.
 #   - Special path prefix `task_completion.<inner>`: when the immediate
-#     response is a non-terminal task envelope (status submitted/working,
-#     with a task_id), the runner polls `tasks/get` until the task exits
+#     response carries a non-terminal AdCP status (submitted/working,
+#     with a task_id), the runner polls the AdCP task until it exits
 #     {submitted, working}. On `completed`: resolves <inner> against the
 #     `result` payload; a missing path grades this step as
 #     capture_path_not_resolvable. On any other status (failed, canceled,

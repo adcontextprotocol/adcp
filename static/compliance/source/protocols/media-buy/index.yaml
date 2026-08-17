@@ -431,7 +431,7 @@ phases:
           - current_step: what's happening ("Validating inventory", "Checking governance")
 
           Async with human approval (submitted):
-          - task_id / taskId: handle the buyer polls or receives webhooks on
+          - task_id: AdCP handle the buyer passes to get_task_status or receives webhooks on; it is not the A2A Task id
           - message (optional): explanation of what the seller is waiting on (e.g., "Awaiting IO signature from sales team; typical turnaround 2–4 hours")
           - No media_buy_id yet — it is issued on task completion. If you allocate media_buy_id before commitment, return synchronous success with confirmed_at: null instead, and make the provisional buy retrievable via get_media_buys.
           - Seller-side IO signing is modelled here (task stays submitted until signed). Do not emit a "pending_approval" media buy status — that value is not in MediaBuy.status
@@ -494,7 +494,7 @@ phases:
           While the create_media_buy task is still submitted (e.g., waiting on internal
           IO signing), the media buy does not exist as a queryable MediaBuy yet. IO
           review is tracked at the task layer, not as a MediaBuy.status value. The buyer
-          polls tasks/get or waits on the webhook until the task completes and a
+          invokes get_task_status or waits on the webhook until the task completes and a
           media_buy_id is delivered.
         task: get_media_buys
         schema_ref: "media-buy/get-media-buys-request.json"
