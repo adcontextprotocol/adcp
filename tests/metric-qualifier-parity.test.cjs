@@ -101,26 +101,72 @@ describe("metric qualifier parity across reporting surfaces", () => {
   });
 
   it("gives vendor-branch qualifiers the same closed key set as the standard branch", () => {
+    const vendorQualifiers = [];
     for (const uri of [
       "/schemas/core/committed-metric.json",
       "/schemas/core/missing-metric.json",
       "/schemas/core/delivery-metric-aggregate.json",
+      "/schemas/core/performance-feedback-metric.json",
     ]) {
       const schema = readSchema(uri);
-      const vendorQualifier = findScopeBranch(schema.oneOf, "vendor").properties
-        .qualifier;
-      assert.ok(vendorQualifier, `${uri} vendor branch missing qualifier`);
+      vendorQualifiers.push([
+        uri,
+        findScopeBranch(schema.oneOf, "vendor").properties.qualifier,
+      ]);
+    }
+    vendorQualifiers.push([
+      "performance-feedback.json (metric, vendor)",
+      findScopeBranch(
+        readSchema("/schemas/core/performance-feedback.json").properties.metric
+          .oneOf,
+        "vendor"
+      ).properties.qualifier,
+    ]);
+    vendorQualifiers.push([
+      "package-request.json (committed_metrics, vendor)",
+      findScopeBranch(
+        readSchema("/schemas/media-buy/package-request.json").properties
+          .committed_metrics.items.oneOf,
+        "vendor"
+      ).properties.qualifier,
+    ]);
+    // The delivery carrier: vendor-metric-value is a flat object, not a
+    // scope-discriminated row, but its qualifier joins against the vendor
+    // commitment on (vendor, metric_id, qualifier) and must stay in parity.
+    vendorQualifiers.push([
+      "vendor-metric-value.json",
+      readSchema("/schemas/core/vendor-metric-value.json").properties.qualifier,
+    ]);
+
+    for (const [label, vendorQualifier] of vendorQualifiers) {
+      assert.ok(vendorQualifier, `${label} missing qualifier`);
       assert.deepEqual(
         keySet(vendorQualifier),
         EXPECTED_KEYS,
-        `${uri} vendor qualifier key set does not match standard`
+        `${label} vendor qualifier key set does not match standard`
       );
       assert.equal(
         vendorQualifier.additionalProperties,
         false,
-        `${uri} vendor qualifier must be closed`
+        `${label} vendor qualifier must be closed`
       );
     }
+  });
+
+  it("accepts a qualified vendor_metric_values delivery row", async () => {
+    const validate = await compile(readSchema("/schemas/core/vendor-metric-value.json"));
+    const row = {
+      vendor: { domain: "attentionvendor.example" },
+      metric_id: "attention_units",
+      value: 4.2,
+      qualifier: { attribution_window: { interval: 14, unit: "days" } },
+    };
+    assert.equal(validate(row), true, JSON.stringify(validate.errors));
+    assert.equal(
+      validate({ ...row, qualifier: { bogus: 1 } }),
+      false,
+      "unknown qualifier keys must be rejected"
+    );
   });
 
   it("closes every qualifier copy with additionalProperties: false", () => {

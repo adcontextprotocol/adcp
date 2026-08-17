@@ -17,7 +17,7 @@
         },
         "metric_id": {
           "$ref": "/schemas/enums/available-metric.json",
-          "description": "Identifier for the standard metric."
+          "description": "Identifier for the standard metric. Container tokens (e.g., `viewability`, `quartile_data`, `dooh_metrics`) MUST NOT appear here — an aggregate row carries a single numeric `value`, and leaf identities exist for exactly that purpose (e.g., `viewable_rate`, `quartile_75`)."
         },
         "qualifier": {
           "type": "object",
@@ -185,7 +185,7 @@
             },
             "completion_source": {
               "$ref": "/schemas/enums/completion-source.json",
-              "description": "Source of `completion_rate` attestation for this row — `seller_attested` from player/ad server, `vendor_attested` from a third-party measurement vendor. The two paths can yield different rates; never sum across sources."
+              "description": "Attestation source for a vendor completion-style metric — seller_attested from player/ad server, vendor_attested from an independent measurement path. Applicability is defined by the vendor metric; never sum across sources."
             },
             "attribution_methodology": {
               "$ref": "/schemas/enums/attribution-methodology.json",
@@ -197,7 +197,7 @@
             },
             "lift_dimension": {
               "$ref": "/schemas/enums/lift-dimension.json",
-              "description": "Brand-lift dimension this row represents (awareness, consideration, favorability, purchase intent, or ad recall). Required when `metric_id` is `brand_lift`. Each dimension is a separate surveyed outcome with its own sample size and confidence interval; never sum across dimensions."
+              "description": "Lift dimension this row represents (awareness, consideration, favorability, purchase intent, or ad recall) for vendor lift-style metrics. Applicability is defined by the vendor metric; each dimension is a separate surveyed outcome and rows under different dimensions must not be summed."
             }
           },
           "additionalProperties": false
