@@ -41,10 +41,10 @@ Every new top-level task is a permanent surface every implementer eventually has
 
 **What this rules out.** Proposing a `get_price_quote` task between discovery
 and commitment. The 3.2 lifecycle already distinguishes the two cases: a
-published offer carries versioned pricing from `list_products` into
-`buy_products`; seller-specific pricing or configuration moves through
-`request_proposals`, typed `refine_proposals`, a committed hold, and
-`accept_proposal`. A quote task would duplicate an existing commercial state
+published offer carries versioned pricing from [`list_products`](/docs/media-buy/task-reference/list_products) into
+[`buy_products`](/docs/media-buy/task-reference/buy_products); seller-specific pricing or configuration moves through
+[`request_proposals`](/docs/media-buy/task-reference/request_proposals), typed [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals), a committed hold, and
+[`accept_proposal`](/docs/media-buy/task-reference/accept_proposal). A quote task would duplicate an existing commercial state
 transition without adding a new counterparty role.
 
 **When you'd be right to push.** When no composition reaches the desired semantics — when the proposal demands a state transition or a counterparty role no existing task can carry. The bar is high and that's intentional. Bring evidence: which existing task you tried to extend, why the extension didn't work, what the new task adds that an extension can't.

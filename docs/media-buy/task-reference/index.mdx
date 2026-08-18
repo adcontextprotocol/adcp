@@ -165,12 +165,12 @@ Long-running tasks provide:
 ## Getting Started
 
 1. **Discover capabilities**: Read `media_buy.lifecycle_tools` through [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
-2. **Choose a commercial path**: Use `list_products` for published offers and wholesale mirrors, or `request_proposals` for seller planning.
+2. **Choose a commercial path**: Use [`list_products`](/docs/media-buy/task-reference/list_products) for published offers and wholesale mirrors, or [`request_proposals`](/docs/media-buy/task-reference/request_proposals) for seller planning.
 3. **Understand formats**: Check each selected product's canonical `format_options[]` before commitment.
-4. **Commit**: Call `buy_products`, or revise and finalize a proposal before `accept_proposal`.
+4. **Commit**: Call [`buy_products`](/docs/media-buy/task-reference/buy_products), or revise and finalize a proposal before [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal).
 5. **Supply creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) and explicit assignment operations after compact commitment.
 6. **Read operational state**: Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for status, revision, accepted terms, approvals, and missing formats.
-7. **Control delivery**: Use `control_media_buy` for in-envelope changes; start a proposal amendment when the seller returns `REQUOTE_REQUIRED`.
+7. **Control delivery**: Use [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) for in-envelope changes; start a proposal amendment when the seller returns [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required).
 8. **Monitor performance**: Track billing-grade reporting with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery).
 
 For reporting and reconciliation, treat [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) as the authoritative, billing-grade source. Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) snapshots for operational monitoring only.
