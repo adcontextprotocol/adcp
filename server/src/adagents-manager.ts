@@ -10,6 +10,59 @@ const ADS_TXT_MAX_REDIRECTS = 5;
 // apex→www hosting resolves. Cross-domain hops are refused — see
 // docs/governance/property/managed-networks#why-not-http-redirects.
 const ADAGENTS_WELL_KNOWN_MAX_REDIRECTS = 3;
+const AGENT_CARD_VALIDATION_CONCURRENCY = 4;
+const AGENT_CARD_VALIDATION_MAX_WAITERS = 32;
+const AGENT_CARD_VALIDATION_QUEUE_TIMEOUT_MS = 10_000;
+let activeAgentCardValidations = 0;
+interface AgentCardValidationWaiter {
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+const agentCardValidationWaiters: AgentCardValidationWaiter[] = [];
+
+export class AgentCardValidationCapacityError extends Error {
+  constructor(message = 'Agent-card validation capacity is exhausted') {
+    super(message);
+    this.name = 'AgentCardValidationCapacityError';
+  }
+}
+
+async function withAgentCardValidationSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (activeAgentCardValidations >= AGENT_CARD_VALIDATION_CONCURRENCY) {
+    if (agentCardValidationWaiters.length >= AGENT_CARD_VALIDATION_MAX_WAITERS) {
+      throw new AgentCardValidationCapacityError();
+    }
+    // A released caller transfers its slot directly to this waiter; the
+    // waiter must not increment the active count again when it wakes.
+    await new Promise<void>((resolve, reject) => {
+      const waiter: AgentCardValidationWaiter = {
+        resolve,
+        reject,
+        timer: setTimeout(() => {
+          const index = agentCardValidationWaiters.indexOf(waiter);
+          if (index >= 0) agentCardValidationWaiters.splice(index, 1);
+          reject(new AgentCardValidationCapacityError('Timed out waiting for agent-card validation capacity'));
+        }, AGENT_CARD_VALIDATION_QUEUE_TIMEOUT_MS),
+      };
+      agentCardValidationWaiters.push(waiter);
+    });
+  } else {
+    activeAgentCardValidations++;
+  }
+
+  try {
+    return await fn();
+  } finally {
+    const next = agentCardValidationWaiters.shift();
+    if (next) {
+      clearTimeout(next.timer);
+      next.resolve();
+    }
+    else activeAgentCardValidations--;
+  }
+}
+
 const MCP_PREFLIGHT_INITIALIZE_BODY = {
   jsonrpc: '2.0',
   method: 'initialize',
@@ -1559,9 +1612,12 @@ export class AdAgentsManager {
    */
   async validateAgentCards(agents: AuthorizedAgent[]): Promise<AgentCardValidationResult[]> {
     const results: AgentCardValidationResult[] = [];
-    
-    // Validate each agent in parallel
-    const validationPromises = agents.map(agent => this.validateSingleAgentCard(agent.url));
+
+    // The public route caps cardinality, and this shared semaphore also caps
+    // outbound work across concurrent callers and internal call sites.
+    const validationPromises = agents.map(agent => withAgentCardValidationSlot(
+      () => this.validateSingleAgentCard(agent.url),
+    ));
     const validationResults = await Promise.allSettled(validationPromises);
     
     validationResults.forEach((result, index) => {

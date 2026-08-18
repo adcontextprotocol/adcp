@@ -128,6 +128,33 @@ export class BansDatabase {
   }
 
   /**
+   * Check a user token against both its subject and its authoritative org
+   * claim. Passing the org explicitly avoids authorization gaps while the
+   * local WorkOS membership mirror is catching up.
+   */
+  async checkPlatformBanForUserAndOrg(
+    workosUserId: string,
+    organizationId: string,
+  ): Promise<{ banned: boolean; ban?: Ban }> {
+    const result = await query<Ban>(
+      `SELECT * FROM bans
+       WHERE scope = 'platform'
+         AND (expires_at IS NULL OR expires_at > NOW())
+         AND (
+           (ban_type = 'user' AND entity_id = $1)
+           OR (ban_type = 'organization' AND entity_id = $2)
+         )
+       LIMIT 1`,
+      [workosUserId, organizationId],
+    );
+
+    if (result.rows.length > 0) {
+      return { banned: true, ban: this.deserialize(result.rows[0]) };
+    }
+    return { banned: false };
+  }
+
+  /**
    * Check if an API key has an active platform ban.
    * Checks both direct API key bans and organization-level bans.
    */
