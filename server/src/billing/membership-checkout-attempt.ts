@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { query } from '../db/client.js';
 import type { CheckoutSessionData } from './stripe-client.js';
 
@@ -6,7 +6,7 @@ const CHECKOUT_ATTEMPT_TTL_MS = 24 * 60 * 60 * 1000;
 
 interface CheckoutAttemptRow {
   organization_id: string;
-  payload_hash: string;
+  payload_fingerprint: string;
   idempotency_key: string;
   initiated_by_user_id: string;
   stripe_session_id: string | null;
@@ -19,8 +19,8 @@ export type MembershipCheckoutClaim =
   | { kind: 'replay'; sessionId: string; url: string }
   | { kind: 'conflict' };
 
-/** Bind a Stripe idempotency key to one immutable checkout payload. */
-export function hashMembershipCheckoutPayload(data: CheckoutSessionData): string {
+/** Build a deterministic equality fingerprint for one immutable checkout payload. */
+export function fingerprintMembershipCheckoutPayload(data: CheckoutSessionData): string {
   const immutablePayload = {
     priceId: data.priceId,
     customerId: data.customerId ?? null,
@@ -33,12 +33,10 @@ export function hashMembershipCheckoutPayload(data: CheckoutSessionData): string
     couponId: data.couponId ?? null,
     promotionCode: data.promotionCode ?? null,
   };
-  // This is a non-secret equality fingerprint for an immutable checkout
-  // payload, not a password or credential hash. Fast deterministic hashing is
-  // required so retries on different processes produce the same value.
-  return createHash('sha256') // lgtm[js/insufficient-password-hash]
-    .update(JSON.stringify(immutablePayload))
-    .digest('hex');
+  // This is deliberately serialized rather than cryptographically hashed. It
+  // is non-secret equality data, and retaining the fixed-shape serialization
+  // avoids both hash collisions and any implication of password protection.
+  return JSON.stringify(immutablePayload);
 }
 
 /**
@@ -48,7 +46,7 @@ export function hashMembershipCheckoutPayload(data: CheckoutSessionData): string
 export async function claimMembershipCheckoutAttempt(input: {
   organizationId: string;
   userId: string;
-  payloadHash: string;
+  payloadFingerprint: string;
 }): Promise<MembershipCheckoutClaim> {
   const existing = await query<CheckoutAttemptRow>(
     `SELECT * FROM membership_checkout_attempts
@@ -58,7 +56,7 @@ export async function claimMembershipCheckoutAttempt(input: {
   const attempt = existing.rows[0];
 
   if (attempt) {
-    if (attempt.payload_hash !== input.payloadHash) return { kind: 'conflict' };
+    if (attempt.payload_fingerprint !== input.payloadFingerprint) return { kind: 'conflict' };
     if (attempt.stripe_session_id && attempt.stripe_session_url) {
       return {
         kind: 'replay',
@@ -73,11 +71,11 @@ export async function claimMembershipCheckoutAttempt(input: {
   const expiresAt = new Date(Date.now() + CHECKOUT_ATTEMPT_TTL_MS);
   await query(
     `INSERT INTO membership_checkout_attempts (
-       organization_id, payload_hash, idempotency_key,
+       organization_id, payload_fingerprint, idempotency_key,
        initiated_by_user_id, expires_at
      ) VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (organization_id) DO UPDATE SET
-       payload_hash = EXCLUDED.payload_hash,
+       payload_fingerprint = EXCLUDED.payload_fingerprint,
        idempotency_key = EXCLUDED.idempotency_key,
        initiated_by_user_id = EXCLUDED.initiated_by_user_id,
        stripe_session_id = NULL,
@@ -85,7 +83,7 @@ export async function claimMembershipCheckoutAttempt(input: {
        expires_at = EXCLUDED.expires_at,
        updated_at = NOW()
      WHERE membership_checkout_attempts.expires_at <= NOW()`,
-    [input.organizationId, input.payloadHash, idempotencyKey, input.userId, expiresAt],
+    [input.organizationId, input.payloadFingerprint, idempotencyKey, input.userId, expiresAt],
   );
   return { kind: 'create', idempotencyKey };
 }

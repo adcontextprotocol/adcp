@@ -6,7 +6,7 @@ vi.mock('../../src/db/client.js', () => ({ query }));
 import {
   claimMembershipCheckoutAttempt,
   completeMembershipCheckoutAttempt,
-  hashMembershipCheckoutPayload,
+  fingerprintMembershipCheckoutPayload,
   isDefinitiveCheckoutFailure,
 } from '../../src/billing/membership-checkout-attempt.js';
 
@@ -21,29 +21,29 @@ describe('membership checkout attempts', () => {
       workosOrganizationId: 'org_1',
       workosUserId: 'user_1',
     };
-    expect(hashMembershipCheckoutPayload(base)).not.toBe(hashMembershipCheckoutPayload({
+    expect(fingerprintMembershipCheckoutPayload(base)).not.toBe(fingerprintMembershipCheckoutPayload({
       ...base,
       priceId: 'price_b',
     }));
-    expect(hashMembershipCheckoutPayload(base)).not.toBe(hashMembershipCheckoutPayload({
+    expect(fingerprintMembershipCheckoutPayload(base)).not.toBe(fingerprintMembershipCheckoutPayload({
       ...base,
       workosUserId: 'user_2',
     }));
   });
 
   it('rejects a different payload while an attempt is live', async () => {
-    query.mockResolvedValueOnce({ rows: [{ payload_hash: 'old_hash' }] });
+    query.mockResolvedValueOnce({ rows: [{ payload_fingerprint: 'old_fingerprint' }] });
     await expect(claimMembershipCheckoutAttempt({
       organizationId: 'org_1',
       userId: 'user_1',
-      payloadHash: 'new_hash',
+      payloadFingerprint: 'new_fingerprint',
     })).resolves.toEqual({ kind: 'conflict' });
     expect(query).toHaveBeenCalledTimes(1);
   });
 
   it('replays a stored open session for the identical payload', async () => {
     query.mockResolvedValueOnce({ rows: [{
-      payload_hash: 'same_hash',
+      payload_fingerprint: 'same_fingerprint',
       idempotency_key: 'attempt_key',
       stripe_session_id: 'cs_123',
       stripe_session_url: 'https://checkout.stripe.test/cs_123',
@@ -51,7 +51,7 @@ describe('membership checkout attempts', () => {
     await expect(claimMembershipCheckoutAttempt({
       organizationId: 'org_1',
       userId: 'user_1',
-      payloadHash: 'same_hash',
+      payloadFingerprint: 'same_fingerprint',
     })).resolves.toEqual({
       kind: 'replay',
       sessionId: 'cs_123',
@@ -61,7 +61,7 @@ describe('membership checkout attempts', () => {
 
   it('reuses only the same attempt key after an ambiguous Stripe failure', async () => {
     query.mockResolvedValueOnce({ rows: [{
-      payload_hash: 'same_hash',
+      payload_fingerprint: 'same_fingerprint',
       idempotency_key: 'attempt_key',
       stripe_session_id: null,
       stripe_session_url: null,
@@ -69,7 +69,7 @@ describe('membership checkout attempts', () => {
     await expect(claimMembershipCheckoutAttempt({
       organizationId: 'org_1',
       userId: 'user_1',
-      payloadHash: 'same_hash',
+      payloadFingerprint: 'same_fingerprint',
     })).resolves.toEqual({ kind: 'create', idempotencyKey: 'attempt_key' });
   });
 

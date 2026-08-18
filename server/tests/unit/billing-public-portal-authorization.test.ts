@@ -102,7 +102,7 @@ vi.mock('../../src/billing/membership-checkout-attempt.js', () => ({
   completeMembershipCheckoutAttempt: mockCompleteCheckoutAttempt,
   clearMembershipCheckoutAttempt: mockClearCheckoutAttempt,
   hasPendingMembershipCheckoutAttempt: mockHasPendingCheckoutAttempt,
-  hashMembershipCheckoutPayload: vi.fn(() => 'payload_hash'),
+  fingerprintMembershipCheckoutPayload: vi.fn(() => 'payload_fingerprint'),
   isDefinitiveCheckoutFailure: mockIsDefinitiveCheckoutFailure,
 }));
 

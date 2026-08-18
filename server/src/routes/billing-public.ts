@@ -36,7 +36,7 @@ import {
   clearMembershipCheckoutAttempt,
   completeMembershipCheckoutAttempt,
   hasPendingMembershipCheckoutAttempt,
-  hashMembershipCheckoutPayload,
+  fingerprintMembershipCheckoutPayload,
   isDefinitiveCheckoutFailure,
 } from "../billing/membership-checkout-attempt.js";
 import {
@@ -732,7 +732,7 @@ export function createPublicBillingRouter(): Router {
           const claim = await claimMembershipCheckoutAttempt({
             organizationId: orgId,
             userId: user.id,
-            payloadHash: hashMembershipCheckoutPayload(checkoutData),
+            payloadFingerprint: fingerprintMembershipCheckoutPayload(checkoutData),
           });
           if (claim.kind === 'conflict') return { kind: 'conflict' };
           if (claim.kind === 'replay') return { kind: 'replay', result: claim };

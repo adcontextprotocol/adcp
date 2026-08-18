@@ -1,10 +1,10 @@
--- One live Checkout session per organization. The immutable payload hash keeps
+-- One live Checkout session per organization. The immutable payload fingerprint keeps
 -- Stripe idempotency keys from being reused with different parameters, while
 -- the stored session lets safe retries resume an existing Checkout attempt.
 CREATE TABLE IF NOT EXISTS membership_checkout_attempts (
   organization_id VARCHAR(255) PRIMARY KEY
     REFERENCES organizations(workos_organization_id) ON DELETE CASCADE,
-  payload_hash TEXT NOT NULL,
+  payload_fingerprint TEXT NOT NULL,
   idempotency_key TEXT NOT NULL UNIQUE,
   initiated_by_user_id VARCHAR(255) NOT NULL,
   stripe_session_id TEXT,
