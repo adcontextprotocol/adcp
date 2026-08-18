@@ -1,0 +1,169 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/audience-evidence-requirements.json",
+  "title": "Audience Evidence Requirements",
+  "description": "Buyer-authored admissibility and ranking policy for product audience evidence. This reusable object attaches to get_products filters in 3.2, so the same semantics apply in brief, wholesale, and refine modes. It never requests exact audience targeting.",
+  "type": "object",
+  "properties": {
+    "requirement_mode": {
+      "type": "string",
+      "enum": [
+        "required",
+        "preferred"
+      ],
+      "description": "required excludes products whose published evidence violates the constraints; preferred only affects ranking and explanation. When this policy affects inclusion or ranking, the seller MUST return the exact matching audience_evidence_selections even if get_products.fields omitted that field."
+    },
+    "evidence_presence": {
+      "type": "string",
+      "enum": [
+        "required",
+        "when_available"
+      ],
+      "description": "required applies the mode to evidence presence itself. when_available applies constraints only when a product publishes evidence: with requirement_mode required, a product with no evidence remains eligible but a product with evidence must have an admissible item; with preferred, presence and admissibility only affect ranking."
+    },
+    "accepted_methodologies": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/audience-evidence-methodology.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Allowed methodologies. excluded_methodologies always wins if a value appears in both lists."
+    },
+    "excluded_methodologies": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/audience-evidence-methodology.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Disallowed methodologies. Exclusion wins over accepted_methodologies when the lists overlap."
+    },
+    "accepted_evidence_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "measured",
+          "forecast",
+          "seller_declared"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "accepted_providers": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/brand-ref.json"
+      },
+      "minItems": 1,
+      "description": "Allowed evidence providers. excluded_providers always wins if the same canonical BrandRef appears in both lists."
+    },
+    "excluded_providers": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/brand-ref.json"
+      },
+      "minItems": 1,
+      "description": "Disallowed evidence providers. Exclusion wins over accepted_providers when the lists overlap."
+    },
+    "accepted_subject_types": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/audience-subject-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "accepted_resolution_methods": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/audience-resolution-method.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "minimum_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "maximum_age": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/duration.json"
+        },
+        {
+          "properties": {
+            "unit": {
+              "enum": [
+                "seconds",
+                "minutes",
+                "hours",
+                "days"
+              ]
+            }
+          }
+        }
+      ],
+      "description": "Maximum age at evaluation time measured from last_updated. Campaign-relative duration is not valid for evidence age."
+    },
+    "methodology_documentation_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether an admissible item must carry methodology_url."
+    },
+    "independent_attestation_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether an admissible item must have at least one exact reference/evaluation pair whose outcome is verified, whose reference is published in the evidence, and whose claim type and issuer match the buyer's accepted lists as well as the seller's issuer and resolver policy. Setting true requires accepted_attestation_issuers."
+    },
+    "accepted_attestation_issuers": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/attestation-issuer.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Buyer allowlist for independent attestation issuers. An exact reference/evaluation pair satisfies the requirement only when reference.issuer matches an entry here. This list narrows and never broadens the seller's accepted issuer policy."
+    },
+    "accepted_attestation_claim_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Optional acceptable claim types when attestation is used. Buyer-supplied claim types further constrain but never broaden seller policy."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/ext.json"
+    }
+  },
+  "required": [
+    "requirement_mode",
+    "evidence_presence"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "independent_attestation_required": {
+            "const": true
+          }
+        },
+        "required": [
+          "independent_attestation_required"
+        ]
+      },
+      "then": {
+        "required": [
+          "accepted_attestation_issuers"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

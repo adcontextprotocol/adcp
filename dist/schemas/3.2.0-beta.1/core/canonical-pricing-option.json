@@ -1,0 +1,176 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/canonical-pricing-option.json",
+  "title": "Canonical Pricing Option",
+  "description": "Self-contained selected pricing terms for compact product offers and accepted commercial snapshots. Deprecated execution hints such as max_bid are absent; bidding intent lives in BiddingPolicy.",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "product_pricing_option"
+    },
+    "pricing_model": {
+      "type": "string",
+      "enum": [
+        "cpm",
+        "vcpm",
+        "cpc",
+        "cpcv",
+        "cpv",
+        "cpp",
+        "cpa",
+        "revenue_share",
+        "flat_rate",
+        "time"
+      ]
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "fixed_price": {
+      "type": "number",
+      "minimum": 0
+    },
+    "floor_price": {
+      "type": "number",
+      "minimum": 0
+    },
+    "price_guidance": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/pricing-options/price-guidance.json"
+    },
+    "min_spend_per_package": {
+      "type": "number",
+      "minimum": 0
+    },
+    "price_breakdown": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/pricing-options/price-breakdown.json"
+    },
+    "eligible_adjustments": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/adjustment-kind.json"
+      },
+      "uniqueItems": true
+    },
+    "parameters": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "event_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/event-type.json"
+    },
+    "custom_event_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_source_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "event_source"
+    },
+    "commission_rate": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1
+    },
+    "commission_basis_description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    }
+  },
+  "required": [
+    "pricing_option_id",
+    "pricing_model",
+    "currency"
+  ],
+  "allOf": [
+    {
+      "not": {
+        "required": [
+          "fixed_price",
+          "floor_price"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "pricing_model": {
+            "const": "cpa"
+          }
+        },
+        "required": [
+          "pricing_model"
+        ]
+      },
+      "then": {
+        "required": [
+          "event_type",
+          "fixed_price"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "pricing_model": {
+            "const": "revenue_share"
+          }
+        },
+        "required": [
+          "pricing_model"
+        ]
+      },
+      "then": {
+        "required": [
+          "event_type",
+          "event_source_id",
+          "commission_rate",
+          "commission_basis_description"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "pricing_model": {
+            "enum": [
+              "cpv",
+              "cpp",
+              "time"
+            ]
+          }
+        },
+        "required": [
+          "pricing_model"
+        ]
+      },
+      "then": {
+        "required": [
+          "parameters"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "custom"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "custom_event_name"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}
