@@ -13,22 +13,21 @@ For the layered model behind this — what each layer contains and what an SDK a
 
 What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cross-cutting/sdk-stack#what-an-sdk-at-each-layer-should-provide).
 
-*Last updated: 2026-08-17.*
+*Last updated: 2026-08-18.*
 
 | SDK | Current package | 3.2 beta support | L0 | L1 | L2 | L3 |
 |---|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/sdk`** (TypeScript) | `13.0.0` | Pending beta.0 ingestion | ✅ | ✅ | ✅ | ✅ |
+| **`@adcp/sdk`** (TypeScript) | `14.0.0-beta.0` | Exact `3.2.0-beta.0` support | ✅ | ✅ | ✅ | ✅ |
 | **`adcp`** (Python) | `7.0.2` | Pending beta.0 ingestion | ✅ | ⚠️ | ⚠️ | ⚠️ |
 | **`adcp/v3`** (Go) | `v3.0.0` | Pending beta.0 ingestion | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
 
 Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. The L0–L3 columns describe the current package, not a 3.2 support claim.
 
 <Warning>
-**The 3.2 SDK wave follows beta.0.** None of the current-package rows above is
-an exact 3.2 beta support statement yet. Beta.0 publishes the signed protocol
-input; SDK maintainers then publish package versions and supported-role details.
-Beta.1 incorporates that feedback and becomes SDK-backed only after a second
-SDK refresh against the exact beta.1 bundle. See the [3.2 beta program](/docs/reference/3-2-beta).
+**3.2 packages are prereleases.** The TypeScript beta supports the exact beta.0
+protocol checkpoint; it does not imply compatibility with a future beta.1.
+Python and Go have not published exact 3.2 support statements yet. See the
+[3.2 beta program](/docs/reference/3-2-beta).
 </Warning>
 
 The TypeScript SDK currently provides the broadest L0–L3 surface. Python is a
@@ -37,7 +36,7 @@ layers. The Go `adcp/v3` module provides typed AdCP 3.x surfaces, signing, and
 transport/server building blocks with role-dependent coverage. Check the
 release links below for changes after this matrix date.
 
-Pre-3.0 callers should work through the [3.0 migration guide](/docs/reference/migration/index) before upgrading. For the at-a-glance status of every published protocol version, see [Versions & Compatibility](/docs/reference/versions). For procurement-grade context on the support window, see the [v2 sunset timeline](/docs/reference/v2-sunset) and [versioning & governance](/docs/reference/versioning).
+For the status of every published protocol version, see [Versions & Compatibility](/docs/reference/versions). Migration and archived-version guidance lives under [Release notes & migration](/docs/reference/migration/index).
 
 **TypeScript and Python are the first-class supported languages**, with the
 layer coverage shown in the matrix above. **Go** is moving in the same
@@ -50,7 +49,7 @@ and the [Slack community](/docs/community/joining-slack).
 [![npm version](https://img.shields.io/npm/v/@adcp/sdk)](https://www.npmjs.com/package/@adcp/sdk)
 
 ```bash
-npm install @adcp/sdk
+npm install @adcp/sdk@14.0.0-beta.0
 ```
 
 ```javascript
@@ -63,10 +62,12 @@ const client = createSingleAgentClient({
   protocol: 'mcp',
 });
 
-const products = await client.getProducts({
-  idempotency_key: '550e8400-e29b-41d4-a716-446655442044',
-  buying_mode: 'brief',
-  brief: 'Video campaign for pet owners',
+const products = await client.listProducts({
+  adcp_version: '3.2-beta.0',
+  account: { account_id: 'account_123' },
+  criteria: {
+    offer_filters: { channels: ['ctv'] },
+  },
 });
 ```
 
@@ -77,7 +78,6 @@ const products = await client.getProducts({
 **Package exports:**
 - `@adcp/sdk` — main entry: caller (`createSingleAgentClient`, `ADCPMultiAgentClient`) and shared types
 - `@adcp/sdk/server` — agent-side server primitives (`createAdcpServerFromPlatform`, `createAdcpServer`, decisioning-platform interfaces)
-- `@adcp/sdk/server/legacy/v5` — legacy v5 handler-bag entry, still supported for mid-migration codebases
 - `@adcp/sdk/signing` — RFC 9421 signing primitives
 - `@adcp/sdk/signing/server` — webhook + request verifiers (`createWebhookVerifier`, `verifyRequestSignature`, `createExpressVerifier`)
 - `@adcp/sdk/signing/client` — outbound signing (`signRequest`, `signWebhook`, `createSigningFetch`)
@@ -85,7 +85,15 @@ const products = await client.getProducts({
 - `@adcp/sdk/conformance` — assertion + storyboard helpers for conformance harnesses
 - `@adcp/sdk/schemas` — bundled AdCP JSON Schemas
 - `@adcp/sdk/types` — TypeScript type definitions
-- `@adcp/sdk/types/v2-5` — v2.5 type co-existence imports for cross-version callers
+
+<Accordion title="Maintaining older integrations">
+
+SDK 14 keeps the established 3.0/3.1 tools and compatibility adapters for
+mixed-version deployments. It also retains `@adcp/sdk/server/legacy/v5` and
+`@adcp/sdk/types/v2-5` for applications actively migrating older code. New 3.2
+integrations should use the main server and per-tool type exports.
+
+</Accordion>
 
 ## Python
 
@@ -150,11 +158,11 @@ Both SDKs share the same positional shape: `adcp <agent> [tool] [payload]`. The 
 ### JavaScript CLI
 
 ```bash
-npx @adcp/sdk@latest --help
-npx @adcp/sdk@latest --save-auth my-agent https://sales.example.com/mcp
-npx @adcp/sdk@latest my-agent get_products '{"idempotency_key":"550e8400-e29b-41d4-a716-446655442062","buying_mode":"brief","brief":"CTV campaign"}'
+npx @adcp/sdk@14.0.0-beta.0 --help
+npx @adcp/sdk@14.0.0-beta.0 --save-auth my-agent https://sales.example.com/mcp
+npx @adcp/sdk@14.0.0-beta.0 my-agent list_products '{"adcp_version":"3.2-beta.0","account":{"account_id":"account_123"}}'
 # or against the built-in public test agent:
-npx @adcp/sdk@latest test-mcp get_products '{"idempotency_key":"550e8400-e29b-41d4-a716-446655442063","buying_mode":"brief","brief":"CTV campaign"}'
+npx @adcp/sdk@14.0.0-beta.0 test-mcp list_products '{"adcp_version":"3.2-beta.0"}'
 ```
 
 The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`adcp grade`), and registry diagnostics. See `--help` for the full surface.

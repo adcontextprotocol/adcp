@@ -39,7 +39,13 @@ Every new top-level task is a permanent surface every implementer eventually has
 
 **Why we chose it.** Tasks are the protocol's coordination cost. Adding a task is the most expensive thing a contributor can ask for, because it lands on every sales agent, every buyer agent, every SDK, every test suite, every conformance row. Fields and modes compose; tasks don't. A protocol that grows by adding tasks every release ages into something only its authors can hold in their head.
 
-**What this rules out.** Proposing a `get_price_quote` task between [`get_products`](/docs/media-buy/task-reference/get_products) and [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) — a configure-price-quote step where the buyer submits targeting and the seller returns a firm rate. Most of what that proposal asks for already exists: account-scoped rate cards via `account`, firm prices via `pricing_options`, the `pricing_option_id` lock at commit time, and `buying_mode: "refine"` for the iteration loop. The "new task" framing assumes targeting and pricing are missing from discovery; they aren't.
+**What this rules out.** Proposing a `get_price_quote` task between discovery
+and commitment. The 3.2 lifecycle already distinguishes the two cases: a
+published offer carries versioned pricing from `list_products` into
+`buy_products`; seller-specific pricing or configuration moves through
+`request_proposals`, typed `refine_proposals`, a committed hold, and
+`accept_proposal`. A quote task would duplicate an existing commercial state
+transition without adding a new counterparty role.
 
 **When you'd be right to push.** When no composition reaches the desired semantics — when the proposal demands a state transition or a counterparty role no existing task can carry. The bar is high and that's intentional. Bring evidence: which existing task you tried to extend, why the extension didn't work, what the new task adds that an extension can't.
 
@@ -47,15 +53,33 @@ Every new top-level task is a permanent surface every implementer eventually has
 
 ## Six supporting principles
 
-### 3. The brief drives discovery; targeting is an input, not a step
+### 3. Discovery and planning are distinct; targeting is an input to both
 
-Targeting is what the buyer wants. It's not a downstream filter on a generic catalog — it's what the seller curates *against*. Buyers send a brief (or `wholesale + filters`) to [`get_products`](/docs/media-buy/task-reference/get_products); the seller returns products already shaped for that intent, with pricing already scoped to the buyer's account via the `account` parameter. Iteration happens through `buying_mode: "refine"` with a typed change array — the round-trip is folded into discovery, not bolted on afterward.
+Targeting is what the buyer wants delivered. It is not a downstream filter on
+a generic result. A buyer reading published offers sends structured criteria to
+[`list_products`](/docs/media-buy/task-reference/list_products). A buyer asking
+the seller to plan sends a brief plus the same structured criteria to
+[`request_proposals`](/docs/media-buy/task-reference/request_proposals). In both
+paths the returned product, price, forecast, and targeting resolution describe
+the executable result.
 
-**Why we chose it.** A brief is the natural unit of buyer intent. The publisher knows their inventory, their audience, and their rate card better than any external taxonomy. Curating against the brief lets the seller bring all of that to the response in one round-trip, which is also the round-trip that produces the price. Splitting targeting and pricing across two tasks turns one expert decision into two underspecified ones.
+Wholesale synchronization belongs to the published-offer path: feed versions
+and account-level product webhooks keep a mirror current. Proposal negotiation
+is a separate immutable-snapshot lifecycle. Treating wholesale as a planning
+mode conflates catalog topology with commercial negotiation.
+
+**Why we chose it.** A brief is the natural unit of seller-planned intent; a
+versioned offer feed is the natural unit for buyers that select products
+directly. Both need the same targeting semantics. Keeping the paths distinct
+lets sellers curate when their expertise matters without forcing catalog
+mirrors and direct buyers through a conversational planning loop.
 
 **What this rules out.** A separate quote step between products and buy creation. (See principle 2 — the same RFC fails both filters.)
 
-**When you'd be right to push.** When pricing depends on flight dates and total budget that the buyer hasn't committed yet — seasonality, volume tiers, sell-through-rate-driven yield. Or when the seller wants to issue a time-bound firm rate (`valid_until`) before commitment, distinct from indicative pricing options. Or when buyers need an auditable explanation of what drove the price (a `rate_basis` field). Those three are real gaps, and they're extensions to `pricing_options` and the discovery flow — not a new task.
+**When you'd be right to push.** When neither a versioned published offer nor
+an immutable proposal can express the pricing dependency or commitment being
+negotiated. Name the missing state transition and explain why proposal
+refinement cannot carry it before adding another task.
 
 → See [Targeting](/docs/media-buy/advanced-topics/targeting) for the brief-first model.
 
@@ -93,7 +117,12 @@ Trust in AdCP is bilateral and verifiable, not blessed by a registry. Operators 
 
 **Why we chose it.** Structural privacy is expensive — it constrains the schema, requires separated infrastructure, and limits what compositions are possible. We pay that cost in TMP because TMP runs at impression time across mixed buyer/seller boundaries, where contractual confidentiality can't reach. Outside TMP, parties have already established a commercial relationship; a contract is the right unit of trust. Pretending the two are interchangeable means either over-engineering the contractual cases or under-protecting the structural ones.
 
-**What this rules out.** Proposing a "TMP-verified direct-sold targeting" capability that assumes TMP's privacy guarantees apply to direct-sold ad-server decisioning. They don't — TMP wasn't designed as the GAM/FreeWheel decisioning hook, and saying "no ad server supports TMP for direct-sold" is true but slightly misleading because that's not the layer TMP operates at. The honest framing is different: AdCP has no protocol-level mechanism to declare whether a seller can enforce signal-based targeting on guaranteed line items. That's a `signals.features` flag plus a [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) validation rule — a contractual-disclosure feature, not a structural-privacy one.
+**What this rules out.** Proposing a "TMP-verified direct-sold targeting"
+capability that assumes TMP's privacy guarantees apply to direct-sold ad-server
+decisioning. They don't. Whether a seller can enforce signal targeting on
+guaranteed inventory is a `signals.features` declaration plus validation of the
+published purchase or accepted proposal—a contractual-disclosure feature, not
+a structural-privacy one.
 
 **When you'd be right to push.** When you have a cross-domain privacy claim and you can name which mechanism applies. "This is a contractual feature, here's what's in the contract" or "this is a structural feature, here's the schema-level prohibition that makes it work." Vague privacy improvements tend to land on neither and end up in the wrong place.
 
