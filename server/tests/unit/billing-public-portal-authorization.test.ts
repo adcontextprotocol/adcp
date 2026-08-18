@@ -16,8 +16,14 @@ const {
   mockCreatePortal,
   mockCreateInvoice,
   mockCreateCheckout,
+  mockCreateCoupon,
   mockGetAcceptedReferral,
   mockWithOrgIntakeLock,
+  mockClaimCheckoutAttempt,
+  mockCompleteCheckoutAttempt,
+  mockHasPendingCheckoutAttempt,
+  mockClearCheckoutAttempt,
+  mockIsDefinitiveCheckoutFailure,
 } = vi.hoisted(() => ({
   mockListMemberships: vi.fn(),
   mockGetOrganization: vi.fn(),
@@ -28,8 +34,14 @@ const {
   mockCreatePortal: vi.fn(),
   mockCreateInvoice: vi.fn(),
   mockCreateCheckout: vi.fn(),
+  mockCreateCoupon: vi.fn(),
   mockGetAcceptedReferral: vi.fn(),
   mockWithOrgIntakeLock: vi.fn(),
+  mockClaimCheckoutAttempt: vi.fn(),
+  mockCompleteCheckoutAttempt: vi.fn(),
+  mockHasPendingCheckoutAttempt: vi.fn(),
+  mockClearCheckoutAttempt: vi.fn(),
+  mockIsDefinitiveCheckoutFailure: vi.fn(),
 }));
 
 vi.mock('@workos-inc/node', () => ({
@@ -74,7 +86,7 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
   createAndSendInvoice: mockCreateInvoice,
   getInvoiceableProducts: vi.fn(),
   createCheckoutSession: mockCreateCheckout,
-  createCoupon: vi.fn(),
+  createCoupon: mockCreateCoupon,
   getPendingInvoices: vi.fn(),
   createStripeCustomer: vi.fn(),
   createCustomerSession: vi.fn(),
@@ -83,6 +95,15 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
 
 vi.mock('../../src/billing/org-intake-lock.js', () => ({
   withOrgIntakeLock: mockWithOrgIntakeLock,
+}));
+
+vi.mock('../../src/billing/membership-checkout-attempt.js', () => ({
+  claimMembershipCheckoutAttempt: mockClaimCheckoutAttempt,
+  completeMembershipCheckoutAttempt: mockCompleteCheckoutAttempt,
+  clearMembershipCheckoutAttempt: mockClearCheckoutAttempt,
+  hasPendingMembershipCheckoutAttempt: mockHasPendingCheckoutAttempt,
+  hashMembershipCheckoutPayload: vi.fn(() => 'payload_hash'),
+  isDefinitiveCheckoutFailure: mockIsDefinitiveCheckoutFailure,
 }));
 
 vi.mock('../../src/db/referral-codes-db.js', () => ({
@@ -176,7 +197,12 @@ beforeEach(() => {
     sessionId: 'cs_test',
     url: 'https://checkout.stripe.test/cs_test',
   });
+  mockCreateCoupon.mockResolvedValue({ coupon_id: 'coupon_referral', name: 'Referral' });
   mockGetAcceptedReferral.mockResolvedValue(null);
+  mockClaimCheckoutAttempt.mockResolvedValue({ kind: 'create', idempotencyKey: 'attempt_key' });
+  mockCompleteCheckoutAttempt.mockResolvedValue(true);
+  mockHasPendingCheckoutAttempt.mockResolvedValue(false);
+  mockIsDefinitiveCheckoutFailure.mockReturnValue(false);
   mockWithOrgIntakeLock.mockImplementation(async (_orgId: string, fn: () => Promise<unknown>) => fn());
 });
 
@@ -260,8 +286,8 @@ describe('invoice request in-lock authorization', () => {
     expect(mockCreatePortal).not.toHaveBeenCalled();
   });
 
-  it('lets an ordinary member reach the existing invoice success path when no subscription is active', async () => {
-    mockListMemberships.mockResolvedValue(membershipPage(membership('member')));
+  it('lets an owner reach the invoice success path when no subscription is active', async () => {
+    mockListMemberships.mockResolvedValue(membershipPage(membership('owner')));
     mockGetSubscriptionInfo.mockResolvedValue(null);
 
     const response = await request(createApp()).post('/invoice-request').send(invoiceBody);
@@ -304,16 +330,116 @@ describe('checkout member intake', () => {
     expect(mockCreateCheckout).not.toHaveBeenCalled();
   });
 
-  it('lets an ordinary member reach the existing checkout success path when no subscription is active', async () => {
-    mockListMemberships.mockResolvedValue(membershipPage(membership('member')));
+  it('lets an owner reach the checkout success path when no subscription is active', async () => {
+    mockListMemberships.mockResolvedValue(membershipPage(membership('owner')));
     mockGetSubscriptionInfo.mockResolvedValue(null);
 
     const response = await request(createApp()).post('/checkout-session').send(checkoutBody);
 
     expect(response.status).toBe(200);
     expect(response.body.sessionId).toBe('cs_test');
-    expect(mockListMemberships).toHaveBeenCalledTimes(2);
+    expect(mockListMemberships).toHaveBeenCalledTimes(3);
     expect(mockCreateCheckout).toHaveBeenCalledTimes(1);
+    expect(mockCreateCheckout).toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: 'attempt_key',
+    }));
+    expect(mockCompleteCheckoutAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: ORG_ID,
+      idempotencyKey: 'attempt_key',
+      sessionId: 'cs_test',
+    }));
+    expect(mockWithOrgIntakeLock).toHaveBeenCalledWith(ORG_ID, expect.any(Function));
     expect(mockCreatePortal).not.toHaveBeenCalled();
+  });
+
+  it('rechecks subscription state inside the org lock before creating checkout', async () => {
+    mockListMemberships.mockResolvedValue(membershipPage(membership('owner')));
+    mockGetSubscriptionInfo
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(ACTIVE_SUBSCRIPTION);
+
+    const response = await request(createApp()).post('/checkout-session').send(checkoutBody);
+
+    expect(response.status).toBe(409);
+    expect(mockWithOrgIntakeLock).toHaveBeenCalledWith(ORG_ID, expect.any(Function));
+    expect(mockCreateCheckout).not.toHaveBeenCalled();
+  });
+
+  it('returns a conflict instead of reusing an idempotency key for a different checkout payload', async () => {
+    mockListMemberships.mockResolvedValue(membershipPage(membership('owner')));
+    mockGetSubscriptionInfo.mockResolvedValue(null);
+    mockClaimCheckoutAttempt.mockResolvedValue({ kind: 'conflict' });
+
+    const response = await request(createApp()).post('/checkout-session').send(checkoutBody);
+
+    expect(response.status).toBe(409);
+    expect(mockCreateCheckout).not.toHaveBeenCalled();
+  });
+
+  it('replays the stored open session without another Stripe write', async () => {
+    mockListMemberships.mockResolvedValue(membershipPage(membership('owner')));
+    mockGetSubscriptionInfo.mockResolvedValue(null);
+    mockClaimCheckoutAttempt.mockResolvedValue({
+      kind: 'replay',
+      sessionId: 'cs_existing',
+      url: 'https://checkout.stripe.test/cs_existing',
+    });
+
+    const response = await request(createApp()).post('/checkout-session').send(checkoutBody);
+
+    expect(response.status).toBe(200);
+    expect(response.body.sessionId).toBe('cs_existing');
+    expect(mockCreateCheckout).not.toHaveBeenCalled();
+  });
+
+  it('does not let an ordinary member create an organization billing obligation', async () => {
+    mockListMemberships.mockResolvedValue(membershipPage(membership('member')));
+    mockGetSubscriptionInfo.mockResolvedValue(null);
+
+    const response = await request(createApp()).post('/checkout-session').send(checkoutBody);
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toBe('Billing administrator required');
+    expect(mockClaimCheckoutAttempt).not.toHaveBeenCalled();
+    expect(mockCreateCheckout).not.toHaveBeenCalled();
+  });
+
+  it('clears the pending attempt after a definitive Stripe validation failure', async () => {
+    mockListMemberships.mockResolvedValue(membershipPage(membership('owner')));
+    mockGetSubscriptionInfo.mockResolvedValue(null);
+    const stripeError = Object.assign(new Error('No such price'), { type: 'StripeInvalidRequestError' });
+    mockCreateCheckout.mockRejectedValue(stripeError);
+    mockIsDefinitiveCheckoutFailure.mockReturnValue(true);
+
+    const response = await request(createApp()).post('/checkout-session').send(checkoutBody);
+
+    expect(response.status).toBe(500);
+    expect(mockClearCheckoutAttempt).toHaveBeenCalledWith(ORG_ID, 'attempt_key');
+  });
+
+  it('uses one stable coupon write across referral checkout retries', async () => {
+    mockListMemberships.mockResolvedValue(membershipPage(membership('owner')));
+    mockGetSubscriptionInfo.mockResolvedValue(null);
+    mockGetAcceptedReferral.mockResolvedValue({
+      referral_code: 'REFERRAL10',
+      discount_percent: 10,
+    });
+    mockClaimCheckoutAttempt
+      .mockResolvedValueOnce({ kind: 'create', idempotencyKey: 'attempt_key' })
+      .mockResolvedValueOnce({
+        kind: 'replay',
+        sessionId: 'cs_test',
+        url: 'https://checkout.stripe.test/cs_test',
+      });
+
+    const first = await request(createApp()).post('/checkout-session').send(checkoutBody);
+    const retry = await request(createApp()).post('/checkout-session').send(checkoutBody);
+
+    expect(first.status).toBe(200);
+    expect(retry.status).toBe(200);
+    expect(mockCreateCheckout).toHaveBeenCalledTimes(1);
+    expect(mockCreateCoupon).toHaveBeenCalledTimes(2);
+    expect(mockCreateCoupon.mock.calls[0][1]).toBe(mockCreateCoupon.mock.calls[1][1]);
+    expect(mockCreateCoupon.mock.calls[0][1]).toMatch(/^aao:membership-referral-coupon:/);
   });
 });

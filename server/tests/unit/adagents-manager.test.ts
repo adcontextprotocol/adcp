@@ -1452,6 +1452,39 @@ describe('AdAgentsManager', () => {
       expect(results[0].agent_url).toBe('https://agent1.example.com');
       expect(results[1].agent_url).toBe('https://agent2.example.com');
     });
+
+    it('shares a four-validation concurrency cap across simultaneous manager callers', async () => {
+      const secondManager = new AdAgentsManager();
+      const agents: AuthorizedAgent[] = Array.from({ length: 9 }, (_, index) => ({
+        url: `https://agent${index}.example.com`,
+        authorized_for: 'Test',
+      }));
+      let active = 0;
+      let peak = 0;
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const validate = async (agentUrl: string) => {
+        active++;
+        peak = Math.max(peak, active);
+        await gate;
+        active--;
+        return { agent_url: agentUrl, valid: true, errors: [] };
+      };
+      vi.spyOn(manager as any, 'validateSingleAgentCard').mockImplementation(validate);
+      vi.spyOn(secondManager as any, 'validateSingleAgentCard').mockImplementation(validate);
+
+      const pending = Promise.all([
+        manager.validateAgentCards(agents.slice(0, 5)),
+        secondManager.validateAgentCards(agents.slice(5)),
+      ]);
+      await vi.waitFor(() => expect(active).toBe(4));
+      expect(peak).toBe(4);
+
+      release();
+      const results = (await pending).flat();
+      expect(results).toHaveLength(9);
+      expect(peak).toBe(4);
+    });
   });
 
   describe('createAdAgentsJson', () => {
