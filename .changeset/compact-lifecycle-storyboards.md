@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
 Add a deterministic controller probe and compact media-buy lifecycle
