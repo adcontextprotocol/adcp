@@ -184,10 +184,10 @@ An unexpired `committed` proposal carries an inventory hold and cannot be reject
 |-----------|------|----------|-------------|
 | `product_id` | string | Yes | Opaque product ID from `get_products`. Non-custom wholesale IDs are stable for the same logical offer within seller and declared cache scope; custom IDs are stable only in their issuing discovery/refinement lineage. Selecting it accepts any `targeting_resolution` disclosed on that product. Sellers MUST echo it on every response package object representing the request. |
 | `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
-| `format_option_refs` | FormatOptionRef[] | No | Canonical 3.2 selector into the product's `format_options[]`: publisher-scoped or product-scoped. |
-| `format_kind` | CanonicalFormatKind | No | Direct canonical selector. Pair with enough `params` to satisfy the product declaration. |
-| `format_ids` | FormatID[] | Deprecated | Named-format compatibility selector accepted only from older 3.x peers. New buyers do not dual-emit it. |
-| `params` | object | No | Parameters for the direct canonical selector in `format_kind`. Follows the selected canonical's parameter vocabulary. Requires `format_kind`; `params` alone is schema-invalid. A broad selector such as `{format_kind: "image"}` does not satisfy a product whose `format_options[]` fixes `params.width` and `params.height`; sellers reject under-specified direct selectors with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) or an equivalent format-selector error. |
+| `format_option_refs` | FormatOptionRef[] | No | Canonical 3.2 selector into the product's `format_options[]`: publisher-scoped or product-scoped. New buyers use it as their only selector route. |
+| `format_kind` | CanonicalFormatKind | No | Direct canonical selector. Pair with enough `params` to satisfy the product declaration and omit `format_option_refs`. |
+| `format_ids` | FormatID[] | Deprecated | Named-format compatibility selector accepted from older 3.x peers. New buyers MUST NOT emit it. Receivers normalize it and equivalence-check it against every co-present canonical route. |
+| `params` | object | No | Parameters for the direct canonical selector in `format_kind`. Follows the selected canonical's parameter vocabulary. Requires `format_kind`; `params` alone is schema-invalid. For fixed-size image selectors, `width` and `height` must co-occur. A broad selector such as `{format_kind: "image"}` does not satisfy a product whose `format_options[]` fixes both dimensions; sellers reject under-specified direct selectors with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). |
 | `budget` | number | Conditional | Hard lifetime package spend cap in the media-buy currency. Required in fixed mode. Optional in seller-optimized mode; it remains a ceiling, not a current or reserved allocation. |
 | `min_spend_target` | number | No | Soft lifetime package spend target in the media-buy currency for seller-optimized allocation. The seller should attempt to reach it, but it is not a billing or delivery guarantee. |
 | `impressions` | number | No | Impression goal for this package |
@@ -1088,6 +1088,7 @@ Common errors and resolutions:
 | [`PRODUCT_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-product-expired) | Configured product passed `expires_at` and remains recognizable to the seller | Re-run [`get_products`](/docs/media-buy/task-reference/get_products) and select a current configuration |
 | [`PRODUCT_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-product-unavailable) | The product or a supported targeting selection has no current inventory | Re-run [`get_products`](/docs/media-buy/task-reference/get_products) with the concrete targeting values or choose another product; the seller does not silently substitute values or reprice |
 | [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | Canonical or legacy compatibility selector does not resolve or satisfy the product's closed accepted set | Re-author against the product's `format_options[]`, include required canonical parameters, or select a published `format_option_id`. |
+| [`CONFLICTING_SELECTORS`](/docs/building/verification/compliance-catalog#error-code-conflicting-selectors) | Co-present, resolvable package format selector routes select different product format contracts | Emit one canonical selector route, or correct the required legacy projection so it selects the same contract under the canonical v2-narrows-v1 comparison. |
 | [`BUDGET_TOO_LOW`](/docs/building/verification/compliance-catalog#error-code-budget-too-low) | Budget below product minimum | Increase budget or choose different product |
 | [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | Targeting constraints or a submitted `creative_id` violate seller/product business rules | Follow `error.field` and `error.message`; broaden targeting criteria or use a different package-scoped `creative_id` as indicated |
 | [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) | Brand/product violates policy | Review publisher's content policies |
@@ -1118,7 +1119,28 @@ Each package SHOULD specify the formats it will use via `format_option_refs[]` o
 - Validate that the product supports the requested formats
 - Track which assets are missing
 
-Selector precedence is deterministic: `format_option_refs[]` wins when present; otherwise direct `format_kind`/`params` is used; otherwise the package defaults to all product options. Deprecated `format_ids[]` is interpreted only on the negotiated legacy compatibility path and must normalize to the same canonical contract.
+New 3.2 buyers author one canonical route: `format_option_refs[]`, or direct
+`format_kind` with optional `params`. They MUST NOT combine those routes and
+MUST NOT newly emit deprecated `format_ids[]`. Omitting all selectors defaults
+to all product options; legacy-only `format_ids[]` remains valid throughout the
+3.x compatibility window.
+
+Receivers also accept multi-route requests from older 3.x peers, but precedence
+is applied only after resolution and equivalence checking. The seller first
+resolves every present route independently through the canonical mapping path.
+An unresolved option reference or unprojectable legacy ID returns
+[`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature)
+before equivalence is evaluated. Once all routes resolve, the seller derives
+the product `format_options[]` entries selected by each route using directional
+product satisfaction and requires those sets to match. Legacy parameter
+compatibility follows the asymmetric [v2 narrows v1](/docs/creative/canonical-formats#narrows-formal-definition-normative)
+relation rather than raw object equality. Equivalent routes use
+`format_option_refs[]` as authoritative, then direct `format_kind`/`params`,
+then `format_ids[]`. Any disagreement is rejected with
+[`CONFLICTING_SELECTORS`](/docs/building/verification/compliance-catalog#error-code-conflicting-selectors);
+a canonical selector never silently hides a conflicting legacy projection. For
+fixed-size images, width and height travel together and both dimensions must
+match in any permitted dual projection.
 
 Before purchase, buyers SHOULD also inspect the selected declaration's optional
 `locale_policy.accepted_language_ranges`. These seller ranges use RFC 4647
