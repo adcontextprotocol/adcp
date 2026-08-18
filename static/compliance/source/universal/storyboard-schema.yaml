@@ -1604,12 +1604,29 @@
 #   setup error. `value: true` means the request should be accepted; `value:
 #   false` means the request should be rejected for a format-selector cause.
 #
-#   The check normalizes legacy `format_ids[]` through `v1_format_ref[]` and the
-#   v1-to-canonical registry, resolves `format_option_refs[]`, and applies
-#   directional product gating for fixed dimensions, duration declarations,
-#   canonical params, and range containment. Negative cases only pass when the
-#   observed rejection is attributable to formats, so unrelated auth or tenant
-#   failures do not mask selector bugs.
+#   The check evaluates each present selector route independently before
+#   applying precedence:
+#   1. Resolve `format_option_refs[]`, normalize legacy `format_ids[]` through
+#      `v1_format_ref[]` and the v1-to-canonical registry, and materialize the
+#      direct `format_kind`/`params` declaration. If any option reference is
+#      unresolved or any legacy ID is unprojectable, local_satisfied is false;
+#      a negative step asserting this path pairs the check with an
+#      `error_code: UNSUPPORTED_FEATURE` validation.
+#   2. For every resolved route, derive the target product's selected
+#      `format_options[]` entries using directional product gating for fixed
+#      dimensions, duration declarations, canonical params, and range
+#      containment. Legacy compatibility uses the asymmetric v2-narrows-v1
+#      relation from canonical-formats.mdx, not raw declaration equality.
+#   3. When multiple routes are present, their selected product-option sets
+#      MUST match. Different format shapes, option sets, or incompatible
+#      dimensions make local_satisfied false; a negative step asserting this
+#      path pairs the check with `error_code: CONFLICTING_SELECTORS`.
+#   4. Only after every route resolves and the selected sets agree does the
+#      runner apply package precedence: format_option_refs, then direct
+#      format_kind/params, then format_ids.
+#
+#   Negative cases only pass when the observed rejection is attributable to
+#   formats, so unrelated auth or tenant failures do not mask selector bugs.
 #
 #   Fields:
 #     check: canonical_format_satisfaction

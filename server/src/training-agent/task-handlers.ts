@@ -17,6 +17,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { canonicalize, PostgresTaskStore } from '@adcp/sdk';
+import { canonicalTargetUri } from '@adcp/sdk/signing';
 import {
   createProposalRefinementHandler,
   type ProposalRefinementScope,
@@ -435,66 +436,6 @@ function persistInlineCreatives(
   }
 }
 
-function validateDirectCanonicalPackageSelector(pkg: PackageInput, product: Product, index: number): TaskError | undefined {
-  if (typeof pkg.format_kind !== 'string') return undefined;
-  if (Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0) return undefined;
-  if (Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0) return undefined;
-
-  const declarations = Array.isArray(product.format_options)
-    ? product.format_options.filter(isRecord)
-    : [];
-  if (declarations.length === 0) {
-    return {
-      code: 'UNSUPPORTED_FEATURE',
-      message: `Package ${index}: format selector format_kind "${pkg.format_kind}" cannot be resolved because product ${pkg.product_id} has no format_options[] declarations`,
-      field: `packages[${index}].format_kind`,
-      recovery: 'correctable',
-    };
-  }
-
-  const candidates = declarations.filter(decl => decl.format_kind === pkg.format_kind);
-  if (candidates.length === 0) {
-    return {
-      code: 'UNSUPPORTED_FEATURE',
-      message: `Package ${index}: format selector format_kind "${pkg.format_kind}" is not supported by product ${pkg.product_id}`,
-      field: `packages[${index}].format_kind`,
-      details: { supported_format_kinds: declarations.map(decl => decl.format_kind).filter(Boolean) },
-      recovery: 'correctable',
-    };
-  }
-
-  const requestParams = isRecord(pkg.params) ? pkg.params : {};
-  const satisfied = candidates.some(candidate => {
-    const productParams = isRecord(candidate.params) ? candidate.params : {};
-    return Object.entries(productParams).every(([key, value]) => {
-      if (value === undefined) return true;
-      if (!(key in requestParams)) return false;
-      return JSON.stringify(requestParams[key]) === JSON.stringify(value);
-    });
-  });
-  if (satisfied) return undefined;
-
-  const requiredParams = candidates
-    .map(candidate => isRecord(candidate.params) ? Object.keys(candidate.params) : [])
-    .find(keys => keys.length > 0) ?? [];
-  const missingParams = requiredParams.filter(key => !(key in requestParams));
-  return {
-    code: 'UNSUPPORTED_FEATURE',
-    message: missingParams.length > 0
-      ? `Package ${index}: format selector "${pkg.format_kind}" omits product-required params: ${missingParams.join(', ')}`
-      : `Package ${index}: format selector "${pkg.format_kind}" params do not satisfy product ${pkg.product_id}`,
-    field: missingParams.length > 0
-      ? `packages[${index}].params`
-      : `packages[${index}].format_kind`,
-    details: {
-      format_kind: pkg.format_kind,
-      required_params: candidates.map(candidate => isRecord(candidate.params) ? candidate.params : {}),
-      received_params: requestParams,
-    },
-    recovery: 'correctable',
-  };
-}
-
 type CanonicalPackageFormat = Record<string, unknown> & {
   format_kind?: string;
   format_option_id?: string;
@@ -514,6 +455,276 @@ type IndexedDeclarations = {
 };
 type ProductFormatOptionIndex = Map<string, IndexedDeclarations>;
 type ProductFormatOptionIndexCache = WeakMap<Product, ProductFormatOptionIndex>;
+
+type ConstraintRange = { minimum: number | null; maximum: number | null };
+type DimensionRegion = {
+  minimumWidth: number;
+  maximumWidth: number;
+  minimumHeight: number;
+  maximumHeight: number;
+};
+
+function constraintRange(parameter: string, value: unknown): ConstraintRange | undefined {
+  if (isRecord(value) && value.kind === 'range') {
+    const minimum = value.min === null || typeof value.min === 'number' ? value.min : undefined;
+    const maximum = value.max === null || typeof value.max === 'number' ? value.max : undefined;
+    if (minimum !== undefined && maximum !== undefined) return { minimum, maximum };
+  }
+  if (parameter.endsWith('_range') && Array.isArray(value) && value.length === 2) {
+    const [minimum, maximum] = value;
+    if ((minimum === null || typeof minimum === 'number') && (maximum === null || typeof maximum === 'number')) {
+      return { minimum, maximum };
+    }
+  }
+  return undefined;
+}
+
+function rangeContains(baseline: ConstraintRange, narrower: ConstraintRange): boolean {
+  return (baseline.minimum === null || (narrower.minimum !== null && narrower.minimum >= baseline.minimum))
+    && (baseline.maximum === null || (narrower.maximum !== null && narrower.maximum <= baseline.maximum));
+}
+
+/** Directional comparison: `value` must be no broader than `baseline`. */
+function valueNarrowsBaseline(parameter: string, value: unknown, baseline: unknown): boolean {
+  if (baseline === undefined) return true;
+  if (isRecord(baseline) && baseline.kind === 'exact') {
+    return isDeepStrictEqual(value, baseline.value);
+  }
+  if (isRecord(baseline) && baseline.kind === 'set' && Array.isArray(baseline.values)) {
+    const allowedValues = baseline.values as unknown[];
+    const values = Array.isArray(value) ? value : [value];
+    return values.every(entry => allowedValues.some(candidate => isDeepStrictEqual(entry, candidate)));
+  }
+
+  const baselineRange = constraintRange(parameter, baseline);
+  if (baselineRange) {
+    if (typeof value === 'number') {
+      return (baselineRange.minimum === null || value >= baselineRange.minimum)
+        && (baselineRange.maximum === null || value <= baselineRange.maximum);
+    }
+    const narrowerRange = constraintRange(parameter, value);
+    return narrowerRange !== undefined && rangeContains(baselineRange, narrowerRange);
+  }
+
+  if (Array.isArray(baseline)) {
+    const values = Array.isArray(value) ? value : [value];
+    return values.every(entry => baseline.some(candidate => isDeepStrictEqual(entry, candidate)));
+  }
+  if (typeof value === 'number' && typeof baseline === 'number') {
+    if (parameter.startsWith('max_') || parameter.endsWith('_max_chars')) return value <= baseline;
+    if (parameter.startsWith('min_')) return value >= baseline;
+  }
+  return isDeepStrictEqual(value, baseline);
+}
+
+function durationParamsNarrowBaseline(
+  narrower: Record<string, unknown>,
+  baseline: Record<string, unknown>,
+): boolean {
+  const baselineExact = baseline.duration_ms_exact;
+  const baselineRange = constraintRange('duration_ms_range', baseline.duration_ms_range);
+  if (baselineExact === undefined && baselineRange === undefined) return true;
+
+  const narrowerExact = narrower.duration_ms_exact;
+  if (typeof narrowerExact === 'number') {
+    if (typeof baselineExact === 'number') return narrowerExact === baselineExact;
+    return baselineRange !== undefined
+      && valueNarrowsBaseline('duration_ms_range', narrowerExact, baseline.duration_ms_range);
+  }
+  const narrowerRange = constraintRange('duration_ms_range', narrower.duration_ms_range);
+  if (!narrowerRange) return false;
+  if (typeof baselineExact === 'number') {
+    return narrowerRange.minimum === baselineExact && narrowerRange.maximum === baselineExact;
+  }
+  return baselineRange !== undefined && rangeContains(baselineRange, narrowerRange);
+}
+
+function dimensionRegions(params: Record<string, unknown>): DimensionRegion[] {
+  if (typeof params.width === 'number' && typeof params.height === 'number') {
+    return [{
+      minimumWidth: params.width,
+      maximumWidth: params.width,
+      minimumHeight: params.height,
+      maximumHeight: params.height,
+    }];
+  }
+  if (Array.isArray(params.sizes)) {
+    const sizes = params.sizes.flatMap(size => isRecord(size)
+      && typeof size.width === 'number'
+      && typeof size.height === 'number'
+      ? [{
+          minimumWidth: size.width,
+          maximumWidth: size.width,
+          minimumHeight: size.height,
+          maximumHeight: size.height,
+        }]
+      : []);
+    if (sizes.length > 0) return sizes;
+  }
+
+  const hasResponsiveBounds = ['min_width', 'max_width', 'min_height', 'max_height']
+    .some(parameter => typeof params[parameter] === 'number');
+  if (!hasResponsiveBounds) return [];
+  return [{
+    minimumWidth: typeof params.min_width === 'number' ? params.min_width : Number.NEGATIVE_INFINITY,
+    maximumWidth: typeof params.max_width === 'number' ? params.max_width : Number.POSITIVE_INFINITY,
+    minimumHeight: typeof params.min_height === 'number' ? params.min_height : Number.NEGATIVE_INFINITY,
+    maximumHeight: typeof params.max_height === 'number' ? params.max_height : Number.POSITIVE_INFINITY,
+  }];
+}
+
+function dimensionRegionContains(baseline: DimensionRegion, narrower: DimensionRegion): boolean {
+  return narrower.minimumWidth >= baseline.minimumWidth
+    && narrower.maximumWidth <= baseline.maximumWidth
+    && narrower.minimumHeight >= baseline.minimumHeight
+    && narrower.maximumHeight <= baseline.maximumHeight;
+}
+
+function dimensionsNarrowBaseline(
+  narrower: Record<string, unknown>,
+  baseline: Record<string, unknown>,
+  requireWhenBaselineConstrained: boolean,
+): boolean {
+  const baselineRegions = dimensionRegions(baseline);
+  const narrowerRegions = dimensionRegions(narrower);
+  if (narrowerRegions.length === 0) {
+    return !requireWhenBaselineConstrained || baselineRegions.length === 0;
+  }
+  if (baselineRegions.length === 0) return true;
+  return narrowerRegions.every(region =>
+    baselineRegions.some(accepted => dimensionRegionContains(accepted, region))
+  );
+}
+
+function directOptionSatisfiesSelector(
+  option: CanonicalPackageFormat,
+  selector: CanonicalPackageFormat,
+): boolean {
+  if (option.format_kind !== selector.format_kind) return false;
+  const optionParams = isRecord(option.params) ? option.params : {};
+  const selectorParams = isRecord(selector.params) ? selector.params : {};
+
+  if (!dimensionsNarrowBaseline(selectorParams, optionParams, true)) return false;
+  if (!durationParamsNarrowBaseline(selectorParams, optionParams)) return false;
+
+  return Object.entries(selectorParams).every(([parameter, value]) => {
+    if (parameter === 'duration_ms_exact' || parameter === 'duration_ms_range') return true;
+    if (['width', 'height', 'sizes', 'min_width', 'max_width', 'min_height', 'max_height'].includes(parameter)) {
+      return true;
+    }
+    return valueNarrowsBaseline(parameter, value, optionParams[parameter]);
+  });
+}
+
+/** Normative one-way v2-narrows-v1 comparison for a projected legacy route. */
+function canonicalOptionNarrowsLegacy(
+  option: CanonicalPackageFormat,
+  legacyProjection: CanonicalPackageFormat,
+): boolean {
+  if (option.format_kind !== legacyProjection.format_kind) return false;
+  const optionParams = isRecord(option.params) ? option.params : {};
+  const legacyParams = isRecord(legacyProjection.params) ? legacyProjection.params : {};
+  if (!dimensionsNarrowBaseline(optionParams, legacyParams, false)) return false;
+  if (
+    (optionParams.duration_ms_exact !== undefined || optionParams.duration_ms_range !== undefined)
+    && !durationParamsNarrowBaseline(optionParams, legacyParams)
+  ) return false;
+  return Object.entries(optionParams).every(([parameter, value]) => {
+    if (parameter === 'duration_ms_exact' || parameter === 'duration_ms_range') return true;
+    if (['width', 'height', 'sizes', 'min_width', 'max_width', 'min_height', 'max_height'].includes(parameter)) {
+      return true;
+    }
+    return valueNarrowsBaseline(parameter, value, legacyParams[parameter]);
+  });
+}
+
+function directSelectorResolution(
+  pkg: PackageInput,
+  product: Product,
+  packageIndex: number,
+): { selector?: CanonicalPackageFormat; selected: Set<number>; error?: TaskError } {
+  if (typeof pkg.format_kind !== 'string') return { selected: new Set() };
+  if (!VALID_CANONICAL_FORMAT_KINDS.has(pkg.format_kind)) {
+    return {
+      selected: new Set(),
+      error: {
+        code: 'UNSUPPORTED_FEATURE',
+        message: `Package ${packageIndex}: format selector format_kind "${pkg.format_kind}" cannot be resolved`,
+        field: `packages[${packageIndex}].format_kind`,
+        recovery: 'correctable',
+      },
+    };
+  }
+
+  const requestParams = isRecord(pkg.params) ? pkg.params : {};
+  if (
+    pkg.format_kind === 'image'
+    && (('width' in requestParams) !== ('height' in requestParams))
+  ) {
+    return {
+      selected: new Set(),
+      error: {
+        code: 'INVALID_REQUEST',
+        message: `Package ${packageIndex}: fixed-size image width and height must be provided together`,
+        field: `packages[${packageIndex}].params`,
+        recovery: 'correctable',
+      },
+    };
+  }
+
+  const selector: CanonicalPackageFormat = {
+    format_kind: pkg.format_kind,
+    params: requestParams,
+  };
+  const declarations = (Array.isArray(product.format_options) ? product.format_options : [])
+    .filter(isRecord) as CanonicalPackageFormat[];
+  const selected = new Set<number>();
+  declarations.forEach((declaration, index) => {
+    if (directOptionSatisfiesSelector(declaration, selector)) selected.add(index);
+  });
+  return { selector, selected };
+}
+
+function validateDirectCanonicalPackageSelector(pkg: PackageInput, product: Product, index: number): TaskError | undefined {
+  if (typeof pkg.format_kind !== 'string') return undefined;
+  const resolution = directSelectorResolution(pkg, product, index);
+  if (resolution.error) return resolution.error;
+  if (resolution.selected.size > 0) return undefined;
+
+  const declarations = (Array.isArray(product.format_options) ? product.format_options : [])
+    .filter(isRecord) as CanonicalPackageFormat[];
+  const sameKind = declarations.filter(declaration => declaration.format_kind === pkg.format_kind);
+  const requestParams = isRecord(pkg.params) ? pkg.params : {};
+  const missingParams = [...new Set(sameKind.flatMap(declaration => {
+    const params = isRecord(declaration.params) ? declaration.params : {};
+    const required = dimensionRegions(params).length > 0 ? ['width/height dimensions'] : [];
+    if ('duration_ms_exact' in params || 'duration_ms_range' in params) {
+      required.push('duration_ms_exact or duration_ms_range');
+    }
+    return required.filter(key => {
+      if (key === 'width/height dimensions') return dimensionRegions(requestParams).length === 0;
+      if (key.includes(' or ')) {
+        return !('duration_ms_exact' in requestParams) && !('duration_ms_range' in requestParams);
+      }
+      return !(key in requestParams);
+    });
+  }))];
+  return {
+    code: 'UNSUPPORTED_FEATURE',
+    message: missingParams.length > 0
+      ? `Package ${index}: format selector "${pkg.format_kind}" omits product-required params: ${missingParams.join(', ')}`
+      : `Package ${index}: format selector "${pkg.format_kind}" params do not satisfy product ${pkg.product_id}`,
+    field: missingParams.length > 0
+      ? `packages[${index}].params`
+      : `packages[${index}].format_kind`,
+    details: {
+      format_kind: pkg.format_kind,
+      product_options: sameKind,
+      received_params: requestParams,
+    },
+    recovery: 'correctable',
+  };
+}
 
 function cloneCanonicalFormat(format: CanonicalPackageFormat): CanonicalPackageFormat {
   return JSON.parse(JSON.stringify(format)) as CanonicalPackageFormat;
@@ -734,8 +945,7 @@ function snapshotPackageFormats(
     }
     if (Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0) {
       const unavailable = pkg.format_ids.filter(requested => !advertisedLegacyIds.some(advertised =>
-        advertised.id === requested.id
-        && (requested.agent_url === undefined || advertised.agent_url === requested.agent_url)
+        legacyFormatIdMatches(requested, advertised)
       ));
       if (unavailable.length > 0) {
         return {
@@ -876,17 +1086,15 @@ function snapshotPackageFormats(
     };
   }
 
-  if (Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0) {
+  if (Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0 && typeof pkg.format_kind !== 'string') {
     const selected = declarations.filter(declaration => {
       const legacyRefs = Array.isArray(declaration.v1_format_ref) ? declaration.v1_format_ref : [];
       return pkg.format_ids!.some(requested => legacyRefs.some(ref =>
-        ref?.id === requested.id
-        && (requested.agent_url === undefined || ref.agent_url === requested.agent_url)
+        ref && legacyFormatIdMatches(requested, ref)
       ));
     });
     const unavailable = pkg.format_ids.filter(requested => !advertisedLegacyIds.some(advertised =>
-      advertised.id === requested.id
-      && (requested.agent_url === undefined || advertised.agent_url === requested.agent_url)
+      legacyFormatIdMatches(requested, advertised)
     ));
     if (unavailable.length > 0) {
       return {
@@ -917,11 +1125,257 @@ function snapshotPackageFormats(
           ? JSON.parse(JSON.stringify(pkg.params)) as Record<string, unknown>
           : {},
       }],
+      ...(Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0 && {
+        legacyFormatIds: pkg.format_ids.map(cloneLegacyFormatId),
+        selectedLegacyFormatIds: pkg.format_ids.map(cloneLegacyFormatId),
+      }),
     };
   }
 
   // Omitting selectors means every product format option is active.
   return { formats: declarations.map(cloneCanonicalFormat) };
+}
+
+function canonicalFormatIdentifierUrl(raw: string): string | undefined {
+  try {
+    return canonicalTargetUri(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+function legacyFormatVariant(format: FormatID): [unknown, unknown, unknown, unknown] {
+  const record = format as unknown as Record<string, unknown>;
+  const hasDimensions = typeof record.width === 'number' && typeof record.height === 'number';
+  return [
+    record.width ?? null,
+    record.height ?? null,
+    record.duration_ms ?? null,
+    hasDimensions ? (record.pixel_ratio ?? 1) : null,
+  ];
+}
+
+function legacyFormatIdMatches(left: FormatID, right: FormatID): boolean {
+  if (left.id !== right.id || !isDeepStrictEqual(legacyFormatVariant(left), legacyFormatVariant(right))) {
+    return false;
+  }
+  if (left.agent_url === undefined || right.agent_url === undefined) return true;
+  const leftUrl = canonicalFormatIdentifierUrl(left.agent_url);
+  const rightUrl = canonicalFormatIdentifierUrl(right.agent_url);
+  return leftUrl !== undefined && rightUrl !== undefined && leftUrl === rightUrl;
+}
+
+function legacyFormatIdKey(format: FormatID): string {
+  const agentUrl = format.agent_url ? canonicalFormatIdentifierUrl(format.agent_url) : '';
+  return JSON.stringify([agentUrl ?? `invalid:${format.agent_url}`, format.id, ...legacyFormatVariant(format)]);
+}
+
+function selectedProductOptionsForFormats(
+  formats: CanonicalPackageFormat[],
+  productDeclarations: CanonicalPackageFormat[],
+): Set<number> {
+  const selected = new Set<number>();
+  for (const format of formats) {
+    const index = productDeclarations.findIndex(declaration => isDeepStrictEqual(declaration, format));
+    if (index >= 0) selected.add(index);
+  }
+  return selected;
+}
+
+function legacySelectorResolution(
+  pkg: PackageInput,
+  product: Product,
+  packageIndex: number,
+): {
+  selected: Set<number>;
+  unmatchedEntries: number[];
+  projectedSelectors: CanonicalPackageFormat[];
+  error?: TaskError;
+} {
+  const requested = Array.isArray(pkg.format_ids) ? pkg.format_ids : [];
+  const declarations = (Array.isArray(product.format_options) ? product.format_options : [])
+    .filter(isRecord) as CanonicalPackageFormat[];
+  const selected = new Set<number>();
+  const unmatchedEntries: number[] = [];
+  const projectedSelectors: CanonicalPackageFormat[] = [];
+
+  for (let i = 0; i < requested.length; i++) {
+    const legacy = requested[i]!;
+    const linkedIndexes = declarations.flatMap((declaration, declarationIndex) => {
+      const refs = Array.isArray(declaration.v1_format_ref) ? declaration.v1_format_ref : [];
+      return refs.some(ref => legacyFormatIdMatches(legacy, ref)) ? [declarationIndex] : [];
+    });
+    const projected = projectV1ProductToV2({
+      product_id: `package_${packageIndex}_legacy_${i}`,
+      name: 'Package legacy selector projection',
+      description: 'Ephemeral package selector compatibility projection',
+      format_ids: [{
+        ...legacy,
+        agent_url: legacy.agent_url ?? 'https://creative.adcontextprotocol.org/',
+      }],
+    }).v2.format_options?.filter(isRecord) as CanonicalPackageFormat[] | undefined;
+    if (!projected?.length && linkedIndexes.length === 0) {
+      return {
+        selected,
+        unmatchedEntries,
+        projectedSelectors,
+        error: {
+          code: 'UNSUPPORTED_FEATURE',
+          message: `Package ${packageIndex}: format_ids[${i}] cannot be normalized through the canonical mapping path`,
+          field: `packages[${packageIndex}].format_ids[${i}]`,
+          recovery: 'correctable',
+        },
+      };
+    }
+    if (projected?.length) projectedSelectors.push(...projected);
+
+    // Seller-authored v1_format_ref links are authoritative for custom IDs,
+    // but registry-backed links must still agree dimensionally with the
+    // canonical declaration they name.
+    const candidateIndexes = linkedIndexes.length > 0
+      ? linkedIndexes
+      : declarations.map((_, declarationIndex) => declarationIndex);
+    const matchedIndexes = candidateIndexes.filter(declarationIndex => {
+      if (!projected?.length) return true;
+      return projected.some(selector => canonicalOptionNarrowsLegacy(declarations[declarationIndex]!, selector));
+    });
+    if (matchedIndexes.length === 0) {
+      unmatchedEntries.push(i);
+    } else {
+      matchedIndexes.forEach(declarationIndex => {
+        selected.add(declarationIndex);
+      });
+    }
+  }
+  return { selected, unmatchedEntries, projectedSelectors };
+}
+
+function sameNumberSet(left: Set<number>, right: Set<number>): boolean {
+  return left.size === right.size && [...left].every(value => right.has(value));
+}
+
+function validatePackageSelectorCompatibility(
+  pkg: PackageInput,
+  product: Product,
+  packageIndex: number,
+  optionIndexCache: ProductFormatOptionIndexCache,
+): TaskError | undefined {
+  const hasOptions = Array.isArray(pkg.format_option_refs) && pkg.format_option_refs.length > 0;
+  const hasDirect = typeof pkg.format_kind === 'string';
+  const hasLegacy = Array.isArray(pkg.format_ids) && pkg.format_ids.length > 0;
+  const routeCount = Number(hasOptions) + Number(hasDirect) + Number(hasLegacy);
+  if (routeCount === 0) return undefined;
+
+  const declarations = (Array.isArray(product.format_options) ? product.format_options : [])
+    .filter(isRecord) as CanonicalPackageFormat[];
+
+  // Preserve the legacy-only 3.x path. An advertised named format may be
+  // intentionally non-projectable; equivalence is required only when another
+  // route is co-present. The SDK can also surface a legacy-only request as a
+  // temporary migrated option ref when the product has no canonical options.
+  if (routeCount === 1 && hasLegacy) {
+    return snapshotPackageFormats(pkg, product, packageIndex, optionIndexCache).error;
+  }
+  if (routeCount === 1 && hasOptions && declarations.length === 0) {
+    return snapshotPackageFormats(pkg, product, packageIndex, optionIndexCache).error;
+  }
+
+  if (declarations.length === 0 && hasOptions && hasLegacy && !hasDirect) {
+    const optionSnapshot = snapshotPackageFormats({ ...pkg, format_ids: undefined }, product, packageIndex, optionIndexCache);
+    if (optionSnapshot.error) return optionSnapshot.error;
+    const legacySnapshot = snapshotPackageFormats({ ...pkg, format_option_refs: undefined }, product, packageIndex, optionIndexCache);
+    if (legacySnapshot.error) return legacySnapshot.error;
+    const optionSet = new Set((optionSnapshot.selectedLegacyFormatIds ?? []).map(legacyFormatIdKey));
+    const legacySet = new Set((legacySnapshot.selectedLegacyFormatIds ?? []).map(legacyFormatIdKey));
+    if (optionSet.size > 0 && optionSet.size === legacySet.size && [...optionSet].every(key => legacySet.has(key))) {
+      return undefined;
+    }
+    return {
+      code: 'CONFLICTING_SELECTORS',
+      message: `Package ${packageIndex}: co-present legacy compatibility selector routes select different product formats`,
+      field: `packages[${packageIndex}]`,
+      recovery: 'correctable',
+    };
+  }
+
+  const routes: Array<{ name: string; selected: Set<number>; unmatchedEntries?: number[] }> = [];
+  let directSelector: CanonicalPackageFormat | undefined;
+  let legacyProjectedSelectors: CanonicalPackageFormat[] = [];
+
+  if (hasOptions) {
+    const optionSnapshot = snapshotPackageFormats({
+      ...pkg,
+      format_kind: undefined,
+      params: undefined,
+      format_ids: undefined,
+    }, product, packageIndex, optionIndexCache);
+    if (optionSnapshot.error) return optionSnapshot.error;
+    routes.push({
+      name: 'format_option_refs',
+      selected: selectedProductOptionsForFormats(optionSnapshot.formats ?? [], declarations),
+    });
+  }
+
+  if (hasDirect) {
+    const direct = directSelectorResolution(pkg, product, packageIndex);
+    if (direct.error) return direct.error;
+    directSelector = direct.selector;
+    routes.push({ name: 'format_kind', selected: direct.selected });
+  }
+
+  if (hasLegacy) {
+    const legacy = legacySelectorResolution(pkg, product, packageIndex);
+    if (legacy.error) return legacy.error;
+    legacyProjectedSelectors = legacy.projectedSelectors;
+    routes.push({ name: 'format_ids', selected: legacy.selected, unmatchedEntries: legacy.unmatchedEntries });
+  }
+
+  if (routes.length === 1) {
+    if (routes[0]!.selected.size > 0) return undefined;
+    if (hasDirect) return validateDirectCanonicalPackageSelector(pkg, product, packageIndex);
+    return {
+      code: 'UNSUPPORTED_FEATURE',
+      message: `Package ${packageIndex}: ${routes[0]!.name} resolves but does not satisfy product ${pkg.product_id}`,
+      field: `packages[${packageIndex}].${routes[0]!.name}`,
+      recovery: 'correctable',
+    };
+  }
+
+  const expected = routes[0]!.selected;
+  const allRoutesUnsatisfied = routes.every(route => route.selected.size === 0);
+  const equivalentUnsatisfiedDirectLegacy = !hasOptions
+    && allRoutesUnsatisfied
+    && directSelector !== undefined
+    && legacyProjectedSelectors.length > 0
+    && legacyProjectedSelectors.every(projected => directOptionSatisfiesSelector(projected, directSelector!));
+  if ((!equivalentUnsatisfiedDirectLegacy && routes.some(route => route.unmatchedEntries?.length))
+    || routes.slice(1).some(route => !sameNumberSet(expected, route.selected))) {
+    return {
+      code: 'CONFLICTING_SELECTORS',
+      message: `Package ${packageIndex}: co-present format selector routes select different product format options`,
+      field: `packages[${packageIndex}]`,
+      details: {
+        routes: routes.map(route => ({
+          selector: route.name,
+          selected_format_option_ids: [...route.selected].map(index =>
+            declarations[index]?.format_option_id ?? `product.format_options[${index}]`
+          ),
+          ...(route.unmatchedEntries?.length && { unmatched_selector_indexes: route.unmatchedEntries }),
+        })),
+      },
+      recovery: 'correctable',
+    };
+  }
+
+  if (expected.size === 0) {
+    return {
+      code: 'UNSUPPORTED_FEATURE',
+      message: `Package ${packageIndex}: resolved format selectors do not satisfy product ${pkg.product_id}`,
+      field: `packages[${packageIndex}]`,
+      recovery: 'correctable',
+    };
+  }
+  return undefined;
 }
 
 function packageFormatSelectorForState(
@@ -5416,7 +5870,7 @@ const TOOLS = [
         canceled: { type: 'boolean', const: true, description: 'Cancel the media buy (one-way, cannot be undone)' },
         cancellation_reason: { type: 'string', description: 'Reason for cancellation' },
         packages: { type: 'array' },
-        new_packages: { type: 'array', items: { type: 'object', properties: { product_id: { type: 'string' }, pricing_option_id: { type: 'string' }, budget: { type: 'number' }, bid_price: { type: 'number' }, impressions: { type: 'number' }, paused: { type: 'boolean' }, start_time: { type: 'string' }, end_time: { type: 'string' }, format_ids: { type: 'array' } }, required: ['product_id', 'pricing_option_id', 'budget'] }, description: 'Add new packages to the media buy' },
+        new_packages: { type: 'array', items: { type: 'object', properties: { product_id: { type: 'string' }, pricing_option_id: { type: 'string' }, budget: { type: 'number' }, bid_price: { type: 'number' }, impressions: { type: 'number' }, paused: { type: 'boolean' }, start_time: { type: 'string' }, end_time: { type: 'string' }, format_option_refs: { type: 'array' }, format_kind: { type: 'string' }, params: { type: 'object' }, format_ids: { type: 'array' } }, required: ['product_id', 'pricing_option_id', 'budget'] }, description: 'Add new packages to the media buy' },
         end_time: { type: 'string' },
         action: { type: 'string', description: 'Action to perform (pause, resume, cancel, extend)' },
         governance_context: { type: 'string', maxLength: 4096, description: 'Opaque intent authorization for a governed update. The seller computes the actual positive delta from its current revision and enforces the signed ceiling.' },
@@ -8347,9 +8801,14 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
       continue;
     }
 
-    const directFormatError = validateDirectCanonicalPackageSelector(pkg, product, i);
-    if (directFormatError) {
-      errors.push(directFormatError);
+    const selectorCompatibilityError = validatePackageSelectorCompatibility(
+      pkg,
+      product,
+      i,
+      productFormatOptionIndexes,
+    );
+    if (selectorCompatibilityError) {
+      errors.push(selectorCompatibilityError);
       continue;
     }
     const formatSnapshot = snapshotPackageFormats(pkg, product, i, productFormatOptionIndexes);
@@ -10084,8 +10543,13 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       if (!product) {
         return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Product not found for new package: ${productId}` }] };
       }
-      const directFormatError = validateDirectCanonicalPackageSelector(npkg, product, i);
-      if (directFormatError) return { errors: [directFormatError] };
+      const selectorCompatibilityError = validatePackageSelectorCompatibility(
+        npkg,
+        product,
+        i,
+        productFormatOptionIndexes,
+      );
+      if (selectorCompatibilityError) return { errors: [selectorCompatibilityError] };
       const formatSnapshot = snapshotPackageFormats(npkg, product, i, productFormatOptionIndexes);
       if (formatSnapshot.error) return { errors: [formatSnapshot.error] };
       const formatSelector = packageFormatSelectorForState(
