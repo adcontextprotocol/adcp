@@ -33,7 +33,12 @@ export function hashMembershipCheckoutPayload(data: CheckoutSessionData): string
     couponId: data.couponId ?? null,
     promotionCode: data.promotionCode ?? null,
   };
-  return createHash('sha256').update(JSON.stringify(immutablePayload)).digest('hex');
+  // This is a non-secret equality fingerprint for an immutable checkout
+  // payload, not a password or credential hash. Fast deterministic hashing is
+  // required so retries on different processes produce the same value.
+  return createHash('sha256') // lgtm[js/insufficient-password-hash]
+    .update(JSON.stringify(immutablePayload))
+    .digest('hex');
 }
 
 /**
