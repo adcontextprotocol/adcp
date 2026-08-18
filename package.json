@@ -91,7 +91,7 @@
     "test:run-storyboards-schema-root": "node --test --test-force-exit --test-timeout=30000 tests/run-storyboards-schema-root-options.test.cjs",
     "test:storyboard-doc-parity": "node --test --test-force-exit --test-timeout=30000 tests/lint-universal-storyboard-doc-parity.test.cjs",
     "test:pagination-invariant": "node --test --test-force-exit --test-timeout=30000 tests/lint-pagination-invariant.test.cjs",
-    "test:version-envelope": "node --test --test-force-exit --test-timeout=30000 tests/lint-version-envelope.test.cjs",
+    "test:version-envelope": "node --test --test-force-exit --test-timeout=30000 tests/lint-version-envelope.test.cjs tests/compact-version-envelope.test.cjs",
     "test:test-dynamic-imports": "node --test --test-force-exit --test-timeout=30000 tests/lint-test-dynamic-imports.test.cjs",
     "test:sdk-shims": "node --test --test-force-exit --test-timeout=30000 tests/lint-sdk-shims.test.cjs tests/sdk-runtime-compat.test.cjs",
     "test:tenant-routing": "vitest run --config server/vitest.config.ts server/src/training-agent/tenants/tenant-smoke.test.ts",
