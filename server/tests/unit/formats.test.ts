@@ -32,7 +32,9 @@ function capabilityResponse(entries: Array<Record<string, unknown>>) {
       creative: {
         supported_formats: entries,
         ...(previewIds.length === 0 ? {} : {
-          preview: { supported_capability_ids: previewIds, fidelity: 'representative' },
+          preview: {
+            routes: previewIds.map(capability_id => ({ capability_id, rendering_origin: 'agent_approximation' })),
+          },
         }),
       },
     },

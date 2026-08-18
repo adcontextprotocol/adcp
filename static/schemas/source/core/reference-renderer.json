@@ -2,9 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/reference-renderer.json",
   "title": "Reference Renderer",
-  "description": "Pinned npm package export for a community-maintained reference presentation of a canonical format. The registry references the package but never serves or executes it. A reference renderer is non-authoritative: it demonstrates one interoperable presentation of the format contract and is not evidence of seller, publisher, or serving-platform output. Consumers MUST verify the package version and Subresource Integrity value, require npm provenance for the published package, and execute the renderer as untrusted code in a sandbox without ambient credentials or network access. On confirmation that a pinned renderer version is vulnerable, the community-registry maintainer MUST replace the version and integrity in a reviewed registry update and rotate the enclosing catalog's cache validator. A consumer whose vulnerability policy marks the pin unsafe MUST fail closed for renderer execution, MUST NOT load the package, and MUST continue with the normal rendering fallback order.",
+  "description": "Pinned npm package export for a community-maintained reference presentation of a canonical format. The registry references the package but never serves or executes it. A reference renderer is non-authoritative: it demonstrates one interoperable presentation of the format contract and is not evidence of seller, publisher, or serving-platform output. Consumers MUST verify the exact tarball integrity and npm provenance, bind the attestation source repository/workflow and subject digest to this entry, and execute the module in a separate opaque-origin or worker realm with no ambient credentials or network access, a timeout, and input/output size limits. Consumers MUST NOT bundle or import registry-selected code into the host application realm. On confirmation that a pinned renderer version is vulnerable, the community-registry maintainer MUST replace the version and integrity in a reviewed registry update and rotate the enclosing catalog's cache validator. A consumer whose vulnerability policy marks the pin unsafe MUST fail closed for renderer execution, MUST NOT load the package, and MUST continue with the normal rendering fallback order.",
   "type": "object",
-  "required": ["runtime", "package", "version", "export", "integrity"],
+  "required": ["runtime", "package", "version", "export", "format_revision", "integrity", "provenance"],
   "properties": {
     "runtime": {
       "type": "string",
@@ -26,11 +26,40 @@
       "minLength": 1,
       "description": "Named package export that implements the renderer contract for this enclosing format entry. Compatibility is bound at the export-to-entry edge, not to the package major: the export's documented input/output contract MUST implement the enclosing format entry's revision. When that format entry moves to a new major revision, the registry MUST point it to a compatible export, rotating package version and integrity only when the selected artifact changes. One package version MAY expose different named exports for different formats or format revisions."
     },
+    "format_revision": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)$",
+      "description": "Exact canonical format-entry revision implemented by this named export. It MUST equal the enclosing community format entry's format_revision; compatibility binds to this export edge, not the package major."
+    },
     "integrity": {
       "type": "string",
       "pattern": "^(?:sha256-[A-Za-z0-9+/]{43}=|sha384-[A-Za-z0-9+/]{64}|sha512-[A-Za-z0-9+/]{86}==)$",
-      "description": "Subresource Integrity value for the exact npm package tarball. Consumers MUST compare this value before loading code and fail closed on mismatch."
+      "description": "Subresource Integrity value for the exact npm package tarball. Consumers MUST compare this value before loading code, require the provenance subject digest to match the same tarball, and fail closed on mismatch."
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["source_repository", "workflow_path"],
+      "properties": {
+        "source_repository": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://github\\.com/",
+          "description": "Allowlisted source repository that the npm provenance attestation MUST identify."
+        },
+        "workflow_path": {
+          "type": "string",
+          "pattern": "^\\.github/workflows/[A-Za-z0-9._/-]+\\.ya?ml$",
+          "description": "Repository-relative GitHub Actions workflow path that npm provenance buildDefinition.externalParameters.workflow.path MUST identify."
+        }
+      },
+      "additionalProperties": false
     }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "format_revision": "equals_enclosing_community_format_entry.format_revision",
+      "export": "exists_in_pinned_package_and_passes_contract_fixtures_for_enclosing_format_kind_and_format_revision"
+    }
+  }
 }

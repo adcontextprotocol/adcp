@@ -73,15 +73,14 @@ describe('public agent discovery proxies', () => {
     const capability = {
       capability_id: 'preview_display',
       operations: ['preview'],
-      format: { format_kind: 'image', params: { width: 300, height: 250 } },
+      format: { format_kind: 'image', params: { width: 300, height: 250, max_file_size_kb: 10_000 } },
     };
     sdkMocks.getAdcpCapabilities.mockResolvedValue({
       data: {
         creative: {
           supported_formats: [capability],
           preview: {
-            supported_capability_ids: ['preview_display'],
-            fidelity: 'representative',
+            routes: [{ capability_id: 'preview_display', rendering_origin: 'agent_approximation' }],
           },
         },
       },
@@ -123,7 +122,7 @@ describe('public agent discovery proxies', () => {
     expect(response.body.formats).toEqual([{
       capability_id: 'preview_display_300x250',
       operations: ['preview'],
-      format: { format_kind: 'image', params: { width: 300, height: 250 } },
+      format: { format_kind: 'image', params: { width: 300, height: 250, max_file_size_kb: 10_000 } },
     }]);
   });
 

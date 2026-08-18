@@ -66,7 +66,7 @@ A creative agent wraps a canonical declaration in an agent-local operation entry
 }
 ```
 
-Because the capability entry includes `preview`, the enclosing capability response also lists `streamhaus_vertical_video_builder` in `creative.preview.supported_capability_ids` and declares `fidelity`. Capability IDs route operations; they do not make the preview authoritative.
+Because the capability entry includes `preview`, the enclosing capability response also lists `streamhaus_vertical_video_builder` in `creative.preview.routes[]` and declares its informational `rendering_origin`. Capability IDs route operations; they do not make the preview authoritative.
 
 The buyer passes `capability_id` to that same agent as `build_creative.target_capability_id`. The returned manifest does not carry the capability ID because it must remain portable.
 

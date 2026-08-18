@@ -214,6 +214,7 @@ export interface PlacementTagDefinition {
 export interface PreviewProviderRoute {
   format_option_id: string;
   capability_id: string;
+  covers_placement_presentation?: boolean;
 }
 
 export interface PreviewProvider {
@@ -233,7 +234,12 @@ export interface PlacementDefinition {
   collection_ids?: string[];
   channels?: string[];
   format_options?: Array<Record<string, unknown>>;
-  presentation_ref?: { uri: string; digest: string };
+  presentation_ref?: {
+    uri: string;
+    digest: string;
+    media_type: "application/vnd.adcp.placement-presentation+json";
+    schema_version: "1.0";
+  };
   preview_provider?: PreviewProvider;
 }
 

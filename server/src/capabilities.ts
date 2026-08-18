@@ -43,8 +43,10 @@ export interface CreativeCapabilities {
     [key: string]: unknown;
   }>;
   preview?: {
-    supported_capability_ids: string[];
-    fidelity: 'authoritative' | 'representative';
+    routes: Array<{
+      capability_id: string;
+      rendering_origin: 'platform_native' | 'agent_approximation';
+    }>;
   };
   can_generate: boolean;
   can_validate: boolean;
@@ -215,35 +217,43 @@ export async function sanitizeCreativeCapabilities(raw: unknown): Promise<Creati
   const previewCapabilityIds = supportedFormats
     .filter(entry => entry.operations.includes('preview'))
     .map(entry => entry.capability_id);
+  const routablePreviewCapabilityIds = previewCapabilityIds.filter((id): id is string => id !== undefined);
   const rawPreview = block.preview;
   let preview: CreativeCapabilities['preview'];
-  if (previewCapabilityIds.length > 0 || rawPreview !== undefined) {
+  if (routablePreviewCapabilityIds.length > 0 || rawPreview !== undefined) {
     if (!rawPreview || typeof rawPreview !== 'object' || Array.isArray(rawPreview)) {
       throw new Error('creative.preview: required object when supported_formats advertises preview');
     }
     const previewBlock = rawPreview as Record<string, unknown>;
-    const supportedCapabilityIds = previewBlock.supported_capability_ids;
-    if (!Array.isArray(supportedCapabilityIds)
-      || supportedCapabilityIds.length === 0
-      || supportedCapabilityIds.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id))
-      || new Set(supportedCapabilityIds).size !== supportedCapabilityIds.length) {
-      throw new Error('creative.preview.supported_capability_ids: unique non-empty capability ID array required');
+    const routes = previewBlock.routes;
+    if (!Array.isArray(routes) || routes.length === 0
+      || routes.some(route => !route || typeof route !== 'object' || Array.isArray(route))) {
+      throw new Error('creative.preview.routes: non-empty route array required');
     }
-    if (!['authoritative', 'representative'].includes(String(previewBlock.fidelity))) {
-      throw new Error('creative.preview.fidelity: expected authoritative or representative');
+    const sanitizedRoutes = routes.map((rawRoute, index) => {
+      const route = rawRoute as Record<string, unknown>;
+      if (typeof route.capability_id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(route.capability_id)) {
+        throw new Error(`creative.preview.routes[${index}].capability_id: stable identifier required`);
+      }
+      if (!['platform_native', 'agent_approximation'].includes(String(route.rendering_origin))) {
+        throw new Error(`creative.preview.routes[${index}].rendering_origin: expected platform_native or agent_approximation`);
+      }
+      return {
+        capability_id: route.capability_id,
+        rendering_origin: route.rendering_origin as 'platform_native' | 'agent_approximation',
+      };
+    });
+    const declaredIds = sanitizedRoutes.map(route => route.capability_id).sort();
+    if (new Set(declaredIds).size !== declaredIds.length) {
+      throw new Error('creative.preview.routes: capability_id values must be unique');
     }
-    if (previewCapabilityIds.some(id => id === undefined)) {
-      throw new Error('creative.supported_formats: every preview operation requires capability_id');
-    }
-    const advertisedIds = [...previewCapabilityIds].sort();
-    const declaredIds = [...supportedCapabilityIds].sort();
+    const advertisedIds = [...routablePreviewCapabilityIds].sort();
     if (advertisedIds.length !== declaredIds.length
       || advertisedIds.some((id, index) => id !== declaredIds[index])) {
-      throw new Error('creative.preview.supported_capability_ids: must equal advertised preview capability IDs');
+      throw new Error('creative.preview.routes: must equal advertised routable preview capability IDs');
     }
     preview = {
-      supported_capability_ids: supportedCapabilityIds as string[],
-      fidelity: previewBlock.fidelity as 'authoritative' | 'representative',
+      routes: sanitizedRoutes,
     };
   }
   const declaresBuild = ['supports_generation', 'supports_transformation', 'supports_transformers', 'supports_refinement']

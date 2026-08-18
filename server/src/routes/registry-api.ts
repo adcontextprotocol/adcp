@@ -10245,8 +10245,10 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             supported_formats: projectedFormats,
             ...(projectedPreviewIds.length === 0 ? {} : {
               preview: {
-                supported_capability_ids: projectedPreviewIds,
-                fidelity: "representative",
+                routes: projectedPreviewIds.map(capability_id => ({
+                  capability_id,
+                  rendering_origin: "agent_approximation",
+                })),
               },
             }),
           })).supported_formats;

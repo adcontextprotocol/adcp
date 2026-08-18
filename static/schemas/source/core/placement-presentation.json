@@ -1,0 +1,141 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/placement-presentation.json",
+  "title": "Placement Presentation Document",
+  "description": "Declarative, non-executable placement frame. Consumers create the canvas, paint behind_creative decorations in array order, fit and clip the selected creative render into creative_slot, then paint in_front_of_creative decorations in array order. Text is plain text and image assets are immutable, digest-pinned resources; scripts, HTML, CSS, event handlers, and arbitrary style properties are forbidden.",
+  "type": "object",
+  "required": ["schema_version", "canvas", "creative_slot"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "canvas": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "background_color": {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "default": "#ffffff"
+        }
+      },
+      "additionalProperties": false
+    },
+    "creative_slot": {
+      "type": "object",
+      "description": "Rectangle into which the selected creative render is fitted and clipped without changing its manifest or renderer.",
+      "required": ["x", "y", "width", "height", "fit", "clip"],
+      "properties": {
+        "x": { "type": "integer", "minimum": 0, "maximum": 8192 },
+        "y": { "type": "integer", "minimum": 0, "maximum": 8192 },
+        "width": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "fit": {
+          "type": "string",
+          "enum": ["contain", "cover", "stretch"],
+          "description": "How the creative render is scaled into the slot. contain preserves the whole render, cover fills and crops, and stretch fills without preserving aspect ratio."
+        },
+        "clip": {
+          "type": "boolean",
+          "const": true,
+          "description": "Slot overflow is always clipped so composition is deterministic."
+        }
+      },
+      "additionalProperties": false
+    },
+    "decorations": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/definitions/box_decoration" },
+          { "$ref": "#/definitions/text_decoration" },
+          { "$ref": "#/definitions/image_decoration" }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "rectangle": {
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "type": "integer", "minimum": 0, "maximum": 8192 },
+        "y": { "type": "integer", "minimum": 0, "maximum": 8192 },
+        "width": { "type": "integer", "minimum": 1, "maximum": 8192 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 8192 }
+      },
+      "additionalProperties": false
+    },
+    "box_decoration": {
+      "type": "object",
+      "required": ["kind", "layer", "bounds", "fill_color"],
+      "properties": {
+        "kind": { "const": "box" },
+        "layer": { "$ref": "#/definitions/layer" },
+        "bounds": { "$ref": "#/definitions/rectangle" },
+        "fill_color": { "$ref": "#/definitions/color" }
+      },
+      "additionalProperties": false
+    },
+    "text_decoration": {
+      "type": "object",
+      "required": ["kind", "layer", "bounds", "text", "text_color", "font_size"],
+      "properties": {
+        "kind": { "const": "text" },
+        "layer": { "$ref": "#/definitions/layer" },
+        "bounds": { "$ref": "#/definitions/rectangle" },
+        "text": { "type": "string", "maxLength": 4096 },
+        "text_color": { "$ref": "#/definitions/color" },
+        "font_size": { "type": "integer", "minimum": 6, "maximum": 256 }
+      },
+      "additionalProperties": false
+    },
+    "image_decoration": {
+      "type": "object",
+      "required": ["kind", "layer", "bounds", "image_ref", "fit"],
+      "properties": {
+        "kind": { "const": "image" },
+        "layer": { "$ref": "#/definitions/layer" },
+        "bounds": { "$ref": "#/definitions/rectangle" },
+        "image_ref": {
+          "type": "object",
+          "required": ["uri", "digest"],
+          "properties": {
+            "uri": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://",
+              "description": "Untrusted image asset. Fetch with public-address-only SSRF protection, no redirects, DNS pinning, and body/time limits; do not attach ambient credentials."
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "description": "SHA-256 digest of the exact image bytes. Consumers MUST fail closed on mismatch."
+            }
+          },
+          "additionalProperties": false
+        },
+        "fit": { "type": "string", "enum": ["contain", "cover", "stretch"] }
+      },
+      "additionalProperties": false
+    },
+    "layer": {
+      "type": "string",
+      "enum": ["behind_creative", "in_front_of_creative"]
+    },
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    }
+  },
+  "additionalProperties": false,
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "bounds": "creative_slot_and_decoration_rectangles_fit_within_canvas"
+    }
+  }
+}

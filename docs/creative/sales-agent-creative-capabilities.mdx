@@ -46,8 +46,10 @@ If the same endpoint can build, validate, or preview creatives, include `creativ
       }
     ],
     "preview": {
-      "supported_capability_ids": ["homepage_image_builder"],
-      "fidelity": "representative"
+      "routes": [{
+        "capability_id": "homepage_image_builder",
+        "rendering_origin": "agent_approximation"
+      }]
     }
   }
 }

@@ -60,11 +60,11 @@
     },
     "presentation_ref": {
       "$ref": "/schemas/core/presentation-ref.json",
-      "description": "Optional publisher-specific presentation metadata for representing this placement's real chrome offline. Valid only as part of this placement declaration and lower authority than an authoritative seller preview_creative result. It MUST NOT be promoted to or copied onto a shared format entry."
+      "description": "Optional publisher-specific declarative frame for representing this placement's real chrome offline. It composes around the selected creative rendering unless the publisher-delegated preview_provider route explicitly covers placement presentation. It MUST NOT be promoted to or copied onto a shared format entry."
     },
     "preview_provider": {
       "$ref": "/schemas/core/preview-provider.json",
-      "description": "Optional publisher delegation to a callable AdCP preview provider for specific format options on this placement. The delegation is authoritative only inside this placement's scope and is lower authority than the serving platform's own authoritative preview."
+      "description": "Optional publisher delegation to a callable AdCP preview provider for specific format options on this placement. This publisher-origin route is the only mechanism that grants preview authority inside the placement's scope; an agent's own rendering_origin description does not."
     },
     "format_options": {
       "type": "array",

@@ -12,8 +12,7 @@ describe('sanitizeCreativeCapabilities', () => {
     operations: ['build', 'preview'],
   };
   const preview = {
-    supported_capability_ids: ['image_300x250'],
-    fidelity: 'representative',
+    routes: [{ capability_id: 'image_300x250', rendering_origin: 'agent_approximation' }],
   } as const;
 
   it('validates complete canonical declarations', async () => {
@@ -63,7 +62,7 @@ describe('sanitizeCreativeCapabilities', () => {
     })).rejects.toThrow('unique non-empty');
   });
 
-  it('rejects preview routes without fidelity discovery', async () => {
+  it('rejects routable preview operations without route metadata', async () => {
     await expect(sanitizeCreativeCapabilities({ supported_formats: [validEntry] }))
       .rejects.toThrow('creative.preview');
   });
@@ -71,8 +70,14 @@ describe('sanitizeCreativeCapabilities', () => {
   it('rejects preview declarations that do not match the operation catalog', async () => {
     await expect(sanitizeCreativeCapabilities({
       supported_formats: [validEntry],
-      preview: { supported_capability_ids: ['another_preview'], fidelity: 'representative' },
-    })).rejects.toThrow('must equal advertised preview capability IDs');
+      preview: { routes: [{ capability_id: 'another_preview', rendering_origin: 'agent_approximation' }] },
+    })).rejects.toThrow('must equal advertised routable preview capability IDs');
+  });
+
+  it('accepts a legacy unrouteable preview entry without capability metadata', async () => {
+    await expect(sanitizeCreativeCapabilities({
+      supported_formats: [{ format: validEntry.format, operations: ['preview'] }],
+    })).resolves.toMatchObject({ can_preview: true });
   });
 });
 

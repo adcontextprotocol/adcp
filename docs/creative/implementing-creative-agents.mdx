@@ -238,7 +238,7 @@ Every supported-format entry uses a stable agent-local `capability_id` for task 
 
 Keep capability IDs stable and unique within your agent's `supported_formats[]` catalog. They are scoped to your agent and passed as `target_capability_id`; they are not format identities and never appear on products or manifests.
 
-When any entry explicitly includes `preview` in `operations`, the enclosing capability response MUST also publish `creative.preview`. Its `supported_capability_ids[]` equals the preview-operation routes, and `fidelity` declares whether they are `authoritative` serving-platform previews or `representative` approximations. A standalone creative agent normally declares `representative`; do not claim `authoritative` unless the serving platform's own preview machinery produced the output.
+When any routable entry explicitly includes `preview` in `operations`, the enclosing capability response MUST also publish `creative.preview`. Its `routes[].capability_id` set equals the preview-operation capability IDs, and each route reports `rendering_origin` as `platform_native` or `agent_approximation`. This is implementation metadata, not authority; only a matching publisher placement `preview_provider` delegation grants authority.
 
 ### 2. Format validation
 
@@ -486,8 +486,10 @@ Read the AdCP payload from the MCP result and verify that it contains a creative
       }
     ],
     "preview": {
-      "supported_capability_ids": ["display_banner"],
-      "fidelity": "representative"
+      "routes": [{
+        "capability_id": "display_banner",
+        "rendering_origin": "agent_approximation"
+      }]
     }
   }
 }

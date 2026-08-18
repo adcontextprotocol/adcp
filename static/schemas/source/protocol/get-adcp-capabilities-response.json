@@ -2071,29 +2071,39 @@
         },
         "preview": {
           "type": "object",
-          "description": "Per-format preview_creative capability and presentation authority. New 3.2 producers whose supported_formats[] explicitly advertises the preview operation MUST emit this block. `authoritative` is reserved for output produced by the serving platform's own preview machinery (including a seller proxying that platform's first-party preview API). `representative` means the agent renders an approximation. Buyers MUST preserve this distinction in UI and audit records; production render quality does not upgrade a representative renderer to authoritative. supported_capability_ids MUST equal the set of capability IDs on supported_formats[] entries whose operations contains preview, so every preview route has one discoverable fidelity classification.",
-          "required": ["supported_capability_ids", "fidelity"],
+          "description": "Per-route preview_creative capability metadata. New 3.2 producers whose supported_formats[] explicitly advertises a routable preview operation MUST emit this block. rendering_origin describes how each route is implemented but is informational and never grants presentation authority: only a matching publisher-origin placement preview_provider delegation can do that. routes[].capability_id MUST equal the set of capability IDs on supported_formats[] entries whose operations contains preview.",
+          "required": ["routes"],
           "properties": {
-            "supported_capability_ids": {
+            "routes": {
               "type": "array",
-              "description": "Agent-local creative.supported_formats[].capability_id values accepted by preview_creative. Canonical 3.2 uses capability IDs rather than reintroducing legacy named format IDs.",
+              "description": "Agent-local preview routes and their implementation origin. Authority is resolved from publisher placement delegation, never from this self-description.",
               "items": {
-                "type": "string",
-                "pattern": "^[a-zA-Z0-9_-]+$"
+                "type": "object",
+                "required": ["capability_id", "rendering_origin"],
+                "properties": {
+                  "capability_id": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$",
+                    "description": "Agent-local creative.supported_formats[].capability_id accepted by preview_creative."
+                  },
+                  "rendering_origin": {
+                    "type": "string",
+                    "enum": ["platform_native", "agent_approximation"],
+                    "description": "Informational implementation origin. platform_native means the route uses the serving platform's preview machinery; agent_approximation means the agent renders an approximation. Neither value grants authority without a publisher preview_provider delegation."
+                  }
+                },
+                "additionalProperties": false
               },
               "minItems": 1,
-              "uniqueItems": true
-            },
-            "fidelity": {
-              "type": "string",
-              "enum": ["authoritative", "representative"],
-              "description": "Authority of the listed routes. authoritative means the serving platform's own preview machinery produced the output; representative means an agent-rendered approximation."
+              "x-adcp-validation": {
+                "unique_item_properties": ["capability_id"]
+              }
             }
           },
           "additionalProperties": false,
           "x-adcp-validation": {
             "verifier_constraints": {
-              "supported_capability_ids": "set_equals_capability_ids_of_creative.supported_formats_entries_with_preview_operation"
+              "routes": "capability_id_set_equals_routable_capability_ids_of_creative.supported_formats_entries_with_preview_operation"
             },
             "spec": "docs/creative/canonical-formats.mdx#rendering-authority-and-fallback-order"
           }
@@ -2155,11 +2165,14 @@
                 "contains": {
                   "type": "object",
                   "properties": {
+                    "capability_id": {
+                      "type": "string"
+                    },
                     "operations": {
                       "contains": { "const": "preview" }
                     }
                   },
-                  "required": ["operations"]
+                  "required": ["capability_id", "operations"]
                 }
               }
             },

@@ -221,6 +221,7 @@ export interface AdAgentsJsonInline {
     tag_id?: string;
   };
   catalog_etag?: string;
+  catalog_role?: 'community_format_registry';
   last_updated?: string;
 }
 
@@ -261,6 +262,7 @@ export interface CreateAdAgentsJsonOptions {
   placementTags?: Record<string, { name: string; description: string }>;
   formats?: FormatDefinition[];
   catalogEtag?: string;
+  catalogRole?: 'community_format_registry';
   signals?: SignalDefinition[];
   signalTags?: Record<string, { name: string; description: string }>;
 }
@@ -715,6 +717,38 @@ export class AdAgentsManager {
         field: 'catalog_etag',
         message: 'catalog_etag must be a string',
         severity: 'error'
+      });
+    }
+
+    const rendererFormats = Array.isArray(data.formats)
+      ? data.formats
+        .map((format: any, index: number) => ({ format, index }))
+        .filter(({ format }: { format: any }) => format?.reference_renderer !== undefined)
+      : [];
+    if (rendererFormats.length > 0) {
+      if (typeof data.catalog_etag !== 'string' || data.catalog_etag.length === 0) {
+        result.errors.push({
+          field: 'catalog_etag',
+          message: 'catalog_etag is required when a format declares reference_renderer',
+          severity: 'error'
+        });
+      }
+      if (data.catalog_role !== 'community_format_registry') {
+        result.errors.push({
+          field: 'catalog_role',
+          message: 'catalog_role must be community_format_registry when a format declares reference_renderer',
+          severity: 'error'
+        });
+      }
+      rendererFormats.forEach(({ format, index }: { format: any; index: number }) => {
+        if (typeof format.format_revision !== 'string'
+          || format.reference_renderer?.format_revision !== format.format_revision) {
+          result.errors.push({
+            field: `formats[${index}].reference_renderer.format_revision`,
+            message: 'reference_renderer.format_revision must equal the enclosing format_revision',
+            severity: 'error'
+          });
+        }
       });
     }
 
@@ -1911,6 +1945,9 @@ export class AdAgentsManager {
     if (opts.catalogEtag) {
       adagents.catalog_etag = opts.catalogEtag;
     }
+    if (opts.catalogRole) {
+      adagents.catalog_role = opts.catalogRole;
+    }
 
     if (opts.formats && opts.formats.length > 0) {
       adagents.formats = opts.formats;
@@ -1956,6 +1993,7 @@ export class AdAgentsManager {
       authorized_agents: opts.agents,
       ...(opts.properties && opts.properties.length > 0 ? { properties: opts.properties } : {}),
       ...(opts.catalogEtag ? { catalog_etag: opts.catalogEtag } : {}),
+      ...(opts.catalogRole ? { catalog_role: opts.catalogRole } : {}),
       ...(opts.formats && opts.formats.length > 0 ? { formats: opts.formats } : {}),
       ...(opts.placements && opts.placements.length > 0 ? { placements: opts.placements } : {}),
       ...(opts.placementTags && Object.keys(opts.placementTags).length > 0 ? { placement_tags: opts.placementTags } : {}),

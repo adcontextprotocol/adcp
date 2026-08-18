@@ -7869,8 +7869,10 @@ describe('canonical creative build capabilities', () => {
     expect(imageCapability?.format.format_option_id).toBeUndefined();
     expect(supportedFormats.some(format => format.capability_id === 'build_html5')).toBe(false);
     expect((result.creative as any).preview).toEqual({
-      supported_capability_ids: supportedFormats.map(format => format.capability_id),
-      fidelity: 'representative',
+      routes: supportedFormats.map(format => ({
+        capability_id: format.capability_id,
+        rendering_origin: 'agent_approximation',
+      })),
     });
   });
 

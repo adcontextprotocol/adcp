@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import { buildFormats } from '../../src/shared/formats.js';
 import { handleListCreativeFormats, handlePreviewCreative, buildReferenceFormats, buildCreativeCapabilities, createCreativeAgentServer } from '../../src/creative-agent/task-handlers.js';
 import { getPreviewRendererMetadata, renderPreview } from '../../src/creative-agent/preview-renderer.js';
-import { storePreview, getPreview, cleanExpiredPreviews } from '../../src/creative-agent/preview-store.js';
+import { storePreview, storePreviewAsset, getPreview, cleanExpiredPreviews } from '../../src/creative-agent/preview-store.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { sanitizeCreativeCapabilities } from '../../src/capabilities.js';
@@ -263,8 +264,15 @@ describe('reference formats', () => {
         params: {
           duration_ms_exact: 15000,
           containers: ['mp4', 'mov', 'webm'],
+          max_file_size_mb: 10,
         },
       },
+    });
+    expect(byId.get('preview_display_300x250_image')).toMatchObject({
+      format: { params: { max_file_size_kb: 10_000 } },
+    });
+    expect(byId.get('preview_audio_standard_30s')).toMatchObject({
+      format: { params: { max_file_size_mb: 10 } },
     });
   });
 
@@ -273,8 +281,10 @@ describe('reference formats', () => {
     await expect(sanitizeCreativeCapabilities({
       supported_formats: supportedFormats,
       preview: {
-        supported_capability_ids: supportedFormats.map(capability => capability.capability_id),
-        fidelity: 'representative',
+        routes: supportedFormats.map(capability => ({
+          capability_id: capability.capability_id,
+          rendering_origin: 'agent_approximation',
+        })),
       },
     })).resolves.toBeDefined();
   });
@@ -441,18 +451,318 @@ describe('handlePreviewCreative', () => {
     const result = handlePreviewCreative({
       request_type: 'single',
       target_capability_id: 'preview_display_300x250_image',
-      creative_manifest: { format_kind: 'image', assets: {} },
+      creative_manifest: {
+        format_kind: 'image',
+        params: { width: 300, height: 250 },
+        assets: {
+          image_main: { asset_type: 'image', url: 'https://cdn.example/image.jpg', width: 300, height: 250, file_size_bytes: 1_000_000 },
+        },
+      },
     }, formats, TEST_BASE_URL);
 
     const renders = ((result.previews as any[])[0].renders as any[]);
     expect(renders[0].dimensions).toEqual({ width: 300, height: 250 });
     expect(renders[0].renderer).toEqual({
       renderer_id: 'adcp-reference-image',
-      version: '1.0.0-beta.0',
+      version: '1.0.0-server.1',
       export: 'renderImage',
-      fidelity: 'representative',
-      tracking_suppressed: true,
+      rendering_origin: 'agent_approximation',
+      tracking_suppressed: false,
     });
+  });
+
+  it('rejects manifest params that contradict an explicitly selected capability', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_image',
+      creative_manifest: {
+        format_kind: 'image',
+        params: { width: 728, height: 90 },
+        assets: {
+          image_main: { asset_type: 'image', url: 'https://cdn.example/image.jpg', width: 728, height: 90 },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('requires params.width compatible with 300'),
+    })]);
+  });
+
+  it('rejects missing default canonical slots', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_image',
+      creative_manifest: {
+        format_kind: 'image',
+        params: { width: 300, height: 250 },
+        assets: {},
+      },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('missing required assets: image_main'),
+    })]);
+  });
+
+  it('does not let manifest params conceal contradictory asset dimensions', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_image',
+      creative_manifest: {
+        format_kind: 'image',
+        params: { width: 300, height: 250 },
+        assets: {
+          image_main: { asset_type: 'image', url: 'https://cdn.example/image.jpg', width: 728, height: 90 },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('params.width'),
+    })]);
+  });
+
+  it('does not let format_id metadata conceal contradictory required-slot dimensions', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_image',
+      creative_manifest: {
+        format_kind: 'image',
+        format_id: { width: 300, height: 250 },
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.example/image.jpg',
+            width: 728,
+            height: 90,
+          },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('params.width'),
+    })]);
+  });
+
+  it('uses the required slot rather than an earlier decoy asset for compatibility facts', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_image',
+      creative_manifest: {
+        format_kind: 'image',
+        assets: {
+          decoy: { asset_type: 'image', url: 'https://cdn.example/decoy.jpg', width: 300, height: 250 },
+          image_main: { asset_type: 'image', url: 'https://cdn.example/image.jpg', width: 728, height: 90 },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('params.width'),
+    })]);
+  });
+
+  it.each([
+    ['null', null],
+    ['empty object', {}],
+    ['empty array', []],
+    ['wrong type', { asset_type: 'text', content: 'not an image' }],
+    ['missing payload', { asset_type: 'image' }],
+    ['invalid URL', { asset_type: 'image', url: 'not a url' }],
+    ['active URL', { asset_type: 'image', url: 'javascript:alert(1)' }],
+    ['insecure URL', { asset_type: 'image', url: 'http://cdn.example/ad.jpg' }],
+  ])('rejects an invalid required canonical slot: %s', (_label, imageMain) => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_image',
+      creative_manifest: {
+        format_kind: 'image',
+        assets: { image_main: imageMain },
+      },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('invalid required asset'),
+    })]);
+  });
+
+  it('returns an explicit capacity error instead of a CSP-broken success', () => {
+    const principal = `principal-${randomUUID()}`;
+    for (let i = 0; i < 64; i += 1) {
+      expect(storePreviewAsset(
+        randomUUID(),
+        'https://cdn.example/occupied.png',
+        `${principal}-scope-${Math.floor(i / 8)}`,
+        principal,
+      )).not.toBeNull();
+    }
+
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_image',
+      creative_manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.example/image.jpg',
+            width: 300,
+            height: 250,
+            file_size_bytes: 1_000_000,
+          },
+        },
+      },
+    }, formats, TEST_BASE_URL, principal);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'PREVIEW_CAPACITY_EXCEEDED',
+      message: expect.stringContaining('Retry later'),
+    })]);
+    expect(result.previews).toBeUndefined();
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['oversized', 10_000_001],
+  ])('rejects %s file-size facts before returning a proxy URL', (_label, fileSizeBytes) => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_image',
+      creative_manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.example/image.jpg',
+            width: 300,
+            height: 250,
+            ...(fileSizeBytes !== undefined && { file_size_bytes: fileSizeBytes }),
+          },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining(fileSizeBytes === undefined ? 'missing required file_size_bytes' : 'exceed'),
+    })]);
+    expect(result.previews).toBeUndefined();
+  });
+
+  it('accepts a submitted container that is a subset of the advertised set', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_video_standard',
+      output_format: 'html',
+      creative_manifest: {
+        format_kind: 'video_hosted',
+        assets: {
+          video_main: {
+            asset_type: 'video',
+            url: 'https://cdn.example/video.mp4',
+            container_format: 'mp4',
+            file_size_bytes: 5_000_000,
+          },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    const renders = ((result.previews as any[])[0].renders as any[]);
+    expect(renders[0].preview_html).toContain('/preview-assets/');
+    expect(renders[0].preview_html).not.toContain('https://cdn.example/video.mp4');
+    expect(renders[0].preview_html).toContain('<video');
+
+    const source = renders[0].preview_html.match(/<source src="([^"]+)"/)?.[1];
+    const csp = renders[0].preview_html.match(/Content-Security-Policy" content="([^"]+)"/)?.[1];
+    expect(source).toBeTruthy();
+    expect(csp).toContain(new URL(source).origin);
+  });
+
+  it('rejects a hosted video outside an exact duration constraint', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_video_standard_30s',
+      creative_manifest: {
+        format_kind: 'video_hosted',
+        params: { duration_ms_exact: 30_000, containers: ['mp4'] },
+        assets: {
+          video_main: {
+            asset_type: 'video',
+            url: 'https://cdn.example/video.mp4',
+            container_format: 'mp4',
+            duration_ms: 60_000,
+          },
+        },
+      },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('duration_ms_exact'),
+    })]);
+  });
+
+  it('applies compatibility checks to an inferred unique canonical route', () => {
+    const oneFormat = formats.filter(format =>
+      (format.format_id as { id: string }).id === 'video_standard_30s'
+    );
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      creative_manifest: {
+        format_kind: 'video_hosted',
+        assets: {
+          video_main: {
+            asset_type: 'video',
+            url: 'https://cdn.example/video.mp4',
+            container_format: 'mp4',
+            duration_ms: 60_000,
+          },
+        },
+      },
+    }, oneFormat, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('duration_ms_exact'),
+    })]);
+  });
+
+  it('rejects a manifest missing a required canonical slot', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      target_capability_id: 'preview_display_300x250_generative',
+      creative_manifest: {
+        format_kind: 'image',
+        params: { width: 300, height: 250 },
+        assets: {},
+      },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('missing required assets: generation_prompt'),
+    })]);
+  });
+
+  it('rejects a deprecated format route that contradicts the canonical manifest kind', () => {
+    const result = handlePreviewCreative({
+      request_type: 'single',
+      format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250_image' },
+      creative_manifest: { format_kind: 'video_vast', assets: {} },
+    }, formats, TEST_BASE_URL);
+
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'FORMAT_NOT_SUPPORTED',
+      message: expect.stringContaining('renders format_kind "image"'),
+    })]);
   });
 
   it('fails closed for an unknown canonical preview selector', () => {
@@ -682,7 +992,10 @@ describe('handlePreviewCreative', () => {
           creative_manifest: {
             creative_id: 'cr_default',
             format_kind: 'image',
-            assets: {},
+            params: { width: 300, height: 250 },
+            assets: {
+              image_main: { asset_type: 'image', url: 'https://cdn.example/default.jpg', width: 300, height: 250, file_size_bytes: 1_000_000 },
+            },
           },
         },
         {
@@ -692,7 +1005,10 @@ describe('handlePreviewCreative', () => {
           creative_manifest: {
             creative_id: 'cr_override',
             format_kind: 'image',
-            assets: {},
+            params: { width: 728, height: 90 },
+            assets: {
+              image_main: { asset_type: 'image', url: 'https://cdn.example/override.jpg', width: 728, height: 90, file_size_bytes: 1_000_000 },
+            },
           },
         },
       ],
@@ -823,7 +1139,8 @@ describe('handlePreviewCreative', () => {
 
     const previewId = ((result.previews as any[])[0] as any).preview_id;
     const html = getPreview(previewId);
-    expect(html).toContain('stored.jpg');
+    expect(html).toContain('/preview-assets/');
+    expect(html).not.toContain('stored.jpg');
   });
 
   it('works with unknown format_id', () => {
@@ -878,18 +1195,17 @@ describe('preview renderer', () => {
     const html = renderPreview(manifest, undefined);
 
     expect(html).toContain('https://cdn.example/image.jpg');
-    expect(html).toContain('href="https://brand.example/landing"');
+    expect(html).not.toContain('https://brand.example/landing');
     expect(html).toContain('320px');
     expect(html).toContain('180px');
     expect(html).toContain('Content-Security-Policy');
     expect(html).toContain('<meta name="referrer" content="no-referrer">');
-    expect(html).toContain('rel="noopener noreferrer"');
     expect(getPreviewRendererMetadata(manifest, undefined)).toEqual({
       renderer_id: 'adcp-reference-image',
-      version: '1.0.0-beta.0',
+      version: '1.0.0-server.1',
       export: 'renderImage',
-      fidelity: 'representative',
-      tracking_suppressed: true,
+      rendering_origin: 'agent_approximation',
+      tracking_suppressed: false,
     });
   });
 
@@ -899,6 +1215,33 @@ describe('preview renderer', () => {
       findFormat('video_standard'),
     );
     expect(html).toContain('<!DOCTYPE html>');
+  });
+
+  it('renders canonical hosted video and audio slot names', () => {
+    const video = renderPreview({
+      format_kind: 'video_hosted',
+      assets: { video_main: { url: 'https://cdn.example/video.mp4' } },
+    }, undefined);
+    const audio = renderPreview({
+      format_id: { agent_url: TEST_AGENT_URL, id: 'audio_standard_30s' },
+      assets: { audio_main: { url: 'https://cdn.example/audio.mp3' } },
+    }, findFormat('audio_standard_30s'));
+
+    expect(video).toContain('<video');
+    expect(video).toContain('https://cdn.example/video.mp4');
+    expect(audio).toContain('<audio');
+    expect(audio).toContain('https://cdn.example/audio.mp3');
+  });
+
+  it('blocks remote creative assets in the preview document CSP', () => {
+    const html = renderPreview({
+      format_kind: 'image',
+      assets: { image_main: { url: 'https://cdn.example/image.jpg' } },
+    }, undefined);
+
+    expect(html).toContain("img-src data: blob:");
+    expect(html).toContain("connect-src 'none'");
+    expect(html).not.toContain('img-src https:');
   });
 
   it('renders native format with canonical text assets', () => {
@@ -937,9 +1280,10 @@ describe('preview renderer', () => {
     expect(html).toContain('Built for long days outside.');
     expect(html).toContain('Paid partnership with Northstar Running');
     expect(html).toContain('Shop now');
+    expect(html).not.toContain('https://northstar.example/shoes');
   });
 
-  it('previews inline VAST media without firing tracking resources', () => {
+  it('does not dereference inline VAST media or tracking resources', () => {
     const html = renderPreview(
       {
         format_kind: 'video_vast',
@@ -953,8 +1297,9 @@ describe('preview renderer', () => {
       undefined,
     );
 
-    expect(html).toContain('<video controls');
-    expect(html).toContain('https://cdn.example/ad.mp4');
+    expect(html).not.toContain('<video controls');
+    expect(html).not.toContain('https://cdn.example/ad.mp4');
+    expect(html).toContain('Inline VAST media is not dereferenced');
     expect(html).not.toContain('tracker.example');
     expect(html).not.toContain('<script');
   });
@@ -1050,8 +1395,10 @@ describe('MCP tool responses include structuredContent', () => {
     expect(structured.creative.supported_formats).toHaveLength(canonicalFormatCount);
     expect(structured.creative.supported_formats[0]).toMatchObject({ operations: ['preview'] });
     expect(structured.creative.preview).toEqual({
-      supported_capability_ids: structured.creative.supported_formats.map((capability: any) => capability.capability_id),
-      fidelity: 'representative',
+      routes: structured.creative.supported_formats.map((capability: any) => ({
+        capability_id: capability.capability_id,
+        rendering_origin: 'agent_approximation',
+      })),
     });
     expect(structured).toMatchObject({
       adcp_version: '3.2',

@@ -2871,8 +2871,7 @@ async function runTests() {
           format: { format_kind: 'image', params: {} }
         }],
         preview: {
-          supported_capability_ids: ['image_preview'],
-          fidelity: 'representative'
+          routes: [{ capability_id: 'image_preview', rendering_origin: 'agent_approximation' }]
         }
       }
     })) {

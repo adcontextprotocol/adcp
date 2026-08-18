@@ -2,4 +2,4 @@
 "adcontextprotocol": minor
 ---
 
-Add creative preview fidelity discovery, community reference-renderer declarations, publisher-designated preview providers, and placement presentation references.
+Add per-route creative preview origin discovery, publisher-authorized preview delegation, isolated community reference-renderer declarations, and versioned placement-presentation composition.

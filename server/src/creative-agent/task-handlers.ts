@@ -17,8 +17,8 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { getPreviewRendererMetadata, renderPreview } from './preview-renderer.js';
-import { storePreview } from './preview-store.js';
+import { renderPreviewWithMetadata } from './preview-renderer.js';
+import { MAX_PREVIEW_ASSET_BYTES, storePreview, storePreviewAsset } from './preview-store.js';
 
 const require = createRequire(import.meta.url);
 const referenceFormatsData = require('./reference-formats.json');
@@ -143,6 +143,18 @@ export function buildCreativeCapabilities(formats: Format[]): Array<Record<strin
     if (canonical.asset_source) params.asset_source = canonical.asset_source;
     if (canonical.slots_override) params.slots = canonical.slots_override;
 
+    // The hosted reference agent proxies media through a bounded cache. Make
+    // that ceiling part of every affected advertised route so compatibility
+    // fails before returning a preview URL that would later fail with 413.
+    const effectiveSlots = (canonical.slots_override
+      ?? canonicalDefaultSlots(canonical.kind)) as CanonicalSlot[];
+    if (effectiveSlots.some(slot => ['image', 'video', 'audio'].includes(slot.asset_type ?? ''))) {
+      if (canonical.kind === 'image') params.max_file_size_kb ??= MAX_PREVIEW_ASSET_BYTES / 1000;
+      if (canonical.kind === 'video_hosted' || canonical.kind === 'audio_hosted') {
+        params.max_file_size_mb ??= MAX_PREVIEW_ASSET_BYTES / 1_000_000;
+      }
+    }
+
     return [{
       capability_id: `preview_${getFormatId(format).id}`,
       operations: ['preview'],
@@ -166,8 +178,10 @@ export function handleGetAdcpCapabilities(formats: Format[]): Record<string, unk
     creative: {
       supported_formats: supportedFormats,
       preview: {
-        supported_capability_ids: supportedFormats.map(capability => capability.capability_id),
-        fidelity: 'representative',
+        routes: supportedFormats.map(capability => ({
+          capability_id: capability.capability_id,
+          rendering_origin: 'agent_approximation',
+        })),
       },
     },
   };
@@ -283,35 +297,301 @@ class PreviewCreativeNotFoundError extends Error {
   readonly code = 'CREATIVE_NOT_FOUND';
 }
 
-function manifestDimensions(manifest: Record<string, unknown>): { width?: number; height?: number } {
-  const params = manifest.params;
-  if (params && typeof params === 'object' && !Array.isArray(params)) {
-    const width = (params as Record<string, unknown>).width;
-    const height = (params as Record<string, unknown>).height;
-    if (typeof width === 'number' || typeof height === 'number') {
-      return {
-        ...(typeof width === 'number' ? { width } : {}),
-        ...(typeof height === 'number' ? { height } : {}),
-      };
+class PreviewAssetCapacityError extends Error {
+  readonly code = 'PREVIEW_CAPACITY_EXCEEDED';
+}
+
+interface CanonicalSlot {
+  asset_group_id?: string;
+  asset_type?: string;
+  required?: boolean;
+  min?: number;
+  max?: number;
+}
+
+function manifestAssetRecords(
+  manifest: Record<string, unknown>,
+  assetIds?: Set<string>,
+): Array<Record<string, unknown>> {
+  const assets = manifest.assets;
+  if (!assets || typeof assets !== 'object' || Array.isArray(assets)) return [];
+  return Object.entries(assets as Record<string, unknown>).flatMap(([assetId, value]) => {
+    if (assetIds && !assetIds.has(assetId)) return [];
+    const candidates = Array.isArray(value) ? value : [value];
+    return candidates.filter((candidate): candidate is Record<string, unknown> =>
+      Boolean(candidate && typeof candidate === 'object' && !Array.isArray(candidate))
+    );
+  });
+}
+
+function uniqueFact(values: unknown[]): unknown {
+  const unique = [...new Map(values.map(value => [JSON.stringify(value), value])).values()];
+  return unique.length > 1 ? { conflicting_asset_values: unique } : unique[0];
+}
+
+function manifestConstraintValue(
+  manifest: Record<string, unknown>,
+  key: string,
+  relevantAssetIds: Set<string>,
+): unknown {
+  const assets = manifestAssetRecords(manifest, relevantAssetIds);
+  if (key === 'width' || key === 'height') {
+    const assetValues = assets.flatMap(asset => {
+      const value = asset[key];
+      if (typeof value !== 'number') return [];
+      const pixelRatio = asset.pixel_ratio;
+      return [typeof pixelRatio === 'number' && pixelRatio > 0 ? value / pixelRatio : value];
+    });
+    if (assetValues.length > 0) return uniqueFact(assetValues);
+    const formatId = manifest.format_id;
+    if (formatId && typeof formatId === 'object' && !Array.isArray(formatId)) {
+      const value = (formatId as Record<string, unknown>)[key];
+      if (typeof value === 'number') return value;
     }
   }
-  const assets = manifest.assets;
-  if (!assets || typeof assets !== 'object' || Array.isArray(assets)) return {};
-  for (const value of Object.values(assets as Record<string, unknown>)) {
-    const candidates = Array.isArray(value) ? value : [value];
-    for (const candidate of candidates) {
-      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue;
-      const width = (candidate as Record<string, unknown>).width;
-      const height = (candidate as Record<string, unknown>).height;
-      if (typeof width === 'number' || typeof height === 'number') {
-        return {
-          ...(typeof width === 'number' ? { width } : {}),
-          ...(typeof height === 'number' ? { height } : {}),
-        };
+  if (key === 'duration_ms_exact') {
+    const durations = assets.flatMap(asset => typeof asset.duration_ms === 'number' ? [asset.duration_ms] : []);
+    if (durations.length > 0) return uniqueFact(durations);
+  }
+  if (key === 'duration_ms_range') {
+    const durations = assets.flatMap(asset => typeof asset.duration_ms === 'number' ? [asset.duration_ms] : []);
+    if (durations.length > 0) {
+      const duration = uniqueFact(durations);
+      return typeof duration === 'number' ? [duration, duration] : duration;
+    }
+  }
+  if (key === 'containers') {
+    const containers = assets.flatMap(asset => {
+      if (typeof asset.container_format === 'string') return [asset.container_format];
+      if (typeof asset.format === 'string') return [asset.format];
+      if (typeof asset.mime_type === 'string' && asset.mime_type.includes('/')) {
+        return [asset.mime_type.slice(asset.mime_type.indexOf('/') + 1).replace('jpeg', 'jpg')];
+      }
+      return [];
+    });
+    if (containers.length > 0) return [...new Set(containers)];
+  }
+  if (key === 'audio_codecs') {
+    const codecByContainer: Record<string, string> = {
+      mp3: 'mp3',
+      wav: 'wav',
+      m4a: 'aac',
+      aac: 'aac',
+      ogg: 'opus',
+      opus: 'opus',
+      flac: 'flac',
+    };
+    const codecs = assets.flatMap(asset => {
+      if (typeof asset.codec === 'string') return [asset.codec];
+      const container = typeof asset.container_format === 'string'
+        ? asset.container_format
+        : typeof asset.format === 'string'
+          ? asset.format
+          : typeof asset.mime_type === 'string' && asset.mime_type.includes('/')
+            ? asset.mime_type.slice(asset.mime_type.indexOf('/') + 1)
+            : undefined;
+      return container && codecByContainer[container] ? [codecByContainer[container]] : [];
+    });
+    if (codecs.length > 0) return [...new Set(codecs)];
+  }
+  const params = manifest.params;
+  if (params && typeof params === 'object' && !Array.isArray(params)
+    && Object.prototype.hasOwnProperty.call(params, key)) {
+    return (params as Record<string, unknown>)[key];
+  }
+  return undefined;
+}
+
+function canonicalDefaultSlots(kind: string): unknown[] {
+  try {
+    const schema = require(`../../../static/schemas/source/formats/canonical/${kind}.json`) as {
+      properties?: { slots?: { default?: unknown[] } };
+    };
+    return Array.isArray(schema.properties?.slots?.default) ? schema.properties.slots.default : [];
+  } catch {
+    return [];
+  }
+}
+
+function requiredSlotIssue(value: unknown, slot: CanonicalSlot): string | undefined {
+  const slotId = slot.asset_group_id ?? 'unknown';
+  const isPool = typeof slot.max === 'number' && slot.max > 1;
+  if (isPool && !Array.isArray(value)) return `${slotId} must be an array`;
+  if (!isPool && Array.isArray(value)) return `${slotId} must be a single asset`;
+  const candidates = Array.isArray(value) ? value : [value];
+  const minimum = slot.min ?? 1;
+  if (candidates.length < minimum) return `${slotId} requires at least ${minimum} asset(s)`;
+  if (typeof slot.max === 'number' && candidates.length > slot.max) {
+    return `${slotId} allows at most ${slot.max} asset(s)`;
+  }
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+      return `${slotId} must contain typed asset objects`;
+    }
+    const asset = candidate as Record<string, unknown>;
+    if (asset.asset_type !== slot.asset_type) {
+      return `${slotId} requires asset_type ${slot.asset_type}`;
+    }
+    const stringValue = (field: string) => typeof asset[field] === 'string' && (asset[field] as string).trim().length > 0;
+    if (['image', 'video', 'audio', 'url', 'webhook', 'zip'].includes(slot.asset_type ?? '') && !stringValue('url')) {
+      return `${slotId} requires a usable url`;
+    }
+    if (['image', 'video', 'audio'].includes(slot.asset_type ?? '')) {
+      try {
+        const url = new URL(String(asset.url));
+        if (url.protocol !== 'https:' || url.username || url.password) {
+          return `${slotId} requires a credential-free HTTPS url`;
+        }
+      } catch {
+        return `${slotId} requires a valid credential-free HTTPS url`;
       }
     }
+    if (['text', 'markdown', 'html', 'css', 'javascript'].includes(slot.asset_type ?? '') && !stringValue('content')) {
+      return `${slotId} requires usable content`;
+    }
+    if (['vast', 'daast'].includes(slot.asset_type ?? '')) {
+      const hasPayload = asset.delivery_type === 'url' ? stringValue('url') : asset.delivery_type === 'inline' && stringValue('content');
+      if (!hasPayload) return `${slotId} requires a valid ${slot.asset_type} delivery payload`;
+    }
   }
-  return {};
+  return undefined;
+}
+
+function manifestDimensions(manifest: Record<string, unknown>): { width?: number; height?: number } {
+  const kind = typeof manifest.format_kind === 'string' ? manifest.format_kind : '';
+  const requiredIds = new Set((canonicalDefaultSlots(kind) as CanonicalSlot[])
+    .filter(slot => slot.required && slot.asset_group_id)
+    .map(slot => slot.asset_group_id!));
+  const width = manifestConstraintValue(manifest, 'width', requiredIds);
+  const height = manifestConstraintValue(manifest, 'height', requiredIds);
+  return {
+    ...(typeof width === 'number' ? { width } : {}),
+    ...(typeof height === 'number' ? { height } : {}),
+  };
+}
+
+function rangeContains(declared: unknown[], received: unknown[]): boolean {
+  const [declaredMin, declaredMax] = declared;
+  const [receivedMin, receivedMax] = received;
+  const lowerBounded = declaredMin === null
+    || (typeof declaredMin === 'number' && typeof receivedMin === 'number' && receivedMin >= declaredMin);
+  const upperBounded = declaredMax === null
+    || (typeof declaredMax === 'number' && typeof receivedMax === 'number' && receivedMax <= declaredMax);
+  return lowerBounded && upperBounded;
+}
+
+function constraintSatisfied(declared: unknown, received: unknown, key: string): boolean {
+  if (Array.isArray(declared)) {
+    if (!Array.isArray(received)) return declared.some(value => JSON.stringify(value) === JSON.stringify(received));
+    if (key.endsWith('_range') && declared.length === 2 && received.length === 2) {
+      return rangeContains(declared, received);
+    }
+    return received.every(value => declared.some(allowed => JSON.stringify(allowed) === JSON.stringify(value)));
+  }
+  return JSON.stringify(declared) === JSON.stringify(received);
+}
+
+function manifestCompatibilityIssue(
+  manifest: Record<string, unknown>,
+  format: Format,
+): string | undefined {
+  const declared = buildCreativeCapabilities([format])[0]?.format as { params?: Record<string, unknown> } | undefined;
+  const declaredParams = declared?.params ?? {};
+  const assets = manifest.assets && typeof manifest.assets === 'object' && !Array.isArray(manifest.assets)
+    ? manifest.assets as Record<string, unknown>
+    : {};
+
+  const kind = (format.canonical as { kind?: string } | undefined)?.kind ?? '';
+  const effectiveSlots = (Array.isArray(declaredParams.slots)
+    ? declaredParams.slots
+    : canonicalDefaultSlots(kind)) as CanonicalSlot[];
+  const requiredSlots = effectiveSlots.filter(slot => slot?.required === true && slot.asset_group_id);
+  const missingSlots = requiredSlots
+    .map(slot => slot.asset_group_id!)
+    .filter(assetId => !Object.prototype.hasOwnProperty.call(assets, assetId));
+  if (missingSlots.length > 0) return `missing required assets: ${missingSlots.join(', ')}`;
+  for (const slot of requiredSlots) {
+    const issue = requiredSlotIssue(assets[slot.asset_group_id!], slot);
+    if (issue) return `invalid required asset: ${issue}`;
+  }
+  const requiredAssetIds = new Set(requiredSlots.map(slot => slot.asset_group_id!));
+
+  for (const [key, value] of Object.entries(declaredParams)) {
+    if (key === 'asset_source') continue;
+    if (key === 'slots' && Array.isArray(value)) {
+      continue;
+    }
+    if (key === 'max_file_size_mb' || key === 'max_file_size_kb') {
+      const divisor = key.endsWith('_mb') ? 1_000_000 : 1_000;
+      const limit = typeof value === 'number' ? value * divisor : undefined;
+      const mediaAssetIds = new Set(effectiveSlots
+        .filter(slot => ['image', 'video', 'audio'].includes(slot.asset_type ?? ''))
+        .flatMap(slot => slot.asset_group_id ? [slot.asset_group_id] : []));
+      const mediaAssets = manifestAssetRecords(manifest, mediaAssetIds);
+      if (mediaAssets.some(asset => typeof asset.file_size_bytes !== 'number')) {
+        return `missing required file_size_bytes for params.${key}`;
+      }
+      const oversized = mediaAssets.some(asset =>
+        typeof asset.file_size_bytes === 'number' && limit !== undefined && asset.file_size_bytes > limit
+      );
+      if (oversized) return `assets exceed params.${key}=${JSON.stringify(value)}`;
+      continue;
+    }
+    const received = manifestConstraintValue(manifest, key, requiredAssetIds);
+    if (received === undefined) return `missing required params.${key}`;
+    if (!constraintSatisfied(value, received, key)) {
+      return `requires params.${key} compatible with ${JSON.stringify(value)}, not ${JSON.stringify(received)}`;
+    }
+  }
+  return undefined;
+}
+
+function proxyManifestAssets(
+  manifest: Record<string, unknown>,
+  baseUrl: string,
+  format: Format | undefined,
+  principalId: string,
+): Record<string, unknown> {
+  const assets = manifest.assets;
+  if (!assets || typeof assets !== 'object' || Array.isArray(assets)) return manifest;
+  const canonical = format?.canonical as { kind?: string; slots_override?: CanonicalSlot[] } | undefined;
+  const canonicalSlots = canonical?.slots_override ?? (canonical?.kind
+    ? canonicalDefaultSlots(canonical.kind) as CanonicalSlot[]
+    : []);
+  const legacySlots = Array.isArray(format?.assets)
+    ? format.assets as Array<{ asset_id?: string; asset_type?: string }>
+    : [];
+  const proxyableIds = new Set([
+    ...canonicalSlots
+      .filter(slot => ['image', 'video', 'audio'].includes(slot.asset_type ?? ''))
+      .flatMap(slot => slot.asset_group_id ? [slot.asset_group_id] : []),
+    ...legacySlots
+      .filter(slot => ['image', 'video', 'audio'].includes(slot.asset_type ?? ''))
+      .flatMap(slot => slot.asset_id ? [slot.asset_id] : []),
+  ]);
+  const scopeId = randomUUID();
+  const proxiedAssets = Object.fromEntries(Object.entries(assets as Record<string, unknown>).map(([key, value]) => {
+    const proxyOne = (candidate: unknown): unknown => {
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return candidate;
+      const asset = candidate as Record<string, unknown>;
+      const { proxy_url: _untrustedProxyUrl, ...cleanAsset } = asset;
+      if (!proxyableIds.has(key)) return cleanAsset;
+      if (typeof asset.url !== 'string') return cleanAsset;
+      try {
+        const url = new URL(asset.url);
+        if (url.protocol !== 'https:' || url.username || url.password) return cleanAsset;
+      } catch {
+        return cleanAsset;
+      }
+      const token = randomUUID();
+      if (!storePreviewAsset(token, asset.url, scopeId, principalId)) {
+        throw new PreviewAssetCapacityError('Preview media proxy capacity is temporarily unavailable. Retry later.');
+      }
+      return { ...cleanAsset, proxy_url: `${baseUrl}/preview-assets/${token}` };
+    };
+    return [key, Array.isArray(value) ? value.map(proxyOne) : proxyOne(value)];
+  }));
+  return { ...manifest, assets: proxiedAssets };
 }
 
 function resolveCanonicalPreviewFormat(req: PreviewRequest, formats: Format[]): Format | undefined {
@@ -331,12 +611,27 @@ function resolveCanonicalPreviewFormat(req: PreviewRequest, formats: Format[]): 
         `Preview capability_id "${selector}" renders format_kind "${selectedKind}", not "${req.creative_manifest.format_kind}".`,
       );
     }
+    assertManifestCompatibleWithFormat(req.creative_manifest, selected, `Preview capability_id "${selector}"`);
     return selected;
   }
 
   const manifest = req.creative_manifest;
   const formatId = req.format_id || manifest.format_id as { id?: string } | undefined;
-  if (formatId?.id) return formats.find(format => getFormatId(format).id === formatId.id);
+  if (formatId?.id) {
+    const selected = formats.find(format => getFormatId(format).id === formatId.id);
+    if (selected) {
+      const selectedKind = (selected.canonical as { kind?: string } | undefined)?.kind;
+      if (manifest.format_kind && selectedKind && manifest.format_kind !== selectedKind) {
+        throw new PreviewFormatNotSupportedError(
+          `Format "${formatId.id}" renders format_kind "${selectedKind}", not "${manifest.format_kind}".`,
+        );
+      }
+      if (manifest.format_kind) {
+        assertManifestCompatibleWithFormat(manifest, selected, `Format "${formatId.id}"`);
+      }
+    }
+    return selected;
+  }
   if (!manifest.format_kind) return undefined;
 
   const candidates = formats.filter(format =>
@@ -347,7 +642,10 @@ function resolveCanonicalPreviewFormat(req: PreviewRequest, formats: Format[]): 
       `No advertised preview capability matches canonical format_kind "${manifest.format_kind}".`,
     );
   }
-  if (candidates.length === 1) return candidates[0];
+  if (candidates.length === 1) {
+    assertManifestCompatibleWithFormat(manifest, candidates[0], `Canonical format_kind "${manifest.format_kind}"`);
+    return candidates[0];
+  }
 
   const dimensions = manifestDimensions(manifest);
   if (dimensions.width !== undefined || dimensions.height !== undefined) {
@@ -357,17 +655,32 @@ function resolveCanonicalPreviewFormat(req: PreviewRequest, formats: Format[]): 
       return (dimensions.width === undefined || params.width === dimensions.width)
         && (dimensions.height === undefined || params.height === dimensions.height);
     });
-    if (exact.length === 1) return exact[0];
+    if (exact.length === 1) {
+      assertManifestCompatibleWithFormat(manifest, exact[0], `Canonical format_kind "${manifest.format_kind}"`);
+      return exact[0];
+    }
   }
 
   const generic = candidates.filter(format => {
     const declared = buildCreativeCapabilities([format])[0]?.format as { params?: Record<string, unknown> } | undefined;
     return declared?.params?.width === undefined && declared?.params?.height === undefined;
   });
-  if (generic.length === 1) return generic[0];
+  if (generic.length === 1) {
+    assertManifestCompatibleWithFormat(manifest, generic[0], `Canonical format_kind "${manifest.format_kind}"`);
+    return generic[0];
+  }
   throw new PreviewFormatNotSupportedError(
     `Canonical format_kind "${manifest.format_kind}" matches multiple preview capabilities; provide target_capability_id.`,
   );
+}
+
+function assertManifestCompatibleWithFormat(
+  manifest: Record<string, unknown>,
+  format: Format,
+  label: string,
+): void {
+  const issue = manifestCompatibilityIssue(manifest, format);
+  if (issue) throw new PreviewFormatNotSupportedError(`${label} is incompatible: ${issue}.`);
 }
 
 function withBatchDefaults(args: Record<string, unknown>, req: PreviewRequest): PreviewRequest {
@@ -398,7 +711,9 @@ function withBatchDefaults(args: Record<string, unknown>, req: PreviewRequest): 
 
 function previewResolutionError(err: unknown, fallback: string): { code: string; message: string } {
   return {
-    code: err instanceof PreviewFormatNotSupportedError || err instanceof PreviewCreativeNotFoundError
+    code: err instanceof PreviewFormatNotSupportedError
+      || err instanceof PreviewCreativeNotFoundError
+      || err instanceof PreviewAssetCapacityError
       ? err.code
       : 'render_error',
     message: err instanceof Error ? err.message : fallback,
@@ -409,17 +724,28 @@ function renderSinglePreview(
   req: PreviewRequest,
   formats: Format[],
   baseUrl: string,
+  principalId: string,
 ): { previews: unknown[]; quality_used: 'draft' | 'production'; expires_at: string } {
   if (!req.creative_manifest) {
     throw new PreviewCreativeNotFoundError(`Creative "${req.creative_id ?? 'unknown'}" was not found in this agent's creative library.`);
   }
   const manifest = req.creative_manifest;
-  const formatId = req.format_id || manifest.format_id as PreviewRequest['format_id'];
   const format = resolveCanonicalPreviewFormat(req, formats);
+  const requestedFormatId = req.format_id ?? manifest.format_id as PreviewRequest['format_id'];
 
   // The renderer still consumes the catalog's internal template key. Keep that
   // projection private; the caller-facing manifest remains canonical.
-  const renderManifest = { ...manifest, ...(format && { format_id: getFormatId(format) }) };
+  const renderManifest = proxyManifestAssets({
+    ...manifest,
+    ...(format && {
+      format_id: {
+        ...getFormatId(format),
+        ...(requestedFormatId?.width !== undefined && { width: requestedFormatId.width }),
+        ...(requestedFormatId?.height !== undefined && { height: requestedFormatId.height }),
+        ...(requestedFormatId?.pixel_ratio !== undefined && { pixel_ratio: requestedFormatId.pixel_ratio }),
+      },
+    }),
+  }, baseUrl, format, principalId);
 
   const inputs = req.inputs?.length
     ? req.inputs
@@ -430,27 +756,15 @@ function renderSinglePreview(
 
   const previews = inputs.map(input => {
     const previewId = `prev_${randomUUID().slice(0, 12)}`;
-    const html = renderPreview(renderManifest, format);
+    const rendered = renderPreviewWithMetadata(renderManifest, format);
+    const html = rendered.html;
 
     const render: Record<string, unknown> = {
       render_id: `r_${randomUUID().slice(0, 8)}`,
       role: 'primary',
-      renderer: getPreviewRendererMetadata(renderManifest, format),
+      renderer: rendered.renderer,
+      dimensions: rendered.dimensions,
     };
-
-    // Parameterized legacy ids carry logical render dimensions directly. Pixel
-    // ratio changes intrinsic asset pixels, never the preview box size.
-    if (formatId?.width && formatId?.height) {
-      render.dimensions = { width: formatId.width, height: formatId.height };
-    } else if (format) {
-      const renders = format.renders as Array<{ dimensions?: { width?: number; height?: number } }> | undefined;
-      if (renders?.[0]?.dimensions?.width && renders?.[0]?.dimensions?.height) {
-        render.dimensions = {
-          width: renders[0].dimensions.width,
-          height: renders[0].dimensions.height,
-        };
-      }
-    }
 
     if (outputFormat === 'html' || outputFormat === 'both') {
       render.output_format = outputFormat === 'both' ? 'both' : 'html';
@@ -477,7 +791,12 @@ function renderSinglePreview(
   };
 }
 
-export function handlePreviewCreative(args: Record<string, unknown>, formats: Format[], baseUrl: string): Record<string, unknown> {
+export function handlePreviewCreative(
+  args: Record<string, unknown>,
+  formats: Format[],
+  baseUrl: string,
+  principalId = 'in-process',
+): Record<string, unknown> {
   const requestType = args.request_type as string;
 
   if (args.creative_manifest && args.creative_id) {
@@ -512,7 +831,7 @@ export function handlePreviewCreative(args: Record<string, unknown>, formats: Fo
         };
       }
       try {
-        const result = renderSinglePreview(withBatchDefaults(args, req), formats, baseUrl);
+        const result = renderSinglePreview(withBatchDefaults(args, req), formats, baseUrl, principalId);
         const { quality_used, ...response } = result;
         return {
           success: true,
@@ -547,7 +866,7 @@ export function handlePreviewCreative(args: Record<string, unknown>, formats: Fo
   }
 
   try {
-    const result = renderSinglePreview(args as unknown as PreviewRequest, formats, baseUrl);
+    const result = renderSinglePreview(args as unknown as PreviewRequest, formats, baseUrl, principalId);
     return { response_type: 'single', ...result };
   } catch (err) {
     return {
@@ -718,13 +1037,13 @@ type ToolHandler = (args: ToolArgs) => Record<string, unknown>;
 
 // ── Server factory ──────────────────────────────────────────────────
 
-export function createCreativeAgentServer(agentBaseUrl: string) {
+export function createCreativeAgentServer(agentBaseUrl: string, principalId = 'in-process') {
   const formats = buildReferenceFormats(agentBaseUrl);
 
   const handlers: Record<string, ToolHandler> = {
     get_adcp_capabilities: () => handleGetAdcpCapabilities(formats),
     list_creative_formats: (args) => handleListCreativeFormats(args, formats),
-    preview_creative: (args) => handlePreviewCreative(args, formats, agentBaseUrl),
+    preview_creative: (args) => handlePreviewCreative(args, formats, agentBaseUrl, principalId),
   };
 
   const server = new Server(
