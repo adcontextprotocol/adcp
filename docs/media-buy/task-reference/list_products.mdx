@@ -2,7 +2,7 @@
 title: list_products
 description: "Read seller product offers with structured discovery criteria."
 "og:title": "AdCP list_products Task"
-testable: false
+testable: true
 ---
 
 `list_products` is the side-effect-free entry point to the compact product lifecycle. Each invocation completes synchronously, while account-level wholesale feed webhooks keep long-lived buyer mirrors current without polling. It returns products only—never proposals. Buyers can purchase listed products through [`buy_products`](/docs/media-buy/task-reference/buy_products) or pass returned `product_id` values to [`request_proposals`](/docs/media-buy/task-reference/request_proposals) for seller planning.

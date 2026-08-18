@@ -1,0 +1,255 @@
+id: media_buy_seller/compact_product_lifecycle
+version: "1.0.0"
+title: "Seller completes the compact product lifecycle"
+category: media_buy_seller
+summary: "Verifies product discovery, proposal creation, finalization, and acceptance through the AdCP 3.2 compact lifecycle."
+track: media_buy
+introduced_in: "3.2"
+
+requires:
+  - controller
+
+requires_capability:
+  path: compliance_testing.scenarios
+  contains: compact_product_lifecycle_probe
+
+required_tools:
+  - list_products
+  - request_proposals
+  - refine_proposals
+  - accept_proposal
+  - comply_test_controller
+
+narrative: |
+  The buyer discovers a published offer, asks the seller to plan against that
+  exact product, finalizes the returned draft into an inventory-backed
+  committed proposal, and accepts the committed snapshot. Every boundary uses
+  the seller-issued identifiers captured from the previous response. The
+  advertised compact_product_lifecycle_probe controller scenario makes each
+  positive response arm deterministic for the seeded product.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - generates_proposals
+  examples:
+    - "Publisher with a compact product catalog and proposal workflow"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The seller advertises compact_product_lifecycle_probe and exposes the complete compact proposal lifecycle."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "compact_lifecycle_video"
+      delivery_type: "non_guaranteed"
+      channels: ["olv"]
+      format_options:
+        - format_option_id: "compact_video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+  pricing_options:
+    - product_id: "compact_lifecycle_video"
+      pricing_option_id: "compact_video_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 18
+
+phases:
+  - id: prepare_lifecycle
+    title: "Prepare deterministic compact lifecycle behavior"
+    steps:
+      - id: prepare_compact_product
+        title: "Prepare the seeded product"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "compact_product_lifecycle_probe"
+          params:
+            operation: "prepare"
+            product_id: "compact_lifecycle_video"
+        validations:
+          - check: response_schema
+            description: "Controller response matches the canonical schema"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller prepares deterministic behavior"
+          - check: field_value
+            path: "simulated.prepared"
+            value: true
+            description: "The product is prepared for lifecycle testing"
+          - check: field_value
+            path: "simulated.product_id"
+            value: "compact_lifecycle_video"
+            description: "The controller prepared the seeded product"
+
+  - id: discover_product
+    title: "Discover a published product"
+    depends_on: [prepare_lifecycle]
+    steps:
+      - id: list_seeded_product
+        title: "List the seeded video offer"
+        task: list_products
+        schema_ref: "media-buy/list-products-request.json"
+        response_schema_ref: "media-buy/list-products-response.json"
+        doc_ref: "/media-buy/task-reference/list_products"
+        stateful: false
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#compact_product_lifecycle_list"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          criteria:
+            product_ids: ["compact_lifecycle_video"]
+          fields: ["product_id", "name", "pricing_options"]
+          max_results: 1
+        context_outputs:
+          - name: listed_product_id
+            path: "products[0].product_id"
+        validations:
+          - check: response_schema
+            description: "Response matches list-products-response.json"
+          - check: field_value
+            path: "outcome"
+            value: "listed"
+            description: "The response contains a product page"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "compact_lifecycle_video"
+            description: "The requested published product is discoverable"
+
+  - id: request_draft
+    title: "Request a proposal for the discovered product"
+    depends_on: [discover_product]
+    steps:
+      - id: request_product_proposal
+        title: "Create a draft proposal"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#compact_product_lifecycle_request"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          brief: "Plan an online-video campaign using the selected published offer."
+          criteria:
+            product_ids: ["$context.listed_product_id"]
+        context_outputs:
+          - name: draft_proposal_id
+            path: "proposals[0].proposal_id"
+        validations:
+          - check: response_schema
+            description: "Response matches request-proposals-response.json"
+          - check: field_value
+            path: "outcome"
+            value: "proposed"
+            description: "The seller returns at least one proposal"
+          - check: field_value
+            path: "proposals[0].proposal_status"
+            value: "draft"
+            description: "Proposal requests produce immutable drafts"
+          - check: field_present
+            path: "proposals[0].proposal_id"
+            description: "The draft has a seller-issued proposal ID"
+          - check: field_equals_context
+            path: "proposals[0].commercial_terms.purchases[0].product_id"
+            context_key: "listed_product_id"
+            description: "The proposal uses the exact discovered product"
+
+  - id: finalize_draft
+    title: "Finalize the draft into an inventory hold"
+    depends_on: [request_draft]
+    steps:
+      - id: finalize_product_proposal
+        title: "Create a committed proposal"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#compact_product_lifecycle_finalize"
+          refinements:
+            - proposal_id: "$context.draft_proposal_id"
+              action: "finalize"
+        context_outputs:
+          - name: committed_proposal_id
+            path: "results[0].proposal.proposal_id"
+          - name: committed_terms_digest
+            path: "results[0].proposal.terms_digest"
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "finalized"
+            description: "The draft is finalized"
+          - check: field_value
+            path: "results[0].proposal.proposal_status"
+            value: "committed"
+            description: "Finalization creates a committed snapshot"
+          - check: field_present
+            path: "results[0].proposal.expires_at"
+            description: "The committed proposal exposes its hold deadline"
+          - check: field_equals_context
+            path: "results[0].proposal.parent_proposal_id"
+            context_key: "draft_proposal_id"
+            description: "The committed snapshot preserves proposal lineage"
+
+  - id: accept_commitment
+    title: "Accept the committed proposal"
+    depends_on: [finalize_draft]
+    steps:
+      - id: accept_product_proposal
+        title: "Create the MediaBuy"
+        task: accept_proposal
+        schema_ref: "media-buy/accept-proposal-request.json"
+        response_schema_ref: "media-buy/accept-proposal-response.json"
+        doc_ref: "/media-buy/task-reference/accept_proposal"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#compact_product_lifecycle_accept"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          proposal_id: "$context.committed_proposal_id"
+          proposal_terms_digest: "$context.committed_terms_digest"
+        validations:
+          - check: response_schema
+            description: "Response matches accept-proposal-response.json"
+          - check: field_value
+            path: "status"
+            value: "completed"
+            description: "Acceptance completes synchronously for the seeded fixture"
+          - check: field_present
+            path: "media_buy_id"
+            description: "The accepted proposal creates a MediaBuy"
+          - check: field_equals_context
+            path: "accepted_proposal.proposal_id"
+            context_key: "committed_proposal_id"
+            description: "The MediaBuy binds the exact committed snapshot"
