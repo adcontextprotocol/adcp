@@ -2,7 +2,7 @@
 title: request_proposals
 description: "Request one or more seller-authored draft media plans."
 "og:title": "AdCP request_proposals Task"
-testable: false
+testable: true
 ---
 
 `request_proposals` creates one or more immutable draft media-plan proposal snapshots from a brief. It can begin a consultative workflow directly or use `product_ids` returned by [`list_products`](/docs/media-buy/task-reference/list_products). Success always contains at least one proposal; returning products without a proposal does not satisfy this task.
