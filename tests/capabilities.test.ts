@@ -11,9 +11,13 @@ describe('sanitizeCreativeCapabilities', () => {
     format: { format_kind: 'image', params: { width: 300, height: 250 } },
     operations: ['build', 'preview'],
   };
+  const preview = {
+    supported_capability_ids: ['image_300x250'],
+    fidelity: 'representative',
+  } as const;
 
   it('validates complete canonical declarations', async () => {
-    await expect(sanitizeCreativeCapabilities({ supported_formats: [validEntry] }))
+    await expect(sanitizeCreativeCapabilities({ supported_formats: [validEntry], preview }))
       .resolves.toMatchObject({
         supported_formats: [validEntry],
         can_generate: true,
@@ -26,6 +30,7 @@ describe('sanitizeCreativeCapabilities', () => {
     await expect(sanitizeCreativeCapabilities({
       supports_generation: true,
       supported_formats: [{ ...validEntry, operations: ['preview'] }],
+      preview,
     })).resolves.toMatchObject({
       can_generate: true,
       can_preview: true,
@@ -56,6 +61,18 @@ describe('sanitizeCreativeCapabilities', () => {
     await expect(sanitizeCreativeCapabilities({
       supported_formats: [{ ...validEntry, operations: ['build', 'build'] }],
     })).rejects.toThrow('unique non-empty');
+  });
+
+  it('rejects preview routes without fidelity discovery', async () => {
+    await expect(sanitizeCreativeCapabilities({ supported_formats: [validEntry] }))
+      .rejects.toThrow('creative.preview');
+  });
+
+  it('rejects preview declarations that do not match the operation catalog', async () => {
+    await expect(sanitizeCreativeCapabilities({
+      supported_formats: [validEntry],
+      preview: { supported_capability_ids: ['another_preview'], fidelity: 'representative' },
+    })).rejects.toThrow('must equal advertised preview capability IDs');
   });
 });
 

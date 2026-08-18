@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reference-renderer.json",
+  "title": "Reference Renderer",
+  "description": "Pinned npm package export for a community-maintained reference presentation of a canonical format. The registry references the package but never serves or executes it. A reference renderer is non-authoritative: it demonstrates one interoperable presentation of the format contract and is not evidence of seller, publisher, or serving-platform output. Consumers MUST verify the package version and Subresource Integrity value, require npm provenance for the published package, and execute the renderer as untrusted code in a sandbox without ambient credentials or network access.",
+  "type": "object",
+  "required": ["runtime", "package", "version", "export", "integrity"],
+  "properties": {
+    "runtime": {
+      "type": "string",
+      "const": "browser-esm",
+      "description": "Execution contract for the referenced package. browser-esm means a browser-safe ECMAScript module that accepts canonical manifest data and returns an inert presentation without Node.js APIs, ambient credentials, delivery tracking, or undeclared network access. Non-JavaScript clients use a hosted preview_creative provider or display the manifest."
+    },
+    "package": {
+      "type": "string",
+      "pattern": "^(?:@[a-z0-9][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*$",
+      "description": "npm package name, scoped or unscoped. The package is resolved from the npm registry; the AdCP registry does not proxy its executable contents."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Exact semantic version. Ranges and tags such as latest are forbidden so the registry entry is reproducible. The package major MUST track the community format entry's major revision."
+    },
+    "export": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Named package export that implements the renderer contract for this format entry."
+    },
+    "integrity": {
+      "type": "string",
+      "pattern": "^(?:sha256-[A-Za-z0-9+/]{43}=|sha384-[A-Za-z0-9+/]{64}|sha512-[A-Za-z0-9+/]{86}==)$",
+      "description": "Subresource Integrity value for the exact npm package tarball. Consumers MUST compare this value before loading code and fail closed on mismatch."
+    }
+  },
+  "additionalProperties": false
+}

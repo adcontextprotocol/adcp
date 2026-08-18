@@ -211,6 +211,17 @@ export interface PlacementTagDefinition {
   description: string;
 }
 
+export interface PreviewProviderRoute {
+  format_option_id: string;
+  capability_id: string;
+}
+
+export interface PreviewProvider {
+  agent_url: string;
+  authority: "publisher_designated";
+  routes: PreviewProviderRoute[];
+}
+
 export interface PlacementDefinition {
   placement_id: string;
   name?: string;
@@ -222,6 +233,8 @@ export interface PlacementDefinition {
   collection_ids?: string[];
   channels?: string[];
   format_options?: Array<Record<string, unknown>>;
+  presentation_ref?: { uri: string; digest: string };
+  preview_provider?: PreviewProvider;
 }
 
 export interface AuthorizedAgentEntry {

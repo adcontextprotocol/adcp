@@ -578,6 +578,10 @@
           "$ref": "/schemas/core/platform-extension-ref.json",
           "description": "Reference to a platform extension definition (URI + content digest)."
         },
+        "reference-renderer": {
+          "$ref": "/schemas/core/reference-renderer.json",
+          "description": "Pinned npm package export for a non-authoritative community reference presentation."
+        },
         "store-item": {
           "$ref": "/schemas/core/store-item.json",
           "description": "A physical store or location with coordinates, address, and catchment areas for proximity targeting"
@@ -653,6 +657,18 @@
         "placement-definition": {
           "$ref": "/schemas/core/placement-definition.json",
           "description": "Canonical placement definition published in a publisher's adagents.json"
+        },
+        "presentation-ref": {
+          "$ref": "/schemas/core/presentation-ref.json",
+          "description": "Immutable publisher-namespaced reference to placement presentation metadata."
+        },
+        "preview-provider": {
+          "$ref": "/schemas/core/preview-provider.json",
+          "description": "Publisher-scoped delegation to an AdCP creative preview provider."
+        },
+        "preview-renderer-metadata": {
+          "$ref": "/schemas/core/preview-renderer-metadata.json",
+          "description": "Audit identity and safety metadata for a preview renderer implementation."
         },
         "mcp-webhook-payload": {
           "$ref": "/schemas/core/mcp-webhook-payload.json",

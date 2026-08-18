@@ -1555,6 +1555,7 @@ export class AdAgentsManager {
           });
         }
 
+        const placementFormatOptionIds = new Set<string>();
         if (placement.format_options && Array.isArray(placement.format_options)) {
           placement.format_options.forEach((formatOption: any, formatIndex: number) => {
             if (formatOption?.capability_id !== undefined) {
@@ -1576,6 +1577,32 @@ export class AdAgentsManager {
                 message: `Placement references unknown format_option_id "${formatOption.format_option_id}"`,
                 severity: 'error'
               });
+            }
+            if (typeof formatOption?.format_option_id === 'string') {
+              placementFormatOptionIds.add(formatOption.format_option_id);
+            }
+          });
+
+        }
+
+        const previewProvider = placement.preview_provider;
+        if (previewProvider?.routes && Array.isArray(previewProvider.routes)) {
+          const delegatedFormatIds = new Set<string>();
+          previewProvider.routes.forEach((route: any, routeIndex: number) => {
+            if (typeof route?.format_option_id !== 'string' || !placementFormatOptionIds.has(route.format_option_id)) {
+              result.errors.push({
+                field: `placements[${index}].preview_provider.routes[${routeIndex}].format_option_id`,
+                message: `Preview provider route references format_option_id "${String(route?.format_option_id ?? '')}" that is not listed on this placement`,
+                severity: 'error'
+              });
+            } else if (delegatedFormatIds.has(route.format_option_id)) {
+              result.errors.push({
+                field: `placements[${index}].preview_provider.routes[${routeIndex}].format_option_id`,
+                message: `Duplicate preview provider route for format_option_id "${route.format_option_id}"`,
+                severity: 'error'
+              });
+            } else {
+              delegatedFormatIds.add(route.format_option_id);
             }
           });
         }

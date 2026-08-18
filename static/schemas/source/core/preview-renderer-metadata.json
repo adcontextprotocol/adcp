@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/preview-renderer-metadata.json",
+  "title": "Preview Renderer Metadata",
+  "description": "Audit metadata identifying the implementation that produced a preview render. This metadata records implementation and safety behavior; it does not independently grant authority. Consumers determine authority from creative.preview fidelity and any applicable publisher preview_provider delegation.",
+  "type": "object",
+  "required": ["renderer_id", "version", "export", "fidelity", "tracking_suppressed"],
+  "properties": {
+    "renderer_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable implementation identifier."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Exact semantic version of the renderer implementation."
+    },
+    "export": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Renderer export or entry-point name used for this render."
+    },
+    "fidelity": {
+      "type": "string",
+      "enum": ["authoritative", "representative"],
+      "description": "Fidelity asserted by the renderer endpoint. Publisher delegation may make representative output publisher-authoritative only within the delegated placement scope."
+    },
+    "tracking_suppressed": {
+      "type": "boolean",
+      "description": "True when the preview renderer suppresses impression, click, billing, conversion, and viewability side effects. Reference renderers SHOULD always emit true."
+    }
+  },
+  "additionalProperties": true
+}

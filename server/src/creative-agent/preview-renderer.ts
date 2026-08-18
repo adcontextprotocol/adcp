@@ -10,23 +10,39 @@
  */
 
 /** An individual asset value from a creative manifest. */
-interface AssetValue {
+export interface AssetValue {
   url?: string;
   content?: string;
   [key: string]: unknown;
 }
 
 /** Assets map: asset_id -> asset value. */
-type AssetsMap = Record<string, AssetValue>;
+export type AssetsMap = Record<string, AssetValue>;
 
-interface ManifestInput {
+export interface ManifestInput {
   format_id?: { agent_url?: string; id?: string; width?: number; height?: number; pixel_ratio?: number };
   name?: string;
   assets?: AssetsMap;
   [key: string]: unknown;
 }
 
-interface RenderDimensions {
+export interface PreviewRendererMetadata {
+  renderer_id: string;
+  version: string;
+  export: string;
+  fidelity: 'representative';
+  tracking_suppressed: true;
+}
+
+export const REFERENCE_RENDERER_VERSION = '1.0.0-beta.0';
+
+export const REFERENCE_RENDERERS: Record<string, Omit<PreviewRendererMetadata, 'fidelity' | 'tracking_suppressed'>> = {
+  image: { renderer_id: 'adcp-reference-image', version: REFERENCE_RENDERER_VERSION, export: 'renderImage' },
+  native_in_feed: { renderer_id: 'adcp-reference-native-in-feed', version: REFERENCE_RENDERER_VERSION, export: 'renderNativeInFeed' },
+  video_vast: { renderer_id: 'adcp-reference-vast', version: REFERENCE_RENDERER_VERSION, export: 'renderVast' },
+};
+
+export interface RenderDimensions {
   width: number;
   height: number;
 }
@@ -39,6 +55,14 @@ function getAssetValue(assets: AssetsMap, assetId: string): string {
   const asset = assets[assetId];
   if (!asset) return '';
   return asset.url || asset.content || '';
+}
+
+function firstAssetValue(assets: AssetsMap, ...assetIds: string[]): string {
+  for (const assetId of assetIds) {
+    const value = getAssetValue(assets, assetId);
+    if (value) return value;
+  }
+  return '';
 }
 
 function escapeHtml(str: string): string {
@@ -59,12 +83,15 @@ function wrapInPage(body: string, dims: RenderDimensions, title: string, respons
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https:; media-src https:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <title>${escapeHtml(title)}</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
   .preview { ${previewStyle} overflow: hidden; position: relative; background: #fff; border: 1px solid #e0e0e0; }
   .preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .preview video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
   .placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; text-align: center; padding: 16px; }
   .placeholder .icon { font-size: 48px; margin-bottom: 12px; }
   .placeholder .label { font-size: 14px; font-weight: 600; }
@@ -185,6 +212,15 @@ function inferDimensions(manifest: ManifestInput, format: Record<string, unknown
     return { width: fid.width, height: fid.height };
   }
 
+  const params = manifest.params;
+  if (params && typeof params === 'object' && !Array.isArray(params)) {
+    const width = (params as Record<string, unknown>).width;
+    const height = (params as Record<string, unknown>).height;
+    if (typeof width === 'number' && typeof height === 'number' && width > 0 && height > 0) {
+      return { width, height };
+    }
+  }
+
   // Check format renders
   if (format) {
     const renders = format.renders as Array<{ dimensions?: { width?: number; height?: number } }> | undefined;
@@ -205,17 +241,16 @@ function hasImageAsset(assets: AssetsMap): boolean {
   return Object.values(assets).some(a => a.url && !a.content);
 }
 
-function renderDisplay(manifest: ManifestInput, dims: RenderDimensions): string {
+export function renderImage(manifest: ManifestInput, dims: RenderDimensions): string {
   const assets = manifest.assets || {};
-  // Look for common display asset IDs
-  const imageUrl = getAssetValue(assets, 'banner_image') || getAssetValue(assets, 'image');
-  const click = getAssetValue(assets, 'click_url');
+  const imageUrl = firstAssetValue(assets, 'image_main', 'banner_image', 'image');
+  const click = firstAssetValue(assets, 'landing_page_url', 'click_url');
 
   let body: string;
   if (imageUrl && isSafeUrl(imageUrl)) {
-    const img = `<img src="${escapeHtml(imageUrl)}" alt="Ad creative">`;
+    const img = `<img src="${escapeHtml(imageUrl)}" alt="Ad creative" referrerpolicy="no-referrer">`;
     body = click && isSafeUrl(click)
-      ? `<div class="preview"><a href="${escapeHtml(click)}" target="_blank" rel="noopener">${img}</a></div>`
+      ? `<div class="preview"><a href="${escapeHtml(click)}" target="_blank" rel="noopener noreferrer">${img}</a></div>`
       : `<div class="preview">${img}</div>`;
   } else {
     body = `<div class="preview"><div class="placeholder"><div class="icon">🖼</div><div class="label">Display Ad</div><div class="sub">${dims.width}×${dims.height}</div></div></div>`;
@@ -224,11 +259,17 @@ function renderDisplay(manifest: ManifestInput, dims: RenderDimensions): string 
   return wrapInPage(body, dims, manifest.name || 'Display Preview');
 }
 
-function renderVideo(manifest: ManifestInput, dims: RenderDimensions, label: string): string {
+export function renderVast(manifest: ManifestInput, dims: RenderDimensions, label = 'VAST Video Ad'): string {
   const assets = manifest.assets || {};
-  const videoUrl = getAssetValue(assets, 'video_file') || getAssetValue(assets, 'video_asset') || getAssetValue(assets, 'vast_tag');
+  const directVideoUrl = firstAssetValue(assets, 'video_file', 'video_asset');
+  const vastAsset = assets.vast_tag;
+  const inlineVastMediaUrl = vastAsset?.content ? extractInlineVastMediaUrl(vastAsset.content) : '';
+  const mediaUrl = isSafeUrl(directVideoUrl) ? directVideoUrl : inlineVastMediaUrl;
+  const hasRemoteVastTag = Boolean(vastAsset?.url && isSafeUrl(vastAsset.url));
 
-  const body = `<div class="preview"><div class="placeholder"><div class="icon">▶</div><div class="label">${escapeHtml(label)}</div><div class="sub">${videoUrl ? 'VAST tag provided' : 'No video asset'}</div></div></div>`;
+  const body = mediaUrl
+    ? `<div class="preview"><video controls playsinline preload="metadata" controlslist="nodownload noremoteplayback" disablepictureinpicture><source src="${escapeHtml(mediaUrl)}"></video></div>`
+    : `<div class="preview"><div class="placeholder"><div class="icon">▶</div><div class="label">${escapeHtml(label)}</div><div class="sub">${hasRemoteVastTag ? 'Remote VAST tag not fetched in reference preview' : vastAsset?.content ? 'No safe VAST media file found' : 'No video asset'}</div></div></div>`;
   return wrapInPage(body, dims, manifest.name || label);
 }
 
@@ -237,24 +278,26 @@ function renderAudio(manifest: ManifestInput, dims: RenderDimensions): string {
   return wrapInPage(body, dims, manifest.name || 'Audio Preview');
 }
 
-function renderNative(manifest: ManifestInput, dims: RenderDimensions): string {
+export function renderNativeInFeed(manifest: ManifestInput, dims: RenderDimensions): string {
   const assets = manifest.assets || {};
-  const image = getAssetValue(assets, 'main_image') || getAssetValue(assets, 'image');
-  const headline = getAssetValue(assets, 'title') || getAssetValue(assets, 'headline');
-  const description = getAssetValue(assets, 'description');
-  const sponsor = getAssetValue(assets, 'sponsored_by') || getAssetValue(assets, 'sponsor');
-  const clickUrl = getAssetValue(assets, 'click_url');
+  const image = firstAssetValue(assets, 'main_image', 'image');
+  const headline = firstAssetValue(assets, 'title', 'headline');
+  const description = firstAssetValue(assets, 'body_text', 'description');
+  const sponsor = firstAssetValue(assets, 'advertiser_name', 'sponsored_by', 'sponsor');
+  const sponsoredLabel = firstAssetValue(assets, 'sponsored_label') || 'Sponsored by';
+  const cta = firstAssetValue(assets, 'cta') || 'Learn more';
+  const clickUrl = firstAssetValue(assets, 'landing_page_url', 'click_url');
 
   const imgTag = image && isSafeUrl(image)
-    ? `<img src="${escapeHtml(image)}" alt="Native ad image">`
+    ? `<img src="${escapeHtml(image)}" alt="Native ad image" referrerpolicy="no-referrer">`
     : '';
 
   const body = `<div class="preview"><div class="native-card">
     ${imgTag}
-    ${sponsor ? `<div class="sponsor">Sponsored by ${escapeHtml(sponsor)}</div>` : ''}
+    ${sponsor ? `<div class="sponsor">${escapeHtml(sponsoredLabel)} ${escapeHtml(sponsor)}</div>` : ''}
     <div class="headline">${escapeHtml(headline || 'Native Content')}</div>
     ${description ? `<div class="body">${escapeHtml(description)}</div>` : ''}
-    ${clickUrl && isSafeUrl(clickUrl) ? `<a href="${escapeHtml(clickUrl)}" target="_blank" rel="noopener" class="cta">Learn more</a>` : ''}
+    ${clickUrl && isSafeUrl(clickUrl) ? `<a href="${escapeHtml(clickUrl)}" target="_blank" rel="noopener noreferrer" class="cta">${escapeHtml(cta)}</a>` : ''}
   </div></div>`;
 
   return wrapInPage(body, dims, manifest.name || 'Native Preview');
@@ -298,7 +341,53 @@ const ASSET_TYPE_ICONS: Record<string, string> = {
 };
 
 function isSafeUrl(url: string): boolean {
-  return /^https?:\/\//i.test(url);
+  if (url.length > 8192) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && !parsed.username && !parsed.password;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Extract one safe media URL from inline VAST without resolving wrappers,
+ * executing interactive resources, expanding macros, or touching trackers.
+ * Remote VAST documents are intentionally not fetched by the reference renderer.
+ */
+function extractInlineVastMediaUrl(xml: string): string {
+  if (xml.length > 1_000_000 || !xml.toUpperCase().includes('<VAST')) return '';
+  const mediaFilePattern = /<MediaFile\b[^>]*>(?:<!\[CDATA\[)?\s*(https:\/\/[^<\]\s]+)\s*(?:\]\]>)?<\/MediaFile>/gi;
+  for (const match of xml.matchAll(mediaFilePattern)) {
+    const candidate = match[1]?.trim();
+    if (candidate && isSafeUrl(candidate)) return candidate;
+  }
+  return '';
+}
+
+function canonicalFormatKind(manifest: ManifestInput, format: Record<string, unknown> | undefined): string {
+  if (typeof manifest.format_kind === 'string') return manifest.format_kind;
+  const canonical = format?.canonical;
+  return canonical && typeof canonical === 'object' && !Array.isArray(canonical)
+    ? String((canonical as Record<string, unknown>).kind ?? '')
+    : '';
+}
+
+export function getPreviewRendererMetadata(
+  manifest: ManifestInput,
+  format: Record<string, unknown> | undefined,
+): PreviewRendererMetadata {
+  const kind = canonicalFormatKind(manifest, format);
+  const descriptor = REFERENCE_RENDERERS[kind as keyof typeof REFERENCE_RENDERERS] ?? {
+    renderer_id: 'adcp-reference-generic',
+    version: REFERENCE_RENDERER_VERSION,
+    export: 'renderPreview',
+  };
+  return {
+    ...descriptor,
+    fidelity: 'representative',
+    tracking_suppressed: true,
+  };
 }
 
 function wrapClickable(inner: string, clickUrl: string): string {
@@ -601,26 +690,33 @@ export function renderPreview(
 ): string {
   const dims = inferDimensions(manifest, format);
   const formatId = manifest.format_id?.id || '';
+  const formatKind = canonicalFormatKind(manifest, format);
+
+  // Canonical manifests without a private legacy template key route directly
+  // through the stable AdCP reference renderer implementations.
+  if (!formatId && formatKind === 'image') return renderImage(manifest, dims);
+  if (!formatId && formatKind === 'native_in_feed') return renderNativeInFeed(manifest, dims);
+  if (!formatId && formatKind === 'video_vast') return renderVast(manifest, dims);
 
   // Route to format-specific renderer.
   // Handles both training agent IDs (display_300x250) and reference agent IDs (display_300x250_image).
   if (formatId.startsWith('display_') || formatId === 'email_sponsored') {
-    return renderDisplay(manifest, dims);
+    return renderImage(manifest, dims);
   }
   if (formatId.startsWith('video_') || formatId.startsWith('ctv_') || formatId.startsWith('gaming_rewarded')) {
-    return renderVideo(manifest, dims, formatId.includes('ctv') ? 'CTV Ad' : 'Video Ad');
+    return renderVast(manifest, dims, formatId.includes('ctv') ? 'CTV Ad' : 'Video Ad');
   }
   if (formatId.startsWith('audio_') || formatId === 'radio_spot') {
     return renderAudio(manifest, dims);
   }
   if (formatId.startsWith('native_')) {
-    return renderNative(manifest, dims);
+    return renderNativeInFeed(manifest, dims);
   }
   if (formatId.startsWith('social_')) {
     return renderSocial(manifest, dims);
   }
   if (formatId.startsWith('dooh_')) {
-    return renderDisplay(manifest, dims);
+    return renderImage(manifest, dims);
   }
   if (formatId === 'product_card_standard') {
     return renderProductCard(manifest, dims);
@@ -656,7 +752,7 @@ export function renderPreview(
     return renderPlaceholder(manifest, dims, '✎', 'Creator Brief');
   }
   if (formatId === 'gaming_interstitial') {
-    return renderDisplay(manifest, dims);
+    return renderImage(manifest, dims);
   }
   if (formatId === 'print_full_page') {
     return renderPlaceholder(manifest, { width: 400, height: 520 }, '📄', 'Print Ad');
@@ -665,7 +761,7 @@ export function renderPreview(
   // Fallback: try display rendering if there's an image asset, otherwise placeholder
   const assets = manifest.assets || {};
   if (hasImageAsset(assets)) {
-    return renderDisplay(manifest, dims);
+    return renderImage(manifest, dims);
   }
   return renderPlaceholder(manifest, dims, '📐', formatId || 'Creative Preview');
 }

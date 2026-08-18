@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildFormats } from '../../src/shared/formats.js';
 import { handleListCreativeFormats, handlePreviewCreative, buildReferenceFormats, buildCreativeCapabilities, createCreativeAgentServer } from '../../src/creative-agent/task-handlers.js';
-import { renderPreview } from '../../src/creative-agent/preview-renderer.js';
+import { getPreviewRendererMetadata, renderPreview } from '../../src/creative-agent/preview-renderer.js';
 import { storePreview, getPreview, cleanExpiredPreviews } from '../../src/creative-agent/preview-store.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -270,7 +270,13 @@ describe('reference formats', () => {
 
   it('emits a schema-valid canonical capability catalog', async () => {
     const supportedFormats = buildCreativeCapabilities(buildReferenceFormats(TEST_AGENT_URL));
-    await expect(sanitizeCreativeCapabilities({ supported_formats: supportedFormats })).resolves.toBeDefined();
+    await expect(sanitizeCreativeCapabilities({
+      supported_formats: supportedFormats,
+      preview: {
+        supported_capability_ids: supportedFormats.map(capability => capability.capability_id),
+        fidelity: 'representative',
+      },
+    })).resolves.toBeDefined();
   });
 });
 
@@ -440,6 +446,13 @@ describe('handlePreviewCreative', () => {
 
     const renders = ((result.previews as any[])[0].renders as any[]);
     expect(renders[0].dimensions).toEqual({ width: 300, height: 250 });
+    expect(renders[0].renderer).toEqual({
+      renderer_id: 'adcp-reference-image',
+      version: '1.0.0-beta.0',
+      export: 'renderImage',
+      fidelity: 'representative',
+      tracking_suppressed: true,
+    });
   });
 
   it('fails closed for an unknown canonical preview selector', () => {
@@ -853,6 +866,33 @@ describe('preview renderer', () => {
     expect(html).toContain('250px');
   });
 
+  it('renders canonical image slot names and dimensions', () => {
+    const manifest = {
+      format_kind: 'image',
+      params: { width: 320, height: 180 },
+      assets: {
+        image_main: { url: 'https://cdn.example/image.jpg' },
+        landing_page_url: { url: 'https://brand.example/landing' },
+      },
+    };
+    const html = renderPreview(manifest, undefined);
+
+    expect(html).toContain('https://cdn.example/image.jpg');
+    expect(html).toContain('href="https://brand.example/landing"');
+    expect(html).toContain('320px');
+    expect(html).toContain('180px');
+    expect(html).toContain('Content-Security-Policy');
+    expect(html).toContain('<meta name="referrer" content="no-referrer">');
+    expect(html).toContain('rel="noopener noreferrer"');
+    expect(getPreviewRendererMetadata(manifest, undefined)).toEqual({
+      renderer_id: 'adcp-reference-image',
+      version: '1.0.0-beta.0',
+      export: 'renderImage',
+      fidelity: 'representative',
+      tracking_suppressed: true,
+    });
+  });
+
   it('renders video format as placeholder', () => {
     const html = renderPreview(
       { format_id: { agent_url: TEST_AGENT_URL, id: 'video_standard' }, assets: {} },
@@ -874,6 +914,49 @@ describe('preview renderer', () => {
     );
     expect(html).toContain('<!DOCTYPE html>');
     expect(html).toContain('Test Headline');
+  });
+
+  it('renders the complete canonical native-in-feed vocabulary', () => {
+    const html = renderPreview(
+      {
+        format_kind: 'native_in_feed',
+        assets: {
+          title: { content: 'A better trail shoe' },
+          body_text: { content: 'Built for long days outside.' },
+          advertiser_name: { content: 'Northstar Running' },
+          sponsored_label: { content: 'Paid partnership with' },
+          cta: { content: 'Shop now' },
+          main_image: { url: 'https://cdn.example/native.jpg' },
+          landing_page_url: { url: 'https://northstar.example/shoes' },
+        },
+      },
+      undefined,
+    );
+
+    expect(html).toContain('A better trail shoe');
+    expect(html).toContain('Built for long days outside.');
+    expect(html).toContain('Paid partnership with Northstar Running');
+    expect(html).toContain('Shop now');
+  });
+
+  it('previews inline VAST media without firing tracking resources', () => {
+    const html = renderPreview(
+      {
+        format_kind: 'video_vast',
+        params: { width: 640, height: 360 },
+        assets: {
+          vast_tag: {
+            content: '<VAST version="4.2"><Ad><InLine><Impression>https://tracker.example/impression</Impression><Creatives><Creative><Linear><MediaFiles><MediaFile type="video/mp4"><![CDATA[https://cdn.example/ad.mp4]]></MediaFile></MediaFiles></Linear></Creative></Creatives></InLine></Ad></VAST>',
+          },
+        },
+      },
+      undefined,
+    );
+
+    expect(html).toContain('<video controls');
+    expect(html).toContain('https://cdn.example/ad.mp4');
+    expect(html).not.toContain('tracker.example');
+    expect(html).not.toContain('<script');
   });
 
   it('escapes HTML in asset values to prevent XSS', () => {
@@ -966,6 +1049,10 @@ describe('MCP tool responses include structuredContent', () => {
     ).length;
     expect(structured.creative.supported_formats).toHaveLength(canonicalFormatCount);
     expect(structured.creative.supported_formats[0]).toMatchObject({ operations: ['preview'] });
+    expect(structured.creative.preview).toEqual({
+      supported_capability_ids: structured.creative.supported_formats.map((capability: any) => capability.capability_id),
+      fidelity: 'representative',
+    });
     expect(structured).toMatchObject({
       adcp_version: '3.2',
       adcp: { major_versions: [3], supported_versions: ['3.2'] },

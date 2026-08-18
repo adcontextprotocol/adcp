@@ -10864,6 +10864,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       ...(includeThreeOneFields(ctx) ? {
         bills_through_adcp: creativeBillsThroughAdcp(ctx),
         supported_formats: supportedCanonicalFormatsCapability(),
+        preview: {
+          supported_capability_ids: SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(capability => capability.capabilityId),
+          fidelity: 'representative',
+        },
         canonical_catalog_version: '3.2',
         supports_transformers: true,
         supports_refinement: true,

@@ -165,6 +165,10 @@
                     "description": "Optional property tags from this file's `tags` map that this format declaration applies to. When omitted, the declaration applies to all properties in the file. Useful for network-wide formats (e.g., a managed network declaring `applies_to_property_tags: [\"premium_video\"]`). Compatible with `applies_to_property_ids` — a property is in scope if it matches either ID list or tag list.",
                     "items": { "$ref": "/schemas/core/property-tag.json" },
                     "minItems": 1
+                  },
+                  "reference_renderer": {
+                    "$ref": "/schemas/core/reference-renderer.json",
+                    "description": "Optional only for an AgenticAdvertising.org community-registry format entry. Points to a pinned, browser-ESM, community-maintained OSS renderer package that provides a non-authoritative reference presentation. Non-JavaScript clients use hosted preview_creative or display the manifest. Publisher-origin catalogs and seller product declarations do not use this field: publishers describe placement-specific chrome with placements[].presentation_ref, while sellers advertise dynamic preview authority through get_adcp_capabilities.creative.preview."
                   }
                 }
               }

@@ -76,7 +76,15 @@ describe('public agent discovery proxies', () => {
       format: { format_kind: 'image', params: { width: 300, height: 250 } },
     };
     sdkMocks.getAdcpCapabilities.mockResolvedValue({
-      data: { creative: { supported_formats: [capability] } },
+      data: {
+        creative: {
+          supported_formats: [capability],
+          preview: {
+            supported_capability_ids: ['preview_display'],
+            fidelity: 'representative',
+          },
+        },
+      },
     });
 
     const response = await request(app).get('/api/public/agent-formats?url=https://creative.example.com/mcp');

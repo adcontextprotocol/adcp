@@ -2661,6 +2661,45 @@ describe('AdAgentsManager', () => {
         expect(result.valid).toBe(false);
         expect(result.errors.some(e => e.field === 'placements[0].format_options[0].format_option_id')).toBe(true);
       });
+
+      it('requires preview provider routes to reference formats on the same placement', () => {
+        const base = {
+          agents: [],
+          properties: [{
+            property_id: 'homepage',
+            property_type: 'website',
+            name: 'Homepage',
+            identifiers: [{ type: 'domain', value: 'example.com' }],
+          }],
+          formats: [{
+            format_option_id: 'homepage_mrec_image',
+            format_kind: 'image',
+            params: { width: 300, height: 250 },
+          }],
+          placements: [{
+            placement_id: 'homepage_mrec',
+            name: 'Homepage MREC',
+            property_ids: ['homepage'],
+            format_options: [{ format_option_id: 'homepage_mrec_image' }],
+            preview_provider: {
+              agent_url: 'https://creative.adcontextprotocol.org/mcp',
+              authority: 'publisher_designated' as const,
+              routes: [{
+                format_option_id: 'another_placement_format',
+                capability_id: 'preview_display_300x250_image',
+              }],
+            },
+          }],
+        };
+
+        const invalid = manager.validateProposed(base as any);
+        expect(invalid.valid).toBe(false);
+        expect(invalid.errors.some(e => e.field === 'placements[0].preview_provider.routes[0].format_option_id')).toBe(true);
+
+        base.placements[0].preview_provider.routes[0].format_option_id = 'homepage_mrec_image';
+        const valid = manager.validateProposed(base as any);
+        expect(valid.valid).toBe(true);
+      });
     });
   });
 });

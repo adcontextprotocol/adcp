@@ -68,6 +68,10 @@
               "description": "Content Security Policy requirements for embedding"
             }
           }
+        },
+        "renderer": {
+          "$ref": "/schemas/core/preview-renderer-metadata.json",
+          "description": "Optional renderer implementation and safety metadata for audit and reproducibility. Authority is still resolved from capability discovery and placement delegation."
         }
       },
       "required": [
@@ -138,6 +142,10 @@
               "description": "Content Security Policy requirements for embedding"
             }
           }
+        },
+        "renderer": {
+          "$ref": "/schemas/core/preview-renderer-metadata.json",
+          "description": "Optional renderer implementation and safety metadata for audit and reproducibility. Authority is still resolved from capability discovery and placement delegation."
         }
       },
       "required": [
@@ -213,6 +221,10 @@
               "description": "Content Security Policy requirements for embedding"
             }
           }
+        },
+        "renderer": {
+          "$ref": "/schemas/core/preview-renderer-metadata.json",
+          "description": "Optional renderer implementation and safety metadata for audit and reproducibility. Authority is still resolved from capability discovery and placement delegation."
         }
       },
       "required": [

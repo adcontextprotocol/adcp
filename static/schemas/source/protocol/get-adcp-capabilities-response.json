@@ -2069,6 +2069,35 @@
             "additionalProperties": true
           }
         },
+        "preview": {
+          "type": "object",
+          "description": "Per-format preview_creative capability and presentation authority. New 3.2 producers whose supported_formats[] explicitly advertises the preview operation MUST emit this block. `authoritative` is reserved for output produced by the serving platform's own preview machinery (including a seller proxying that platform's first-party preview API). `representative` means the agent renders an approximation. Buyers MUST preserve this distinction in UI and audit records; production render quality does not upgrade a representative renderer to authoritative. supported_capability_ids MUST equal the set of capability IDs on supported_formats[] entries whose operations contains preview, so every preview route has one discoverable fidelity classification.",
+          "required": ["supported_capability_ids", "fidelity"],
+          "properties": {
+            "supported_capability_ids": {
+              "type": "array",
+              "description": "Agent-local creative.supported_formats[].capability_id values accepted by preview_creative. Canonical 3.2 uses capability IDs rather than reintroducing legacy named format IDs.",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "fidelity": {
+              "type": "string",
+              "enum": ["authoritative", "representative"],
+              "description": "Authority of the listed routes. authoritative means the serving platform's own preview machinery produced the output; representative means an agent-rendered approximation."
+            }
+          },
+          "additionalProperties": false,
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "supported_capability_ids": "set_equals_capability_ids_of_creative.supported_formats_entries_with_preview_operation"
+            },
+            "spec": "docs/creative/canonical-formats.mdx#rendering-authority-and-fallback-order"
+          }
+        },
         "localization": {
           "type": "object",
           "description": "Materialized creative-localization support for sync_creatives/list_creatives, including source-only monolingual topology. Presence opts the agent into exact locale-variant round-trip, strict RFC 4647 Lookup, optional buyer-declared language-family fallback rules, explicit final default/unmatched behavior, creative-wide review, transactional replacement, seller product-format locale-policy enforcement, and delivery attribution. This is a coarse structural capability, not a promise that every locale/format/account combination is accepted; sellers publish accepted ranges on product format declarations and validate each write before mutation. Omit this object when localization is unsupported.",
@@ -2117,6 +2146,35 @@
               "has_creative_library": { "type": "boolean", "const": true }
             },
             "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supported_formats": {
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "operations": {
+                      "contains": { "const": "preview" }
+                    }
+                  },
+                  "required": ["operations"]
+                }
+              }
+            },
+            "required": ["supported_formats"]
+          },
+          "then": {
+            "required": ["preview"]
+          }
+        },
+        {
+          "if": {
+            "required": ["preview"]
+          },
+          "then": {
+            "required": ["supported_formats"]
           }
         }
       ]

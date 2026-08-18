@@ -223,7 +223,7 @@ export function createCreativeAgentRouter(): Router {
     }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('X-Frame-Options', 'ALLOWALL');
-    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; frame-ancestors *");
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src https: data:; media-src https:; style-src 'unsafe-inline'; frame-ancestors *");
     res.send(html);
   });
 

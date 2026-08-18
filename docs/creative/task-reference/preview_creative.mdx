@@ -193,7 +193,9 @@ All modes use a single flat object with `request_type` as the discriminant.
 
 **Required** column values: *Conditional* = single requests and batch items require one of `creative_manifest` or `creative_id`; *Batch* = required when `request_type` is `"batch"`; *Variant* = required when `"variant"`.
 
-Discover renderers from `get_adcp_capabilities.creative.supported_formats[]` by selecting entries whose `operations` contains `preview` and whose canonical `format` satisfies the manifest. `capability_id` is an agent-local renderer route; it never belongs in the portable manifest. If multiple renderers match, the caller must select one explicitly.
+Discover renderers from `get_adcp_capabilities.creative.supported_formats[]` by selecting entries whose `operations` contains `preview` and whose canonical `format` satisfies the manifest. New 3.2 producers MUST list those routes in `creative.preview.supported_capability_ids` and declare `creative.preview.fidelity` as `authoritative` or `representative`. The listed IDs equal the set of `supported_formats[]` capability IDs whose operations include `preview`, so every explicit route has one fidelity classification. `capability_id` is an agent-local renderer route; it never belongs in the portable manifest. If multiple renderers match, the caller must select one explicitly.
+
+`authoritative` is reserved for the serving platform's own preview machinery, including a seller proxying a first-party platform preview API. `representative` identifies an approximation. Buyers MUST preserve this label and follow the [rendering authority and fallback order](/docs/creative/canonical-formats#rendering-authority-and-fallback-order).
 
 ### Opt-in asynchronous preview
 
@@ -359,6 +361,10 @@ These formats have the widest gap between pre-flight and post-flight: a pre-flig
 ### Quality levels
 
 The preview quality tier describes render fidelity, not merely the renderer's relative cost or speed. It is not a validation result, compliance or brand-safety clearance, seller acceptance, or authorization to serve. Buyers use the applicable validation, governance, and seller creative-review workflows for those decisions.
+
+Quality and authority are independent. `quality_used: "production"` means full fidelity within the selected renderer; it does not turn `creative.preview.fidelity: "representative"` into serving-platform truth. Buyer tooling MUST retain both values when it records or presents a preview.
+
+Each rendered piece may include `renderer` audit metadata: a stable `renderer_id`, exact semantic `version`, export name, renderer-declared `fidelity`, and whether delivery tracking was suppressed. This metadata makes a render reproducible but does not grant authority. Buyers still resolve authority from capability discovery and any publisher placement `preview_provider` delegation.
 
 - **`draft`** is an iteration render for reviewing creative direction. It MUST preserve the supplied manifest or brief's core concept, content, and non-fidelity constraints, but it MAY use lower-resolution or placeholder assets; approximate layout, typography, color, motion, audio, or interactive behavior; and omit final polish. The protocol does not guarantee that any of those listed fidelity dimensions is final in a draft preview.
 - **`production`** is a fidelity-accurate review render. For standard or otherwise deterministic creative, it MUST faithfully render the supplied manifest—or the stored manifest resolved from `creative_id`—and its assets using the serve-time presentation controlled by the selected renderer. In `preview_creative`, material asset substitution or approximation requires `quality_used: "draft"`. It MUST include disclosure and compliance elements required by the manifest and those owned by that rendering layer for the supplied context.

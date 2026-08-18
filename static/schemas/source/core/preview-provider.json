@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/preview-provider.json",
+  "title": "Publisher-Designated Preview Provider",
+  "description": "A publisher's explicit delegation of placement preview authority to a remote AdCP creative agent. The delegation is authoritative only for the declaring placement and listed format routes. It does not make the provider authoritative for the shared canonical format, another placement, or another publisher. Consumers MUST discover the provider's current get_adcp_capabilities response, verify each capability_id advertises preview for the resolved canonical format, and use provider-specific authorization without forwarding seller or publisher credentials.",
+  "type": "object",
+  "required": ["agent_url", "authority", "routes"],
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "HTTPS URL of the delegated creative-agent endpoint. Buyers call get_adcp_capabilities and preview_creative on this endpoint. They MUST apply SSRF, redirect, timeout, response-size, and DNS-rebinding protections during discovery and invocation."
+    },
+    "authority": {
+      "type": "string",
+      "const": "publisher_designated",
+      "description": "Explicitly states that authority comes from the publisher-hosted placement declaration. The provider's own representative fidelity is upgraded only within this placement delegation; it remains non-authoritative elsewhere."
+    },
+    "routes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["format_option_id", "capability_id"],
+        "properties": {
+          "format_option_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Format option in this adagents.json placement for which the delegation applies. It MUST resolve through the same-file top-level formats[] catalog or an inline placement format declaration."
+          },
+          "capability_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "description": "Agent-local preview capability advertised by the delegated provider. The provider's canonical format declaration MUST satisfy the resolved placement format option."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "format_option_id": "resolves_within_declaring_adagents_json_and_is_listed_on_placement",
+      "capability_id": "provider_capability_advertises_preview_and_satisfies_resolved_format_option"
+    },
+    "spec": "docs/creative/canonical-formats.mdx#rendering-authority-and-fallback-order"
+  }
+}

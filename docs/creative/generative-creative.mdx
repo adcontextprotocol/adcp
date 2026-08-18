@@ -30,6 +30,8 @@ Call the creative agent's `get_adcp_capabilities` and inspect `creative.supporte
 }
 ```
 
+Because this entry includes `preview`, the enclosing capability response also lists `native_launch_generator` in `creative.preview.supported_capability_ids` and declares whether the preview is `authoritative` or `representative`. Generative output from a standalone creative agent is normally representative.
+
 `list_creative_formats` is deprecated in 3.2. If you do not already know which creative agent to call, query the registry by canonical kind or exact publisher format option.
 
 ## Generate from a brief

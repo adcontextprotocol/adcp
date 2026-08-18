@@ -10238,7 +10238,18 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           const projectedFormats = projectLegacyFormatsForPublicDiscovery(
             legacyFormats.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object" && !Array.isArray(entry))),
           );
-          formats = (await sanitizeCreativeCapabilities({ supported_formats: projectedFormats })).supported_formats;
+          const projectedPreviewIds = projectedFormats
+            .map(entry => entry.capability_id)
+            .filter((id): id is string => typeof id === "string");
+          formats = (await sanitizeCreativeCapabilities({
+            supported_formats: projectedFormats,
+            ...(projectedPreviewIds.length === 0 ? {} : {
+              preview: {
+                supported_capability_ids: projectedPreviewIds,
+                fidelity: "representative",
+              },
+            }),
+          })).supported_formats;
         } catch (error) {
           if (capabilityError) throw error;
           logger.debug({ err: error, url }, "Legacy creative format discovery failed");

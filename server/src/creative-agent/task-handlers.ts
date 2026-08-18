@@ -17,7 +17,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { renderPreview } from './preview-renderer.js';
+import { getPreviewRendererMetadata, renderPreview } from './preview-renderer.js';
 import { storePreview } from './preview-store.js';
 
 const require = createRequire(import.meta.url);
@@ -155,6 +155,7 @@ export function buildCreativeCapabilities(formats: Format[]): Array<Record<strin
 }
 
 export function handleGetAdcpCapabilities(formats: Format[]): Record<string, unknown> {
+  const supportedFormats = buildCreativeCapabilities(formats);
   return {
     adcp_version: '3.2',
     adcp: {
@@ -163,7 +164,11 @@ export function handleGetAdcpCapabilities(formats: Format[]): Record<string, unk
     },
     supported_protocols: ['creative'],
     creative: {
-      supported_formats: buildCreativeCapabilities(formats),
+      supported_formats: supportedFormats,
+      preview: {
+        supported_capability_ids: supportedFormats.map(capability => capability.capability_id),
+        fidelity: 'representative',
+      },
     },
   };
 }
@@ -430,6 +435,7 @@ function renderSinglePreview(
     const render: Record<string, unknown> = {
       render_id: `r_${randomUUID().slice(0, 8)}`,
       role: 'primary',
+      renderer: getPreviewRendererMetadata(renderManifest, format),
     };
 
     // Parameterized legacy ids carry logical render dimensions directly. Pixel

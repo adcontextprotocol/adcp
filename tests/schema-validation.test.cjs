@@ -2869,7 +2869,11 @@ async function runTests() {
           capability_id: 'image_preview',
           operations: ['preview'],
           format: { format_kind: 'image', params: {} }
-        }]
+        }],
+        preview: {
+          supported_capability_ids: ['image_preview'],
+          fidelity: 'representative'
+        }
       }
     })) {
       return `legacy build flag with preview-only catalog rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;

@@ -162,7 +162,7 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 **`placements`** *(optional)*: Canonical placement definitions for the properties in this file
   - Products SHOULD reuse these `placement_id` values when declaring `placements`
   - Reusing a registered `placement_id` means the product is referring to the same semantic placement, not inventing a different one with the same ID
-  - Placement definitions can include `tags`, `property_ids` or `property_tags` for property linkage, `channels`, and `format_options` for creative support
+  - Placement definitions can include `tags`, `property_ids` or `property_tags` for property linkage, `channels`, `format_options` for creative support, a publisher-namespaced `presentation_ref` for offline placement chrome, and `preview_provider` for a publisher-designated AdCP preview agent
   - Placements in `adagents.json` are public by definition. Do not publish seller-private placement IDs, source/origin fields, or delivery-system mappings in this file.
   - Authorization entries can narrow scope to specific `placement_ids`
   - Authorization entries can also use `placement_tags` for governed placement groupings such as `programmatic`, `direct_only`, or `managed_by_riverline`
@@ -187,6 +187,8 @@ At minimum, a public placement should describe:
 - the `property_ids` or `property_tags` where it can run
 - supported `format_options`, which can reference publisher-owned formats and canonical formats
 - optional `channels`
+- optional `presentation_ref` with an HTTPS `uri` and SHA-256 `digest` for publisher-specific chrome or layout metadata
+- optional `preview_provider` mapping placement `format_option_id` values to preview `capability_id` routes on an HTTPS AdCP creative agent
 
 Placement format support is a new 3.1 catalog feature and uses the 3.1+ canonical format-option model only:
 
@@ -219,6 +221,20 @@ Placement catalog formats describe what the public placement can support. When a
       "description": "High-impact homepage sponsorship across the main article rail and top video module.",
       "property_ids": ["daily_pulse"],
       "channels": ["display", "olv"],
+      "presentation_ref": {
+        "uri": "https://daily-pulse.example/adcp/presentations/homepage-takeover.json",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "preview_provider": {
+        "agent_url": "https://creative.adcontextprotocol.org/mcp",
+        "authority": "publisher_designated",
+        "routes": [
+          {
+            "format_option_id": "publisher_takeover_html5",
+            "capability_id": "preview_display_300x250_html"
+          }
+        ]
+      },
       "format_options": [
         { "format_option_id": "publisher_takeover_html5" },
         {
@@ -295,6 +311,9 @@ A community mirror:
 
 - Sets **`authorized_agents: []`** — there is no sales agent to authorize, and the mirror MUST NOT fabricate one. An empty array asserts *no sales authorization*; validators MUST NOT read it as deny-all, authorize-all, or a revocation, and MUST still consume the catalog arrays.
 - MUST carry at least one non-empty catalog array (`formats`/`properties`/`placements`/`collections`/`signals`) and SHOULD carry a **`catalog_etag`** cache validator (the validator enforces the array, not `catalog_etag`). A file with neither sales authorization nor catalog content is invalid.
+- MAY attach a pinned `reference_renderer` (`runtime: "browser-esm"`, `package`, exact `version`, named `export`, and SRI `integrity`) to a `formats[]` entry. The package is a browser-safe, community-maintained, non-authoritative reference presentation. The registry references but never serves executable code; consumers require npm provenance, verify integrity, sandbox execution, and label the result as community-rendered. Non-JavaScript clients use hosted `preview_creative` or show the manifest.
+- MUST NOT invent publisher `presentation_ref` metadata. That field is publisher-specific and gains its meaning only from a publisher-origin placement declaration.
+- MUST NOT invent or copy a publisher `preview_provider` delegation. Only the publisher-origin placement can grant that scoped authority.
 - Sets **`superseded_by`** once the platform publishes its own authoritative `adagents.json`. Buyer SDKs encountering `superseded_by` SHOULD re-fetch from the named URL rather than serving the stale mirror. The mirror SHOULD continue serving with `superseded_by` set for at least one minor release so buyer caches keyed on the mirror URL get an explicit migration signal.
 
 Community contributions use a review-before-publication workflow. Any authenticated organization can submit a conforming catalog with `PUT /api/registry/mirrors/{platform}`. Registry moderators and AgenticAdvertising.org administrators publish immediately; other callers receive `202 Accepted` with an opaque proposal ID, status URL, and content digest. Contributors can follow their proposals through `/api/registry/mirror-proposals`, while moderators approve or reject the exact reviewed digest from the same review surface. Approval returns `409 Conflict` if either the proposal content or its base public mirror changed after review. Pending proposals are stored separately and never appear at `/translated/<platform>/adagents.json` or in derived publisher records before approval.
@@ -305,7 +324,7 @@ See the worked example at [`static/examples/adagents/community/meta.json`](https
 
 Consumers that need the complete catalog resolution order—publisher-hosted `adagents.json`, then the AgenticAdvertising.org community catalog, then fail closed—should call the registry lookup at `GET /api/registry/publisher?domain=<publisher_domain>`. The response exposes `discovery_method`, hosting state, registry URL, and property provenance so callers can distinguish publisher assertions from community contributions.
 
-The lookup's `formats[]` field is a display-oriented, lossy summary. It preserves `format_kind`, `format_option_id`, canonical `params`, and property scoping, but omits fields needed for some validation and compatibility flows, including `format_shape`, `format_schema`, `applies_to_channels`, `v1_format_ref`, and `canonical_formats_only`. Add `include=placements` when computing placement-level eligibility; the response then includes provenance-labeled placement summaries with resolved canonical format options. To validate a custom declaration or inspect fields omitted by either summary, fetch the resolved raw `adagents.json`: use `files.adagents_json.registry_url` for a community catalog and `hosting.resolved_url` or `hosting.expected_url` for a publisher-hosted catalog. Treat a missing raw document or unresolved placement reference as fail-closed.
+The lookup's `formats[]` field is a display-oriented, lossy summary. It preserves `format_kind`, `format_option_id`, canonical `params`, and property scoping, but omits fields needed for some validation, presentation, and compatibility flows, including `format_shape`, `format_schema`, `reference_renderer`, `applies_to_channels`, `v1_format_ref`, and `canonical_formats_only`. Add `include=placements` when computing placement-level eligibility; the response then includes provenance-labeled placement summaries with resolved canonical format options, but consumers needing a placement's full `presentation_ref` or `preview_provider` fetch the raw document. To validate a custom declaration or inspect fields omitted by either summary, fetch the resolved raw `adagents.json`: use `files.adagents_json.registry_url` for a community catalog and `hosting.resolved_url` or `hosting.expected_url` for a publisher-hosted catalog. Treat a missing raw document or unresolved placement reference as fail-closed.
 
 The discovery-layer `validateAdAgents()` API and the `validate_adagents` diagnostic tool validate publisher-origin discovery (`direct`, `authoritative_location`, and `ads.txt` `MANAGERDOMAIN`). They do **not** consult the community catalog. A publisher-origin not-found result is therefore not proof that no community mirror exists. Until the discovery layer explicitly adds that fallback, implementations must not reconstruct the full resolution order on top of `validateAdAgents()`; use the registry lookup.
 
