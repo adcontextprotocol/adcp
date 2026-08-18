@@ -7,6 +7,10 @@ const assert = require('assert');
 const repoRoot = path.join(__dirname, '..');
 const workflowPath = path.join(repoRoot, '.github/workflows/release.yml');
 const workflow = fs.readFileSync(workflowPath, 'utf8');
+const releaseDocsWorkflow = fs.readFileSync(
+  path.join(repoRoot, '.github/workflows/release-docs.yml'),
+  'utf8'
+);
 const eolReleaseBranches = ['2.5-maintenance', '2.6.x'];
 const activeWorkflowPaths = [
   'apps-web-check.yml',
@@ -33,6 +37,7 @@ function extractStep(name) {
 
 const releaseRelevance = extractStep('Detect release-relevant push');
 const artifactDetection = extractStep('Detect committed release artifacts');
+const approvalGate = extractStep('Require human approval for committed release artifacts');
 const changesetsStep = extractStep('Create Release Pull Request or Tag Release');
 const uploadStep = extractStep('Upload protocol tarball to GitHub Release');
 
@@ -62,6 +67,30 @@ assert(
 assert(
   artifactDetection.includes('grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "${changed_files}"'),
   'Release artifact detection must be based on artifact paths changed by the triggering commit.'
+);
+
+assert(
+  approvalGate.includes("if: steps.release-artifacts.outputs.has_release_artifacts == 'true'"),
+  'Human approval must be required whenever a commit contains release artifacts.'
+);
+
+assert(
+  approvalGate.includes('/commits/${GITHUB_SHA}/pulls') &&
+    approvalGate.includes('.base.ref == $base') &&
+    approvalGate.includes('.merged_at != null'),
+  'The approval gate must resolve the merged PR associated with the release commit and branch.'
+);
+
+assert(
+  approvalGate.includes('select(.user.type == "User")') &&
+    approvalGate.includes('map(last)') &&
+    approvalGate.includes('select(.state == "APPROVED" and .commit_id == $head)'),
+  'Only human approvals submitted against the final release PR head may authorize publication.'
+);
+
+assert(
+  !releaseDocsWorkflow.includes('gh pr merge --auto'),
+  'Release documentation snapshots must wait for human review instead of enabling auto-merge.'
 );
 
 assert(
