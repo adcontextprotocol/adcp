@@ -1,5 +1,28 @@
 # Changelog
 
+## 3.2.0-beta.1
+
+### Minor Changes
+
+- 71f0046: Add per-route creative preview origin discovery, publisher-authorized preview delegation, isolated community reference-renderer declarations, and versioned placement-presentation composition.
+- 2b312e0: Add a deterministic controller probe and compact media-buy lifecycle
+  storyboards for product-to-proposal acceptance, declined-proposal terminality,
+  and proposal expiry, and restore testable task documentation for the four
+  compact planning operations.
+- 09764b1: Define deterministic PackageRequest format-selector normalization, reject
+  conflicting canonical and legacy projections, require fixed image dimensions to
+  travel together, and add compliance coverage for the 3.x compatibility paths.
+
+### Patch Changes
+
+- d9879ad: Accept the deprecated `adcp_major_version` compatibility field on every AdCP
+  3.2 compact media-buy lifecycle request.
+- 23491e3: Make the compact 3.2 media-buy lifecycles primary in navigation, concepts, and
+  walkthroughs, and document the TypeScript SDK beta. Keep the established
+  facades at an explicit compatibility boundary.
+- 39290c4: Restore Changesets v2 compatibility while retaining git-backed pushes for
+  large generated release commits.
+
 ## 3.2.0-beta.0
 
 ### Minor Changes

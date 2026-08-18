@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/geo-place-system.json",
+  "title": "Geographic Place Identifier System",
+  "description": "Collision-safe identifier namespace for geographic places. Registered tokens have protocol-defined semantics. Unregistered systems MUST use an absolute HTTPS URI controlled by the catalog owner; consumers compare URI systems as exact opaque strings.",
+  "anyOf": [
+    {
+      "type": "string",
+      "enum": [
+        "geonames",
+        "google_ads",
+        "microsoft_ads"
+      ]
+    },
+    {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    }
+  ],
+  "examples": [
+    "geonames",
+    "google_ads",
+    "microsoft_ads",
+    "https://seller.example/geo/catalogs/places"
+  ]
+}
