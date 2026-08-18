@@ -486,6 +486,10 @@
           "$ref": "/schemas/core/forecast-dimension-signal.json",
           "description": "Signal forecast dimension variant"
         },
+        "forecast-dimension-time": {
+          "$ref": "/schemas/core/forecast-dimension-time.json",
+          "description": "Calendar-window forecast dimension variant for availability windows"
+        },
         "forecast-vendor-metric-value": {
           "$ref": "/schemas/core/forecast-vendor-metric-value.json",
           "description": "Forecasted vendor-defined measurement value with low/mid/high bounds"
@@ -1176,6 +1180,10 @@
         "forecast-range-unit": {
           "$ref": "/schemas/enums/forecast-range-unit.json",
           "description": "How to interpret forecast points: spend curve, reach/frequency curve, temporal (weekly/daily), or outcome targets (clicks/conversions)"
+        },
+        "availability-status": {
+          "$ref": "/schemas/enums/availability-status.json",
+          "description": "Bookability of the inventory a forecast row describes (available, unavailable)"
         },
         "demographic-system": {
           "$ref": "/schemas/enums/demographic-system.json",

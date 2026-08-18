@@ -25,6 +25,8 @@ Every transition creates a new `proposal_id`; the source snapshot remains unchan
 
 `draft` terms are indicative and do not reserve inventory. `finalize` copies an unchanged draft into a `committed` snapshot and creates a hold until `expires_at`. [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) consumes that hold and creates, updates, or cancels the MediaBuy according to `proposal_kind`.
 
+In traditional media terms, this lifecycle is the two-phase avails check. A draft is a **soft avail**: the seller answers from models or cached inventory state, forecasts carry `valid_until` freshness bounds, and nothing is reserved — another buyer can take the inventory before this one commits. `finalize` is where the **firm avail** runs: the seller hits its inventory system, re-prices if needed, and either takes the hold or fails the finalize. Draft numbers are therefore non-binding, and a finalize returning different pricing or forecast values than its source draft showed is correct behavior, not an error. Buyers that need certainty across a slow approval chain hold inventory by finalizing early — not by polling discovery for fresher snapshots.
+
 ## Discover what the seller supports
 
 Read `get_adcp_capabilities.media_buy.lifecycle_tools` before selecting the compact lifecycle. A negotiating seller includes `refine_proposals`; it may also publish `media_buy.proposal_refinement`:

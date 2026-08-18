@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/availability-status.json",
+  "title": "Availability Status",
+  "description": "Bookability of the inventory a forecast row describes, as of the forecast's generated_at. A snapshot, never a hold: valid_until bounds freshness, and proposal finalization or purchase remains the commitment boundary.",
+  "type": "string",
+  "enum": ["available", "unavailable"],
+  "enumDescriptions": {
+    "available": "The inventory described by this row can be booked as of generated_at. This is a snapshot, not a reservation — another buyer can take the window before this buyer commits.",
+    "unavailable": "The inventory described by this row cannot be booked (for example, a sold-out sponsorship window). Rows may carry empty metrics. Sellers MUST NOT disclose who holds a conflicting booking."
+  }
+}
