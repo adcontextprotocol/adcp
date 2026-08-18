@@ -50,6 +50,10 @@ For hands-on authoring practice, use the [S2 creative specialist module](/docs/l
 | **`validate_input`** | Spec-defined manifest preflight — buyers verify a manifest's structure against canonicals/products without committing to a render or other expensive creative-production step. It is not a rehearsal of the seller's `sync_creatives` mutation. |
 | **`build_creative`** | Creative-agent surface that produces a manifest from inputs (brief, video_brief, brand). Sales agents do NOT expose `build_creative`. |
 | **`creative.supported_formats`** | Capabilities-response field on creative agents declaring canonical build, validation, and preview capabilities. New 3.2 producers MUST carry a stable `capability_id`, a full canonical `format` declaration, and explicit non-empty `operations`. Consumers accept legacy 3.x entries without an ID and default absent `operations` to `build`. |
+| **`creative.preview`** | Capabilities-response field declaring which `creative.supported_formats[].capability_id` routes accept `preview_creative` and each route's informational `rendering_origin`. Authority comes only from publisher placement delegation. |
+| **`reference_renderer`** | Pinned browser-ESM npm package export on a community-registry `formats[]` entry. It is a non-authoritative OSS reference presentation, not publisher or serving-platform output. |
+| **`presentation_ref`** | URI+digest reference on a publisher placement to a versioned declarative placement-presentation document. It belongs to the placement, never the shared format. |
+| **`preview_provider`** | Publisher placement delegation to an AdCP creative agent for specific `format_option_id` → `capability_id` preview routes. It is authoritative only for that publisher placement. |
 | **`BrandRef`** | `{domain, brand_id?}` reference. Resolves brand context (logos, colors, voice) from `brand.json` automatically. |
 | **`brand_kit_override`** | Inline override on `BrandRef` for per-call brand-kit tweaks (logo, colors, voice, tagline) where `brand.json` is missing, stale, or inappropriate. Same pattern as `industries` and `data_subject_contestation` on BrandRef. |
 | **`fanout_mode`** | On `sponsored_placement`: how items map to delivery — `per_item`, `multi_item_in_creative`, `single_item`. |
@@ -370,7 +374,85 @@ Product declarations, buyer selectors, and placement references are intentionall
 
 **Naming boundary:** `format_option_id` selects a buyable product or publisher-catalog format contract. Creative-agent `capability_id` remains separate: it selects a build path on `creative.supported_formats` when calling `build_creative`. Do not use `capability_id` on media-buy products, placements, package requests, creative manifests, or creative assets.
 
-### Sample renders and declaration authority
+### Rendering authority and fallback order
+
+Canonical formats define asset contracts, not presentations. A declaration can establish required slots, dimensions, durations, and other acceptance constraints without establishing how a seller or publisher will compose those assets on screen. Buyer tooling MUST preserve that boundary when it offers previews.
+
+Dynamic preview support is declared per route in `get_adcp_capabilities.creative.preview`:
+
+```json
+{
+  "creative": {
+    "supported_formats": [
+      {
+        "capability_id": "streamhaus_homepage_preview",
+        "operations": ["preview"],
+        "format": {
+          "format_kind": "image",
+          "params": { "width": 300, "height": 250 }
+        }
+      }
+    ],
+    "preview": {
+      "routes": [
+        {
+          "capability_id": "streamhaus_homepage_preview",
+          "rendering_origin": "platform_native"
+        }
+      ]
+    }
+  }
+}
+```
+
+`rendering_origin` is informational. `platform_native` means the route uses the serving platform's preview machinery; `agent_approximation` means the agent renders an approximation. Agents with mixed implementations declare each capability independently in `routes[]`; for example, one route can be `platform_native` while a community fallback is `agent_approximation`. Neither is an authority claim, because a seller or agent cannot make itself authoritative by self-description. `quality: "production"` likewise describes execution quality, not authority.
+
+Buyer tooling resolves two independent axes:
+
+1. **Creative rendering:** use the targeted publisher placement's matching `preview_provider` route; otherwise use an available agent `preview_creative` route as a labeled approximation; otherwise use the reviewed community format's `reference_renderer`; otherwise show the manifest and assets.
+2. **Placement presentation:** if the delegated provider route sets `covers_placement_presentation: true`, its result is the complete publisher-authorized presentation. Otherwise, compose the placement's `presentation_ref` around the selected creative rendering. When no `presentation_ref` exists, show the creative rendering alone.
+
+Only a `preview_provider` delegation obtained from the publisher-origin `adagents.json` grants authority, and only for its declaring placement, format route, normalized provider endpoint, and capability ID. A platform-native route without that delegation remains an undelegated approximation. If more than one placement is targeted, tooling MUST resolve and label each placement independently.
+
+`preview_provider` maps a same-file `format_option_id` to a provider-local `capability_id`. The buyer discovers the provider's current capabilities, verifies that the capability advertises `preview` and satisfies the resolved placement format, then calls `preview_creative`. Discovery and invocation use the full `format_schema` transport contract: HTTPS, public addresses only, DNS resolution pinned through connection, no redirects, short timeout, bounded response body, and credentials selected only after exact normalized-origin binding. Consumers MUST NOT forward seller or publisher credentials to the delegated endpoint. Provider HTML and URLs remain untrusted even when presentation-authoritative: render them only in a cross-origin iframe with an empty sandbox token set and a caller-enforced restrictive CSP.
+
+```json
+{
+  "placement_id": "homepage_image",
+  "name": "Homepage image",
+  "property_ids": ["daily_pulse"],
+  "format_options": [
+    { "format_option_id": "canonical_image_300x250" }
+  ],
+  "preview_provider": {
+    "agent_url": "https://creative.adcontextprotocol.org/mcp",
+    "authority": "publisher_designated",
+    "routes": [
+      {
+        "format_option_id": "canonical_image_300x250",
+        "capability_id": "preview_display_300x250_image",
+        "covers_placement_presentation": false
+      }
+    ]
+  }
+}
+```
+
+`presentation_ref` is an immutable HTTPS `uri` plus SHA-256 `digest`, media type `application/vnd.adcp.placement-presentation+json`, and schema version on `adagents.json` `placements[]`. The referenced body validates against `/schemas/core/placement-presentation.json`: buyers create its canvas, paint `behind_creative` decorations in array order, apply the declared `contain`, `cover`, or `stretch` fit to the selected creative, clip it to `creative_slot`, then paint `in_front_of_creative` decorations in array order. Decoration kinds are discriminated, and image decorations use digest-pinned assets. Text is plain text and the vocabulary is declarative; HTML, CSS, scripts, event handlers, and arbitrary style properties are not allowed. Rectangle bounds MUST fit within the canvas. The document remains in the publisher's namespace and MUST NOT be copied onto a shared format entry.
+
+A community-registry `formats[]` entry may instead declare a `reference_renderer` with `runtime: "browser-esm"`, `package`, exact `version`, named `export`, package-tarball `integrity`, and expected provenance source repository/workflow. The export accepts canonical manifest data and returns an inert presentation without Node.js APIs, ambient credentials, delivery tracking, or undeclared network access. Non-JavaScript clients use a hosted `preview_creative` provider or show the manifest; renderer availability never gates protocol participation. Compatibility is bound between the named export and the enclosing format entry: both carry the same exact `format_revision`, and registry conformance verifies that the export exists and passes that format kind/revision's contract fixtures. Package semantic versioning only identifies the pinned distribution artifact, so one package version MAY expose separate exports for different formats or format revisions.
+
+Consumers accept `reference_renderer` only from the configured, reviewed AgenticAdvertising.org community-registry origin; a `catalog_role` value in an arbitrary publisher file does not establish provenance. Before execution they verify the exact tarball version and SRI, require npm provenance, require the attestation subject digest to match that tarball, and bind the attestation source repository and workflow path to the entry. Registry-selected code MUST NOT be bundled or dynamically imported into the host application realm. Execute it in a dedicated worker or opaque-origin execution realm with no ambient credentials, `connect-src 'none'`, no persistent storage, structured-clone input/output, and strict time and size limits. Render returned HTML in a separate iframe with an empty sandbox token set and caller-enforced CSP. VAST reference players and OpenRTB Native renderers are precedent for this executable half of an interoperable format specification; they are not precedent for treating a reference implementation as serving-platform truth.
+
+If a pinned renderer version has a confirmed vulnerability, the community-registry maintainer MUST publish a reviewed update that replaces `version` and `integrity` and rotates the catalog's `catalog_etag`. Consumers whose vulnerability policy identifies the pin as unsafe MUST NOT execute it; they fail closed for that renderer and continue at the next available layer in the rendering fallback order. Pin rejection does not invalidate the canonical manifest or authorize an unverified replacement package.
+
+AgenticAdvertising.org's hosted reference agent at `https://creative.adcontextprotocol.org/mcp` provides image, native-in-feed, VAST, hosted-video, and hosted-audio approximation routes. Its `PreviewRender` records a hosted-implementation version and exact renderer export for audit; that metadata is not an npm package pin. `tracking_suppressed` is true only when the actual output contains no remote asset or navigation capable of producing a request. The VAST reference path does not dereference inline or remote VAST XML, resolve wrappers, execute VPAID/SIMID code, expand macros, or fire tracking resources. Declared hosted image, video, and audio slots are rewritten to expiring random-token proxy URLs, with strict per-preview and per-principal quotas; allocation failure returns `PREVIEW_CAPACITY_EXCEEDED` instead of a preview whose CSP would block the original URL. Each affected route advertises the proxy's 10 MB ceiling (`max_file_size_kb: 10000` for images or `max_file_size_mb: 10` for hosted audio/video), and compatibility requires `file_size_bytes`, so unverifiable or oversized media fails before a preview URL is issued. The proxy fetches without credentials through public-IP/DNS-pinned SSRF defenses, follows no redirects, accepts only an exact raster/video/audio MIME allowlist (never SVG/XML), caps per-principal and aggregate cache size, and downloads each token once to a streamed temporary-file cache. Completed inactive cache files are LRU-evictable without invalidating their live tokens, and transient cache saturation is reported as HTTP 503. Asset responses carry an inert sandboxed CSP. The preview CSP allows that exact proxy origin rather than arbitrary creative-controlled HTTPS origins. A publisher may designate these routes through `preview_provider`; without that publisher declaration, the hosted output remains an approximation.
+
+No executable package is pinned in the community registry until a hardened immutable release passes the package export, isolation, and behavior fixtures. Bootstrap packages that predate those fixtures MUST NOT be referenced by a registry entry.
+
+The community registry requires `catalog_etag` whenever a reference renderer is present. If a vulnerability requires pin rotation, maintainers update the package version, integrity, any affected export mapping, and `catalog_etag` in one reviewed registry change. Clients that do not execute isolated JavaScript call the hosted `preview_creative` route instead.
+
+#### Sample renders and declaration authority
 
 Starting in 3.2, `sample_render_url` restores the human-preview path that publisher-owned canonical formats otherwise lose when there is no creative agent owning the format. It answers “what does this declared format look like?” using example assets selected by the declaring party. It does not render buyer assets.
 
@@ -388,7 +470,7 @@ A bare `{format_option_id}` in `Placement.format_options[]` resolves to the same
 
 Sample URLs are untrusted external navigation. They SHOULD be public and unauthenticated. Consumers MUST NOT auto-fetch or iframe a sample solely because it appears in a declaration, and MUST NOT attach buyer assets, authorization credentials, source-origin or account context, or user-specific query parameters. Ordinary browser state belonging to the destination origin is outside AdCP's control. Human-facing clients SHOULD open the URL only after explicit user action in a new browsing context with opener and referrer information suppressed.
 
-Dynamic preview is a separate capability. Rendering a buyer's creative manifest requires an authorized renderer and canonical format context for `preview_creative`; `sample_render_url` is neither renderer discovery nor a substitute for that task.
+Dynamic preview is a separate capability. Rendering a buyer's creative manifest requires an authorized renderer and canonical format context for `preview_creative`; `sample_render_url` is neither renderer discovery nor a substitute for that task. Because it uses example assets rather than the buyer's manifest, it does not enter the rendering fallback order above.
 
 ### Publisher catalog resolution
 
@@ -1243,6 +1325,8 @@ Buyers ship assets per the format's `slots` declaration; `preview_creative` show
 - **Seller-side production**: buyer ships content the seller consumes (script text, creative_brief, voice_id selection) → seller produces the rendered asset internally (host recording, generative AI synthesis, transcoding — invisible) → preview shows the produced output.
 
 The buyer can iterate on shipped assets and inspect previews before committing to a buy. Different sellers may produce differently internally; the preview surface is uniform. This is what makes "production mechanism is invisible to the buyer" workable in practice — the buyer doesn't need to know HOW the output was produced because they can see WHAT was produced.
+
+Uniform output shape does not imply equal authority. Buyers discover preview routes and their implementation origin from `creative.preview`, then apply the [rendering authority and composition rules](#rendering-authority-and-fallback-order). A community `reference_renderer` is useful when no delegated preview exists, but its output remains non-authoritative.
 
 ## Brand identity via brand.json (with override)
 
