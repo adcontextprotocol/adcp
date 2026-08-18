@@ -802,7 +802,7 @@ Brand schema extensions (`border_radius`, `elevation`, `spacing`, extended color
 - **Compliance paths** — Update any references to `/compliance/{v}/domains/` → `/compliance/{v}/protocols/`.
 - **Capabilities** — Remove all boolean capability checks (`features.content_standards`, `brand.identity`, `trusted_match.supported`, etc.). Test for object presence instead. See the [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades#capabilities-model-simplification) for the full field list.
 - **Products** — Ensure all products include `reporting_capabilities`. This field is now required.
-- **Media buy status** — Replace `pending_activation` with `pending_creatives` and `pending_start`. See [lifecycle states](/docs/media-buy/media-buys#lifecycle-states).
+- **Media buy status** — Replace `pending_activation` with `pending_creatives` and `pending_start`. See the [state machine](/docs/media-buy/media-buys#state-machine).
 - **update_media_buy** — Pass `account` on all calls, matching `create_media_buy` behavior.
 - **preview_creative** — Update request builders from the oneOf union to the flat schema with `request_type` discriminant.
 - **Signals** — Include `signal_id` on all signal items in `get_signals` responses.
