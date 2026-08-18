@@ -6,32 +6,47 @@ description: "Step-by-step sequence from product discovery through delivery, inc
 
 This page is the canonical sequence reference for media buy lifecycle. For conceptual background on the full lifecycle — campaign structure, package model, property targeting, and async operations — see [Media Buy Lifecycle](/docs/media-buy/media-buys/).
 
-## Standard flow
+## AdCP 3.2 flow
 
-Every media buy follows four steps:
+Capability discovery determines how the commercial commitment is formed. The
+two compact paths converge on the same MediaBuy lifecycle:
 
 ```mermaid
 flowchart TD
-    A[get_products] --> B[create_media_buy]
-    B --> C{initial state}
-    C -->|creatives missing| D[pending_creatives]
-    C -->|creatives present,\nflight not yet started| E[pending_start]
-    C -->|creatives present,\nflight started| F[active]
-    C -->|paused: true,\notherwise active| J[paused]
-    D --> G[creative supply]
-    G --> E
+    C[get_adcp_capabilities] --> P{commercial path}
+    P -->|published offer| L[list_products]
+    L --> B[buy_products]
+    P -->|seller-planned| R[request_proposals]
+    R --> V[refine_proposals]
+    V --> H[finalize committed hold]
+    H --> A[accept_proposal]
+    B --> M{initial MediaBuy state}
+    A --> M
+    M -->|creatives missing| D[pending_creatives]
+    M -->|flight in future| E[pending_start]
+    M -->|ready to deliver| F[active]
+    D --> S[sync_creatives and assign]
+    S --> E
     E --> F
-    F --> H{delivery}
-    H -->|budget exhausted /\ngoal met / flight ended| I[completed]
-    H -->|buyer or seller action| J[paused]
-    J --> F
-    J -->|flight ended| I
+    F --> O[control_media_buy]
+    O -->|pause| J[paused]
+    J -->|resume| F
+    F -->|goal met, budget spent, or flight ended| I[completed]
 ```
 
-1. **`get_products`** — discover available inventory matching your brief.
-2. **`create_media_buy`** — submit packages; the seller validates and confirms.
-3. **Creative supply** — assign creative assets to packages that need them, either through `sync_creatives` and `creative_assignments` or through inline package `creatives` when the seller advertises inline creative management.
-4. **Delivery** — the buy enters `active` and accrues impressions, or enters `paused` when created with delivery held. It eventually reaches a terminal state.
+1. **Discover capabilities** — read `media_buy.lifecycle_tools` and related
+   creative capabilities.
+2. **Form the commercial commitment** — purchase a versioned published offer
+   with `buy_products`, or accept a committed immutable proposal with
+   `accept_proposal`.
+3. **Supply creatives** — use `sync_creatives` and explicit assignment
+   operations. Compact purchase calls never carry creative bodies.
+4. **Operate and reconcile** — read `get_media_buys`, apply in-envelope changes
+   with `control_media_buy`, and use `get_media_buy_delivery` for reporting.
+
+Commercial changes outside the accepted envelope return `REQUOTE_REQUIRED`.
+Begin an amendment from the snapshot's `accepted_proposal_id`, then revise,
+finalize, and accept the successor proposal.
 
 ## State machine
 
@@ -48,25 +63,28 @@ flowchart TD
 | `canceled` | Buyer or seller terminated before completion | Yes |
 
 <Note>
-`pending_manual` and `pending_permission` are **task-level** statuses — they describe whether the *operation* (e.g., `create_media_buy`) is queued for human review, not the media buy's own state. The media buy enters `pending_creatives`, `pending_start`, `active`, or `paused` once the operation completes. See [Asynchronous Operations](/docs/media-buy/media-buys/#asynchronous-operations-and-human-in-the-loop).
+`submitted`, `working`, and `input-required` are **task-level** statuses. They
+describe an operation such as `buy_products` or `accept_proposal`, not the
+MediaBuy itself. The completion artifact creates or updates the MediaBuy, whose
+state is then read through `get_media_buys`. See [task status and MediaBuy state](/docs/media-buy/media-buys#state-machine).
 </Note>
 
 ### Transitions
 
 ```mermaid
 stateDiagram-v2
-    [*] --> pending_creatives : create_media_buy\n(no creatives)
-    [*] --> pending_start : create_media_buy\n(creatives present,\nflight future)
-    [*] --> active : create_media_buy\n(creatives present,\nflight started)
-    [*] --> paused : create_media_buy\n(paused: true,\notherwise active)
+    [*] --> pending_creatives : buy_products / accept_proposal\n(creatives missing)
+    [*] --> pending_start : buy_products / accept_proposal\n(flight future)
+    [*] --> active : buy_products / accept_proposal\n(ready to deliver)
+    [*] --> paused : buy_products\n(paused: true)
 
-    pending_creatives --> pending_start : sync_creatives\nor update_media_buy creatives
-    pending_creatives --> paused : sync_creatives\nor update_media_buy creatives\n(create held)
+    pending_creatives --> pending_start : sync_creatives assignment
+    pending_creatives --> paused : sync_creatives assignment\n(buy held)
     pending_start --> active : flight date reached
     pending_start --> paused : flight date reached\n(create held)
 
-    active --> paused : update_media_buy\n(paused: true)
-    paused --> active : update_media_buy\n(paused: false)
+    active --> paused : control_media_buy\n(paused: true)
+    paused --> active : control_media_buy\n(paused: false)
 
     active --> completed : flight ended /\ngoal met / budget exhausted
     paused --> completed : flight ended /\ngoal met / budget exhausted
@@ -74,10 +92,10 @@ stateDiagram-v2
     pending_creatives --> rejected : seller declines
     pending_start --> rejected : seller declines
 
-    pending_creatives --> canceled : update_media_buy\n(canceled: true)
-    pending_start --> canceled : update_media_buy\n(canceled: true)
-    active --> canceled : update_media_buy\n(canceled: true)
-    paused --> canceled : update_media_buy\n(canceled: true)
+    pending_creatives --> canceled : control_media_buy\n(accepted unilateral right)
+    pending_start --> canceled : control_media_buy\n(accepted unilateral right)
+    active --> canceled : control_media_buy\n(accepted unilateral right)
+    paused --> canceled : control_media_buy\n(accepted unilateral right)
 
     completed --> [*]
     rejected --> [*]
@@ -97,33 +115,43 @@ Rather than hardcoding the state machine, read `valid_actions` from `get_media_b
 }
 ```
 
-Buyers SHOULD pass the latest `revision` in every `update_media_buy` call intended to change state. The field is optional for backward compatibility, but when present the seller rejects with `CONFLICT` if the revision has changed since your last read, and the check must happen atomically with the write so concurrent updates cannot overwrite each other. See [optimistic concurrency](/docs/media-buy/task-reference/update_media_buy#optimistic-concurrency).
+`control_media_buy` requires the latest `revision`. The seller rejects a stale
+revision with `CONFLICT`, so concurrent controls cannot silently overwrite one
+another. `available_actions` tells compact clients whether the next change
+routes to `control_media_buy`, proposal refinement, creative assignment, or
+another task. Prefer it over inferring routing from the state enum.
 
-For creative changes, `sync_creatives` in `valid_actions` is the legacy action label. Use the creative path the seller advertises: `sync_creatives` and `creative_assignments` for library-backed sellers, or `packages[].creatives` on `update_media_buy` for inline-only sellers.
+Use `sync_creatives.assignment_operations` for creative changes. Creative
+assignment is independent from commercial control and does not increment the
+MediaBuy revision merely because an assignment changed.
 
 ## Guaranteed / PG deal variation
 
-Products with `delivery_type: "guaranteed"` require contractual commitment before delivery begins. The flow diverges after `create_media_buy`:
+Guaranteed products require contractual commitment before delivery begins. In
+the compact lifecycle, sellers normally express negotiated guaranteed terms as
+a committed proposal:
 
 ```mermaid
 flowchart TD
-    A[get_products\ndelivery_type: guaranteed] --> B[create_media_buy\nwith accountability_terms]
-    B --> C{task status}
-    C -->|IO signing needed| D[submitted\ntask_id returned]
-    C -->|IO pre-signed| E[pending_creatives\nor pending_start]
-    D --> F[IO signed\nout-of-band]
-    F --> E
-    E --> G[creative supply\nif needed]
-    G --> H[active — guaranteed delivery]
-    H --> I{performance}
-    I -->|standards met| J[completed]
-    I -->|under-delivery| K[makegood / remediation]
-    K --> J
+    A[request_proposals] --> B[refine proposal terms]
+    B --> C[finalize committed hold]
+    C --> D[accept_proposal\nwith IO acceptance when required]
+    D --> E{task status}
+    E -->|human or counterparty review| F[submitted / input-required]
+    E -->|completed| G[pending_creatives or pending_start]
+    F --> G
+    G --> H[sync_creatives and assign]
+    H --> I[active — guaranteed delivery]
+    I --> J{performance}
+    J -->|standards met| K[completed]
+    J -->|under-delivery| L[makegood or remediation]
+    L --> K
 ```
 
 ### What makes a guaranteed buy different
 
-**`accountability_terms` are required** on each package with a guaranteed product. Three fields are required:
+**Accountability terms are part of the accepted commercial snapshot.** A
+guaranteed proposal can carry:
 
 - `performance_standards` — viewability, IVT, completion rate, and other thresholds with measurement vendor
 - `measurement_terms` — who counts the billing metric, acceptable variance, and makegood remedies
@@ -131,29 +159,47 @@ flowchart TD
 
 Omitting any of these on a guaranteed package causes the seller to return `TERMS_REJECTED`.
 
-**IO signing** — `create_media_buy` for a guaranteed product may return task status `submitted` with a `task_id` rather than completing synchronously. This means the seller's system is awaiting insertion order (IO) acceptance. Poll with `tasks/get` or configure a webhook. Once the IO is signed, the completion artifact carries the `media_buy_id` and the media buy enters `pending_creatives` or `pending_start`.
+**IO acceptance** — `accept_proposal` can include structured `io_acceptance`
+when the committed terms require it. The operation may still return
+`submitted` or `input-required` while the seller completes human or
+counterparty review. Poll with `get_task_status` or use the configured task
+webhook. The completion artifact carries the `media_buy_id`.
 
 **Makegoods** — if the seller under-delivers against agreed `performance_standards`, they propose a remedy from the `makegood_policy`: `additional_delivery`, `credit`, or `invoice_adjustment`. The buyer accepts or disputes.
 
 <Note>
-A seller who accepts without under-delivering earns a favorable accountability signal. See [Accountability](/docs/media-buy/advanced-topics/accountability) for the full negotiation flow including how buyers can propose non-default terms at `create_media_buy` time.
+A seller who accepts without under-delivering earns a favorable accountability
+signal. See [Accountability](/docs/media-buy/advanced-topics/accountability) for
+performance standards, measurement terms, and makegood resolution.
 </Note>
 
 ## Creative sync timing
 
 ### When creatives are required
 
-`create_media_buy` accepts inline `creative_assignments` or `creatives` per package. If you supply them at creation time and the flight date has passed, the buy enters `active` directly, or `paused` when the request carries top-level `paused: true`. If the flight date is in the future, it enters `pending_start`; with top-level `paused: true`, the hold is latent and the buy enters `paused` when the flight date arrives.
+`buy_products` and `accept_proposal` do not accept creative bodies. After
+commitment, supply or update library creatives with `sync_creatives`, then use
+explicit `assignment_operations` to assign them to packages. A compact seller
+advertises the creative workflow it supports; callers should not infer an
+inline-creative path from older tool availability.
 
-If no creatives are assigned at creation, the buy enters `pending_creatives`. With top-level `paused: true`, the hold is latent and the buy enters `paused` after required creatives are supplied and any future start date has arrived. Delivery cannot begin until the buyer supplies at least one creative per package through a path the seller advertises. Sellers with `creative.has_creative_library: true` use `sync_creatives` and `creative_assignments`. Sellers that advertise both `creative.has_creative_library: true` and `inline_creative_management: true` also accept inline `packages[].creatives` on `create_media_buy` and `update_media_buy`. Inline-only sellers use only `packages[].creatives` on `update_media_buy`.
-
-Create-time holds may be cleared before delivery is otherwise ready. `update_media_buy` with `paused: false` clears the stored hold; if creatives are still missing or the flight date is still in the future, the visible status remains `pending_creatives` or `pending_start` until that blocker clears.
+When required formats lack creative coverage, the buy enters
+`pending_creatives`. After assignments cover the package's effective
+`format_options[]`, it moves to `pending_start` when the flight is in the future
+or `active` when delivery can begin. A direct `buy_products` call may set
+`paused: true`; resume it later with `control_media_buy` and the latest
+revision.
 
 ### The `creative_deadline`
 
-`create_media_buy` returns a `creative_deadline` timestamp on the media buy response. Individual packages may carry their own `creative_deadline`. **Package-level deadlines take precedence over the media buy deadline.** This matters for mixed-channel orders — a print package may have a material deadline days before the digital packages in the same buy.
+The MediaBuy snapshot can carry a `creative_deadline`; individual packages may
+carry their own. **Package-level deadlines take precedence over the MediaBuy
+deadline.** This matters for mixed-channel orders—a print package may have a
+material deadline days before digital packages in the same buy.
 
-After the deadline, creative submissions for that package return `CREATIVE_REJECTED`, whether they arrive through `sync_creatives` or inline `packages[].creatives` on `update_media_buy`. Creative changes are blocked; delivery continues with whatever creatives are currently assigned (or the package remains in `pending_creatives` if none were ever assigned).
+After the deadline, new or replacement assignments for that package return
+`CREATIVE_REJECTED`. Delivery continues with the currently assigned creatives,
+or the package remains `pending_creatives` if none were accepted.
 
 ```
 Deadline hierarchy:
@@ -237,14 +283,14 @@ Each `reason_code` has a typical buyer remediation path. Sellers don't fill this
 | `consent_expired` | Refresh upstream consent (e.g., hashed-id consent renewal on a clean-room flow), then re-sync the audience via `sync_audiences`. |
 | `ttl_expired` | Re-sync the audience via `sync_audiences` to renew. |
 | `pii_audit_failed` | Address audit findings upstream (hashing, identifier hygiene). Re-sync only **after** the seller signals the audit is cleared — a buyer agent that loops `sync_audiences` against an uncleared audit will not converge. |
-| `content_rejected` | Same path as initial creative approval — fix the issue and resubmit via `sync_creatives` for library-backed sellers, or via `packages[].creatives` on `update_media_buy` for inline-only sellers. Campaign-level decision (replace vs. wait for resubmit) depends on creative pool composition and is left to the buyer. |
+| `content_rejected` | Fix or replace the asset through `sync_creatives`, then use an explicit assignment operation. Campaign-level replace-versus-wait policy stays with the buyer. |
 | `identity_authorization_revoked` | Restore the downstream identity/post authorization through the seller's connection flow, or replace the affected `published_post` creative if authorization cannot be restored. |
 | `identity_authorization_expired` | Renew the downstream identity/post authorization through the seller's connection flow, then let the seller re-check or re-review the creative. |
 | `source_private` | Restore source post visibility or replace the affected `published_post` reference. |
 | `source_offline` | Verify the tag is firing on the buyer's properties (this is often a buyer/publisher integration issue, not a seller-side outage), then re-sync via `sync_event_sources`. |
-| `seller_removed` | No buyer-side resubmit path. Find a replacement via the same discovery surfaces used at campaign setup (`get_products`, `get_signals`, and canonical product format options), or contact the seller for restoration ETA. |
+| `seller_removed` | No buyer-side resubmit path. Find a replacement through `list_products` or `request_proposals`, inspect canonical product format options, or contact the seller for restoration ETA. |
 | `policy_violation` | Seller-side enforcement; buyer-side resubmit unlikely to clear. Await resolution or escalate per the seller's standard contact path. |
-| `property_depublished` | No buyer-side fix — property publication is controlled by the publisher's `brand.json` / `adagents.json`. Find a replacement property via `get_products` or remove from targeting. |
+| `property_depublished` | No buyer-side fix — property publication is controlled by the publisher's `brand.json` / `adagents.json`. Find a replacement through product listing or proposal planning, or remove it from targeting. |
 
 ### Triage ordering
 
@@ -285,7 +331,9 @@ For library-backed sellers, creative library state and creative assignment state
 ## See also
 
 - [Media Buy Lifecycle](/docs/media-buy/media-buys/) — full lifecycle reference: campaign structure, package model, async operations
-- [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) — task reference with request parameters, response shapes, and examples
+- [`buy_products`](/docs/media-buy/task-reference/buy_products) — purchase versioned published offers directly
+- [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) — accept committed new-buy, amendment, or cancellation terms
+- [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) — apply revision-checked operational controls
 - [`sync_creatives`](/docs/creative/task-reference/sync_creatives) — upload and update library creatives when the seller advertises `creative.has_creative_library: true`
 - [Accountability](/docs/media-buy/advanced-topics/accountability) — performance standards, measurement terms, makegood resolution
 - [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) — delivery monitoring, dimensional reporting, campaign updates

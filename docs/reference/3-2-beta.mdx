@@ -1,7 +1,7 @@
 ---
 title: AdCP 3.2 beta program
 sidebarTitle: 3.2 beta program
-description: "How to test AdCP 3.2 beta.0 before SDK support, prepare SDKs from the signed protocol bundle, and complete beta.1 protocol and SDK convergence."
+description: "How to test AdCP 3.2 beta.0 with the TypeScript SDK or signed protocol bundle, report integration feedback, and complete beta.1 convergence."
 "og:title": "AdCP — 3.2 beta program"
 ---
 
@@ -14,18 +14,19 @@ Every beta is an immutable checkpoint, but later betas may change 3.2 surfaces
 before GA.
 </Warning>
 
-The 3.2 beta cycle deliberately publishes the protocol before its SDKs:
+The 3.2 beta cycle started with a protocol-first checkpoint. The first
+TypeScript SDK cut now consumes that exact signed bundle:
 
 | Checkpoint | Purpose | Who should test |
 |---|---|---|
 | `3.2.0-beta.0` | Canonical schemas, compliance assets, skills, and protocol manifest for SDK implementation | SDK maintainers, code-generator maintainers, raw-wire implementers, and agent teams that can validate without generated 3.2 SDK types |
-| SDK wave | SDKs ingest the signed beta.0 tarball and publish exact support statements | TypeScript, Python, and Go maintainers and early adopters |
+| SDK wave | `@adcp/sdk@14.0.0-beta.0` is published; Python and Go remain pending | TypeScript adopters, Python and Go maintainers, and early integration teams |
 | `3.2.0-beta.1` | Pull integration corrections into the protocol; a second SDK refresh then establishes exact beta.1 support | Buyer and seller teams running end-to-end integrations, followed by SDK maintainers |
 
-Beta.0 is not waiting for the SDKs. Beta.1 is a two-stage convergence point:
-publish the corrected protocol checkpoint, then have SDKs ingest that exact
-bundle. Call beta.1 SDK-backed only after the matching SDK versions and
-integration evidence are published.
+Beta.0 remains useful as a pinned implementation checkpoint. Beta.1 is a
+two-stage convergence point: publish the corrected protocol checkpoint, then
+have SDKs ingest that exact bundle. Call beta.1 SDK-backed only after the
+matching SDK versions and integration evidence are published.
 
 ## Know which version string to use
 
@@ -44,7 +45,23 @@ Only send a prerelease wire pin to a peer that advertises that exact value in
 buyer pinned to `"3.2-beta.0"` must not silently negotiate to beta.1, and a
 stable `"3.2"` pin must not silently negotiate to a beta.
 
-## Test beta.0 without an SDK
+## Use the TypeScript SDK beta
+
+The TypeScript SDK is the first package with exact beta.0 support. The npm
+`latest` tag remains on SDK 13, so opt into the preview explicitly:
+
+```bash
+npm install @adcp/sdk@14.0.0-beta.0
+```
+
+SDK 14 includes typed caller and server support for the compact media-buy
+lifecycle, the beta.0 schemas and compliance assets, version-aware request
+signing, governance plan-adjustment reporting, and agent notification
+configuration. It retains 3.0 and 3.1 adaptation for mixed-version testing.
+See [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk) for the support
+matrix and install guidance.
+
+## Use the beta.0 artifact directly
 
 Once `v3.2.0-beta.0` is published, download the signed protocol bundle rather
 than copying schemas from `main` or from the moving `/schemas/latest/` path:
@@ -69,7 +86,7 @@ Verify the Sigstore signature before using the bundle as a build input. See
 [Verifying protocol tarballs](/docs/reference/verifying-protocol-tarballs) for
 the certificate-identity and issuer checks.
 
-At beta.0, useful tests are:
+Useful direct-artifact tests are:
 
 1. Generate or refresh types from the pinned bundled schemas.
 2. Validate representative requests and responses for the roles you implement.
@@ -95,9 +112,10 @@ An SDK support claim must name all of the following:
 - install command and one tested validation command.
 
 The SDK compatibility matrix lives in [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk).
-Until a row names beta.0 support, treat that SDK's generated 3.2 types and
-validators as unavailable. Raw JSON calls may still be possible, but they are
-not equivalent to SDK support.
+Only the TypeScript row currently names exact beta.0 support. Treat generated
+3.2 types and validators in every other SDK as unavailable until its row names
+an exact package and protocol checkpoint. Raw JSON calls may still be possible,
+but they are not equivalent to SDK support.
 
 SDK maintainers should report protocol ambiguities against the
 [AdCP repository](https://github.com/adcontextprotocol/adcp/issues). Report

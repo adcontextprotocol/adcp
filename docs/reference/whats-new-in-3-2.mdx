@@ -8,10 +8,11 @@ description: "Adopter overview of AdCP 3.2: compact media buying, targeting-awar
 # What's new in AdCP 3.2
 
 <Warning>
-**3.2 is in beta.** Beta.0 publishes the protocol artifacts before SDK support.
-Beta.1 incorporates SDK feedback, then becomes SDK-backed after a second SDK
-refresh against the exact beta.1 bundle. See the [3.2 beta program](/docs/reference/3-2-beta)
-before testing.
+**3.2 is in beta.** The protocol beta.0 artifacts and
+`@adcp/sdk@14.0.0-beta.0` now support the same exact checkpoint. Python and Go
+3.2 packages are still pending. Beta.1 will incorporate integration feedback
+and require a fresh SDK support statement against its exact bundle. See the
+[3.2 beta program](/docs/reference/3-2-beta) before testing.
 </Warning>
 
 AdCP 3.2 makes the protocol easier to implement as a set of explicit agent
@@ -143,7 +144,7 @@ pin an exact 3.2 release, and follow the applicable migration notice.
 | A media-buy implementer | Use `media_buy_status` on create/update success payloads; root `status` is the task-envelope state. |
 | A signing implementation | Require `content-digest` coverage for every signed body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; retain legacy conversion only at a proven compatibility boundary. |
-| An SDK maintainer | Generate from the signed beta.0 tarball, publish the exact supported bundle, and feed protocol corrections into beta.1. |
+| An SDK maintainer | Generate from the signed beta.0 tarball, name the exact supported bundle, and feed protocol corrections into beta.1. |
 | A compliance operator | Treat beta.0 as an implementation input; treat beta.1 as SDK-backed only after the exact beta.1 SDK refresh and integration evidence publish. Do not issue a 3.2 badge from beta.0. |
 
 ## Start here

@@ -1,133 +1,176 @@
 ---
-title: Product Discovery
-sidebarTitle: Overview
-description: "AdCP product discovery — use natural language campaign briefs to find advertising inventory across publishers. Covers brief writing, product structures, and refinement."
-"og:title": "AdCP — Product Discovery"
+title: Product discovery and planning
+sidebarTitle: Discovery and planning
+description: "Choose the AdCP 3.2 path for published product offers, wholesale feed synchronization, or seller-planned proposals."
+"og:title": "AdCP — Product discovery and planning"
 ---
 
+AdCP 3.2 separates reading published offers from asking a seller to build a
+plan. Start by reading `get_adcp_capabilities.media_buy.lifecycle_tools`, then
+choose the path the seller advertises.
 
-Product discovery is the foundation of AdCP media buying. Use natural language to describe your campaign goals and discover relevant advertising inventory that matches your requirements.
+| Buyer intent | Start with | Commit with |
+|---|---|---|
+| Browse or filter published offers | [`list_products`](/docs/media-buy/task-reference/list_products) | [`buy_products`](/docs/media-buy/task-reference/buy_products) |
+| Maintain a wholesale product mirror | `list_products`, feed versions, and account-level product webhooks | `buy_products`, or pass selected IDs into `request_proposals` |
+| Ask the seller to build or negotiate a plan | [`request_proposals`](/docs/media-buy/task-reference/request_proposals) | Finalize with `refine_proposals`, then [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) |
 
-AdCP's product discovery revolutionizes how advertising inventory is found and evaluated:
+<Note>
+Wholesale is a product-feed topology, not a proposal mode. A mirror tracks the
+seller's published offers and pricing. Proposal tasks create immutable,
+seller-authored commercial snapshots for a specific planning conversation.
+</Note>
 
-- **Natural Language First**: Describe campaigns in plain English instead of navigating complex catalogs
-- **AI-Powered Matching**: Advanced algorithms match briefs to relevant inventory
-- **Format-Aware Discovery**: Products include creative format compatibility
-- **Account-Specific Results**: See inventory based on your account's access and negotiated deals
+## 1. Discover the available lifecycle
 
-## The Discovery Process
+Do not infer compact-tool support from the protocol version alone. Use the
+seller's advertised lifecycle tools:
 
-### 1. Write Your Brief
-Start with a natural language description of your campaign objectives:
+```javascript
+const capabilities = await seller.getCapabilities();
+const lifecycleTools = new Set(capabilities.mediaBuyLifecycleTools ?? []);
 
-*"Mike's Plumbing Services needs to reach homeowners in the Denver, Colorado area who might need plumbing services. We have $8,000 USD to spend from October 15-31, 2024. Looking for display and native formats to drive phone calls."*
+const canBuyPublishedOffers =
+  lifecycleTools.has('list_products') && lifecycleTools.has('buy_products');
+const canNegotiate =
+  lifecycleTools.has('request_proposals') &&
+  lifecycleTools.has('refine_proposals') &&
+  lifecycleTools.has('accept_proposal');
+```
 
-### 2. Discover Products  
-Use [`get_products`](/docs/media-buy/task-reference/get_products) to find matching inventory based on your brief and brand.
+The field names above use the TypeScript SDK's normalized capability view.
+On the wire, inspect `media_buy.lifecycle_tools`.
 
-### 3. Evaluate Results
-Review returned products for:
-- **Audience alignment** with your target customers
-- **Format compatibility** with your creative assets
-- **Pricing model** (fixed CPM vs auction-based)
-- **Delivery type** (guaranteed vs non-guaranteed)
-- **Delivery forecasts** on proposals to estimate expected impressions, reach, and spend
+## 2. Express criteria once
 
-### 4. Refine and Iterate
-New AdCP 3.2 integrations use [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) to create immutable proposal revisions with typed constraints, product changes, alternatives, structured criteria, and commercial `ask` text. See [Proposal negotiation](/docs/media-buy/product-discovery/proposal-negotiation). The legacy `get_products` `buying_mode: "refine"` grammar remains supported throughout 3.x; see [Legacy refinement](/docs/media-buy/product-discovery/refinement).
+Both `list_products` and `request_proposals` accept
+`ProductDiscoveryCriteria`. Keep three concerns separate:
 
-### 5. Work with Proposals
-Publishers may return **proposals** alongside products—structured media plans with budget allocations that can be executed directly. See [Proposals](/docs/media-buy/product-discovery/media-products#proposals).
+- `offer_filters` select commercial and product characteristics such as
+  channel, delivery type, currency, and reporting support.
+- `targeting_overlay` contains concrete delivery constraints that must affect
+  the returned product, price, and forecast.
+- `required_overlay_support` asks for targeting dimensions that the buyer will
+  select later; it is a capability requirement, not a current target value.
 
-## Key Concepts
+```json
+{
+  "offer_filters": {
+    "channels": ["olv"],
+    "pricing_currencies": ["USD"]
+  },
+  "targeting_overlay": {
+    "geo_countries": ["US", "CA"]
+  },
+  "required_overlay_support": {
+    "demographics": { "age": true }
+  }
+}
+```
 
-### Natural Language Briefs
-AdCP accepts campaign descriptions in conversational English rather than requiring:
-- ❌ Product catalog navigation
-- ❌ Technical targeting syntax  
-- ❌ Platform-specific terminology
+Products return canonical `format_options[]` as their closed accepted creative
+set. Resolve publisher-backed definitions from `adagents.json.formats[]`; use a
+creative agent's capability IDs to choose production operations.
 
-Instead, describe your campaign naturally:
-- ✅ "Premium sports fans for energy drink launch"
-- ✅ "Local restaurant targeting dinner rush commuters"
-- ✅ "B2B software for marketing managers"
+## Published offers and wholesale mirrors
 
-Learn more in [Brief Expectations](/docs/media-buy/product-discovery/brief-expectations).
+Use `list_products` when the buyer wants to inspect seller-published offers
+without asking the seller to author a media plan:
 
-### Product Model
-Products describe sellable inventory along three independent dimensions:
-- **Publisher properties** — WHERE the ad runs (the website, app, or platform)
-- **Collections and installments** — WHAT CONTENT the ad runs in or around (a series, podcast, or live event)
-- **Placements** — WHAT POSITION the ad appears in (pre-roll, mid-roll, host read)
+```javascript
+const result = await seller.listProducts({
+  adcp_version: '3.2-beta.0',
+  account: { account_id: 'account_123' },
+  criteria: {
+    offer_filters: {
+      channels: ['olv'],
+      pricing_currencies: ['USD'],
+    },
+    targeting_overlay: { geo_countries: ['US', 'CA'] },
+  },
+  max_results: 25,
+});
+```
 
-Each product also includes audience targeting, creative format requirements, pricing, and delivery characteristics. Buyers see the products the seller chooses to return for the request; sales-agent routing decisions such as direct-only, wholesale, or storefront availability stay internal to the seller. When products reference collections or registered placements, buyers resolve full metadata from the publisher's `adagents.json`.
+The response contains products only—never proposals—and carries an opaque
+`feed_version`. A direct buyer passes that version and selected product terms
+to `buy_products` so the seller can reject stale offers instead of silently
+applying changed terms.
 
-Understand the complete product structure in [Media Products](/docs/media-buy/product-discovery/media-products). For collection-centric inventory like podcasts, CTV series, and live events, see [Collections and Installments](/docs/media-buy/product-discovery/collections-and-installments).
+A catalog mirror uses the same read as its bootstrap and repair surface. Store
+`feed_version`, `pricing_version`, and `cache_scope`; subscribe to `product.*`
+and `wholesale_feed.bulk_change` through account notification configuration;
+then use conditional `list_products` reads to repair gaps. Do not poll the full
+feed when the webhook stream is healthy.
 
-### Catalog-driven discovery
-For catalog-driven campaigns (retail media, job boards, travel), pass a `catalog` on `get_products` to find products that match your catalog items. Products declare which catalog types they support via `catalog_types`, and the response includes `catalog_match` with matched item counts. See [Catalogs](/docs/creative/catalogs#catalogs-in-the-media-buy-lifecycle).
+See [`list_products` wholesale feed webhooks](/docs/media-buy/task-reference/list_products#wholesale-feed-webhooks)
+for the complete mirror contract.
 
-### Property Governance Filtering
-For compliance-constrained discovery, pass the property-list reference in `get_products.targeting_overlay.property_list`. This is real inventory targeting, so product availability and forecasts reflect it. Use `required_overlay_support.property_list` only when the list will be selected on packages later. The legacy top-level `property_list` filter is deprecated.
+## Seller-planned proposals
 
-### Format Discovery Integration
-Product discovery works hand-in-hand with creative planning:
+Use `request_proposals` when the seller should translate a campaign brief into
+one or more priced plans. Sam Adeyemi at Pinnacle Agency can send the same
+structured criteria to StreamHaus while keeping strategy in prose:
 
-1. **Products return canonical `format_options[]`** as their closed accepted creative set
-2. **Resolve publisher-backed options** from `adagents.json.formats[]`; use creative-agent `creative.supported_formats[]` only to find production operations
-3. **Plan creative production** based on discovered format needs
+```javascript
+const response = await seller.requestProposals({
+  adcp_version: '3.2-beta.0',
+  idempotency_key: 'acme-q2-proposals-001',
+  account: { account_id: 'account_123' },
+  brand: { domain: 'acme-outdoor.example' },
+  brief:
+    'Premium video on trusted sports and outdoor lifestyle properties for the Acme Outdoor Q2 launch. Prioritize reach within a USD 50,000 ceiling.',
+  criteria: {
+    offer_filters: {
+      channels: ['olv'],
+      pricing_currencies: ['USD'],
+    },
+    targeting_overlay: { geo_countries: ['US', 'CA'] },
+  },
+});
+```
 
-## Brief Examples & Patterns
+The seller returns immutable draft proposals. Each revision creates a new
+`proposal_id` and preserves its parent:
 
-Real-world examples of effective briefs for different campaign types:
+1. Use `refine_proposals` with `action: "revise"` for typed budget, CPM,
+   flight, product, alternative, or targeting changes.
+2. Verify every returned typed constraint; a `partial` outcome identifies the
+   exact unsatisfied fields.
+3. Use `refine_proposals` with `action: "finalize"` to create a committed,
+   expiring inventory hold.
+4. Call `accept_proposal` with both the committed `proposal_id` and
+   `terms_digest` before `expires_at`.
 
-- **Local Business**: Service area, customer demographics, business outcomes
-- **E-commerce**: Product categories, shopping behaviors, conversion goals  
-- **B2B**: Job titles, company characteristics, lead generation
-- **Brand Awareness**: Lifestyle attributes, media consumption, reach objectives
+Commercial changes after acceptance use the same proposal lineage to create an
+amendment or negotiated cancellation. Operational changes inside the accepted
+envelope use [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy).
 
-Explore comprehensive examples in [Example Briefs](/docs/media-buy/product-discovery/example-briefs).
+See [Proposal negotiation](/docs/media-buy/product-discovery/proposal-negotiation)
+for request shapes, failure planes, finalization, and recovery.
 
-## Discovery Best Practices
+## Catalog-driven campaigns
 
-### Effective Brief Writing
-- **Be specific about your business** and what you're promoting
-- **Describe your ideal customer** rather than demographic codes
-- **Include geographic scope** and any location relevance
-- **Mention format preferences** if you have creative constraints
-- **State business objectives** (calls, visits, sales, awareness)
+Retail media, travel, job, and other catalog-driven campaigns pass a compact
+catalog selection in `criteria.catalog`. The seller matches the buyer-managed
+catalog to eligible offers; ingest or update the underlying feed separately
+through [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs).
 
-### Iterative Discovery
-- Start with a broad brief to explore available inventory
-- Use structured filters to narrow results by delivery type or pricing
-- [Refine](/docs/media-buy/product-discovery/refinement) specific products with the `refine` array before committing
-- Experiment with different customer descriptions to find new opportunities
+## Compatibility path
 
-### Working with Results
-- Review all returned products for unexpected opportunities
-- Check format requirements before creative production
-- Consider mix of guaranteed and non-guaranteed inventory
-- Evaluate pricing guidance for budget planning
+If `media_buy.lifecycle_tools` is absent, use the established `get_products`,
+`create_media_buy`, and `update_media_buy` facade documented in the
+[3.1 → 3.2 migration guide](/docs/reference/migration/3-1-to-3-2). Keep this
+branch at the version-adaptation boundary so new planning code works in terms
+of published offers, proposal snapshots, and revision-checked controls.
 
-## Response Times
+## Next steps
 
-Product discovery operations:
-- **[`get_products`](/docs/media-buy/task-reference/get_products)**: ~60 seconds (AI processing)
-- **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)**: ~1 second for creative-agent capability discovery
-
-## Next Steps
-
-After discovering products:
-1. **[Create Media Buy](/docs/media-buy/media-buys/)** - Build campaigns from selected products
-2. **[Creative Planning](/docs/media-buy/creatives/)** - Prepare assets matching format requirements
-3. **[Task Reference](/docs/media-buy/task-reference/)** - Detailed API documentation for implementation
-
-## Related Documentation
-
-- **[Brief Expectations](/docs/media-buy/product-discovery/brief-expectations)** - Comprehensive guide to brief structure
-- **[Example Briefs](/docs/media-buy/product-discovery/example-briefs)** - Real-world campaign brief patterns
-- **[Media Products](/docs/media-buy/product-discovery/media-products)** - Understanding product model and attributes
-- **[Refinement](/docs/media-buy/product-discovery/refinement)** - Iterating on products and proposals with change requests
-- **[Proposal negotiation](/docs/media-buy/product-discovery/proposal-negotiation)** - Implementing the immutable AdCP 3.2 negotiation lifecycle
-- **[Proposals](/docs/media-buy/product-discovery/media-products#proposals)** - Structured media plans with budget allocations
-- **[`get_products` Task](/docs/media-buy/task-reference/get_products)** - Complete API reference
+- [Media buy lifecycle](/docs/media-buy/media-buys/lifecycle) — commitment,
+  creative supply, control, and delivery
+- [Media products](/docs/media-buy/product-discovery/media-products) — product,
+  pricing, targeting, and format semantics
+- [Brief expectations](/docs/media-buy/product-discovery/brief-expectations) —
+  what belongs in prose versus structured criteria
+- [Task reference](/docs/media-buy/task-reference/) — compact lifecycle request
+  and response contracts

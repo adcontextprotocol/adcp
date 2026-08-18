@@ -12,7 +12,6 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 
 | Task | Purpose | Response Time | Phase |
 |------|---------|---------------|-------|
-| [`get_products`](/docs/media-buy/task-reference/get_products) | Discover inventory and refine products | ~60s | Discovery |
 | [`list_products`](/docs/media-buy/task-reference/list_products) | Enumerate structured product offers | ~1s | Discovery |
 | [`request_proposals`](/docs/media-buy/task-reference/request_proposals) | Request seller-authored plans | ~60s | Planning |
 | [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) | Revise proposals or finalize inventory holds | ~60s | Planning |
@@ -20,6 +19,7 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | [`buy_products`](/docs/media-buy/task-reference/buy_products) | Buy published offers directly | Minutes-Days | Media Buys |
 | [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) | Accept new-buy, amendment, or cancellation terms | Minutes-Days | Media Buys |
 | [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) | Apply operational delivery controls | Minutes-Days | Media Buys |
+| [`get_products`](/docs/media-buy/task-reference/get_products) | 3.x compatibility discovery and refinement facade | ~60s | Compatibility |
 | [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) | 3.x compatibility creation facade | Minutes-Days | Compatibility |
 | [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) | 3.x compatibility update facade | Minutes-Days | Compatibility |
 | [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) | View endpoint capabilities, including creative operations | ~1s | Capability |
@@ -39,7 +39,7 @@ AdCP tasks fall into four response time categories:
 
 ### 🟢 Instant (~1 second)
 **Simple lookups and event ingestion**
-- [`get_products`](/docs/media-buy/task-reference/get_products) `Product.format_options[]` - Product-specific canonical format specifications
+- [`list_products`](/docs/media-buy/task-reference/list_products) - Published offers and canonical `Product.format_options[]`
 - [`list_creatives`](/docs/creative/task-reference/list_creatives) - Creative library queries
 - [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) - Media buy status and creative approvals
 - [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) - Performance signal submission
@@ -48,13 +48,15 @@ AdCP tasks fall into four response time categories:
 
 ### 🟡 Processing (~60 seconds)
 **AI/LLM inference with backend systems**
-- [`get_products`](/docs/media-buy/task-reference/get_products) - Natural language product discovery and refinement
+- [`request_proposals`](/docs/media-buy/task-reference/request_proposals) - Seller planning from a natural-language brief and structured criteria
+- [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) - Typed proposal revision and finalization
 - [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) - Performance data aggregation
 
 ### 🟠 Asynchronous (Minutes to Days)
 **Complex operations with potential human approval**
-- [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) - Campaign creation and validation
-- [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) - Campaign modifications
+- [`buy_products`](/docs/media-buy/task-reference/buy_products) - Direct published-offer commitment
+- [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) - Negotiated commitment, amendment, or cancellation
+- [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) - Revision-checked operational control
 - [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) - Catalog feed processing and review
 - [`sync_creatives`](/docs/creative/task-reference/sync_creatives) - Creative asset processing
 - [`sync_audiences`](/docs/media-buy/task-reference/sync_audiences) - Audience matching and processing
@@ -71,9 +73,8 @@ Before placing media buys, establish a commercial relationship with the seller. 
 Start here to understand what's available and plan your campaign.
 
 - **[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)** - Discover agent capabilities, portfolio, and supported features (protocol-level task)
-- **[`get_products`](/docs/media-buy/task-reference/get_products)** - The core discovery task using natural language briefs
-- **[`list_products`](/docs/media-buy/task-reference/list_products)** - Compact structured product-offer reads
-- **[`request_proposals`](/docs/media-buy/task-reference/request_proposals)**, **[`refine_proposals`](/docs/media-buy/task-reference/refine_proposals)**, and **[`decline_proposals`](/docs/media-buy/task-reference/decline_proposals)** - Explicit proposal lifecycle operations; request and revision produce drafts, while finalization creates a committed inventory hold
+- **[`list_products`](/docs/media-buy/task-reference/list_products)** - Read published offers or bootstrap and repair a wholesale mirror
+- **[`request_proposals`](/docs/media-buy/task-reference/request_proposals)**, **[`refine_proposals`](/docs/media-buy/task-reference/refine_proposals)**, and **[`decline_proposals`](/docs/media-buy/task-reference/decline_proposals)** - Request seller-authored plans, create immutable successors, finalize holds, or record terminal feedback
 - **[Canonical formats](/docs/creative/canonical-formats)** - Understand creative requirements and authority
 
 ### Media Buy Management  
@@ -82,7 +83,12 @@ Create and manage your advertising campaigns.
 - **[`buy_products`](/docs/media-buy/task-reference/buy_products)** - Directly buy published product offers
 - **[`accept_proposal`](/docs/media-buy/task-reference/accept_proposal)** - Apply negotiated new-buy, amendment, or cancellation terms
 - **[`control_media_buy`](/docs/media-buy/task-reference/control_media_buy)** - Modify delivery controls inside accepted terms
+
+### 3.x Compatibility
+Use these only when capability discovery does not expose the compact lifecycle:
+
 - **[`create_media_buy`](/docs/media-buy/task-reference/create_media_buy)** and **[`update_media_buy`](/docs/media-buy/task-reference/update_media_buy)** - Deprecated 3.x compatibility facades
+- **[`get_products`](/docs/media-buy/task-reference/get_products)** - 3.x compatibility discovery facade; new integrations choose `list_products` or `request_proposals`
 
 ### Catalog Management
 Sync product feeds, inventory, and store data to seller accounts.
@@ -94,7 +100,7 @@ Handle creative assets throughout their lifecycle.
 
 - **[`sync_creatives`](/docs/creative/task-reference/sync_creatives)** - Upload assets to an agent-hosted creative library
 - **[`list_creatives`](/docs/creative/task-reference/list_creatives)** - Search and manage your creative library (creative protocol)
-- **Inline `packages[].creatives`** - Deprecated 3.x compatibility path available only through legacy create/update facades; absent from the compact lifecycle
+- **`assignment_operations`** - Explicitly assign, unassign, or replace package creatives after compact commitment
 
 ### Performance & Optimization
 Monitor and optimize campaign performance.
@@ -129,11 +135,11 @@ Schemas are accessible at runtime via the documentation server for validation an
 
 ### Task Naming Conventions
 Task names use snake_case and follow verb-first semantics consistently across Media Buy:
-- `get_*`: Retrieve current state or scoped datasets (for example [`get_products`](/docs/media-buy/task-reference/get_products), [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery))
-- `list_*`: Enumerate collections with optional filtering (for example [`list_creatives`](/docs/creative/task-reference/list_creatives))
+- `get_*`: Retrieve current state or scoped datasets (for example [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) and [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery))
+- `list_*`: Enumerate collections with optional filtering (for example [`list_products`](/docs/media-buy/task-reference/list_products) and [`list_creatives`](/docs/creative/task-reference/list_creatives))
 - `request_*`, `refine_*`, and `decline_*`: Explicit lifecycle transitions over immutable resources; finalized proposals flow into [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal)
-- `create_*`: Create new resources ([`create_media_buy`](/docs/media-buy/task-reference/create_media_buy))
-- `update_*`: Apply partial updates to existing resources ([`update_media_buy`](/docs/media-buy/task-reference/update_media_buy))
+- `buy_*` and `accept_*`: Create or change a commercial commitment from versioned terms
+- `control_*`: Apply revision-checked operational changes inside accepted terms
 - `sync_*`: Reconcile external state into seller systems with upsert-like behavior ([`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs), [`sync_creatives`](/docs/creative/task-reference/sync_creatives), [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources))
 - `log_*`: Ingest append-only event records ([`log_event`](/docs/media-buy/task-reference/log_event))
 - `provide_*`: Submit optimization or feedback signals ([`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback))
@@ -158,15 +164,14 @@ Long-running tasks provide:
 
 ## Getting Started
 
-1. **Discover Capabilities**: Use [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) to understand what the agent supports
-2. **Find Inventory**: Use [`get_products`](/docs/media-buy/task-reference/get_products) to find relevant inventory
-3. **Refine Products**: Re-call [`get_products`](/docs/media-buy/task-reference/get_products) with `buying_mode: "refine"` to iterate on budgets, pricing, and targeting
-4. **Understand Formats**: Check each selected product's canonical `format_options[]`
-5. **Sync Catalogs**: Use [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) to push product feeds to the account
-6. **Supply Creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for library-backed sellers, or inline `packages[].creatives` for inline-only sellers
-7. **Create Campaign**: Use [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) with selected products
-8. **Check Operational State**: Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for status, approvals, and missing formats
-9. **Monitor Performance**: Track reporting metrics with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
+1. **Discover capabilities**: Read `media_buy.lifecycle_tools` through [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
+2. **Choose a commercial path**: Use [`list_products`](/docs/media-buy/task-reference/list_products) for published offers and wholesale mirrors, or [`request_proposals`](/docs/media-buy/task-reference/request_proposals) for seller planning.
+3. **Understand formats**: Check each selected product's canonical `format_options[]` before commitment.
+4. **Commit**: Call [`buy_products`](/docs/media-buy/task-reference/buy_products), or revise and finalize a proposal before [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal).
+5. **Supply creatives**: Use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) and explicit assignment operations after compact commitment.
+6. **Read operational state**: Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) for status, revision, accepted terms, approvals, and missing formats.
+7. **Control delivery**: Use [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) for in-envelope changes; start a proposal amendment when the seller returns [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required).
+8. **Monitor performance**: Track billing-grade reporting with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery).
 
 For reporting and reconciliation, treat [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) as the authoritative, billing-grade source. Use [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) snapshots for operational monitoring only.
 
