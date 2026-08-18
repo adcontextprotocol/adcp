@@ -168,7 +168,7 @@
                   },
                   "reference_renderer": {
                     "$ref": "/schemas/core/reference-renderer.json",
-                    "description": "Optional only for an AgenticAdvertising.org community-registry format entry. Points to a pinned, browser-ESM, community-maintained OSS renderer package that provides a non-authoritative reference presentation. Non-JavaScript clients use hosted preview_creative or display the manifest. Publisher-origin catalogs and seller product declarations do not use this field: publishers describe placement-specific chrome with placements[].presentation_ref, while sellers advertise dynamic preview authority through get_adcp_capabilities.creative.preview."
+                    "description": "Optional only for an AgenticAdvertising.org community-registry format entry. Points to a pinned, browser-ESM, community-maintained OSS renderer package export that provides a non-authoritative reference presentation. The named export's contract, not the package major, MUST implement this enclosing format entry's revision. Non-JavaScript clients use hosted preview_creative or display the manifest. Publisher-origin catalogs and seller product declarations do not use this field: publishers describe placement-specific chrome with placements[].presentation_ref, while sellers advertise dynamic preview authority through get_adcp_capabilities.creative.preview."
                   }
                 }
               }

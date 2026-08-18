@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/reference-renderer.json",
   "title": "Reference Renderer",
-  "description": "Pinned npm package export for a community-maintained reference presentation of a canonical format. The registry references the package but never serves or executes it. A reference renderer is non-authoritative: it demonstrates one interoperable presentation of the format contract and is not evidence of seller, publisher, or serving-platform output. Consumers MUST verify the package version and Subresource Integrity value, require npm provenance for the published package, and execute the renderer as untrusted code in a sandbox without ambient credentials or network access.",
+  "description": "Pinned npm package export for a community-maintained reference presentation of a canonical format. The registry references the package but never serves or executes it. A reference renderer is non-authoritative: it demonstrates one interoperable presentation of the format contract and is not evidence of seller, publisher, or serving-platform output. Consumers MUST verify the package version and Subresource Integrity value, require npm provenance for the published package, and execute the renderer as untrusted code in a sandbox without ambient credentials or network access. On confirmation that a pinned renderer version is vulnerable, the community-registry maintainer MUST replace the version and integrity in a reviewed registry update and rotate the enclosing catalog's cache validator. A consumer whose vulnerability policy marks the pin unsafe MUST fail closed for renderer execution, MUST NOT load the package, and MUST continue with the normal rendering fallback order.",
   "type": "object",
   "required": ["runtime", "package", "version", "export", "integrity"],
   "properties": {
@@ -19,12 +19,12 @@
     "version": {
       "type": "string",
       "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
-      "description": "Exact semantic version. Ranges and tags such as latest are forbidden so the registry entry is reproducible. The package major MUST track the community format entry's major revision."
+      "description": "Exact semantic version. Ranges and tags such as latest are forbidden so the registry entry is reproducible. Package semantic versioning identifies the pinned distribution artifact; it is independent of any one format revision because one package may expose renderers for multiple formats."
     },
     "export": {
       "type": "string",
       "minLength": 1,
-      "description": "Named package export that implements the renderer contract for this format entry."
+      "description": "Named package export that implements the renderer contract for this enclosing format entry. Compatibility is bound at the export-to-entry edge, not to the package major: the export's documented input/output contract MUST implement the enclosing format entry's revision. When that format entry moves to a new major revision, the registry MUST point it to a compatible export, rotating package version and integrity only when the selected artifact changes. One package version MAY expose different named exports for different formats or format revisions."
     },
     "integrity": {
       "type": "string",
