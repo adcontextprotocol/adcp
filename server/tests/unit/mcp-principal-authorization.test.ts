@@ -14,7 +14,7 @@ vi.mock('../../src/db/bans-db.js', () => ({
 }));
 
 vi.mock('../../src/auth/workos-client.js', () => ({
-  getWorkos: () => ({
+  getPipesWorkos: () => ({
     userManagement: {
       listOrganizationMemberships: mocks.listOrganizationMemberships,
     },

@@ -1,4 +1,4 @@
-import { getWorkos } from '../auth/workos-client.js';
+import { getPipesWorkos } from '../auth/workos-client.js';
 import { bansDb } from '../db/bans-db.js';
 import type { MCPAuthContext } from './auth.js';
 
@@ -48,7 +48,9 @@ export async function authorizeMCPPrincipal(
     return { authorized: true };
   }
 
-  const memberships = await getWorkos().userManagement.listOrganizationMemberships({
+  // This check is on every authenticated MCP request, so use the bounded
+  // interactive client rather than the default SDK retry budget.
+  const memberships = await getPipesWorkos().userManagement.listOrganizationMemberships({
     userId: auth.sub,
     organizationId: auth.orgId,
   });
