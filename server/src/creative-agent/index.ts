@@ -8,7 +8,7 @@
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -43,7 +43,7 @@ const ALLOWED_PREVIEW_ASSET_TYPES = new Set([
 
 class PreviewAssetTooLargeError extends Error {}
 
-async function downloadPreviewAsset(sourceUrl: string, token: string) {
+async function downloadPreviewAsset(sourceUrl: string) {
   const upstream = await safeFetch(sourceUrl, {
     method: 'GET',
     maxRedirects: 0,
@@ -63,7 +63,10 @@ async function downloadPreviewAsset(sourceUrl: string, token: string) {
     throw new PreviewAssetTooLargeError('Preview asset exceeds size limit');
   }
 
-  const path = join(tmpdir(), `adcp-preview-asset-${token}`);
+  // Keep request-controlled asset tokens out of filesystem paths. The store
+  // associates this independently generated filename with the token after the
+  // download completes.
+  const path = join(tmpdir(), `adcp-preview-asset-${randomUUID()}`);
   let size = 0;
   const limiter = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
@@ -304,7 +307,7 @@ export function createCreativeAgentRouter(): Router {
     const assetDownload = getOrCreatePreviewAssetDownload(
       req.params.id,
       MAX_PREVIEW_ASSET_BYTES,
-      sourceUrl => downloadPreviewAsset(sourceUrl, req.params.id),
+      sourceUrl => downloadPreviewAsset(sourceUrl),
     );
     if (!assetDownload) {
       res.status(tokenExists ? 503 : 404).send(tokenExists
