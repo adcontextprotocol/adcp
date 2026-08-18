@@ -62,6 +62,49 @@ interface TrainingSalesConfig {
   strict: boolean;
 }
 
+const PACKAGE_SELECTOR_FIELDS = [
+  'format_option_refs',
+  'format_kind',
+  'params',
+  'format_ids',
+] as const;
+
+/**
+ * The SDK's canonical platform signature intentionally omits deprecated
+ * selector fields. During the 3.x compatibility window we still need the raw
+ * co-present routes so the receiver can resolve and equivalence-check them
+ * before canonical precedence is applied.
+ */
+export function restoreRawPackageSelectors(
+  normalized: Record<string, unknown>,
+  rawInput: unknown,
+  packageFields: readonly string[],
+): Record<string, unknown> {
+  if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) return normalized;
+  const rawRecord = rawInput as Record<string, unknown>;
+  const restored = { ...normalized };
+  for (const packageField of packageFields) {
+    const normalizedPackages = normalized[packageField];
+    const rawPackages = rawRecord[packageField];
+    if (!Array.isArray(normalizedPackages) || !Array.isArray(rawPackages)) continue;
+    restored[packageField] = normalizedPackages.map((pkg, index) => {
+      const rawPackage = rawPackages[index];
+      if (!pkg || typeof pkg !== 'object' || Array.isArray(pkg)
+        || !rawPackage || typeof rawPackage !== 'object' || Array.isArray(rawPackage)) {
+        return pkg;
+      }
+      const next = { ...(pkg as Record<string, unknown>) };
+      for (const selectorField of PACKAGE_SELECTOR_FIELDS) {
+        if (selectorField in rawPackage) {
+          next[selectorField] = (rawPackage as Record<string, unknown>)[selectorField];
+        }
+      }
+      return next;
+    });
+  }
+  return restored;
+}
+
 export const TRAINING_SALES_CAPABILITIES = {
   specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
   creative_agents: [],
@@ -538,13 +581,18 @@ export class TrainingSalesPlatform
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sales: SalesPlatform<TrainingSalesMeta> = {
     createMediaBuy: async (req, ctx) => {
+      const requestWithRawSelectors = restoreRawPackageSelectors(
+        req as unknown as Record<string, unknown>,
+        ctx.input,
+        ['packages'],
+      );
       const args = this.storyboardCompat?.version === '3.0'
         ? withResolvedAccountScope(
-          req as unknown as Record<string, unknown>,
+          requestWithRawSelectors,
           ctx.account,
           this.storyboardCompat,
         )
-        : withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account);
+        : withCurrentAccountScope(requestWithRawSelectors, ctx.account);
       const v5Result = await handleCreateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       // Detect the submitted-arm envelope the v5 handler returns when the
       // `force_create_media_buy_arm` test-controller directive is set.
@@ -579,9 +627,14 @@ export class TrainingSalesPlatform
       const currentArgs = brandDomain
         ? { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>) };
+      const requestWithRawSelectors = restoreRawPackageSelectors(
+        currentArgs,
+        ctx.input,
+        ['new_packages'],
+      );
       const args = this.storyboardCompat?.version === '3.0'
-        ? withResolvedAccountScope(currentArgs, ctx.account, this.storyboardCompat)
-        : withCurrentAccountScope(currentArgs, ctx.account);
+        ? withResolvedAccountScope(requestWithRawSelectors, ctx.account, this.storyboardCompat)
+        : withCurrentAccountScope(requestWithRawSelectors, ctx.account);
       const v5Result = await handleUpdateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(canonicalMediaBuyPlatformResult(v5Result));
     },
