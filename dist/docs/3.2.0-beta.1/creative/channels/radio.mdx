@@ -1,0 +1,140 @@
+---
+title: Radio creative
+description: "Canonical hosted-audio contracts for file-based broadcast radio spots."
+"og:title": "AdCP — Radio creative"
+testable: true
+---
+
+Broadcast radio spots use the canonical `audio_hosted` format. They do not require a new canonical: the product narrows hosted audio to a fixed duration, file specification, loudness profile, and a single audio slot.
+
+## Reference format declarations
+
+The following :15, :30, and :60 declarations use a common production profile: MP3, AAC, or WAV; 48 kHz stereo; at least 192 kbps where bitrate applies; and -16 LUFS/LKFS ±2 dB. A station or network may publish a different accepted profile.
+
+The canonical parameter is historically named `audio_codecs`, but its vocabulary includes the WAV container label. In these declarations, `wav` means that a WAV delivery file is accepted; a matching manifest reports `container_format: "wav"` and its underlying codec, normally `codec: "pcm"`. Validators should compare the declared `wav` value with the asset container rather than reject the asset because its codec is PCM.
+
+### :15 spot
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/product-format-declaration.json",
+  "format_option_id": "broadcast_radio_15s",
+  "display_name": "Broadcast radio :15 spot",
+  "applies_to_channels": ["radio"],
+  "format_kind": "audio_hosted",
+  "params": {
+    "duration_ms_exact": 15000,
+    "audio_codecs": ["mp3", "aac", "wav"],
+    "audio_sample_rates": [48000],
+    "audio_channels": ["stereo"],
+    "min_bitrate_kbps": 192,
+    "loudness_lufs": -16,
+    "loudness_tolerance_db": 2,
+    "true_peak_dbfs": -2,
+    "asset_source": "buyer_uploaded",
+    "buyer_asset_acceptance": "accepted",
+    "composition_model": "deterministic",
+    "slots": [
+      { "asset_group_id": "audio_main", "asset_type": "audio", "required": true }
+    ]
+  }
+}
+```
+
+### :30 spot
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/product-format-declaration.json",
+  "format_option_id": "broadcast_radio_30s",
+  "display_name": "Broadcast radio :30 spot",
+  "applies_to_channels": ["radio"],
+  "format_kind": "audio_hosted",
+  "params": {
+    "duration_ms_exact": 30000,
+    "audio_codecs": ["mp3", "aac", "wav"],
+    "audio_sample_rates": [48000],
+    "audio_channels": ["stereo"],
+    "min_bitrate_kbps": 192,
+    "loudness_lufs": -16,
+    "loudness_tolerance_db": 2,
+    "true_peak_dbfs": -2,
+    "asset_source": "buyer_uploaded",
+    "buyer_asset_acceptance": "accepted",
+    "composition_model": "deterministic",
+    "slots": [
+      { "asset_group_id": "audio_main", "asset_type": "audio", "required": true }
+    ]
+  }
+}
+```
+
+### :60 spot
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/product-format-declaration.json",
+  "format_option_id": "broadcast_radio_60s",
+  "display_name": "Broadcast radio :60 spot",
+  "applies_to_channels": ["radio"],
+  "format_kind": "audio_hosted",
+  "params": {
+    "duration_ms_exact": 60000,
+    "audio_codecs": ["mp3", "aac", "wav"],
+    "audio_sample_rates": [48000],
+    "audio_channels": ["stereo"],
+    "min_bitrate_kbps": 192,
+    "loudness_lufs": -16,
+    "loudness_tolerance_db": 2,
+    "true_peak_dbfs": -2,
+    "asset_source": "buyer_uploaded",
+    "buyer_asset_acceptance": "accepted",
+    "composition_model": "deterministic",
+    "slots": [
+      { "asset_group_id": "audio_main", "asset_type": "audio", "required": true }
+    ]
+  }
+}
+```
+
+## Creative identifiers
+
+Use the manifest's `industry_identifiers` list for the traffic or clearance identifier expected by the broadcaster. AdCP supports `ad_id`, `isci`, `clearcast_clock`, and `idcrea`; choose the identifier used by the applicable market and traffic system. Each duration cut should carry its own identifier.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/creative-manifest.json",
+  "format_kind": "audio_hosted",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "broadcast_radio_30s"
+  },
+  "industry_identifiers": [
+    { "type": "isci", "value": "NOVA123430" }
+  ],
+  "assets": {
+    "audio_main": {
+      "asset_type": "audio",
+      "url": "https://cdn.novamotors.example/radio/summer-30.wav",
+      "duration_ms": 30000,
+      "container_format": "wav",
+      "codec": "pcm",
+      "sampling_rate_hz": 48000,
+      "channels": "stereo",
+      "bitrate_kbps": 1536,
+      "loudness_lufs": -16,
+      "true_peak_dbfs": -2
+    }
+  }
+}
+```
+
+## No VAST or tracker semantics
+
+The reference declarations contain only the required `audio_main` file slot. Terrestrial broadcast radio has no renderer in which a VAST/DAAST tag, impression pixel, click tracker, or clickthrough URL can operate. Their absence is part of the format contract; do not add tracker slots or represent these spots as `audio_daast`.
+
+Digital streaming or SSAI inventory is a separate execution context. It may use `audio_hosted` with explicitly declared impression, click, or other supported `pixel_tracker` slots. Standardized audio quartile and completion tag events use `audio_daast`. A terrestrial spot simulcast digitally does not make trackers operational on the terrestrial airing.
+
+Radio delivery measurement, delayed reporting, and reconciliation semantics are tracked separately in [adcp#6167](https://github.com/adcontextprotocol/adcp/issues/6167).
+
+See [Audio](/dist/docs/3.2.0-beta.1/creative/channels/audio), [Broadcast](/dist/docs/3.2.0-beta.1/creative/channels/broadcast), and [Creative manifests](/dist/docs/3.2.0-beta.1/creative/creative-manifests).
