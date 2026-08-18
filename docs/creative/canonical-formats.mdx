@@ -405,7 +405,7 @@ Dynamic preview support is declared per route in `get_adcp_capabilities.creative
 }
 ```
 
-`rendering_origin` is informational. `platform_native` means the route uses the serving platform's preview machinery; `agent_approximation` means the agent renders an approximation. Neither is an authority claim, because a seller or agent cannot make itself authoritative by self-description. `quality: "production"` likewise describes execution quality, not authority.
+`rendering_origin` is informational. `platform_native` means the route uses the serving platform's preview machinery; `agent_approximation` means the agent renders an approximation. Agents with mixed implementations declare each capability independently in `routes[]`; for example, one route can be `platform_native` while a community fallback is `agent_approximation`. Neither is an authority claim, because a seller or agent cannot make itself authoritative by self-description. `quality: "production"` likewise describes execution quality, not authority.
 
 Buyer tooling resolves two independent axes:
 

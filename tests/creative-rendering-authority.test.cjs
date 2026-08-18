@@ -72,6 +72,30 @@ test('creative preview capabilities declare per-route implementation origin with
   assert.equal(validate({
     ...base,
     creative: {
+      supported_formats: [
+        ...base.creative.supported_formats,
+        {
+          capability_id: 'community_fallback',
+          operations: ['preview'],
+          format: { format_kind: 'image', params: { width: 300, height: 250 } }
+        }
+      ],
+      preview: { routes: [
+        {
+          capability_id: 'streamhaus_homepage_preview',
+          rendering_origin: 'platform_native'
+        },
+        {
+          capability_id: 'community_fallback',
+          rendering_origin: 'agent_approximation'
+        }
+      ] }
+    }
+  }), true, 'mixed agents declare implementation origin independently for each route');
+
+  assert.equal(validate({
+    ...base,
+    creative: {
       ...base.creative,
       preview: { routes: [{
         capability_id: 'streamhaus_homepage_preview',
