@@ -7,6 +7,6 @@
   "enum": ["available", "unavailable"],
   "enumDescriptions": {
     "available": "The inventory described by this row can be booked as of generated_at. This is a snapshot, not a reservation — another buyer can take the window before this buyer commits.",
-    "unavailable": "The inventory described by this row cannot be booked (for example, a sold-out sponsorship window). Rows may carry empty metrics. Sellers MUST NOT disclose who holds a conflicting booking."
+    "unavailable": "The inventory described by this row cannot be booked. Sellers MUST apply all product booking eligibility constraints — including minimum and maximum bookable duration, day-of-week restrictions, and other scheduling rules — before reporting status; a window that fails any such constraint is 'unavailable' even when no competing hold exists. Rows may carry empty metrics. Sellers MUST NOT disclose who holds a conflicting booking."
   }
 }
