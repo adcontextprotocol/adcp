@@ -41,7 +41,9 @@ type CanonicalFormatProjection = {
   format_kind: ProductFormatDeclaration['format_kind'];
   params: ProductFormatDeclaration['params'];
 };
-type TrainingProduct = Omit<Product, 'product_card' | 'product_card_detailed'> & {
+type TrainingProduct = Omit<Product,
+  'product_card' | 'product_card_detailed' | 'collections' | 'installments'
+> & {
   product_card?: Product['product_card'] | ProductCardManifest;
   product_card_detailed?: Product['product_card_detailed'] | ProductCardManifest;
   collections?: CollectionSelector[];
@@ -665,7 +667,7 @@ function buildProduct(
         ? ['individuals', 'households', 'devices', 'accounts']
         : undefined;
       metricOptimization = {
-        supported_metrics: metrics,
+        supported_metrics: metrics as [SupportedMetric, ...SupportedMetric[]],
         ...(supportedReachUnits && { supported_reach_units: supportedReachUnits }),
         ...(supportedViewDurations && { supported_view_durations: supportedViewDurations }),
         supported_targets: ['cost_per'],
@@ -779,16 +781,16 @@ function buildProduct(
     product_id: productId,
     name: template.name,
     description: template.description,
-    publisher_properties: publisherPropertySelectors(pub, template.channels),
+    publisher_properties: publisherPropertySelectors(pub, template.channels) as Product['publisher_properties'],
     channels: template.channels as MediaChannel[],
     format_ids: formatIds,
-    ...(formatOptions.length > 0 ? { format_options: formatOptions } : {}),
+    ...(formatOptions.length > 0 ? { format_options: formatOptions as Product['format_options'] } : {}),
     delivery_type: template.deliveryType as DeliveryType,
     delivery_measurement: {
       provider: pub.measurementProvider,
       notes: pub.measurementNotes,
     },
-    pricing_options: effectivePricing.map((t, i) => buildPricingOption(t, productId, i)),
+    pricing_options: effectivePricing.map((t, i) => buildPricingOption(t, productId, i)) as unknown as Product['pricing_options'],
     reporting_capabilities: {
       available_reporting_frequencies: pub.reportingFrequencies as NonNullable<Product['reporting_capabilities']>['available_reporting_frequencies'],
       expected_delay_minutes: 240,
@@ -804,7 +806,7 @@ function buildProduct(
         vendor_metrics: pub.vendorMetrics,
       }),
     } as NonNullable<Product['reporting_capabilities']>,
-    ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as CatalogType[] }),
+    ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as unknown as Product['catalog_types'] }),
     ...(metricOptimization && { metric_optimization: metricOptimization }),
     // Vendor-metric optimization is a publisher/inventory capability, not
     // auction-only. Guaranteed products can still steer allocation/pacing
@@ -990,7 +992,7 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
   const proposals: Proposal[] = [];
 
   for (const def of PROPOSAL_DEFINITIONS) {
-    const allocations: Proposal['allocations'] = [];
+    const allocations: Array<Proposal['allocations'][number]> = [];
     let valid = true;
 
     for (const alloc of def.allocations) {
@@ -1029,7 +1031,7 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
       return {
         product_id: a.product_id,
         product_name: cp?.product.name,
-        allocation_percentage: a.allocation_percentage,
+        allocation_percentage: a.allocation_percentage ?? 0,
         rationale: a.rationale,
       };
     });
@@ -1040,7 +1042,7 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
           const cp = catalog.find(c => c.product.product_id === a.product_id);
           const firstPricing = cp?.product.pricing_options[0] as { fixed_price?: number; floor_price?: number } | undefined;
           const price = firstPricing?.fixed_price ?? firstPricing?.floor_price ?? 10;
-          return sum + (def.budgetGuidance.recommended * (a.allocation_percentage / 100) / price * 1000);
+          return sum + (def.budgetGuidance.recommended * ((a.allocation_percentage ?? 0) / 100) / price * 1000);
         }, 0))
       : undefined;
 
@@ -1069,7 +1071,7 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
       description: def.description,
       brief_alignment: def.briefAlignment,
       total_budget_guidance: def.budgetGuidance,
-      allocations,
+      allocations: allocations as Proposal['allocations'],
       ...(hasGuaranteed && {
         proposal_status: 'draft' as const,
         expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
@@ -1219,7 +1221,7 @@ export function buildCatalog(): CatalogProduct[] {
         ...alias.source.product,
         product_id: alias.id,
         name: alias.name,
-        ...(aliasedPricing && { pricing_options: aliasedPricing }),
+        ...(aliasedPricing && { pricing_options: aliasedPricing as Product['pricing_options'] }),
         ...('product_card' in alias.source.product && alias.source.product.product_card
           ? { product_card: { ...alias.source.product.product_card, title: truncateLabel(alias.name, 60) } }
           : {}),

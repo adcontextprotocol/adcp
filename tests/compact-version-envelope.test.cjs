@@ -10,10 +10,11 @@ const { ProtocolClient } = require('@adcp/sdk');
 
 const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
 const ADCP_VERSION = '3.2.0-beta.0';
-const EXPECTED_ENVELOPE = {
-  adcp_major_version: 3,
-  adcp_version: '3.2-beta.0',
-};
+const COMPACT_SCHEMAS_WITHOUT_MAJOR = new Set([
+  'buy_products',
+  'accept_proposal',
+  'control_media_buy',
+]);
 
 function readSchema(uri) {
   if (!uri.startsWith('/schemas/')) {
@@ -106,13 +107,13 @@ test('SDK auto version envelope passes every strict compact lifecycle request sc
 
   for (const [tool, request] of Object.entries(compactRequests)) {
     await ProtocolClient.callTool(agent, tool, request, { adcpVersion: ADCP_VERSION });
-    assert.deepEqual(
-      {
-        adcp_major_version: outbound.get(tool).adcp_major_version,
-        adcp_version: outbound.get(tool).adcp_version,
-      },
-      EXPECTED_ENVELOPE,
-      `${tool} did not receive the SDK's default auto envelope`,
-    );
+    const expectedEnvelope = {
+      adcp_major_version: COMPACT_SCHEMAS_WITHOUT_MAJOR.has(tool) ? undefined : 3,
+      adcp_version: '3.2-beta.0',
+    };
+    assert.deepEqual({
+      adcp_major_version: outbound.get(tool).adcp_major_version,
+      adcp_version: outbound.get(tool).adcp_version,
+    }, expectedEnvelope, `${tool} did not receive the SDK's compatible auto envelope`);
   }
 });

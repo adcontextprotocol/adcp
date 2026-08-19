@@ -20,21 +20,20 @@ import {
   resolveTrainingSalesRequestContext,
   salesCapabilityProjection,
 } from '../v6-sales-platform.js';
-import { handleComplyTestController } from '../comply-test-controller.js';
+import {
+  COMPLY_TEST_CONTROLLER_TOOL,
+  handleComplyTestController,
+} from '../comply-test-controller.js';
 import {
   adcpError,
-  createTrainingAgentServer,
-  productDiscoveryAliasToolDefinitions,
   resolveServedAdcpVersion,
-  resolveServedAdcpVersionForTool,
   supportedCanonicalFormatsCapability,
-  validateProductDiscoveryAliasInput,
 } from '../task-handlers.js';
 import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
-import { canonicalizeAccountRef } from '../account-scope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
+import { runWithTrainingTaskScope, trainingTaskScope } from '../mcp-task-store.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -125,21 +124,44 @@ const SALES_CURRENT_SCENARIOS = [
   'seed_media_buy',
   'seed_creative_format',
   'seed_measurement_catalog',
+  'compact_product_lifecycle_probe',
+  'compact_direct_buy_lifecycle_probe',
   'query_provenance_audit_observations',
   'evaluate_distributed_brand_resolution',
 ] as const;
 
-const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION] as const;
+const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.2'] as const;
+const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.2';
 const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
+const THREE_ZERO_COMPLIANCE_SCENARIOS = new Set([
+  'force_creative_status',
+  'force_account_status',
+  'force_media_buy_status',
+  'force_session_status',
+  'simulate_delivery',
+  'simulate_budget_spend',
+]);
+const THREE_ZERO_POSTAL_TARGETING_KEYS = new Set([
+  'us_zip',
+  'us_zip_plus_four',
+  'gb_outward',
+  'gb_full',
+  'ca_fsa',
+  'ca_full',
+  'de_plz',
+  'fr_code_postal',
+  'au_postcode',
+  'ch_plz',
+  'at_plz',
+]);
 const PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES = [
   'list_products',
   'request_proposals',
   'refine_proposals',
   'decline_proposals',
-] as const;
-const PRODUCT_DISCOVERY_TOOL_NAMES = [
-  'get_products',
-  ...PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES,
+  'buy_products',
+  'accept_proposal',
+  'control_media_buy',
 ] as const;
 
 function bearerToken(req: Request): string | undefined {
@@ -390,17 +412,6 @@ function tenantMcpHandler(
       if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {
         return;
       }
-      if (await tryHandleProductDiscoveryRequest(
-        req,
-        res,
-        resolved.tenantId,
-        principal,
-        storyboardCompat,
-        proposalNegotiationProfile,
-      )) {
-        return;
-      }
-
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -410,10 +421,13 @@ function tenantMcpHandler(
         await resolved.server.connect(transport);
         logger.debug({ tenantId: resolved.tenantId, method: req.body?.method }, 'tenant MCP request');
         installConflictEnvelopeRedaction(res);
-        await runWithSessionContext(async () => {
-          await transport.handleRequest(req, res, req.body);
-          await flushDirtySessions();
-        });
+        await runWithTrainingTaskScope(
+          trainingTaskScope(resolved.tenantId, principal ?? 'anonymous'),
+          () => runWithSessionContext(async () => {
+            await transport.handleRequest(req, res, req.body);
+            await flushDirtySessions();
+          }),
+        );
       } catch (err) {
         logger.error({ err, tenantId: resolved.tenantId }, 'tenant MCP error');
         if (!res.headersSent) {
@@ -430,116 +444,6 @@ function tenantMcpHandler(
       }
     });
   };
-}
-
-async function tryHandleProductDiscoveryRequest(
-  req: Request,
-  res: Response,
-  tenantId: string,
-  principal: string | undefined,
-  storyboardCompat?: TrainingContext['storyboardCompat'],
-  proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'],
-): Promise<boolean> {
-  if (tenantId !== 'sales') return false;
-  if (storyboardCompat?.version === '3.0') return false;
-
-  const method = req.body?.method;
-  const toolName = req.body?.params?.name;
-  const rawArgs = (req.body?.params?.arguments ?? {}) as Record<string, unknown>;
-  const requestedProductVersion = method === 'tools/call' && PRODUCT_DISCOVERY_TOOL_NAMES.includes(toolName)
-    ? resolveServedAdcpVersionForTool(toolName, rawArgs)
-    : undefined;
-  const isProductCall = (
-    method === 'tools/call'
-    && PRODUCT_DISCOVERY_TOOL_NAMES.includes(toolName)
-    && (
-      toolName !== 'get_products'
-      || (requestedProductVersion?.ok === true && supportsGetProductsRejected(requestedProductVersion.servedVersion))
-    )
-  );
-  const isTaskLifecycleCall = (
-    method === 'tasks/get'
-    || method === 'tasks/result'
-    || method === 'tasks/list'
-    || method === 'tasks/cancel'
-  );
-  if (!isProductCall && !isTaskLifecycleCall) return false;
-
-  if (isProductCall && toolName !== 'get_products') {
-    const validationError = validateProductDiscoveryAliasInput(toolName, rawArgs);
-    if (validationError) {
-      res.json({
-        jsonrpc: '2.0',
-        id: req.body.id ?? null,
-        error: {
-          code: -32602,
-          message: validationError.message,
-          data: validationError.field ? { field: validationError.field } : undefined,
-        },
-      });
-      return true;
-    }
-
-  }
-
-  if (isProductCall && rawArgs.account !== undefined) {
-    try {
-      canonicalizeAccountRef(rawArgs.account as never);
-    } catch (error) {
-      res.json({
-        jsonrpc: '2.0',
-        id: req.body.id ?? null,
-        result: adcpError('INVALID_REQUEST', {
-          message: error instanceof Error ? error.message : 'account is malformed',
-          field: 'account',
-          recovery: 'correctable',
-        }, rawArgs.context, requestedProductVersion?.ok ? requestedProductVersion.servedVersion : undefined),
-      });
-      return true;
-    }
-  }
-
-  let nativeContext: TrainingContext;
-  try {
-    nativeContext = isProductCall
-      ? await resolveTrainingSalesRequestContext(
-        req.body.params.arguments as Record<string, unknown>,
-        (req as unknown as {
-          auth?: { clientId?: string; scopes?: string[]; extra?: Record<string, unknown> };
-        }).auth,
-        storyboardCompat,
-      )
-      : {
-        mode: 'open' as const,
-        tenantId: 'sales' as const,
-        principal: principal ?? 'anonymous',
-      };
-    nativeContext.proposalNegotiationProfile = proposalNegotiationProfile ?? 'ask-only';
-  } catch (error) {
-    logger.error({ error, toolName }, 'Native sales request context resolution failed');
-    res.json({
-      jsonrpc: '2.0',
-      id: req.body.id ?? null,
-      result: adcpError('SERVICE_UNAVAILABLE', {
-        message: 'Unable to resolve the sales request context',
-        recovery: 'transient',
-      }, rawArgs.context, requestedProductVersion?.ok ? requestedProductVersion.servedVersion : undefined),
-    });
-    return true;
-  }
-  const nativeServer = createTrainingAgentServer(nativeContext);
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-    enableJsonResponse: true,
-  });
-  try {
-    await nativeServer.connect(transport);
-    installConflictEnvelopeRedaction(res);
-    await transport.handleRequest(req, res, req.body);
-  } finally {
-    await nativeServer.close().catch(() => {});
-  }
-  return true;
 }
 
 async function tryHandleLocalComplyScenario(
@@ -562,6 +466,8 @@ async function tryHandleLocalComplyScenario(
     && rawArgs.scenario !== 'force_creative_purge'
     && rawArgs.scenario !== 'query_provenance_audit_observations'
     && rawArgs.scenario !== 'evaluate_distributed_brand_resolution'
+    && rawArgs.scenario !== 'compact_product_lifecycle_probe'
+    && rawArgs.scenario !== 'compact_direct_buy_lifecycle_probe'
     && rawArgs.scenario !== 'list_scenarios'
     && !isRejectedGetProductsDirective
   ) return false;
@@ -572,6 +478,8 @@ async function tryHandleLocalComplyScenario(
       || rawArgs.scenario === 'force_creative_purge'
       || rawArgs.scenario === 'query_provenance_audit_observations'
       || rawArgs.scenario === 'evaluate_distributed_brand_resolution'
+      || rawArgs.scenario === 'compact_product_lifecycle_probe'
+      || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe'
       || isRejectedGetProductsDirective
     )
   ) return false;
@@ -592,14 +500,25 @@ async function tryHandleLocalComplyScenario(
   }
 
   const result = await runWithSessionContext(async () => {
+    const isCompactLifecycleScenario = rawArgs.scenario === 'compact_product_lifecycle_probe'
+      || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe';
+    const auth = (req as unknown as {
+      auth?: { clientId?: string; scopes?: string[]; extra?: Record<string, unknown> };
+    }).auth;
+    const localContext = isCompactLifecycleScenario
+      ? await resolveTrainingSalesRequestContext(handlerArgs, auth, storyboardCompat)
+      : {
+          mode: 'open' as const,
+          principal: principal ?? 'anonymous',
+          ...(storyboardCompat && { storyboardCompat }),
+        };
     const body = rawArgs.scenario === 'list_scenarios'
       ? {
           success: true,
           scenarios: salesComplyScenarios(storyboardCompat),
         }
       : await handleComplyTestController(handlerArgs, {
-          mode: 'open',
-          principal: principal ?? 'anonymous',
+          ...localContext,
           servedAdcpVersion: versionResolution.servedVersion,
         });
     await flushDirtySessions();
@@ -638,7 +557,7 @@ function wrapTenantCapabilitiesProjection(
   const requestedVersion = proposalNegotiationProfile
     ? hasVersionSelector
       ? resolveServedAdcpVersion(capabilityArgs)
-      : { ok: true as const, servedVersion: GET_PRODUCTS_REJECTED_ADCP_VERSION }
+      : { ok: true as const, servedVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION }
     : undefined;
 
   const origEnd = res.end.bind(res);
@@ -722,6 +641,18 @@ function projectTenantToolDiscovery(
     const tools = parsed.result?.tools;
     if (!Array.isArray(tools)) return body;
     if (tenantId === 'sales') {
+      // SDK 14's compact media-buy discovery profile intentionally excludes
+      // test-harness extensions. The training agent is itself a sandbox and
+      // its compliance scenarios require the controller to be discoverable;
+      // dispatch still enforces account.sandbox=true. Keep the seven native
+      // lifecycle tools as the advertised protocol surface and add this one
+      // cross-cutting harness tool alongside them.
+      if (
+        storyboardCompat?.version !== '3.0'
+        && !tools.some(tool => tool.name === COMPLY_TEST_CONTROLLER_TOOL.name)
+      ) {
+        tools.push({ ...COMPLY_TEST_CONTROLLER_TOOL });
+      }
       const getProducts = tools.find(tool => tool.name === 'get_products');
       if (getProducts) {
         const inputSchema = getProducts.inputSchema ?? {};
@@ -752,12 +683,6 @@ function projectTenantToolDiscovery(
           idempotentHint: true,
         };
 
-        if (!isThreeZeroCompat) {
-          const splitTools = productDiscoveryAliasToolDefinitions();
-          for (const splitTool of splitTools) {
-            if (!tools.some(tool => tool.name === splitTool.name)) tools.push(splitTool);
-          }
-        }
       }
     }
     if (storyboardCompat?.version === '3.0') {
@@ -816,6 +741,7 @@ function projectTenantCapabilities(
         structuredContent?: {
           adcp_version?: unknown;
           adcp?: Record<string, unknown>;
+          specialisms?: unknown;
           supported_protocols?: unknown;
           experimental_features?: unknown;
           creative?: Record<string, unknown>;
@@ -850,7 +776,13 @@ function projectTenantCapabilities(
     };
     if (storyboardCompat?.version !== '3.0') {
       const governanceTasks: Record<string, Array<{ task: string; modes: ['signed_context'] }>> = {
-        sales: [{ task: 'create_media_buy', modes: ['signed_context'] }],
+        sales: supportsGetProductsRejected(servedVersion)
+          ? [
+              { task: 'buy_products', modes: ['signed_context'] },
+              { task: 'accept_proposal', modes: ['signed_context'] },
+              { task: 'control_media_buy', modes: ['signed_context'] },
+            ]
+          : [{ task: 'create_media_buy', modes: ['signed_context'] }],
         signals: [{ task: 'activate_signal', modes: ['signed_context'] }],
         brand: [{ task: 'acquire_rights', modes: ['signed_context'] }],
         creative: [{ task: 'build_creative', modes: ['signed_context'] }],
@@ -900,6 +832,11 @@ function projectTenantCapabilities(
       const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object'
         ? structured.media_buy
         : {};
+      if (!supportsGetProductsRejected(servedVersion)) {
+        delete mediaBuy.lifecycle_tools;
+        delete mediaBuy.proposal_refinement;
+        delete mediaBuy.supports_proposals;
+      }
       const salesProjection = salesCapabilityProjection();
       structured.media_buy = {
         ...mediaBuy,
@@ -948,6 +885,34 @@ function projectTenantCapabilities(
         ...complianceTesting,
         scenarios: [...scenarios],
       };
+    }
+    if (storyboardCompat?.version === '3.0') {
+      // SDK 14 emits current capability vocabulary even when an adopter
+      // projects a request onto the frozen 3.0 wire contract. Keep the
+      // current platform internally intact, but remove vocabulary that the
+      // released 3.0 schema cannot represent at this response boundary.
+      if (tenantId === 'si') delete structured.specialisms;
+      const complianceTesting = structured.compliance_testing;
+      if (complianceTesting && Array.isArray(complianceTesting.scenarios)) {
+        complianceTesting.scenarios = complianceTesting.scenarios.filter(
+          (scenario): scenario is string => (
+            typeof scenario === 'string' && THREE_ZERO_COMPLIANCE_SCENARIOS.has(scenario)
+          ),
+        );
+      }
+      const mediaBuy = structured.media_buy;
+      const execution = mediaBuy?.execution;
+      const targeting = execution && typeof execution === 'object'
+        ? (execution as Record<string, unknown>).targeting
+        : undefined;
+      const postalAreas = targeting && typeof targeting === 'object'
+        ? (targeting as Record<string, unknown>).geo_postal_areas
+        : undefined;
+      if (postalAreas && typeof postalAreas === 'object' && !Array.isArray(postalAreas)) {
+        (targeting as Record<string, unknown>).geo_postal_areas = Object.fromEntries(
+          Object.entries(postalAreas).filter(([key]) => THREE_ZERO_POSTAL_TARGETING_KEYS.has(key)),
+        );
+      }
     }
     projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
     const firstText = parsed.result?.content?.[0];
@@ -1073,6 +1038,15 @@ export function mountTenantRoutes(
   middleware: TenantRouteMiddleware = {},
 ): void {
   const holder = createRegistryHolder({ storyboardCompat: middleware.storyboardCompat });
+  const profileHolders = new Map(
+    PROPOSAL_NEGOTIATION_PROFILE_ROUTES.map(({ profile }) => [
+      profile,
+      createRegistryHolder({
+        storyboardCompat: middleware.storyboardCompat,
+        proposalNegotiationProfile: profile,
+      }),
+    ]),
+  );
   // Eagerly start the 6-tenant registry init at mount time (server boot)
   // instead of waiting for the first request. On a fresh Fly machine the
   // cold init takes 30–60s — longer than the post-deploy smoke's 16s
@@ -1099,6 +1073,13 @@ export function mountTenantRoutes(
       'Eager tenant registry init failed at boot; per-request init will retry',
     );
   });
+  if (middleware.storyboardCompat?.version !== '3.0' && proposalNegotiationProfilesEnabled()) {
+    for (const [profile, profileHolder] of profileHolders) {
+      profileHolder.get().catch(err => {
+        logger.error({ err, profile }, 'Proposal-profile tenant registry prewarm failed');
+      });
+    }
+  }
   const mw: RequestHandler[] = [];
   if (middleware.rateLimit) mw.push(middleware.rateLimit);
   if (middleware.requireAuth) mw.push(middleware.requireAuth);
@@ -1132,7 +1113,7 @@ export function mountTenantRoutes(
       parent.post(
         path,
         ...mw,
-        tenantMcpHandler(holder, 'sales', middleware.storyboardCompat, profile),
+        tenantMcpHandler(profileHolders.get(profile)!, 'sales', middleware.storyboardCompat, profile),
       );
       parent.get(path, (_req, res) => {
         setCORSHeaders(res);

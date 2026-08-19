@@ -150,6 +150,9 @@ describe('tool-catalog drift detection', () => {
       'request_proposals',
       'refine_proposals',
       'decline_proposals',
+      'buy_products',
+      'accept_proposal',
+      'control_media_buy',
     ];
     for (const tool of splitTools) {
       expect(compatibilityCatalog).not.toContain(tool);

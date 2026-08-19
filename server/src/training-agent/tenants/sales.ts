@@ -58,7 +58,10 @@ const SYNC_CATALOGS_SCHEMA = {
 
 export function buildSalesTenantConfig(
   host: string,
-  options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {},
+  options: {
+    storyboardCompat?: TrainingContext['storyboardCompat'];
+    proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'];
+  } = {},
   taskRegistry?: TaskRegistry,
 ): {
   tenantId: string;
@@ -71,8 +74,10 @@ export function buildSalesTenantConfig(
       agentUrl: `${host}/${TENANT_ID}`,
       signingKey: material.signingKey,
       label: 'Training agent — sales',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      platform: new TrainingSalesPlatform(options.storyboardCompat) as any,
+      platform: new TrainingSalesPlatform(
+        options.storyboardCompat,
+        options.proposalNegotiationProfile ?? 'ask-only',
+      ),
       serverOptions: {
         // These operations intentionally remain the legacy wire facade for
         // AdCP 3.0 callers. Current application paths use canonical format

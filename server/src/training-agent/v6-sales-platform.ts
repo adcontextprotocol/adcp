@@ -11,10 +11,12 @@
  * bodies that throw `AdcpError` directly) is a follow-up.
  */
 
+import { createHash } from 'node:crypto';
 import {
   AdcpError,
   type DecisioningPlatform,
   type SalesPlatform,
+  type MediaBuyLifecyclePlatform,
   type LegacyMediaBuyHandlers,
   type AccountStore,
   type AudiencePlatform,
@@ -27,6 +29,10 @@ import {
 } from '@adcp/sdk/v2/projection';
 import {
   executeTrainingAgentTool,
+  executeProductDiscoveryPlatformTool,
+  handleBuyProducts,
+  handleAcceptProposal,
+  handleControlMediaBuy,
   handleCreateMediaBuy,
   handleUpdateMediaBuy,
   handleGetMediaBuys,
@@ -50,6 +56,8 @@ import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { sessionKeyFromArgs } from './state.js';
 import type { ToolArgs, TrainingContext } from './types.js';
+import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
+import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
 
 interface TrainingSalesMeta {
   brand_domain?: string;
@@ -170,8 +178,11 @@ function buildTrainingCtx(
     authInfo?: { clientId?: string };
     agent?: { agent_url: string };
     input?: unknown;
+    callerMutationScope?: Readonly<{ tenant_id: string; principal_id: string; account_id?: string }>;
+    proposalRefinementScope?: Readonly<{ tenant_id: string; principal_id: string; account_id?: string }>;
   } | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
+  proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'],
 ): TrainingContext {
   const account = ctx?.account as { authInfo?: { principal?: string } } | undefined;
   const legacySessionBrandDomain = storyboardCompat?.version === '3.0'
@@ -193,8 +204,13 @@ function buildTrainingCtx(
       ? { requestInput: ctx.input as Record<string, unknown> }
       : {}),
     ...(resolvedAccount && { resolvedAccount }),
+    ...(typeof (ctx?.account as { id?: unknown } | undefined)?.id === 'string'
+      && { resolvedAccountId: (ctx!.account as { id: string }).id }),
     ...(legacySessionBrandDomain && { legacySessionBrandDomain }),
     ...(storyboardCompat && { storyboardCompat }),
+    ...(ctx?.callerMutationScope && { callerMutationScope: ctx.callerMutationScope }),
+    ...(ctx?.proposalRefinementScope && { proposalRefinementScope: ctx.proposalRefinementScope }),
+    ...(proposalNegotiationProfile && { proposalNegotiationProfile }),
   };
 }
 
@@ -265,9 +281,36 @@ function withResolvedAccountScope(
 function withCurrentAccountScope(
   input: Record<string, unknown>,
   account: unknown,
+  rawInput?: unknown,
 ): ToolArgs {
-  const accountRef = accountRefFromCtx(account);
+  let accountRef = accountRefFromCtx(account);
   const brandDomain = brandDomainFromCtx(account);
+  const principal = (account as { authInfo?: { principal?: unknown } } | undefined)?.authInfo?.principal;
+  const rawAccount = rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
+    ? (rawInput as Record<string, unknown>).account
+    : undefined;
+  const explicitlySandboxed = rawAccount !== null
+    && typeof rawAccount === 'object'
+    && !Array.isArray(rawAccount)
+    && (rawAccount as Record<string, unknown>).sandbox === true;
+  // Public training credentials address one brand-owned sandbox. The
+  // storyboard runner legitimately alternates between the buyer operator and
+  // the brand domain while preserving the same brand identity; normalize that
+  // public-only account before deriving session state so compact write/read
+  // chains do not fork. Authenticated tenant principals retain full operator
+  // isolation, and opaque account IDs are never rewritten.
+  if (
+    explicitlySandboxed
+    && typeof principal === 'string'
+    && principal.startsWith('static:')
+    && accountRef?.brand?.domain
+  ) {
+    accountRef = {
+      ...accountRef,
+      operator: accountRef.brand.domain,
+      sandbox: true,
+    };
+  }
   return {
     ...input,
     ...(accountRef && { account: accountRef }),
@@ -434,14 +477,29 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
         authInfo: { kind: 'public', ...(principal && { principal }) },
       };
     }
-    const brandDomain =
-      'brand' in ref && ref.brand && typeof ref.brand === 'object' && 'domain' in ref.brand
-        ? (ref.brand.domain as string | undefined)
-        : undefined;
-    const accountId =
-      'account_id' in ref && typeof ref.account_id === 'string' ? ref.account_id : undefined;
-    const id = accountId ?? `synthetic_${brandDomain ?? 'anon'}`;
-    const operator = 'operator' in ref && typeof ref.operator === 'string' ? ref.operator : undefined;
+    if (typeof ref !== 'object' || Array.isArray(ref)) {
+      throw new AdcpError('INVALID_REQUEST', {
+        message: 'account must be an object',
+        field: 'account',
+        recovery: 'correctable',
+      });
+    }
+    const canonical = canonicalizeAccountRef(ref);
+    const accountRef: ToolArgs['account'] = canonical.kind === 'account_id'
+      ? { account_id: canonical.account_id }
+      : {
+          brand: canonical.brand,
+          operator: canonical.operator,
+          ...(canonical.operator_unit && { operator_unit: canonical.operator_unit }),
+          ...(canonical.currency && { currency: canonical.currency }),
+          ...(canonical.timezone && { timezone: canonical.timezone }),
+          ...(canonical.sandbox && { sandbox: true }),
+        };
+    const brandDomain = canonical.kind === 'natural' ? canonical.brand.domain : undefined;
+    const operator = canonical.kind === 'natural' ? canonical.operator : undefined;
+    const id = canonical.kind === 'account_id'
+      ? canonical.account_id
+      : `synthetic_${createHash('sha256').update(accountScopeFromRef(accountRef)).digest('hex').slice(0, 32)}`;
     return {
       id,
       name: brandDomain ?? id,
@@ -450,7 +508,7 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
       ...(brandDomain != null && { brand: { domain: brandDomain } }),
       ...(operator && { operator }),
       ctx_metadata: {
-        account_ref: ref as ToolArgs['account'],
+        account_ref: accountRef,
         brand_domain: brandDomain,
         ...(operator && { operator }),
       },
@@ -570,7 +628,10 @@ export function legacyListCreativesHandler(
 export class TrainingSalesPlatform
   implements DecisioningPlatform<TrainingSalesConfig, TrainingSalesMeta>
 {
-  constructor(private readonly storyboardCompat?: TrainingContext['storyboardCompat']) {}
+  constructor(
+    private readonly storyboardCompat?: TrainingContext['storyboardCompat'],
+    private readonly proposalNegotiationProfile: NonNullable<TrainingContext['proposalNegotiationProfile']> = 'ask-only',
+  ) {}
 
   capabilities = TRAINING_SALES_CAPABILITIES;
 
@@ -705,6 +766,115 @@ export class TrainingSalesPlatform
       return translateV5Result(result);
     },
   } as SalesPlatform<TrainingSalesMeta>;
+
+  /** SDK 14's primary AdCP 3.2 surface. Legacy `sales` remains registered so
+   * 3.0/3.1 callers can invoke the deprecated tool names explicitly. */
+  get mediaBuyLifecycle(): MediaBuyLifecyclePlatform<TrainingSalesMeta> | undefined {
+    if (this.storyboardCompat?.version === '3.0') return undefined;
+    return {
+    proposalRefinement: proposalCapabilitiesForProfile(this.proposalNegotiationProfile),
+
+    listProducts: async (req, ctx) => translateV5Result(
+      await executeProductDiscoveryPlatformTool(
+        'list_products',
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+      { allowAdvisories: true },
+    ),
+
+    requestProposals: async (req, ctx) => translateV5Result(
+      await executeProductDiscoveryPlatformTool(
+        'request_proposals',
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+      { allowAdvisories: true },
+    ),
+
+    refineProposals: async (req, ctx) => {
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await executeProductDiscoveryPlatformTool(
+          'refine_proposals',
+          withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+          trainingCtx,
+        ),
+        { allowAdvisories: true },
+      );
+    },
+
+    declineProposals: async (req, ctx) => translateV5Result(
+      await executeProductDiscoveryPlatformTool(
+        'decline_proposals',
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+      { allowAdvisories: true },
+    ),
+
+    buyProducts: async (req, ctx) => translateV5Result(
+      await handleBuyProducts(
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleBuyProducts>[0],
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+    ),
+
+    acceptProposal: async (req, ctx) => translateV5Result(
+      await handleAcceptProposal(
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleAcceptProposal>[0],
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+    ),
+
+    controlMediaBuy: async (req, ctx) => translateV5Result(
+      await handleControlMediaBuy(
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleControlMediaBuy>[0],
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+    ),
+
+    getMediaBuys: async (req, ctx) => {
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      let result = await handleGetMediaBuys(
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account),
+        trainingCtx,
+      );
+      const requestedIds = (req as unknown as { media_buy_ids?: unknown }).media_buy_ids;
+      const returnedBuys = (result as { media_buys?: unknown }).media_buys;
+      const principal = (ctx.account as { authInfo?: { principal?: unknown } } | undefined)?.authInfo?.principal;
+      // SDK 14 removes the controller-only sandbox assertion from compact
+      // read AccountRefs. Retry an exact-ID miss in the brand-owned public
+      // sandbox partition; successful ordinary reads never cross scopes.
+      if (
+        Array.isArray(requestedIds)
+        && requestedIds.length > 0
+        && Array.isArray(returnedBuys)
+        && returnedBuys.length === 0
+        && typeof principal === 'string'
+        && principal.startsWith('static:')
+        && brandDomainFromCtx(ctx.account)
+      ) {
+        result = await handleGetMediaBuys(
+          withCurrentAccountScope(
+            req as unknown as Record<string, unknown>,
+            ctx.account,
+            { account: { sandbox: true } },
+          ),
+          trainingCtx,
+        );
+      }
+      return translateV5Result(canonicalMediaBuyPlatformResult(result));
+    },
+
+    getMediaBuyDelivery: async (req, ctx) => translateV5Result(
+      await handleGetMediaBuyDelivery(
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input),
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+    ),
+    } as MediaBuyLifecyclePlatform<TrainingSalesMeta>;
+  }
 
   // Audience-targeting capability is declared above; expose sync_audiences
   // so audience_buy_flow can register audiences before referencing them in

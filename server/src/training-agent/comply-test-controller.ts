@@ -43,13 +43,17 @@ import {
   sessionKeyFromArgs,
 } from './state.js';
 import { getAgentUrl } from './config.js';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   getAccountNotificationSubscribers,
   sandboxAccountRefForId,
   seedAccountFixture,
 } from './account-handlers.js';
-import { canonicalizeAccountRef, type CanonicalAccountRef } from './account-scope.js';
+import {
+  accountScopeFromRef,
+  canonicalizeAccountRef,
+  type CanonicalAccountRef,
+} from './account-scope.js';
 import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
@@ -1149,6 +1153,8 @@ const LOCAL_SCENARIOS = [
   'seed_rights_grant',
   'seed_creative_format',
   'seed_measurement_catalog',
+  'compact_product_lifecycle_probe',
+  'compact_direct_buy_lifecycle_probe',
   'query_provenance_audit_observations',
   'evaluate_distributed_brand_resolution',
   'verify_governance_token',
@@ -1158,6 +1164,104 @@ function localScenariosFor(ctx: TrainingContext): string[] {
   return ctx.storyboardCompat?.version === '3.0'
     ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations')
     : [...LOCAL_SCENARIOS];
+}
+
+async function handleCompactLifecycleProbe(
+  rawArgs: Record<string, unknown>,
+  ctx: TrainingContext,
+  session: SessionState,
+): Promise<object> {
+  const params = isRecord(rawArgs.params) ? rawArgs.params : {};
+  const operation = params.operation;
+  const productId = typeof params.product_id === 'string' ? params.product_id : undefined;
+  if (operation === 'prepare' && productId) {
+    const seededProduct = session.complyExtensions.seededProducts.get(productId);
+    if (seededProduct && !Array.isArray(seededProduct.allowed_actions)) {
+      seededProduct.allowed_actions = [{ action: 'decrease_budget', modes: ['self_serve'] }];
+    }
+    return {
+      success: true,
+      simulated: { prepared: true, product_id: productId },
+    };
+  }
+  if (rawArgs.scenario !== 'compact_product_lifecycle_probe' || operation !== 'expire_proposal') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'Unsupported compact lifecycle probe operation.',
+    };
+  }
+
+  const proposalId = typeof params.proposal_id === 'string' ? params.proposal_id : undefined;
+  if (!proposalId || !rawArgs.account) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'compact_product_lifecycle_probe expire_proposal requires proposal_id and account.',
+    };
+  }
+
+  let accountId: string;
+  try {
+    const canonical = canonicalizeAccountRef(rawArgs.account);
+    accountId = ctx.proposalRefinementScope?.account_id
+      ?? (ctx.principal?.startsWith('static:')
+        ? 'public_sandbox'
+        : canonical.kind === 'account_id'
+          ? canonical.account_id
+          : `synthetic_${createHash('sha256').update(accountScopeFromRef(rawArgs.account)).digest('hex').slice(0, 32)}`);
+  } catch {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'compact lifecycle probe requires a valid account reference.',
+    };
+  }
+
+  const proposalSessionKey = sessionKeyFromArgs(
+    { account: { account_id: accountId } },
+    ctx.mode,
+    ctx.userId,
+    ctx.moduleId,
+    ctx.proposalRefinementScope?.principal_id
+      ?? (ctx.authenticatedAgentUrl ? `agent:${ctx.authenticatedAgentUrl}` : ctx.principal)
+      ?? 'anonymous',
+  );
+  const proposalSession = await getSession(proposalSessionKey);
+  const record = proposalSession.proposalRefinementRecords.get(proposalId);
+  if (!record) {
+    return {
+      success: false,
+      error: 'NOT_FOUND',
+      error_detail: `Proposal not found: ${proposalId}`,
+    };
+  }
+
+  const targetTime = new Date();
+  const expiredAt = new Date(targetTime.getTime() - 1).toISOString();
+  proposalSession.proposalRefinementRecords.set(proposalId, {
+    ...record,
+    version: record.version + 1,
+    proposal: { ...record.proposal, expires_at: expiredAt },
+  });
+  if (proposalSession.lastGetProductsContext?.proposals) {
+    proposalSession.lastGetProductsContext = {
+      ...proposalSession.lastGetProductsContext,
+      proposals: proposalSession.lastGetProductsContext.proposals.map(proposal => (
+        proposal.proposal_id === proposalId
+          ? { ...proposal, expires_at: expiredAt }
+          : proposal
+      )),
+    };
+  }
+  return {
+    success: true,
+    simulated: {
+      expiry_processed: true,
+      proposal_id: proposalId,
+      target_time: targetTime.toISOString(),
+    },
+  };
 }
 
 /**
@@ -1309,7 +1413,11 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     || (scenario === 'force_upstream_unavailable' && params.tool === 'get_products');
   const targetsControllerFixtureState = scenario === 'seed_product'
     || scenario === 'seed_pricing_option'
-    || scenario === 'seed_measurement_catalog';
+    || scenario === 'seed_measurement_catalog'
+    || (
+      (scenario === 'compact_product_lifecycle_probe' || scenario === 'compact_direct_buy_lifecycle_probe')
+      && params.operation === 'prepare'
+    );
   const targetsPublicTaskState = scenario === 'seed_media_buy'
     || scenario === 'seed_creative';
   // The frozen 3.0 runner injects a synthetic natural account into controller
@@ -1459,6 +1567,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
   if (scenario === 'force_task_completion') {
     return handleForceTaskCompletion(sessionKey, rawArgs);
+  }
+  if (scenario === 'compact_product_lifecycle_probe' || scenario === 'compact_direct_buy_lifecycle_probe') {
+    return handleCompactLifecycleProbe(rawArgs, ctx, session);
   }
   if (scenario === 'evaluate_distributed_brand_resolution') {
     const params = isRecord(rawArgs.params) ? rawArgs.params : {};

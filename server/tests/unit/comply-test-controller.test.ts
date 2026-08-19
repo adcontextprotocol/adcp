@@ -211,20 +211,22 @@ describe('comply_test_controller', () => {
         'seed_rights_grant',
         'seed_creative_format',
         'seed_measurement_catalog',
+        'compact_product_lifecycle_probe',
+        'compact_direct_buy_lifecycle_probe',
         'query_provenance_audit_observations',
         'evaluate_distributed_brand_resolution',
         'verify_governance_token',
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(24);
+      expect(scenarios.length).toBe(26);
       // Dedup invariant — see the list_scenarios response merge in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
 
     it('advertises force_get_products_arm for the 3.2 beta release', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
-        adcp_version: '3.2-beta.0',
+        adcp_version: '3.2-beta.2',
         adcp_major_version: 3,
         scenario: 'list_scenarios',
         account: ACCOUNT,
@@ -790,6 +792,7 @@ describe('comply_test_controller', () => {
       });
       const buy = (buys as any).media_buys?.[0];
       expect(buy.available_actions).toEqual([{
+        task: 'refine_proposals',
         action: 'extend_flight',
         mode: 'requires_approval',
         sla: { response_max: 'PT4H', completion_max: 'P2D' },
@@ -808,6 +811,7 @@ describe('comply_test_controller', () => {
         attempted_action: 'extend_flight',
         reason: 'mode_mismatch',
         currently_available_actions: [{
+          task: 'refine_proposals',
           action: 'extend_flight',
           mode: 'requires_approval',
           sla: { response_max: 'PT4H', completion_max: 'P2D' },
@@ -1064,11 +1068,13 @@ describe('comply_test_controller', () => {
       expect((created as any).errors).toBeUndefined();
       expect(created.available_actions).toEqual([
         {
+          task: 'control_media_buy',
           action: 'increase_budget',
           mode: 'self_serve',
           sla: { response_max: 'PT5M', completion_max: 'PT1H' },
         },
         {
+          task: 'refine_proposals',
           action: 'extend_flight',
           mode: 'requires_approval',
           sla: { response_max: 'PT4H', completion_max: 'P2D' },
@@ -1172,7 +1178,11 @@ describe('comply_test_controller', () => {
         ],
       });
       expect((created as any).errors).toBeUndefined();
-      expect(created.available_actions).toEqual([{ action: 'increase_budget', mode: 'self_serve' }]);
+      expect(created.available_actions).toEqual([{
+        task: 'control_media_buy',
+        action: 'increase_budget',
+        mode: 'self_serve',
+      }]);
 
       const packages = (created as any).packages as Array<{ package_id: string }>;
       const { result: rejected } = await simulateCallTool(server, 'update_media_buy', {
@@ -1229,7 +1239,11 @@ describe('comply_test_controller', () => {
           budget: 10000,
         }],
       });
-      expect(created.available_actions).toEqual([{ action: 'cancel', mode: 'self_serve' }]);
+      expect(created.available_actions).toEqual([{
+        task: 'control_media_buy',
+        action: 'cancel',
+        mode: 'self_serve',
+      }]);
 
       const { result: canceled } = await simulateCallTool(server, 'update_media_buy', {
         account: ACCOUNT,

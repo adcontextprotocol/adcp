@@ -8,7 +8,12 @@ import {
   handleCheckGovernance,
   handleSyncPlans,
 } from '../../src/training-agent/governance-handlers.js';
-import { clearSessions, getSession, runWithSessionContext } from '../../src/training-agent/state.js';
+import {
+  clearSessions,
+  flushDirtySessions,
+  getSession,
+  runWithSessionContext,
+} from '../../src/training-agent/state.js';
 import { resetGovernanceSigning } from '../../src/training-agent/governance-signing.js';
 import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
 import { getCanonicalBase } from '../../src/training-agent/tenants/registry.js';
@@ -198,6 +203,7 @@ describe('check_governance request-shape binding', () => {
         updatedAt: '2027-01-01T00:00:00Z',
         history: [],
       });
+      await flushDirtySessions();
       const intent = await check({
         tool: 'update_media_buy',
         proposed_commitment: { amount: 300, currency: 'USD' },
@@ -219,8 +225,9 @@ describe('check_governance request-shape binding', () => {
       }, CTX) as Record<string, any>;
 
       expect(result.errors?.[0]?.code).toBe('PERMISSION_DENIED');
-      expect(session.mediaBuys.get('mb_seller_delta')?.revision).toBe(3);
-      expect(session.mediaBuys.get('mb_seller_delta')?.packages[0]?.budget).toBe(1_000);
+      const deniedSession = await getSession('open:intent-binding.example');
+      expect(deniedSession.mediaBuys.get('mb_seller_delta')?.revision).toBe(3);
+      expect(deniedSession.mediaBuys.get('mb_seller_delta')?.packages[0]?.budget).toBe(1_000);
 
       const wrongAudienceIntent = await check({
         tool: 'update_media_buy',
@@ -266,7 +273,8 @@ describe('check_governance request-shape binding', () => {
         new_packages: [{ product_id: 'display_standard', pricing_option_id: 'cpm_standard', budget: 0 }],
       }, CTX) as Record<string, any>;
       expect(zeroBudgetAddition.errors?.[0]?.code).toBe('GOVERNANCE_DENIED');
-      expect(session.mediaBuys.get('mb_seller_delta')?.revision).toBe(3);
+      const finalSession = await getSession('open:intent-binding.example');
+      expect(finalSession.mediaBuys.get('mb_seller_delta')?.revision).toBe(3);
     });
   });
 
@@ -314,6 +322,7 @@ describe('check_governance request-shape binding', () => {
         updatedAt: '2027-01-01T00:00:00Z',
         history: [],
       });
+      await flushDirtySessions();
       const businessPayload = {
         account: { brand: { domain: 'intent-binding.example' } },
         media_buy_id: 'mb_shared_budget',
@@ -322,7 +331,8 @@ describe('check_governance request-shape binding', () => {
       };
       const withoutContext = await handleUpdateMediaBuy(businessPayload, CTX) as Record<string, any>;
       expect(withoutContext.errors?.[0]?.code).toBe('GOVERNANCE_DENIED');
-      expect(session.mediaBuys.get('mb_shared_budget')?.revision).toBe(1);
+      const rejectedSession = await getSession('open:intent-binding.example');
+      expect(rejectedSession.mediaBuys.get('mb_shared_budget')?.revision).toBe(1);
 
       const intent = await check({
         tool: 'update_media_buy',
@@ -338,8 +348,9 @@ describe('check_governance request-shape binding', () => {
 
       expect(result.errors, JSON.stringify(result)).toBeUndefined();
       expect(result.total_budget).toBe(1_000);
-      expect(session.mediaBuys.get('mb_shared_budget')?.totalBudget).toBe(1_000);
-      expect(session.mediaBuys.get('mb_shared_budget')?.packages.map(pkg => pkg.budget)).toEqual([900, 800]);
+      const updatedSession = await getSession('open:intent-binding.example');
+      expect(updatedSession.mediaBuys.get('mb_shared_budget')?.totalBudget).toBe(1_000);
+      expect(updatedSession.mediaBuys.get('mb_shared_budget')?.packages.map(pkg => pkg.budget)).toEqual([900, 800]);
     });
   });
 
@@ -376,6 +387,7 @@ describe('check_governance request-shape binding', () => {
         updatedAt: '2027-01-01T00:00:00Z',
         history: [],
       });
+      await flushDirtySessions();
 
       const result = await handleUpdateMediaBuy({
         account: { brand: { domain: 'intent-binding.example' } },
@@ -385,7 +397,8 @@ describe('check_governance request-shape binding', () => {
       }, CTX) as Record<string, any>;
 
       expect(result.errors?.[0]?.code).toBe('GOVERNANCE_DENIED');
-      expect(session.mediaBuys.get('mb_aggregate_controls')?.revision).toBe(1);
+      const rejectedSession = await getSession('open:intent-binding.example');
+      expect(rejectedSession.mediaBuys.get('mb_aggregate_controls')?.revision).toBe(1);
     });
   });
 

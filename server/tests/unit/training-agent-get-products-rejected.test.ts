@@ -54,7 +54,7 @@ describe('get_products rejected compliance arm', () => {
     const reason = 'The requested budget is below the minimum for this inventory.';
 
     const forced = await call('comply_test_controller', {
-      adcp_version: '3.2-beta.0',
+      adcp_version: '3.2-beta.2',
       account: controllerAccount('primary-account'),
       scenario: 'force_get_products_arm',
       params: {
@@ -68,12 +68,12 @@ describe('get_products rejected compliance arm', () => {
       data: {
         success: true,
         forced: { arm: 'rejected', reason },
-        adcp_version: '3.2-beta.0',
+        adcp_version: '3.2-beta.2',
       },
     });
 
     const otherAccountResult = await call('get_products', {
-      adcp_version: '3.2-beta.0',
+      adcp_version: '3.2-beta.2',
       idempotency_key: 'rejected-other-account-0001',
       account: otherAccount,
       buying_mode: 'brief',
@@ -82,7 +82,7 @@ describe('get_products rejected compliance arm', () => {
     expect(otherAccountResult.data).not.toMatchObject({ status: 'rejected' });
 
     const otherPrincipalResult = await call('get_products', {
-      adcp_version: '3.2-beta.0',
+      adcp_version: '3.2-beta.2',
       idempotency_key: 'rejected-other-principal-0001',
       account: primaryAccount,
       buying_mode: 'brief',
@@ -91,7 +91,7 @@ describe('get_products rejected compliance arm', () => {
     expect(otherPrincipalResult.data).not.toMatchObject({ status: 'rejected' });
 
     const wholesaleResult = await call('get_products', {
-      adcp_version: '3.2-beta.0',
+      adcp_version: '3.2-beta.2',
       idempotency_key: 'rejected-wholesale-0001',
       account: primaryAccount,
       buying_mode: 'wholesale',
@@ -99,7 +99,7 @@ describe('get_products rejected compliance arm', () => {
     expect(wholesaleResult.data).not.toMatchObject({ status: 'rejected' });
 
     const rejected = await call('get_products', {
-      adcp_version: '3.2-beta.0',
+      adcp_version: '3.2-beta.2',
       idempotency_key: 'rejected-primary-0001',
       account: primaryAccount,
       buying_mode: 'brief',
@@ -110,7 +110,7 @@ describe('get_products rejected compliance arm', () => {
       success: true,
       data: {
         status: 'rejected',
-        adcp_version: '3.2-beta.0',
+        adcp_version: '3.2-beta.2',
         reason,
         suggestions: ['Increase the campaign budget.'],
         context: { correlation_id: 'rejected-once' },
@@ -118,7 +118,7 @@ describe('get_products rejected compliance arm', () => {
     });
 
     const consumed = await call('get_products', {
-      adcp_version: '3.2-beta.0',
+      adcp_version: '3.2-beta.2',
       idempotency_key: 'rejected-consumed-0001',
       account: primaryAccount,
       buying_mode: 'brief',
@@ -131,7 +131,7 @@ describe('get_products rejected compliance arm', () => {
     const primaryAccount = account('parallel-rejection-account');
     const reason = 'Only one concurrent request may consume this rejection.';
     const forced = await call('comply_test_controller', {
-      adcp_version: '3.2-beta.0',
+      adcp_version: '3.2-beta.2',
       account: controllerAccount('parallel-rejection-account'),
       scenario: 'force_get_products_arm',
       params: { arm: 'rejected', reason },
@@ -140,7 +140,7 @@ describe('get_products rejected compliance arm', () => {
 
     const replayScope = randomUUID();
     const outcomes = await Promise.all([0, 1].map(index => call('get_products', {
-      adcp_version: '3.2-beta.0',
+      adcp_version: '3.2-beta.2',
       idempotency_key: `parallel-rejection-${replayScope}-${index}`,
       account: primaryAccount,
       buying_mode: 'brief',
@@ -157,7 +157,7 @@ describe('get_products rejected compliance arm', () => {
 
   it('rejects empty suggestion arrays instead of emitting a schema-invalid response', async () => {
     const result = await call('comply_test_controller', {
-      adcp_version: '3.2-beta.0',
+      adcp_version: '3.2-beta.2',
       account: controllerAccount('invalid-suggestions'),
       scenario: 'force_get_products_arm',
       params: { arm: 'rejected', reason: 'Declined.', suggestions: [] },
