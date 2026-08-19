@@ -96,12 +96,14 @@ For buyers bridging from OpenRTB-shaped pipelines, the TMP Identity Match `ident
 | `id5` | `id5-sync.com` | `atype: 3` |
 | `uid2` | `uidapi.com` | `atype: 3` |
 | `euid` | `euid.eu` | `atype: 3` |
-| `pairid` | `iabtechlab.com/pair` | `atype: 3` |
+| `pairid` | `pair-protocol.com` | `atype: 3`. The value is a Base64-encoded, encrypted KsKp Publisher Identifier scoped by `EID.matcher` to the publisher owner domain. |
 | `maid` | `adid` (Android) / `idfa` (iOS) | Atypically carried on `Device.ifa` rather than `User.eids` in OpenRTB |
 | `hashed_email` | `liveintent.com` or buyer-specific | `atype: 3` |
 | `publisher_first_party` | publisher-defined `source` URL | Context-dependent; bridge implementations may omit `atype` or default to `atype: 3` only when the token represents a person-based identifier |
 | `other` | buyer-defined `source` URL | Context-dependent; bridge implementations may omit `atype` or default to `atype: 3` only when the token represents a person-based identifier |
 
 The TMP `user_token` field corresponds to `User.eids[].uids[].id`. OpenRTB's `User.eids[].uids[].atype` is derived from AdCP's higher-fidelity `uid_type`; it is not a separate AdCP field. Bridge code should compute `atype` from the table above and should not add an independent user-supplied `atype` value that could disagree with `uid_type`.
+
+For PAIR, `EID.matcher` is the publisher's canonical owner domain (the ads.txt `ownerdomain`). A publisher uses the same KsKp identifier for a user across its advertiser matches, but identifiers are not comparable across publisher scopes. A DSP matches only against advertiser-authorized, publisher-specific PAIR lists produced by the PAIR DCR flow; bridges must preserve the matcher scope and must not key identifiers across it. Older AdCP guidance listed `iabtechlab.com/pair`. A bridge that must cover traffic produced from that guidance may accept it as an explicit legacy input alias, normalize it internally, and must emit `pair-protocol.com`.
 
 AdCP carries up to 3 identities per Identity Match request (HPKE size budget — see [TMPX size budget](/docs/trusted-match/specification#size-budget)); OpenRTB has no such limit, so a buyer bridging from OpenRTB into TMP must apply a buyer-configured priority order to truncate (typically: deterministic graphs first — UID2, RampID — then probabilistic or publisher-scoped IDs).
