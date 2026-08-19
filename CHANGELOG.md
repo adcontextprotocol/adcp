@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.25
+
+### Patch Changes
+
+- 1c4ac05: Gate inventory-list compliance scenarios on the stable property-list capability and accept either documented no-match outcome.
+
 ## 3.0.24
 
 ### Patch Changes
