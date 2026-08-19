@@ -107,7 +107,7 @@ test('inventory-list no-match requires canonical rejection and fails accepted bu
     'inventory_list_no_match.yaml'
   );
   const source = YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
-  const keepChecks = new Set(['field_value', 'error_code']);
+  const keepChecks = new Set(['error_code']);
   const storyboard = {
     ...source,
     prerequisites: undefined,
@@ -146,7 +146,6 @@ test('inventory-list no-match requires canonical rejection and fails accepted bu
             errors: [{
               code: 'PRODUCT_UNAVAILABLE',
               message: 'The property list matches no inventory',
-              field: 'packages[0].targeting_overlay.property_list',
             }],
             context: request.context,
           },

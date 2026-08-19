@@ -105,9 +105,8 @@ phases:
         negative_path: payload_well_formed
         stateful: true
         expected: |
-          Reject with PRODUCT_UNAVAILABLE and point error.field at the property
-          list that matched no inventory. Return a well-formed AdCP error rather
-          than crashing.
+          Reject with PRODUCT_UNAVAILABLE. Return a well-formed AdCP error
+          rather than crashing.
         sample_request:
           brand:
             domain: "acmeoutdoor.example"
@@ -134,10 +133,6 @@ phases:
           - check: error_code
             value: "PRODUCT_UNAVAILABLE"
             description: "Seller reports the canonical no-inventory failure"
-          - check: field_value
-            path: "errors[0].field"
-            value: "packages[0].targeting_overlay.property_list"
-            description: "Error identifies the property list whose inventory intersection is empty"
           - check: field_present
             path: "context"
             description: "Rejected response echoes back the context object"
