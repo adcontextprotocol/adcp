@@ -430,6 +430,25 @@ describe('tenant routing smoke', () => {
     }
   }, 30000);
 
+  it('advertises the executable DOOH sales profile and channel', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const response = await callTenantTool(url, 31, 'get_adcp_capabilities', {}) as {
+        result?: { structuredContent?: {
+          specialisms?: string[];
+          media_buy?: { portfolio?: { primary_channels?: string[] } };
+        } };
+      };
+      const capabilities = response.result?.structuredContent;
+      expect(capabilities?.specialisms).toContain('sales-dooh');
+      expect(capabilities?.media_buy?.portfolio?.primary_channels).toContain('dooh');
+    } finally {
+      await close();
+    }
+  }, 30000);
+
   it('rejects a governed rights acquisition without persisting a grant', async () => {
     const { baseUrl, close } = await bootServer();
     try {

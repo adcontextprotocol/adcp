@@ -1,8 +1,8 @@
 /**
  * v6 SalesPlatform for the `/sales` tenant.
  *
- * Single-specialism platform claiming `sales-non-guaranteed` +
- * `sales-guaranteed`. Implements `SalesPlatform` (5 required methods +
+ * Sales platform claiming `sales-non-guaranteed`, `sales-guaranteed`, and
+ * `sales-dooh`. Implements `SalesPlatform` (5 required methods +
  * 4 optional read-side methods).
  *
  * Spike-grade port: bodies shim through to existing v5 handlers via
@@ -47,6 +47,7 @@ import {
 import { handleSyncAudiences } from './audience-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
+import { PUBLISHERS } from './publishers.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { sessionKeyFromArgs } from './state.js';
 import type { ToolArgs, TrainingContext } from './types.js';
@@ -105,10 +106,42 @@ export function restoreRawPackageSelectors(
   return restored;
 }
 
+// The in-repo schema adds this value before the published SDK's generated
+// AdCPSpecialism union can include it. Keep the cast at this single boundary;
+// the wire value remains the literal `sales-dooh` and is schema-tested here.
+const SALES_DOOH_SPECIALISM = 'sales-dooh' as never;
+
+const TRAINING_SALES_CHANNELS = [
+  'display',
+  'olv',
+  'ctv',
+  'email',
+  'streaming_audio',
+  'podcast',
+  'dooh',
+  'ooh',
+  'gaming',
+  'retail_media',
+  'linear_tv',
+  'social',
+  'influencer',
+  'search',
+  'radio',
+  'print',
+] as const;
+
 export const TRAINING_SALES_CAPABILITIES = {
-  specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
+  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', SALES_DOOH_SPECIALISM] as const,
   creative_agents: [],
-  channels: [] as const,
+  channels: TRAINING_SALES_CHANNELS,
+  overrides: {
+    media_buy: {
+      portfolio: {
+        publisher_domains: PUBLISHERS.map(publisher => publisher.domain),
+        primary_channels: [...TRAINING_SALES_CHANNELS],
+      },
+    },
+  },
   pricingModels: ['cpm', 'cpa'] as const,
   targeting: {
     geo_countries: true,
