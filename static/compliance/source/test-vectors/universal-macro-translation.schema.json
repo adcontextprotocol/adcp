@@ -28,12 +28,14 @@
         "dropped_params",
         "unmapped_macros",
         "dropped_consent_macros",
+        "frozen_consent_macros",
         "suspect_native_values"
       ],
       "properties": {
         "dropped_params": { "type": "string", "minLength": 1 },
         "unmapped_macros": { "type": "string", "minLength": 1 },
         "dropped_consent_macros": { "type": "string", "minLength": 1 },
+        "frozen_consent_macros": { "type": "string", "minLength": 1 },
         "suspect_native_values": { "type": "string", "minLength": 1 }
       }
     },
@@ -82,6 +84,7 @@
         "dropped_params",
         "unmapped_macros",
         "dropped_consent_macros",
+        "frozen_consent_macros",
         "suspect_native_values"
       ],
       "properties": {
@@ -92,13 +95,27 @@
         },
         "unmapped_macros": { "$ref": "#/definitions/macroArray" },
         "dropped_consent_macros": { "$ref": "#/definitions/macroArray" },
+        "frozen_consent_macros": { "$ref": "#/definitions/macroArray" },
         "suspect_native_values": { "$ref": "#/definitions/macroArray" }
+      }
+    },
+    "expectedError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "macro"],
+      "properties": {
+        "code": { "const": "unsafe_native_mapping" },
+        "macro": { "$ref": "#/definitions/macro" }
       }
     },
     "vector": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "input_pixel_url", "mapping", "expected"],
+      "required": ["name", "input_pixel_url", "mapping"],
+      "oneOf": [
+        { "required": ["expected"] },
+        { "required": ["expected_error"] }
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -106,7 +123,8 @@
         },
         "input_pixel_url": { "type": "string", "minLength": 1 },
         "mapping": { "$ref": "#/definitions/mapping" },
-        "expected": { "$ref": "#/definitions/expected" }
+        "expected": { "$ref": "#/definitions/expected" },
+        "expected_error": { "$ref": "#/definitions/expectedError" }
       }
     }
   }

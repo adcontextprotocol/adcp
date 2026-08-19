@@ -4,11 +4,12 @@
   "version": "3.2",
   "name": "Universal macro translation — cross-SDK conformance fixtures",
   "spec_reference": "docs/creative/universal-macros.mdx#implementing-translation-with-the-sdk",
-  "description": "Language-neutral golden vectors for settled producer-side universal-macro translation behavior. Successful cases pin the current result shape.",
+  "description": "Language-neutral golden vectors for ratified producer-side universal-macro translation behavior, including typed rejection cases and the complete successful result shape.",
   "ordering": {
     "dropped_params": "Query-parameter occurrence order; repeated keys remain repeated.",
     "unmapped_macros": "First occurrence in query order, deduplicated.",
     "dropped_consent_macros": "First occurrence in query order, deduplicated subset of unmapped_macros.",
+    "frozen_consent_macros": "Mapping property order, deduplicated consent macros supplied through value entries.",
     "suspect_native_values": "Mapping property order, deduplicated. JSON fixture consumers MUST preserve the mapping order shown here."
   },
   "vectors": [
@@ -21,6 +22,7 @@
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -33,6 +35,7 @@
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -45,6 +48,7 @@
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -62,6 +66,7 @@
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -77,6 +82,7 @@
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -89,6 +95,7 @@
         "dropped_params": ["ids"],
         "unmapped_macros": ["{UNKNOWN}"],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -101,6 +108,7 @@
         "dropped_params": ["first", "same", "same", "mix"],
         "unmapped_macros": ["{Z}", "{A}", "{B}"],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -113,6 +121,7 @@
         "dropped_params": ["g", "u", "g2", "c"],
         "unmapped_macros": ["{GPP_STRING}", "{US_PRIVACY}", "{GDPR_CONSENT}"],
         "dropped_consent_macros": ["{GPP_STRING}", "{US_PRIVACY}", "{GDPR_CONSENT}"],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -129,6 +138,7 @@
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -141,6 +151,7 @@
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -153,6 +164,7 @@
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -168,6 +180,7 @@
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -180,6 +193,7 @@
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -195,6 +209,7 @@
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
       }
     },
@@ -213,6 +228,7 @@
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": ["{PERCENT}", "{DOUBLE_BRACE}", "{DOLLAR_BRACE}", "{BRACKET}"]
       }
     },
@@ -228,7 +244,64 @@
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
         "suspect_native_values": []
+      }
+    },
+    {
+      "name": "privacy-value-mappings-are-encoded-and-reported",
+      "input_pixel_url": "https://pixel.example/i?g={GPP_STRING}&u={US_PRIVACY}",
+      "mapping": {
+        "{GPP_STRING}": { "value": "DBABMA~CPXxRfA/PXxRfA" },
+        "{US_PRIVACY}": { "value": "1YNN" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?g=DBABMA~CPXxRfA%2FPXxRfA&u=1YNN",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": ["{GPP_STRING}", "{US_PRIVACY}"],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "bare-query-normalized-away",
+      "input_pixel_url": "https://pixel.example/i?",
+      "mapping": {},
+      "expected": {
+        "url": "https://pixel.example/i",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "native-c0-null-rejected",
+      "input_pixel_url": "https://pixel.example/i?cb={CACHEBUSTER}",
+      "mapping": { "{CACHEBUSTER}": { "native": "%%CACHE\u0000BUSTER%%" } },
+      "expected_error": {
+        "code": "unsafe_native_mapping",
+        "macro": "{CACHEBUSTER}"
+      }
+    },
+    {
+      "name": "native-c0-unit-separator-rejected",
+      "input_pixel_url": "https://pixel.example/i?cb={CACHEBUSTER}",
+      "mapping": { "{CACHEBUSTER}": { "native": "%%CACHE\u001fBUSTER%%" } },
+      "expected_error": {
+        "code": "unsafe_native_mapping",
+        "macro": "{CACHEBUSTER}"
+      }
+    },
+    {
+      "name": "native-del-rejected",
+      "input_pixel_url": "https://pixel.example/i?cb={CACHEBUSTER}",
+      "mapping": { "{CACHEBUSTER}": { "native": "%%CACHE\u007fBUSTER%%" } },
+      "expected_error": {
+        "code": "unsafe_native_mapping",
+        "macro": "{CACHEBUSTER}"
       }
     }
   ]

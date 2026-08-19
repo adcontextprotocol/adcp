@@ -18,10 +18,11 @@ const EXPECTED_RESULT_KEYS = [
   'dropped_params',
   'unmapped_macros',
   'dropped_consent_macros',
+  'frozen_consent_macros',
   'suspect_native_values',
 ];
 
-const REQUIRED_SETTLED_CASES = [
+const REQUIRED_SUCCESS_CASES = [
   'value-reserved-characters',
   'value-unreserved-characters',
   'value-non-ascii-utf8',
@@ -38,6 +39,14 @@ const REQUIRED_SETTLED_CASES = [
   'substitution-is-single-pass',
   'suspect-native-values-are-mapping-scoped-and-ordered',
   'ordinary-bracketed-values-not-suspect',
+  'privacy-value-mappings-are-encoded-and-reported',
+  'bare-query-normalized-away',
+];
+
+const REQUIRED_REJECTION_CASES = [
+  'native-c0-null-rejected',
+  'native-c0-unit-separator-rejected',
+  'native-del-rejected',
 ];
 
 describe('universal macro translation compliance fixture', () => {
@@ -47,25 +56,35 @@ describe('universal macro translation compliance fixture', () => {
     assert.equal(fixture.version, '3.2');
   });
 
-  it('pins every settled edge case and the complete diagnostic result shape', () => {
+  it('pins every ratified edge case and the complete successful result shape', () => {
     const vectorsByName = new Map(fixture.vectors.map((vector) => [vector.name, vector]));
     assert.equal(vectorsByName.size, fixture.vectors.length, 'vector names must be unique');
 
-    for (const name of REQUIRED_SETTLED_CASES) {
+    for (const name of REQUIRED_SUCCESS_CASES) {
       const vector = vectorsByName.get(name);
-      assert.ok(vector, `missing required settled vector: ${name}`);
+      assert.ok(vector, `missing required success vector: ${name}`);
       assert.deepEqual(Object.keys(vector.expected), EXPECTED_RESULT_KEYS, name);
+    }
+
+    for (const name of REQUIRED_REJECTION_CASES) {
+      const vector = vectorsByName.get(name);
+      assert.ok(vector, `missing required rejection vector: ${name}`);
+      assert.deepEqual(vector.expected_error, {
+        code: 'unsafe_native_mapping',
+        macro: '{CACHEBUSTER}',
+      });
     }
   });
 
-  it('does not claim unresolved rejection or bare-query policies', () => {
-    assert.equal(
-      fixture.vectors.some((vector) => vector.name.includes('rejected')),
-      false,
+  it('pins the ratified consent advisory and bare-query normalization', () => {
+    const vectorsByName = new Map(fixture.vectors.map((vector) => [vector.name, vector]));
+    assert.deepEqual(
+      vectorsByName.get('privacy-value-mappings-are-encoded-and-reported').expected.frozen_consent_macros,
+      ['{GPP_STRING}', '{US_PRIVACY}'],
     );
     assert.equal(
-      fixture.vectors.some((vector) => vector.input_pixel_url.endsWith('?')),
-      false,
+      vectorsByName.get('bare-query-normalized-away').expected.url,
+      'https://pixel.example/i',
     );
   });
 });

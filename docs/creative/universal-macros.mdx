@@ -535,26 +535,38 @@ const mapping = {
   '{DEVICE_ID}': { native: '%%ADVERTISING_IDENTIFIER_PLAIN%%' },
 };
 
-const { url, dropped_params, unmapped_macros, dropped_consent_macros, suspect_native_values } =
-  translateUniversalMacros(
-    'https://track.brand.com/imp?buy={MEDIA_BUY_ID}&pkg={PACKAGE_ID}&cb={CACHEBUSTER}&device={DEVICE_ID}',
-    mapping,
-  );
+const {
+  url,
+  dropped_params,
+  unmapped_macros,
+  dropped_consent_macros,
+  frozen_consent_macros,
+  suspect_native_values,
+} = translateUniversalMacros(
+  'https://track.brand.com/imp?buy={MEDIA_BUY_ID}&pkg={PACKAGE_ID}&cb={CACHEBUSTER}&device={DEVICE_ID}',
+  mapping,
+);
 
 // url:
 //   https://track.brand.com/imp?buy=mb_spring_2025&pkg=pkg_ctv_prime&cb=%%CACHEBUSTER%%&device=%%ADVERTISING_IDENTIFIER_PLAIN%%
 // dropped_params: []           (every macro was mapped)
 // unmapped_macros: []
 // dropped_consent_macros: []   (no consent macro was dropped)
+// frozen_consent_macros: []    (no consent macro was supplied as a fixed value)
 // suspect_native_values: []    (no value entry looks like a native token)
 ```
 
 Behavior:
 
 - **`native` entries are inserted verbatim** — `%%CACHEBUSTER%%` is not percent-encoded,
-  so the ad server still recognizes it.
+  so the ad server still recognizes it. A native mapping containing U+0000–U+001F
+  or U+007F is invalid: the helper raises a typed `unsafe_native_mapping` error and
+  emits no translated URL.
 - **`value` entries are RFC-3986 percent-encoded**, so a value containing reserved
   characters can't break or inject into the URL.
+- A consent/privacy macro supplied through **`value`** is still encoded, but it is
+  also surfaced in **`frozen_consent_macros`**. Inspect this advisory field: fixing a
+  consent string at translation time can produce a stale-consent pixel.
 - **A parameter whose universal macro the agent does not support is dropped entirely**
   (its key is reported in `dropped_params`, the macro in `unmapped_macros`) — better to
   omit a tracker the agent can't fill than to emit a broken one. A dropped
@@ -570,14 +582,16 @@ Behavior:
   untouched. The path and fragment also pass through byte-for-byte.
 - Substitution is single-pass. Macro-shaped text inside a substituted `value` is data,
   percent-encoded once, and never re-expanded.
+- A URL ending in a bare trailing `?` is normalized by removing the delimiter.
 - Diagnostic ordering is deterministic: `dropped_params` follows query occurrence
   order (including repeated keys); `unmapped_macros` and `dropped_consent_macros`
-  follow first occurrence and are deduplicated; `suspect_native_values` follows
-  mapping property order and is deduplicated.
+  follow first occurrence and are deduplicated; `frozen_consent_macros` and
+  `suspect_native_values` follow mapping property order and are deduplicated.
 
 The language-neutral golden fixture at
 [`/compliance/latest/test-vectors/universal-macro-translation.json`](https://adcontextprotocol.org/compliance/latest/test-vectors/universal-macro-translation.json)
-pins the output URL, every diagnostic array, and settled edge-case ordering.
+pins the output URL, every diagnostic array, typed rejection cases, and ratified
+edge-case ordering.
 SDK implementations MUST run the applicable versioned fixture rather than maintain an
 independent behavioral table.
 
