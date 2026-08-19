@@ -205,6 +205,16 @@ inventory_targets:
       - type: domain
         value: "mountaineering.example"
 
+  alternate_matching_properties:
+    agent_url: "https://governance.pinnacle-agency.example"
+    list_id: "acme_outdoor_allowlist_v2"
+    description: "Alternate outdoor properties used to verify property-list replacement."
+    expected_identifiers:
+      - type: domain
+        value: "outdoormagazine.example"
+      - type: domain
+        value: "campinggear.example"
+
   matching_collections:
     agent_url: "https://governance.pinnacle-agency.example"
     list_id: "acme_outdoor_collections_v1"
