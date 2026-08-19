@@ -161,11 +161,11 @@
     },
     "dooh_placement_attributes": {
       "type": "object",
-      "description": "DOOH-specific placement metadata for digital out-of-home inventory. Each field is optional and should only be populated when it is true for the placement being represented. A single screen/frame placement can include all fields; a package/network placement should include fields only when they are uniform across the included inventory. Product-level placement declarations may narrow these attributes but SHOULD NOT broaden them.",
+      "description": "Publisher-declared DOOH inventory facts for digital out-of-home placements. These fields describe the screen and default scheduled loop; they do not define creative acceptance, which is governed exclusively by effective canonical format_options. Each field is optional and should only be populated when it is true for the placement being represented. A single screen/frame placement can include all fields; a package/network placement should include fields only when they are uniform across the included inventory. Referencing products may override slot_duration_seconds and loop_duration_seconds for a specific offer. screen_resolution and motion are intrinsic publisher facts and MUST NOT be changed by a referencing product.",
       "properties": {
         "slot_duration_seconds": {
           "type": "integer",
-          "description": "Duration of one ad slot in seconds (e.g., 10, 15, 30). Aligns with the seconds-based duration convention used by loop_duration_seconds.",
+          "description": "Default scheduled duration of one ad slot in seconds (e.g., 10, 15, 30). This is an inventory fact used for loop and share calculations, not the creative-duration contract; format_options remains authoritative for accepted creative durations.",
           "minimum": 1
         },
         "loop_duration_seconds": {
@@ -175,7 +175,7 @@
         },
         "screen_resolution": {
           "type": "object",
-          "description": "Physical screen resolution in pixels. Buyers can derive aspect ratio from width/height.",
+          "description": "Physical screen resolution in pixels. Buyers can derive aspect ratio from width/height. This does not replace canonical format dimensions, which remain authoritative for creative acceptance and may describe a smaller content region within the physical screen.",
           "properties": {
             "width": {
               "type": "integer",
@@ -193,8 +193,18 @@
         },
         "motion": {
           "$ref": "/schemas/enums/dooh-motion-type.json",
-          "description": "Motion capability of the DOOH screen. Determines whether full-motion video, partial-motion (animated stills), or static-only creatives are accepted."
+          "description": "Physical motion capability of the DOOH screen. This is discovery metadata, not an accepted-format declaration; effective format_options determines whether a particular full-motion, partial-motion, or static creative is accepted."
         }
+      },
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "slot_fits_loop": {
+            "left_path": "slot_duration_seconds",
+            "operator": "less_than_or_equal",
+            "right_path": "loop_duration_seconds"
+          }
+        },
+        "spec": "docs/media-buy/product-discovery/media-products.mdx#dooh-placement-attributes"
       },
       "additionalProperties": true
     },
