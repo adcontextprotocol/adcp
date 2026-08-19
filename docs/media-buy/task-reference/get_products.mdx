@@ -148,7 +148,7 @@ To use property list filtering:
 2. Create a property list via `create_property_list` with your feature requirements
 3. Pass the resulting `property_list_id` to `get_products` to filter inventory
 
-The seller must declare `features.property_list_filtering: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) to support this filter. See the [Property Governance overview](/docs/governance/property/index) for the full workflow.
+The seller must declare `features.property_list_filtering: true` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) to support this filter. In AdCP 3.0 this legacy flag also declares support for `targeting_overlay.property_list` on media-buy create and update requests. See the [Property Governance overview](/docs/governance/property/index) for the full workflow.
 </Note>
 
 ### Filters Object
