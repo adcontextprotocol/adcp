@@ -25,6 +25,8 @@ import {
   executeTrainingAgentTool,
   handleBuildCreative,
   handleListTransformers,
+  handleControlMediaBuy,
+  handleAcceptProposal,
   canonicalParamsSatisfied,
   invalidateCache,
   clearTaskStore,
@@ -8663,6 +8665,118 @@ describe('update_media_buy handler', () => {
     clearSessions();
   });
 
+  it('serializes controls that target the same MediaBuy revision', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'control-race.example' }, operator: 'control-race.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: created, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 10000,
+      }],
+    });
+    expect(isError, JSON.stringify(created)).toBeFalsy();
+
+    const baseControl = {
+      account,
+      media_buy_id: created.media_buy_id as string,
+      revision: created.revision as number,
+    };
+    const results = await Promise.all([2_000, 3_000].map(dailyBudgetCap => (
+      runWithSessionContext(() => handleControlMediaBuy({
+        ...baseControl,
+        idempotency_key: `control-race-${dailyBudgetCap}`,
+        daily_budget_cap: dailyBudgetCap,
+      }, { ...DEFAULT_CTX, servedAdcpVersion: CURRENT_ADCP_VERSION }))
+    )));
+
+    const successes = results.filter(result => !Array.isArray(result.errors));
+    const conflicts = results.filter(result => Array.isArray(result.errors));
+    expect(successes).toHaveLength(1);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]).toMatchObject({ errors: [{ code: 'CONFLICT' }] });
+
+    const { result: readback } = await simulateCallTool(
+      createTrainingAgentServer(DEFAULT_CTX),
+      'get_media_buys',
+      { account, media_buy_ids: [created.media_buy_id] },
+    );
+    const storedBuy = (readback.media_buys as Array<Record<string, unknown>>)[0];
+    expect(storedBuy).toMatchObject({
+      media_buy_id: created.media_buy_id,
+      revision: (created.revision as number) + 1,
+    });
+    expect([2_000, 3_000]).toContain(storedBuy.daily_budget_cap);
+  });
+
+  it('revalidates a future-current control against the newly accepted envelope', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'control-envelope-race.example' }, operator: 'control-envelope-race.example' };
+    const { result: created } = await simulateCallTool(
+      createTrainingAgentServer(DEFAULT_CTX),
+      'create_media_buy',
+      {
+        account,
+        brand: account.brand,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        total_budget: { amount: 10_000, currency: 'USD' },
+        packages: [{
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 10_000,
+        }],
+      },
+    );
+    const sessionKey = sessionKeyFromArgs({ account }, DEFAULT_CTX.mode);
+
+    await runWithSessionContext(async () => {
+      // Prime this request with revision 1, then simulate another request
+      // accepting a tighter envelope and committing revision 2.
+      await getSession(sessionKey);
+      await runWithSessionContext(async () => {
+        const currentSession = await getSession(sessionKey);
+        const mediaBuy = currentSession.mediaBuys.get(created.media_buy_id as string)!;
+        mediaBuy.revision = 2;
+        mediaBuy.acceptedProposal = {
+          proposal_id: 'proposal_control_envelope_race',
+          proposal_kind: 'media_buy_update',
+          proposal_status: 'accepted',
+          name: 'Accepted lower-budget envelope',
+          commercial_terms: {
+            brand: account.brand,
+            purchases: [],
+            start_time: '2027-06-01T00:00:00Z',
+            end_time: '2027-07-01T00:00:00Z',
+            total_budget: { amount: 1_000, currency: 'USD' },
+          },
+          terms_digest: 'sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        } as NonNullable<typeof mediaBuy.acceptedProposal>;
+        await flushDirtySessions();
+      });
+
+      const controlled = await handleControlMediaBuy({
+        idempotency_key: `test-${randomUUID()}`,
+        account,
+        media_buy_id: created.media_buy_id as string,
+        revision: 2,
+        total_budget: { amount: 2_000, currency: 'USD' },
+      }, { ...DEFAULT_CTX, servedAdcpVersion: CURRENT_ADCP_VERSION });
+      expect(controlled).toMatchObject({
+        errors: [{ code: 'REQUOTE_REQUIRED', field: 'total_budget.amount' }],
+      });
+    });
+  });
+
   it('updates package budget', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
@@ -14186,6 +14300,89 @@ describe('proposal lifecycle', () => {
     if (create.isError) expect(create.result).toMatchObject({ code: 'INVALID_STATE' });
     else if (decline.isError) expect(decline.result).toMatchObject({ code: 'CONFLICT' });
     else expect(declineOutcome).toBe('unable');
+  });
+
+  it('serializes operational control against proposal acceptance on one revision', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    const draft = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const committed = await finalizeCompactProposal(server, draft);
+    const createArgs = {
+      account,
+      brand: account.brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: committed.proposal_id,
+      total_budget: { amount: 50000, currency: 'USD' },
+      ...(committed.insertion_order && {
+        io_acceptance: {
+          io_id: (committed.insertion_order as Record<string, unknown>).io_id,
+          accepted_at: new Date().toISOString(),
+          signatory: 'control-accept-race-test',
+        },
+      }),
+    };
+    const { result: created, isError: createError } = await simulateCallTool(
+      server,
+      'create_media_buy',
+      createArgs,
+    );
+    expect(createError, JSON.stringify(created)).toBeFalsy();
+
+    const { result: refined, isError: refineError } = await simulateCallTool(server, 'refine_proposals', {
+      refinements: [{
+        proposal_id: committed.proposal_id,
+        action: 'revise',
+        change_kind: 'amendment',
+        ask: 'Preserve the accepted flight while updating its operating terms.',
+      }],
+    });
+    expect(refineError, JSON.stringify(refined)).toBeFalsy();
+    const amendmentDraft = (
+      (refined.results as Array<Record<string, unknown>>)[0].proposals as Array<Record<string, unknown>>
+    )[0];
+    expect(amendmentDraft).toMatchObject({
+      proposal_kind: 'media_buy_update',
+      base_media_buy_revision: created.revision,
+    });
+    const amendment = await finalizeCompactProposal(server, amendmentDraft);
+
+    const results = await Promise.all([
+      runWithSessionContext(() => handleControlMediaBuy({
+        idempotency_key: `test-${randomUUID()}`,
+        account,
+        media_buy_id: created.media_buy_id as string,
+        revision: created.revision as number,
+        daily_budget_cap: 2_500,
+      }, { ...DEFAULT_CTX, servedAdcpVersion: CURRENT_ADCP_VERSION })),
+      runWithSessionContext(() => handleAcceptProposal({
+        idempotency_key: `test-${randomUUID()}`,
+        account,
+        proposal_id: amendment.proposal_id as string,
+        proposal_terms_digest: amendment.terms_digest as string,
+      }, { ...DEFAULT_CTX, servedAdcpVersion: CURRENT_ADCP_VERSION })),
+    ]);
+
+    const successes = results.filter(result => !Array.isArray(result.errors));
+    const conflicts = results.filter(result => Array.isArray(result.errors));
+    expect(successes).toHaveLength(1);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]).toMatchObject({ errors: [{ code: 'CONFLICT' }] });
+
+    const { result: readback } = await simulateCallTool(
+      createTrainingAgentServer(DEFAULT_CTX),
+      'get_media_buys',
+      { account, media_buy_ids: [created.media_buy_id] },
+    );
+    expect(readback.media_buys).toEqual([
+      expect.objectContaining({
+        media_buy_id: created.media_buy_id,
+        revision: (created.revision as number) + 1,
+      }),
+    ]);
   });
 
   it('makes proposal decline terminal, semantically idempotent, and opportunity-aware', async () => {

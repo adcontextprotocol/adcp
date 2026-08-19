@@ -10510,7 +10510,66 @@ function getCreativePricing(account: { account_id?: string }, creative: import('
   };
 }
 
+interface MediaBuyMutationMutexClaim {
+  principal: string;
+  key: string;
+  claimToken: string;
+  sessionScope: string;
+}
+
+async function acquireMediaBuyMutationMutex(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): Promise<MediaBuyMutationMutexClaim | undefined> {
+  const sessionScope = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
+  const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
+  const principal = 'media-buy-mutation-mutex';
+  const key = `media-buy-session:${sessionHash}`;
+  const store = getIdempotencyStore();
+  let claim = await store.check({ principal, key, payload: { session: sessionHash } });
+  const deadline = Date.now() + 2_000;
+  let backoffMs = 5;
+  while (claim.kind !== 'miss' && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, backoffMs));
+    claim = await store.check({ principal, key, payload: { session: sessionHash } });
+    backoffMs = Math.min(backoffMs * 2, 100);
+  }
+  if (claim.kind !== 'miss') return undefined;
+  return { principal, key, claimToken: claim.claimToken, sessionScope };
+}
+
+async function releaseMediaBuyMutationMutex(claim: MediaBuyMutationMutexClaim): Promise<void> {
+  await getIdempotencyStore().release(claim);
+}
+
+function mediaBuyMutationConflict(): Record<string, unknown> {
+  return {
+    errors: [{
+      code: 'CONFLICT',
+      message: 'Another request is already updating a MediaBuy in this account. Retry after a short delay.',
+      recovery: 'transient',
+    }] as TaskError[],
+  };
+}
+
 export async function handleUpdateMediaBuy(
+  args: ToolArgs,
+  ctx: TrainingContext,
+  options: { acceptedProposalExecution?: boolean; governance?: TrustedGovernedExecution } = {},
+): Promise<Record<string, unknown>> {
+  const mutex = await acquireMediaBuyMutationMutex(args, ctx);
+  if (!mutex) return mediaBuyMutationConflict();
+  try {
+    evictSessionFromRequestCache(mutex.sessionScope);
+    const result = await handleUpdateMediaBuyUnlocked(args, ctx, options);
+    await flushDirtySessions();
+    return result;
+  } finally {
+    await releaseMediaBuyMutationMutex(mutex);
+  }
+}
+
+async function handleUpdateMediaBuyUnlocked(
   args: ToolArgs,
   ctx: TrainingContext,
   options: { acceptedProposalExecution?: boolean; governance?: TrustedGovernedExecution } = {},
@@ -14075,8 +14134,11 @@ async function acceptExistingMediaBuyProposal(
     return { errors: [{ code: 'CONFLICT', message: 'Another proposal lifecycle request is already updating this session. Retry after a short delay.', recovery: 'transient' }] };
   }
 
+  let mediaBuyMutex: MediaBuyMutationMutexClaim | undefined;
   try {
     const mediaBuySessionKey = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
+    mediaBuyMutex = await acquireMediaBuyMutationMutex(args, ctx);
+    if (!mediaBuyMutex) return mediaBuyMutationConflict();
     evictSessionFromRequestCache(proposalSessionKey);
     evictSessionFromRequestCache(mediaBuySessionKey);
     const proposalSession = await getSession(proposalSessionKey);
@@ -14196,7 +14258,7 @@ async function acceptExistingMediaBuyProposal(
           ),
           currency: mediaBuy.currency,
         };
-    const updateResult = await handleUpdateMediaBuy({
+    const updateResult = await handleUpdateMediaBuyUnlocked({
       ...(args as unknown as Record<string, unknown>),
       ...operationalPatch,
       media_buy_id: mediaBuyId,
@@ -14278,7 +14340,11 @@ async function acceptExistingMediaBuyProposal(
       ),
     };
   } finally {
-    await store.release({ principal, key, claimToken: claim.claimToken });
+    try {
+      if (mediaBuyMutex) await releaseMediaBuyMutationMutex(mediaBuyMutex);
+    } finally {
+      await store.release({ principal, key, claimToken: claim.claimToken });
+    }
   }
 }
 
@@ -14381,6 +14447,22 @@ export async function handleAcceptProposal(
 
 /** Native SDK 14 operational-control adapter. */
 export async function handleControlMediaBuy(
+  args: ControlMediaBuyRequest & ToolArgs,
+  ctx: TrainingContext,
+): Promise<Record<string, unknown>> {
+  const mutex = await acquireMediaBuyMutationMutex(args, ctx);
+  if (!mutex) return mediaBuyMutationConflict();
+  try {
+    evictSessionFromRequestCache(mutex.sessionScope);
+    const result = await handleControlMediaBuyUnlocked(args, ctx);
+    await flushDirtySessions();
+    return result;
+  } finally {
+    await releaseMediaBuyMutationMutex(mutex);
+  }
+}
+
+async function handleControlMediaBuyUnlocked(
   args: ControlMediaBuyRequest & ToolArgs,
   ctx: TrainingContext,
 ): Promise<Record<string, unknown>> {
@@ -14596,7 +14678,7 @@ export async function handleControlMediaBuy(
       }
     }
   }
-  const updateResult = await handleUpdateMediaBuy(args as unknown as ToolArgs, ctx, {
+  const updateResult = await handleUpdateMediaBuyUnlocked(args as unknown as ToolArgs, ctx, {
     ...(mediaBuy && {
       governance: {
         task: 'control_media_buy' as const,
