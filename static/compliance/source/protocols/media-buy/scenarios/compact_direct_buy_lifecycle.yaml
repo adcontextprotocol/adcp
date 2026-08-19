@@ -137,6 +137,8 @@ phases:
             path: "products[0].pricing_options[0].pricing_option_id"
           - name: direct_feed_version
             path: "feed_version"
+          - name: direct_pricing_version
+            path: "pricing_version"
         validations:
           - check: response_schema
             description: "Response matches list-products-response.json"
@@ -155,6 +157,9 @@ phases:
           - check: field_present
             path: "feed_version"
             description: "The offer carries the feed version required by buy_products"
+          - check: field_present
+            path: "pricing_version"
+            description: "The offer carries the pricing version required by buy_products"
           - check: field_contains
             path: "products[0].allowed_actions[*]"
             value:
@@ -181,6 +186,7 @@ phases:
             operator: "pinnacle-agency.example"
             sandbox: true
           feed_version: "$context.direct_feed_version"
+          pricing_version: "$context.direct_pricing_version"
           purchases:
             - product_id: "$context.direct_product_id"
               pricing_option_id: "$context.direct_pricing_option_id"
@@ -194,6 +200,10 @@ phases:
             path: "revision"
           - name: direct_buy_status
             path: "media_buy_status"
+          - name: direct_accepted_proposal_id
+            path: "accepted_proposal.proposal_id"
+          - name: direct_terms_digest
+            path: "accepted_proposal.terms_digest"
         validations:
           - check: response_schema
             description: "Response matches buy-products-response.json"
@@ -214,6 +224,10 @@ phases:
             path: "accepted_proposal.commercial_terms.source_feed_version"
             context_key: "direct_feed_version"
             description: "The accepted snapshot binds the listed feed version"
+          - check: field_equals_context
+            path: "accepted_proposal.commercial_terms.source_pricing_version"
+            context_key: "direct_pricing_version"
+            description: "The accepted snapshot binds the listed pricing version"
           - check: field_equals_context
             path: "accepted_proposal.commercial_terms.purchases[0].product_id"
             context_key: "direct_product_id"
@@ -331,3 +345,15 @@ phases:
             path: "media_buys[0].accepted_proposal.commercial_terms.source_feed_version"
             context_key: "direct_feed_version"
             description: "Readback preserves the purchased feed version"
+          - check: field_equals_context
+            path: "media_buys[0].accepted_proposal.commercial_terms.source_pricing_version"
+            context_key: "direct_pricing_version"
+            description: "Readback preserves the purchased pricing version"
+          - check: field_equals_context
+            path: "media_buys[0].accepted_proposal_id"
+            context_key: "direct_accepted_proposal_id"
+            description: "Readback preserves the accepted proposal identity"
+          - check: field_equals_context
+            path: "media_buys[0].accepted_proposal_terms_digest"
+            context_key: "direct_terms_digest"
+            description: "Readback preserves the commercial terms digest — a seller cannot substitute a different snapshot while preserving the same feed version"
