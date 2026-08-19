@@ -198,6 +198,8 @@ export interface PricingTemplate {
   };
   /** For CPA: the event type that triggers billing */
   eventType?: EventType;
+  /** For CPA: the event name when eventType is custom */
+  customEventName?: string;
   /** For CPP: demographic targeting parameters */
   cppParameters?: { demographic: string };
   /** For CPV: view threshold parameters */
