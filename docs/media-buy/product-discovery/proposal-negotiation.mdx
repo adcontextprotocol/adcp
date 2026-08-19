@@ -455,7 +455,7 @@ Record the authenticated buyer, source IDs, successor IDs, idempotency fingerpri
 
 The canonical compliance scenario is `media_buy_seller/typed_proposal_negotiation`. It exercises capability gating, satisfied and unsatisfied constraints, alternatives, immutable lineage, finalize atomicity, exact replay, acceptance, amendment, cancellation, double-finalize rejection, and multi-source ordering.
 
-The deterministic training profiles use the proposal-negotiation primitives published in `@adcp/sdk` 13.0.0-rc.26. The ordinary `/sales/mcp` route remains the backward-compatible ask-only seller. Three capability-distinct routes are available to local tests and will become public with the 3.2 beta deployment:
+The deterministic training profiles use the proposal-negotiation primitives published in `@adcp/sdk` 13.0.0. The ordinary `/sales/mcp` route remains the backward-compatible ask-only seller. Use the [public test token](/docs/quickstart#setup) with `https://test-agent.adcontextprotocol.org` and one of these capability-distinct routes:
 
 | Profile | Route | Deterministic behavior |
 | --- | --- | --- |
