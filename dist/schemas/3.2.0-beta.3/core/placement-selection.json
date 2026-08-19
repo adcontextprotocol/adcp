@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/placement-selection.json",
+  "title": "Placement Selection",
+  "description": "Complete purchased placement set within a product. This is inventory targeting, not creative routing: creative_assignments[].placement_refs route a creative only within this purchased set. Requests use mode selected to name the complete required set or mode default to accept the product/seller default. Across discovery, create, and update, a selected set is satisfied inherently when it exactly equals a fixed product's complete included placement set; this exact restatement does not require overlay_support.placement_selection, while partial selection does. Included placements are never independently selectable. Products with any fixed mode:included placement cannot advertise selectable placement overlay support because the fixed placement would make a partial buyer-selected set incomplete; sellers expose separately selectable inventory when needed. Successful package readback MUST echo the committed selected set. Sellers reject unknown, duplicate, cross-publisher, incompatible, or partially applicable refs rather than silently changing the selection.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "mode"
+  },
+  "oneOf": [
+    {
+      "title": "Selected placements",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "selected"
+        },
+        "placement_refs": {
+          "type": "array",
+          "description": "Complete required placement set. A reference normally identifies a mode targetable placement. It MAY identify a mode included placement only when the set exactly equals the product's complete fixed included set, which is an inherent match rather than independent selection. publisher_domain is required in this targeting context even though legacy creative-routing refs may omit it.",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/placement-ref.json"
+              },
+              {
+                "required": [
+                  "publisher_domain"
+                ]
+              }
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+        }
+      },
+      "required": [
+        "mode",
+        "placement_refs"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "Product default placements",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "default"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

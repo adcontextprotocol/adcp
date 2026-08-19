@@ -1,0 +1,131 @@
+id: media_buy_seller/geo_region_all_values_support
+version: "1.0.0"
+title: "Seller proves exhaustive country-level ISO subdivision support"
+category: media_buy_seller
+summary: "Verifies that all_values is an exhaustive country claim that contains finite future region requirements."
+track: media_buy
+
+requires_capability:
+  path: media_buy.execution.targeting.geo_regions.countries.FR.all_values
+  equals: true
+
+required_tools:
+  - get_adcp_capabilities
+  - get_products
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  This scenario applies to sellers that use the exhaustive structured support
+  branch for French ISO subdivisions. It proves that all_values is not a coarse
+  boolean alias: it means every protocol-valid active value in the country is
+  selectable and therefore contains a finite future candidate requirement.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - value_aware_region_targeting
+  examples:
+    - "Sales agents with exhaustive canonical subdivision coverage for a country"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller declares exhaustive French region inclusion support and exposes
+    a product with the same binding product-scoped permission.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "geo_region_all_fr"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+      overlay_support:
+        geo_regions:
+          countries:
+            FR:
+              all_values: true
+          catalog_version: "2026-08"
+          as_of: "2026-08-01"
+      forecast:
+        forecast_range_unit: "availability"
+        method: "modeled"
+        currency: "EUR"
+        points:
+          - metrics:
+              impressions: { mid: 1000000 }
+  pricing_options:
+    - product_id: "geo_region_all_fr"
+      pricing_option_id: "geo_region_all_fr_cpm"
+      pricing_model: "cpm"
+      currency: "EUR"
+      floor_price: 3.00
+
+phases:
+  - id: verify_exhaustive_region_support
+    title: "Match a finite requirement against exhaustive country support"
+    steps:
+      - id: get_exhaustive_region_capability
+        title: "Read exhaustive French subdivision support"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "geo_region_all_values_support--get_capability"
+        expected: |
+          Return all_values true for French subdivision inclusion support.
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_value
+            path: "media_buy.execution.targeting.geo_regions.countries.FR.all_values"
+            value: true
+            description: "Seller makes an exhaustive country support claim"
+
+      - id: get_product_for_finite_region_candidates
+        title: "Request finite candidates under exhaustive support"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            is_fixed_price: false
+          required_overlay_support:
+            geo_regions:
+              countries:
+                FR:
+                  values: ["FR-49", "FR-2A", "FR-971", "FR-ARA"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "geo_region_all_values_support--get_product"
+        expected: |
+          Return the product because exhaustive French support contains every
+          requested finite candidate. Do not substitute a finite declaration.
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "products[0].overlay_support.geo_regions.countries.FR.all_values"
+            value: true
+            description: "Product preserves its binding exhaustive support claim"

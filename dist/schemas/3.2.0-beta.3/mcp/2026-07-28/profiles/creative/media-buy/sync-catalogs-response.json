@@ -1,0 +1,1153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/mcp/2026-07-28/profiles/creative/media-buy/sync-catalogs-response.json",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    },
+    {
+      "$ref": "#/$defs/external:core~1protocol-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "completed"
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "catalogs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "catalog_id": {
+                "type": "string",
+                "x-entity": "catalog"
+              },
+              "catalog_generation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "x-entity": "catalog_generation"
+              },
+              "action": {
+                "$ref": "#/$defs/external:enums~1catalog-action.json"
+              },
+              "platform_id": {
+                "type": "string"
+              },
+              "item_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items_approved": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items_pending": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "items_rejected": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "item_issues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "item_id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "$ref": "#/$defs/external:enums~1catalog-item-status.json"
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "item_id",
+                    "status"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "last_synced_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "next_fetch_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "changes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/external:core~1error.json"
+                }
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "catalog_id",
+              "action"
+            ],
+            "additionalProperties": true,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "action": {
+                      "enum": [
+                        "created",
+                        "updated",
+                        "unchanged"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "item_count"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "item_availability_updates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1catalog-item-availability-update-result.json"
+          },
+          "minItems": 1,
+          "maxItems": 1000
+        },
+        "item_availability_states": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1catalog-item-availability-state.json"
+          },
+          "minItems": 1,
+          "maxItems": 1000
+        },
+        "sandbox": {
+          "type": "boolean"
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "catalogs"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/external:core~1error.json"
+              },
+              {
+                "if": {
+                  "properties": {
+                    "code": {
+                      "const": "REFERENCE_NOT_FOUND"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/external:core~1catalog-item-reference-not-found-error.json"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "const": "catalog_ids"
+                        }
+                      },
+                      "required": [
+                        "field"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "errors": {
+                "contains": {
+                  "$ref": "#/$defs/external:core~1catalog-item-reference-not-found-error.json"
+                }
+              }
+            },
+            "required": [
+              "errors"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "status",
+                "errors",
+                "adcp_error",
+                "message",
+                "context",
+                "context_id",
+                "timestamp",
+                "replayed",
+                "adcp_version",
+                "adcp_major_version"
+              ]
+            },
+            "properties": {
+              "errors": {
+                "maxItems": 1,
+                "items": {
+                  "$ref": "#/$defs/external:core~1catalog-item-reference-not-found-error.json"
+                }
+              },
+              "adcp_error": {
+                "$ref": "#/$defs/external:core~1catalog-item-reference-not-found-error.json"
+              },
+              "message": {
+                "type": "string",
+                "const": "Catalog item not found"
+              }
+            }
+          }
+        }
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "catalogs"
+            ]
+          },
+          {
+            "required": [
+              "item_availability_updates"
+            ]
+          },
+          {
+            "required": [
+              "item_availability_states"
+            ]
+          },
+          {
+            "required": [
+              "dry_run"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          },
+          {
+            "properties": {
+              "status": {
+                "const": "submitted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted"
+        },
+        "task_id": {
+          "type": "string",
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1error.json"
+          }
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "catalogs"
+            ]
+          },
+          {
+            "required": [
+              "item_availability_updates"
+            ]
+          },
+          {
+            "required": [
+              "item_availability_states"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "properties": {},
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/protocol-envelope.json": {
+      "type": "object",
+      "properties": {
+        "context_id": {
+          "type": "string"
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "task_id": {
+          "type": "string",
+          "x-entity": "task"
+        },
+        "status": {
+          "$ref": "#/$defs/external:enums~1task-status.json"
+        },
+        "message": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "replayed": {
+          "type": "boolean",
+          "default": false
+        },
+        "adcp_error": {
+          "$ref": "#/$defs/external:core~1error.json"
+        },
+        "push_notification_config": {
+          "$ref": "#/$defs/external:core~1push-notification-config.json"
+        },
+        "governance_context": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^[\\x20-\\x7E]+$"
+        },
+        "payload": {
+          "type": "object",
+          "x-adcp-open-payload": true,
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "task_status"
+            ]
+          },
+          {
+            "required": [
+              "response_status"
+            ]
+          }
+        ]
+      },
+      "notes": [
+        "Task response schemas (e.g., get-products-response.json) define ONLY the body fields; protocol-layer fields live on this envelope.",
+        "Transport serialization (normative):",
+        "  - MCP: envelope fields and task-body fields are siblings at the root of the tool response. The `payload` object is NOT serialized as a nested key — its body fields are flattened to the root alongside `status`, `context_id`, `context`, etc. This matches MCP's native `structuredContent` convention and is what shipping SDKs (@adcp/client) emit. Conformant MCP receivers parse from the flat root; receivers that expect a nested `payload` key MUST migrate.",
+        "  - A2A 1.0 with the AdCP profile extension: `task.status.state` carries the transport invocation lifecycle used to select the extraction location; `task.contextId` carries `context_id`, while `task.id` is an independent A2A transport identifier. The complete AdCP response, including its protocol-level `status` and any application-layer `task_id`, is canonically carried in `task.artifacts[0].parts[].DataPart` on final states; `task.status.message.parts[].DataPart` is the fallback container used only for interim A2A states (working, native submitted, input-required) where no final artifact has been emitted yet. For a structured AdCP business rejection or Submitted response, A2A is `completed` while the DataPart carries `status: rejected` or `status: submitted` because the handler invocation succeeded. An AdCP `task_id` MUST NOT be copied into artifact metadata or inferred from `task.id`. Receivers MUST prefer artifacts when present and MUST NOT overwrite a DataPart's status with the A2A state. See `a2a-profile-extension.mdx` and `a2a-response-extraction.mdx` for the full binding and extraction algorithm.",
+        "  - REST: envelope fields MAY ride on HTTP headers (e.g., `X-AdCP-Status`, `X-AdCP-Context-Id`) or as JSON body siblings; body fields appear at the JSON body root. Implementers choosing the header path SHOULD also mirror to body siblings for non-streaming callers.",
+        "Across all three: envelope and body fields are conceptually a single response object. A task response schema MAY declare body fields with the same name as envelope fields (e.g., `errors[]` body-level for per-record validation results vs envelope-level for fatal task failure) and the two MUST be treated as distinct fields by name within their respective namespaces — see `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`.",
+        "`status` is REQUIRED on the conceptual AdCP response across all transports. On MCP and REST it appears as a sibling field at the JSON root (or `structuredContent` root for MCP). On A2A it is carried inside the authoritative DataPart alongside the task body; `task.status.state` separately carries the A2A transport lifecycle and selects where that DataPart is found. Receivers MUST preserve the DataPart status when present. The schema-level `required: [status]` enforces the post-extraction AdCP shape. `payload` remains intentionally NOT required — it is a documentary grouping construct, never a required wire field. See `mcp-guide.mdx` and `a2a-guide.mdx` for the wire-level patterns receivers MUST implement.",
+        "Receivers MUST handle absence of an envelope field (e.g., `replayed` omitted) as the field's documented default — see each field's `default` clause."
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:enums/task-status.json": {
+      "type": "string",
+      "enum": [
+        "submitted",
+        "working",
+        "input-required",
+        "completed",
+        "canceled",
+        "failed",
+        "rejected",
+        "auth-required",
+        "unknown"
+      ]
+    },
+    "external:core/error.json": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "keyword": {
+                "type": "string"
+              },
+              "schemaPath": {
+                "type": "string"
+              },
+              "schema_id": {
+                "type": "string"
+              },
+              "discriminator": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "property_name": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "property_name",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "pointer",
+              "message",
+              "keyword"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "recovery": {
+          "type": "string",
+          "enum": [
+            "transient",
+            "correctable",
+            "terminal"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "producer",
+            "sdk"
+          ]
+        },
+        "sdk_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/push-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 4096
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "deprecated": true,
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:enums/catalog-action.json": {
+      "type": "string",
+      "enum": [
+        "created",
+        "updated",
+        "unchanged",
+        "failed",
+        "deleted"
+      ]
+    },
+    "external:enums/catalog-item-status.json": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "pending",
+        "rejected",
+        "warning",
+        "withdrawn"
+      ]
+    },
+    "external:core/catalog-item-availability-update-result.json": {
+      "type": "object",
+      "properties": {
+        "request_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "catalog_id": {
+          "type": "string",
+          "x-entity": "catalog"
+        },
+        "catalog_generation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "x-entity": "catalog_generation"
+        },
+        "item_id": {
+          "type": "string",
+          "x-entity": "catalog_item"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "suppress",
+            "restore"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "applied",
+            "unchanged",
+            "failed"
+          ]
+        },
+        "availability": {
+          "type": "string",
+          "enum": [
+            "active",
+            "suppressed"
+          ]
+        },
+        "overlay_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "applied_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "errors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/external:core~1catalog-item-availability-error.json"
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "request_index",
+        "catalog_id",
+        "catalog_generation",
+        "item_id",
+        "action",
+        "status"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "failed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "errors"
+            ],
+            "propertyNames": {
+              "enum": [
+                "request_index",
+                "catalog_id",
+                "catalog_generation",
+                "item_id",
+                "action",
+                "status",
+                "errors"
+              ]
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "applied_at"
+                  ]
+                },
+                {
+                  "required": [
+                    "availability"
+                  ]
+                },
+                {
+                  "required": [
+                    "overlay_revision"
+                  ]
+                },
+                {
+                  "required": [
+                    "expires_at"
+                  ]
+                }
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "availability",
+              "overlay_revision"
+            ],
+            "not": {
+              "required": [
+                "errors"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "errors": {
+                "contains": {
+                  "properties": {
+                    "code": {
+                      "const": "REFERENCE_NOT_FOUND"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "errors"
+            ]
+          },
+          "then": {
+            "properties": {
+              "errors": {
+                "maxItems": 1,
+                "items": {
+                  "$ref": "#/$defs/external:core~1catalog-item-reference-not-found-error.json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "applied"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "applied_at"
+            ],
+            "not": {
+              "required": [
+                "errors"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "expires_at"
+            ]
+          },
+          "then": {
+            "properties": {
+              "availability": {
+                "const": "suppressed"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "suppress"
+              },
+              "status": {
+                "enum": [
+                  "applied",
+                  "unchanged"
+                ]
+              }
+            },
+            "required": [
+              "action",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "availability": {
+                "const": "suppressed"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "restore"
+              },
+              "status": {
+                "enum": [
+                  "applied",
+                  "unchanged"
+                ]
+              }
+            },
+            "required": [
+              "action",
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "availability": {
+                "const": "active"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": true
+    },
+    "external:core/catalog-item-availability-error.json": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1error.json"
+        },
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "REFERENCE_NOT_FOUND"
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/external:core~1catalog-item-reference-not-found-error.json"
+          }
+        }
+      ]
+    },
+    "external:core/catalog-item-reference-not-found-error.json": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "const": "REFERENCE_NOT_FOUND"
+        },
+        "message": {
+          "type": "string",
+          "const": "Catalog item not found"
+        },
+        "recovery": {
+          "type": "string",
+          "const": "correctable"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "recovery"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/catalog-item-availability-state.json": {
+      "type": "object",
+      "properties": {
+        "request_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "catalog_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "x-entity": "catalog"
+        },
+        "catalog_generation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "x-entity": "catalog_generation"
+        },
+        "item_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "x-entity": "catalog_item"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "found",
+            "failed"
+          ]
+        },
+        "availability": {
+          "type": "string",
+          "enum": [
+            "active",
+            "suppressed"
+          ]
+        },
+        "overlay_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "errors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/external:core~1catalog-item-availability-error.json"
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "request_index",
+        "catalog_id",
+        "catalog_generation",
+        "item_id",
+        "status"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "found"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "availability",
+              "overlay_revision",
+              "updated_at"
+            ],
+            "not": {
+              "required": [
+                "errors"
+              ]
+            }
+          },
+          "else": {
+            "required": [
+              "errors"
+            ],
+            "propertyNames": {
+              "enum": [
+                "request_index",
+                "catalog_id",
+                "catalog_generation",
+                "item_id",
+                "status",
+                "errors"
+              ]
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "availability"
+                  ]
+                },
+                {
+                  "required": [
+                    "overlay_revision"
+                  ]
+                },
+                {
+                  "required": [
+                    "expires_at"
+                  ]
+                },
+                {
+                  "required": [
+                    "updated_at"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "expires_at"
+            ]
+          },
+          "then": {
+            "properties": {
+              "availability": {
+                "const": "suppressed"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "errors": {
+                "contains": {
+                  "properties": {
+                    "code": {
+                      "const": "REFERENCE_NOT_FOUND"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "errors"
+            ]
+          },
+          "then": {
+            "properties": {
+              "errors": {
+                "maxItems": 1,
+                "items": {
+                  "$ref": "#/$defs/external:core~1catalog-item-reference-not-found-error.json"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": true
+    }
+  }
+}

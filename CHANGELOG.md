@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.2.0-beta.3
+
+### Minor Changes
+
+- 9577ad2: Generate MCP tool discovery input schemas with plain object roots for strict
+  hosts, while retaining canonical request schemas as the call-time validation
+  authority.
+- 68d3b93: Define trailing DNS root-dot stripping and empty-label rejection for request-signing canonicalization.
+- acc022a: Publish schema-validated language-neutral universal-macro translation vectors for ratified behavior, including control-character rejection, frozen-consent diagnostics, and bare-query normalization.
+
+### Patch Changes
+
+- cae33f5: Update the public training agent for the SDK 14 media-buy lifecycle while preserving the frozen AdCP 3.0 compatibility surface.
+- 170fc1a: Require the compact direct-buy compliance storyboard to chain the listed pricing version and verify the accepted proposal identity and terms digest during MediaBuy readback.
+- 4e603eb: Gate property-list compliance scenarios on declared execution support and require an actionable no-inventory rejection for empty intersections.
+
 ## 3.2.0-beta.2
 
 ### Patch Changes
