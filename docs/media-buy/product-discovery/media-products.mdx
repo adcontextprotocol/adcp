@@ -348,9 +348,13 @@ Digital out-of-home placements can declare structured selling-unit metadata via 
 | `screen_resolution` | object | Physical screen resolution (`{ width, height }` in pixels). Buyers derive aspect ratio from `width / height` |
 | `motion` | string | Motion capability of the screen: `full_motion` (video), `partial_motion` (animated stills), or `static` (images only) |
 
-All fields are optional. A single screen/frame placement can include all fields; a package or network placement should include only fields that are uniform across the included inventory.
+All fields are optional. A single screen/frame placement can include all fields; a package or network placement should include only fields that are uniform across the included inventory. After publisher and product declarations are resolved, `slot_duration_seconds` MUST NOT exceed `loop_duration_seconds`.
 
-Placements can also carry `identifiers[]` using the same `{ type, value }` shape as property identifiers. DOOH placements commonly use `venue_id`, `screen_id`, and `openooh_venue_type` identifier types. Externally governed IDs should be authority-prefixed (e.g., `geopath:30961`).
+These are inventory facts, not an alternative creative contract. Effective canonical `format_options` remains authoritative for accepted dimensions, durations, asset types, and codecs. A physical screen can therefore report a larger `screen_resolution` than the content region declared by its formats, and a full-motion screen can still offer a static-only product.
+
+For `kind: "publisher_ref"`, resolve the publisher placement before applying product detail. Product-level `slot_duration_seconds` and `loop_duration_seconds` override publisher defaults for that specific offer; omitted values inherit. `screen_resolution` and `motion` are intrinsic publisher facts, so repeated product values MUST match the publisher declaration. Treat mismatches and an invalid effective slot-to-loop ratio as conformance errors rather than silently choosing one source.
+
+Placements can also carry `identifiers[]` using the same `{ type, value }` shape as property identifiers. DOOH placements commonly use `venue_id`, `screen_id`, and `openooh_venue_type` identifier types. Externally governed IDs should be authority-prefixed (e.g., `geopath:30961`). OpenOOH classifications include the taxonomy version (`openooh-1.1:20501`), since a bare category number does not identify which revision defined it. For publisher references, union publisher and product identifiers by exact `(type, value)`; product omission does not remove a publisher identifier.
 
 #### Format precedence with placements
 

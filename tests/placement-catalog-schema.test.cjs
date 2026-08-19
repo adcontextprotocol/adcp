@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const { isDeepStrictEqual } = require('node:util');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
@@ -28,6 +29,42 @@ async function compile(schemaId) {
   });
   addFormats(ajv);
   return ajv.compileAsync(JSON.parse(fs.readFileSync(schemaPathFromId(schemaId), 'utf8')));
+}
+
+function resolveDoohPlacement(publisherPlacement = {}, productPlacement = {}) {
+  const publisherAttributes = publisherPlacement.dooh_placement_attributes || {};
+  const productAttributes = productPlacement.dooh_placement_attributes || {};
+  for (const field of ['screen_resolution', 'motion']) {
+    if (
+      publisherAttributes[field] !== undefined &&
+      productAttributes[field] !== undefined &&
+      !isDeepStrictEqual(publisherAttributes[field], productAttributes[field])
+    ) {
+      throw new Error(`${field} conflicts with the publisher placement`);
+    }
+  }
+
+  const effective = { ...publisherAttributes, ...productAttributes };
+  if (
+    effective.slot_duration_seconds !== undefined &&
+    effective.loop_duration_seconds !== undefined &&
+    effective.slot_duration_seconds > effective.loop_duration_seconds
+  ) {
+    throw new Error('slot_duration_seconds exceeds loop_duration_seconds');
+  }
+  const identifiers = [...(publisherPlacement.identifiers || []), ...(productPlacement.identifiers || [])].filter(
+    (identifier, index, all) =>
+      all.findIndex((candidate) => candidate.type === identifier.type && candidate.value === identifier.value) === index
+  );
+  return { dooh_placement_attributes: effective, identifiers };
+}
+
+function validateDoohPricingLoop(effectivePlacement, pricingOption) {
+  const placementLoop = effectivePlacement.dooh_placement_attributes?.loop_duration_seconds;
+  const pricingLoop = pricingOption.parameters?.loop_duration_seconds;
+  if (placementLoop !== undefined && pricingLoop !== undefined && placementLoop !== pricingLoop) {
+    throw new Error('pricing loop_duration_seconds conflicts with the effective placement');
+  }
 }
 
 function validProduct(overrides = {}) {
@@ -604,13 +641,13 @@ test('format options can be referenced by publisher domain or product-local ID',
 test('placement-definition accepts dooh_placement_attributes and identifiers', async () => {
   const validate = await compile('/schemas/core/placement-definition.json');
   const placement = {
-    placement_id: 'times_square_north',
-    name: 'Times Square North LED',
-    property_ids: ['times_square_network'],
+    placement_id: 'central_concourse_north',
+    name: 'Central concourse north LED',
+    property_ids: ['central_concourse_network'],
     channels: ['dooh'],
     identifiers: [
       { type: 'screen_id', value: 'ts-north-001' },
-      { type: 'openooh_venue_type', value: '1.1.1' }
+      { type: 'openooh_venue_type', value: 'openooh-1.1:20501' }
     ],
     dooh_placement_attributes: {
       slot_duration_seconds: 15,
@@ -657,4 +694,66 @@ test('dooh_placement_attributes rejects invalid motion type', async () => {
   };
 
   assert.equal(validate(placement), false);
+});
+
+test('DOOH placement schemas declare cross-field and publisher-resolution rules', () => {
+  const productPlacement = require('../static/schemas/source/core/placement.json');
+  const publisherPlacement = require('../static/schemas/source/core/placement-definition.json');
+  const productRules = productPlacement.properties.dooh_placement_attributes['x-adcp-validation'].verifier_constraints;
+  const publisherRules = publisherPlacement.properties.dooh_placement_attributes['x-adcp-validation'].verifier_constraints;
+
+  assert.equal(productRules.slot_fits_loop.operator, 'less_than_or_equal');
+  assert.equal(productRules.slot_fits_loop.evaluate_after, 'publisher_ref_resolution');
+  assert.equal(publisherRules.slot_fits_loop.operator, 'less_than_or_equal');
+  assert.deepEqual(productRules.publisher_ref_resolution.must_equal_fields, ['screen_resolution', 'motion']);
+});
+
+test('DOOH publisher and product attributes resolve before slot-to-loop validation', () => {
+  const publisher = {
+    identifiers: [
+      { type: 'screen_id', value: 'space:screen-1' },
+      { type: 'openooh_venue_type', value: 'openooh-1.1:20501' }
+    ],
+    dooh_placement_attributes: {
+      slot_duration_seconds: 15,
+      loop_duration_seconds: 60,
+      screen_resolution: { width: 1920, height: 1080 },
+      motion: 'full_motion'
+    }
+  };
+
+  const effective = resolveDoohPlacement(publisher, {
+    identifiers: [
+      { type: 'screen_id', value: 'space:screen-1' },
+      { type: 'venue_id', value: 'geopath:30961' }
+    ],
+    dooh_placement_attributes: { slot_duration_seconds: 10 }
+  });
+  assert.deepEqual(effective.dooh_placement_attributes, {
+    slot_duration_seconds: 10,
+    loop_duration_seconds: 60,
+    screen_resolution: { width: 1920, height: 1080 },
+    motion: 'full_motion'
+  });
+  assert.deepEqual(effective.identifiers, [
+    { type: 'screen_id', value: 'space:screen-1' },
+    { type: 'openooh_venue_type', value: 'openooh-1.1:20501' },
+    { type: 'venue_id', value: 'geopath:30961' }
+  ]);
+  assert.throws(
+    () => resolveDoohPlacement(publisher, { dooh_placement_attributes: { slot_duration_seconds: 90 } }),
+    /exceeds loop_duration_seconds/
+  );
+  assert.throws(
+    () => resolveDoohPlacement(publisher, { dooh_placement_attributes: { motion: 'static' } }),
+    /conflicts with the publisher placement/
+  );
+
+  assert.doesNotThrow(() =>
+    validateDoohPricingLoop(effective, { parameters: { type: 'dooh', loop_duration_seconds: 60 } })
+  );
+  assert.throws(
+    () => validateDoohPricingLoop(effective, { parameters: { type: 'dooh', loop_duration_seconds: 90 } }),
+    /conflicts with the effective placement/
+  );
 });

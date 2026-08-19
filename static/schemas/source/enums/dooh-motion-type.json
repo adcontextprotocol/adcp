@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/dooh-motion-type.json",
   "title": "DOOH Motion Type",
-  "description": "Motion capability of a digital out-of-home screen. Determines which creative formats the screen can render.",
+  "description": "Physical motion capability of a digital out-of-home screen. This is inventory discovery metadata; canonical format_options remains the authoritative declaration of which creatives the placement accepts.",
   "type": "string",
   "enum": [
     "full_motion",
