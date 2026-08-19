@@ -281,9 +281,36 @@ function withResolvedAccountScope(
 function withCurrentAccountScope(
   input: Record<string, unknown>,
   account: unknown,
+  rawInput?: unknown,
 ): ToolArgs {
-  const accountRef = accountRefFromCtx(account);
+  let accountRef = accountRefFromCtx(account);
   const brandDomain = brandDomainFromCtx(account);
+  const principal = (account as { authInfo?: { principal?: unknown } } | undefined)?.authInfo?.principal;
+  const rawAccount = rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
+    ? (rawInput as Record<string, unknown>).account
+    : undefined;
+  const explicitlySandboxed = rawAccount !== null
+    && typeof rawAccount === 'object'
+    && !Array.isArray(rawAccount)
+    && (rawAccount as Record<string, unknown>).sandbox === true;
+  // Public training credentials address one brand-owned sandbox. The
+  // storyboard runner legitimately alternates between the buyer operator and
+  // the brand domain while preserving the same brand identity; normalize that
+  // public-only account before deriving session state so compact write/read
+  // chains do not fork. Authenticated tenant principals retain full operator
+  // isolation, and opaque account IDs are never rewritten.
+  if (
+    explicitlySandboxed
+    && typeof principal === 'string'
+    && principal.startsWith('static:')
+    && accountRef?.brand?.domain
+  ) {
+    accountRef = {
+      ...accountRef,
+      operator: accountRef.brand.domain,
+      sandbox: true,
+    };
+  }
   return {
     ...input,
     ...(accountRef && { account: accountRef }),
@@ -750,7 +777,7 @@ export class TrainingSalesPlatform
     listProducts: async (req, ctx) => translateV5Result(
       await executeProductDiscoveryPlatformTool(
         'list_products',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account) as unknown as Record<string, unknown>,
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
         buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
       ),
       { allowAdvisories: true },
@@ -759,7 +786,7 @@ export class TrainingSalesPlatform
     requestProposals: async (req, ctx) => translateV5Result(
       await executeProductDiscoveryPlatformTool(
         'request_proposals',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account) as unknown as Record<string, unknown>,
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
         buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
       ),
       { allowAdvisories: true },
@@ -770,7 +797,7 @@ export class TrainingSalesPlatform
       return translateV5Result(
         await executeProductDiscoveryPlatformTool(
           'refine_proposals',
-          withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account) as unknown as Record<string, unknown>,
+          withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
           trainingCtx,
         ),
         { allowAdvisories: true },
@@ -780,7 +807,7 @@ export class TrainingSalesPlatform
     declineProposals: async (req, ctx) => translateV5Result(
       await executeProductDiscoveryPlatformTool(
         'decline_proposals',
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account) as unknown as Record<string, unknown>,
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
         buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
       ),
       { allowAdvisories: true },
@@ -788,35 +815,61 @@ export class TrainingSalesPlatform
 
     buyProducts: async (req, ctx) => translateV5Result(
       await handleBuyProducts(
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account) as Parameters<typeof handleBuyProducts>[0],
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleBuyProducts>[0],
         buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
       ),
     ),
 
     acceptProposal: async (req, ctx) => translateV5Result(
       await handleAcceptProposal(
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account) as Parameters<typeof handleAcceptProposal>[0],
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleAcceptProposal>[0],
         buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
       ),
     ),
 
     controlMediaBuy: async (req, ctx) => translateV5Result(
       await handleControlMediaBuy(
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account) as Parameters<typeof handleControlMediaBuy>[0],
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleControlMediaBuy>[0],
         buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
       ),
     ),
 
-    getMediaBuys: async (req, ctx) => translateV5Result(canonicalMediaBuyPlatformResult(
-      await handleGetMediaBuys(
+    getMediaBuys: async (req, ctx) => {
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      let result = await handleGetMediaBuys(
         withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account),
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-    )),
+        trainingCtx,
+      );
+      const requestedIds = (req as unknown as { media_buy_ids?: unknown }).media_buy_ids;
+      const returnedBuys = (result as { media_buys?: unknown }).media_buys;
+      const principal = (ctx.account as { authInfo?: { principal?: unknown } } | undefined)?.authInfo?.principal;
+      // SDK 14 removes the controller-only sandbox assertion from compact
+      // read AccountRefs. Retry an exact-ID miss in the brand-owned public
+      // sandbox partition; successful ordinary reads never cross scopes.
+      if (
+        Array.isArray(requestedIds)
+        && requestedIds.length > 0
+        && Array.isArray(returnedBuys)
+        && returnedBuys.length === 0
+        && typeof principal === 'string'
+        && principal.startsWith('static:')
+        && brandDomainFromCtx(ctx.account)
+      ) {
+        result = await handleGetMediaBuys(
+          withCurrentAccountScope(
+            req as unknown as Record<string, unknown>,
+            ctx.account,
+            { account: { sandbox: true } },
+          ),
+          trainingCtx,
+        );
+      }
+      return translateV5Result(canonicalMediaBuyPlatformResult(result));
+    },
 
     getMediaBuyDelivery: async (req, ctx) => translateV5Result(
       await handleGetMediaBuyDelivery(
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account),
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input),
         buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
       ),
     ),

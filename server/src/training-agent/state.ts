@@ -443,6 +443,15 @@ export function getComplianceMediaBuy(id: string): MediaBuyState | undefined {
  */
 function serializeSession(session: SessionState): Record<string, unknown> {
   const localFixtures = projectedFixtureMaps.get(session);
+  const proposalContext = session.lastGetProductsContext;
+  const proposalProductIds = new Set(
+    (proposalContext?.proposals ?? []).flatMap(proposal =>
+      proposal.allocations.map(allocation => allocation.product_id),
+    ),
+  );
+  const proposalProducts = (proposalContext?.products ?? []).filter(product =>
+    proposalProductIds.has(product.product_id),
+  );
   const persisted = {
     ...session,
     ...(localFixtures && {
@@ -451,11 +460,15 @@ function serializeSession(session: SessionState): Record<string, unknown> {
         ...localFixtures,
       },
     }),
-    // `products` is deterministic from the catalog — dropped from persistence
-    // so callers re-derive on the next request. Only `proposals` (session-
-    // specific drafts from refine workflows) ride along.
-    lastGetProductsContext: session.lastGetProductsContext?.proposals?.length
-      ? { proposals: session.lastGetProductsContext.proposals }
+    // Persist only the immutable product snapshots that support session-
+    // specific proposals. Ordinary catalog results remain deterministic and
+    // are re-derived, while controller-seeded proposal inputs survive the
+    // request boundary required by account-less compact refinement.
+    lastGetProductsContext: proposalContext?.proposals?.length
+      ? {
+          proposals: proposalContext.proposals,
+          ...(proposalProducts.length > 0 && { products: proposalProducts }),
+        }
       : undefined,
   };
   return structuredSerialize(persisted) as Record<string, unknown>;

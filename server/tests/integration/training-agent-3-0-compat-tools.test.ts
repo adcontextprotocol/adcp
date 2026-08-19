@@ -170,6 +170,51 @@ describe('training-agent 3.0 compat tool visibility', () => {
     }
   });
 
+  it('projects SDK 14 capabilities onto the frozen 3.0 vocabulary', async () => {
+    const { baseUrl, close } = await bootCompatRouter();
+    try {
+      const allowedScenarios = new Set([
+        'force_creative_status',
+        'force_account_status',
+        'force_media_buy_status',
+        'force_session_status',
+        'simulate_delivery',
+        'simulate_budget_spend',
+      ]);
+      const signals = await callTenantTool(baseUrl, 'signals', 'get_adcp_capabilities', {});
+      expect(signals.media_buy).toMatchObject({
+        execution: { targeting: { geo_postal_areas: { us_zip: true } } },
+      });
+      const signalsMediaBuy = signals.media_buy as {
+        execution: { targeting: { geo_postal_areas: Record<string, boolean> } };
+      };
+      expect(
+        Object.keys(signalsMediaBuy.execution.targeting.geo_postal_areas),
+      ).toEqual(['us_zip']);
+
+      for (const tenant of ['governance', 'creative']) {
+        const capabilities = await callTenantTool(baseUrl, tenant, 'get_adcp_capabilities', {});
+        const scenarios = (capabilities.compliance_testing as { scenarios?: string[] } | undefined)?.scenarios ?? [];
+        expect(scenarios).not.toHaveLength(0);
+        expect(scenarios.every(scenario => allowedScenarios.has(scenario))).toBe(true);
+      }
+
+      const si = await callTenantTool(baseUrl, 'si', 'get_adcp_capabilities', {});
+      expect(si.specialisms).toBeUndefined();
+
+      const offering = await callTenantTool(baseUrl, 'si', 'si_get_offering', {
+        offering_id: 'novamotors_conversational_v1',
+      });
+      expect(offering).toMatchObject({
+        available: true,
+        offering_id: 'novamotors_conversational_v1',
+        offering: { offering_id: 'novamotors_conversational_v1' },
+      });
+    } finally {
+      await close();
+    }
+  });
+
   it('keeps validate_input callable but undiscovered on the current compact media-buy profile', async () => {
     const { baseUrl, close } = await bootRouter();
     try {
@@ -183,6 +228,14 @@ describe('training-agent 3.0 compat tool visibility', () => {
       expect(unpinned.results).toEqual([
         { target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' },
       ]);
+
+      const currentOffering = await callTenantTool(baseUrl, 'si', 'si_get_offering', {
+        offering_id: 'novamotors_conversational_v1',
+      });
+      expect(currentOffering.offering_id).toBeUndefined();
+      expect(currentOffering.offering).toMatchObject({
+        offering_id: 'novamotors_conversational_v1',
+      });
 
       const pinnedThreeOne = await callTenantTool(baseUrl, 'sales', 'validate_input', {
         adcp_version: '3.1-beta.5',

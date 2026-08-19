@@ -428,8 +428,8 @@ export interface SessionState {
    * single-request case with the InMemoryStateStore. */
   complyExtensions: ComplyExtensions;
   lastGetProductsContext?: {
-    /** Products are deterministic from the catalog — not persisted across requests.
-     * After a cross-machine rehydration, this is undefined and callers must re-derive. */
+    /** Immutable snapshots for products referenced by persisted proposals.
+     * Ordinary catalog discovery is re-derived instead of persisted. */
     products?: Product[];
     proposals?: Proposal[];
   };

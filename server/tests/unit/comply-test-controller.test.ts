@@ -211,13 +211,15 @@ describe('comply_test_controller', () => {
         'seed_rights_grant',
         'seed_creative_format',
         'seed_measurement_catalog',
+        'compact_product_lifecycle_probe',
+        'compact_direct_buy_lifecycle_probe',
         'query_provenance_audit_observations',
         'evaluate_distributed_brand_resolution',
         'verify_governance_token',
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(24);
+      expect(scenarios.length).toBe(26);
       // Dedup invariant — see the list_scenarios response merge in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });

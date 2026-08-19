@@ -16,8 +16,14 @@ import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type RegistryHolder } from './registry.js';
 import { buildSignedRevocationList } from '../governance-revocations.js';
-import { salesCapabilityProjection } from '../v6-sales-platform.js';
-import { handleComplyTestController } from '../comply-test-controller.js';
+import {
+  resolveTrainingSalesRequestContext,
+  salesCapabilityProjection,
+} from '../v6-sales-platform.js';
+import {
+  COMPLY_TEST_CONTROLLER_TOOL,
+  handleComplyTestController,
+} from '../comply-test-controller.js';
 import {
   adcpError,
   resolveServedAdcpVersion,
@@ -118,6 +124,8 @@ const SALES_CURRENT_SCENARIOS = [
   'seed_media_buy',
   'seed_creative_format',
   'seed_measurement_catalog',
+  'compact_product_lifecycle_probe',
+  'compact_direct_buy_lifecycle_probe',
   'query_provenance_audit_observations',
   'evaluate_distributed_brand_resolution',
 ] as const;
@@ -125,6 +133,27 @@ const SALES_CURRENT_SCENARIOS = [
 const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.2'] as const;
 const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.2';
 const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
+const THREE_ZERO_COMPLIANCE_SCENARIOS = new Set([
+  'force_creative_status',
+  'force_account_status',
+  'force_media_buy_status',
+  'force_session_status',
+  'simulate_delivery',
+  'simulate_budget_spend',
+]);
+const THREE_ZERO_POSTAL_TARGETING_KEYS = new Set([
+  'us_zip',
+  'us_zip_plus_four',
+  'gb_outward',
+  'gb_full',
+  'ca_fsa',
+  'ca_full',
+  'de_plz',
+  'fr_code_postal',
+  'au_postcode',
+  'ch_plz',
+  'at_plz',
+]);
 const PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES = [
   'list_products',
   'request_proposals',
@@ -437,6 +466,8 @@ async function tryHandleLocalComplyScenario(
     && rawArgs.scenario !== 'force_creative_purge'
     && rawArgs.scenario !== 'query_provenance_audit_observations'
     && rawArgs.scenario !== 'evaluate_distributed_brand_resolution'
+    && rawArgs.scenario !== 'compact_product_lifecycle_probe'
+    && rawArgs.scenario !== 'compact_direct_buy_lifecycle_probe'
     && rawArgs.scenario !== 'list_scenarios'
     && !isRejectedGetProductsDirective
   ) return false;
@@ -447,6 +478,8 @@ async function tryHandleLocalComplyScenario(
       || rawArgs.scenario === 'force_creative_purge'
       || rawArgs.scenario === 'query_provenance_audit_observations'
       || rawArgs.scenario === 'evaluate_distributed_brand_resolution'
+      || rawArgs.scenario === 'compact_product_lifecycle_probe'
+      || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe'
       || isRejectedGetProductsDirective
     )
   ) return false;
@@ -467,14 +500,25 @@ async function tryHandleLocalComplyScenario(
   }
 
   const result = await runWithSessionContext(async () => {
+    const isCompactLifecycleScenario = rawArgs.scenario === 'compact_product_lifecycle_probe'
+      || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe';
+    const auth = (req as unknown as {
+      auth?: { clientId?: string; scopes?: string[]; extra?: Record<string, unknown> };
+    }).auth;
+    const localContext = isCompactLifecycleScenario
+      ? await resolveTrainingSalesRequestContext(handlerArgs, auth, storyboardCompat)
+      : {
+          mode: 'open' as const,
+          principal: principal ?? 'anonymous',
+          ...(storyboardCompat && { storyboardCompat }),
+        };
     const body = rawArgs.scenario === 'list_scenarios'
       ? {
           success: true,
           scenarios: salesComplyScenarios(storyboardCompat),
         }
       : await handleComplyTestController(handlerArgs, {
-          mode: 'open',
-          principal: principal ?? 'anonymous',
+          ...localContext,
           servedAdcpVersion: versionResolution.servedVersion,
         });
     await flushDirtySessions();
@@ -597,6 +641,18 @@ function projectTenantToolDiscovery(
     const tools = parsed.result?.tools;
     if (!Array.isArray(tools)) return body;
     if (tenantId === 'sales') {
+      // SDK 14's compact media-buy discovery profile intentionally excludes
+      // test-harness extensions. The training agent is itself a sandbox and
+      // its compliance scenarios require the controller to be discoverable;
+      // dispatch still enforces account.sandbox=true. Keep the seven native
+      // lifecycle tools as the advertised protocol surface and add this one
+      // cross-cutting harness tool alongside them.
+      if (
+        storyboardCompat?.version !== '3.0'
+        && !tools.some(tool => tool.name === COMPLY_TEST_CONTROLLER_TOOL.name)
+      ) {
+        tools.push({ ...COMPLY_TEST_CONTROLLER_TOOL });
+      }
       const getProducts = tools.find(tool => tool.name === 'get_products');
       if (getProducts) {
         const inputSchema = getProducts.inputSchema ?? {};
@@ -685,6 +741,7 @@ function projectTenantCapabilities(
         structuredContent?: {
           adcp_version?: unknown;
           adcp?: Record<string, unknown>;
+          specialisms?: unknown;
           supported_protocols?: unknown;
           experimental_features?: unknown;
           creative?: Record<string, unknown>;
@@ -828,6 +885,34 @@ function projectTenantCapabilities(
         ...complianceTesting,
         scenarios: [...scenarios],
       };
+    }
+    if (storyboardCompat?.version === '3.0') {
+      // SDK 14 emits current capability vocabulary even when an adopter
+      // projects a request onto the frozen 3.0 wire contract. Keep the
+      // current platform internally intact, but remove vocabulary that the
+      // released 3.0 schema cannot represent at this response boundary.
+      if (tenantId === 'si') delete structured.specialisms;
+      const complianceTesting = structured.compliance_testing;
+      if (complianceTesting && Array.isArray(complianceTesting.scenarios)) {
+        complianceTesting.scenarios = complianceTesting.scenarios.filter(
+          (scenario): scenario is string => (
+            typeof scenario === 'string' && THREE_ZERO_COMPLIANCE_SCENARIOS.has(scenario)
+          ),
+        );
+      }
+      const mediaBuy = structured.media_buy;
+      const execution = mediaBuy?.execution;
+      const targeting = execution && typeof execution === 'object'
+        ? (execution as Record<string, unknown>).targeting
+        : undefined;
+      const postalAreas = targeting && typeof targeting === 'object'
+        ? (targeting as Record<string, unknown>).geo_postal_areas
+        : undefined;
+      if (postalAreas && typeof postalAreas === 'object' && !Array.isArray(postalAreas)) {
+        (targeting as Record<string, unknown>).geo_postal_areas = Object.fromEntries(
+          Object.entries(postalAreas).filter(([key]) => THREE_ZERO_POSTAL_TARGETING_KEYS.has(key)),
+        );
+      }
     }
     projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
     const firstText = parsed.result?.content?.[0];

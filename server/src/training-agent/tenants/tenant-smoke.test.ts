@@ -46,6 +46,8 @@ const SALES_CURRENT_SCENARIOS = [
   'seed_media_buy',
   'seed_creative_format',
   'seed_measurement_catalog',
+  'compact_product_lifecycle_probe',
+  'compact_direct_buy_lifecycle_probe',
   'query_provenance_audit_observations',
 ];
 
@@ -3065,6 +3067,8 @@ describe('tenant routing smoke', () => {
         'update_media_buy',
       ]));
       expect(discoveredNames).toEqual(expect.arrayContaining([
+        'comply_test_controller',
+        'get_media_buys',
         'list_products',
         'request_proposals',
         'refine_proposals',

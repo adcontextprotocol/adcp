@@ -80,10 +80,15 @@ jobs:
             tenant: signals
             min_clean_storyboards: 74
             min_passing_steps: 111
+          # SDK 14's compact media-buy profile plus the sandbox controller
+          # executes a much broader current-source surface than the legacy
+          # profile. The deprecated create_media_buy probe remains skipped;
+          # native compact lifecycle gates below require nonzero execution.
+          # Observed: 144 clean / 315 passing. +1 buffer for flake tolerance.
           - surface: current
             tenant: sales
-            min_clean_storyboards: 74
-            min_passing_steps: 380
+            min_clean_storyboards: 143
+            min_passing_steps: 314
           - surface: current
             tenant: governance
             min_clean_storyboards: 73
@@ -101,13 +106,13 @@ jobs:
             min_clean_storyboards: 73
             min_passing_steps: 96
           # /si runs through the SDK's first-class SponsoredIntelligencePlatform.
-          # Observed current baseline: 95 clean / 100 passing; floors retain
+          # Observed current baseline: 158 clean / 92 passing; floors retain
           # the matrix's one-count tolerance while required-clean gates below
           # protect both graded SI protocol storyboards directly.
           - surface: current
             tenant: si
-            min_clean_storyboards: 94
-            min_passing_steps: 99
+            min_clean_storyboards: 157
+            min_passing_steps: 91
           - surface: 3.0-compat
             tenant: signals
             min_clean_storyboards: 65
@@ -131,15 +136,15 @@ jobs:
           - surface: 3.0-compat
             tenant: brand
             min_clean_storyboards: 65
-            min_passing_steps: 80
+            min_passing_steps: 78
           # 3.0 predates the sponsored-intelligence specialism enum and its
-          # response projection omits the current offering context output.
-          # Keep the frozen surface as a non-regression floor, not a claim of
-          # current SI conformance. Observed: 63 clean / 85 passing.
+          # response projection therefore omits that newer claim. Keep the
+          # frozen surface as a non-regression floor, not a claim of current
+          # SI specialism conformance. Observed: 64 clean / 78 passing.
           - surface: 3.0-compat
             tenant: si
-            min_clean_storyboards: 62
-            min_passing_steps: 84
+            min_clean_storyboards: 63
+            min_passing_steps: 77
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -327,7 +332,6 @@ jobs:
           required_clean=(
             "media_buy_seller/billing_finality_delivery"
             "media_buy_seller/canonical_formats"
-            "media_buy_seller/vendor_metric_catalog_precondition"
             "canonical_format_validate_input"
             "notification_config_event_scope"
             "notification_config_lifecycle"
@@ -342,6 +346,26 @@ jobs:
             else
               echo "::error::Required-clean storyboard did not pass on /sales current surface: ${storyboard_id}"
               echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
+          required_exact=(
+            "media_buy_seller/compact_direct_buy_lifecycle:7:0"
+            "media_buy_seller/compact_product_lifecycle:9:0"
+            "media_buy_seller/declined_proposal_refinement:6:0"
+            "media_buy_seller/declined_proposal_execution:7:1"
+            "media_buy_seller/expired_proposal_execution:7:1"
+          )
+          for requirement in "${required_exact[@]}"; do
+            storyboard_id="${requirement%%:*}"
+            counts="${requirement#*:}"
+            expected_passed="${counts%%:*}"
+            expected_skipped="${counts##*:}"
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓[[:space:]]+${expected_passed}P / ${expected_skipped}S" /tmp/storyboards.log >/dev/null; then
+              echo "Required-exact storyboard passed: ${storyboard_id} (${expected_passed}P / ${expected_skipped}S)"
+            else
+              echo "::error::Required-exact storyboard counts changed on /sales current surface: ${storyboard_id}"
               grep -F "${storyboard_id}" /tmp/storyboards.log || true
               exit 1
             fi

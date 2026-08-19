@@ -13893,6 +13893,28 @@ describe('proposal lifecycle', () => {
     expect(listed.result).not.toHaveProperty('next_cursor');
   });
 
+  it('constructs a compact proposal for an exact published product selection', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const productId = 'pinnacle_news_display_premium';
+    const requested = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'exact-product-proposal-0001',
+      brand: account.brand,
+      brief: 'Plan a USD 1,000 campaign using the selected published offer.',
+      criteria: { product_ids: [productId] },
+    });
+
+    expect(requested.isError, JSON.stringify(requested.result)).toBeFalsy();
+    expect(requested.result).toMatchObject({
+      outcome: 'proposed',
+      proposals: [{
+        proposal_status: 'draft',
+        commercial_terms: {
+          purchases: [{ product_id: productId }],
+        },
+      }],
+    });
+  });
+
   it('connects the compact request, refine, and purchase lifecycle', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const lifecycleOpportunity = {
@@ -14287,10 +14309,8 @@ describe('proposal lifecycle', () => {
         ask: 'Try a different allocation after terminal decline.',
       }],
     });
-    expect(refineAfterDecline.isError).toBeFalsy();
-    expect(refineAfterDecline.result).toMatchObject({
-      results: [{ source_proposal_id: committed.proposal_id, outcome: 'unable' }],
-    });
+    expect(refineAfterDecline.isError).toBe(true);
+    expect(refineAfterDecline.result).toMatchObject({ code: 'INVALID_STATE' });
 
     const purchase = await simulateCallTool(server, 'create_media_buy', {
       account,

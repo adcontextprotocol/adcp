@@ -5310,13 +5310,14 @@ function productDiscoverySessionKey(args: ToolArgs, ctx: TrainingContext): strin
     const trustedPrincipal = ctx.proposalRefinementScope?.principal_id
       ?? (ctx.authenticatedAgentUrl ? `agent:${ctx.authenticatedAgentUrl}` : ctx.principal);
     if (trustedAccountId && trustedPrincipal) {
-      return sessionKeyFromArgs(
+      const key = sessionKeyFromArgs(
         { account: { account_id: trustedAccountId } },
         ctx.mode,
         ctx.userId,
         ctx.moduleId,
         trustedPrincipal,
       );
+      return key;
     }
     return sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal ?? 'anonymous');
   }
@@ -6331,6 +6332,8 @@ async function handleGetProductsUnlocked(
   }
 
   let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
+  const compactLifecycleRequest = buyingMode === 'refine'
+    && (req as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
 
   // Overlay seeded products from comply_test_controller fixtures so
   // storyboard-seeded fields (e.g. creative_policy.provenance_requirements,
@@ -6340,6 +6343,17 @@ async function handleGetProductsUnlocked(
   // to repeat boilerplate. Catalog products are not touched.
   const productMap = new Map(products.map(p => [p.product_id, p]));
   overlaySeededProducts(session, productMap);
+  // Compact refine_proposals calls intentionally omit account context. Carry
+  // forward the immutable product snapshots that supported the preceding
+  // request_proposals response so an exact seeded selection remains
+  // executable even when its controller fixture is no longer addressable.
+  if (compactLifecycleRequest) {
+    for (const product of session.lastGetProductsContext?.products ?? []) {
+      if (!productMap.has(product.product_id)) {
+        productMap.set(product.product_id, structuredClone(product));
+      }
+    }
+  }
   if (buyingMode !== 'wholesale') overlayNegotiatedPricingOptions(session, productMap);
   products = Array.from(productMap.values());
   const registryProducts = products;
@@ -6486,8 +6500,7 @@ async function handleGetProductsUnlocked(
 
   const immutableRefine = buyingMode === 'refine'
     && (req as unknown as Record<string, unknown>).__immutable_refine === true;
-  const compactLifecycle = buyingMode === 'refine'
-    && (req as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
+  const compactLifecycle = compactLifecycleRequest;
   const declineProposals = buyingMode === 'refine'
     && (req as unknown as Record<string, unknown>).__decline_proposals === true;
   const compactFinalizeSourceIds = new Set(
@@ -6577,8 +6590,19 @@ async function handleGetProductsUnlocked(
           }] as TaskError[],
         };
       }
+      const proposalInternal = proposal as unknown as Record<string, unknown>;
+      if (compactLifecycle && !declineProposals && proposalInternal.__declined === true) {
+        return {
+          errors: [{
+            code: 'INVALID_STATE',
+            message: `Proposal was declined and cannot be refined: ${op.proposal_id}`,
+            field: `refine[${opIndex}].proposal_id`,
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
       if (op.action === 'decline') {
-        const internal = proposal as unknown as Record<string, unknown>;
+        const internal = proposalInternal;
         if (internal.__executed === true) everyDeclineApplicable = false;
         if (
           typeof declineOpportunity?.opportunity_id === 'string'
@@ -7027,6 +7051,37 @@ async function handleGetProductsUnlocked(
       proposals = proposals.filter(proposal => proposal.allocations.every(allocation => (
         exactProductIds.has(allocation.product_id)
       )));
+      // Exact product selection asks the seller to quote those published
+      // offers. Seeded/conformance products have no pre-authored proposal
+      // catalog row, so construct one indicative plan before assigning the
+      // caller-scoped immutable proposal ID below.
+      if (proposals.length === 0) {
+        const selectedProducts = products.filter(product => exactProductIds.has(product.product_id));
+        if (selectedProducts.length === exactProductIds.size && selectedProducts.length > 0) {
+          const allocationPercentage = 100 / selectedProducts.length;
+          proposals = [{
+            proposal_id: 'selected_product_plan',
+            name: selectedProducts.length === 1
+              ? `Proposal for ${selectedProducts[0]!.name}`
+              : 'Proposal for selected products',
+            description: 'Indicative plan constructed from the buyer-selected published offers.',
+            brief_alignment: typeof brief === 'string' ? brief : 'Matches the selected published offers.',
+            total_budget_guidance: {
+              min: 1,
+              recommended: 1000,
+              currency: selectedProducts[0]!.pricing_options[0]?.currency ?? 'USD',
+            },
+            allocations: selectedProducts.map(product => ({
+              product_id: product.product_id,
+              allocation_percentage: allocationPercentage,
+              rationale: 'Buyer-selected published offer',
+              ...(product.pricing_options[0] && {
+                pricing_option_id: product.pricing_options[0].pricing_option_id,
+              }),
+            })) as Proposal['allocations'],
+          } as Proposal];
+        }
+      }
     }
     const key = typeof (req as unknown as Record<string, unknown>).idempotency_key === 'string'
       ? (req as unknown as Record<string, unknown>).idempotency_key as string
@@ -7242,7 +7297,7 @@ async function handleGetProductsUnlocked(
   for (const proposal of retainedCommittedProposals.values()) {
     if (!persistedProposalIds.has(proposal.proposal_id)) persistedProposals.push(proposal);
   }
-  if (requireProposals || usesTypedProposalNegotiation(ctx)) {
+  if (requireProposals || compactLifecycle || usesTypedProposalNegotiation(ctx)) {
     const canonicalProducts = new Map(
       registryProducts.map(product => [product.product_id, product]),
     );
@@ -7250,13 +7305,17 @@ async function handleGetProductsUnlocked(
       const internal = proposal as unknown as Record<string, unknown>;
       const existing = session.proposalRefinementRecords.get(proposal.proposal_id);
       if (!existing) {
+        const sourceRecord = typeof internal.__source_proposal_id === 'string'
+          ? session.proposalRefinementRecords.get(internal.__source_proposal_id)
+          : undefined;
+        const ownerAccountId = ctx.resolvedAccountId ?? sourceRecord?.ownerAccountId;
         session.proposalRefinementRecords.set(proposal.proposal_id, {
           proposal: outwardProposal(
             internal,
             canonicalProducts,
           ) as unknown as CanonicalProposal,
           version: 1,
-          ...(ctx.resolvedAccountId && { ownerAccountId: ctx.resolvedAccountId }),
+          ...(ownerAccountId && { ownerAccountId }),
           ...(internal.__declined === true && {
             declined: {
               declined_at: typeof internal.__declined_at === 'string'
@@ -11038,6 +11097,25 @@ export async function handleUpdateMediaBuy(
   const reportingWebhook = (req as unknown as Record<string, unknown>).reporting_webhook;
   if (isRecord(reportingWebhook)) mb.reportingWebhook = structuredClone(reportingWebhook);
 
+  // Every successful revision is observable through get_media_buys history.
+  // Aggregate-only controls (for example daily_budget_cap) do not pass through
+  // a package branch, so give them the same append-only audit semantics.
+  if (!mb.history.some(entry => entry.revision === mb.revision)) {
+    const budgetUpdated = aggregateUpdate.total_budget !== undefined
+      || aggregateUpdate.daily_budget_cap !== undefined
+      || aggregateUpdate.budget_cap_timezone !== undefined
+      || aggregateUpdate.budget_allocation !== undefined;
+    mb.history.push({
+      revision: mb.revision,
+      timestamp: now,
+      actor: 'buyer',
+      action: budgetUpdated ? 'updated_budget' : 'updated_packages',
+      summary: budgetUpdated
+        ? 'Media buy budget controls updated'
+        : 'Media buy operational controls updated',
+    });
+  }
+
   mb.updatedAt = now;
 
   const status = deriveStatus(mb, session);
@@ -13921,7 +13999,12 @@ function proposalAcceptanceSnapshot(
   args: AcceptProposalRequest,
   ctx: TrainingContext,
 ): { proposal: CanonicalProposal } | { response: Record<string, unknown> } {
-  if (!record || (record.ownerAccountId && record.ownerAccountId !== ctx.resolvedAccountId)) {
+  const callerAccountIds = new Set([
+    ctx.resolvedAccountId,
+    ctx.proposalRefinementScope?.account_id ?? 'public_sandbox',
+    ctx.callerMutationScope?.account_id,
+  ].filter((value): value is string => typeof value === 'string'));
+  if (!record || (record.ownerAccountId && !callerAccountIds.has(record.ownerAccountId))) {
     return { response: { errors: [{ code: 'PROPOSAL_NOT_FOUND', message: `Proposal not found: ${args.proposal_id}`, field: 'proposal_id' }] } };
   }
   if (record.declined) {
@@ -14265,6 +14348,25 @@ export async function handleAcceptProposal(
   const acceptedProposal = acceptedRecord
     ? canonicalProposalFromRecord(acceptedRecord)
     : { ...proposal, proposal_status: 'accepted', media_buy_id: createResult.media_buy_id };
+  let availableActions = Array.isArray(createResult.available_actions) ? createResult.available_actions : [];
+  const mediaBuySession = await getSession(
+    sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId),
+    controllerFixtureSessionKey(args, ctx),
+  );
+  const mediaBuy = mediaBuySession.mediaBuys.get(String(createResult.media_buy_id));
+  if (mediaBuy) {
+    const proposalProducts = new Map(
+      (proposalSession.lastGetProductsContext?.products ?? []).map(product => [product.product_id, product]),
+    );
+    const proposalAllowedActions = deriveProductAllowedActionsForPackages(mediaBuy.packages, proposalProducts);
+    if (proposalAllowedActions) {
+      mediaBuy.productAllowedActions = proposalAllowedActions;
+      availableActions = availableActionsForMediaBuy(
+        mediaBuy,
+        String(createResult.media_buy_status ?? mediaBuy.status),
+      );
+    }
+  }
   return {
     status: 'completed',
     media_buy_id: createResult.media_buy_id,
@@ -14273,7 +14375,7 @@ export async function handleAcceptProposal(
     ...(createResult.confirmed_at !== undefined && { confirmed_at: createResult.confirmed_at }),
     accepted_proposal: acceptedProposal,
     purchase_bindings: purchaseBindings(terms.purchases, createResult),
-    available_actions: Array.isArray(createResult.available_actions) ? createResult.available_actions : [],
+    available_actions: availableActions,
   };
 }
 
