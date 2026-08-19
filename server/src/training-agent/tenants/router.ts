@@ -1022,7 +1022,7 @@ export const PROPOSAL_NEGOTIATION_PROFILE_ROUTES = [
   profile: Exclude<NonNullable<TrainingContext['proposalNegotiationProfile']>, 'ask-only'>;
 }>;
 
-/** Keep the new training surfaces dark in production until the 3.2 beta cut. */
+/** Production deployments opt in so private installations do not expose public lab routes unintentionally. */
 export function proposalNegotiationProfilesEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
