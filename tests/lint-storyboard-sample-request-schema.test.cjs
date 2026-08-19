@@ -86,6 +86,42 @@ test('proposal finalize gates absent and false supports_proposals separately', (
   }
 });
 
+test('inventory-list storyboards use the stable property-list gate', () => {
+  const scenariosPath = path.join(
+    STORYBOARD_DIR,
+    'protocols/media-buy/scenarios',
+  );
+
+  for (const name of ['inventory_list_targeting', 'inventory_list_no_match']) {
+    const storyboard = YAML.parse(
+      fs.readFileSync(path.join(scenariosPath, `${name}.yaml`), 'utf8'),
+    );
+    assert.deepEqual(storyboard.requires_capability, {
+      path: 'media_buy.features.property_list_filtering',
+      equals: true,
+    });
+  }
+});
+
+test('inventory-list no-match preserves both stable-line outcomes', () => {
+  const file = path.join(
+    STORYBOARD_DIR,
+    'protocols/media-buy/scenarios/inventory_list_no_match.yaml',
+  );
+  const storyboard = YAML.parse(fs.readFileSync(file, 'utf8'));
+  const outcomePhases = storyboard.phases.filter(
+    (phase) => phase.branch_set?.id === 'property_list_no_match_handled',
+  );
+
+  assert.equal(outcomePhases.length, 2);
+  assert.ok(outcomePhases.every((phase) => phase.optional === true));
+  assert.ok(outcomePhases.every((phase) => phase.branch_set.semantics === 'any_of'));
+  assert.deepEqual(
+    outcomePhases.map((phase) => phase.steps[0].expect_error === true),
+    [false, true],
+  );
+});
+
 test('fingerprintError produces stable output for common error shapes', () => {
   assert.equal(
     fingerprintError({ keyword: 'required', path: '/', params: { missingProperty: 'caller' } }),
