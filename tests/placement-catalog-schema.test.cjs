@@ -681,6 +681,29 @@ test('product placement accepts dooh_placement_attributes and identifiers', asyn
   assert.equal(validate(placement), true, JSON.stringify(validate.errors, null, 2));
 });
 
+test('canonical list_products placements preserve DOOH inventory facts', async () => {
+  const validate = await compile('/schemas/core/canonical-placement.json');
+  const placement = {
+    kind: 'seller_inline',
+    placement_id: 'central_concourse_portrait_screens',
+    publisher_domain: 'metro-media.example',
+    name: 'Central concourse portrait screens',
+    mode: 'included',
+    identifiers: [
+      { type: 'venue_id', value: 'metro:central-concourse' },
+      { type: 'openooh_venue_type', value: 'openooh-1.1:20501' }
+    ],
+    dooh_placement_attributes: {
+      slot_duration_seconds: 10,
+      loop_duration_seconds: 80,
+      screen_resolution: { width: 1080, height: 1920 },
+      motion: 'full_motion'
+    }
+  };
+
+  assert.equal(validate(placement), true, JSON.stringify(validate.errors, null, 2));
+});
+
 test('dooh_placement_attributes rejects invalid motion type', async () => {
   const validate = await compile('/schemas/core/placement.json');
   const placement = {
@@ -698,14 +721,17 @@ test('dooh_placement_attributes rejects invalid motion type', async () => {
 
 test('DOOH placement schemas declare cross-field and publisher-resolution rules', () => {
   const productPlacement = require('../static/schemas/source/core/placement.json');
+  const canonicalPlacement = require('../static/schemas/source/core/canonical-placement.json');
   const publisherPlacement = require('../static/schemas/source/core/placement-definition.json');
   const productRules = productPlacement.properties.dooh_placement_attributes['x-adcp-validation'].verifier_constraints;
+  const canonicalRules = canonicalPlacement.properties.dooh_placement_attributes['x-adcp-validation'].verifier_constraints;
   const publisherRules = publisherPlacement.properties.dooh_placement_attributes['x-adcp-validation'].verifier_constraints;
 
   assert.equal(productRules.slot_fits_loop.operator, 'less_than_or_equal');
   assert.equal(productRules.slot_fits_loop.evaluate_after, 'publisher_ref_resolution');
   assert.equal(publisherRules.slot_fits_loop.operator, 'less_than_or_equal');
   assert.deepEqual(productRules.publisher_ref_resolution.must_equal_fields, ['screen_resolution', 'motion']);
+  assert.deepEqual(canonicalRules, productRules);
 });
 
 test('DOOH publisher and product attributes resolve before slot-to-loop validation', () => {
