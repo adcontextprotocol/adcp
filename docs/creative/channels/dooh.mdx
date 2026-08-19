@@ -82,7 +82,16 @@ DOOH does not require a separate Product subtype. Use publisher properties for t
     "placement_id": "central_concourse_portrait_screens",
     "name": "Central concourse portrait screens",
     "mode": "included",
-    "tags": ["transit", "concourse", "portrait"]
+    "tags": ["transit", "concourse", "portrait"],
+    "identifiers": [
+      { "type": "venue_id", "value": "metro:central-concourse" }
+    ],
+    "dooh_placement_attributes": {
+      "slot_duration_seconds": 10,
+      "loop_duration_seconds": 80,
+      "screen_resolution": { "width": 1080, "height": 1920 },
+      "motion": "full_motion"
+    }
   }],
   "format_options": [{
     "format_option_id": "portrait_image_1080x1920",
@@ -112,15 +121,17 @@ DOOH does not require a separate Product subtype. Use publisher properties for t
 
 Set a placement to `targetable` only when the buyer can select it through the product's declared placement-selection overlay. Use `included` for screens or loop inventory already bundled into the product. Seller-private player IDs and ad-server mappings are not public placement IDs.
 
-If loop position, share of voice, or scheduling changes what the buyer can purchase, expose it as a distinct product or public placement with the applicable commercial terms. Existing fixed-allocation DOOH offers can declare `pricing_options[].parameters` on a `flat_rate` option with `type: "dooh"`, plus `sov_percentage`, `loop_duration_seconds`, `min_plays_per_hour`, `venue_package`, `duration_hours`, and `daypart`. Guaranteed-only offers use the `sales-guaranteed` profile.
+`dooh_placement_attributes` describes physical inventory and scheduling facts. It does not declare creative eligibility: in the example, the screen is capable of full motion but this product accepts only the image declared in `format_options`. Optional `identifiers` attach public venue, screen, or taxonomy identities when they exist; they do not require a seller to manufacture a persistent screen identifier.
 
-For CPM discovery, use existing `forecast`, `delivery_measurement`, and `measurement_terms` fields to explain projected plays or impressions, the audience currency and methodology, and which measurement governs billing. AdCP does not yet have an equivalent standard machine-readable loop/allocation block on auction CPM pricing. Until that gap is addressed, put the material terms in distinct product or placement identity plus buyer-readable descriptions, and do not imply that free text is structurally comparable across sellers. When inventory is assembled only for one discovery request, return an `is_custom: true` product with `expires_at` rather than inventing a persistent catalog identity.
+If loop position, share of voice, or scheduling changes what the buyer can purchase, expose it as a distinct product or public placement with the applicable commercial terms. Put canonical slot and loop duration on `dooh_placement_attributes`. Existing fixed-allocation DOOH offers can also declare `pricing_options[].parameters` on a `flat_rate` option with `type: "dooh"`, plus `sov_percentage`, `min_plays_per_hour`, `venue_package`, `duration_hours`, and `daypart`. The deprecated pricing-layer copy of `loop_duration_seconds`, when present on a migrated offer, must agree with the placement declaration. Guaranteed-only offers use the `sales-guaranteed` profile.
+
+For CPM discovery, use existing `forecast`, `delivery_measurement`, and `measurement_terms` fields to explain projected plays or impressions, the audience currency and methodology, and which measurement governs billing. Placement attributes make slot and loop duration machine-readable, but AdCP does not yet have an equivalent standard allocation or share-of-voice block on auction CPM pricing. Until that gap is addressed, put material allocation terms in distinct product or placement identity plus buyer-readable descriptions, and do not imply that free text is structurally comparable across sellers. When inventory is assembled only for one discovery request, return an `is_custom: true` product with `expires_at` rather than inventing a persistent catalog identity.
 
 ## Canonical formats on every 3.2 path
 
-New AdCP 3.2 products author creative requirements in `format_options[]`. The shared 3.x schema still reads deprecated `format_ids[]` for migration, but schema validity alone does not make a named format resolvable.
+Every AdCP 3.2 product-list response authors creative requirements in `format_options[]`. The shared 3.x schema still reads deprecated `format_ids[]` for migration, but schema validity alone does not make a named format resolvable.
 
-An intermediary importing or passing through DOOH products therefore returns canonical `format_options[]`, or first resolves every legacy reference through its authoritative format catalog and translates the resolved constraints losslessly or with explicit narrowing. It must not guess dimensions, slots, codecs, durations, or other constraints from an ID. If resolution or safe translation fails, it omits or rejects the product with an actionable error; it must not forward a legacy-only product from a path that does not fetch the referenced catalog. The `sales-dooh` storyboard checks the canonical declaration on the exact 3.2 product-list path.
+That response contract is the same whether the seller authored, imported, or passed through the underlying inventory; buyers do not need a separate product-path capability flag. A seller receiving legacy references first resolves them through its authoritative format catalog and translates the constraints losslessly or with explicit narrowing. It must not guess dimensions, slots, codecs, durations, or other constraints from an ID. If resolution or safe translation fails, it omits or rejects the product with an actionable error rather than exposing an unresolved legacy-only product. The `sales-dooh` storyboard checks the canonical declaration on the exact 3.2 product-list path.
 
 ## Optional attention without impression identity
 
