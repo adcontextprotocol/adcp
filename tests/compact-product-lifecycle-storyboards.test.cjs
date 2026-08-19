@@ -328,6 +328,7 @@ test("compact direct-buy lifecycle threads versioned offers through control read
   const readback = byTask("get_media_buys");
   const phasesById = new Map(storyboard.phases.map((phase) => [phase.id, phase]));
 
+  assert.equal(storyboard.version, "1.0.1");
   assert.deepEqual(storyboard.requires_capability, {
     path: "compliance_testing.scenarios",
     contains: "compact_direct_buy_lifecycle_probe",
@@ -360,10 +361,12 @@ test("compact direct-buy lifecycle threads versioned offers through control read
       ["direct_product_id", "products[0].product_id"],
       ["direct_pricing_option_id", "products[0].pricing_options[0].pricing_option_id"],
       ["direct_feed_version", "feed_version"],
+      ["direct_pricing_version", "pricing_version"],
     ])
   );
   assert.equal(buy.sample_request.feed_version, "$context.direct_feed_version");
-  assert.equal(buy.sample_request.pricing_version, undefined);
+  assert.equal(buy.sample_request.pricing_version, "$context.direct_pricing_version");
+  assert.ok(validation(list, "field_present", "pricing_version"));
   assert.equal(
     buy.sample_request.purchases[0].product_id,
     "$context.direct_product_id"
@@ -385,6 +388,14 @@ test("compact direct-buy lifecycle threads versioned offers through control read
     validation(
       buy,
       "field_equals_context",
+      "accepted_proposal.commercial_terms.source_pricing_version"
+    )?.context_key,
+    "direct_pricing_version"
+  );
+  assert.equal(
+    validation(
+      buy,
+      "field_equals_context",
       "accepted_proposal.commercial_terms.purchases[0].product_id"
     )?.context_key,
     "direct_product_id"
@@ -396,6 +407,16 @@ test("compact direct-buy lifecycle threads versioned offers through control read
       "accepted_proposal.commercial_terms.purchases[0].pricing_option_id"
     )?.context_key,
     "direct_pricing_option_id"
+  );
+  assert.equal(
+    new Map(buy.context_outputs.map(({ name, path: outputPath }) => [name, outputPath]))
+      .get("direct_accepted_proposal_id"),
+    "accepted_proposal.proposal_id"
+  );
+  assert.equal(
+    new Map(buy.context_outputs.map(({ name, path: outputPath }) => [name, outputPath]))
+      .get("direct_accepted_terms_digest"),
+    "accepted_proposal.terms_digest"
   );
 
   assert.equal(control.sample_request.media_buy_id, "$context.direct_media_buy_id");
@@ -441,6 +462,55 @@ test("compact direct-buy lifecycle threads versioned offers through control read
     validation(readback, "field_value", "media_buys[0].daily_budget_cap")?.value,
     100
   );
+  assert.equal(
+    validation(readback, "field_equals_context", "media_buys[0].accepted_proposal_id")
+      ?.context_key,
+    "direct_accepted_proposal_id"
+  );
+  assert.equal(
+    validation(
+      readback,
+      "field_equals_context",
+      "media_buys[0].accepted_proposal_terms_digest"
+    )?.context_key,
+    "direct_accepted_terms_digest"
+  );
+  assert.equal(
+    validation(
+      readback,
+      "field_equals_context",
+      "media_buys[0].accepted_proposal.proposal_id"
+    )?.context_key,
+    "direct_accepted_proposal_id"
+  );
+  assert.equal(
+    validation(
+      readback,
+      "field_equals_context",
+      "media_buys[0].accepted_proposal.terms_digest"
+    )?.context_key,
+    "direct_accepted_terms_digest"
+  );
+});
+
+test("compact direct-buy controller docs publish the pricing and snapshot contract", () => {
+  const source = fs.readFileSync(
+    path.join(ROOT, "docs", "building", "by-layer", "L3", "comply-test-controller.mdx"),
+    "utf8"
+  );
+  const sectionStart = source.indexOf("### `compact_direct_buy_lifecycle_probe`");
+  const sectionEnd = source.indexOf("**Params:**", sectionStart);
+  assert.ok(sectionStart >= 0 && sectionEnd > sectionStart);
+  const contract = source.slice(sectionStart, sectionEnd);
+
+  for (const field of [
+    "pricing_version",
+    "source_pricing_version",
+    "accepted_proposal_id",
+    "accepted_proposal_terms_digest",
+  ]) {
+    assert.match(contract, new RegExp(`\\b${field}\\b`));
+  }
 });
 
 test("compact direct-buy task pages remain testable", () => {

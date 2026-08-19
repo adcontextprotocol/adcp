@@ -321,19 +321,24 @@ For requests that select exactly that product, the seller MUST make the direct
 lifecycle deterministic:
 
 - `list_products` returns synchronous `outcome: "listed"` with the prepared
-  product, one stable pricing option, and `feed_version`; the fixture does not
-  require a separate optional `pricing_version` layer;
+  product, one stable pricing option, `feed_version`, and a separate
+  `pricing_version`;
 - the product and resulting MediaBuy expose a self-serve decrease-only budget
   control through `control_media_buy`;
 - `buy_products` returns synchronous `status: "completed"` with a non-terminal
   MediaBuy, its current `revision`, and an accepted proposal that preserves the
-  selected product, pricing option, and feed version;
+  selected product and pricing option, binds `source_feed_version` and
+  `source_pricing_version`, and carries stable `proposal_id` and `terms_digest`
+  values;
 - a valid `control_media_buy` request that applies a lower `daily_budget_cap`
   returns synchronous `status: "completed"`, increments the MediaBuy revision,
   and preserves the MediaBuy's lifecycle status; and
 - `get_media_buys` immediately reads back the applied cap, lifecycle status,
   revision returned by `control_media_buy`, and the creation/control revision
-  history needed to prove that the mutation incremented the token.
+  history needed to prove that the mutation incremented the token. Its
+  `accepted_proposal_id`, `accepted_proposal_terms_digest`, and embedded
+  accepted proposal preserve the exact proposal identity and digest returned by
+  `buy_products`.
 
 Exact retries continue to use each business tool's normal idempotency cache.
 Preparing the product does not override replay semantics or make an
