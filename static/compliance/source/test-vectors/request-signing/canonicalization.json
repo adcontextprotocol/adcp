@@ -1,6 +1,6 @@
 {
   "$comment": "URL canonicalization conformance vectors for the AdCP RFC 9421 request-signing profile. Each case asserts the canonical @target-uri and @authority values a signer MUST compute from the as-received URL before emitting the signature base, and that a verifier MUST recompute before verifying. Independent of cryptographic signing — an SDK can run this set without keys, crypto, or a full verifier harness. Cited by docs/building/implementation/security.mdx §AdCP RFC 9421 profile, `@target-uri` canonicalization.",
-  "version": "3.0",
+  "version": "3.2",
   "spec_reference": "#adcp-rfc-9421-profile",
   "cases": [
     {
@@ -18,6 +18,20 @@
       "expected_authority": "seller.example.com"
     },
     {
+      "name": "dns-root-dot-stripped",
+      "rule": "step 2: strip one trailing DNS root-label dot after host normalization",
+      "input_url": "https://example.com./p",
+      "expected_target_uri": "https://example.com/p",
+      "expected_authority": "example.com"
+    },
+    {
+      "name": "dns-root-dot-with-port-stripped",
+      "rule": "step 2 + step 4: strip one trailing DNS root-label dot and preserve a non-default port",
+      "input_url": "https://example.com.:8443/p",
+      "expected_target_uri": "https://example.com:8443/p",
+      "expected_authority": "example.com:8443"
+    },
+    {
       "name": "idn-to-punycode",
       "rule": "step 2: UTS-46 Nontransitional ToASCII → Punycode A-label",
       "input_url": "https://bücher.example/p",
@@ -32,6 +46,37 @@
       "expected_target_uri": "https://xn--bcher-kva.example/p",
       "expected_authority": "xn--bcher-kva.example",
       "$comment": "Pins UTS-46 Nontransitional behavior. A signer that lowercases to 'bücher' via locale-dependent ASCII lowercasing before ToASCII still produces the same A-label here because 'Ü' → 'ü' is a UTS-46 mapping, but implementations that skip UTS-46 entirely (e.g., raw idnaEncodeLabel) can diverge on other scripts — this case is the canary."
+    },
+    {
+      "name": "idn-u-label-root-dot-stripped",
+      "rule": "step 2: ToASCII then strip one trailing DNS root-label dot on the U-label path",
+      "input_url": "https://bücher.example./p",
+      "expected_target_uri": "https://xn--bcher-kva.example/p",
+      "expected_authority": "xn--bcher-kva.example"
+    },
+    {
+      "name": "idn-a-label-root-dot-stripped",
+      "rule": "step 2: strip one trailing DNS root-label dot on the equivalent A-label path",
+      "input_url": "https://xn--bcher-kva.example./p",
+      "expected_target_uri": "https://xn--bcher-kva.example/p",
+      "expected_authority": "xn--bcher-kva.example",
+      "$comment": "This case and idn-u-label-root-dot-stripped MUST produce identical bytes; an ASCII fast path must not preserve the root dot."
+    },
+    {
+      "name": "multiple-trailing-dots-rejected",
+      "rule": "step 2: more than one trailing dot creates an empty DNS label and is malformed",
+      "input_url": "https://example.com../p",
+      "reject": true,
+      "reject_reason": "multiple trailing dots in DNS hostname",
+      "expected_error_code": "request_target_uri_malformed"
+    },
+    {
+      "name": "internal-empty-dns-label-rejected",
+      "rule": "step 2: consecutive dots create an empty DNS label and are malformed",
+      "input_url": "https://example..com/p",
+      "reject": true,
+      "reject_reason": "empty DNS label in hostname",
+      "expected_error_code": "request_target_uri_malformed"
     },
     {
       "name": "ipv6-host-hex-lowercased",

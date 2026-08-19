@@ -120,6 +120,18 @@ test('a table grounded in a vector code passes', () => {
   assert.deepEqual([...result.docCodes], ['request_signature_required']);
 });
 
+test('the malformed target-URI taxonomy code is accepted', () => {
+  const fixture = makeFixture({ code: 'request_target_uri_malformed' });
+  fs.writeFileSync(
+    fixture.docPath,
+    withVerifyVector('### Error codes\n\n| Code | Meaning |\n|---|---|\n| `request_target_uri_malformed` | malformed host |\n'),
+  );
+
+  const result = lint(fixture);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual([...result.docCodes], ['request_target_uri_malformed']);
+});
+
 test('taxonomy prose and family references are outside the vector-code claim scope', () => {
   const fixture = makeFixture();
   fs.writeFileSync(fixture.docPath, withVerifyVector(`# Guide
