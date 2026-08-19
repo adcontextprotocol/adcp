@@ -1,8 +1,8 @@
 id: media_buy_seller/compact_product_lifecycle
-version: "1.0.0"
+version: "1.1.0"
 title: "Seller completes the compact product lifecycle"
 category: media_buy_seller
-summary: "Verifies product discovery, proposal creation, finalization, and acceptance through the AdCP 3.2 compact lifecycle."
+summary: "Verifies product discovery, proposal creation, finalization, acceptance, operational control, and readback through the AdCP 3.2 compact lifecycle."
 track: media_buy
 introduced_in: "3.2"
 
@@ -18,15 +18,19 @@ required_tools:
   - request_proposals
   - refine_proposals
   - accept_proposal
+  - control_media_buy
+  - get_media_buys
   - comply_test_controller
 
 narrative: |
   The buyer discovers a published offer, asks the seller to plan against that
   exact product, finalizes the returned draft into an inventory-backed
-  committed proposal, and accepts the committed snapshot. Every boundary uses
-  the seller-issued identifiers captured from the previous response. The
-  advertised compact_product_lifecycle_probe controller scenario makes each
-  positive response arm deterministic for the seeded product.
+  committed proposal, accepts the committed snapshot, applies a legal
+  decrease-only delivery control, and reads the resulting MediaBuy back. Every
+  boundary uses the seller-issued identifiers and revision captured from the
+  previous response. The advertised compact_product_lifecycle_probe controller
+  scenario makes each positive response arm deterministic for the seeded
+  product.
 
 agent:
   interaction_model: media_buy_seller
@@ -154,7 +158,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             sandbox: true
-          brief: "Plan an online-video campaign using the selected published offer."
+          brief: "Plan a USD 1,000 online-video campaign using the selected published offer."
           criteria:
             product_ids: ["$context.listed_product_id"]
         context_outputs:
@@ -239,6 +243,13 @@ phases:
             sandbox: true
           proposal_id: "$context.committed_proposal_id"
           proposal_terms_digest: "$context.committed_terms_digest"
+        context_outputs:
+          - name: accepted_media_buy_id
+            path: "media_buy_id"
+          - name: accepted_media_buy_revision
+            path: "revision"
+          - name: accepted_media_buy_status
+            path: "media_buy_status"
         validations:
           - check: response_schema
             description: "Response matches accept-proposal-response.json"
@@ -249,7 +260,138 @@ phases:
           - check: field_present
             path: "media_buy_id"
             description: "The accepted proposal creates a MediaBuy"
+          - check: field_present
+            path: "revision"
+            description: "Acceptance returns the initial optimistic-concurrency revision"
+          - check: field_present
+            path: "media_buy_status"
+            description: "Acceptance reports the initial MediaBuy lifecycle state"
           - check: field_equals_context
             path: "accepted_proposal.proposal_id"
             context_key: "committed_proposal_id"
             description: "The MediaBuy binds the exact committed snapshot"
+          - check: field_equals_context
+            path: "accepted_proposal.terms_digest"
+            context_key: "committed_terms_digest"
+            description: "The accepted snapshot preserves the finalized terms digest"
+          - check: field_contains
+            path: "available_actions[*]"
+            value:
+              task: "control_media_buy"
+              action: "decrease_budget"
+              mode: "self_serve"
+            description: "The accepted MediaBuy exposes the legal decrease-only control"
+
+  - id: control_accepted_buy
+    title: "Apply a revision-checked operational control"
+    depends_on: [accept_commitment]
+    steps:
+      - id: cap_accepted_proposal_daily_budget
+        title: "Apply a lower daily budget cap"
+        task: control_media_buy
+        schema_ref: "media-buy/control-media-buy-request.json"
+        response_schema_ref: "media-buy/control-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/control_media_buy"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#compact_product_lifecycle_control"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.accepted_media_buy_id"
+          revision: "$context.accepted_media_buy_revision"
+          daily_budget_cap: 100
+        context_outputs:
+          - name: proposal_controlled_media_buy_id
+            path: "media_buy_id"
+          - name: proposal_controlled_revision
+            path: "revision"
+          - name: proposal_controlled_status
+            path: "media_buy_status"
+        validations:
+          - check: response_schema
+            description: "Response matches control-media-buy-response.json"
+          - check: field_value
+            path: "status"
+            value: "completed"
+            description: "The prepared decrease-only control completes synchronously"
+          - check: field_equals_context
+            path: "media_buy_id"
+            context_key: "accepted_media_buy_id"
+            description: "The control updates the MediaBuy created by proposal acceptance"
+          - check: field_present
+            path: "revision"
+            description: "The control returns the post-mutation revision"
+          - check: field_equals_context
+            path: "media_buy_status"
+            context_key: "accepted_media_buy_status"
+            description: "The decrease-only control preserves the lifecycle state"
+
+  - id: read_accepted_buy
+    title: "Read back the controlled MediaBuy"
+    depends_on: [control_accepted_buy]
+    steps:
+      - id: read_controlled_proposal_buy
+        title: "Verify the accepted proposal through MediaBuy readback"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.proposal_controlled_media_buy_id"]
+          include_history: 2
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "accepted_media_buy_id"
+            description: "Readback returns the MediaBuy created by acceptance"
+          - check: field_equals_context
+            path: "media_buys[0].status"
+            context_key: "proposal_controlled_status"
+            description: "Readback preserves the post-control lifecycle state"
+          - check: field_equals_context
+            path: "media_buys[0].revision"
+            context_key: "proposal_controlled_revision"
+            description: "Readback returns the post-control revision"
+          - check: field_equals_context
+            path: "media_buys[0].history[0].revision"
+            context_key: "proposal_controlled_revision"
+            description: "The latest history entry records the control revision"
+          - check: field_equals_context
+            path: "media_buys[0].history[1].revision"
+            context_key: "accepted_media_buy_revision"
+            description: "The preceding history entry records the acceptance revision"
+          - check: field_less_than
+            path: "media_buys[0].history[1].revision"
+            context_key: "proposal_controlled_revision"
+            description: "The control incremented the MediaBuy revision"
+          - check: field_value
+            path: "media_buys[0].daily_budget_cap"
+            value: 100
+            description: "Readback persists the decrease-only daily cap"
+          - check: field_equals_context
+            path: "media_buys[0].accepted_proposal_id"
+            context_key: "committed_proposal_id"
+            description: "Readback links the MediaBuy to the accepted proposal"
+          - check: field_equals_context
+            path: "media_buys[0].accepted_proposal_terms_digest"
+            context_key: "committed_terms_digest"
+            description: "Readback preserves the accepted proposal terms digest"
+          - check: field_equals_context
+            path: "media_buys[0].accepted_proposal.proposal_id"
+            context_key: "committed_proposal_id"
+            description: "Readback includes the exact accepted proposal snapshot"
+          - check: field_equals_context
+            path: "media_buys[0].accepted_proposal.terms_digest"
+            context_key: "committed_terms_digest"
+            description: "The nested accepted snapshot preserves the finalized terms digest"
