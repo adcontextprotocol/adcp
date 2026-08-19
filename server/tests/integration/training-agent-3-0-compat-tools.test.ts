@@ -21,7 +21,7 @@ const { stopSessionCleanup } = await import('../../src/training-agent/state.js')
 
 const COMPAT_CTX = { mode: 'open' as const, storyboardCompat: { version: '3.0' as const } };
 const AUTH = 'Bearer compat-tools-token';
-const CURRENT_ADCP_VERSION = '3.1-rc.15';
+const CURRENT_ADCP_VERSION = '3.2-beta.2';
 
 async function simulateListTools(server: ReturnType<typeof createTrainingAgentServer>): Promise<string[]> {
   const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
@@ -170,10 +170,10 @@ describe('training-agent 3.0 compat tool visibility', () => {
     }
   });
 
-  it('serves validate_input on current tenant routes only on the current envelope', async () => {
+  it('keeps validate_input callable but undiscovered on the current compact media-buy profile', async () => {
     const { baseUrl, close } = await bootRouter();
     try {
-      await expect(listTenantTools(baseUrl, 'sales')).resolves.toContain('validate_input');
+      await expect(listTenantTools(baseUrl, 'sales')).resolves.not.toContain('validate_input');
 
       const unpinned = await callTenantTool(baseUrl, 'sales', 'validate_input', {
         manifest: validImageManifest,

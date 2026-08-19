@@ -51,6 +51,7 @@ import type { TrainingContext } from '../../src/training-agent/types.js';
 import {
   HUMAN_REVIEW_CATEGORIES,
   HUMAN_REVIEW_POLICY_IDS,
+  governanceProposalCommitment,
 } from '../../src/training-agent/governance-handlers.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import { TrainingSalesPlatform, restoreRawPackageSelectors } from '../../src/training-agent/v6-sales-platform.js';
@@ -87,7 +88,7 @@ const VALID_PRICING_MODELS = [
 ] as const;
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
-const CURRENT_ADCP_VERSION = '3.1-rc.15';
+const CURRENT_ADCP_VERSION = '3.2-beta.2';
 const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.0';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open', authenticatedAgentUrl: 'https://buyer.example' };
@@ -12624,7 +12625,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION],
+      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', CURRENT_ADCP_VERSION],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
     });
     expect(result.adcp_version).toBe('3.0');
@@ -12635,10 +12636,10 @@ describe('get_adcp_capabilities handler', () => {
   it('advertises known refinement support when lifecycle tools are available', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {
-      adcp_version: GET_PRODUCTS_REJECTED_ADCP_VERSION,
+      adcp_version: CURRENT_ADCP_VERSION,
     });
 
-    expect(result.adcp_version).toBe(GET_PRODUCTS_REJECTED_ADCP_VERSION);
+    expect(result.adcp_version).toBe(CURRENT_ADCP_VERSION);
     expect(result.media_buy).toMatchObject({
       lifecycle_tools: expect.arrayContaining(['refine_proposals']),
       proposal_refinement: { supported_dimensions: [] },
@@ -12776,11 +12777,15 @@ describe('get_adcp_capabilities handler', () => {
 
   it('advertises the governed commitment tasks the training seller enforces', async () => {
     const server = createTrainingAgentServer({ ...DEFAULT_CTX, tenantId: 'sales' });
-    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {
+      adcp_version: CURRENT_ADCP_VERSION,
+    });
 
     expect((result.adcp as Record<string, any>).governance_enforcement).toEqual({
       tasks: [
-        { task: 'create_media_buy', modes: ['signed_context'] },
+        { task: 'buy_products', modes: ['signed_context'] },
+        { task: 'accept_proposal', modes: ['signed_context'] },
+        { task: 'control_media_buy', modes: ['signed_context'] },
       ],
     });
     expect(result.experimental_features).toContain('governance.campaign');
@@ -13555,7 +13560,7 @@ describe('MCP Tasks protocol', () => {
         code: -32602,
         data: {
           adcp_version: '99.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', CURRENT_ADCP_VERSION],
           supported_majors: [3],
           context: { correlation_id: 'task-version-unsupported' },
           adcp_error: {
@@ -13685,6 +13690,13 @@ describe('proposal lifecycle', () => {
   });
 
   const account = { brand: { domain: 'proposal-test.example' }, operator: 'proposal-test.example' };
+  const proposalSessionKey = sessionKeyFromArgs(
+    { account: { account_id: 'public_sandbox' } },
+    DEFAULT_CTX.mode,
+    undefined,
+    undefined,
+    `agent:${DEFAULT_CTX.authenticatedAgentUrl}`,
+  );
 
   async function finalizeCompactProposal(
     server: ReturnType<typeof createTrainingAgentServer>,
@@ -13743,7 +13755,7 @@ describe('proposal lifecycle', () => {
 
     await runWithSessionContext(async () => {
       const session = await getSession(
-        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+        proposalSessionKey,
       );
       const storedIds = new Set(
         (session.lastGetProductsContext?.proposals ?? []).map(proposal => proposal.proposal_id),
@@ -13784,7 +13796,7 @@ describe('proposal lifecycle', () => {
 
     const storedDraftsBeforeFinalize = await runWithSessionContext(async () => {
       const session = await getSession(
-        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+        proposalSessionKey,
       );
       return structuredClone(session.lastGetProductsContext?.proposals?.filter(
         proposal => drafts.some(draft => draft.proposal_id === proposal.proposal_id),
@@ -13806,7 +13818,7 @@ describe('proposal lifecycle', () => {
 
     await runWithSessionContext(async () => {
       const session = await getSession(
-        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+        proposalSessionKey,
       );
       for (const [index, draft] of drafts.entries()) {
         const storedSource = session.lastGetProductsContext?.proposals?.find(
@@ -13987,7 +13999,7 @@ describe('proposal lifecycle', () => {
 
     await runWithSessionContext(async () => {
       const session = await getSession(
-        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+        proposalSessionKey,
       );
       const stored = session.lastGetProductsContext?.proposals?.find(
         proposal => proposal.proposal_id === committed.proposal_id,
@@ -14178,7 +14190,7 @@ describe('proposal lifecycle', () => {
     });
     expect(refineError).toBeFalsy();
     const revision = (((refined.results as Array<Record<string, unknown>>)[0].proposals as Array<Record<string, unknown>>)[0]);
-    const compactSessionKey = sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous');
+    const compactSessionKey = proposalSessionKey;
     await runWithSessionContext(async () => {
       const session = await getSession(compactSessionKey);
       const storedRevision = session.lastGetProductsContext?.proposals?.find(
@@ -14328,7 +14340,7 @@ describe('proposal lifecycle', () => {
 
     await runWithSessionContext(async () => {
       const session = await getSession(
-        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+        proposalSessionKey,
       );
       const stored = session.lastGetProductsContext?.proposals?.find(
         candidate => candidate.proposal_id === proposal.proposal_id,
@@ -14661,7 +14673,7 @@ describe('proposal lifecycle', () => {
 
     const storedProposalIds = () => runWithSessionContext(async () => {
       const session = await getSession(
-        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+        proposalSessionKey,
       );
       return (session.lastGetProductsContext?.proposals ?? []).map(proposal => proposal.proposal_id);
     });
@@ -14701,7 +14713,7 @@ describe('proposal lifecycle', () => {
 
     const storedProposalIds = () => runWithSessionContext(async () => {
       const session = await getSession(
-        sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+        proposalSessionKey,
       );
       return (session.lastGetProductsContext?.proposals ?? []).map(proposal => proposal.proposal_id);
     });
@@ -14757,7 +14769,7 @@ describe('proposal lifecycle', () => {
 
       const storedProposalIds = () => runWithSessionContext(async () => {
         const session = await getSession(
-          sessionKeyFromArgs({}, DEFAULT_CTX.mode, undefined, undefined, 'anonymous'),
+          proposalSessionKey,
         );
         return (session.lastGetProductsContext?.proposals ?? []).map(proposal => proposal.proposal_id);
       });
@@ -15912,6 +15924,198 @@ describe('storyboard governance sample_requests accepted by training agent', () 
     await simulateCallTool(server, 'sync_plans', { plans: [UNIVERSAL_PLAN] });
   }
 
+  function governedProposal(
+    proposalKind: 'new_media_buy' | 'media_buy_update' = 'media_buy_update',
+    endTime = '2027-06-15T23:59:59Z',
+  ): Record<string, unknown> {
+    const proposal: Record<string, unknown> = {
+      proposal_id: `proposal_governed_${proposalKind}`,
+      proposal_kind: proposalKind,
+      proposal_status: 'committed',
+      name: 'Governed proposal fixture',
+      expires_at: '2027-12-31T23:59:59Z',
+      commercial_terms: {
+        brand: { domain: 'acmeoutdoor.com' },
+        purchases: [{
+          product_id: 'sports_preroll_q2',
+          pricing_option_id: 'sports_preroll_cpm',
+          pricing: { pricing_option_id: 'sports_preroll_cpm', currency: 'USD' },
+          budget: 40_000,
+          start_time: '2027-04-01T00:00:00Z',
+          end_time: endTime,
+          targeting_overlay: { geo_countries: ['US'] },
+        }],
+        start_time: '2027-04-01T00:00:00Z',
+        end_time: endTime,
+        total_budget: { amount: 40_000, currency: 'USD' },
+      },
+      ...(proposalKind === 'media_buy_update' && {
+        parent_proposal_id: 'proposal_governed_parent',
+        media_buy_id: 'mb_governed_fixture',
+        base_media_buy_revision: 1,
+      }),
+    };
+    resignTermsDigest(proposal);
+    return proposal;
+  }
+
+  it('requires and verifies the canonical proposal for accept_proposal governance', async () => {
+    const caller = 'https://buying.pinnacle-agency.example';
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: caller });
+    await setupPlan(server);
+    const proposal = governedProposal();
+    const payload = {
+      idempotency_key: 'governed-proposal-accept-0001',
+      account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+      proposal_id: proposal.proposal_id,
+      proposal_terms_digest: proposal.terms_digest,
+    };
+    const base = {
+      plan_id: UNIVERSAL_PLAN.plan_id,
+      caller,
+      target_agent: caller,
+      tool: 'accept_proposal',
+      payload,
+      proposed_commitment: { amount: 0, currency: 'USD' },
+    };
+
+    const missing = await simulateCallTool(server, 'check_governance', base);
+    expect(missing.isError).toBe(true);
+    expect(missing.result).toMatchObject({ code: 'VALIDATION_ERROR', field: 'proposal' });
+
+    const tampered = structuredClone(proposal);
+    (tampered.commercial_terms as Record<string, unknown>).end_time = '2027-06-20T23:59:59Z';
+    const invalidDigest = await simulateCallTool(server, 'check_governance', {
+      ...base,
+      proposal: tampered,
+    });
+    expect(invalidDigest.isError).toBe(true);
+    expect(invalidDigest.result).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      field: 'proposal.terms_digest',
+    });
+
+    const newProposal = governedProposal('new_media_buy');
+    const wrongCommitment = await simulateCallTool(server, 'check_governance', {
+      ...base,
+      payload: {
+        ...payload,
+        proposal_id: newProposal.proposal_id,
+        proposal_terms_digest: newProposal.terms_digest,
+      },
+      proposal: newProposal,
+    });
+    expect(wrongCommitment.isError).toBe(true);
+    expect(wrongCommitment.result).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      field: 'proposed_commitment',
+    });
+
+    const cancellation = governedProposal();
+    cancellation.proposal_id = 'proposal_governed_cancellation';
+    cancellation.proposal_kind = 'media_buy_cancellation';
+    (cancellation.commercial_terms as Record<string, unknown>).cancellation_terms = {
+      effective_at: '2027-05-01T00:00:00Z',
+      reason: 'Mutually agreed cancellation',
+    };
+    expect(governanceProposalCommitment(cancellation as any)).toEqual({ amount: 0 });
+    const feeCancellation = structuredClone(cancellation);
+    ((feeCancellation.commercial_terms as Record<string, unknown>).cancellation_terms as Record<string, unknown>).fee = {
+      amount: 750,
+      currency: 'USD',
+    };
+    expect(governanceProposalCommitment(feeCancellation as any)).toEqual({ amount: 750, currency: 'USD' });
+    resignTermsDigest(cancellation);
+    const cancellationCheck = await simulateCallTool(server, 'check_governance', {
+      ...base,
+      payload: {
+        ...payload,
+        proposal_id: cancellation.proposal_id,
+        proposal_terms_digest: cancellation.terms_digest,
+      },
+      proposal: cancellation,
+    });
+    expect(cancellationCheck.isError).toBeFalsy();
+    expect(cancellationCheck.result.status).toBe('approved');
+  });
+
+  it('inspects proposal terms and enforces accept_proposal execution binding', async () => {
+    const caller = 'https://buying.pinnacle-agency.example';
+    const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: caller });
+    await setupPlan(server);
+    const outsideFlight = governedProposal('media_buy_update', '2027-07-15T23:59:59Z');
+    const outsidePayload = {
+      idempotency_key: 'governed-proposal-outside-0001',
+      account: { brand: { domain: 'acmeoutdoor.com' }, operator: 'pinnacle-agency.com' },
+      proposal_id: outsideFlight.proposal_id,
+      proposal_terms_digest: outsideFlight.terms_digest,
+    };
+    const denied = await simulateCallTool(server, 'check_governance', {
+      plan_id: UNIVERSAL_PLAN.plan_id,
+      caller,
+      target_agent: caller,
+      tool: 'accept_proposal',
+      payload: outsidePayload,
+      proposal: outsideFlight,
+      proposed_commitment: { amount: 0, currency: 'USD' },
+    });
+    expect(denied.result.status).toBe('denied');
+    expect(denied.result.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category_id: 'flight_compliance', severity: 'critical' }),
+    ]));
+
+    const proposal = governedProposal();
+    const payload = {
+      ...outsidePayload,
+      idempotency_key: 'governed-proposal-approved-0001',
+      proposal_id: proposal.proposal_id,
+      proposal_terms_digest: proposal.terms_digest,
+    };
+    const approved = await simulateCallTool(server, 'check_governance', {
+      plan_id: UNIVERSAL_PLAN.plan_id,
+      caller,
+      target_agent: caller,
+      tool: 'accept_proposal',
+      payload,
+      proposal,
+      proposed_commitment: { amount: 0, currency: 'USD' },
+    });
+    expect(approved.result.status).toBe('approved');
+
+    const missingExecutionCommitment = await simulateCallTool(server, 'check_governance', {
+      caller,
+      governance_context: approved.result.governance_context,
+      phase: 'modification',
+      planned_delivery: {
+        media_buy_id: 'mb_governed_fixture',
+        proposal_id: proposal.proposal_id,
+        proposal_terms_digest: proposal.terms_digest,
+        total_budget: 40_000,
+        currency: 'USD',
+      },
+    });
+    expect(missingExecutionCommitment.isError).toBe(true);
+    expect(missingExecutionCommitment.result.code).toBe('VALIDATION_ERROR');
+
+    const wrongProposalBinding = await simulateCallTool(server, 'check_governance', {
+      caller,
+      governance_context: approved.result.governance_context,
+      phase: 'modification',
+      execution_commitment: { amount: 0, currency: 'USD' },
+      planned_delivery: {
+        media_buy_id: 'mb_governed_fixture',
+        proposal_id: proposal.proposal_id,
+        proposal_terms_digest: 'sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        total_budget: 40_000,
+        currency: 'USD',
+      },
+    });
+    expect(wrongProposalBinding.result.status).toBe('denied');
+    expect(wrongProposalBinding.result.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ category_id: 'proposal_binding', severity: 'critical' }),
+    ]));
+  });
+
   it('media_buy_seller: check_governance with tool+payload pattern', async () => {
     const server = createTrainingAgentServer({ ...DEFAULT_CTX, authenticatedAgentUrl: 'https://buying.pinnacle-agency.example' });
     await setupPlan(server);
@@ -16607,7 +16811,7 @@ describe('AdCP protocol compliance', () => {
       brief: 'test',
     });
     expect(isError).toBeFalsy();
-    expect(result.adcp_version).toBe(GET_PRODUCTS_REJECTED_ADCP_VERSION);
+    expect(result.adcp_version).toBe(CURRENT_ADCP_VERSION);
     expect(Array.isArray(result.products)).toBe(true);
   });
 
@@ -16619,7 +16823,7 @@ describe('AdCP protocol compliance', () => {
     expect(parsed.adcp_version).toBe('3.0');
     expect(parsed.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION],
+      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', CURRENT_ADCP_VERSION],
     });
   });
 
@@ -16684,7 +16888,7 @@ describe('AdCP protocol compliance', () => {
       details: {
         adcp_version: '4.0',
         adcp_major_version: 4,
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION],
+        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', CURRENT_ADCP_VERSION],
         supported_majors: [3],
       },
     });
@@ -16705,7 +16909,7 @@ describe('AdCP protocol compliance', () => {
       field: 'adcp_version',
       details: {
         adcp_version: '3.1-beta',
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION],
+        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', CURRENT_ADCP_VERSION],
         supported_majors: [3],
       },
     });

@@ -66,6 +66,8 @@ export interface TrainingContext {
    * context. Used to authorize principal-bound sandbox fixture projection
    * after the SDK removes the envelope account from domain-level arguments. */
   resolvedAccount?: AccountRef;
+  /** Trusted account identifier produced by the SDK account resolver. */
+  resolvedAccountId?: string;
   /** Frozen 3.0 creative-library session scope. Legacy requests historically
    * shared creative state by brand even when the SDK retained a natural
    * account envelope on some creative operations. */
@@ -81,6 +83,10 @@ export interface TrainingContext {
    * The public `/sales/mcp` endpoint remains ask-only; beta-gated profile
    * routes set one of the other values without trusting buyer input. */
   proposalNegotiationProfile?: ProposalNegotiationProfile;
+  /** Framework-derived mutation namespace; never sourced from buyer input. */
+  callerMutationScope?: Readonly<{ tenant_id: string; principal_id: string; account_id?: string }>;
+  /** Framework-derived proposal namespace; never sourced from buyer input. */
+  proposalRefinementScope?: Readonly<{ tenant_id: string; principal_id: string; account_id?: string }>;
   /** Local storyboard-runner compatibility shims. Never set in deployed routes. */
   storyboardCompat?: { version: '3.0' };
   /** Whether creative usage is billed through AdCP. Defaults to true for legacy/shared routes. */
@@ -396,7 +402,10 @@ export interface SessionState {
   proposalRefinementRecords: Map<string, {
     proposal: CanonicalProposal;
     version: number;
+    /** Trusted SDK-resolved account that originated this proposal. */
+    ownerAccountId?: string;
     activeHold?: { proposal_id: string; expires_at: string };
+    declined?: { declined_at: string; reason?: string; detail?: string };
     accepted?: { accepted_at: string; media_buy_id: string; media_buy_revision: number };
   }>;
   usageRecords: UsageRecord[];
@@ -464,6 +473,7 @@ export interface AccountRef {
   operator?: string;
   operator_unit?: OperatorUnit;
   currency?: string;
+  timezone?: string;
   sandbox?: boolean;
 }
 
@@ -488,6 +498,7 @@ export interface MediaBuyHistoryEntry {
 }
 
 export interface MediaBuyAvailableActionState {
+  task?: 'control_media_buy' | 'refine_proposals' | 'sync_creatives';
   action: string;
   mode: 'self_serve' | 'conditional_self_serve' | 'requires_approval';
   sla?: {
@@ -516,9 +527,16 @@ export interface MediaBuyState {
   currency: string;
   /** Seller-authoritative hard lifetime cap; falls back to package sum for legacy fixtures. */
   totalBudget?: number;
+  /** Immutable compact proposal snapshot currently governing this buy. */
+  acceptedProposal?: CanonicalProposal;
+  /** Hard aggregate daily spend ceiling shared by all packages. */
+  dailyBudgetCap?: number;
+  /** Buyer-selected IANA timezone for aggregate and package cap days. */
+  budgetCapTimezone?: string;
   budgetAllocation?: Record<string, unknown>;
   aggregatePacing?: string;
   aggregateBidding?: Record<string, unknown>;
+  reportingWebhook?: Record<string, unknown>;
   packages: PackageState[];
   productAllowedActions?: MediaBuyProductAllowedActionState[];
   availableActions?: MediaBuyAvailableActionState[];
@@ -563,9 +581,20 @@ export interface PackageState {
   packageId: string;
   productId: string;
   budget: number;
+  dailyBudgetCap?: number;
+  minSpendTarget?: number;
   pricingOptionId: string;
   bidPrice?: number;
   impressions?: number;
+  pacing?: string;
+  bidding?: Record<string, unknown>;
+  catalogIds?: string[];
+  measurementTerms?: Record<string, unknown>;
+  performanceStandards?: Array<Record<string, unknown>>;
+  audienceEvidenceRequirements?: Record<string, unknown>;
+  audienceEvidencePins?: Array<Record<string, unknown>>;
+  agencyEstimateNumber?: string;
+  ext?: Record<string, unknown>;
   paused: boolean;
   canceled?: boolean;
   canceledAt?: string;
@@ -615,6 +644,7 @@ export interface PackageTargeting {
   collection_list_exclude?: ListReference;
   audience_include?: string[];
   audience_exclude?: string[];
+  [key: string]: unknown;
 }
 
 /** A single asset slot inside a creative manifest (e.g., headline, hero_image). */
@@ -798,6 +828,9 @@ export interface GovernanceCheckState {
   tool?: string;
   /** JCS/SHA-256 binding of the task payload authorized by the intent. */
   authorizedPayloadHash?: string;
+  /** Canonical proposal snapshot inspected for an accept_proposal intent. */
+  authorizedProposalId?: string;
+  authorizedProposalTermsDigest?: string;
   purchaseType?: string;
   /** Budget approved from the governance agent's own evaluated input. */
   authorizedBudget?: number;

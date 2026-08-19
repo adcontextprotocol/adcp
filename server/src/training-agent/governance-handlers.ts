@@ -6,7 +6,7 @@
  * governance schema.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type {
   TrainingContext,
   ToolArgs,
@@ -20,7 +20,7 @@ import type {
   GovernanceCondition,
   SessionState,
 } from './types.js';
-import type { BrandReference } from '@adcp/sdk';
+import { canonicalize, type BrandReference } from '@adcp/sdk';
 import {
   getSession,
   sessionKeyFromArgs,
@@ -65,10 +65,18 @@ function buildPolicyDecisions(
 const VALID_PURCHASE_TYPES = new Set(['media_buy', 'rights_license', 'signal_activation', 'creative_services']);
 const EXPLICIT_COMMITMENT_TOOLS = new Set([
   'update_media_buy',
+  'buy_products',
+  'accept_proposal',
+  'control_media_buy',
   'acquire_rights',
   'update_rights',
   'activate_signal',
   'build_creative',
+]);
+const INCREMENTAL_COMMITMENT_TOOLS = new Set([
+  'update_media_buy',
+  'accept_proposal',
+  'control_media_buy',
 ]);
 const VALID_OUTCOME_TYPES = new Set(['completed', 'failed', 'delivery']);
 const VALID_ADJUSTMENT_TYPES = new Set<GovernanceAdjustmentType>([
@@ -265,6 +273,7 @@ interface CheckGovernanceInput extends ToolArgs {
   execution_commitment?: { amount: number; currency: string };
   tool?: string;
   payload?: CheckPayload;
+  proposal?: GovernanceCanonicalProposal;
   governance_context?: string;
   consultation_context?: string;
   phase?: string;
@@ -275,7 +284,17 @@ interface CheckGovernanceInput extends ToolArgs {
   modification_summary?: string;
 }
 
+interface GovernanceCanonicalProposal {
+  proposal_id: string;
+  proposal_kind: 'new_media_buy' | 'media_buy_update' | 'media_buy_cancellation';
+  proposal_status: string;
+  commercial_terms: Record<string, unknown>;
+  terms_digest: string;
+}
+
 interface CheckPayload {
+  proposal_id?: string;
+  proposal_terms_digest?: string;
   packages?: Array<{
     package_id?: string;
     budget?: number;
@@ -302,11 +321,97 @@ interface CheckPayload {
   ext?: { governance_policy_acknowledgements?: string[] };
 }
 
+function governanceProposalDigest(commercialTerms: Record<string, unknown>): string {
+  return `sha256:${createHash('sha256').update(canonicalize(commercialTerms)).digest('base64url')}`;
+}
+
+export function governanceProposalCommitment(
+  proposal: Pick<GovernanceCanonicalProposal, 'proposal_kind' | 'commercial_terms'>,
+): { amount?: number; currency?: string } {
+  const terms = proposal.commercial_terms;
+  const cancellationTerms = terms.cancellation_terms;
+  if (proposal.proposal_kind === 'media_buy_cancellation') {
+    if (cancellationTerms && typeof cancellationTerms === 'object' && !Array.isArray(cancellationTerms)) {
+      const fee = (cancellationTerms as Record<string, unknown>).fee;
+      if (fee && typeof fee === 'object' && !Array.isArray(fee)) {
+        const amount = (fee as Record<string, unknown>).amount;
+        const currency = (fee as Record<string, unknown>).currency;
+        if (typeof amount === 'number' && typeof currency === 'string') return { amount, currency };
+      }
+    }
+    return { amount: 0 };
+  }
+  const totalBudget = terms.total_budget;
+  if (totalBudget && typeof totalBudget === 'object' && !Array.isArray(totalBudget)) {
+    const amount = (totalBudget as Record<string, unknown>).amount;
+    const currency = (totalBudget as Record<string, unknown>).currency;
+    if (typeof amount === 'number' && typeof currency === 'string') return { amount, currency };
+  }
+  const purchases = Array.isArray(terms.purchases) ? terms.purchases : [];
+  let amount = 0;
+  let sawBudget = false;
+  let currency: string | undefined;
+  for (const purchase of purchases) {
+    if (!purchase || typeof purchase !== 'object' || Array.isArray(purchase)) continue;
+    const record = purchase as Record<string, unknown>;
+    if (typeof record.budget === 'number') {
+      amount += record.budget;
+      sawBudget = true;
+    }
+    const pricing = record.pricing;
+    if (pricing && typeof pricing === 'object' && !Array.isArray(pricing)) {
+      const candidate = (pricing as Record<string, unknown>).currency;
+      if (typeof candidate === 'string') currency ??= candidate;
+    }
+  }
+  return { ...(sawBudget && { amount }), ...(currency && { currency }) };
+}
+
+function governanceProposalPolicyPayload(
+  payload: CheckPayload,
+  proposal: GovernanceCanonicalProposal,
+): CheckPayload {
+  const terms = proposal.commercial_terms;
+  const countries = new Set<string>();
+  const channels = new Set<string>();
+  for (const purchase of Array.isArray(terms.purchases) ? terms.purchases : []) {
+    if (!purchase || typeof purchase !== 'object' || Array.isArray(purchase)) continue;
+    const record = purchase as Record<string, unknown>;
+    const targeting = record.targeting_overlay;
+    if (targeting && typeof targeting === 'object' && !Array.isArray(targeting)) {
+      const geoCountries = (targeting as Record<string, unknown>).geo_countries;
+      if (Array.isArray(geoCountries)) {
+        geoCountries.forEach(country => {
+          if (typeof country === 'string') countries.add(country);
+        });
+      }
+    }
+    const purchaseChannels = record.channels;
+    if (Array.isArray(purchaseChannels)) {
+      purchaseChannels.forEach(channel => {
+        if (typeof channel === 'string') channels.add(channel);
+      });
+    }
+  }
+  return {
+    ...payload,
+    ...(terms.total_budget !== undefined && { total_budget: terms.total_budget as CheckPayload['total_budget'] }),
+    ...(typeof terms.start_time === 'string' && { start_time: terms.start_time }),
+    ...(typeof terms.end_time === 'string' && { end_time: terms.end_time }),
+    ...(countries.size > 0 && { countries: [...countries] }),
+    ...(channels.size > 0 && { channels: [...channels] }),
+  };
+}
+
 interface PlannedDeliveryInput {
   // Seller-assigned ID: optional during purchase prepare, required later.
   media_buy_id?: string;
+  proposal_id?: string;
+  proposal_terms_digest?: string;
   geo?: { countries?: string[] };
   channels?: string[];
+  start_time?: string;
+  end_time?: string;
   total_budget?: number;
   currency?: string;
 }
@@ -540,6 +645,10 @@ export const GOVERNANCE_TOOLS = [
         },
         tool: { type: 'string', description: 'The AdCP tool being checked. Present on intent checks (orchestrator).' },
         payload: { type: 'object', description: 'The full tool arguments. Present on intent checks.' },
+        proposal: {
+          type: 'object',
+          description: 'Exact committed CanonicalProposal required when authorizing accept_proposal.',
+        },
         governance_context: { type: 'string', description: 'Opaque governance context from a prior check_governance response. Pass on subsequent checks for lifecycle continuity.' },
         consultation_context: { type: 'string', description: 'Non-authorizing handle from an intent conditions response. Pass only on the adjusted intent re-check.' },
 
@@ -1076,6 +1185,103 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       }],
     };
   }
+  if (tool === 'accept_proposal' && req.proposal === undefined) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'proposal is required when authorizing accept_proposal.',
+        field: 'proposal',
+      }],
+    };
+  }
+  if (req.proposal !== undefined && tool !== 'accept_proposal') {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'proposal is valid only when authorizing accept_proposal.',
+        field: 'proposal',
+      }],
+    };
+  }
+  if (req.proposal !== undefined) {
+    const proposal = req.proposal;
+    if (
+      typeof proposal.proposal_id !== 'string'
+      || !['new_media_buy', 'media_buy_update', 'media_buy_cancellation'].includes(proposal.proposal_kind)
+      || proposal.proposal_status !== 'committed'
+      || !proposal.commercial_terms
+      || typeof proposal.commercial_terms !== 'object'
+      || Array.isArray(proposal.commercial_terms)
+      || typeof proposal.terms_digest !== 'string'
+    ) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: 'proposal must be a committed CanonicalProposal with typed commercial_terms and terms_digest.',
+          field: 'proposal',
+        }],
+      };
+    }
+    let computedDigest: string;
+    try {
+      computedDigest = governanceProposalDigest(proposal.commercial_terms);
+    } catch {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: 'proposal.commercial_terms must be finite canonical JSON.',
+          field: 'proposal.commercial_terms',
+        }],
+      };
+    }
+    if (proposal.terms_digest !== computedDigest) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: 'proposal.terms_digest does not match proposal.commercial_terms.',
+          field: 'proposal.terms_digest',
+        }],
+      };
+    }
+    if (
+      payload?.proposal_id !== proposal.proposal_id
+      || payload?.proposal_terms_digest !== proposal.terms_digest
+    ) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: 'accept_proposal payload must bind the supplied proposal_id and proposal_terms_digest.',
+          field: 'payload.proposal_terms_digest',
+        }],
+      };
+    }
+    const envelope = governanceProposalCommitment(proposal);
+    const proposed = req.proposed_commitment;
+    if (
+      proposed
+      && (
+        (envelope.currency !== undefined && proposed.currency !== envelope.currency)
+        || (
+          proposal.proposal_kind !== 'media_buy_update'
+          && envelope.amount !== undefined
+          && proposed.amount !== envelope.amount
+        )
+        || (
+          proposal.proposal_kind === 'media_buy_update'
+          && envelope.amount !== undefined
+          && proposed.amount > envelope.amount
+        )
+      )
+    ) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: 'proposed_commitment does not match the supplied proposal commercial envelope.',
+          field: 'proposed_commitment',
+        }],
+      };
+    }
+  }
   if (req.execution_commitment !== undefined && !hasExecutionShape) {
     return {
       errors: [{
@@ -1385,7 +1591,7 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   if (
     req.proposed_commitment
     && payloadCommitment !== undefined
-    && tool !== 'update_media_buy'
+    && !INCREMENTAL_COMMITMENT_TOOLS.has(tool ?? '')
     && req.proposed_commitment.amount !== payloadCommitment
   ) {
     return {
@@ -1409,25 +1615,25 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   }
   if (
     binding === 'committed'
-    && originalIntentCheck?.tool === 'update_media_buy'
+    && INCREMENTAL_COMMITMENT_TOOLS.has(originalIntentCheck?.tool ?? '')
     && req.execution_commitment === undefined
   ) {
     return {
       errors: [{
         code: 'VALIDATION_ERROR',
-        message: 'execution_commitment is required when executing an update_media_buy intent.',
+        message: `execution_commitment is required when executing a ${originalIntentCheck?.tool} intent.`,
       }],
     };
   }
   if (
     binding === 'committed'
-    && originalIntentCheck?.tool !== 'update_media_buy'
+    && !INCREMENTAL_COMMITMENT_TOOLS.has(originalIntentCheck?.tool ?? '')
     && req.execution_commitment !== undefined
   ) {
     return {
       errors: [{
         code: 'VALIDATION_ERROR',
-        message: 'execution_commitment is valid only when executing an update_media_buy intent.',
+        message: 'execution_commitment is valid only for an incremental media-buy execution intent.',
       }],
     };
   }
@@ -1516,8 +1722,11 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   // Delegation budget/market limits are checked here because the proposed payload
   // contains the budget and countries. For committed binding, planned_delivery
   // validation handles these constraints instead.
-  if (binding === 'proposed' && payload) {
-    const extracted = extractFromPayload(payload);
+  const policyPayload = payload && req.proposal
+    ? governanceProposalPolicyPayload(payload, req.proposal)
+    : payload;
+  if (binding === 'proposed' && policyPayload) {
+    const extracted = extractFromPayload(policyPayload);
     const payloadBudget = req.proposed_commitment?.amount ?? payloadCommitment;
     const budgetFieldPath = req.proposed_commitment
       ? 'proposed_commitment.amount'
@@ -1734,6 +1943,20 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   if (binding === 'committed' && plannedDelivery) {
     categoriesEvaluated.push('geo_compliance', 'channel_compliance', 'flight_compliance');
 
+    if (
+      originalIntentCheck?.authorizedProposalId
+      && (
+        plannedDelivery.proposal_id !== originalIntentCheck.authorizedProposalId
+        || plannedDelivery.proposal_terms_digest !== originalIntentCheck.authorizedProposalTermsDigest
+      )
+    ) {
+      findings.push({
+        categoryId: 'proposal_binding',
+        severity: 'critical',
+        explanation: 'Planned delivery does not match the proposal snapshot authorized at intent time.',
+      });
+    }
+
     const pdCountries = plannedDelivery.geo?.countries || [];
     if (pdCountries.length > 0 && plan.countries?.length) {
       const planCountrySet = new Set(plan.countries);
@@ -1760,13 +1983,24 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
       }
     }
 
+    if (
+      (plannedDelivery.start_time && new Date(plannedDelivery.start_time) < new Date(plan.flight.start))
+      || (plannedDelivery.end_time && new Date(plannedDelivery.end_time) > new Date(plan.flight.end))
+    ) {
+      findings.push({
+        categoryId: 'flight_compliance',
+        severity: 'critical',
+        explanation: 'Planned delivery flight falls outside the governed plan flight.',
+      });
+    }
+
     const pdBudget = plannedDelivery.total_budget;
     // A delivery check reports evidence about an already-authorized
     // commitment. Treating planned_delivery.total_budget as a fresh
     // commitment here would charge the same media buy against the plan twice.
     executionCommitment = phase === 'delivery'
       ? undefined
-      : originalIntentCheck?.tool === 'update_media_buy'
+      : INCREMENTAL_COMMITMENT_TOOLS.has(originalIntentCheck?.tool ?? '')
         ? req.execution_commitment?.amount
         : pdBudget;
     if (executionCommitment !== undefined) {
@@ -1946,6 +2180,12 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     }
   }
   const authorizedTask = tool ?? originalIntentCheck?.tool;
+  const authorizedProposalId = binding === 'proposed'
+    ? req.proposal?.proposal_id
+    : originalIntentCheck?.authorizedProposalId;
+  const authorizedProposalTermsDigest = binding === 'proposed'
+    ? req.proposal?.terms_digest
+    : originalIntentCheck?.authorizedProposalTermsDigest;
   const evaluatedBudget = binding === 'committed'
     ? executionCommitment
     : req.proposed_commitment?.amount
@@ -2018,6 +2258,8 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
     caller,
     tool: authorizedTask,
     ...(authorizedPayloadHash ? { authorizedPayloadHash } : {}),
+    ...(authorizedProposalId ? { authorizedProposalId } : {}),
+    ...(authorizedProposalTermsDigest ? { authorizedProposalTermsDigest } : {}),
     purchaseType,
     ...(status === 'approved' && authorizedBudget !== undefined ? { authorizedBudget } : {}),
     ...(status === 'approved' && authorizedCurrency !== undefined

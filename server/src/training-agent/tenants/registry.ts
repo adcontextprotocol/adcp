@@ -259,7 +259,10 @@ export interface RegistryHolder {
   get(): Promise<TenantRegistry>;
 }
 
-export function createRegistryHolder(options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): RegistryHolder {
+export function createRegistryHolder(options: {
+  storyboardCompat?: TrainingContext['storyboardCompat'];
+  proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'];
+} = {}): RegistryHolder {
   let registry: TenantRegistry | null = null;
   let pendingInit: Promise<TenantRegistry> | null = null;
 
