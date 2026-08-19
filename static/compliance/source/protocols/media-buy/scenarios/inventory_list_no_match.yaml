@@ -7,6 +7,7 @@ track: media_buy
 required_tools:
   - get_products
   - create_media_buy
+  - get_media_buys
 
 requires_capability:
   path: "media_buy.features.property_list_filtering"
@@ -100,11 +101,10 @@ phases:
         doc_ref: "/media-buy/task-reference/create_media_buy"
         comply_scenario: create_media_buy
         stateful: true
-        contributes: true
         expected: |
-          Accept the buy with a valid media-buy artifact that retains the
-          property-list targeting. The seller remains responsible for surfacing
-          the zero-delivery expectation through its reporting behavior.
+          Accept the buy with a valid media-buy artifact. The seller remains
+          responsible for surfacing the zero-delivery expectation through its
+          reporting behavior.
         sample_request:
           brand:
             domain: "acmeoutdoor.example"
@@ -125,16 +125,15 @@ phases:
                   list_id: "acme_outdoor_no_match_v1"
           context:
             correlation_id: "inventory_list_no_match--accept"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "no_match_media_buy_id"
         validations:
           - check: response_schema
             description: "Accepted response matches create-media-buy-response.json"
           - check: field_present
             path: "media_buy_id"
             description: "Accepted response returns a media_buy_id"
-          - check: field_value
-            path: "packages[0].targeting_overlay.property_list.list_id"
-            value: "acme_outdoor_no_match_v1"
-            description: "Accepted response preserves the no-match property-list targeting"
           - check: field_present
             path: "context"
             description: "Accepted response echoes back the context object"
@@ -142,6 +141,35 @@ phases:
             path: "context.correlation_id"
             value: "inventory_list_no_match--accept"
             description: "Context correlation_id returned unchanged"
+
+      - id: get_buy_no_match_accept
+        title: "Confirm the accepted no-match targeting persisted"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        contributes: true
+        expected: |
+          Return the accepted buy with its no-match property-list reference
+          persisted on the package.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.no_match_media_buy_id"
+          context:
+            correlation_id: "inventory_list_no_match--get_accept"
+        validations:
+          - check: response_schema
+            description: "Readback matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.property_list.list_id"
+            value: "acme_outdoor_no_match_v1"
+            description: "Readback preserves the accepted no-match property-list targeting"
 
   - id: no_match_reject_path
     title: "Reject the no-match buy with a structured error"

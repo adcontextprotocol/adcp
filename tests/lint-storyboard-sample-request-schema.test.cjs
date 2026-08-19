@@ -120,6 +120,22 @@ test('inventory-list no-match preserves both stable-line outcomes', () => {
     outcomePhases.map((phase) => phase.steps[0].expect_error === true),
     [false, true],
   );
+
+  const acceptPhase = outcomePhases[0];
+  assert.deepEqual(
+    acceptPhase.steps.map((step) => step.task),
+    ['create_media_buy', 'get_media_buys'],
+  );
+  assert.equal(acceptPhase.steps[0].contributes, undefined);
+  assert.equal(acceptPhase.steps[1].contributes, true);
+  assert.ok(
+    acceptPhase.steps[1].validations.some(
+      (validation) =>
+        validation.check === 'field_value' &&
+        validation.path ===
+          'media_buys[0].packages[0].targeting_overlay.property_list.list_id',
+    ),
+  );
 });
 
 test('fingerprintError produces stable output for common error shapes', () => {
