@@ -524,10 +524,34 @@ describe('tenant routing smoke', () => {
       const sourceProposalId = requested.result?.structuredContent?.proposals?.[0]?.proposal_id;
       expect(sourceProposalId).toBeTruthy();
 
-      const refined = await callTenantTool(url, 5, 'refine_proposals', {
+      const partial = await callTenantTool(url, 5, 'refine_proposals', {
         adcp_version: '3.2-beta.0',
         adcp_major_version: 3,
-        idempotency_key: 'tenant-profile-refine-0001',
+        idempotency_key: 'tenant-profile-refine-three-0001',
+        refinements: [{
+          proposal_id: sourceProposalId,
+          action: 'revise',
+          constraints: { total_budget: { currency: 'USD', max: 50_000 } },
+          alternatives: { count: 3 },
+        }],
+      }) as {
+        result?: { structuredContent?: {
+          adcp_version?: string;
+          adcp_error?: { message?: string };
+          results?: Array<{ outcome?: string; reason_code?: string; proposals?: unknown[] }>;
+        } };
+      };
+      const counteroffer = partial.result?.structuredContent;
+      expect(counteroffer?.adcp_version).toBe('3.2-beta.0');
+      expect(counteroffer?.adcp_error).toBeUndefined();
+      expect(counteroffer?.results?.[0]?.outcome).toBe('partial');
+      expect(counteroffer?.results?.[0]?.reason_code).toBe('alternatives_unavailable');
+      expect(counteroffer?.results?.[0]?.proposals).toHaveLength(2);
+
+      const refined = await callTenantTool(url, 6, 'refine_proposals', {
+        adcp_version: '3.2-beta.0',
+        adcp_major_version: 3,
+        idempotency_key: 'tenant-profile-refine-two-0001',
         refinements: [{
           proposal_id: sourceProposalId,
           action: 'revise',
