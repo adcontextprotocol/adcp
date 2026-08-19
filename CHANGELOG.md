@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.2.0-beta.2
+
+### Patch Changes
+
+- 5c7b835: Add a deterministic AdCP 3.2 compliance storyboard for the compact direct-purchase lifecycle from versioned product discovery through operational control and authoritative MediaBuy readback.
+- 5c7b835: Extend the compact proposal lifecycle storyboard through revision-checked
+  MediaBuy control and readback, including lifecycle, revision-history, and
+  accepted-proposal linkage assertions.
+
 ## 3.2.0-beta.1
 
 ### Minor Changes

@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/proposal-decline.json",
+  "title": "Proposal Decline",
+  "description": "Terminal buyer feedback for one immutable proposal snapshot.",
+  "type": "object",
+  "properties": {
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "proposal",
+      "description": "Immutable proposal ID returned by request_proposals or refine_proposals."
+    },
+    "reason": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/proposal-decline-reason.json"
+    },
+    "detail": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "Optional short, non-identifying explanation. MUST NOT identify a competitor or disclose sensitive campaign information."
+    }
+  },
+  "required": [
+    "proposal_id",
+    "reason"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "reason": {
+            "const": "other"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "then": {
+        "required": [
+          "detail"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

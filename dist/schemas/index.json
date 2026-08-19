@@ -24,6 +24,14 @@
   },
   "versions": [
     {
+      "version": "3.2.0-beta.2",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": false,
+      "path": "/schemas/3.2.0-beta.2/",
+      "index": "/schemas/3.2.0-beta.2/index.json"
+    },
+    {
       "version": "3.2.0-beta.1",
       "stability": "beta",
       "prerelease": true,
