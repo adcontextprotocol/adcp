@@ -54,6 +54,128 @@ test('runStoryboard skips an equals-gated storyboard when the capability path is
   assert.match(result.phases[0].steps[0].error, /agent did not declare support/);
 });
 
+test('inventory-list storyboards skip sellers that declare property-list support false', async () => {
+  const scenariosPath = path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'protocols',
+    'media-buy',
+    'scenarios'
+  );
+
+  for (const name of ['inventory_list_targeting', 'inventory_list_no_match']) {
+    const storyboard = YAML.parse(
+      fs.readFileSync(path.join(scenariosPath, `${name}.yaml`), 'utf8')
+    );
+    assert.deepEqual(storyboard.requires_capability, {
+      path: 'media_buy.execution.targeting.property_list',
+      equals: true,
+    });
+
+    const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+    const result = await runStoryboard('https://agent.example/mcp', storyboard, {
+      _profile: {
+        tools,
+        raw_capabilities: {
+          media_buy: { execution: { targeting: { property_list: false } } },
+        },
+      },
+      agentTools: tools,
+    });
+
+    assert.equal(result.overall_passed, true);
+    assert.equal(result.skipped_count, 1);
+    assert.equal(result.phases[0].phase_id, 'capability_unsupported');
+    assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported');
+    assert.match(result.phases[0].steps[0].error, /execution\.targeting\.property_list/);
+  }
+});
+
+test('inventory-list no-match requires canonical rejection and fails accepted buys', async () => {
+  const storyboardPath = path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'protocols',
+    'media-buy',
+    'scenarios',
+    'inventory_list_no_match.yaml'
+  );
+  const source = YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
+  const keepChecks = new Set(['error_code']);
+  const storyboard = {
+    ...source,
+    prerequisites: undefined,
+    phases: source.phases.slice(1).map(phase => ({
+      ...phase,
+      steps: phase.steps.map(step => ({
+        ...step,
+        validations: step.validations.filter(validation => keepChecks.has(validation.check)),
+      })),
+    })),
+  };
+  const tools = ['get_adcp_capabilities', 'create_media_buy'];
+  const baseOptions = {
+    agentTools: tools,
+    context: {
+      product_id: 'property-list-product',
+      pricing_option_id: 'fixed-price',
+    },
+    skip_controller_seeding: true,
+    _profile: {
+      tools,
+      raw_capabilities: {
+        media_buy: { execution: { targeting: { property_list: true } } },
+      },
+    },
+  };
+
+  const rejection = await runStoryboard('https://agent.example/mcp', storyboard, {
+    ...baseOptions,
+    _client: {
+      resetContext() {},
+      async createMediaBuy(request) {
+        return {
+          success: false,
+          data: {
+            errors: [{
+              code: 'PRODUCT_UNAVAILABLE',
+              message: 'The property list matches no inventory',
+            }],
+            context: request.context,
+          },
+        };
+      },
+    },
+  });
+  assert.equal(rejection.overall_passed, true);
+  assert.equal(rejection.passed_count, 1);
+
+  const accepted = await runStoryboard('https://agent.example/mcp', storyboard, {
+    ...baseOptions,
+    _client: {
+      resetContext() {},
+      async createMediaBuy(request) {
+        return {
+          success: true,
+          data: {
+            media_buy_id: 'silent-buy',
+            packages: [{ targeting_overlay: request.packages[0].targeting_overlay }],
+            context: request.context,
+          },
+        };
+      },
+    },
+  });
+  assert.equal(accepted.overall_passed, false);
+  assert.equal(accepted.failed_count, 1);
+});
+
 test('runStoryboard skips a contains-gated phase when the array omits the required value', async () => {
   const storyboard = {
     id: 'phase_contains_regression',
