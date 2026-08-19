@@ -4703,12 +4703,15 @@ function signalMatchesRef(
 
 // ── Tool definitions ──────────────────────────────────────────────
 
-const PRODUCT_DISCOVERY_TOOLS = new Set([
-  'get_products',
+const PRODUCT_DISCOVERY_LIFECYCLE_TOOLS = [
   'list_products',
   'request_proposals',
   'refine_proposals',
   'decline_proposals',
+] as const;
+const PRODUCT_DISCOVERY_TOOLS = new Set([
+  'get_products',
+  ...PRODUCT_DISCOVERY_LIFECYCLE_TOOLS,
 ]);
 
 function isProductDiscoveryTool(toolName: string): boolean {
@@ -10803,7 +10806,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     media_buy: {
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
       ...(supportsGetProductsRejected(servedAdcpVersion) && {
-        lifecycle_tools: [...PRODUCT_DISCOVERY_TOOLS],
+        lifecycle_tools: [...PRODUCT_DISCOVERY_LIFECYCLE_TOOLS],
         proposal_refinement: proposalCapabilitiesForProfile(ctx.proposalNegotiationProfile),
       }),
       supports_proposals: true,
