@@ -34,6 +34,7 @@ import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type T
 import { getAgentUrl } from '../config.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { canonicalizeAccountRef } from '../account-scope.js';
+import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -130,12 +131,15 @@ const SALES_CURRENT_SCENARIOS = [
 
 const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION] as const;
 const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
-const PRODUCT_DISCOVERY_TOOL_NAMES = [
-  'get_products',
+const PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES = [
   'list_products',
   'request_proposals',
   'refine_proposals',
   'decline_proposals',
+] as const;
+const PRODUCT_DISCOVERY_TOOL_NAMES = [
+  'get_products',
+  ...PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES,
 ] as const;
 
 function bearerToken(req: Request): string | undefined {
@@ -255,7 +259,13 @@ function tenantMcpHandler(
     setCORSHeaders(res);
 
     wrapTenantToolDiscoveryProjection(req, res, tenantId, storyboardCompat);
-    wrapTenantCapabilitiesProjection(req, res, tenantId, storyboardCompat);
+    wrapTenantCapabilitiesProjection(
+      req,
+      res,
+      tenantId,
+      storyboardCompat,
+      proposalNegotiationProfile,
+    );
 
     // Bridge `res.locals.trainingPrincipal` (set by the upstream
     // `requireAuth` middleware) onto `req.auth` so the framework's MCP
@@ -617,9 +627,19 @@ function wrapTenantCapabilitiesProjection(
   res: Response,
   tenantId: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
+  proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'],
 ): void {
   if (req.body?.method !== 'tools/call') return;
   if (req.body?.params?.name !== 'get_adcp_capabilities') return;
+
+  const capabilityArgs = (req.body.params.arguments ?? {}) as Record<string, unknown>;
+  const hasVersionSelector = capabilityArgs.adcp_version !== undefined
+    || capabilityArgs.adcp_major_version !== undefined;
+  const requestedVersion = proposalNegotiationProfile
+    ? hasVersionSelector
+      ? resolveServedAdcpVersion(capabilityArgs)
+      : { ok: true as const, servedVersion: GET_PRODUCTS_REJECTED_ADCP_VERSION }
+    : undefined;
 
   const origEnd = res.end.bind(res);
   const chunks: Buffer[] = [];
@@ -635,7 +655,13 @@ function wrapTenantCapabilitiesProjection(
   (res as unknown as { end: (...args: unknown[]) => Response }).end = (chunk?: unknown, ...rest: unknown[]) => {
     if (chunk !== null && chunk !== undefined) chunks.push(toBuffer(chunk));
     const body = Buffer.concat(chunks);
-    const patched = projectTenantCapabilities(body, tenantId, storyboardCompat);
+    const patched = projectTenantCapabilities(
+      body,
+      tenantId,
+      storyboardCompat,
+      proposalNegotiationProfile,
+      requestedVersion?.ok ? requestedVersion.servedVersion : undefined,
+    );
     if (patched !== body && !res.headersSent) {
       res.setHeader('content-length', String(patched.length));
     }
@@ -780,6 +806,8 @@ function projectTenantCapabilities(
   body: Buffer,
   tenantId: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
+  proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'],
+  servedVersionOverride?: string,
 ): Buffer {
   try {
     const parsed = JSON.parse(body.toString('utf8')) as {
@@ -803,9 +831,13 @@ function projectTenantCapabilities(
     };
     const structured = parsed.result?.structuredContent;
     if (!structured || typeof structured !== 'object') return body;
-    const servedVersion = typeof structured.adcp_version === 'string'
-      ? structured.adcp_version
-      : TRAINING_AGENT_DEFAULT_ADCP_VERSION;
+    // Dedicated profile routes default unpinned capability discovery to their
+    // exact beta contract. Pinned requests use the normal resolver, so a
+    // stable `3.2` selector is never silently mapped to this prerelease.
+    const servedVersion = servedVersionOverride
+      ?? (typeof structured.adcp_version === 'string'
+        ? structured.adcp_version
+        : TRAINING_AGENT_DEFAULT_ADCP_VERSION);
     structured.adcp_version = servedVersion;
     const adcp = structured.adcp && typeof structured.adcp === 'object'
       ? structured.adcp
@@ -873,7 +905,11 @@ function projectTenantCapabilities(
         ...mediaBuy,
         ...salesProjection,
         ...(supportsGetProductsRejected(servedVersion) && {
-          lifecycle_tools: [...PRODUCT_DISCOVERY_TOOL_NAMES],
+          lifecycle_tools: [...PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES],
+        }),
+        ...(proposalNegotiationProfile && supportsGetProductsRejected(servedVersion) && {
+          supports_proposals: true,
+          proposal_refinement: proposalCapabilitiesForProfile(proposalNegotiationProfile),
         }),
         features: {
           ...(

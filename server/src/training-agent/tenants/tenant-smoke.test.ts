@@ -138,6 +138,19 @@ async function callTenantTool(url: string, id: number, name: string, args: Recor
   return response.json() as Promise<Record<string, unknown>>;
 }
 
+async function listTenantTools(url: string, id: number): Promise<Record<string, unknown>> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json',
+      authorization: 'Bearer test-token',
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/list' }),
+  });
+  return response.json() as Promise<Record<string, unknown>>;
+}
+
 describe('tenant routing smoke', () => {
   beforeEach(() => {
     clearSessions();
@@ -425,6 +438,114 @@ describe('tenant routing smoke', () => {
           expect(capabilities?.specialisms).toContain('creative-transformers');
         }
       }
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('serves proposal-profile capabilities and SDK-shaped 3.2 refinement over HTTP', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/profiles/constrained-seller/mcp`;
+      await initializeTenant(url);
+
+      const toolsResponse = await listTenantTools(url, 2) as {
+        result?: { tools?: Array<{ name?: string }> };
+      };
+      expect(toolsResponse.result?.tools?.map(tool => tool.name)).toEqual(
+        expect.arrayContaining(['request_proposals', 'refine_proposals', 'decline_proposals']),
+      );
+
+      const capabilitiesResponse = await callTenantTool(url, 3, 'get_adcp_capabilities', {
+        adcp_version: '3.2-beta.0',
+        adcp_major_version: 3,
+      }) as {
+        result?: { structuredContent?: {
+          adcp_version?: string;
+          adcp?: { supported_versions?: string[] };
+          media_buy?: {
+            supports_proposals?: boolean;
+            lifecycle_tools?: string[];
+            proposal_refinement?: { supported_dimensions?: string[]; max_alternatives?: number };
+          };
+        } };
+      };
+      expect(capabilitiesResponse.result?.structuredContent?.adcp_version).toBe('3.2-beta.0');
+      expect(capabilitiesResponse.result?.structuredContent?.adcp?.supported_versions).toContain('3.2-beta.0');
+      const mediaBuy = capabilitiesResponse.result?.structuredContent?.media_buy;
+      expect(mediaBuy?.supports_proposals).toBe(true);
+      expect(mediaBuy?.lifecycle_tools).toEqual([
+        'list_products',
+        'request_proposals',
+        'refine_proposals',
+        'decline_proposals',
+      ]);
+      expect(mediaBuy?.proposal_refinement).toEqual({
+        supported_dimensions: [
+          'total_budget',
+          'cpm',
+          'impressions',
+          'flight',
+          'product_changes',
+          'criteria',
+          'alternatives',
+        ],
+        max_alternatives: 3,
+      });
+
+      for (const [id, adcpVersion] of [[31, '3.2'], [32, '3.0']] as const) {
+        const nonBetaCapabilities = await callTenantTool(url, id, 'get_adcp_capabilities', {
+          adcp_version: adcpVersion,
+          adcp_major_version: 3,
+        }) as {
+          result?: { structuredContent?: {
+            adcp_version?: string;
+            media_buy?: { lifecycle_tools?: string[]; proposal_refinement?: unknown };
+          } };
+        };
+        expect(nonBetaCapabilities.result?.structuredContent?.adcp_version).toBe('3.0');
+        expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.lifecycle_tools).toBeUndefined();
+        expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.proposal_refinement).toBeUndefined();
+      }
+
+      const requested = await callTenantTool(url, 4, 'request_proposals', {
+        adcp_version: '3.2-beta.0',
+        adcp_major_version: 3,
+        idempotency_key: 'tenant-profile-request-0001',
+        brand: { domain: 'buyer.example' },
+        brief: 'social engagement display',
+      }) as {
+        result?: { structuredContent?: {
+          adcp_version?: string;
+          proposals?: Array<{ proposal_id?: string }>;
+        } };
+      };
+      expect(requested.result?.structuredContent?.adcp_version).toBe('3.2-beta.0');
+      const sourceProposalId = requested.result?.structuredContent?.proposals?.[0]?.proposal_id;
+      expect(sourceProposalId).toBeTruthy();
+
+      const refined = await callTenantTool(url, 5, 'refine_proposals', {
+        adcp_version: '3.2-beta.0',
+        adcp_major_version: 3,
+        idempotency_key: 'tenant-profile-refine-0001',
+        refinements: [{
+          proposal_id: sourceProposalId,
+          action: 'revise',
+          constraints: { total_budget: { currency: 'USD', max: 50_000 } },
+          alternatives: { count: 2 },
+        }],
+      }) as {
+        result?: { structuredContent?: {
+          adcp_version?: string;
+          adcp_error?: { message?: string };
+          results?: Array<{ outcome?: string; proposals?: unknown[] }>;
+        } };
+      };
+      const refinement = refined.result?.structuredContent;
+      expect(refinement?.adcp_version).toBe('3.2-beta.0');
+      expect(refinement?.adcp_error).toBeUndefined();
+      expect(refinement?.results?.[0]?.outcome).toBe('revised');
+      expect(refinement?.results?.[0]?.proposals).toHaveLength(2);
     } finally {
       await close();
     }
