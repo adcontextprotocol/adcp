@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/request-proposals-request.json",
   "title": "Request Proposals Request",
-  "description": "Ask a seller to create one or more indicative media-plan proposals from a brief. Each returned proposal_id identifies one immutable draft snapshot; revise or finalize it through refine_proposals, or decline it through decline_proposals.",
+  "description": "Ask a seller to create one or more indicative media-plan proposals from a brief. Provide exactly one brand source: either top-level brand or a natural-key account containing brand and operator. Each returned proposal_id identifies one immutable draft snapshot; revise or finalize it through refine_proposals, or decline it through decline_proposals.",
   "x-tool-summary": "Ask a seller to create one or more draft media-plan proposals from a campaign brief.",
   "type": "object",
   "x-mutates-state": true,
@@ -31,9 +31,12 @@
     },
     "account": {
       "allOf": [{ "$ref": "/schemas/core/canonical-account-ref.json" }],
-      "description": "Account scope for proposal terms. A natural-key account is the single brand source and MUST NOT be combined with top-level brand."
+      "description": "Alternative brand source for proposal terms. Provide either this natural-key account containing brand and operator or top-level brand, not both."
     },
-    "brand": { "$ref": "/schemas/core/brand-key.json" },
+    "brand": {
+      "$ref": "/schemas/core/brand-key.json",
+      "description": "Alternative brand source for proposal terms. Provide either top-level brand or a natural-key account containing brand and operator, not both."
+    },
     "brief": {
       "type": "string",
       "minLength": 1,

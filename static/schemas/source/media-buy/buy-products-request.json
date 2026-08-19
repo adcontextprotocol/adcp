@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/buy-products-request.json",
   "title": "Buy Products Request",
-  "description": "Create a MediaBuy directly from published product offers. This buyer-composed path accepts published commercial terms, supports targeting and delivery controls, and never accepts inline creatives or creative assignments. The seller records an immutable accepted proposal snapshot so later commercial amendments can use refine_proposals.",
+  "description": "Create a MediaBuy directly from published product offers. Provide exactly one brand source: top-level brand when account is ID-only, or brand and operator inside a natural-key account. This buyer-composed path accepts published commercial terms, supports targeting and delivery controls, and never accepts inline creatives or creative assignments. The seller records an immutable accepted proposal snapshot so later commercial amendments can use refine_proposals.",
   "x-tool-summary": "Create a media buy directly from published seller products and record its accepted commercial snapshot.",
   "type": "object",
   "x-mutates-state": true,
@@ -28,7 +28,8 @@
       "description": "Execution account. A natural-key account is the single brand source and MUST NOT be combined with top-level brand."
     },
     "brand": {
-      "$ref": "/schemas/core/brand-key.json"
+      "$ref": "/schemas/core/brand-key.json",
+      "description": "Brand source required when account is ID-only. Omit when account already contains brand and operator."
     },
     "advertiser_industry": {
       "$ref": "/schemas/enums/advertiser-industry.json",
