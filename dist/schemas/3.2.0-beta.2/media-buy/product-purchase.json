@@ -1,0 +1,161 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/product-purchase.json",
+  "title": "Product Purchase",
+  "description": "One canonical product selection shared by buy_products inputs and compact proposal snapshots. Direct purchases accept published terms as-is; sellers resolve omitted inherited flight, measurement, and performance terms into the accepted commercial snapshot. Changes to those terms belong in the proposal lifecycle. Creative content and creative assignments are intentionally absent.",
+  "type": "object",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "direct_purchase_terms": "On buy_products, supplied start_time, end_time, measurement_terms, and performance_standards MUST exactly match the selected published offer; omission inherits that offer.",
+      "accepted_snapshot_terms": "Inside canonical-proposal.commercial_terms, each purchase MUST carry resolved start_time and end_time and MUST preserve every applicable measurement term and performance standard. Omission of measurement_terms or performance_standards means the accepted offer declared none.",
+      "pricing_identity": {
+        "pricing_option_id": "equals_pricing.pricing_option_id_when_pricing_present",
+        "on_violation": "reject_before_commitment"
+      }
+    }
+  },
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "product"
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "product_pricing_option"
+    },
+    "pricing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/canonical-pricing-option.json",
+      "description": "Resolved selected pricing terms. Optional on buy_products input, where pricing_option_id plus the versioned feed identifies the offer; required inside accepted commercial_terms. Its pricing_option_id MUST match the sibling field."
+    },
+    "format_option_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/format-option-ref.json"
+      },
+      "minItems": 1,
+      "description": "Canonical format options selected from the published product offer. Legacy named-format identifiers are not accepted."
+    },
+    "catalog_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "x-entity": "catalog"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Previously synchronized account catalog IDs promoted by this selection. Callers manage catalog bodies through sync_catalogs rather than inlining them here."
+    },
+    "budget": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Hard spend cap for this selection in the media-buy currency."
+    },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional hard daily spend ceiling for this purchase. It is subordinate to the media-buy aggregate daily cap and is not a reserved daily allocation. Its day boundary is the media buy's budget_cap_timezone."
+    },
+    "min_spend_target": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Soft lifetime spend target for seller-optimized allocation."
+    },
+    "impressions": {
+      "type": "number",
+      "minimum": 0
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "not": {
+        "const": "asap"
+      },
+      "description": "Resolved package flight start. On direct-purchase input, omission inherits the MediaBuy start; accepted proposal snapshots carry the resolved timestamp."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Resolved package flight end. On direct-purchase input, omission inherits the MediaBuy end; accepted proposal snapshots carry the resolved timestamp."
+    },
+    "pacing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/pacing.json"
+    },
+    "bidding": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/bidding-policy.json"
+    },
+    "targeting_overlay": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/targeting.json",
+      "description": "Buyer-selected targeting, including compatible wholesale signal selections, applied within the product's published targeting contract."
+    },
+    "optimization_goals": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/canonical-optimization-goal.json"
+      },
+      "minItems": 1
+    },
+    "audience_evidence_requirements": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/product-audience-evidence-requirements.json",
+      "description": "Buyer evidence-admissibility policy carried into the accepted purchase snapshot."
+    },
+    "audience_evidence_pins": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/audience-evidence-pin.json"
+      },
+      "minItems": 1,
+      "description": "Exact immutable audience-evidence snapshots selected for package construction."
+    },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Package-level agency estimate or authorization reference."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/context.json",
+      "description": "Opaque buyer package correlation preserved in the accepted snapshot and readback."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+    },
+    "measurement_terms": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/canonical-measurement-terms.json",
+      "description": "Published or negotiated billing-measurement and makegood terms for this purchase. Direct buyers may omit this to inherit the product default; accepted proposal snapshots preserve the resolved terms."
+    },
+    "performance_standards": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/canonical-performance-standard.json"
+      },
+      "minItems": 1,
+      "description": "Published or negotiated metric thresholds and measurement vendors. Direct buyers may omit this to inherit the product defaults; accepted proposal snapshots preserve every applicable standard."
+    }
+  },
+  "required": [
+    "product_id",
+    "pricing_option_id"
+  ],
+  "additionalProperties": false,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "creatives"
+        ]
+      },
+      {
+        "required": [
+          "creative_assignments"
+        ]
+      },
+      {
+        "required": [
+          "catalogs"
+        ]
+      }
+    ]
+  }
+}

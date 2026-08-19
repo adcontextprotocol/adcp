@@ -1,0 +1,197 @@
+id: creative_transformers/governance_approved
+version: "1.0.0"
+title: "Creative agent accepts a signed paid-build authorization"
+category: creative_transformers
+summary: "Verifies that a valid task- and payload-bound governance token permits a paid creative build and returns a retained artifact."
+track: creative
+requires: [multi_agent]
+default_agent: creative-builder
+required_tools: [sync_accounts, sync_governance, list_transformers, sync_plans, check_governance, build_creative]
+
+requires_capability:
+  path: adcp.governance_enforcement.tasks
+  contains:
+    task: build_creative
+    modes: [signed_context]
+
+narrative: |
+  The runner discovers a transformer whose unit price is strictly positive,
+  creates a permissive plan in that currency, and obtains authorization for the
+  exact build_creative payload. The creative agent must verify the token and
+  return a retained render artifact. This positive path prevents an
+  always-rejecting implementation from satisfying the enforcement claim.
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+  creative_agent_url: "https://test-agent.adcontextprotocol.org/creative-builder"
+agent:
+  interaction_model: stateless_transform
+  capabilities: [supports_transformers, governance_aware]
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+prerequisites:
+  description: "A multi-agent runner with creative-builder and governance agents. Override creative_agent_url with the exact creative endpoint under test."
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discovery_and_service_setup
+    title: "Set up the creative service and discover paid work"
+    steps:
+      - id: sync_accounts
+        agent: creative-builder
+        title: "Establish the buyer account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand: { domain: "acmeoutdoor.example" }
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#creative_governance_approved_sync_accounts"
+        validations:
+          - check: response_schema
+
+      - id: sync_governance
+        agent: creative-builder
+        title: "Register the governance provider"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        sample_request:
+          accounts:
+            - account:
+                brand: { domain: "acmeoutdoor.example" }
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#creative_governance_approved_sync_governance"
+        validations:
+          - check: response_schema
+
+      - id: discover_paid_transformer
+        agent: creative-builder
+        title: "Discover a positive-price transformer"
+        task: list_transformers
+        schema_ref: "creative/list-transformers-request.json"
+        response_schema_ref: "creative/list-transformers-response.json"
+        doc_ref: "/creative/task-reference/list_transformers"
+        sample_request:
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+          include_pricing: true
+        context_outputs:
+          - { name: transformer_id, path: "transformers[0].transformer_id" }
+          - { name: target_capability_id, path: "transformers[0].output_capability_ids[0]" }
+          - { name: pricing_currency, path: "transformers[0].pricing_options[0].currency" }
+        validations:
+          - check: response_schema
+          - check: field_greater_than
+            path: "transformers[0].pricing_options[0].unit_price"
+            value: 0
+          - check: field_present
+            path: "transformers[0].pricing_options[0].currency"
+
+  - id: authorization
+    title: "Authorize the exact paid build"
+    steps:
+      - id: sync_plans
+        agent: governance
+        title: "Create a permissive creative-services plan"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#creative_governance_approved_sync_plans"
+          plans:
+            - plan_id: "comply-creative-approved-plan"
+              brand: { domain: "acmeoutdoor.example" }
+              objectives: "Produce campaign voiceover creative"
+              budget:
+                total: 1000000000
+                currency: "$context.pricing_currency"
+                reallocation_threshold: 1000000000
+              flight:
+                start: "2020-01-01T00:00:00Z"
+                end: "2099-06-30T23:59:59Z"
+              countries: ["US"]
+        context_outputs:
+          - { name: plan_id, path: "plans[0].plan_id" }
+        validations:
+          - check: response_schema
+
+      - id: check_governance_intent
+        agent: governance
+        title: "Approve the exact build payload"
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        sample_request:
+          plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
+          target_agent: "$context.creative_agent_url"
+          tool: "build_creative"
+          purchase_type: "creative_services"
+          proposed_commitment: { amount: 1000000000, currency: "$context.pricing_currency" }
+          payload:
+            account:
+              brand: { domain: "acmeoutdoor.example" }
+              operator: "pinnacle-agency.example"
+            mode: "execute"
+            transformer_id: "$context.transformer_id"
+            target_capability_id: "$context.target_capability_id"
+            message: "Produce a 30-second trail campaign voiceover."
+            idempotency_key: "$generate:uuid_v4#creative_governance_approved_build"
+        context_outputs:
+          - { name: governance_context, path: "governance_context" }
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "verdict"
+            value: "approved"
+          - check: field_present
+            path: "governance_context"
+
+  - id: authorized_build
+    title: "Render and prove the retained artifact"
+    steps:
+      - id: build_creative_approved
+        agent: creative-builder
+        title: "Execute the authorized paid build"
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        stateful: true
+        sample_request:
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+          mode: "execute"
+          transformer_id: "$context.transformer_id"
+          target_capability_id: "$context.target_capability_id"
+          message: "Produce a 30-second trail campaign voiceover."
+          idempotency_key: "$generate:uuid_v4#creative_governance_approved_build"
+          governance_context: "$context.governance_context"
+        validations:
+          - check: response_schema
+          - check: field_present
+            path: "creative_manifest"
+            description: "The authorized paid build produced a creative artifact"
+          - check: field_present
+            path: "build_variant_id"
+            description: "The paid artifact is retained for refinement"

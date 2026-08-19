@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/mcp/2026-07-28/profiles/production/governance/get-plan-audit-logs-request.json",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
+  "properties": {
+    "plan_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "x-entity": "governance_plan"
+      },
+      "minItems": 1
+    },
+    "portfolio_plan_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "x-entity": "governance_plan"
+      },
+      "minItems": 1
+    },
+    "governance_contexts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "purchase_types": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:enums~1purchase-type.json"
+      },
+      "minItems": 1
+    },
+    "include_entries": {
+      "type": "boolean",
+      "default": false
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "plan_ids"
+      ]
+    },
+    {
+      "required": [
+        "portfolio_plan_ids"
+      ]
+    },
+    {
+      "required": [
+        "governance_contexts"
+      ]
+    }
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:enums/purchase-type.json": {
+      "type": "string",
+      "enum": [
+        "media_buy",
+        "rights_license",
+        "signal_activation",
+        "creative_services"
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}
