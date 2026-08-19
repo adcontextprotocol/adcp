@@ -113,7 +113,7 @@
     "test:language-tag-refs": "node --test --test-force-exit --test-timeout=30000 tests/lint-language-tag-refs.test.cjs && node scripts/lint-language-tag-refs.cjs",
     "test:compliance-snippets": "node --test --test-force-exit --test-timeout=30000 tests/generate-compliance-snippets.node.mjs tests/link-compliance-symbols.node.mjs && npm run build:compliance -- --check",
     "test:doc-compliance-drift": "node --test --test-force-exit --test-timeout=30000 tests/lint-doc-compliance-drift.test.cjs",
-    "test:substitution-vector-names": "node scripts/lint-substitution-vector-names.cjs",
+    "test:substitution-vector-names": "node scripts/lint-substitution-vector-names.cjs && node --test --test-force-exit --test-timeout=30000 tests/universal-macro-translation-vectors.test.cjs",
     "test:unit": "npm run test:canonical-pixel-ratio && npm run test:governance-jws-vectors && vitest run --dir tests/ --pool=threads",
     "test:redteam": "tsx server/src/addie/testing/redteam-cli.ts",
     "test:server-unit": "vitest run --config server/vitest.config.ts tests/unit/",

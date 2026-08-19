@@ -567,7 +567,19 @@ Behavior:
   (`%%…%%`, `{{…}}`, `${…}`, `[UPPER_SNAKE]`) — almost always a mapping that should have
   used the `native` arm.
 - Only query-parameter **values** are translated; a macro in a key position is left
-  untouched.
+  untouched. The path and fragment also pass through byte-for-byte.
+- Substitution is single-pass. Macro-shaped text inside a substituted `value` is data,
+  percent-encoded once, and never re-expanded.
+- Diagnostic ordering is deterministic: `dropped_params` follows query occurrence
+  order (including repeated keys); `unmapped_macros` and `dropped_consent_macros`
+  follow first occurrence and are deduplicated; `suspect_native_values` follows
+  mapping property order and is deduplicated.
+
+The language-neutral golden fixture at
+[`/compliance/latest/test-vectors/universal-macro-translation.json`](https://adcontextprotocol.org/compliance/latest/test-vectors/universal-macro-translation.json)
+pins the output URL, every diagnostic array, and settled edge-case ordering.
+SDK implementations MUST run the applicable versioned fixture rather than maintain an
+independent behavioral table.
 
 ### 4. Impression Time
 
