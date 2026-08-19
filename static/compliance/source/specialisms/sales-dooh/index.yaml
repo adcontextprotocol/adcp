@@ -98,6 +98,16 @@ fixtures:
           name: "Central concourse portrait screens"
           mode: "included"
           tags: ["transit", "concourse", "portrait"]
+          identifiers:
+            - type: "venue_id"
+              value: "metro:central-concourse"
+          dooh_placement_attributes:
+            slot_duration_seconds: 10
+            loop_duration_seconds: 80
+            screen_resolution:
+              width: 1080
+              height: 1920
+            motion: "full_motion"
       reporting_capabilities:
         available_reporting_frequencies: ["daily"]
         expected_delay_minutes: 240
@@ -162,9 +172,10 @@ phases:
     title: "Discover venue and screen inventory"
     narrative: |
       The buyer reads an exact seeded DOOH product from the 3.2 product list.
-      The returned product must be independently actionable: its canonical format
-      declaration supplies dimensions and other asset constraints without a
-      legacy format-catalog lookup.
+      The returned product must be independently actionable: placement attributes
+      describe the physical screen and loop, while its canonical format declaration
+      independently supplies accepted asset constraints without a legacy
+      format-catalog lookup.
     steps:
       - id: get_dooh_products
         title: "Read non-guaranteed DOOH products"
@@ -179,7 +190,7 @@ phases:
           - channels containing dooh
           - delivery_type set to non_guaranteed
           - canonical format_options with concrete screen dimensions
-          - publisher property and placement scope
+          - publisher property and placement scope with DOOH inventory facts
           - plays and dooh_metrics reporting
         sample_request:
           idempotency_key: "$generate:uuid_v4#sales_dooh_product_discovery_get_dooh_products"
@@ -210,21 +221,48 @@ phases:
             path: "products[0].delivery_type"
             value: "non_guaranteed"
             description: "Returned product uses the non-guaranteed path"
-          - check: field_present
+          - check: field_value
             path: "products[0].format_options[0].format_kind"
-            description: "Product carries a canonical format declaration"
-          - check: field_present
+            value: "image"
+            description: "Canonical image declaration remains the creative-acceptance authority"
+          - check: field_value
             path: "products[0].format_options[0].params.width"
-            description: "Canonical format declares screen width"
-          - check: field_present
+            value: 1080
+            description: "Canonical format declares accepted creative width"
+          - check: field_value
             path: "products[0].format_options[0].params.height"
-            description: "Canonical format declares screen height"
+            value: 1920
+            description: "Canonical format declares accepted creative height"
           - check: field_present
             path: "products[0].publisher_properties[0].publisher_domain"
             description: "Product identifies its publisher property scope"
           - check: field_present
             path: "products[0].placements[0].placement_id"
             description: "Product identifies its public screen placement"
+          - check: field_value
+            path: "products[0].placements[0].identifiers[0].type"
+            value: "venue_id"
+            description: "Placement exposes an optional public venue identifier"
+          - check: field_value
+            path: "products[0].placements[0].dooh_placement_attributes.slot_duration_seconds"
+            value: 10
+            description: "Placement declares the scheduled slot duration"
+          - check: field_value
+            path: "products[0].placements[0].dooh_placement_attributes.loop_duration_seconds"
+            value: 80
+            description: "Placement declares the canonical loop duration"
+          - check: field_value
+            path: "products[0].placements[0].dooh_placement_attributes.screen_resolution.width"
+            value: 1080
+            description: "Placement declares physical screen width"
+          - check: field_value
+            path: "products[0].placements[0].dooh_placement_attributes.screen_resolution.height"
+            value: 1920
+            description: "Placement declares physical screen height"
+          - check: field_value
+            path: "products[0].placements[0].dooh_placement_attributes.motion"
+            value: "full_motion"
+            description: "Physical motion capability remains distinct from the image-only format contract"
           - check: field_contains
             path: "products[0].reporting_capabilities.available_metrics[*]"
             value: "plays"
