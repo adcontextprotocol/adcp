@@ -694,7 +694,30 @@ describe('NovaMind AI publisher', () => {
     const cpa = novamind.pricingTemplates.find(t => t.model === 'cpa');
     expect(cpa).toBeDefined();
     expect(cpa!.eventType).toBe('custom');
+    expect(cpa!.customEventName).toBe('agent_session');
     expect(cpa!.fixedPrice).toBeGreaterThan(0);
+
+    const generatedCpa = buildCatalog()
+      .filter(cp => cp.publisherId === 'novamind')
+      .flatMap(cp => cp.product.pricing_options)
+      .find(option => option.pricing_model === 'cpa');
+    expect(generatedCpa).toMatchObject({
+      event_type: 'custom',
+      custom_event_name: 'agent_session',
+    });
+  });
+
+  it('rejects a custom CPA pricing template without a custom event name', () => {
+    const cpa = novamind.pricingTemplates.find(t => t.model === 'cpa')!;
+    const customEventName = cpa.customEventName;
+    try {
+      delete cpa.customEventName;
+      expect(() => buildCatalog()).toThrow(
+        /requires customEventName when eventType is custom/,
+      );
+    } finally {
+      cpa.customEventName = customEventName;
+    }
   });
 
   it('has flat_rate pricing for exclusive sponsorships', () => {

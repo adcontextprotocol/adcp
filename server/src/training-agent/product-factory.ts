@@ -199,12 +199,18 @@ function buildPricingOption(
       };
       break;
     case 'cpa':
+      if (template.eventType === 'custom' && !template.customEventName) {
+        throw new Error(`CPA pricing template ${id} requires customEventName when eventType is custom`);
+      }
       option = {
         pricing_option_id: id,
         pricing_model: 'cpa',
         currency: template.currency,
         fixed_price: template.fixedPrice ?? 0,
         event_type: template.eventType ?? 'purchase',
+        ...(template.eventType === 'custom' && template.customEventName && {
+          custom_event_name: template.customEventName,
+        }),
         ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
       };
       break;
