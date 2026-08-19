@@ -49,7 +49,8 @@ test-vectors/request-signing/
 │   └── 028-unsigned-protocol-method-required.json → request_signature_required (unsigned `tasks/cancel` JSON-RPC POST; method is in `protocol_methods_required_for`)
 ├── profile-3.2/                          3.2-only wire-format vectors
 │   ├── positive/001-post-with-content-digest.json  RFC 8941 Base64 + required body binding
-│   └── negative/001-base64url-sf-binary.json       → request_signature_header_malformed (legacy alphabet)
+│   ├── negative/001-base64url-sf-binary.json       → request_signature_header_malformed (legacy alphabet)
+│   └── negative/002-multiple-trailing-dots.json    → request_target_uri_malformed (empty DNS label)
 └── positive/                             vectors that MUST verify successfully
     ├── 001-basic-post.json                   Ed25519, no content-digest
     ├── 002-post-with-content-digest.json     Ed25519, content-digest covered
