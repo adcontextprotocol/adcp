@@ -13707,6 +13707,21 @@ describe('proposal lifecycle', () => {
     return finalized.proposal as Record<string, unknown>;
   }
 
+  it('returns structured INVALID_REQUEST when canonical root constraints reject a discovery-valid call', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result, isError } = await simulateCallTool(server, 'request_proposals', {
+      idempotency_key: 'discovery-root-deferral-0001',
+      brief: 'social engagement display',
+    });
+
+    expect(isError).toBe(true);
+    expect(result).toMatchObject({
+      code: 'INVALID_REQUEST',
+      field: 'brand',
+      recovery: 'correctable',
+    });
+  });
+
   it('serializes concurrent proposal requests without losing returned snapshots', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const requests = await Promise.all([
