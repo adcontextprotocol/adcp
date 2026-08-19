@@ -641,12 +641,12 @@ test('format options can be referenced by publisher domain or product-local ID',
 test('placement-definition accepts dooh_placement_attributes and identifiers', async () => {
   const validate = await compile('/schemas/core/placement-definition.json');
   const placement = {
-    placement_id: 'central_concourse_north',
-    name: 'Central concourse north LED',
-    property_ids: ['central_concourse_network'],
+    placement_id: 'mall_concourse_north',
+    name: 'Mall concourse north LED',
+    property_ids: ['mall_concourse_network'],
     channels: ['dooh'],
     identifiers: [
-      { type: 'screen_id', value: 'ts-north-001' },
+      { type: 'screen_id', value: 'mall-north-001' },
       { type: 'openooh_venue_type', value: 'openooh-1.1:20501' }
     ],
     dooh_placement_attributes: {
@@ -690,8 +690,7 @@ test('canonical list_products placements preserve DOOH inventory facts', async (
     name: 'Central concourse portrait screens',
     mode: 'included',
     identifiers: [
-      { type: 'venue_id', value: 'metro:central-concourse' },
-      { type: 'openooh_venue_type', value: 'openooh-1.1:20501' }
+      { type: 'venue_id', value: 'metro:central-concourse' }
     ],
     dooh_placement_attributes: {
       slot_duration_seconds: 10,
