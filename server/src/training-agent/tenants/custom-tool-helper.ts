@@ -58,7 +58,12 @@ interface IdempotencyClaim {
   claimToken: string;
 }
 
-function toAdaptedResponse(result: unknown, callerContext: unknown, options: CustomToolOptions): AdaptedResponse {
+function toAdaptedResponse(
+  toolName: string,
+  result: unknown,
+  callerContext: unknown,
+  options: CustomToolOptions,
+): AdaptedResponse {
   const errsField = (result as { errors?: unknown[] } | null | undefined)?.errors;
   const servedAdcpVersion = typeof (result as { adcp_version?: unknown } | null | undefined)?.adcp_version === 'string'
     ? (result as { adcp_version: string }).adcp_version
@@ -88,7 +93,10 @@ function toAdaptedResponse(result: unknown, callerContext: unknown, options: Cus
   });
   const response = withEnvelope as Record<string, unknown>;
   return {
-    content: [{ type: 'text', text: options.responseSummary?.(inner) ?? JSON.stringify(response) }],
+    content: [{
+      type: 'text',
+      text: options.responseSummary?.(inner) ?? `${toolName} completed.`,
+    }],
     structuredContent: response,
   };
 }
@@ -249,7 +257,7 @@ export function customToolFor(
           if (outcome.kind === 'replay') {
             const replayed: Record<string, unknown> = { ...(outcome.response as Record<string, unknown>), replayed: true };
             if (replayed.status === undefined) replayed.status = 'completed';
-            return toAdaptedResponse(replayed, callerContext, options);
+            return toAdaptedResponse(name, replayed, callerContext, options);
           }
           claim = {
             principal,
@@ -273,7 +281,7 @@ export function customToolFor(
           logger.error({ err, tool: name }, 'custom-tool flushDirtySessions threw');
           return serviceUnavailable(err, callerContext);
         }
-        const response = toAdaptedResponse(result, callerContext, options);
+        const response = toAdaptedResponse(name, result, callerContext, options);
         if (claim) {
           const hasPayloadErrors = Array.isArray((result as { errors?: unknown[] } | null | undefined)?.errors)
             && ((result as { errors?: unknown[] }).errors ?? []).length > 0;

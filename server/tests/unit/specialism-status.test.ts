@@ -2,6 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { computeSpecialismStatus } from '../../src/addie/services/compliance-testing.js';
 
 describe('computeSpecialismStatus', () => {
+  it('maps the sales-dooh claim to the sales_dooh storyboard', () => {
+    const result = computeSpecialismStatus(
+      ['sales-dooh'],
+      [{ storyboard_id: 'sales_dooh', status: 'passing', steps_passed: 5, steps_total: 5 }],
+    );
+    expect(result).toEqual({ 'sales-dooh': 'passing' });
+  });
+
   it('returns passing for specialisms whose storyboard passed', () => {
     const result = computeSpecialismStatus(
       ['sales-broadcast-tv'],

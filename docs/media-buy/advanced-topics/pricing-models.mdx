@@ -456,7 +456,6 @@ Revenue share is channel-independent. Affiliate is the immediate use case, but s
     "daypart": "morning_commute",
     "duration_hours": 4,
     "sov_percentage": 25,
-    "loop_duration_seconds": 15,
     "estimated_impressions": 120000
   }
 }
@@ -466,7 +465,7 @@ Revenue share is channel-independent. Affiliate is the immediate use case, but s
 
 **DOOH parameters** (`parameters.type: "dooh"`):
 - `sov_percentage`: Guaranteed share of voice as a percentage (0-100)
-- `loop_duration_seconds`: Duration of ad loop rotation in seconds
+- `loop_duration_seconds`: Deprecated compatibility copy of the placement's `dooh_placement_attributes.loop_duration_seconds`. New integrations read the placement-level value; when both are present they must agree. Offers with different loop durations use distinct placements or products rather than pricing-option-specific copies.
 - `min_plays_per_hour`: Minimum guaranteed plays per hour
 - `venue_package`: Named collection of screens
 - `duration_hours`: Duration of the slot in hours (e.g., 24 for a full-day takeover)

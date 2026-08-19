@@ -917,6 +917,19 @@
           "minimum": 0,
           "description": "Clicks to simulate. Used by simulate_delivery."
         },
+        "plays": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Raw DOOH or broadcast plays to add to delivery. Used by simulate_delivery for single-package buys; sellers MUST surface the cumulative value at totals.plays and by_package[0].plays in the next get_media_buy_delivery response. Multi-package simulations require a future package-scoped form and MUST reject this media-buy-scoped field."
+        },
+        "dooh_metrics": {
+          "allOf": [
+            {
+              "$ref": "/schemas/core/delivery-metrics.json#/properties/dooh_metrics"
+            }
+          ],
+          "description": "DOOH delivery detail to inject. Used by simulate_delivery for single-package buys; the latest injected block replaces the previous simulated DOOH detail and MUST surface at totals.dooh_metrics and by_package[0].dooh_metrics. Multi-package simulations require a future package-scoped form and MUST reject this media-buy-scoped field."
+        },
         "conversions": {
           "type": "integer",
           "minimum": 0,
@@ -1312,6 +1325,12 @@
           "delivery_date": "2026-02-05",
           "impressions": 10000,
           "clicks": 150,
+          "plays": 240,
+          "dooh_metrics": {
+            "loop_plays": 240,
+            "screens_used": 12,
+            "screen_time_seconds": 1440
+          },
           "reported_spend": {
             "amount": 150,
             "currency": "USD"

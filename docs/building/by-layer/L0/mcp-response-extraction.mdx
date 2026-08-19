@@ -86,6 +86,8 @@ MCP 2025-03-26 introduced `structuredContent` for typed tool results. AdCP serve
 
 The `structuredContent` object IS the AdCP response — task-specific fields (`products`, `media_buy_id`, `status`, etc.) are at the top level, not nested.
 
+When `structuredContent` carries the authoritative success payload, `content` MAY contain a terse human-readable summary. Producers SHOULD NOT serialize the complete AdCP payload again into `content[].text`; doing so doubles the wire bytes and model-context cost without adding information. A server supporting an older MCP client that cannot read `structuredContent` MAY instead put the JSON payload in text as the fallback form below and omit `structuredContent`. It should not emit both full copies.
+
 ### Text Fallback
 
 Older MCP servers (pre-2025-03-26) serialize the response as JSON in `content[].text`:
@@ -127,7 +129,7 @@ All data in `structuredContent` and `content[].text` is seller-controlled. The s
 
 ### Size Limits
 
-Clients SHOULD enforce a maximum payload size before processing. A recommended limit is 1MB for `structuredContent`. For text fallback, apply the limit before `JSON.parse` to prevent memory exhaustion from oversized payloads.
+For pageable reads and other read-only tasks that support field projection, producers SHOULD target at most 128 KiB per serialized MCP response; see [Managing response size](/docs/building/concepts/managing-response-size#interoperability-size-target). Clients SHOULD independently enforce a streamed limit on the complete serialized MCP message before buffering or JSON decoding. The recommended client safety limit is 1 MiB. For text fallback, also check the `content[].text` size before the inner `JSON.parse`. The larger safety limit is not a producer target: it bounds hostile or buggy input after normal interoperability guidance has failed.
 
 ### Prototype Pollution
 
@@ -145,6 +147,7 @@ Client libraries that implement this spec MUST:
 2. **Prefer `structuredContent`.** Only fall back to text parsing when `structuredContent` is absent.
 3. **Validate parsed text.** Only accept non-array objects from `JSON.parse`. Reject arrays, strings, numbers, booleans, and null.
 4. **Handle `adcp_error`-only `structuredContent`.** When `structuredContent` contains only an `adcp_error` key, return null — this is an error response that may be missing the `isError` flag.
+5. **Do not require duplicated success data.** Treat summary-only `content[].text` as normal whenever `structuredContent` is present; never compare it with, or expect it to reproduce, the structured payload.
 
 ## Test Vectors
 

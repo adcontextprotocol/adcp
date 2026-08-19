@@ -249,6 +249,10 @@ export interface RightsGrantState {
 export interface ComplyDeliveryAccumulator {
   impressions: number;
   clicks: number;
+  /** Raw DOOH/broadcast plays injected by simulate_delivery. */
+  plays?: number;
+  /** Latest DOOH delivery detail block injected by simulate_delivery. */
+  doohMetrics?: Record<string, unknown>;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
   conversionValue?: number;

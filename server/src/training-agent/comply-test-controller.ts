@@ -232,9 +232,10 @@ export function getDeliverySimulationForPeriod(
   for (const simulation of cumulative.datedSimulations) {
     const timestamp = new Date(`${simulation.deliveryDate}T00:00:00.000Z`).getTime();
     if (timestamp < start.getTime() || timestamp >= end.getTime()) continue;
-    const { impressions, clicks, conversions, reportedSpend, ...extensions } = simulation.metrics;
+    const { impressions, clicks, plays, conversions, reportedSpend, ...extensions } = simulation.metrics;
     filtered.impressions += impressions;
     filtered.clicks += clicks;
+    if (plays !== undefined) filtered.plays = (filtered.plays ?? 0) + plays;
     filtered.conversions += conversions;
     filtered.reportedSpend.amount += reportedSpend.amount;
     filtered.reportedSpend.currency = reportedSpend.currency;
@@ -285,6 +286,7 @@ function deliverySimulationSnapshot(
     },
   };
   applyExtendedDeliveryParams(snapshot, params);
+  if (typeof params.plays === 'number') snapshot.plays = params.plays;
   if (Array.isArray(params.vendor_metric_values)) {
     snapshot.vendorMetricValues = params.vendor_metric_values;
   }
@@ -353,6 +355,9 @@ function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, para
   if (params.viewability && typeof params.viewability === 'object' && !Array.isArray(params.viewability)) {
     cumulative.viewability = params.viewability as ComplyDeliveryAccumulator['viewability'];
   }
+  if (isRecord(params.dooh_metrics)) {
+    cumulative.doohMetrics = params.dooh_metrics;
+  }
   if (Array.isArray(params.not_yet_measurable_vendor_metrics)) {
     cumulative.deferredVendorMetrics = normalizeVendorMetricIdentities(params.not_yet_measurable_vendor_metrics) ?? [];
   }
@@ -382,6 +387,8 @@ function extendedDeliverySnapshot(cumulative: ComplyDeliveryAccumulator): Record
     ...(cumulative.commissionableValue !== undefined ? { commissionable_value: cumulative.commissionableValue } : {}),
     ...(cumulative.reachWindow ? { reach_window: cumulative.reachWindow } : {}),
     ...(cumulative.viewability ? { viewability: cumulative.viewability } : {}),
+    ...(cumulative.plays !== undefined ? { plays: cumulative.plays } : {}),
+    ...(cumulative.doohMetrics ? { dooh_metrics: cumulative.doohMetrics } : {}),
     ...(cumulative.deferredVendorMetrics ? { not_yet_measurable_vendor_metrics: cumulative.deferredVendorMetrics } : {}),
     ...(cumulative.vendorMetricValuesByPackage ? { vendor_metric_values_by_package: cumulative.vendorMetricValuesByPackage } : {}),
     ...(cumulative.deferredVendorMetricsByPackage ? { not_yet_measurable_vendor_metrics_by_package: cumulative.deferredVendorMetricsByPackage } : {}),
@@ -885,6 +892,9 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
 
       cumulative.impressions += impressions;
       cumulative.clicks += clicks;
+      if (typeof typedParams.plays === 'number') {
+        cumulative.plays = (cumulative.plays ?? 0) + typedParams.plays;
+      }
       cumulative.conversions += conversions;
       if (reportedSpend) {
         cumulative.reportedSpend.amount += reportedSpend.amount;
@@ -910,6 +920,8 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       if (typedParams.frequency !== undefined) simulated.frequency = typedParams.frequency;
       if (typedParams.reach_window !== undefined) simulated.reach_window = typedParams.reach_window;
       if (typedParams.viewability !== undefined) simulated.viewability = typedParams.viewability;
+      if (typedParams.plays !== undefined) simulated.plays = typedParams.plays;
+      if (typedParams.dooh_metrics !== undefined) simulated.dooh_metrics = typedParams.dooh_metrics;
       if (typedParams.is_final !== undefined) simulated.is_final = typedParams.is_final;
       if (typedParams.finalized_at !== undefined) simulated.finalized_at = typedParams.finalized_at;
       if (typedParams.measurement_window !== undefined) simulated.measurement_window = typedParams.measurement_window;
@@ -1625,12 +1637,17 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     if (mb) {
       if (
         mb.packages.length > 1
-        && (params.vendor_metric_values !== undefined || params.not_yet_measurable_vendor_metrics !== undefined)
+        && (
+          params.vendor_metric_values !== undefined
+          || params.not_yet_measurable_vendor_metrics !== undefined
+          || params.plays !== undefined
+          || params.dooh_metrics !== undefined
+        )
       ) {
         return {
           success: false,
           error: 'INVALID_PARAMS',
-          error_detail: 'Multi-package buys require package-scoped vendor metric values and deferrals',
+          error_detail: 'Multi-package buys require package-scoped simulation values; plays and dooh_metrics are supported only for single-package buys',
         };
       }
       if (
@@ -1671,6 +1688,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     if (params.commissionable_value !== undefined) simulatedExtras.commissionable_value = params.commissionable_value;
     if (params.reach_window !== undefined) simulatedExtras.reach_window = params.reach_window;
     if (params.viewability !== undefined) simulatedExtras.viewability = params.viewability;
+    if (params.plays !== undefined) simulatedExtras.plays = params.plays;
+    if (params.dooh_metrics !== undefined) simulatedExtras.dooh_metrics = params.dooh_metrics;
     if (params.is_final !== undefined) simulatedExtras.is_final = params.is_final;
     if (params.finalized_at !== undefined) simulatedExtras.finalized_at = params.finalized_at;
     if (params.measurement_window !== undefined) simulatedExtras.measurement_window = params.measurement_window;

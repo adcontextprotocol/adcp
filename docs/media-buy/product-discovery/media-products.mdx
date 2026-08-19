@@ -54,6 +54,12 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `conversion_tracking` (object, optional): Conversion event tracking capabilities. Presence indicates the product supports `optimization_goals` with `kind: "event"`. See [Conversion tracking](#conversion-tracking-1).
 - `product_card` (object, optional): Visual card definition for displaying this product in user interfaces. See [Product Cards](#product-cards).
 
+### Pass-through product sources
+
+Schema validity is not the same as format resolvability. The shared 3.x Product schema still accepts a legacy-only `format_ids[]` product so older sellers remain readable, but each `{agent_url, id}` is only useful when the consuming path also fetches and resolves that named-format catalog.
+
+AdCP 3.2 intermediaries that import or pass through upstream products MUST require upstream `format_options[]`, or fetch and authoritatively resolve every referenced legacy format before translating it into canonical declarations. That translation MUST preserve the resolved constraints losslessly or narrow them explicitly; intermediaries MUST NOT guess dimensions, slots, codecs, durations, or other constraints from a format ID. If authoritative resolution or safe translation fails, omit or reject the product with an actionable error. Intermediaries MUST NOT pass through a legacy-only product on a source path that does not resolve its format catalog, and buyers MUST NOT infer legacy resolvability from schema validation alone.
+
 ### Metric optimization
 
 Products that support `optimization_goals` with `kind: "metric"` declare their capabilities in `metric_optimization`. No event source or conversion tracking setup is required for metric goals — the seller tracks these metrics natively.
@@ -336,6 +342,25 @@ Social products can declare `social_placement_surfaces` at the product level, pl
 The field is an array because a sellable product can aggregate multiple surfaces; when both product and placement declarations are present, the product-level array should be the union the seller may deliver under that product.
 
 This is a discovery signal, not a verification claim. Buyers can filter for products that can satisfy a requested surface with `get_products.filters.social_placement_surfaces`, but sellers should not return mixed, non-targetable bundles unless they can constrain delivery to the requested surface during planning or purchase.
+
+#### DOOH placement attributes
+
+Digital out-of-home placements can declare structured selling-unit metadata via `dooh_placement_attributes` at the placement level (both in product placements and in `adagents.json` placement definitions). These fields describe the physical screen and ad-loop characteristics that buyers need for creative production and share-of-voice calculations:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `slot_duration_seconds` | integer | Duration of one ad slot in seconds (e.g., 10, 15, 30) |
+| `loop_duration_seconds` | integer | Duration of the full ad loop rotation in seconds. Buyers derive nominal slot share as `slot_duration_seconds / loop_duration_seconds`. This is the canonical source; the pricing-layer field in `flat-rate-option` is superseded |
+| `screen_resolution` | object | Physical screen resolution (`{ width, height }` in pixels). Buyers derive aspect ratio from `width / height` |
+| `motion` | string | Motion capability of the screen: `full_motion` (video), `partial_motion` (animated stills), or `static` (images only) |
+
+All fields are optional. A single screen/frame placement can include all fields; a package or network placement should include only fields that are uniform across the included inventory. After publisher and product declarations are resolved, `slot_duration_seconds` MUST NOT exceed `loop_duration_seconds`.
+
+These are inventory facts, not an alternative creative contract. Effective canonical `format_options` remains authoritative for accepted dimensions, durations, asset types, and codecs. A physical screen can therefore report a larger `screen_resolution` than the content region declared by its formats, and a full-motion screen can still offer a static-only product.
+
+For `kind: "publisher_ref"`, resolve the publisher placement before applying product detail. Product-level `slot_duration_seconds` and `loop_duration_seconds` override publisher defaults for that specific offer; omitted values inherit. `screen_resolution` and `motion` are intrinsic publisher facts, so repeated product values MUST match the publisher declaration. Treat mismatches and an invalid effective slot-to-loop ratio as conformance errors rather than silently choosing one source.
+
+Placements can also carry `identifiers[]` using the same `{ type, value }` shape as property identifiers. DOOH placements commonly use `venue_id`, `screen_id`, and `openooh_venue_type` identifier types. Externally governed IDs should be authority-prefixed (e.g., `geopath:30961`). OpenOOH classifications include the taxonomy version (`openooh-1.1:20501`), since a bare category number does not identify which revision defined it. For publisher references, union publisher and product identifiers by exact `(type, value)`; product omission does not remove a publisher identifier.
 
 #### Format precedence with placements
 

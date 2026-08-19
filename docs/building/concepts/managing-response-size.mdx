@@ -10,6 +10,16 @@ seller-planned proposals to a wholesale mirror containing detailed product,
 signal, and placement metadata. This page covers the controls that keep those
 responses right-sized—and the client-side projection that matters most.
 
+## Interoperability size target
+
+MCP hosts and gateways impose different undocumented response ceilings. For pageable reads and other read-only tasks that offer field projection, AdCP producers SHOULD keep each serialized MCP response at or below **128 KiB (131,072 bytes)**. This is an interoperability target, not permission for a client to allocate without bounds: clients SHOULD still enforce the streamed 1 MiB whole-message cap described in [MCP response extraction](/docs/building/by-layer/L0/mcp-response-extraction#size-limits).
+
+For those read paths, use the task's cursor, reduce the requested fields or breakdowns, or return a smaller schema-valid page with continuation metadata before the response exceeds 128 KiB. Do not invent a partial response for a task whose schema does not define one.
+
+Do not apply the 128 KiB target by turning a completed mutation into an error. If a producer can determine before execution that it cannot return the mutation's required result within a host limit, it MUST reject the request before side effects. Once side effects occur, it MUST return the schema-valid committed result or a task-defined asynchronous handoff; it must not report failure merely to satisfy the size target.
+
+`tools/list` is cursor-pageable at the MCP layer even though it is not an AdCP task. Servers SHOULD paginate the live tool catalog so each page remains under the same 128 KiB target. Clients that need the complete catalog MUST follow `nextCursor` until it is absent. Capability-selected tool registration and concise `x-tool-summary` descriptions reduce each page further; do not publish the full AdCP catalog, response schemas, or long reference prose in a session's `tools/list` result.
+
 ## Wire response ≠ model context
 
 The single most important point: **the bytes on the wire are not what your model has to consume.**

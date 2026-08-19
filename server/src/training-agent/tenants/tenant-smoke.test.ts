@@ -430,6 +430,25 @@ describe('tenant routing smoke', () => {
     }
   }, 30000);
 
+  it('advertises the executable DOOH sales profile and channel', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const response = await callTenantTool(url, 31, 'get_adcp_capabilities', {}) as {
+        result?: { structuredContent?: {
+          specialisms?: string[];
+          media_buy?: { portfolio?: { primary_channels?: string[] } };
+        } };
+      };
+      const capabilities = response.result?.structuredContent;
+      expect(capabilities?.specialisms).toContain('sales-dooh');
+      expect(capabilities?.media_buy?.portfolio?.primary_channels).toContain('dooh');
+    } finally {
+      await close();
+    }
+  }, 30000);
+
   it('rejects a governed rights acquisition without persisting a grant', async () => {
     const { baseUrl, close } = await bootServer();
     try {
@@ -652,6 +671,7 @@ describe('tenant routing smoke', () => {
       });
       const body = await r.json() as {
         result?: {
+          content?: Array<{ type?: string; text?: string }>;
           structuredContent?: {
             adcp_version?: string;
             adcp?: { major_versions?: number[]; supported_versions?: string[] };
@@ -674,6 +694,9 @@ describe('tenant routing smoke', () => {
       expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(
         expect.arrayContaining(SALES_CURRENT_SCENARIOS),
       );
+      expect(body.result?.content?.[0]?.text).toBe('Capabilities retrieved successfully.');
+      expect(body.result?.content?.[0]?.text)
+        .not.toBe(JSON.stringify(body.result?.structuredContent));
     } finally {
       await close();
     }
@@ -2281,12 +2304,18 @@ describe('tenant routing smoke', () => {
         result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
       };
       const replay = await callTenantTool(url, 4, 'get_products', payload) as {
-        result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
+        result?: {
+          content?: Array<{ type?: string; text?: string }>;
+          structuredContent?: { products?: unknown[]; replayed?: boolean };
+        };
       };
       expect(first.result?.structuredContent?.products?.length).toBeGreaterThan(0);
       expect(first.result?.structuredContent?.replayed).toBeUndefined();
       expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
       expect(replay.result?.structuredContent?.replayed).toBe(true);
+      expect(replay.result?.content?.[0]?.text).toMatch(/products|completed/i);
+      expect(replay.result?.content?.[0]?.text)
+        .not.toBe(JSON.stringify(replay.result?.structuredContent));
 
       const changed = await callTenantTool(url, 5, 'get_products', {
         buying_mode: 'brief',
@@ -2310,15 +2339,38 @@ describe('tenant routing smoke', () => {
         operator: 'tenant-products-advisory.example',
         sandbox: true,
       };
-      const directive = await callTenantTool(url, 2, 'comply_test_controller', {
+      const scenarioList = await callTenantTool(url, 2, 'comply_test_controller', {
+        scenario: 'list_scenarios',
+      }) as {
+        result?: {
+          content?: Array<{ type?: string; text?: string }>;
+          structuredContent?: { success?: boolean; scenarios?: unknown[] };
+        };
+      };
+      expect(scenarioList.result?.structuredContent?.success).toBe(true);
+      expect(scenarioList.result?.structuredContent?.scenarios?.length).toBeGreaterThan(0);
+      expect(scenarioList.result?.content?.[0]?.text)
+        .toBe('Compliance scenario list_scenarios completed.');
+      expect(scenarioList.result?.content?.[0]?.text)
+        .not.toBe(JSON.stringify(scenarioList.result?.structuredContent));
+
+      const directive = await callTenantTool(url, 3, 'comply_test_controller', {
         account,
         scenario: 'force_upstream_unavailable',
         params: { tool: 'get_products', upstream_name: 'catalog-test' },
-      }) as { result?: { structuredContent?: { success?: boolean } } };
+      }) as {
+        result?: {
+          content?: Array<{ type?: string; text?: string }>;
+          structuredContent?: { success?: boolean };
+        };
+      };
       expect(directive.result?.structuredContent?.success).toBe(true);
+      expect(directive.result?.content?.[0]?.text).toMatch(/scenario|completed/i);
+      expect(directive.result?.content?.[0]?.text)
+        .not.toBe(JSON.stringify(directive.result?.structuredContent));
 
       const key = 'tenant-products-advisory-replay-0001';
-      const first = await callTenantTool(url, 3, 'get_products', {
+      const first = await callTenantTool(url, 4, 'get_products', {
         idempotency_key: key,
         buying_mode: 'wholesale',
         account,
@@ -2326,7 +2378,7 @@ describe('tenant routing smoke', () => {
       }) as {
         result?: { structuredContent?: { products?: unknown[]; errors?: Array<{ code?: string }>; context?: { correlation_id?: string } } };
       };
-      const replay = await callTenantTool(url, 4, 'get_products', {
+      const replay = await callTenantTool(url, 5, 'get_products', {
         idempotency_key: key,
         buying_mode: 'wholesale',
         account,
