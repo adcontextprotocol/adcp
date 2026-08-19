@@ -360,10 +360,11 @@ test("compact direct-buy lifecycle threads versioned offers through control read
       ["direct_product_id", "products[0].product_id"],
       ["direct_pricing_option_id", "products[0].pricing_options[0].pricing_option_id"],
       ["direct_feed_version", "feed_version"],
+      ["direct_pricing_version", "pricing_version"],
     ])
   );
   assert.equal(buy.sample_request.feed_version, "$context.direct_feed_version");
-  assert.equal(buy.sample_request.pricing_version, undefined);
+  assert.equal(buy.sample_request.pricing_version, "$context.direct_pricing_version");
   assert.equal(
     buy.sample_request.purchases[0].product_id,
     "$context.direct_product_id"
@@ -380,6 +381,14 @@ test("compact direct-buy lifecycle threads versioned offers through control read
       "accepted_proposal.commercial_terms.source_feed_version"
     )?.context_key,
     "direct_feed_version"
+  );
+  assert.equal(
+    validation(
+      buy,
+      "field_equals_context",
+      "accepted_proposal.commercial_terms.source_pricing_version"
+    )?.context_key,
+    "direct_pricing_version"
   );
   assert.equal(
     validation(
@@ -440,6 +449,30 @@ test("compact direct-buy lifecycle threads versioned offers through control read
   assert.equal(
     validation(readback, "field_value", "media_buys[0].daily_budget_cap")?.value,
     100
+  );
+  assert.equal(
+    validation(
+      readback,
+      "field_equals_context",
+      "media_buys[0].accepted_proposal.commercial_terms.source_pricing_version"
+    )?.context_key,
+    "direct_pricing_version"
+  );
+  assert.equal(
+    validation(
+      readback,
+      "field_equals_context",
+      "media_buys[0].accepted_proposal_id"
+    )?.context_key,
+    "direct_accepted_proposal_id"
+  );
+  assert.equal(
+    validation(
+      readback,
+      "field_equals_context",
+      "media_buys[0].accepted_proposal_terms_digest"
+    )?.context_key,
+    "direct_terms_digest"
   );
 });
 
