@@ -486,7 +486,7 @@ Record the authenticated buyer, source IDs, successor IDs, idempotency fingerpri
 
 The canonical compliance scenario is `media_buy_seller/typed_proposal_negotiation`. It exercises capability gating, satisfied and unsatisfied constraints, alternatives, immutable lineage, finalize atomicity, exact replay, acceptance, amendment, cancellation, double-finalize rejection, and multi-source ordering.
 
-The deterministic training profiles expose the exact `3.2-beta.0` proposal-negotiation wire contract. The ordinary `/sales/mcp` route remains the backward-compatible ask-only seller. Use the [public test token](/docs/quickstart#setup) with `https://test-agent.adcontextprotocol.org` and one of these capability-distinct routes:
+The deterministic training profiles expose the exact `3.2-beta.2` proposal-negotiation wire contract. The ordinary `/sales/mcp` route remains the backward-compatible ask-only seller. Use the [public test token](/docs/quickstart#setup) with `https://test-agent.adcontextprotocol.org` and one of these capability-distinct routes:
 
 | Profile | Route | Deterministic behavior |
 | --- | --- | --- |
@@ -494,7 +494,7 @@ The deterministic training profiles expose the exact `3.2-beta.0` proposal-negot
 | Constrained seller | `/sales/profiles/constrained-seller/mcp` | USD floors, product conflicts, and at most two available alternatives |
 | Finalization failure | `/sales/profiles/finalization-failure/mcp` | `hold_unavailable` plus `batch_aborted` siblings with no committed successors |
 
-Pin the beta exactly on every call. A stable `3.2` selector intentionally negotiates to the seller's stable compatibility response instead of silently opting into beta behavior. The bundled `ADCPMultiAgentClient.simple()` proposal path cannot yet target a different exact beta ordinal. Until [adcp-client#2609](https://github.com/adcontextprotocol/adcp-client/issues/2609) ships, construct a lower-level client with `wireAdcpVersion: "3.2-beta.0"` or send raw calls as below.
+Pin the beta exactly on every call. A stable `3.2` selector intentionally negotiates to the seller's stable compatibility response instead of silently opting into beta behavior. The bundled `ADCPMultiAgentClient.simple()` proposal path cannot yet target a different exact beta ordinal. Until [adcp-client#2609](https://github.com/adcontextprotocol/adcp-client/issues/2609) ships, construct a lower-level client with `wireAdcpVersion: "3.2-beta.2"` or send raw calls as below.
 
 ### Run the constrained profile
 
@@ -538,14 +538,14 @@ async function callTool(id, name, args) {
 }
 
 const version = {
-  adcp_version: '3.2-beta.0',
+  adcp_version: '3.2-beta.2',
   adcp_major_version: 3,
 };
 const nonce = crypto.randomUUID();
 
 const capabilities = await callTool(1, 'get_adcp_capabilities', version);
 if (
-  capabilities.adcp_version !== '3.2-beta.0'
+  capabilities.adcp_version !== '3.2-beta.2'
   || capabilities.media_buy?.supports_proposals !== true
   || !capabilities.media_buy?.lifecycle_tools?.includes('refine_proposals')
 ) {
