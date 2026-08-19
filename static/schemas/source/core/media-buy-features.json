@@ -11,7 +11,7 @@
     },
     "property_list_filtering": {
       "type": "boolean",
-      "description": "Honors property_list parameter in get_products to filter results to buyer-approved properties"
+      "description": "Honors property_list references in get_products filtering and in targeting_overlay on create_media_buy and update_media_buy"
     },
     "catalog_management": {
       "type": "boolean",
