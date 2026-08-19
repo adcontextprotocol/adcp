@@ -109,7 +109,38 @@ Sam requests a USD 50,000 ceiling, a CPM ceiling, US/Canada criteria, a product 
 }
 ```
 
-Typed fields are hard requirements. Do not copy the legacy `get_products.refine[].budget_range` shape without changing its meaning: legacy `budget_range` is a soft discovery preference, while `constraints.total_budget` forces `partial` or `unable` when missed. Legacy `more_like_this` has no typed compact equivalent and maps only lossily to `ask`.
+Typed fields are hard proposal requirements. Do not copy legacy `get_products.filters.budget_range` into `constraints.total_budget`: the legacy field is a hard product-discovery filter, while the compact field validates the negotiated proposal's `commercial_terms.total_budget` and forces `partial` or `unable` when missed. Legacy `more_like_this` has no typed compact equivalent and maps only lossily to `ask`.
+
+### Legacy budget compatibility (normative)
+
+Budget compatibility has two distinct rules:
+
+- **Discovery range:** Initial [`request_proposals`](/docs/media-buy/task-reference/request_proposals) has no `criteria.constraints.total_budget` field. Its budget field is `request_proposals.criteria.offer_filters.budget_range`. A compatibility adapter MAY project that field to `get_products.filters.budget_range` because both are hard product-discovery filters. The adapter MUST copy every supplied numeric bound and the three-letter currency unchanged, MUST preserve inclusive `min` and `max` boundaries, MUST enforce `min <= max`, and MUST NOT perform currency conversion. If the legacy seller cannot apply the exact currency and bounds, the adapter MUST return the pre-dispatch rejection below rather than approximate the filter.
+- **Proposal-term constraint:** An adapter MUST NOT project `refine_proposals.refinements[].constraints.total_budget` to `get_products.filters.budget_range`. The compact constraint is evaluated after proposal generation against each successor's `commercial_terms.total_budget`; the legacy field filters product candidates and does not guarantee any returned proposal's aggregate total. Identical `{min,max,currency}` syntax does not make those evaluation targets equivalent. Dropping the constraint, converting currency, changing a boundary, placing it in `ask`, or returning an out-of-range proposal with a warning would all weaken the buyer's hard requirement.
+
+These rules are lifecycle-specific. The discovery projection is valid for an initial `request_proposals` compatibility call. On a revision, a present `criteria.offer_filters` replaces that entire criterion from the source proposal; it is not a subfield delta. The adapter MUST project the complete replacement object to legacy absolute `filters`, or reject before dispatch if any field cannot be represented exactly. When `criteria.offer_filters` is omitted, the adapter MUST also omit legacy `filters`, preserving each referenced proposal's bound discovery constraints. This discovery mapping is not a substitute for `constraints.total_budget` on `action: "revise"`.
+
+Compact `action: "finalize"` accepts no constraints and copies the draft's complete `commercial_terms` unchanged into a committed snapshot. Legacy `finalize` asks for firm pricing and therefore does not, by itself, prove unchanged terms. An adapter MAY project finalize only when it can guarantee that the legacy operation preserves the complete commercial terms, not merely the total budget. Otherwise it MUST reject before dispatch rather than compare or repair terms after mutation.
+
+Every unsupported compact-to-legacy case above returns the same typed local compatibility result:
+
+```typescript
+type PreMutationUnsupported = {
+  code: 'PRE_MUTATION_UNSUPPORTED';
+  unsupported_fields: Array<{
+    path: string; // RFC 6901 JSON Pointer rooted at the compact request
+    reason: 'NO_LOSSLESS_LEGACY_MAPPING';
+    lost_guarantee:
+      | 'exact_discovery_offer_filter_state'
+      | 'proposal_total_budget_constraint'
+      | 'immutable_finalize_terms';
+  }>;
+  recovery: 'USE_COMPACT_LIFECYCLE' | 'REFORMULATE_REQUEST';
+  dispatched: false;
+};
+```
+
+For example, the first refinement's hard budget constraint uses `/refinements/0/constraints/total_budget`; an unsafe finalize uses `/refinements/0/action`. `unsupported_fields` MUST contain every incompatibility detected during preflight, and any entry rejects the whole operation before a network request or mutation. `PRE_MUTATION_UNSUPPORTED` is not an AdCP wire error code. SDKs MAY express the type idiomatically in each language, but MUST preserve these discriminator values, JSON Pointer paths, lost-guarantee identifiers, recovery choices, and `dispatched: false`. An explicit caller opt-in to lossy projection does not make the mapping conformant.
 
 A fully satisfied revision returns new immutable drafts and no failure prose:
 
