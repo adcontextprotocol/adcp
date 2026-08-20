@@ -91,7 +91,6 @@ const VALID_PRICING_MODELS = [
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
 const CURRENT_ADCP_VERSION = '3.2-beta.3';
-const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open', authenticatedAgentUrl: 'https://buyer.example' };
 

@@ -795,7 +795,7 @@ function buildProduct(
       provider: pub.measurementProvider,
       notes: pub.measurementNotes,
     },
-    pricing_options: effectivePricing.map((t, i) => buildPricingOption(t, productId, i)) as unknown as Product['pricing_options'],
+    pricing_options: nonEmptyPricingOptions,
     reporting_capabilities: {
       available_reporting_frequencies: pub.reportingFrequencies as NonNullable<Product['reporting_capabilities']>['available_reporting_frequencies'],
       expected_delay_minutes: 240,
