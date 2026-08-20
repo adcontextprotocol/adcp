@@ -450,6 +450,12 @@
 
 - Cross-role governance enforcement: the experimental `governance.campaign` surface will add typed `target_agent`, task-scoped `adcp.governance_enforcement`, critical task/payload/commitment JWS bindings, intent-only conditions negotiation, and governance-authoritative settlement. The implementation may merge during 3.2 development; the beta-to-GA period provides the experimental-surface notice window. See the 3.2 release notes and migration guide.
 
+## 3.1.16
+
+### Patch Changes
+
+- 9289fea: Gate inventory-list compliance scenarios on the stable property-list capability and accept either documented no-match outcome.
+
 ## 3.1.15
 
 ### Patch Changes
