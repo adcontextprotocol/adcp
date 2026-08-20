@@ -1559,6 +1559,10 @@
           "$ref": "/schemas/media-buy/product-discovery-criteria.json",
           "description": "Structured offer, catalog, and policy criteria shared by compact discovery tools"
         },
+        "outcome-target": {
+          "$ref": "/schemas/media-buy/outcome-target.json",
+          "description": "Reverse-forecast planning input: a compact metric or event goal plus desired volume the seller solves budget for"
+        },
         "proposal-refinement": {
           "$ref": "/schemas/media-buy/proposal-refinement.json",
           "description": "One immutable proposal revision request"

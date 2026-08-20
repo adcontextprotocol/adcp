@@ -49,6 +49,27 @@ testable: true
 
 Put machine-representable requirements in `criteria`: `offer_filters` select commercial offers, `targeting_overlay` supplies concrete delivery constraints that must be reflected in pricing and forecasts, and `required_overlay_support` identifies dimensions the buyer must be able to choose later. Keep goals, semantic audience meaning, and requirements without a structured AdCP field in `brief`.
 
+## Reverse forecasting with outcome_target
+
+A proposal request is a solve over three coupled variables — time window, budget, and outcome. The buyer fixes what they know and the seller solves for the rest. Fixing dates and budget yields a delivery forecast; fixing the outcome inverts the question: "I need 10,000 clicks — what does my budget need to be?"
+
+Sellers declaring `media_buy.outcome_target` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) accept the structured form in `criteria`:
+
+```json
+{
+  "criteria": {
+    "outcome_target": {
+      "goal": { "kind": "metric", "metric": "clicks" },
+      "volume": 10000
+    }
+  }
+}
+```
+
+The `goal` is a compact planning-time object with two variants: a delivery metric (`kind: "metric"`, using the same `forecastable-metric` vocabulary forecast points report) or a conversion event (`kind: "event"`, using the same `event-type` vocabulary). That construction means every permitted goal has a defined answer: the seller responds with `total_budget_guidance` (`min`/`recommended`/`max`) on each proposal and forecasts whose points carry the goal's metric or event key in `metrics`, with `forecast_range_unit` `clicks` or `conversions` structuring the curve where those units apply. Execution machinery — targets, priorities, event sources, vendor bindings — belongs to the package-level `optimization-goal`, which shares this vocabulary, so buyers carry the same metric or event name from plan to buy.
+
+An `outcome_target` is a planning input, not a delivery guarantee: pricing and delivery obligations arise only at proposal finalization, and any performance commitment lives in the committed terms, not in the forecast. Sellers that do not declare the capability MUST NOT silently ignore a structured `outcome_target` — they reject it with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); buyers fall back to expressing the goal in `brief` prose. Declaring sellers MAY reject a goal they cannot plan against (for example `spend`, which restates budget) with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming `criteria.outcome_target.goal`.
+
 Explicit hard requirements in the brief remain binding. When the seller's structured interpretation materially affects product eligibility, pricing, or forecasting, the response includes `targeting_resolution.brief_targeting`. Exact structured overlays are not echoed; any product-specific alternative appears as sparse `Product.targeting_resolution.modifications` for buyer approval.
 
 Every returned purchase references the exact `product_id` and `pricing_option_id` whose pricing and forecast the seller used. The returned `proposal_id` is the only proposal linkage needed by [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) and [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals). Each ID identifies one immutable commercial snapshot; refinement and finalization mint new IDs instead of adding a second version field. A draft is indicative and does not reserve inventory. Finalize it through `refine_proposals` before passing the resulting committed proposal to [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal). The deprecated [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) proposal mode remains the 3.x compatibility adapter.
