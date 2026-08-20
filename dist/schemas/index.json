@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/index.json",
+  "$id": "https://adcontextprotocol.org/schemas/index.json",
   "title": "AdCP Schema Discovery",
   "description": "Root discovery document for file-based AdCP schema consumers. Use latest_stable or a major/minor alias target instead of choosing by directory listing.",
   "latest": "3.1.18",
@@ -23,6 +23,38 @@
     "2.5": "2.5.3"
   },
   "versions": [
+    {
+      "version": "3.2.0-beta.3",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": false,
+      "path": "/schemas/3.2.0-beta.3/",
+      "index": "/schemas/3.2.0-beta.3/index.json"
+    },
+    {
+      "version": "3.2.0-beta.2",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": false,
+      "path": "/schemas/3.2.0-beta.2/",
+      "index": "/schemas/3.2.0-beta.2/index.json"
+    },
+    {
+      "version": "3.2.0-beta.1",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": false,
+      "path": "/schemas/3.2.0-beta.1/",
+      "index": "/schemas/3.2.0-beta.1/index.json"
+    },
+    {
+      "version": "3.2.0-beta.0",
+      "stability": "beta",
+      "prerelease": true,
+      "deprecated": false,
+      "path": "/schemas/3.2.0-beta.0/",
+      "index": "/schemas/3.2.0-beta.0/index.json"
+    },
     {
       "version": "3.1.18",
       "stability": "stable",
@@ -593,7 +625,7 @@
       "version": "2.5.3",
       "stability": "stable",
       "prerelease": false,
-      "deprecated": false,
+      "deprecated": true,
       "path": "/schemas/2.5.3/",
       "index": "/schemas/2.5.3/index.json"
     },
@@ -601,7 +633,7 @@
       "version": "2.5.2",
       "stability": "stable",
       "prerelease": false,
-      "deprecated": false,
+      "deprecated": true,
       "path": "/schemas/2.5.2/",
       "index": "/schemas/2.5.2/index.json"
     },
@@ -609,7 +641,7 @@
       "version": "2.5.1",
       "stability": "stable",
       "prerelease": false,
-      "deprecated": false,
+      "deprecated": true,
       "path": "/schemas/2.5.1/",
       "index": "/schemas/2.5.1/index.json"
     },
@@ -617,7 +649,7 @@
       "version": "2.5.0",
       "stability": "stable",
       "prerelease": false,
-      "deprecated": false,
+      "deprecated": true,
       "path": "/schemas/2.5.0/",
       "index": "/schemas/2.5.0/index.json"
     }
