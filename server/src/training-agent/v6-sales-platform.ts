@@ -54,9 +54,9 @@ import { handleSyncAudiences } from './audience-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
+import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
 import { sessionKeyFromArgs } from './state.js';
 import type { ToolArgs, TrainingContext } from './types.js';
-import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
 
 interface TrainingSalesMeta {
@@ -283,6 +283,9 @@ function withCurrentAccountScope(
   account: unknown,
   rawInput?: unknown,
 ): ToolArgs {
+  const rawFields = rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
+    ? rawInput as Record<string, unknown>
+    : {};
   let accountRef = accountRefFromCtx(account);
   const brandDomain = brandDomainFromCtx(account);
   const principal = (account as { authInfo?: { principal?: unknown } } | undefined)?.authInfo?.principal;
@@ -312,7 +315,12 @@ function withCurrentAccountScope(
     };
   }
   return {
+    // `mcpToolProfile: 'all'` exposes compatibility schemas as shallow key
+    // hints. Restore the raw wire values before the local source-schema
+    // validator runs. Explicit wire values win over framework defaults, while
+    // the normalized account and brand below remain authoritative.
     ...input,
+    ...rawFields,
     ...(accountRef && { account: accountRef }),
     ...(brandDomain && { brand: { domain: brandDomain } }),
   } as ToolArgs;
@@ -836,34 +844,10 @@ export class TrainingSalesPlatform
 
     getMediaBuys: async (req, ctx) => {
       const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
-      let result = await handleGetMediaBuys(
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account),
+      const result = await handleGetMediaBuys(
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input),
         trainingCtx,
       );
-      const requestedIds = (req as unknown as { media_buy_ids?: unknown }).media_buy_ids;
-      const returnedBuys = (result as { media_buys?: unknown }).media_buys;
-      const principal = (ctx.account as { authInfo?: { principal?: unknown } } | undefined)?.authInfo?.principal;
-      // SDK 14 removes the controller-only sandbox assertion from compact
-      // read AccountRefs. Retry an exact-ID miss in the brand-owned public
-      // sandbox partition; successful ordinary reads never cross scopes.
-      if (
-        Array.isArray(requestedIds)
-        && requestedIds.length > 0
-        && Array.isArray(returnedBuys)
-        && returnedBuys.length === 0
-        && typeof principal === 'string'
-        && principal.startsWith('static:')
-        && brandDomainFromCtx(ctx.account)
-      ) {
-        result = await handleGetMediaBuys(
-          withCurrentAccountScope(
-            req as unknown as Record<string, unknown>,
-            ctx.account,
-            { account: { sandbox: true } },
-          ),
-          trainingCtx,
-        );
-      }
       return translateV5Result(canonicalMediaBuyPlatformResult(result));
     },
 

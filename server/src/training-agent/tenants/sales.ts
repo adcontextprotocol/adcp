@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import type { TaskRegistry, TenantConfig } from '@adcp/sdk/server';
+import { TOOL_INPUT_SHAPES } from '@adcp/sdk/schemas';
 import {
   TrainingSalesPlatform,
   legacyGetProductsHandler,
@@ -22,6 +23,7 @@ import { buildCreativeTool, previewCreativeTool } from './creative-tools.js';
 import { customToolFor } from './custom-tool-helper.js';
 import { handleSyncCatalogs } from '../catalog-event-handlers.js';
 import type { TrainingContext } from '../types.js';
+import { syncAgentNotificationConfigsLegacy } from '../agent-notification-configs.js';
 
 const TENANT_ID = 'sales';
 
@@ -79,6 +81,9 @@ export function buildSalesTenantConfig(
         options.proposalNegotiationProfile ?? 'ask-only',
       ),
       serverOptions: {
+        // The public training sandbox intentionally exposes both current
+        // compact tools and registered compatibility aliases.
+        mcpToolProfile: 'all',
         // These operations intentionally remain the legacy wire facade for
         // AdCP 3.0 callers. Current application paths use canonical format
         // identity; the raw seam preserves exact legacy tuples at the wire and
@@ -106,6 +111,17 @@ export function buildSalesTenantConfig(
           // and fail the older response schema. Gate it off 3.0 like the
           // creative tools below. (/signals keeps it across versions.)
           ...(options.storyboardCompat?.version === '3.0' ? {} : {
+            sync_agent_notification_configs: customToolFor(
+              'sync_agent_notification_configs',
+              'Register, replace, pause, or clear caller-scoped agent-level capability-change webhook subscribers.',
+              TOOL_INPUT_SHAPES.sync_agent_notification_configs!,
+              syncAgentNotificationConfigsLegacy,
+              {
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+                enforceIdempotency: true,
+                payloadErrorsAsSuccess: true,
+              },
+            ),
             sync_governance: syncGovernanceTool(options.storyboardCompat),
             build_creative: buildCreativeTool({
               tenantId: TENANT_ID,

@@ -252,7 +252,7 @@ if [ "${FLOOR_SET}" = "3.0-compat" ]; then
 else
   TENANTS=(
     "signals:74:111"
-    "sales:143:314"
+    "sales:120:545"
     "governance:73:151"
     "creative:73:169"
     "creative-builder:70:146"
@@ -266,6 +266,7 @@ SUMMARY=""
 REQUIRED_CLEAN_CURRENT_SALES=(
   "media_buy_seller/billing_finality_delivery"
   "media_buy_seller/canonical_formats"
+  "media_buy_seller/vendor_metric_catalog_precondition"
   "canonical_format_validate_input"
   "notification_config_event_scope"
   "notification_config_lifecycle"
@@ -278,8 +279,8 @@ REQUIRED_EXACT_CURRENT_SALES=(
   "media_buy_seller/compact_direct_buy_lifecycle:7:0"
   "media_buy_seller/compact_product_lifecycle:9:0"
   "media_buy_seller/declined_proposal_refinement:6:0"
-  "media_buy_seller/declined_proposal_execution:7:1"
-  "media_buy_seller/expired_proposal_execution:7:1"
+  "media_buy_seller/declined_proposal_execution:8:0"
+  "media_buy_seller/expired_proposal_execution:8:0"
 )
 REQUIRED_CLEAN_CURRENT_SIGNALS=(
   "wholesale_feed_signals"

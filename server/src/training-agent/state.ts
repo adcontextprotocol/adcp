@@ -260,6 +260,7 @@ function stableStringify(value: unknown): string {
 function createSession(): SessionState {
   const now = new Date();
   return {
+    agentNotificationConfigs: new Map(),
     mediaBuys: new Map(),
     governancePlans: new Map(),
     governanceChecks: new Map(),
@@ -500,6 +501,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
   return {
     ...fresh,
     ...hydrated,
+    agentNotificationConfigs: asMap(hydrated.agentNotificationConfigs, fresh.agentNotificationConfigs),
     mediaBuys: asMap(hydrated.mediaBuys, fresh.mediaBuys),
     creatives: asMap(hydrated.creatives, fresh.creatives),
     signalActivations: asMap(hydrated.signalActivations, fresh.signalActivations),

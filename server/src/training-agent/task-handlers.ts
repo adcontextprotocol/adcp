@@ -42,7 +42,7 @@ import {
 import { mergeSeedProductLegacy as mergeSeedProduct } from '@adcp/sdk/testing';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
-import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type SessionState } from './types.js';
+import { supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -2332,9 +2332,9 @@ import {
 } from './source-schema.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.2'] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.3'] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
-const CURRENT_ADCP_VERSION = '3.2-beta.2';
+const CURRENT_ADCP_VERSION = '3.2-beta.3';
 const MAX_PACKAGES_PER_BUY = 50;
 
 interface ParsedAdcpReleaseVersion {
@@ -3542,6 +3542,26 @@ function availableActionsForMediaBuy(mb: MediaBuyState, status: string): MediaBu
   return [{ task: 'control_media_buy', action: 'resume', mode: 'self_serve' }, ...canonical];
 }
 
+function compactAvailableActions(
+  mediaBuy: MediaBuyState,
+  status: string,
+): Array<MediaBuyAvailableActionState & { task: 'control_media_buy' }> {
+  const compactControlActions = new Set([
+    'pause', 'resume', 'cancel', 'increase_budget', 'decrease_budget',
+    'reallocate_budget', 'update_budget_allocation', 'update_targeting',
+    'update_pacing', 'update_bidding', 'update_frequency_caps',
+    'update_catalog_assignments', 'update_keywords', 'update_optimization_goals',
+    'update_impression_goal', 'update_spend_target', 'update_reporting_webhook',
+    'remove_packages',
+  ]);
+  return availableActionsForMediaBuy(mediaBuy, status)
+    .filter(action => compactControlActions.has(action.action))
+    .map(action => ({
+      ...action,
+      task: 'control_media_buy' as const,
+    }));
+}
+
 function canonicalTaskForMediaBuyAction(action: string): MediaBuyAvailableActionState['task'] {
   if (['extend_flight', 'shorten_flight', 'update_flight_dates', 'add_packages'].includes(action)) {
     return 'refine_proposals';
@@ -3562,9 +3582,17 @@ type AttemptedMediaBuyAction =
   | 'increase_budget'
   | 'decrease_budget'
   | 'reallocate_budget'
+  | 'update_budget_allocation'
   | 'update_targeting'
   | 'update_pacing'
+  | 'update_bidding'
   | 'update_frequency_caps'
+  | 'update_catalog_assignments'
+  | 'update_keywords'
+  | 'update_optimization_goals'
+  | 'update_impression_goal'
+  | 'update_spend_target'
+  | 'update_reporting_webhook'
   | 'replace_creative'
   | 'update_creative_assignments'
   | 'add_packages'
@@ -3588,6 +3616,34 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): At
   if (req.paused === true) addAction('pause');
   if (req.paused === false) addAction('resume');
   if (req.canceled === true) addAction('cancel');
+
+  const aggregateControl = req as unknown as Record<string, unknown>;
+  const requestedTotal = isRecord(aggregateControl.total_budget)
+    && typeof aggregateControl.total_budget.amount === 'number'
+    ? aggregateControl.total_budget.amount
+    : undefined;
+  const currentTotal = mb.totalBudget
+    ?? mb.packages.reduce((sum, pkg) => sum + pkg.budget, 0);
+  if (requestedTotal !== undefined) {
+    if (requestedTotal > currentTotal) addAction('increase_budget');
+    if (requestedTotal < currentTotal) addAction('decrease_budget');
+  }
+  if (Object.hasOwn(aggregateControl, 'budget_allocation')) addAction('update_budget_allocation');
+  if (Object.hasOwn(aggregateControl, 'daily_budget_cap')) {
+    const requestedCap = aggregateControl.daily_budget_cap;
+    if (requestedCap === null) addAction('increase_budget');
+    if (typeof requestedCap === 'number') {
+      if (mb.dailyBudgetCap === undefined || requestedCap < mb.dailyBudgetCap) addAction('decrease_budget');
+      if (mb.dailyBudgetCap !== undefined && requestedCap > mb.dailyBudgetCap) addAction('increase_budget');
+    }
+  }
+  if (Object.hasOwn(aggregateControl, 'budget_cap_timezone')) addAction('update_pacing');
+  if (Object.hasOwn(aggregateControl, 'pacing')) addAction('update_pacing');
+  if (Object.hasOwn(aggregateControl, 'bidding')) addAction('update_bidding');
+  if (
+    Object.hasOwn(aggregateControl, 'reporting_webhook')
+    || Object.hasOwn(aggregateControl, 'push_notification_config')
+  ) addAction('update_reporting_webhook');
 
   const currentStart = new Date(mb.startTime).getTime();
   const currentEnd = new Date(mb.endTime).getTime();
@@ -3622,6 +3678,9 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): At
         if (update.budget > pkg.budget) addAction('increase_budget', pkgId);
         if (update.budget < pkg.budget) addAction('decrease_budget', pkgId);
       }
+      if ((update as unknown as Record<string, unknown>).budget === null) {
+        addAction('increase_budget', pkgId);
+      }
       if (update.start_time) addAction('update_flight_dates', pkgId);
       if (update.end_time) {
         const currentPackageEnd = new Date(pkg.endTime).getTime();
@@ -3631,8 +3690,26 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): At
           if (nextPackageEnd < currentPackageEnd) addAction('shorten_flight', pkgId);
         }
       }
-      if (update.targeting_overlay || update.targeting || update.keyword_targets_add || update.keyword_targets_remove || update.negative_keywords_add || update.negative_keywords_remove) addAction('update_targeting', pkgId);
-      if (update.pacing) addAction('update_pacing', pkgId);
+      if (update.targeting_overlay || update.targeting) addAction('update_targeting', pkgId);
+      if (update.keyword_targets_add || update.keyword_targets_remove || update.negative_keywords_add || update.negative_keywords_remove) addAction('update_keywords', pkgId);
+      if (Object.hasOwn(update, 'pacing')) addAction('update_pacing', pkgId);
+      if (Object.hasOwn(update, 'bidding')) addAction('update_bidding', pkgId);
+      if (Object.hasOwn(update, 'catalog_ids')) addAction('update_catalog_assignments', pkgId);
+      if (Object.hasOwn(update, 'optimization_goals')) addAction('update_optimization_goals', pkgId);
+      if (Object.hasOwn(update, 'impressions')) addAction('update_impression_goal', pkgId);
+      if (Object.hasOwn(update, 'daily_budget_cap')) {
+        if (update.daily_budget_cap === null) addAction('increase_budget', pkgId);
+        if (typeof update.daily_budget_cap === 'number') {
+          if (pkg.dailyBudgetCap === undefined || update.daily_budget_cap < pkg.dailyBudgetCap) {
+            addAction('decrease_budget', pkgId);
+          }
+          if (pkg.dailyBudgetCap !== undefined && update.daily_budget_cap > pkg.dailyBudgetCap) {
+            addAction('increase_budget', pkgId);
+          }
+        }
+      }
+      if (Object.hasOwn(update, 'min_spend_target')) addAction('update_spend_target', pkgId);
+      if (Object.hasOwn(update, 'paused')) addAction(update.paused ? 'pause' : 'resume', pkgId);
       if (
         update.targeting_overlay
         && typeof update.targeting_overlay === 'object'
@@ -4804,6 +4881,12 @@ const PRODUCT_DISCOVERY_TOOLS = new Set([
   'get_products',
   ...PRODUCT_DISCOVERY_LIFECYCLE_TOOLS,
 ]);
+const COMPACT_MEDIA_BUY_TOOLS = new Set([
+  ...PRODUCT_DISCOVERY_LIFECYCLE_TOOLS,
+  'buy_products',
+  'accept_proposal',
+  'control_media_buy',
+]);
 
 function isProductDiscoveryTool(toolName: string): boolean {
   return PRODUCT_DISCOVERY_TOOLS.has(toolName);
@@ -4824,6 +4907,9 @@ function productDiscoverySourceSchemaName(toolName: string): string | undefined 
     case 'request_proposals': return 'request-proposals-request';
     case 'refine_proposals': return 'refine-proposals-request';
     case 'decline_proposals': return 'decline-proposals-request';
+    case 'buy_products': return 'buy-products-request';
+    case 'accept_proposal': return 'accept-proposal-request';
+    case 'control_media_buy': return 'control-media-buy-request';
     default: return undefined;
   }
 }
@@ -4995,6 +5081,9 @@ function canonicalPricingSnapshot(raw: unknown, pricingOptionId: string): Record
   snapshot.pricing_option_id = pricingOptionId;
   if (typeof snapshot.pricing_model !== 'string') snapshot.pricing_model = 'cpm';
   if (typeof snapshot.currency !== 'string') snapshot.currency = 'USD';
+  if (snapshot.event_type === 'custom' && typeof snapshot.custom_event_name !== 'string') {
+    snapshot.custom_event_name = 'conversion';
+  }
   // A selected fixed price supersedes an auction floor in the canonical
   // snapshot; the schema intentionally forbids carrying both.
   if (typeof source.fixed_price === 'number') snapshot.fixed_price = source.fixed_price;
@@ -5082,6 +5171,54 @@ function compactCanonicalProduct(product: Record<string, unknown>): Record<strin
     product_id: product.product_id,
     name: product.name,
   };
+}
+
+const COMPACT_PRODUCT_FIELDS = new Set([
+  'product_id', 'name', 'description', 'publisher_properties', 'channels',
+  'format_options', 'delivery_type', 'pricing_options', 'reporting_capabilities',
+  'placements', 'forecast', 'expires_at', 'brief_relevance', 'catalog_match',
+  'allowed_actions', 'catalog_types', 'signal_targeting_allowed',
+  'signal_targeting_rules', 'max_optimization_goals', 'measurement_terms',
+  'performance_standards', 'audience_evidence', 'audience_evidence_selections',
+  'demographic_targeting', 'exclusivity', 'audio_distribution_types',
+  'video_placement_types', 'social_placement_surfaces',
+  'sponsored_placement_types', 'ext',
+]);
+
+const COMPACT_FORMAT_OPTION_FIELDS = new Set([
+  'format_option_id', 'format_kind', 'display_name', 'publisher_domain',
+  'applies_to_channels', 'params', 'format_schema', 'format_shape',
+  'locale_policy', 'seller_preference', 'canonical_formats_only',
+  'experimental', 'sample_render_url',
+]);
+
+function pickCompactFields(source: Record<string, unknown>, fields: ReadonlySet<string>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(source)
+    .filter(([field, value]) => fields.has(field) && value !== undefined)
+    .map(([field, value]) => [field, structuredClone(value)]));
+}
+
+/** Project the additive 3.x get_products representation into the closed
+ * canonical offer shape used by list_products. */
+function compactLifecycleProduct(
+  product: Record<string, unknown>,
+  requestedFields?: ReadonlySet<string>,
+): Record<string, unknown> {
+  const selectedFields = requestedFields
+    ? new Set(['product_id', 'name', ...requestedFields])
+    : COMPACT_PRODUCT_FIELDS;
+  const projected = pickCompactFields(product, selectedFields);
+  if (selectedFields.has('format_options') && Array.isArray(product.format_options)) {
+    projected.format_options = product.format_options
+      .filter(isRecord)
+      .map(option => pickCompactFields(option, COMPACT_FORMAT_OPTION_FIELDS));
+  }
+  if (selectedFields.has('pricing_options') && Array.isArray(product.pricing_options)) {
+    projected.pricing_options = product.pricing_options
+      .filter(isRecord)
+      .map(option => canonicalPricingSnapshot(option, String(option.pricing_option_id ?? '')));
+  }
+  return projected;
 }
 
 function outwardProposal(proposal: Record<string, unknown>, products: Map<string, Product>): Record<string, unknown> {
@@ -5173,9 +5310,12 @@ export function projectProductDiscoveryResult(
       };
     }
     const pagination = isRecord(result.pagination) ? result.pagination : undefined;
+    const requestedFields = Array.isArray(originalArgs.fields)
+      ? new Set(originalArgs.fields.filter((field): field is string => typeof field === 'string'))
+      : undefined;
     return {
       outcome: 'listed',
-      products,
+      products: products.map(product => compactLifecycleProduct(product, requestedFields)),
       ...(pagination && typeof pagination.cursor === 'string' && { next_cursor: pagination.cursor }),
       ...(typeof result.wholesale_feed_version === 'string' && { feed_version: result.wholesale_feed_version }),
       ...(typeof result.pricing_version === 'string' && { pricing_version: result.pricing_version }),
@@ -5393,6 +5533,12 @@ export function validateProductDiscoveryAliasInput(
     return { message: `idempotency_key is required for ${toolName}`, field: 'idempotency_key' };
   }
   if (toolName === 'list_products') {
+    if (
+      args.max_results !== undefined
+      && (!Number.isInteger(args.max_results) || (args.max_results as number) < 1 || (args.max_results as number) > 100)
+    ) {
+      return { message: 'max_results must be an integer between 1 and 100', field: 'max_results' };
+    }
     if (args.if_pricing_version !== undefined && args.if_feed_version === undefined) {
       return { message: 'if_pricing_version requires if_feed_version', field: 'if_feed_version' };
     }
@@ -5564,6 +5710,9 @@ const LIST_PRODUCTS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('list-product
 const REQUEST_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('request-proposals-request');
 const REFINE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('refine-proposals-request');
 const DECLINE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('decline-proposals-request');
+const BUY_PRODUCTS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('buy-products-request');
+const ACCEPT_PROPOSAL_INPUT_SCHEMA = loadProductDiscoveryInputSchema('accept-proposal-request');
+const CONTROL_MEDIA_BUY_INPUT_SCHEMA = loadProductDiscoveryInputSchema('control-media-buy-request');
 const CREATE_MEDIA_BUY_OPPORTUNITY_INPUT_SCHEMA = {
   type: 'object',
   description: 'Planning-cycle closure for proposal execution. Omit status to infer accepted closure, or send closed with accepted_with_seller.',
@@ -5658,6 +5807,27 @@ const TOOLS = [
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: DECLINE_PROPOSALS_INPUT_SCHEMA,
+  },
+  {
+    name: 'buy_products',
+    description: 'Buy exact published product offers against the feed and pricing versions returned by list_products.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: BUY_PRODUCTS_INPUT_SCHEMA,
+  },
+  {
+    name: 'accept_proposal',
+    description: 'Accept one committed immutable proposal and create or amend its MediaBuy atomically.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: ACCEPT_PROPOSAL_INPUT_SCHEMA,
+  },
+  {
+    name: 'control_media_buy',
+    description: 'Apply operational controls within an accepted MediaBuy commercial envelope using optimistic concurrency.',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: CONTROL_MEDIA_BUY_INPUT_SCHEMA,
   },
   {
     name: 'list_creative_formats',
@@ -6100,10 +6270,7 @@ const TOOLS = [
  */
 export function productDiscoveryAliasToolDefinitions(): Array<(typeof TOOLS)[number]> {
   return structuredClone(TOOLS.filter(tool => (
-    tool.name === 'list_products'
-    || tool.name === 'request_proposals'
-    || tool.name === 'refine_proposals'
-    || tool.name === 'decline_proposals'
+    COMPACT_MEDIA_BUY_TOOLS.has(tool.name)
   )));
 }
 
@@ -6141,7 +6308,7 @@ export function visibleTrainingToolNamesForContext(ctx: TrainingContext): string
 
 function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: string): boolean {
   if (toolName === 'validate_input') return !servedAdcpVersion.startsWith('3.0');
-  if (isProductDiscoveryTool(toolName) && toolName !== 'get_products') {
+  if (COMPACT_MEDIA_BUY_TOOLS.has(toolName)) {
     return supportsGetProductsRejected(servedAdcpVersion);
   }
   return true;
@@ -6206,14 +6373,23 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
         controllerFixtureSessionKey(req, ctx),
       );
       const directivePrincipal = ctx.principal ?? 'anonymous';
-      const rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
-        ? session.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+      let directiveSession = session;
+      let rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
+        ? directiveSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
         : undefined;
+      if (!rejection && ctx.principal?.startsWith('static:')) {
+        directiveSession = await getSession(
+          sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal),
+        );
+        rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
+          ? directiveSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+          : undefined;
+      }
       const staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
         ? session.complyExtensions.forcedUpstreamUnavailable
         : undefined;
       if (rejection) {
-        session.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
+        directiveSession.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
       }
       if (staleDirective) {
         session.complyExtensions.forcedUpstreamUnavailable = undefined;
@@ -7037,7 +7213,7 @@ async function handleGetProductsUnlocked(
           return selectedPricing
             ? { ...alloc, pricing_option_id: selectedPricing.pricing_option_id }
             : alloc;
-        }),
+        }) as Proposal['allocations'],
       };
     }) as Proposal[];
   const requireProposals = buyingMode === 'brief'
@@ -7047,6 +7223,36 @@ async function handleGetProductsUnlocked(
       ? new Set(((req as unknown as Record<string, unknown>).product_ids as unknown[])
           .filter((id): id is string => typeof id === 'string'))
       : undefined;
+    if (
+      proposals.length === 0
+      && exactProductIds?.size
+      && [...exactProductIds].every(productId => session.complyExtensions.seededProducts.has(productId))
+    ) {
+      const requestedProducts = [...exactProductIds]
+        .map(productId => productsById.get(productId))
+        .filter((product): product is Product => product !== undefined);
+      if (requestedProducts.length === exactProductIds.size) {
+        const allocationPercentage = 100 / requestedProducts.length;
+        const firstPricing = requestedProducts[0].pricing_options[0];
+        proposals = [{
+          proposal_id: `prepared_${createHash('sha256').update([...exactProductIds].join('\0')).digest('hex').slice(0, 16)}`,
+          name: 'Prepared compact product proposal',
+          description: 'Deterministic proposal generated from prepared sandbox fixtures.',
+          brief_alignment: 'Uses the exact products selected by the compact lifecycle request.',
+          total_budget_guidance: {
+            min: 1_000,
+            recommended: 1_000,
+            currency: firstPricing.currency ?? 'USD',
+          },
+          allocations: requestedProducts.map(product => ({
+            product_id: product.product_id,
+            allocation_percentage: allocationPercentage,
+            rationale: 'Selected explicitly by the compact lifecycle request.',
+            pricing_option_id: product.pricing_options[0].pricing_option_id,
+          })) as Proposal['allocations'],
+        } as Proposal];
+      }
+    }
     if (exactProductIds) {
       proposals = proposals.filter(proposal => proposal.allocations.every(allocation => (
         exactProductIds.has(allocation.product_id)
@@ -8820,7 +9026,7 @@ async function handleCreateMediaBuyUnlocked(
     if (proposal) {
       const internal = proposal as unknown as Record<string, unknown>;
       const accountRef = req.account as unknown as { account_id?: string };
-      const requestBrand = req.brand as unknown as { domain?: string; brand_id?: string; countries?: string[] };
+      const requestBrand = (req.brand ?? req.account?.brand) as unknown as { domain?: string; brand_id?: string; countries?: string[] };
       const boundAccountId = internal.__account_id;
       const boundBrandDomain = internal.__brand_domain;
       const boundBrandId = internal.__brand_id;
@@ -9444,8 +9650,14 @@ async function handleCreateMediaBuyUnlocked(
 }
 
 export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
-  const req = args as unknown as GetMediaBuysArgs;
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const req = {
+    ...(args as unknown as GetMediaBuysArgs),
+    ...(args.account === undefined && ctx.resolvedAccount !== undefined
+      ? { account: ctx.resolvedAccount }
+      : {}),
+  } as GetMediaBuysArgs;
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(sessionKey);
   const filterIds = req.media_buy_ids;
 
   let buys = Array.from(session.mediaBuys.values());
@@ -9528,7 +9740,9 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
         created_at: mb.createdAt,
         updated_at: mb.updatedAt,
         valid_actions: validActionsForMediaBuy(mb, status),
-        available_actions: availableActionsForMediaBuy(mb, status),
+        available_actions: mb.acceptedProposal
+          ? compactAvailableActions(mb, status)
+          : availableActionsForMediaBuy(mb, status),
         currency: mb.currency,
         total_budget: totalBudget,
         ...(mb.dailyBudgetCap !== undefined && { daily_budget_cap: mb.dailyBudgetCap }),
@@ -9563,7 +9777,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
           const pkgData = {
             package_id: pkg.packageId,
             ...(pkg.legacyOmitProductId ? {} : { product_id: pkg.productId }),
-            budget: pkg.budget,
+            ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
             ...(pkg.dailyBudgetCap !== undefined && { daily_budget_cap: pkg.dailyBudgetCap }),
             ...(pkg.minSpendTarget !== undefined && { min_spend_target: pkg.minSpendTarget }),
             pricing_option_id: pkg.pricingOptionId,
@@ -10651,6 +10865,17 @@ async function handleUpdateMediaBuyUnlocked(
   }
   const resultingAllocation = aggregateUpdate.budget_allocation ?? mb.budgetAllocation;
   const sellerOptimized = resultingAllocation?.mode === 'seller_optimized';
+  if (
+    !sellerOptimized
+    && (req.packages ?? []).some(update => update.budget === null)
+  ) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'A null package budget is valid only in seller-optimized allocation mode.',
+      }],
+    };
+  }
   const fixedRedistribution = aggregateUpdate.total_budget && !sellerOptimized && req.packages === undefined && req.new_packages === undefined
     ? proportionalFixedPackageBudgets(mb, aggregateUpdate.total_budget.amount)
     : undefined;
@@ -10835,11 +11060,12 @@ async function handleUpdateMediaBuyUnlocked(
         }
         const oldBudget = pkg.budget;
         pkg.budget = update.budget;
+        delete pkg.budgetCapRemoved;
         affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'budget_updated', summary: `Package ${pkgId} budget changed from ${oldBudget} to ${update.budget}`, packageId: pkgId });
       } else if ((update as unknown as Record<string, unknown>).budget === null) {
         const oldBudget = pkg.budget;
-        pkg.budget = 0;
+        pkg.budgetCapRemoved = true;
         affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'budget_updated', summary: `Package ${pkgId} budget cap removed from ${oldBudget}`, packageId: pkgId });
       }
@@ -11116,6 +11342,7 @@ async function handleUpdateMediaBuyUnlocked(
         if (nextBudget === undefined) continue;
         const oldBudget = pkg.budget;
         pkg.budget = nextBudget;
+        delete pkg.budgetCapRemoved;
         affectedPackageIds.add(pkg.packageId);
         mb.history.push({
           revision: mb.revision,
@@ -11181,7 +11408,7 @@ async function handleUpdateMediaBuyUnlocked(
   const updatedPackages = mb.packages.map(pkg => ({
     package_id: pkg.packageId,
     product_id: pkg.productId,
-    budget: pkg.budget,
+    ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
     pricing_option_id: pkg.pricingOptionId,
     paused: pkg.paused,
     start_time: pkg.startTime,
@@ -13466,7 +13693,7 @@ function proposalForCurrentMediaBuy(
       ]) delete purchase[field];
       return {
         ...purchase,
-        budget: pkg.budget,
+        ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
         start_time: pkg.startTime,
         end_time: pkg.endTime,
         ...(pkg.impressions !== undefined && { impressions: pkg.impressions }),
@@ -13882,6 +14109,7 @@ export async function handleBuyProducts(
 
   const catalog = new Map(getCatalog().map(entry => [entry.product.product_id, entry.product]));
   overlaySeededProducts(session, catalog);
+  const purchaseStartedAt = new Date().toISOString();
   const canonicalPurchases: CompactProductPurchase[] = [];
   for (let index = 0; index < args.purchases.length; index++) {
     const purchase = args.purchases[index]!;
@@ -13935,10 +14163,11 @@ export async function handleBuyProducts(
         };
       }
     }
+    const purchaseStartTime = purchase.start_time ?? args.start_time;
     canonicalPurchases.push({
       ...structuredClone(purchase),
       pricing: canonicalPricing as unknown as CompactProductPurchase['pricing'],
-      start_time: purchase.start_time ?? args.start_time,
+      start_time: purchaseStartTime === 'asap' ? purchaseStartedAt : purchaseStartTime,
       end_time: purchase.end_time ?? args.end_time,
       ...(purchase.measurement_terms === undefined
         && isRecord(productTerms.measurement_terms)
@@ -13980,7 +14209,7 @@ export async function handleBuyProducts(
     brand,
     ...(args.advertiser_industry !== undefined && { advertiser_industry: args.advertiser_industry }),
     purchases: canonicalPurchases,
-    start_time: args.start_time,
+    start_time: args.start_time === 'asap' ? purchaseStartedAt : args.start_time,
     end_time: args.end_time,
     ...(args.total_budget !== undefined && { total_budget: args.total_budget }),
     ...(args.daily_budget_cap !== undefined && { daily_budget_cap: args.daily_budget_cap }),
@@ -14711,6 +14940,9 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   request_proposals: handleGetProducts,
   refine_proposals: handleGetProducts,
   decline_proposals: handleGetProducts,
+  buy_products: (args, ctx) => handleBuyProducts(args as BuyProductsRequest, ctx),
+  accept_proposal: (args, ctx) => handleAcceptProposal(args as AcceptProposalRequest, ctx),
+  control_media_buy: (args, ctx) => handleControlMediaBuy(args as ControlMediaBuyRequest, ctx),
   list_creative_formats: handleListCreativeFormats,
   validate_input: handleValidateInput,
   create_media_buy: handleCreateMediaBuy,

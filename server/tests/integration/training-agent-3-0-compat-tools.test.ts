@@ -21,7 +21,7 @@ const { stopSessionCleanup } = await import('../../src/training-agent/state.js')
 
 const COMPAT_CTX = { mode: 'open' as const, storyboardCompat: { version: '3.0' as const } };
 const AUTH = 'Bearer compat-tools-token';
-const CURRENT_ADCP_VERSION = '3.2-beta.2';
+const CURRENT_ADCP_VERSION = '3.2-beta.3';
 
 async function simulateListTools(server: ReturnType<typeof createTrainingAgentServer>): Promise<string[]> {
   const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
@@ -200,7 +200,7 @@ describe('training-agent 3.0 compat tool visibility', () => {
       }
 
       const si = await callTenantTool(baseUrl, 'si', 'get_adcp_capabilities', {});
-      expect(si.specialisms).toBeUndefined();
+      expect(si.specialisms).toEqual([]);
 
       const offering = await callTenantTool(baseUrl, 'si', 'si_get_offering', {
         offering_id: 'novamotors_conversational_v1',
@@ -215,10 +215,10 @@ describe('training-agent 3.0 compat tool visibility', () => {
     }
   });
 
-  it('keeps validate_input callable but undiscovered on the current compact media-buy profile', async () => {
+  it('advertises validate_input on the current all-tools profile while preserving 3.0 rejection', async () => {
     const { baseUrl, close } = await bootRouter();
     try {
-      await expect(listTenantTools(baseUrl, 'sales')).resolves.not.toContain('validate_input');
+      await expect(listTenantTools(baseUrl, 'sales')).resolves.toContain('validate_input');
 
       const unpinned = await callTenantTool(baseUrl, 'sales', 'validate_input', {
         manifest: validImageManifest,

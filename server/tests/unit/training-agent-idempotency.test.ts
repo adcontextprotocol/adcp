@@ -509,7 +509,7 @@ describe('training agent idempotency middleware', () => {
     it('keeps keyless list_products independent from legacy discovery replay identity', async () => {
       const key = `products-list-alias-${randomUUID()}`;
       const identity = {
-        adcp_version: '3.2-beta.2',
+        adcp_version: '3.2-beta.3',
         brand: BRAND,
       };
 
@@ -526,7 +526,9 @@ describe('training agent idempotency middleware', () => {
       expect(listed.isError).toBeFalsy();
       expect(listed.parsed.outcome).toBe('listed');
       expect(listed.parsed.replayed).toBeUndefined();
-      expect(listed.parsed.products).toEqual(first.parsed.products);
+      expect((listed.parsed.products as Array<{ product_id?: string }>).map(product => product.product_id))
+        .toEqual((first.parsed.products as Array<{ product_id?: string }>).map(product => product.product_id));
+      expect((listed.parsed.products as Array<Record<string, unknown>>)[0]).not.toHaveProperty('format_ids');
     });
 
     it('treats caller-supplied version pins as part of product request identity', async () => {
@@ -541,7 +543,7 @@ describe('training agent idempotency middleware', () => {
 
       const conflict = await call(server, 'get_products', {
         idempotency_key: key,
-        adcp_version: '3.2-beta.2',
+        adcp_version: '3.2-beta.3',
         buying_mode: 'wholesale',
         account: ACCOUNT,
       });
@@ -567,7 +569,7 @@ describe('training agent idempotency middleware', () => {
       const key = `products-recommend-task-alias-${randomUUID()}`;
       const shared = {
         idempotency_key: key,
-        adcp_version: '3.2-beta.2',
+        adcp_version: '3.2-beta.3',
         account: ACCOUNT,
         brand: BRAND,
         brief: 'cross-channel news video and display',
@@ -583,7 +585,7 @@ describe('training agent idempotency middleware', () => {
 
       const split = await call(server, 'request_proposals', {
         idempotency_key: key,
-        adcp_version: '3.2-beta.2',
+        adcp_version: '3.2-beta.3',
         brand: BRAND,
         brief: shared.brief,
       });
@@ -594,7 +596,7 @@ describe('training agent idempotency middleware', () => {
     it('projects one cached product result across inline then task execution modes', async () => {
       const shared = {
         idempotency_key: `products-inline-task-${randomUUID()}`,
-        adcp_version: '3.2-beta.2',
+        adcp_version: '3.2-beta.3',
         brand: BRAND,
         brief: 'cross-channel sports',
       };
@@ -614,7 +616,7 @@ describe('training agent idempotency middleware', () => {
     it('projects one cached product result across task then inline execution modes', async () => {
       const shared = {
         idempotency_key: `products-task-inline-${randomUUID()}`,
-        adcp_version: '3.2-beta.2',
+        adcp_version: '3.2-beta.3',
         brand: BRAND,
         brief: 'cross-channel news',
       };
