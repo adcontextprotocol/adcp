@@ -450,6 +450,13 @@
 
 - Cross-role governance enforcement: the experimental `governance.campaign` surface will add typed `target_agent`, task-scoped `adcp.governance_enforcement`, critical task/payload/commitment JWS bindings, intent-only conditions negotiation, and governance-authoritative settlement. The implementation may merge during 3.2 development; the beta-to-GA period provides the experimental-surface notice window. See the 3.2 release notes and migration guide.
 
+## 3.1.17
+
+### Patch Changes
+
+- 4f73f65: Correct the OpenRTB source for PAIR identifiers and clarify that PAIR wire
+  values are rotating, publisher-scoped identifiers rather than universal IDs.
+
 ## 3.1.16
 
 ### Patch Changes
