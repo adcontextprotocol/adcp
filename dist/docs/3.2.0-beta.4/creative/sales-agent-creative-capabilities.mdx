@@ -1,0 +1,98 @@
+---
+title: Creative Capabilities on Sales Agents
+description: "How AdCP 3.2 sales agents separate product format deliverability from optional creative operations."
+"og:title": "AdCP — Creative capabilities on sales agents"
+---
+
+A sales agent can sell inventory, manage creatives, and optionally produce them. Those are separate capabilities.
+
+## Format deliverability is product-scoped
+
+Every new 3.2 product declares its closed accepted set in `Product.format_options[]`. This is true whether or not the sales endpoint also implements Creative Protocol tasks.
+
+```json
+{
+  "product_id": "daily_pulse_homepage",
+  "format_options": [
+    {
+      "format_option_id": "homepage_image_300x250",
+      "format_kind": "image",
+      "params": { "width": 300, "height": 250 }
+    }
+  ]
+}
+```
+
+An agent-global format list cannot express product-, placement-, account-, or inventory-specific deliverability. For that reason, sales-agent `list_creative_formats` is deprecated in 3.2.
+
+## Creative operations are capability-scoped
+
+If the same endpoint can build, validate, or preview creatives, include `creative` in `supported_protocols` and advertise the operation catalog in `creative.supported_formats[]`:
+
+```json
+{
+  "supported_protocols": ["media_buy", "creative"],
+  "creative": {
+    "supports_generation": true,
+    "has_creative_library": true,
+    "supported_formats": [
+      {
+        "capability_id": "homepage_image_builder",
+        "operations": ["build", "validate", "preview"],
+        "format": {
+          "format_kind": "image",
+          "params": { "width": 300, "height": 250 }
+        }
+      }
+    ],
+    "preview": {
+      "routes": [{
+        "capability_id": "homepage_image_builder",
+        "rendering_origin": "agent_approximation"
+      }]
+    }
+  }
+}
+```
+
+The endpoint may expose both facts, but they remain independent:
+
+- `Product.format_options[]` says the product can deliver the format.
+- `creative.supported_formats[]` says this endpoint can perform creative operations for it.
+- `build_creative.target_capability_id` selects one operation entry.
+- The returned manifest carries `format_kind`, never `capability_id`.
+
+## Creative management modes
+
+| Declaration | Meaning |
+|---|---|
+| `media_buy.inline_creative_management: true` | Package-scoped creative bodies are accepted on create/update media-buy operations |
+| `creative.has_creative_library: true` | The agent exposes reusable library operations such as `sync_creatives` and `list_creatives` |
+| `creative.supported_formats[]` | The endpoint exposes canonical build, validation, or preview operations |
+
+An endpoint may support any applicable combination. Inline management does not imply a reusable library; a library does not imply generation.
+
+## Seller-side generation
+
+For seller-produced creative, the product declaration tells the buyer what inputs the delivery contract accepts. For example, a sponsored placement might require a brief and catalog reference. The endpoint's creative capability then advertises the matching build route.
+
+```json
+{
+  "target_capability_id": "sponsored_product_builder",
+  "message": "Promote lightweight trail shoes for spring hikes",
+  "brand": { "domain": "acmeoutdoor.example" }
+}
+```
+
+If the seller renders only at impression time, buyers still submit a canonical manifest containing the required brief/catalog assets through `sync_creatives`. The impression-time renderer is the seller runtime, not a separately discoverable creative agent.
+
+## Compatibility
+
+A sales agent may project canonical product declarations into deprecated `format_ids[]` and `list_creative_formats` for older 3.x peers. The projection must be derived; it must not become a second authored catalog.
+
+## Related
+
+- [Canonical formats](/dist/docs/3.2.0-beta.4/creative/canonical-formats)
+- [Media products](/dist/docs/3.2.0-beta.4/media-buy/product-discovery/media-products)
+- [`get_adcp_capabilities`](/dist/docs/3.2.0-beta.4/protocol/get_adcp_capabilities)
+- [Creative libraries](/dist/docs/3.2.0-beta.4/creative/creative-libraries)
