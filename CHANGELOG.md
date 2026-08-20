@@ -465,6 +465,12 @@
 - 4f73f65: Correct the OpenRTB source for PAIR identifiers and clarify that PAIR wire
   values are rotating, publisher-scoped identifiers rather than universal IDs.
 
+## 3.1.16
+
+### Patch Changes
+
+- 9289fea: Gate inventory-list compliance scenarios on the stable property-list capability and accept either documented no-match outcome.
+
 ## 3.1.15
 
 ### Patch Changes

@@ -16,8 +16,8 @@ requires_capability:
 
 narrative: |
   AdCP 3.0 targets inventory through agent-hosted reference lists rather than inline
-  property arrays. Buyers point a package's targeting at a `PropertyListReference`
-  reference; the seller resolves the list against its own inventory at serve time.
+  property arrays. Buyers point a package's targeting at a `PropertyListReference`;
+  the seller resolves the list against its own inventory at serve time.
 
   A common integration regression is create/update parity: a seller accepts list
   references on create_media_buy but silently drops them on update_media_buy, so a
