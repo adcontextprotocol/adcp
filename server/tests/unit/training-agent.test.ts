@@ -9418,6 +9418,7 @@ describe('update_media_buy handler', () => {
     const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
     const account = { brand: { domain: 'assignment-route-atomic.example' }, operator: 'assignment-route-atomic.example' };
     const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'create_media_buy', {
+      adcp_version: CURRENT_ADCP_VERSION,
       account,
       brand: account.brand,
       ...futureFlight(),
@@ -9448,6 +9449,7 @@ describe('update_media_buy handler', () => {
     const account = { brand: { domain: 'wrong-inline-format.example' }, operator: 'wrong-inline-format.example' };
 
     const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'create_media_buy', {
+      adcp_version: CURRENT_ADCP_VERSION,
       account,
       brand: account.brand,
       ...futureFlight(),
@@ -9474,6 +9476,7 @@ describe('update_media_buy handler', () => {
     const account = { brand: { domain: 'ambiguous-inline-format.example' }, operator: 'ambiguous-inline-format.example' };
 
     const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'create_media_buy', {
+      adcp_version: CURRENT_ADCP_VERSION,
       account,
       brand: account.brand,
       ...futureFlight(),
@@ -9562,6 +9565,7 @@ describe('update_media_buy handler', () => {
     };
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: created, isError } = await simulateCallTool(server, 'create_media_buy', {
+      adcp_version: CURRENT_ADCP_VERSION,
       account,
       brand: account.brand,
       ...futureFlight(),
@@ -9581,6 +9585,7 @@ describe('update_media_buy handler', () => {
     const packages = created.packages as Array<Record<string, unknown>>;
 
     const { result: update } = await simulateCallTool(server, 'update_media_buy', {
+      adcp_version: CURRENT_ADCP_VERSION,
       account,
       media_buy_id: created.media_buy_id,
       revision: created.revision,

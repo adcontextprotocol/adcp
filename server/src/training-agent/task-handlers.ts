@@ -2566,6 +2566,16 @@ function compareAdcpReleaseVersions(left: ParsedAdcpReleaseVersion, right: Parse
   return compareAdcpPrerelease(left.prerelease, right.prerelease);
 }
 
+function supportsLifecycleSplitCompatibility(version: string | undefined): boolean {
+  if (version === undefined) return true;
+  const parsed = parseAdcpReleaseVersion(version);
+  return parsed !== undefined && (parsed.major > 3 || (parsed.major === 3 && parsed.minor >= 2));
+}
+
+function lifecycleSplitVersionForContext(ctx: TrainingContext): string | undefined {
+  return isThreeZeroStoryboardCompat(ctx) ? '3.0' : ctx.servedAdcpVersion;
+}
+
 function compareAdcpPrerelease(left: string, right: string): number {
   const leftParts = left.split('.');
   const rightParts = right.split('.');
@@ -3589,22 +3599,23 @@ export function deriveStatus(mb: MediaBuyState, session?: SessionState): string 
 }
 
 /** Map lifecycle status to valid buyer actions. */
-function validActionsForStatus(status: string): string[] {
+function validActionsForStatus(status: string, servedAdcpVersion?: string): string[] {
+  const updateName = supportsLifecycleSplitCompatibility(servedAdcpVersion) ? ['update_name'] : [];
   switch (status) {
     case 'pending_creatives':
     case 'pending_start':
-      return ['pause', 'cancel', 'update_name', 'sync_creatives'];
+      return ['pause', 'cancel', ...updateName, 'sync_creatives'];
     case 'active':
-      return ['pause', 'cancel', 'update_name', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
+      return ['pause', 'cancel', ...updateName, 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
     case 'paused':
-      return ['resume', 'cancel', 'update_name', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
+      return ['resume', 'cancel', ...updateName, 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
     default:
       return [];
   }
 }
 
-function availableActionsForStatus(status: string, explicit?: MediaBuyAvailableActionState[]): MediaBuyAvailableActionState[] {
-  const actions = explicit ?? validActionsForStatus(status).map(action => ({
+function availableActionsForStatus(status: string, explicit?: MediaBuyAvailableActionState[], servedAdcpVersion?: string): MediaBuyAvailableActionState[] {
+  const actions = explicit ?? validActionsForStatus(status, servedAdcpVersion).map(action => ({
     action,
     mode: 'self_serve' as const,
   }));
@@ -3632,8 +3643,8 @@ function hasLatentMediaBuyPause(mb: MediaBuyState, status: string): boolean {
   return mb.status === 'paused' && status !== 'paused' && NON_TERMINAL_MEDIA_BUY_STATUSES.has(status);
 }
 
-function validActionsForMediaBuy(mb: MediaBuyState, status: string): string[] {
-  const actions = validActionsForStatus(status);
+function validActionsForMediaBuy(mb: MediaBuyState, status: string, servedAdcpVersion?: string): string[] {
+  const actions = validActionsForStatus(status, servedAdcpVersion);
   if (!hasLatentMediaBuyPause(mb, status) || actions.includes('resume')) return actions;
   return ['resume', ...actions];
 }
@@ -3714,15 +3725,17 @@ function deriveAvailableActionsFromProductAllowedActions(
     })));
 }
 
-function availableActionsForMediaBuy(mb: MediaBuyState, status: string): MediaBuyAvailableActionState[] {
+function availableActionsForMediaBuy(mb: MediaBuyState, status: string, servedAdcpVersion?: string): MediaBuyAvailableActionState[] {
   const productDerived = deriveAvailableActionsFromProductAllowedActions(mb.productAllowedActions, status);
   const actions = productDerived !== undefined
     ? productDerived
-    : availableActionsForStatus(status, mb.availableActions);
-  const canonical = actions.map(action => ({
-    ...action,
-    task: action.task ?? canonicalTaskForMediaBuyAction(action.action),
-  }));
+    : availableActionsForStatus(status, mb.availableActions, servedAdcpVersion);
+  const canonical = actions
+    .filter(action => action.action !== 'update_name' || supportsLifecycleSplitCompatibility(servedAdcpVersion))
+    .map(action => ({
+      ...action,
+      task: action.task ?? canonicalTaskForMediaBuyAction(action.action),
+    }));
   if (!hasLatentMediaBuyPause(mb, status) || canonical.some(action => action.action === 'resume')) return canonical;
   return [{ task: 'control_media_buy', action: 'resume', mode: 'self_serve' }, ...canonical];
 }
@@ -3730,6 +3743,7 @@ function availableActionsForMediaBuy(mb: MediaBuyState, status: string): MediaBu
 function compactAvailableActions(
   mediaBuy: MediaBuyState,
   status: string,
+  servedAdcpVersion?: string,
 ): Array<MediaBuyAvailableActionState & { task: 'control_media_buy' }> {
   const compactControlActions = new Set([
     'pause', 'resume', 'cancel', 'update_name', 'increase_budget', 'decrease_budget',
@@ -3739,7 +3753,7 @@ function compactAvailableActions(
     'update_impression_goal', 'update_spend_target', 'update_reporting_webhook',
     'remove_packages',
   ]);
-  return availableActionsForMediaBuy(mediaBuy, status)
+  return availableActionsForMediaBuy(mediaBuy, status, servedAdcpVersion)
     .filter(action => compactControlActions.has(action.action))
     .map(action => ({
       ...action,
@@ -9616,19 +9630,20 @@ async function handleCreateMediaBuyUnlocked(
   const inlineCreativesToPersist: ValidatedInlineCreative[] = [];
   const productFormatOptionIndexes: ProductFormatOptionIndexCache = new WeakMap();
   const requestInlineCreativeIds = new Set<string>();
+  const enforceLifecycleSplit = supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx));
   for (let i = 0; i < req.packages.length; i++) {
     const pkg = req.packages[i] as unknown as PackageInput;
     const inline = collectInlineCreativeIds(pkg.creatives, `packages[${i}].creatives`);
     errors.push(...inline.errors);
     inlineCreativesToPersist.push(...inline.validatedCreatives);
     for (const creativeId of inline.creativeIds) {
-      if (requestInlineCreativeIds.has(creativeId)) {
+      if (enforceLifecycleSplit && requestInlineCreativeIds.has(creativeId)) {
         errors.push({
           code: 'VALIDATION_ERROR',
           message: `Inline creative ${creativeId} is declared more than once in this create request.`,
           field: `packages[${i}].creatives`,
         });
-      } else if (session.creatives.has(creativeId)) {
+      } else if (enforceLifecycleSplit && session.creatives.has(creativeId)) {
         errors.push({
           code: 'CREATIVE_ALREADY_EXISTS',
           message: `Inline creative ${creativeId} already exists in the account library; reference it through creative_assignments instead of overwriting it during create.`,
@@ -9860,7 +9875,7 @@ async function handleCreateMediaBuyUnlocked(
       ...(Array.isArray(pkg.creative_assignments) ? pkg.creative_assignments : []),
       ...inlineCreativeAssignmentRows(pkg.creatives),
     ];
-    if (requestedAssignmentRows.length > 0) {
+    if (enforceLifecycleSplit && requestedAssignmentRows.length > 0) {
       errors.push(...validateCreateAssignmentSemantics(
         requestedAssignmentRows,
         product as unknown as Record<string, unknown>,
@@ -9897,7 +9912,7 @@ async function handleCreateMediaBuyUnlocked(
         });
         continue;
       }
-      if (!session.creatives.has(creativeId) && !requestInlineCreativeIds.has(creativeId)) {
+      if (enforceLifecycleSplit && !session.creatives.has(creativeId) && !requestInlineCreativeIds.has(creativeId)) {
         errors.push({
           code: 'CREATIVE_NOT_FOUND',
           message: `${pkgLabel}: Creative not found: ${creativeId}. Sync it first or include its inline body in this create request.`,
@@ -10099,8 +10114,8 @@ async function handleCreateMediaBuyUnlocked(
     ...(mediaBuy.budgetAllocation && { budget_allocation: mediaBuy.budgetAllocation }),
     ...(mediaBuy.aggregatePacing && { pacing: mediaBuy.aggregatePacing }),
     ...(mediaBuy.aggregateBidding && { bidding: mediaBuy.aggregateBidding }),
-    valid_actions: validActionsForMediaBuy(mediaBuy, status),
-    available_actions: availableActionsForMediaBuy(mediaBuy, status),
+    valid_actions: validActionsForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
+    available_actions: availableActionsForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
       product_id: pkg.productId,
@@ -10214,10 +10229,10 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
         confirmed_at: mb.confirmedAt,
         created_at: mb.createdAt,
         updated_at: mb.updatedAt,
-        valid_actions: validActionsForMediaBuy(mb, status),
+        valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
         available_actions: mb.acceptedProposal
-          ? compactAvailableActions(mb, status)
-          : availableActionsForMediaBuy(mb, status),
+          ? compactAvailableActions(mb, status, lifecycleSplitVersionForContext(ctx))
+          : availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
         currency: mb.currency,
         total_budget: totalBudget,
         ...(mb.dailyBudgetCap !== undefined && { daily_budget_cap: mb.dailyBudgetCap }),
@@ -11247,7 +11262,7 @@ function mediaBuyMutationConflict(): Record<string, unknown> {
 export async function handleUpdateMediaBuy(
   args: ToolArgs,
   ctx: TrainingContext,
-  options: { acceptedProposalExecution?: boolean; governance?: TrustedGovernedExecution } = {},
+  options: { acceptedProposalExecution?: boolean; operationalControlExecution?: boolean; governance?: TrustedGovernedExecution } = {},
 ): Promise<Record<string, unknown>> {
   const mutex = await acquireMediaBuyMutationMutex(args, ctx);
   if (!mutex) return mediaBuyMutationConflict();
@@ -11264,7 +11279,7 @@ export async function handleUpdateMediaBuy(
 async function handleUpdateMediaBuyUnlocked(
   args: ToolArgs,
   ctx: TrainingContext,
-  options: { acceptedProposalExecution?: boolean; governance?: TrustedGovernedExecution } = {},
+  options: { acceptedProposalExecution?: boolean; operationalControlExecution?: boolean; governance?: TrustedGovernedExecution } = {},
 ): Promise<Record<string, unknown>> {
   const req = args as unknown as UpdateMediaBuyArgs;
   const session = await getSession(
@@ -11362,8 +11377,8 @@ async function handleUpdateMediaBuyUnlocked(
       status,
       media_buy_status: status,
       revision: mb.revision,
-      valid_actions: validActionsForMediaBuy(mb, status),
-      available_actions: availableActionsForMediaBuy(mb, status),
+      valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+      available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
       cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
       ...(warnings.length > 0 && { warnings }),
       ...(req.context !== undefined && { context: req.context }),
@@ -11575,8 +11590,9 @@ async function handleUpdateMediaBuyUnlocked(
         || update.targeting_overlay !== undefined
         || update.targeting !== undefined;
       if (!traffickingChanged) continue;
-      const product = productMap.get(pkg.productId);
-      if (!product) {
+      const enforceLifecycleSplit = supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx));
+      const product = enforceLifecycleSplit ? productMap.get(pkg.productId) : undefined;
+      if (enforceLifecycleSplit && !product) {
         return { errors: [{ code: 'PRODUCT_NOT_FOUND', message: `Product not found for package ${pkgId}: ${pkg.productId}` }] };
       }
       const inlineCreatives = collectInlineCreativeIds(update.creatives, `packages[${update.package_id || '?'}].creatives`);
@@ -11630,15 +11646,17 @@ async function handleUpdateMediaBuyUnlocked(
         ?? pkg.targeting;
       const targetingResult = validateTargeting(incomingTargeting, `packages[${pkgId}].targeting_overlay`);
       if (targetingResult.errors.length) return { errors: targetingResult.errors };
-      const assignmentErrors = validateCreateAssignmentSemantics(
-        candidateRows,
-        product as unknown as Record<string, unknown>,
-        targetingResult.targeting,
-        creativeValidationSession,
-        `packages[${pkgId}].creative_assignments`,
-        (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
-      );
-      if (assignmentErrors.length) return { errors: assignmentErrors };
+      if (enforceLifecycleSplit) {
+        const assignmentErrors = validateCreateAssignmentSemantics(
+          candidateRows,
+          product as unknown as Record<string, unknown>,
+          targetingResult.targeting,
+          creativeValidationSession,
+          `packages[${pkgId}].creative_assignments`,
+          (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
+        );
+        if (assignmentErrors.length) return { errors: assignmentErrors };
+      }
     }
 
     for (const update of req.packages as PackageUpdateExt[]) {
@@ -11885,6 +11903,7 @@ async function handleUpdateMediaBuyUnlocked(
   const newPackages = req.new_packages;
   if (newPackages?.length) {
     const productFormatOptionIndexes: ProductFormatOptionIndexCache = new WeakMap();
+    const enforceLifecycleSplit = supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx));
     if (mb.packages.length + newPackages.length > MAX_PACKAGES_PER_BUY) {
       return {
         errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
@@ -11922,7 +11941,7 @@ async function handleUpdateMediaBuyUnlocked(
       const inlineCreatives = collectInlineCreativeIds(npkg.creatives, `new_packages[${i}].creatives`);
       if (inlineCreatives.errors.length) return { errors: inlineCreatives.errors };
       for (const inline of inlineCreatives.validatedCreatives) {
-        if (requestInlineCreativeIds.has(inline.creativeId)) {
+        if (enforceLifecycleSplit && requestInlineCreativeIds.has(inline.creativeId)) {
           return {
             errors: [{
               code: 'VALIDATION_ERROR',
@@ -11949,7 +11968,7 @@ async function handleUpdateMediaBuyUnlocked(
         ...inlineCreativeAssignmentRows(npkg.creatives),
       ];
       for (const assignment of assignmentRows) {
-        if (typeof assignment.creative_id !== 'string' || !creativeValidationSession.creatives.has(assignment.creative_id)) {
+        if (enforceLifecycleSplit && (typeof assignment.creative_id !== 'string' || !creativeValidationSession.creatives.has(assignment.creative_id))) {
           return {
             errors: [{
               code: 'CREATIVE_NOT_FOUND',
@@ -11959,15 +11978,17 @@ async function handleUpdateMediaBuyUnlocked(
           };
         }
       }
-      const assignmentErrors = validateCreateAssignmentSemantics(
-        assignmentRows,
-        product as unknown as Record<string, unknown>,
-        targetingResult.targeting,
-        creativeValidationSession,
-        `new_packages[${i}].creative_assignments`,
-        formatSnapshot.formats ?? [],
-      );
-      if (assignmentErrors.length) return { errors: assignmentErrors };
+      if (enforceLifecycleSplit) {
+        const assignmentErrors = validateCreateAssignmentSemantics(
+          assignmentRows,
+          product as unknown as Record<string, unknown>,
+          targetingResult.targeting,
+          creativeValidationSession,
+          `new_packages[${i}].creative_assignments`,
+          formatSnapshot.formats ?? [],
+        );
+        if (assignmentErrors.length) return { errors: assignmentErrors };
+      }
       const newPkg: PackageState = {
         packageId: pkgId,
         productId,
@@ -12096,7 +12117,7 @@ async function handleUpdateMediaBuyUnlocked(
   // Inline creative bodies update the account-scoped creative library. A
   // creative may be shared by packages omitted from this request, so validate
   // every surviving reference against the staged replacement before commit.
-  if (stagedInlineCreatives.length > 0) {
+  if (stagedInlineCreatives.length > 0 && supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx))) {
     const stagedCreativeIds = new Set(stagedInlineCreatives.map(({ creativeId }) => creativeId));
     for (const pkg of mb.packages) {
       if (pkg.canceled || !pkg.creativeAssignments.some(creativeId => stagedCreativeIds.has(creativeId))) continue;
@@ -12120,6 +12141,7 @@ async function handleUpdateMediaBuyUnlocked(
 
   if (
     !options.acceptedProposalExecution
+    && !options.operationalControlExecution
     && mb.acceptedProposal
     && legacyUpdateChangesCommercialEnvelope(req)
   ) {
@@ -12203,8 +12225,8 @@ async function handleUpdateMediaBuyUnlocked(
     status,
     media_buy_status: status,
     revision: mb.revision,
-    valid_actions: validActionsForMediaBuy(mb, status),
-    available_actions: availableActionsForMediaBuy(mb, status),
+    valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+    available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
     ...((aggregateUpdate.total_budget !== undefined || packageBudgetChanged) && {
       currency: mb.currency,
       total_budget: mb.totalBudget,
@@ -15701,6 +15723,7 @@ async function handleControlMediaBuyUnlocked(
     }
   }
   const updateResult = await handleUpdateMediaBuyUnlocked(args as unknown as ToolArgs, ctx, {
+    operationalControlExecution: true,
     ...(mediaBuy && {
       governance: {
         task: 'control_media_buy' as const,
