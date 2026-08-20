@@ -1,5 +1,30 @@
 # Changelog
 
+## 3.2.0-beta.4
+
+### Minor Changes
+
+- 18f5f8e: Add conformance surface for flexible-window availability discovery. New `media_buy.availability_horizon` capability declaration gates the new `media_buy_seller/availability_windows` scenario (required by the sales-guaranteed specialism): horizon partitioning into coalesced half-open time windows, eligibility-aware `availability_status` (a gap shorter than the product's minimum bookable duration is `unavailable` even with no competing hold), forecast excluded from `list_products` conditional reads, and `PRODUCT_UNAVAILABLE` on buys against closed or too-short windows. Product fixtures accept an optional seller-internal `availability` calendar (`min_bookable_days`, `booked_windows`) consumed by seeding. Adds schema test vectors for the `availability_horizon` mutual-exclusion and time-dimension shapes.
+- c6b0513: Allow products to disclose per-package cardinality limits for country
+  inclusion, country exclusion, and proximity targeting.
+- 8d0a0c8: Add flexible-window availability discovery. `offer_filters.availability_horizon` lets a buyer ask "which dates can I run?" instead of filtering to one exact flight; sellers answer by partitioning the horizon into `time`-dimensioned forecast points (new `forecast-dimension-time` variant) carrying the new `availability_status` field (`available` | `unavailable`). Availability data is a snapshot bounded by the forecast's `valid_until`, never a hold — proposal finalization remains the firm-avails and commitment boundary. Forecast data is excluded from `list_products` feed-version scoping, and a `list_products` request whose `fields` includes `forecast` must not be answered with `outcome: "unchanged"`.
+- e93e3e4: Add structured reverse-forecast planning input. `criteria.outcome_target` lets a buyer state the outcome they need — a compact goal (a `forecastable-metric` delivery metric or an `event-type` conversion event) plus a desired volume, e.g. "10,000 clicks" — and ask the seller to solve for budget, answering with `total_budget_guidance` on proposals and forecasts whose points carry the goal's key in `metrics`. The goal vocabulary is shared with forecast reporting and package-level optimization goals, so every permitted goal has a defined answer and buyers carry the same metric or event name from plan to buy. Gated by the new `media_buy.outcome_target` capability declaration; sellers that do not declare it reject the field with `UNSUPPORTED_FEATURE` rather than silently ignoring it.
+- e72ff10: Add the projection-only `products_available` outcome for valid AdCP 2.5, 3.0,
+  and 3.1 products-only brief results. The response now provides either a real
+  seller-fenced `listed_purchase` continuation or an explicitly lossy,
+  fail-closed `legacy_create` continuation without fabricating proposals, terms
+  digests, or feed versions. AdCP 2.5 continuations additionally disclose the
+  absence of a mutation replay guarantee. Document transaction-boundary
+  differences between the established and compact media-buy lifecycles, and route
+  supported MediaBuy name actions through compact control.
+
+### Patch Changes
+
+- 71706fb: Correct the OpenRTB source and complete the PAIR profile mapping, including
+  matcher, match method, publisher scope, key rotation, and TMP's lossy scope
+  boundary.
+- 49c81e0: Align the AdCP 3.2 beta compliance surface and training agent with `@adcp/sdk@14.0.0-beta.4`.
+
 ## 3.2.0-beta.3
 
 ### Minor Changes

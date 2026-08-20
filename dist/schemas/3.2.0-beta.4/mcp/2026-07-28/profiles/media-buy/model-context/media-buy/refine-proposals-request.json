@@ -1,0 +1,4011 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "context_id": {
+      "type": "string"
+    },
+    "context": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1context.json"
+        }
+      ]
+    },
+    "governance_context": {
+      "type": "string"
+    },
+    "push_notification_config": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1push-notification-config.json"
+        }
+      ]
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "refinements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:media-buy~1proposal-refinement.json"
+      },
+      "allOf": [
+        {
+          "if": {
+            "contains": {
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "const": "finalize"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            }
+          },
+          "then": {
+            "items": {
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "const": "finalize"
+                }
+              },
+              "required": [
+                "action"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "refinements"
+  ],
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string"
+        },
+        "adcp_major_version": {
+          "type": "integer"
+        }
+      }
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/push-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        },
+        "authentication": {
+          "type": "object",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              }
+            },
+            "credentials": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ]
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:media-buy/proposal-refinement.json": {
+      "type": "object",
+      "properties": {
+        "proposal_id": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "revise",
+            "finalize"
+          ]
+        },
+        "change_kind": {
+          "type": "string",
+          "enum": [
+            "amendment",
+            "cancellation"
+          ]
+        },
+        "constraints": {
+          "type": "object",
+          "properties": {
+            "total_budget": {
+              "$ref": "#/$defs/external:media-buy~1proposal-budget-constraint.json"
+            },
+            "cpm": {
+              "type": "object",
+              "properties": {
+                "max": {
+                  "type": "number"
+                },
+                "currency": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "max",
+                "currency"
+              ]
+            },
+            "impressions": {
+              "type": "object",
+              "properties": {
+                "min": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "min"
+              ]
+            },
+            "flight": {
+              "type": "object",
+              "properties": {
+                "start_no_later_than": {
+                  "type": "string"
+                },
+                "end_no_earlier_than": {
+                  "type": "string"
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "start_no_later_than"
+                  ]
+                },
+                {
+                  "required": [
+                    "end_no_earlier_than"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "product_changes": {
+          "$ref": "#/$defs/external:core~1product-change-map.json"
+        },
+        "alternatives": {
+          "type": "object",
+          "properties": {
+            "count": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "count"
+          ]
+        },
+        "ask": {
+          "type": "string"
+        },
+        "criteria": {
+          "$ref": "#/$defs/external:media-buy~1product-discovery-criteria.json"
+        }
+      },
+      "required": [
+        "proposal_id"
+      ],
+      "oneOf": [
+        {
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "finalize"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "change_kind"
+                ]
+              },
+              {
+                "required": [
+                  "constraints"
+                ]
+              },
+              {
+                "required": [
+                  "product_changes"
+                ]
+              },
+              {
+                "required": [
+                  "alternatives"
+                ]
+              },
+              {
+                "required": [
+                  "ask"
+                ]
+              },
+              {
+                "required": [
+                  "criteria"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "revise"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "constraints"
+              ]
+            },
+            {
+              "required": [
+                "product_changes"
+              ]
+            },
+            {
+              "required": [
+                "alternatives"
+              ]
+            },
+            {
+              "required": [
+                "ask"
+              ]
+            },
+            {
+              "required": [
+                "criteria"
+              ]
+            },
+            {
+              "properties": {
+                "change_kind": {
+                  "type": "string",
+                  "const": "cancellation"
+                }
+              },
+              "required": [
+                "change_kind"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "external:media-buy/proposal-budget-constraint.json": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "currency": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "currency"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "min"
+          ]
+        },
+        {
+          "required": [
+            "max"
+          ]
+        }
+      ]
+    },
+    "external:core/product-change-map.json": {
+      "type": "object",
+      "propertyNames": {},
+      "additionalProperties": {
+        "enum": [
+          "include",
+          "omit"
+        ]
+      }
+    },
+    "external:media-buy/product-discovery-criteria.json": {
+      "type": "object",
+      "properties": {
+        "product_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "offer_filters": {
+          "$ref": "#/$defs/external:core~1product-offer-filters.json"
+        },
+        "targeting_overlay": {
+          "$ref": "#/$defs/external:core~1targeting.json"
+        },
+        "required_overlay_support": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json"
+        },
+        "outcome_target": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:media-buy~1outcome-target.json"
+            }
+          ]
+        },
+        "catalog": {
+          "$ref": "#/$defs/external:core~1catalog-selection.json"
+        },
+        "policy_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ext": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "external:core/product-offer-filters.json": {
+      "type": "object",
+      "properties": {
+        "delivery_type": {
+          "$ref": "#/$defs/external:enums~1delivery-type.json"
+        },
+        "exclusivity": {
+          "$ref": "#/$defs/external:enums~1exclusivity.json"
+        },
+        "is_fixed_price": {
+          "type": "boolean"
+        },
+        "pricing_structures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1pricing-structure.json"
+          }
+        },
+        "pricing_currencies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "format_kinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-format-kind.json"
+          }
+        },
+        "format_option_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1format-option-ref.json"
+          }
+        },
+        "standard_formats_only": {
+          "type": "boolean"
+        },
+        "min_exposures": {
+          "type": "integer"
+        },
+        "start_date": {
+          "type": "string"
+        },
+        "end_date": {
+          "type": "string"
+        },
+        "availability_horizon": {
+          "type": "object",
+          "properties": {
+            "start_time": {
+              "type": "string"
+            },
+            "end_time": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "start_time",
+            "end_time"
+          ]
+        },
+        "budget_range": {
+          "$ref": "#/$defs/external:core~1budget-range.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "property_list": {
+          "$ref": "#/$defs/external:core~1property-list-ref.json"
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1channels.json"
+          }
+        },
+        "video_placement_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1video-placement-type.json"
+          }
+        },
+        "audio_distribution_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1audio-distribution-type.json"
+          }
+        },
+        "sponsored_placement_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1sponsored-placement-type.json"
+          }
+        },
+        "social_placement_surfaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1social-placement-surface.json"
+          }
+        },
+        "trusted_match": {
+          "type": "object",
+          "properties": {
+            "providers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "agent_url": {
+                    "type": "string"
+                  },
+                  "context_match": {
+                    "type": "boolean"
+                  },
+                  "identity_match": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "response_types": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1response-type.json"
+              }
+            }
+          }
+        },
+        "required_features": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1canonical-media-buy-features.json"
+            }
+          ]
+        },
+        "required_performance_standards": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "metric": {
+                "$ref": "#/$defs/external:enums~1performance-standard-metric.json"
+              },
+              "threshold": {
+                "type": "number"
+              },
+              "standard": {
+                "$ref": "#/$defs/external:enums~1viewability-standard.json"
+              },
+              "vendor": {
+                "$ref": "#/$defs/external:core~1brand-key.json"
+              }
+            },
+            "required": [
+              "metric",
+              "threshold",
+              "vendor"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "required_metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1available-metric.json"
+          }
+        },
+        "required_vendor_metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "vendor": {
+                "$ref": "#/$defs/external:core~1brand-key.json"
+              },
+              "metric_id": {
+                "$ref": "#/$defs/external:core~1vendor-metric-id.json"
+              }
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "vendor"
+                ]
+              },
+              {
+                "required": [
+                  "metric_id"
+                ]
+              }
+            ]
+          }
+        },
+        "audience_evidence_requirements": {
+          "$ref": "#/$defs/external:core~1product-audience-evidence-requirements.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "allOf": [
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "availability_horizon",
+                  "start_date"
+                ]
+              },
+              {
+                "required": [
+                  "availability_horizon",
+                  "end_date"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "external:enums/delivery-type.json": {
+      "type": "string",
+      "enum": [
+        "guaranteed",
+        "non_guaranteed"
+      ]
+    },
+    "external:enums/exclusivity.json": {
+      "type": "string",
+      "enum": [
+        "none",
+        "category",
+        "exclusive"
+      ]
+    },
+    "external:enums/pricing-structure.json": {
+      "type": "string",
+      "enum": [
+        "fixed",
+        "auction",
+        "contingent"
+      ]
+    },
+    "external:core/canonical-format-kind.json": {
+      "type": "string",
+      "enum": [
+        "image",
+        "html5",
+        "display_tag",
+        "image_carousel",
+        "video_hosted",
+        "video_vast",
+        "audio_hosted",
+        "audio_daast",
+        "sponsored_placement",
+        "native_in_feed",
+        "responsive_creative",
+        "agent_placement",
+        "custom"
+      ]
+    },
+    "external:core/format-option-ref.json": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "scope"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "publisher"
+            },
+            "publisher_domain": {
+              "type": "string"
+            },
+            "format_option_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "scope",
+            "publisher_domain",
+            "format_option_id"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "product"
+            },
+            "format_option_id": {
+              "type": "string"
+            },
+            "publisher_domain": false
+          },
+          "required": [
+            "scope",
+            "format_option_id"
+          ],
+          "additionalProperties": true
+        }
+      ],
+      "additionalProperties": true
+    },
+    "external:core/budget-range.json": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
+        "currency": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "currency"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "min"
+          ]
+        },
+        {
+          "required": [
+            "max"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "external:core/property-list-ref.json": {
+      "type": "object",
+      "properties": {
+        "agent_url": {
+          "type": "string"
+        },
+        "list_id": {
+          "type": "string"
+        },
+        "auth_token": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_url",
+        "list_id"
+      ]
+    },
+    "external:enums/channels.json": {
+      "type": "string",
+      "enum": [
+        "display",
+        "olv",
+        "social",
+        "search",
+        "ctv",
+        "linear_tv",
+        "radio",
+        "streaming_audio",
+        "podcast",
+        "dooh",
+        "ooh",
+        "print",
+        "cinema",
+        "email",
+        "gaming",
+        "retail_media",
+        "influencer",
+        "affiliate",
+        "product_placement",
+        "sponsored_intelligence"
+      ]
+    },
+    "external:enums/video-placement-type.json": {
+      "type": "string",
+      "enum": [
+        "instream",
+        "accompanying_content",
+        "interstitial",
+        "standalone"
+      ]
+    },
+    "external:enums/audio-distribution-type.json": {
+      "type": "string",
+      "enum": [
+        "music_streaming_service",
+        "fm_am_broadcast",
+        "podcast",
+        "catch_up_radio",
+        "web_radio",
+        "video_game",
+        "text_to_speech"
+      ]
+    },
+    "external:enums/sponsored-placement-type.json": {
+      "type": "string",
+      "enum": [
+        "sponsored_search",
+        "sponsored_display",
+        "sponsored_native"
+      ]
+    },
+    "external:enums/social-placement-surface.json": {
+      "type": "string",
+      "enum": [
+        "feed",
+        "stories",
+        "short_video",
+        "explore",
+        "search"
+      ]
+    },
+    "external:enums/response-type.json": {
+      "type": "string",
+      "enum": [
+        "activation",
+        "catalog_items",
+        "creative",
+        "deal"
+      ]
+    },
+    "external:core/canonical-media-buy-features.json": {
+      "type": "object",
+      "properties": {
+        "property_filtering": {
+          "type": "boolean"
+        },
+        "catalog_management": {
+          "type": "boolean"
+        },
+        "reporting_commitment_snapshots": {
+          "type": "boolean"
+        },
+        "seller_optimized_budget": {
+          "type": "boolean"
+        },
+        "bidding_policy": {
+          "$ref": "#/$defs/external:core~1bidding-policy-capability.json"
+        }
+      },
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "external:core/bidding-policy-capability.json": {
+      "type": "object",
+      "properties": {
+        "media_buy": {
+          "$ref": "#/$defs/external:core~1bidding-policy-capability.json/$defs/scope_capability"
+        },
+        "package": {
+          "$ref": "#/$defs/external:core~1bidding-policy-capability.json/$defs/scope_capability"
+        }
+      },
+      "$defs": {
+        "scope_capability": {
+          "type": "object",
+          "properties": {
+            "fixed": {
+              "$ref": "#/$defs/external:core~1bidding-policy-capability.json/$defs/policy_profile"
+            },
+            "seller_optimized": {
+              "$ref": "#/$defs/external:core~1bidding-policy-capability.json/$defs/policy_profile"
+            }
+          }
+        },
+        "policy_profile": {
+          "type": "object",
+          "properties": {
+            "modes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "automatic",
+                  "bid_amount",
+                  "max_bid",
+                  "cost_per",
+                  "roas"
+                ]
+              }
+            },
+            "cost_per_strengths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "cap",
+                  "target"
+                ]
+              }
+            },
+            "roas_strengths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "floor",
+                  "target"
+                ]
+              }
+            },
+            "supported_combinations": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "$ref": "#/$defs/external:core~1bidding-policy-capability.json/$defs/max_bid_with_cost_per"
+                  },
+                  {
+                    "$ref": "#/$defs/external:core~1bidding-policy-capability.json/$defs/max_bid_with_roas"
+                  }
+                ]
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "modes"
+              ]
+            },
+            {
+              "required": [
+                "supported_combinations"
+              ]
+            }
+          ],
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "modes": {
+                    "contains": {
+                      "const": "cost_per"
+                    }
+                  }
+                },
+                "required": [
+                  "modes"
+                ]
+              },
+              "then": {
+                "required": [
+                  "cost_per_strengths"
+                ]
+              },
+              "else": {
+                "not": {
+                  "required": [
+                    "cost_per_strengths"
+                  ]
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "modes": {
+                    "contains": {
+                      "const": "roas"
+                    }
+                  }
+                },
+                "required": [
+                  "modes"
+                ]
+              },
+              "then": {
+                "required": [
+                  "roas_strengths"
+                ]
+              },
+              "else": {
+                "not": {
+                  "required": [
+                    "roas_strengths"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "max_bid_with_cost_per": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "max_bid_with_cost_per"
+            },
+            "cost_per_strengths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "cap",
+                  "target"
+                ]
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "cost_per_strengths"
+          ]
+        },
+        "max_bid_with_roas": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "max_bid_with_roas"
+            },
+            "roas_strengths": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "floor",
+                  "target"
+                ]
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "roas_strengths"
+          ]
+        }
+      }
+    },
+    "external:enums/performance-standard-metric.json": {
+      "type": "string",
+      "enum": [
+        "viewability",
+        "ivt",
+        "completion_rate",
+        "brand_safety",
+        "attention_score"
+      ]
+    },
+    "external:enums/viewability-standard.json": {
+      "type": "string",
+      "enum": [
+        "mrc",
+        "groupm"
+      ]
+    },
+    "external:core/brand-key.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "domain"
+      ]
+    },
+    "external:core/brand-id.json": {
+      "type": "string"
+    },
+    "external:enums/available-metric.json": {
+      "type": "string",
+      "enum": [
+        "impressions",
+        "spend",
+        "clicks",
+        "ctr",
+        "views",
+        "completed_views",
+        "completion_rate",
+        "conversions",
+        "conversion_value",
+        "commissionable_value",
+        "roas",
+        "cost_per_acquisition",
+        "new_to_brand_rate",
+        "leads",
+        "reach",
+        "frequency",
+        "grps",
+        "engagements",
+        "engagement_rate",
+        "follows",
+        "saves",
+        "profile_visits",
+        "viewability",
+        "quartile_data",
+        "dooh_metrics",
+        "cost_per_click",
+        "cost_per_completed_view",
+        "cpm",
+        "downloads",
+        "units_sold",
+        "new_to_brand_units",
+        "plays",
+        "incremental_sales_lift",
+        "brand_lift",
+        "foot_traffic",
+        "conversion_lift",
+        "brand_search_lift"
+      ]
+    },
+    "external:core/vendor-metric-id.json": {
+      "type": "string"
+    },
+    "external:core/product-audience-evidence-requirements.json": {
+      "type": "object",
+      "properties": {
+        "requirement_mode": {
+          "type": "string",
+          "enum": [
+            "required",
+            "preferred"
+          ]
+        },
+        "evidence_presence": {
+          "type": "string",
+          "enum": [
+            "required",
+            "when_available"
+          ]
+        },
+        "accepted_methodologies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1audience-evidence-methodology.json"
+          }
+        },
+        "excluded_methodologies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1audience-evidence-methodology.json"
+          }
+        },
+        "accepted_evidence_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "measured",
+              "forecast",
+              "seller_declared"
+            ]
+          }
+        },
+        "accepted_providers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1brand-key.json"
+          }
+        },
+        "excluded_providers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1brand-key.json"
+          }
+        },
+        "accepted_subject_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1audience-subject-type.json"
+          }
+        },
+        "accepted_resolution_methods": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1audience-resolution-method.json"
+          }
+        },
+        "minimum_confidence": {
+          "type": "number"
+        },
+        "maximum_age": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1duration.json"
+            },
+            {
+              "properties": {
+                "unit": {
+                  "enum": [
+                    "seconds",
+                    "minutes",
+                    "hours",
+                    "days"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "methodology_documentation_required": {
+          "type": "boolean"
+        },
+        "independent_attestation_required": {
+          "type": "boolean"
+        },
+        "accepted_attestation_issuers": {
+          "type": "array",
+          "items": {
+            "discriminator": {
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "brand"
+                  },
+                  "brand": {
+                    "$ref": "#/$defs/external:core~1brand-key.json"
+                  },
+                  "ext": {
+                    "$ref": "#/$defs/external:core~1ext.json"
+                  }
+                },
+                "required": [
+                  "type",
+                  "brand"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "agent"
+                  },
+                  "agent_url": {
+                    "type": "string"
+                  },
+                  "ext": {
+                    "$ref": "#/$defs/external:core~1ext.json"
+                  }
+                },
+                "required": [
+                  "type",
+                  "agent_url"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "origin"
+                  },
+                  "origin": {
+                    "type": "string"
+                  },
+                  "ext": {
+                    "$ref": "#/$defs/external:core~1ext.json"
+                  }
+                },
+                "required": [
+                  "type",
+                  "origin"
+                ]
+              }
+            ]
+          }
+        },
+        "accepted_attestation_claim_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "requirement_mode",
+        "evidence_presence"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "independent_attestation_required": {
+                "const": true
+              }
+            },
+            "required": [
+              "independent_attestation_required"
+            ]
+          },
+          "then": {
+            "required": [
+              "accepted_attestation_issuers"
+            ]
+          }
+        }
+      ]
+    },
+    "external:enums/audience-evidence-methodology.json": {
+      "type": "string",
+      "enum": [
+        "observed",
+        "declared",
+        "derived",
+        "inferred",
+        "modeled",
+        "projected"
+      ]
+    },
+    "external:enums/audience-subject-type.json": {
+      "type": "string",
+      "enum": [
+        "individual",
+        "household",
+        "business",
+        "contextual",
+        "none"
+      ]
+    },
+    "external:enums/audience-resolution-method.json": {
+      "type": "string",
+      "enum": [
+        "deterministic_id",
+        "probabilistic_device",
+        "browser",
+        "geographic",
+        "content_signal",
+        "mixed"
+      ]
+    },
+    "external:core/duration.json": {
+      "type": "object",
+      "properties": {
+        "interval": {
+          "type": "integer"
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "seconds",
+            "minutes",
+            "hours",
+            "days",
+            "campaign"
+          ]
+        }
+      },
+      "required": [
+        "interval",
+        "unit"
+      ]
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/targeting.json": {
+      "type": "object",
+      "properties": {
+        "geo_countries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "geo_countries_exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "geo_regions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "geo_regions_exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "geo_metros": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "$ref": "#/$defs/external:enums~1metro-system.json"
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "system",
+              "values"
+            ]
+          }
+        },
+        "geo_metros_exclude": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "system": {
+                "$ref": "#/$defs/external:enums~1metro-system.json"
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "system",
+              "values"
+            ]
+          }
+        },
+        "geo_postal_areas": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1postal-area.json"
+          }
+        },
+        "geo_postal_areas_exclude": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1postal-area.json"
+          }
+        },
+        "geo_places": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1geo-place-area.json"
+          }
+        },
+        "geo_places_exclude": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1geo-place-area.json"
+          }
+        },
+        "daypart_targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1daypart-target.json"
+          }
+        },
+        "axe_include_segment": {
+          "type": "string"
+        },
+        "axe_exclude_segment": {
+          "type": "string"
+        },
+        "audience_include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "audience_exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "signal_targeting_groups": {
+          "$ref": "#/$defs/external:core~1package-signal-targeting-groups.json"
+        },
+        "signal_targeting": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1signal-targeting.json"
+          }
+        },
+        "demographics": {
+          "$ref": "#/$defs/external:core~1demographic-targeting-intent.json"
+        },
+        "frequency_cap": {
+          "$ref": "#/$defs/external:core~1frequency-cap.json"
+        },
+        "property_list": {
+          "$ref": "#/$defs/external:core~1property-list-ref.json"
+        },
+        "property_list_exclude": {
+          "$ref": "#/$defs/external:core~1property-list-ref.json"
+        },
+        "collection_list": {
+          "$ref": "#/$defs/external:core~1collection-list-ref.json"
+        },
+        "collection_list_exclude": {
+          "$ref": "#/$defs/external:core~1collection-list-ref.json"
+        },
+        "placement_selection": {
+          "$ref": "#/$defs/external:core~1placement-selection.json"
+        },
+        "age_restriction": {
+          "type": "object",
+          "properties": {
+            "min": {
+              "type": "integer"
+            },
+            "verification_required": {
+              "type": "boolean"
+            },
+            "accepted_methods": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1age-verification-method.json"
+              }
+            }
+          },
+          "required": [
+            "min"
+          ]
+        },
+        "device_platform": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1device-platform.json"
+          }
+        },
+        "device_platform_exclude": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1device-platform.json"
+          }
+        },
+        "device_type": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1device-type.json"
+          }
+        },
+        "device_type_exclude": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1device-type.json"
+          }
+        },
+        "browser": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1browser-family.json"
+          }
+        },
+        "browser_exclude": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1browser-family.json"
+          }
+        },
+        "store_catchments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "catalog_id": {
+                "type": "string"
+              },
+              "store_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "catchment_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "catalog_id"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "geo_proximity": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "lat": {
+                "type": "number"
+              },
+              "lng": {
+                "type": "number"
+              },
+              "label": {
+                "type": "string"
+              },
+              "travel_time": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": "number"
+                  },
+                  "unit": {
+                    "$ref": "#/$defs/external:enums~1travel-time-unit.json"
+                  }
+                },
+                "required": [
+                  "value",
+                  "unit"
+                ]
+              },
+              "transport_mode": {
+                "$ref": "#/$defs/external:enums~1transport-mode.json"
+              },
+              "radius": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": "number"
+                  },
+                  "unit": {
+                    "$ref": "#/$defs/external:enums~1distance-unit.json"
+                  }
+                },
+                "required": [
+                  "value",
+                  "unit"
+                ]
+              },
+              "geometry": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "Polygon",
+                      "MultiPolygon"
+                    ]
+                  },
+                  "coordinates": {
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "type",
+                  "coordinates"
+                ]
+              },
+              "ext": {
+                "$ref": "#/$defs/external:core~1ext.json"
+              }
+            },
+            "oneOf": [
+              {
+                "required": [
+                  "lat",
+                  "lng",
+                  "travel_time",
+                  "transport_mode"
+                ],
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "radius"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "geometry"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "lat",
+                  "lng",
+                  "radius"
+                ],
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "travel_time"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "geometry"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "geometry"
+                ],
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "travel_time"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "radius"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ],
+            "additionalProperties": true
+          }
+        },
+        "language": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1locale-tag.json"
+          }
+        },
+        "keyword_targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "keyword": {
+                "type": "string"
+              },
+              "match_type": {
+                "$ref": "#/$defs/external:enums~1match-type.json"
+              },
+              "bid_price": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "keyword",
+              "match_type"
+            ]
+          }
+        },
+        "negative_keywords": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "keyword": {
+                "type": "string"
+              },
+              "match_type": {
+                "$ref": "#/$defs/external:enums~1match-type.json"
+              }
+            },
+            "required": [
+              "keyword",
+              "match_type"
+            ]
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "demographics",
+              "age_restriction"
+            ]
+          },
+          "then": {
+            "properties": {
+              "demographics": {
+                "properties": {
+                  "age": {
+                    "properties": {
+                      "include_unknown": {
+                        "const": false
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "age_restriction": {
+                "properties": {
+                  "verification_required": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "verification_required"
+                ]
+              },
+              "demographics": {
+                "properties": {
+                  "age": {
+                    "required": [
+                      "accepted_bases"
+                    ]
+                  }
+                },
+                "required": [
+                  "age"
+                ]
+              }
+            },
+            "required": [
+              "demographics",
+              "age_restriction"
+            ]
+          },
+          "then": {
+            "properties": {
+              "demographics": {
+                "properties": {
+                  "age": {
+                    "properties": {
+                      "accepted_bases": {
+                        "contains": {
+                          "const": "verified"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/metro-system.json": {
+      "type": "string",
+      "enum": [
+        "nielsen_dma",
+        "uk_itl1",
+        "uk_itl2",
+        "eurostat_nuts2",
+        "custom"
+      ]
+    },
+    "external:core/postal-area.json": {
+      "anyOf": [
+        {
+          "type": "object",
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1postal-country-system.json"
+            }
+          ],
+          "properties": {
+            "country": {
+              "type": "string"
+            },
+            "system": {
+              "$ref": "#/$defs/external:enums~1postal-system.json"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "country",
+            "system",
+            "values"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "system": {
+              "$ref": "#/$defs/external:enums~1legacy-postal-system.json"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "system",
+            "values"
+          ]
+        }
+      ]
+    },
+    "external:core/postal-country-system.json": {
+      "type": "object",
+      "properties": {
+        "country": {
+          "type": "string"
+        },
+        "system": {
+          "$ref": "#/$defs/external:enums~1postal-system.json"
+        }
+      },
+      "required": [
+        "country",
+        "system"
+      ],
+      "anyOf": [
+        {
+          "properties": {
+            "country": {
+              "const": "US"
+            },
+            "system": {
+              "enum": [
+                "zip",
+                "zip_plus_four"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "GB"
+            },
+            "system": {
+              "enum": [
+                "outward",
+                "full"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "CA"
+            },
+            "system": {
+              "enum": [
+                "fsa",
+                "full"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "enum": [
+                "DE",
+                "CH",
+                "AT"
+              ]
+            },
+            "system": {
+              "const": "plz"
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "FR"
+            },
+            "system": {
+              "const": "code_postal"
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "AU"
+            },
+            "system": {
+              "const": "postcode"
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "BR"
+            },
+            "system": {
+              "const": "cep"
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "IN"
+            },
+            "system": {
+              "const": "pin"
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "ZA"
+            },
+            "system": {
+              "const": "postal_code"
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "not": {
+                "enum": [
+                  "US",
+                  "GB",
+                  "CA",
+                  "DE",
+                  "CH",
+                  "AT",
+                  "FR",
+                  "AU",
+                  "BR",
+                  "IN",
+                  "ZA"
+                ]
+              }
+            },
+            "system": {
+              "enum": [
+                "postal_code",
+                "custom"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "external:enums/postal-system.json": {
+      "type": "string",
+      "enum": [
+        "postal_code",
+        "zip",
+        "zip_plus_four",
+        "outward",
+        "full",
+        "fsa",
+        "plz",
+        "code_postal",
+        "postcode",
+        "cep",
+        "pin",
+        "custom",
+        "us_zip",
+        "us_zip_plus_four",
+        "gb_outward",
+        "gb_full",
+        "ca_fsa",
+        "ca_full",
+        "de_plz",
+        "fr_code_postal",
+        "au_postcode",
+        "ch_plz",
+        "at_plz"
+      ]
+    },
+    "external:enums/legacy-postal-system.json": {
+      "type": "string",
+      "enum": [
+        "us_zip",
+        "us_zip_plus_four",
+        "gb_outward",
+        "gb_full",
+        "ca_fsa",
+        "ca_full",
+        "de_plz",
+        "fr_code_postal",
+        "au_postcode",
+        "ch_plz",
+        "at_plz"
+      ]
+    },
+    "external:core/geo-place-area.json": {
+      "type": "object",
+      "properties": {
+        "country": {
+          "type": "string"
+        },
+        "system": {
+          "$ref": "#/$defs/external:core~1geo-place-system.json"
+        },
+        "system_version": {
+          "type": "string"
+        },
+        "place_type": {
+          "$ref": "#/$defs/external:core~1geo-place-type.json"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "value_labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "country",
+        "system",
+        "place_type",
+        "values"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "system": {
+                "enum": [
+                  "geonames",
+                  "google_ads",
+                  "microsoft_ads"
+                ]
+              }
+            },
+            "required": [
+              "system"
+            ]
+          },
+          "then": {
+            "properties": {
+              "values": {
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "external:core/geo-place-system.json": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "geonames",
+            "google_ads",
+            "microsoft_ads"
+          ]
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "external:core/geo-place-type.json": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "airport",
+            "borough",
+            "city",
+            "city_region",
+            "commune",
+            "county",
+            "district",
+            "municipality",
+            "neighborhood",
+            "post_town",
+            "prefecture",
+            "province",
+            "quarter",
+            "state",
+            "territory",
+            "ward"
+          ]
+        },
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "external:core/daypart-target.json": {
+      "type": "object",
+      "properties": {
+        "days": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1day-of-week.json"
+          }
+        },
+        "start_hour": {
+          "type": "integer"
+        },
+        "end_hour": {
+          "type": "integer"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "days",
+        "start_hour",
+        "end_hour"
+      ]
+    },
+    "external:enums/day-of-week.json": {
+      "type": "string",
+      "enum": [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday"
+      ]
+    },
+    "external:core/package-signal-targeting-groups.json": {
+      "type": "object",
+      "properties": {
+        "operator": {
+          "type": "string",
+          "enum": [
+            "all"
+          ]
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1package-signal-targeting-group.json"
+          }
+        }
+      },
+      "required": [
+        "operator",
+        "groups"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/package-signal-targeting-group.json": {
+      "type": "object",
+      "properties": {
+        "operator": {
+          "type": "string",
+          "enum": [
+            "any",
+            "none"
+          ]
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1package-signal-targeting.json"
+          }
+        }
+      },
+      "required": [
+        "operator",
+        "signals"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/package-signal-targeting.json": {
+      "type": "object",
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1signal-targeting-expression.json"
+        }
+      ],
+      "properties": {
+        "pricing_option_id": {
+          "type": "string"
+        },
+        "signal_agent_segment_id": {
+          "type": "string"
+        },
+        "activation_key": {
+          "$ref": "#/$defs/external:core~1activation-key.json"
+        }
+      },
+      "additionalProperties": true
+    },
+    "external:core/signal-targeting-expression.json": {
+      "discriminator": {
+        "propertyName": "value_type"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "signal_ref": {
+              "$ref": "#/$defs/external:core~1signal-ref.json"
+            },
+            "value_type": {
+              "type": "string",
+              "const": "binary"
+            },
+            "value": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": [
+            "signal_ref",
+            "value_type",
+            "value"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "signal_ref": {
+              "$ref": "#/$defs/external:core~1signal-ref.json"
+            },
+            "value_type": {
+              "type": "string",
+              "const": "categorical"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "signal_ref",
+            "value_type",
+            "values"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "signal_ref": {
+              "$ref": "#/$defs/external:core~1signal-ref.json"
+            },
+            "value_type": {
+              "type": "string",
+              "const": "numeric"
+            },
+            "min_value": {
+              "type": "number"
+            },
+            "max_value": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "signal_ref",
+            "value_type"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "min_value"
+              ]
+            },
+            {
+              "required": [
+                "max_value"
+              ]
+            }
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/signal-ref.json": {
+      "discriminator": {
+        "propertyName": "scope"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "product"
+            },
+            "signal_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "scope",
+            "signal_id"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "data_provider_domain"
+                ]
+              },
+              {
+                "required": [
+                  "signal_source_url"
+                ]
+              },
+              {
+                "required": [
+                  "agent_url"
+                ]
+              },
+              {
+                "required": [
+                  "source"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "data_provider"
+            },
+            "data_provider_domain": {
+              "type": "string"
+            },
+            "signal_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "scope",
+            "data_provider_domain",
+            "signal_id"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "agent_url"
+                ]
+              },
+              {
+                "required": [
+                  "signal_source_url"
+                ]
+              },
+              {
+                "required": [
+                  "source"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "signal_source"
+            },
+            "signal_source_url": {
+              "type": "string"
+            },
+            "signal_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "scope",
+            "signal_source_url",
+            "signal_id"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "data_provider_domain"
+                ]
+              },
+              {
+                "required": [
+                  "agent_url"
+                ]
+              },
+              {
+                "required": [
+                  "source"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/activation-key.json": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "segment_id"
+            },
+            "segment_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "segment_id"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "key_value"
+            },
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "key",
+            "value"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/signal-targeting.json": {
+      "discriminator": {
+        "propertyName": "value_type"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "signal_ref": {
+              "$ref": "#/$defs/external:core~1signal-ref.json"
+            },
+            "signal_id": {
+              "$ref": "#/$defs/external:core~1signal-id.json"
+            },
+            "value_type": {
+              "type": "string",
+              "const": "binary"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "value_type",
+            "value"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "signal_ref"
+              ]
+            },
+            {
+              "required": [
+                "signal_id"
+              ]
+            }
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "signal_ref": {
+              "$ref": "#/$defs/external:core~1signal-ref.json"
+            },
+            "signal_id": {
+              "$ref": "#/$defs/external:core~1signal-id.json"
+            },
+            "value_type": {
+              "type": "string",
+              "const": "categorical"
+            },
+            "values": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "value_type",
+            "values"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "signal_ref"
+              ]
+            },
+            {
+              "required": [
+                "signal_id"
+              ]
+            }
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "signal_ref": {
+              "$ref": "#/$defs/external:core~1signal-ref.json"
+            },
+            "signal_id": {
+              "$ref": "#/$defs/external:core~1signal-id.json"
+            },
+            "value_type": {
+              "type": "string",
+              "const": "numeric"
+            },
+            "min_value": {
+              "type": "number"
+            },
+            "max_value": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "value_type"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "signal_ref"
+              ]
+            },
+            {
+              "required": [
+                "signal_id"
+              ]
+            }
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/signal-id.json": {
+      "discriminator": {
+        "propertyName": "source"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "const": "catalog"
+            },
+            "data_provider_domain": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "source",
+            "data_provider_domain",
+            "id"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "const": "agent"
+            },
+            "agent_url": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "source",
+            "agent_url",
+            "id"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/demographic-targeting-intent.json": {
+      "type": "object",
+      "properties": {
+        "age": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1demographic-age-range.json"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "accepted_bases": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/external:enums~1age-determination-basis.json"
+                  }
+                },
+                "accepted_verification_methods": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/external:enums~1age-verification-method.json"
+                  }
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "required": [
+                      "accepted_verification_methods"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "accepted_bases"
+                    ],
+                    "properties": {
+                      "accepted_bases": {
+                        "contains": {
+                          "const": "verified"
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "additionalProperties": true
+            }
+          ]
+        }
+      },
+      "required": [
+        "age"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/demographic-age-range.json": {
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "integer"
+        },
+        "max": {
+          "type": "integer"
+        },
+        "include_unknown": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "include_unknown"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "min"
+          ]
+        },
+        {
+          "required": [
+            "max"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/age-determination-basis.json": {
+      "type": "string",
+      "enum": [
+        "verified",
+        "declared",
+        "inferred"
+      ]
+    },
+    "external:enums/age-verification-method.json": {
+      "type": "string",
+      "enum": [
+        "facial_age_estimation",
+        "id_document",
+        "digital_id",
+        "credit_card",
+        "world_id"
+      ]
+    },
+    "external:core/frequency-cap.json": {
+      "type": "object",
+      "properties": {
+        "suppress": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1duration.json"
+            }
+          ]
+        },
+        "suppress_minutes": {
+          "type": "number"
+        },
+        "max_impressions": {
+          "type": "integer"
+        },
+        "per": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:enums~1reach-unit.json"
+            }
+          ]
+        },
+        "window": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1duration.json"
+            }
+          ]
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "suppress"
+          ]
+        },
+        {
+          "required": [
+            "suppress_minutes"
+          ]
+        },
+        {
+          "required": [
+            "max_impressions"
+          ]
+        }
+      ],
+      "additionalProperties": true,
+      "dependentRequired": {
+        "max_impressions": [
+          "per",
+          "window"
+        ],
+        "per": [
+          "max_impressions"
+        ],
+        "window": [
+          "max_impressions"
+        ]
+      }
+    },
+    "external:enums/reach-unit.json": {
+      "type": "string",
+      "enum": [
+        "individuals",
+        "households",
+        "devices",
+        "accounts",
+        "cookies",
+        "custom"
+      ]
+    },
+    "external:core/collection-list-ref.json": {
+      "type": "object",
+      "properties": {
+        "agent_url": {
+          "type": "string"
+        },
+        "list_id": {
+          "type": "string"
+        },
+        "auth_token": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_url",
+        "list_id"
+      ]
+    },
+    "external:core/placement-selection.json": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "mode"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "selected"
+            },
+            "placement_refs": {
+              "type": "array",
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/external:core~1placement-ref.json"
+                  },
+                  {
+                    "required": [
+                      "publisher_domain"
+                    ]
+                  }
+                ]
+              }
+            },
+            "ext": {
+              "$ref": "#/$defs/external:core~1ext.json"
+            }
+          },
+          "required": [
+            "mode",
+            "placement_refs"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "default"
+            },
+            "ext": {
+              "$ref": "#/$defs/external:core~1ext.json"
+            }
+          },
+          "required": [
+            "mode"
+          ]
+        }
+      ]
+    },
+    "external:core/placement-ref.json": {
+      "type": "object",
+      "properties": {
+        "publisher_domain": {
+          "type": "string"
+        },
+        "placement_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "placement_id"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/device-platform.json": {
+      "type": "string",
+      "enum": [
+        "ios",
+        "android",
+        "windows",
+        "macos",
+        "linux",
+        "chromeos",
+        "tvos",
+        "tizen",
+        "webos",
+        "fire_os",
+        "roku_os",
+        "unknown"
+      ]
+    },
+    "external:enums/device-type.json": {
+      "type": "string",
+      "enum": [
+        "desktop",
+        "mobile",
+        "tablet",
+        "ctv",
+        "dooh",
+        "unknown"
+      ]
+    },
+    "external:enums/browser-family.json": {
+      "type": "string",
+      "enum": [
+        "chrome",
+        "safari",
+        "firefox",
+        "edge",
+        "opera",
+        "samsung_internet",
+        "android_webview",
+        "other",
+        "unknown"
+      ]
+    },
+    "external:enums/travel-time-unit.json": {
+      "type": "string",
+      "enum": [
+        "min",
+        "hr"
+      ]
+    },
+    "external:enums/transport-mode.json": {
+      "type": "string",
+      "enum": [
+        "walking",
+        "cycling",
+        "driving",
+        "public_transport"
+      ]
+    },
+    "external:enums/distance-unit.json": {
+      "type": "string",
+      "enum": [
+        "km",
+        "mi",
+        "m"
+      ]
+    },
+    "external:core/locale-tag.json": {
+      "type": "string"
+    },
+    "external:enums/match-type.json": {
+      "type": "string",
+      "enum": [
+        "broad",
+        "phrase",
+        "exact"
+      ]
+    },
+    "external:core/targeting-overlay-requirements.json": {
+      "type": "object",
+      "properties": {
+        "geo_countries": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "geo_countries_exclude": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "geo_regions": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+            },
+            {
+              "$ref": "#/$defs/external:core~1geo-region-requirement.json"
+            }
+          ]
+        },
+        "geo_regions_exclude": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+            },
+            {
+              "$ref": "#/$defs/external:core~1geo-region-requirement.json"
+            }
+          ]
+        },
+        "geo_metros": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/metroRequirement"
+        },
+        "geo_metros_exclude": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/metroRequirement"
+        },
+        "geo_places": {
+          "$ref": "#/$defs/external:core~1geo-place-requirement.json"
+        },
+        "geo_places_exclude": {
+          "$ref": "#/$defs/external:core~1geo-place-requirement.json"
+        },
+        "geo_postal_areas": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+            },
+            {
+              "$ref": "#/$defs/external:core~1positive-postal-area-support.json"
+            }
+          ]
+        },
+        "geo_postal_areas_exclude": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+            },
+            {
+              "$ref": "#/$defs/external:core~1positive-postal-area-support.json"
+            }
+          ]
+        },
+        "geo_proximity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "radius": {
+                  "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+                },
+                "travel_time": {
+                  "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+                },
+                "geometry": {
+                  "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+                },
+                "transport_modes": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/external:enums~1transport-mode.json"
+                  }
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "radius"
+                  ]
+                },
+                {
+                  "required": [
+                    "travel_time"
+                  ]
+                },
+                {
+                  "required": [
+                    "geometry"
+                  ]
+                },
+                {
+                  "required": [
+                    "transport_modes"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "daypart_targets": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "audience_include": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "audience_exclude": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "signal_targeting_groups": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "demographics": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "age": {
+                  "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+                }
+              },
+              "required": [
+                "age"
+              ]
+            }
+          ]
+        },
+        "frequency_cap": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "property_list": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "property_list_exclude": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "collection_list": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "collection_list_exclude": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "placement_selection": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "age_restriction": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "device_platform": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "device_platform_exclude": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "device_type": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "device_type_exclude": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "browser": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/browserRequirement"
+        },
+        "browser_exclude": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/browserRequirement"
+        },
+        "store_catchments": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "language": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+        },
+        "keyword_targets": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/keywordRequirement"
+        },
+        "negative_keywords": {
+          "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/keywordRequirement"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "$defs": {
+        "required": {
+          "type": "boolean",
+          "const": true
+        },
+        "metroRequirement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "systems": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/external:enums~1metro-system.json"
+                  }
+                }
+              },
+              "required": [
+                "systems"
+              ]
+            }
+          ]
+        },
+        "keywordRequirement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "supported_match_types": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/external:enums~1match-type.json"
+                  }
+                }
+              },
+              "required": [
+                "supported_match_types"
+              ]
+            }
+          ]
+        },
+        "browserRequirement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/external:core~1targeting-overlay-requirements.json/$defs/required"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "families": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/external:enums~1browser-family.json"
+                  }
+                }
+              },
+              "required": [
+                "families"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "external:core/geo-region-requirement.json": {
+      "type": "object",
+      "properties": {
+        "countries": {
+          "type": "object",
+          "propertyNames": {},
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "all_values": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": [
+                  "all_values"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "values": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "values"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "countries"
+      ]
+    },
+    "external:core/geo-place-requirement.json": {
+      "type": "object",
+      "properties": {
+        "systems": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/external:core~1geo-place-system.json"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/external:core~1geo-place-requirement.json/$defs/catalogRequirement"
+          }
+        }
+      },
+      "required": [
+        "systems"
+      ],
+      "$defs": {
+        "catalogRequirement": {
+          "type": "object",
+          "properties": {
+            "countries": {
+              "type": "object",
+              "propertyNames": {},
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/external:core~1geo-place-type.json"
+                }
+              }
+            },
+            "system_versions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "countries"
+          ]
+        }
+      }
+    },
+    "external:core/positive-postal-area-support.json": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1postal-area-support.json"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "us_zip": {
+              "const": true
+            },
+            "us_zip_plus_four": {
+              "const": true
+            },
+            "gb_outward": {
+              "const": true
+            },
+            "gb_full": {
+              "const": true
+            },
+            "ca_fsa": {
+              "const": true
+            },
+            "ca_full": {
+              "const": true
+            },
+            "de_plz": {
+              "const": true
+            },
+            "fr_code_postal": {
+              "const": true
+            },
+            "au_postcode": {
+              "const": true
+            },
+            "ch_plz": {
+              "const": true
+            },
+            "at_plz": {
+              "const": true
+            }
+          }
+        }
+      ]
+    },
+    "external:core/postal-area-support.json": {
+      "type": "object",
+      "properties": {
+        "US": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "zip",
+              "zip_plus_four"
+            ]
+          }
+        },
+        "GB": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "outward",
+              "full"
+            ]
+          }
+        },
+        "CA": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "fsa",
+              "full"
+            ]
+          }
+        },
+        "DE": {
+          "type": "array",
+          "items": {
+            "const": "plz"
+          }
+        },
+        "CH": {
+          "type": "array",
+          "items": {
+            "const": "plz"
+          }
+        },
+        "AT": {
+          "type": "array",
+          "items": {
+            "const": "plz"
+          }
+        },
+        "FR": {
+          "type": "array",
+          "items": {
+            "const": "code_postal"
+          }
+        },
+        "AU": {
+          "type": "array",
+          "items": {
+            "const": "postcode"
+          }
+        },
+        "BR": {
+          "type": "array",
+          "items": {
+            "const": "cep"
+          }
+        },
+        "IN": {
+          "type": "array",
+          "items": {
+            "const": "pin"
+          }
+        },
+        "ZA": {
+          "type": "array",
+          "items": {
+            "const": "postal_code"
+          }
+        },
+        "us_zip": {
+          "type": "boolean"
+        },
+        "us_zip_plus_four": {
+          "type": "boolean"
+        },
+        "gb_outward": {
+          "type": "boolean"
+        },
+        "gb_full": {
+          "type": "boolean"
+        },
+        "ca_fsa": {
+          "type": "boolean"
+        },
+        "ca_full": {
+          "type": "boolean"
+        },
+        "de_plz": {
+          "type": "boolean"
+        },
+        "fr_code_postal": {
+          "type": "boolean"
+        },
+        "au_postcode": {
+          "type": "boolean"
+        },
+        "ch_plz": {
+          "type": "boolean"
+        },
+        "at_plz": {
+          "type": "boolean"
+        }
+      },
+      "propertyNames": {
+        "anyOf": [
+          {},
+          {
+            "$ref": "#/$defs/external:enums~1legacy-postal-system.json"
+          }
+        ]
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "postal_code",
+            "custom"
+          ]
+        }
+      }
+    },
+    "external:media-buy/outcome-target.json": {
+      "type": "object",
+      "properties": {
+        "goal": {
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "metric"
+                },
+                "metric": {
+                  "$ref": "#/$defs/external:enums~1forecastable-metric.json"
+                }
+              },
+              "required": [
+                "kind",
+                "metric"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "event"
+                },
+                "event_type": {
+                  "$ref": "#/$defs/external:enums~1event-type.json"
+                },
+                "custom_event_name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "event_type"
+              ],
+              "if": {
+                "properties": {
+                  "event_type": {
+                    "const": "custom"
+                  }
+                },
+                "required": [
+                  "event_type"
+                ]
+              },
+              "then": {
+                "required": [
+                  "custom_event_name"
+                ]
+              }
+            }
+          ]
+        },
+        "volume": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "goal",
+        "volume"
+      ]
+    },
+    "external:enums/forecastable-metric.json": {
+      "type": "string",
+      "enum": [
+        "audience_size",
+        "reach",
+        "frequency",
+        "impressions",
+        "clicks",
+        "spend",
+        "views",
+        "completed_views",
+        "grps",
+        "engagements",
+        "follows",
+        "saves",
+        "profile_visits",
+        "measured_impressions",
+        "downloads",
+        "plays",
+        "coverage_rate"
+      ]
+    },
+    "external:enums/event-type.json": {
+      "type": "string",
+      "enum": [
+        "page_view",
+        "view_content",
+        "select_content",
+        "select_item",
+        "search",
+        "share",
+        "add_to_cart",
+        "remove_from_cart",
+        "viewed_cart",
+        "add_to_wishlist",
+        "initiate_checkout",
+        "add_payment_info",
+        "purchase",
+        "refund",
+        "lead",
+        "qualify_lead",
+        "close_convert_lead",
+        "disqualify_lead",
+        "complete_registration",
+        "subscribe",
+        "follow",
+        "content_view",
+        "watch_milestone",
+        "start_trial",
+        "app_install",
+        "app_launch",
+        "contact",
+        "schedule",
+        "donate",
+        "submit_application",
+        "custom"
+      ]
+    },
+    "external:core/catalog-selection.json": {
+      "type": "object",
+      "properties": {
+        "catalog_id": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/external:core~1catalog.json/properties/type"
+        },
+        "ids": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1catalog.json/properties/ids"
+            }
+          ]
+        },
+        "gtins": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1catalog.json/properties/gtins"
+            }
+          ]
+        },
+        "tags": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1catalog.json/properties/tags"
+            }
+          ]
+        },
+        "category": {
+          "$ref": "#/$defs/external:core~1catalog.json/properties/category"
+        },
+        "query": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1catalog.json/properties/query"
+            }
+          ]
+        }
+      },
+      "required": [
+        "catalog_id"
+      ]
+    },
+    "external:core/catalog.json": {
+      "type": "object",
+      "properties": {
+        "catalog_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/external:enums~1catalog-type.json"
+        },
+        "url": {
+          "type": "string"
+        },
+        "feed_format": {
+          "$ref": "#/$defs/external:enums~1feed-format.json"
+        },
+        "update_frequency": {
+          "$ref": "#/$defs/external:enums~1update-frequency.json"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "gtins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "category": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "conversion_events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1event-type.json"
+          }
+        },
+        "content_id_type": {
+          "$ref": "#/$defs/external:enums~1content-id-type.json"
+        },
+        "feed_field_mappings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1catalog-field-mapping.json"
+          }
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/catalog-type.json": {
+      "type": "string",
+      "enum": [
+        "offering",
+        "product",
+        "inventory",
+        "store",
+        "promotion",
+        "hotel",
+        "flight",
+        "job",
+        "vehicle",
+        "real_estate",
+        "education",
+        "destination",
+        "app"
+      ]
+    },
+    "external:enums/feed-format.json": {
+      "type": "string",
+      "enum": [
+        "google_merchant_center",
+        "facebook_catalog",
+        "shopify",
+        "linkedin_jobs",
+        "tiktok_shop",
+        "pinterest_catalog",
+        "openai_product_feed",
+        "custom"
+      ]
+    },
+    "external:enums/update-frequency.json": {
+      "type": "string",
+      "enum": [
+        "realtime",
+        "hourly",
+        "daily",
+        "weekly"
+      ]
+    },
+    "external:enums/content-id-type.json": {
+      "type": "string",
+      "enum": [
+        "sku",
+        "gtin",
+        "offering_id",
+        "job_id",
+        "hotel_id",
+        "flight_id",
+        "vehicle_id",
+        "listing_id",
+        "store_id",
+        "program_id",
+        "destination_id",
+        "app_id"
+      ]
+    },
+    "external:core/catalog-field-mapping.json": {
+      "type": "object",
+      "properties": {
+        "feed_field": {
+          "type": "string"
+        },
+        "catalog_field": {
+          "type": "string"
+        },
+        "asset_group_id": {
+          "type": "string"
+        },
+        "value": {},
+        "transform": {
+          "type": "string",
+          "enum": [
+            "date",
+            "divide",
+            "boolean",
+            "split"
+          ]
+        },
+        "format": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "by": {
+          "type": "number"
+        },
+        "separator": {
+          "type": "string"
+        },
+        "default": {},
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "feed_field",
+              "value"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "catalog_field",
+              "asset_group_id"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": true
+    }
+  }
+}
