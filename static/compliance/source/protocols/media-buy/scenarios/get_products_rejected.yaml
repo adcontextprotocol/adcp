@@ -66,7 +66,7 @@ phases:
           - forced.arm: rejected
           - forced.reason echoes the sanitized buyer-facing reason
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.3"
           adcp_major_version: 3
           account:
             brand:
@@ -117,7 +117,7 @@ phases:
           - no products[], proposals[], errors[], or adcp_error
         sample_request:
           idempotency_key: "$generate:uuid_v4#get_products_rejected_rejected_discovery_response_get_products_rejected"
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.3"
           adcp_major_version: 3
           buying_mode: "brief"
           brief: "Premium video inventory for a regional product launch with a limited test budget."

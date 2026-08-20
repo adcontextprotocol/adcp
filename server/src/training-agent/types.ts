@@ -20,7 +20,7 @@ export const TALENT_ROLES = ['host', 'guest', 'creator', 'cast', 'narrator', 'pr
 export type TalentRole = typeof TALENT_ROLES[number];
 
 /** First wire release that carries the get_products business-rejection arm. */
-export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.0' as const;
+export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 
 export const PROPOSAL_NEGOTIATION_PROFILES = [
   'ask-only',
@@ -32,11 +32,16 @@ export type ProposalNegotiationProfile = (typeof PROPOSAL_NEGOTIATION_PROFILES)[
 
 export function supportsGetProductsRejected(servedVersion: string | undefined): boolean {
   if (!servedVersion) return false;
-  const match = servedVersion.match(/^(\d+)\.(\d+)(?:-|$)/);
+  const match = servedVersion.match(/^(\d+)\.(\d+)(?:-(beta|rc)(?:\.(\d+))?)?$/);
   if (!match) return false;
   const major = Number.parseInt(match[1], 10);
   const minor = Number.parseInt(match[2], 10);
-  return major > 3 || (major === 3 && minor >= 2);
+  if (major > 3 || (major === 3 && minor > 2)) return true;
+  if (major !== 3 || minor !== 2) return false;
+  const qualifier = match[3];
+  if (!qualifier || qualifier === 'rc') return true;
+  const prerelease = Number.parseInt(match[4] ?? '0', 10);
+  return qualifier === 'beta' && prerelease >= 2;
 }
 
 /** AccountReference from SDK — identifies an account on create_media_buy */
@@ -369,6 +374,9 @@ export interface ComplyExtensions {
 }
 
 export interface SessionState {
+  /** Caller-scoped agent-level capability-change subscribers. Values retain
+   * write-only credentials; read responses redact them. */
+  agentNotificationConfigs: Map<string, Record<string, unknown>>;
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
   signalActivations: Map<string, SignalActivationState>;
@@ -540,6 +548,12 @@ export interface MediaBuyState {
   packages: PackageState[];
   productAllowedActions?: MediaBuyProductAllowedActionState[];
   availableActions?: MediaBuyAvailableActionState[];
+  /** Stable execution identities assigned by purchase position. */
+  purchaseBindings?: Array<{
+    purchase_index: number;
+    product_id: string;
+    package_id: string;
+  }>;
   startTime: string;
   endTime: string;
   revision: number;
@@ -580,7 +594,11 @@ export interface Impairment {
 export interface PackageState {
   packageId: string;
   productId: string;
+  /** Last concrete allocation used for deterministic delivery simulation. */
   budget: number;
+  /** A seller-optimized update removed this package's hard cap while the
+   * media-buy total remains the authoritative spend ceiling. */
+  budgetCapRemoved?: boolean;
   dailyBudgetCap?: number;
   minSpendTarget?: number;
   pricingOptionId: string;

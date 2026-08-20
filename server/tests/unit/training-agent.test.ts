@@ -90,8 +90,8 @@ const VALID_PRICING_MODELS = [
 ] as const;
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
-const CURRENT_ADCP_VERSION = '3.2-beta.2';
-const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.0';
+const CURRENT_ADCP_VERSION = '3.2-beta.3';
+const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open', authenticatedAgentUrl: 'https://buyer.example' };
 
@@ -1473,7 +1473,10 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_collection_list');
     expect(toolNames).toContain('list_collection_lists');
     expect(toolNames).toContain('delete_collection_list');
-    expect(toolNames).toHaveLength(57);
+    expect(toolNames).toContain('buy_products');
+    expect(toolNames).toContain('accept_proposal');
+    expect(toolNames).toContain('control_media_buy');
+    expect(toolNames).toHaveLength(60);
 
     const validateInput = tools.find(t => t.name === 'validate_input');
     expect(validateInput?.inputSchema?.properties?.targets?.maxItems).toBe(50);
@@ -14005,6 +14008,22 @@ describe('proposal lifecycle', () => {
       products: [{ product_id: requestedProductId }],
     });
     expect(listed.result).not.toHaveProperty('next_cursor');
+  });
+
+  it('honors sparse list product fields while retaining product identity', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const listed = await simulateCallTool(server, 'list_products', {
+      fields: ['description'],
+      max_results: 1,
+    });
+
+    expect(listed.isError).toBeFalsy();
+    const product = (listed.result.products as Array<Record<string, unknown>>)[0];
+    expect(product).toEqual({
+      product_id: expect.any(String),
+      name: expect.any(String),
+      description: expect.any(String),
+    });
   });
 
   it('constructs a compact proposal for an exact published product selection', async () => {

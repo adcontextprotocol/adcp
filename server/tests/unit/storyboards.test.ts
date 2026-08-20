@@ -460,10 +460,10 @@ describe('compareAdcpVersions', () => {
   });
 
   it('treats prereleases as part of their target compliance feature line', () => {
-    expect(compareAdcpVersions('3.2', '3.2-beta.0')).toBe(0);
-    expect(compareAdcpVersions('3.2-beta.0', '3.2')).toBe(0);
-    expect(compareAdcpVersions('3.2-beta.0', '3.1')).toBeGreaterThan(0);
-    expect(compareAdcpVersions('3.1', '3.2-beta.0')).toBeLessThan(0);
+    expect(compareAdcpVersions('3.2', '3.2-beta.2')).toBe(0);
+    expect(compareAdcpVersions('3.2-beta.2', '3.2')).toBe(0);
+    expect(compareAdcpVersions('3.2-beta.2', '3.1')).toBeGreaterThan(0);
+    expect(compareAdcpVersions('3.1', '3.2-beta.2')).toBeLessThan(0);
   });
 
   it('treats malformed values as 0.0 (sort first, fail loudly elsewhere)', () => {

@@ -80,15 +80,15 @@ jobs:
             tenant: signals
             min_clean_storyboards: 74
             min_passing_steps: 111
-          # SDK 14's compact media-buy profile plus the sandbox controller
-          # executes a much broader current-source surface than the legacy
-          # profile. The deprecated create_media_buy probe remains skipped;
-          # native compact lifecycle gates below require nonzero execution.
-          # Observed: 144 clean / 315 passing. +1 buffer for flake tolerance.
+          # The exhaustive harness intentionally runs storyboards outside this
+          # tenant's claimed specialisms. Protect the meaningful sales surface
+          # with the passing-step floor and the required clean/exact gates below.
+          # Observed under SDK 14 beta.4: 121 clean / 546 passing. Keep a
+          # one-storyboard/step tolerance while exact lifecycle gates remain strict.
           - surface: current
             tenant: sales
-            min_clean_storyboards: 143
-            min_passing_steps: 314
+            min_clean_storyboards: 120
+            min_passing_steps: 545
           - surface: current
             tenant: governance
             min_clean_storyboards: 73
@@ -332,6 +332,7 @@ jobs:
           required_clean=(
             "media_buy_seller/billing_finality_delivery"
             "media_buy_seller/canonical_formats"
+            "media_buy_seller/vendor_metric_catalog_precondition"
             "canonical_format_validate_input"
             "notification_config_event_scope"
             "notification_config_lifecycle"
@@ -354,8 +355,8 @@ jobs:
             "media_buy_seller/compact_direct_buy_lifecycle:7:0"
             "media_buy_seller/compact_product_lifecycle:9:0"
             "media_buy_seller/declined_proposal_refinement:6:0"
-            "media_buy_seller/declined_proposal_execution:7:1"
-            "media_buy_seller/expired_proposal_execution:7:1"
+            "media_buy_seller/declined_proposal_execution:8:0"
+            "media_buy_seller/expired_proposal_execution:8:0"
           )
           for requirement in "${required_exact[@]}"; do
             storyboard_id="${requirement%%:*}"
