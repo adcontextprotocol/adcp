@@ -53,21 +53,22 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   // list_creative_formats is framework-registered for any tenant claiming
   // creative (sales, creative, creative-builder) — the SDK auto-advertises
   // it. Catalog mirrors that advertisement so the drift test stays green.
-  list_creative_formats: ['creative', 'creative-builder'],
+  list_creative_formats: ['sales', 'creative', 'creative-builder'],
+  sync_agent_notification_configs: ['sales'],
 
   // creative — exposed on multiple tenants
   // list_creatives / get_creative_delivery are sales-side / ad-server-side
   // operations. SDK 7.0's `CreativeBuilderPlatform` interface dropped them
   // (they live on `CreativeAdServerPlatform`); the /creative-builder tenant
   // no longer advertises them in tools/list.
-  validate_input: ['creative', 'creative-builder'],
+  validate_input: ['sales', 'creative', 'creative-builder'],
   // list_transformers (account-scoped transformer discovery) rides customTools
   // on the creative tenants, gated off 3.0-compat like validate_input.
   list_transformers: ['creative', 'creative-builder'],
   list_creatives: ['sales', 'creative'],
   sync_creatives: ['sales', 'creative', 'creative-builder'],
-  build_creative: ['creative', 'creative-builder'],
-  preview_creative: ['creative', 'creative-builder'],
+  build_creative: ['sales', 'creative', 'creative-builder'],
+  preview_creative: ['sales', 'creative', 'creative-builder'],
   get_creative_delivery: ['creative'],
 
   // sync_governance is exposed by each service role that advertises a
@@ -134,11 +135,6 @@ export function toolsForTenant(
     .filter(tool => {
       const is30 = options.storyboardCompat?.version === '3.0'
         || options.adcpVersion?.startsWith('3.0');
-      const is31 = options.adcpVersion?.startsWith('3.1') === true;
-      const usesLegacyLifecycle = is30 || is31;
-      if (!usesLegacyLifecycle && ['get_products', 'create_media_buy', 'update_media_buy'].includes(tool)) {
-        return false;
-      }
       if (!is30) return true;
       // 3.0-compat exclusions. The split product-discovery tools are introduced
       // in 3.2, while validate_input / list_transformers are gated off on every
@@ -156,6 +152,10 @@ export function toolsForTenant(
         || tool === 'control_media_buy'
       ) return false;
       if (tool === 'validate_input' || tool === 'list_transformers') return false;
+      if (
+        tenantId === 'sales'
+        && ['sync_agent_notification_configs', 'build_creative', 'preview_creative'].includes(tool)
+      ) return false;
       if (tool === 'sync_governance' && tenantId !== 'signals') return false;
       return true;
     })

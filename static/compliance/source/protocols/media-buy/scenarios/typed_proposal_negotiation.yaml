@@ -444,9 +444,9 @@ phases:
       This phase sends a constraints.flight dimension; sellers that include
       flight in supported_dimensions skip this phase.
 
-    skip_if:
-      context_key: "supported_dimensions"
-      contains: "flight"
+    requires_capability:
+      path: media_buy.proposal_refinement.supported_dimensions
+      not_contains: flight
 
     steps:
       - id: revise_unsupported_dimension

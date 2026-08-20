@@ -26,10 +26,7 @@ type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate'
 type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
 type ProductFormatDeclaration = NonNullable<Product['format_options']>[number];
 type ProductCardImage = NonNullable<NonNullable<Product['product_card']>['image']>;
-type CollectionSelector = {
-  publisher_domain: string;
-  collection_ids: string[];
-};
+type CollectionSelector = NonNullable<Product['collections']>[number];
 type ProductCardManifest = {
   format_id: FormatID;
   manifest: {
@@ -46,8 +43,8 @@ type TrainingProduct = Omit<Product,
 > & {
   product_card?: Product['product_card'] | ProductCardManifest;
   product_card_detailed?: Product['product_card_detailed'] | ProductCardManifest;
-  collections?: CollectionSelector[];
-  installments?: Installment[];
+  collections?: Product['collections'];
+  installments?: Product['installments'];
   exclusivity?: 'exclusive' | 'category';
   collection_targeting_allowed?: boolean;
 };
@@ -455,7 +452,7 @@ function formatOptionsForFormatIds(formatIds: FormatID[]): ProductFormatDeclarat
   });
 }
 
-function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]): PublisherPropertySelector[] {
+function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]): Product['publisher_properties'] {
   if (!channels) {
     return [{ publisher_domain: pub.domain, selection_type: 'all' as const }];
   }
@@ -647,7 +644,7 @@ function buildProduct(
   type SupportedMetric = NonNullable<Product['metric_optimization']>['supported_metrics'][number];
   let metricOptimization: Product['metric_optimization'];
   if (template.deliveryType === 'non_guaranteed') {
-    const metrics: SupportedMetric[] = ['clicks'];
+    const metrics: [SupportedMetric, ...SupportedMetric[]] = ['clicks'];
     if (template.channels.some(c => ['olv', 'ctv', 'social', 'gaming'].includes(c))) {
       metrics.push('views', 'completed_views');
     }
@@ -736,9 +733,9 @@ function buildProduct(
   }
 
   // Build collection/installment associations
-  let collectionSelectors: CollectionSelector[] | undefined;
+  let collectionSelectors: Product['collections'];
   let exclusivity: 'exclusive' | 'category' | undefined;
-  let installments: Installment[] | undefined;
+  let installments: Product['installments'];
   let collectionTargetingAllowed: boolean | undefined;
   if (pub.shows?.length) {
     const matchingShows = pub.shows.filter(s =>
@@ -747,7 +744,7 @@ function buildProduct(
     if (matchingShows.length > 0) {
       collectionSelectors = [{
         publisher_domain: pub.domain,
-        collection_ids: matchingShows.map(s => s.showId),
+        collection_ids: [matchingShows[0].showId, ...matchingShows.slice(1).map(s => s.showId)],
       }];
       if (template.deliveryType === 'guaranteed') {
         exclusivity = matchingShows.length === 1 ? 'exclusive' : 'category';
@@ -770,13 +767,21 @@ function buildProduct(
         }
       }
       if (builtInstallments.length > 0) {
-        installments = builtInstallments;
+        installments = [builtInstallments[0], ...builtInstallments.slice(1)];
       }
     }
   }
 
   const formatIds = formatIdsForChannels(template.channels, agentUrl);
   const formatOptions = formatOptionsForFormatIds(formatIds);
+  const pricingOptions = effectivePricing.map((t, i) => buildPricingOption(t, productId, i));
+  if (pricingOptions.length === 0) {
+    throw new Error(`Training product ${productId} has no pricing options`);
+  }
+  const nonEmptyPricingOptions: Product['pricing_options'] = [
+    pricingOptions[0],
+    ...pricingOptions.slice(1),
+  ];
   const product: TrainingProduct = {
     product_id: productId,
     name: template.name,
@@ -790,7 +795,7 @@ function buildProduct(
       provider: pub.measurementProvider,
       notes: pub.measurementNotes,
     },
-    pricing_options: effectivePricing.map((t, i) => buildPricingOption(t, productId, i)) as unknown as Product['pricing_options'],
+    pricing_options: nonEmptyPricingOptions,
     reporting_capabilities: {
       available_reporting_frequencies: pub.reportingFrequencies as NonNullable<Product['reporting_capabilities']>['available_reporting_frequencies'],
       expected_delay_minutes: 240,
@@ -992,7 +997,8 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
   const proposals: Proposal[] = [];
 
   for (const def of PROPOSAL_DEFINITIONS) {
-    const allocations: Array<Proposal['allocations'][number]> = [];
+    type FixedAllocation = Proposal['allocations'][number] & { allocation_percentage: number };
+    const allocations: FixedAllocation[] = [];
     let valid = true;
 
     for (const alloc of def.allocations) {
@@ -1012,10 +1018,11 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
       });
     }
 
-    if (!valid) continue;
+    if (!valid || allocations.length === 0) continue;
+    const proposalAllocations = allocations as [FixedAllocation, ...FixedAllocation[]];
 
     // Proposals containing guaranteed products are drafts (indicative pricing, needs finalization)
-    const hasGuaranteed = allocations.some(alloc => {
+    const hasGuaranteed = proposalAllocations.some(alloc => {
       const cp = catalog.find(c => c.product.product_id === alloc.product_id);
       return cp?.product.delivery_type === 'guaranteed';
     });
@@ -1026,7 +1033,7 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
     const proposalPub = PUBLISHERS.find(p => p.id === def.publisherId);
 
     // Build allocation data with product names for display
-    const allocDataWithNames = allocations.map(a => {
+    const allocDataWithNames = proposalAllocations.map(a => {
       const cp = catalog.find(c => c.product.product_id === a.product_id);
       return {
         product_id: a.product_id,
@@ -1038,7 +1045,7 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
 
     // Estimate total delivery from budget and pricing
     const totalImpressions = def.budgetGuidance.recommended
-      ? Math.round(allocations.reduce((sum, a) => {
+      ? Math.round(proposalAllocations.reduce((sum, a) => {
           const cp = catalog.find(c => c.product.product_id === a.product_id);
           const firstPricing = cp?.product.pricing_options[0] as { fixed_price?: number; floor_price?: number } | undefined;
           const price = firstPricing?.fixed_price ?? firstPricing?.floor_price ?? 10;
@@ -1213,7 +1220,7 @@ export function buildCatalog(): CatalogProduct[] {
             const { min_spend_per_package: _drop, ...rest } = basePricing as unknown as Record<string, unknown>;
             return { ...rest, pricing_option_id: pid } as typeof basePricing;
           }),
-        ]
+        ] as Product['pricing_options']
       : alias.source.product.pricing_options;
     catalog.push({
       ...alias.source,

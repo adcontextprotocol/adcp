@@ -53,13 +53,14 @@ The deprecated `SalesPlatform` methods remain registered so explicit 3.0 and
 3.1 calls to `get_products`, `create_media_buy`, and `update_media_buy` keep
 working during the 3.x compatibility window.
 
-- Default 3.2 discovery advertises the native lifecycle, not the deprecated
-  aliases.
+- The public training sandbox advertises the native lifecycle and registered
+  compatibility aliases; production adopters can use the SDK's `auto` profile
+  to advertise only the active lifecycle.
 - 3.0 compatibility registries omit `mediaBuyLifecycle` entirely because SDK
   proposal negotiation is a 3.2 feature.
 - Capability projection removes lifecycle and proposal-refinement metadata for
   pre-3.2 callers.
-- The current wire bundle is `3.2-beta.2`; `3.2-beta.0` remains only as the
+- The current wire bundle is `3.2-beta.3`; `3.2-beta.0` remains only as the
   historical feature-introduction boundary for rejected discovery responses.
 
 ## Invariants for future changes
