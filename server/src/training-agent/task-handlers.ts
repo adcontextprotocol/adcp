@@ -11332,6 +11332,8 @@ async function handleUpdateMediaBuyUnlocked(
     const ignoredFields = Object.entries(req as unknown as Record<string, unknown>)
       .filter(([field, value]) => value !== undefined && !new Set([
         'account',
+        'adcp_version',
+        'adcp_major_version',
         'media_buy_id',
         'revision',
         'idempotency_key',

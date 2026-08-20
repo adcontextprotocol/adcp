@@ -1222,6 +1222,12 @@ describe('tenant routing smoke', () => {
       expect(controlled?.adcp_error, JSON.stringify(controlled)).toBeUndefined();
       expect(controlled).toMatchObject({ media_buy_id: bought.media_buy_id, revision: 4 });
 
+      const controlledBuy = structured(await callTenantTool(salesUrl, 1101, 'get_media_buys', {
+        account,
+        media_buy_ids: [bought.media_buy_id],
+      })) as { media_buys?: Array<{ accepted_proposal_id?: string }> };
+      expect(controlledBuy.media_buys?.[0]?.accepted_proposal_id).toBe(amendment!.proposal_id);
+
       const postControlDraft = structured(await callTenantTool(salesUrl, 111, 'refine_proposals', {
         idempotency_key: 'tenant-governed-native-post-control-draft',
         account,

@@ -540,9 +540,6 @@ test('compact lifecycle routes every operational control and declares cross-item
   const controlActions = new Set(routedActions.oneOf
     .find(branch => branch.properties.task.const === 'control_media_buy')
     .properties.action.enum);
-  const refinementActions = new Set(routedActions.oneOf
-    .find(branch => branch.properties.task.const === 'refine_proposals')
-    .properties.action.enum);
   const controlRequest = readJson(path.join(SOURCE_DIR, 'media-buy', 'control-media-buy-request.json'));
   const packageControl = readJson(path.join(SOURCE_DIR, 'media-buy', 'package-control.json'));
   const legacyUpdate = readJson(path.join(SOURCE_DIR, 'media-buy', 'update-media-buy-request.json'));
