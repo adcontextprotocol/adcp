@@ -42,7 +42,7 @@ import {
 import { mergeSeedProductLegacy as mergeSeedProduct } from '@adcp/sdk/testing';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
-import { supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState } from './types.js';
+import { supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -4489,6 +4489,145 @@ function seededProductIds(session: import('./types.js').SessionState): Set<strin
   return ids;
 }
 
+const AVAILABILITY_DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Second-precision RFC3339 UTC, e.g. "2099-09-01T00:00:00Z". */
+function toUtcSecondsIso(ms: number): string {
+  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+/**
+ * Partition [horizon.start_time, horizon.end_time) into maximal half-open,
+ * chronologically-ordered, non-overlapping windows of constant
+ * availability_status, per the forecast-dimension-time.json contract.
+ *
+ * A window is "unavailable" when it overlaps any seeded booked_window, OR
+ * when it is an open gap shorter than min_bookable_days (whole days).
+ * Adjacent windows sharing a status are coalesced into one window, so a
+ * booked span immediately followed by a too-short gap emits as a single
+ * unavailable window.
+ *
+ * Returns undefined when the horizon itself is malformed (non-positive
+ * duration) — callers leave the product's existing forecast untouched in
+ * that case rather than emitting an empty points[] (forecast-point.json
+ * requires minItems: 1).
+ */
+function computeAvailabilityForecastPoints(
+  horizon: { start_time: string; end_time: string },
+  availability: SeededProductAvailability,
+): Array<Record<string, unknown>> | undefined {
+  const horizonStart = Date.parse(horizon.start_time);
+  const horizonEnd = Date.parse(horizon.end_time);
+  if (!Number.isFinite(horizonStart) || !Number.isFinite(horizonEnd) || horizonEnd <= horizonStart) {
+    return undefined;
+  }
+
+  // Union booked windows, clipped to the horizon.
+  const clippedBooked = availability.booked_windows
+    .map(window => ({
+      start: Math.max(Date.parse(window.start_time), horizonStart),
+      end: Math.min(Date.parse(window.end_time), horizonEnd),
+    }))
+    .filter(window => Number.isFinite(window.start) && Number.isFinite(window.end) && window.end > window.start)
+    .sort((a, b) => a.start - b.start);
+  const bookedUnion: Array<{ start: number; end: number }> = [];
+  for (const window of clippedBooked) {
+    const last = bookedUnion[bookedUnion.length - 1];
+    if (last && window.start <= last.end) {
+      last.end = Math.max(last.end, window.end);
+    } else {
+      bookedUnion.push({ ...window });
+    }
+  }
+
+  // Partition the horizon into booked segments and the gaps between them,
+  // classifying each gap by the min-bookable-days eligibility rule.
+  type Segment = { start: number; end: number; status: 'available' | 'unavailable' };
+  const segments: Segment[] = [];
+  let cursor = horizonStart;
+  const classifyGap = (start: number, end: number): Segment => {
+    const gapDays = Math.floor((end - start) / AVAILABILITY_DAY_MS);
+    return { start, end, status: gapDays < availability.min_bookable_days ? 'unavailable' : 'available' };
+  };
+  for (const booked of bookedUnion) {
+    if (booked.start > cursor) segments.push(classifyGap(cursor, booked.start));
+    segments.push({ start: booked.start, end: booked.end, status: 'unavailable' });
+    cursor = booked.end;
+  }
+  if (cursor < horizonEnd) segments.push(classifyGap(cursor, horizonEnd));
+
+  // Coalesce adjacent same-status windows (MUST per forecast-dimension-time.json).
+  const coalesced: Segment[] = [];
+  for (const segment of segments) {
+    const last = coalesced[coalesced.length - 1];
+    if (last && last.status === segment.status && last.end === segment.start) {
+      last.end = segment.end;
+    } else {
+      coalesced.push({ ...segment });
+    }
+  }
+
+  return coalesced.map(segment => {
+    const days = Math.floor((segment.end - segment.start) / AVAILABILITY_DAY_MS);
+    return {
+      dimensions: [{
+        kind: 'time',
+        start_time: toUtcSecondsIso(segment.start),
+        end_time: toUtcSecondsIso(segment.end),
+      }],
+      availability_status: segment.status,
+      metrics: segment.status === 'available'
+        ? { impressions: { mid: days * 1000 }, spend: { mid: days * 250 } }
+        : {},
+    };
+  });
+}
+
+/**
+ * Replace the forecast on each returned product that has a seeded booking
+ * calendar (comply_test_controller.seed_product's fixture.availability) with
+ * a windowed availability forecast scoped to offer_filters.availability_horizon.
+ * Products without seeded availability keep their existing (catalog-baked)
+ * forecast untouched. Not a filter — every product stays in the result set
+ * regardless of how much of the horizon it can cover.
+ */
+function applyAvailabilityHorizonForecasts(
+  products: Product[],
+  horizon: unknown,
+  session: import('./types.js').SessionState,
+): Product[] {
+  if (
+    !isRecord(horizon)
+    || typeof horizon.start_time !== 'string'
+    || typeof horizon.end_time !== 'string'
+  ) {
+    return products;
+  }
+  const { seededProductAvailability } = session.complyExtensions;
+  if (seededProductAvailability.size === 0) return products;
+  const horizonRange = { start_time: horizon.start_time, end_time: horizon.end_time };
+  const now = Date.now();
+  const generatedAt = toUtcSecondsIso(now);
+  const validUntil = toUtcSecondsIso(now + 5 * 60 * 1000);
+  return products.map(product => {
+    const availability = seededProductAvailability.get(product.product_id);
+    if (!availability) return product;
+    const points = computeAvailabilityForecastPoints(horizonRange, availability);
+    if (!points) return product;
+    return {
+      ...product,
+      forecast: {
+        points,
+        forecast_range_unit: 'availability',
+        method: 'modeled',
+        currency: 'USD',
+        generated_at: generatedAt,
+        valid_until: validUntil,
+      } as unknown as Product['forecast'],
+    };
+  });
+}
+
 type CanonicalFormatRef = { agent_url?: string; id?: string };
 type CanonicalFormatOption = {
   format_option_id?: string;
@@ -6498,7 +6637,14 @@ async function handleGetProductsUnlocked(
     };
   }
 
-  if (wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
+  // list_products's conditional-read shortcut (if_feed_version) answers
+  // "has the catalog changed" — it cannot answer "what's bookable right now."
+  // A caller requesting fields: ["forecast"] wants a live, horizon-scoped
+  // forecast on every call, so the cached-unchanged short-circuit never
+  // applies to that request shape, matching or not.
+  const forecastFieldRequested = Array.isArray((req as unknown as Record<string, unknown>).fields)
+    && ((req as unknown as Record<string, unknown>).fields as unknown[]).includes('forecast');
+  if (!forecastFieldRequested && wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
     return {
       status: 'completed' as const,
       unchanged: true,
@@ -6599,6 +6745,14 @@ async function handleGetProductsUnlocked(
       });
     }
   }
+  // Flexible-window availability discovery (offer_filters.availability_horizon)
+  // is not an eligibility filter — products stay in the result set even when
+  // the seller can only cover part of the horizon — so it is read here but
+  // applied later (after brief/refine narrow the final product set) rather
+  // than folded into the filter block above.
+  const availabilityHorizon = isRecord(req.filters)
+    ? (req.filters as Record<string, unknown>).availability_horizon
+    : undefined;
   const filteredProducts = products;
 
   // Brief mode: channel-aware keyword matching
@@ -7447,6 +7601,7 @@ async function handleGetProductsUnlocked(
       return [successor];
     });
   }
+  products = applyAvailabilityHorizonForecasts(products, availabilityHorizon, session);
   const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
   const staleDirective = readDirectives
     ? readDirectives.staleDirective
@@ -9398,6 +9553,41 @@ async function handleCreateMediaBuyUnlocked(
       errors.push({ code: 'INVALID_REQUEST', message: `${pkgLabel}: Invalid end_time: "${endTime}". Use ISO 8601 format.` });
     }
 
+    // Buy-time booking-calendar enforcement (comply_test_controller.seed_product's
+    // fixture.availability): reject synchronously — before any async/submitted
+    // arm — when the flight overlaps a booked window or is shorter than the
+    // product's min_bookable_days. Mirrors the discovery-time windowed forecast
+    // (applyAvailabilityHorizonForecasts) so a buyer can't slip a flight through
+    // create_media_buy that get_products/list_products already marked
+    // "unavailable". "asap" starts have no fixed flight to check.
+    const seededAvailability = session.complyExtensions.seededProductAvailability.get(pkg.product_id);
+    if (seededAvailability && startTime !== 'asap') {
+      const flightStart = Date.parse(startTime);
+      const flightEnd = Date.parse(endTime);
+      if (Number.isFinite(flightStart) && Number.isFinite(flightEnd) && flightEnd > flightStart) {
+        const flightDays = Math.floor((flightEnd - flightStart) / AVAILABILITY_DAY_MS);
+        const overlapsBooked = seededAvailability.booked_windows.some(window => {
+          const bookedStart = Date.parse(window.start_time);
+          const bookedEnd = Date.parse(window.end_time);
+          return flightStart < bookedEnd && bookedStart < flightEnd;
+        });
+        const tooShort = flightDays < seededAvailability.min_bookable_days;
+        if (overlapsBooked || tooShort) {
+          return {
+            errors: [{
+              code: 'PRODUCT_UNAVAILABLE',
+              message: `${pkgLabel}: Product "${pkg.product_id}" is not bookable for ${startTime} to ${endTime}`
+                + (overlapsBooked
+                  ? ' — the flight overlaps a booked window.'
+                  : ` — the flight is shorter than the ${seededAvailability.min_bookable_days}-day minimum bookable duration.`),
+              field: `packages[${i}]`,
+              recovery: 'correctable',
+            }] as TaskError[],
+            ...(isRecord(req.context) && { context: req.context }),
+          };
+        }
+      }
+    }
 
     // Don't build package state if there are any validation errors (atomic create).
     // Spec field is `targeting_overlay`; `targeting` is an alias we accept for
@@ -11586,6 +11776,11 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         proposal_refinement: proposalCapabilitiesForProfile(ctx.proposalNegotiationProfile),
       }),
       supports_proposals: true,
+      // Flexible-window availability discovery: parses
+      // offer_filters.availability_horizon and answers with time-dimensioned
+      // forecast points carrying availability_status. See
+      // applyAvailabilityHorizonForecasts / handleGetProductsUnlocked.
+      availability_horizon: true,
       performance_feedback: {
         reports_application_status: true,
       },
@@ -14195,7 +14390,21 @@ export async function handleBuyProducts(
       },
     },
   }) as Record<string, unknown>;
-  if (Array.isArray(createResult.errors) && createResult.errors.length > 0) return createResult;
+  if (Array.isArray(createResult.errors) && createResult.errors.length > 0) {
+    // Legacy create_media_buy's error shape is bare { errors, ...context } —
+    // its own response schema has its own convention (see e.g. the
+    // inventory_list_no_match storyboard) and is intentionally left
+    // untouched. Re-emit that same bare shape here (not status: "failed"):
+    // the v6 SalesPlatform wrapper (v6-sales-platform.ts) recognizes this
+    // exact { errors, ...context } shape as the SDK's "error arm" and
+    // synthesizes status/adcp_error/isError correctly on the wire. Adding
+    // status here would make the wrapper miss that recognition and fall
+    // back to a single-adcp_error envelope that fails buy-products-response.json.
+    return {
+      errors: createResult.errors,
+      ...(isRecord(createResult.context) && { context: createResult.context }),
+    };
+  }
 
   const mediaBuyId = String(createResult.media_buy_id);
   const acceptedAt = new Date().toISOString();

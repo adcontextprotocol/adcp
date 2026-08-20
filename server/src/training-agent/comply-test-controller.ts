@@ -33,6 +33,7 @@ import type {
   BrandRef,
   ComplyDeliveryAccumulator,
   ComplyBudgetSimulation,
+  SeededProductAvailability,
 } from './types.js';
 import { supportsGetProductsRejected } from './types.js';
 import {
@@ -416,6 +417,53 @@ function normalizeSeedPackage(pkg: Record<string, unknown>, mbStart: string, mbE
     optimizationGoals: Array.isArray(pkg.optimizationGoals) ? pkg.optimizationGoals as PackageState['optimizationGoals'] : Array.isArray(pkg.optimization_goals) ? pkg.optimization_goals as PackageState['optimizationGoals'] : undefined,
     committedMetrics: Array.isArray(pkg.committedMetrics) ? pkg.committedMetrics as PackageState['committedMetrics'] : Array.isArray(pkg.committed_metrics) ? pkg.committed_metrics as PackageState['committedMetrics'] : undefined,
   };
+}
+
+/**
+ * Parse and validate seed_product's fixture.availability into the seller-
+ * internal booking calendar used by windowed forecast partitioning
+ * (offer_filters.availability_horizon) and buy-time PRODUCT_UNAVAILABLE
+ * validation. Thrown errors surface as INVALID_PARAMS through the SDK's
+ * comply_test_controller dispatch, matching the other seed scenarios' fail-fast
+ * fixture validation.
+ */
+function parseSeededProductAvailability(productId: string, value: unknown): SeededProductAvailability {
+  if (!isRecord(value)) {
+    throw new TestControllerError(
+      'INVALID_PARAMS',
+      `seed_product fixture.availability must be an object for product ${productId}`,
+    );
+  }
+  const minBookableDays = value.min_bookable_days;
+  if (typeof minBookableDays !== 'number' || !Number.isFinite(minBookableDays) || minBookableDays < 0) {
+    throw new TestControllerError(
+      'INVALID_PARAMS',
+      `seed_product fixture.availability.min_bookable_days must be a non-negative number for product ${productId}`,
+    );
+  }
+  const rawWindows = value.booked_windows;
+  if (rawWindows !== undefined && !Array.isArray(rawWindows)) {
+    throw new TestControllerError(
+      'INVALID_PARAMS',
+      `seed_product fixture.availability.booked_windows must be an array for product ${productId}`,
+    );
+  }
+  const bookedWindows = ((rawWindows ?? []) as unknown[]).map((window, index) => {
+    if (
+      !isRecord(window)
+      || typeof window.start_time !== 'string'
+      || typeof window.end_time !== 'string'
+      || Number.isNaN(Date.parse(window.start_time))
+      || Number.isNaN(Date.parse(window.end_time))
+    ) {
+      throw new TestControllerError(
+        'INVALID_PARAMS',
+        `seed_product fixture.availability.booked_windows[${index}] must have valid RFC3339 start_time/end_time for product ${productId}`,
+      );
+    }
+    return { start_time: window.start_time, end_time: window.end_time };
+  });
+  return { min_bookable_days: minBookableDays, booked_windows: bookedWindows };
 }
 
 function normalizeAvailableActions(actions: unknown): MediaBuyAvailableActionState[] | undefined {
@@ -991,7 +1039,16 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
     async seedProduct(productId, fixture) {
       const ext = session.complyExtensions;
       enforceMapCap(ext.seededProducts, productId, 'seeded products');
-      ext.seededProducts.set(productId, { product_id: productId, ...(fixture ?? {}) });
+      // fixture.availability is seller-internal booking calendar state (spec:
+      // flexible-window availability discovery), not a Product response field.
+      // Split it out so it never round-trips through get_products/list_products.
+      const { availability, ...productFields } = (fixture ?? {}) as Record<string, unknown> & {
+        availability?: unknown;
+      };
+      ext.seededProducts.set(productId, { product_id: productId, ...productFields });
+      if (availability !== undefined) {
+        ext.seededProductAvailability.set(productId, parseSeededProductAvailability(productId, availability));
+      }
     },
 
     async seedPricingOption(productId, pricingOptionId, fixture) {

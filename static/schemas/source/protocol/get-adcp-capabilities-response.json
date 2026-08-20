@@ -818,6 +818,12 @@
           "uniqueItems": true,
           "default": ["brief"]
         },
+        "availability_horizon": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this seller supports flexible-window availability discovery: parsing offer_filters.availability_horizon and answering with time-dimensioned forecast points that carry availability_status. Sellers declaring true MUST apply the full window contract — half-open non-overlapping windows that partition the requested horizon (or signal gaps via incomplete[]), with availability_status computed from all booking eligibility constraints, not only competing holds. false or absent means flexible-window support is unknown: buyers SHOULD use exact start_date/end_date filtering, and sellers MAY ignore the field or reject it. Conformance storyboards gate flexible-window checks on this declaration.",
+          "x-added-in": "3.2.0"
+        },
         "lifecycle_tools": {
           "type": "array",
           "description": "Compact product and MediaBuy lifecycle operation names this seller supports. Added in AdCP 3.2 as task-specific contracts that form the 4.0 lifecycle foundation. Sellers may advertise any supported subset while retaining the deprecated get_products/create_media_buy/update_media_buy facades throughout 3.x. Each stateful split task has its own idempotency identity; callers MUST retry with the same tool name.",

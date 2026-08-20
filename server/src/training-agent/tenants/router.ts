@@ -824,6 +824,7 @@ function projectTenantCapabilities(
         delete mediaBuy.lifecycle_tools;
         delete mediaBuy.proposal_refinement;
         delete mediaBuy.supports_proposals;
+        delete mediaBuy.availability_horizon;
       }
       const salesProjection = salesCapabilityProjection();
       structured.media_buy = {
@@ -831,6 +832,10 @@ function projectTenantCapabilities(
         ...salesProjection,
         ...(supportsGetProductsRejected(servedVersion) && {
           lifecycle_tools: [...PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES],
+          // Flexible-window availability discovery: the platform parses
+          // offer_filters.availability_horizon and answers with
+          // time-dimensioned forecast points (see handleGetProductsUnlocked).
+          availability_horizon: true,
         }),
         ...(proposalNegotiationProfile && supportsGetProductsRejected(servedVersion) && {
           supports_proposals: true,

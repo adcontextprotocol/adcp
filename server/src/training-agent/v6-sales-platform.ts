@@ -357,6 +357,30 @@ function translateV5Result<T extends object>(result: unknown, options: { allowAd
   return result as T;
 }
 
+/**
+ * v5 → v6 boundary for tasks whose response schema shares
+ * media-buy-commitment-response.json's status-discriminated "Commitment
+ * Error" arm (buy_products today; accept_proposal/control_media_buy share
+ * the same schema but aren't wired through this path yet).
+ *
+ * translateV5Result throws an AdcpError for a v5 `{ errors: [...] }` result,
+ * which the SDK's create-adcp-server rebuilds into a single `adcp_error`
+ * envelope — that shape has no `errors[]` array and fails this response
+ * schema's `required: ["status", "errors"]` "Commitment Error" arm. The
+ * SDK's own `isErrorArm`/`wrapErrorArm` recognize the v5 handler's bare
+ * `{ errors, ...context }` result directly (no `status` key — its presence
+ * is what disqualifies the isErrorArm match) and correctly synthesize
+ * `status: "failed"` plus a preserved `errors[]` on the wire, so this
+ * returns that bare shape unchanged instead of routing it through the throw.
+ */
+function translateV5CommitmentResult<T extends object>(result: unknown): T {
+  const resultObj = result as (Record<string, unknown> & { errors?: unknown[] }) | undefined;
+  if (Array.isArray(resultObj?.errors) && resultObj.errors.length > 0) {
+    return resultObj as T;
+  }
+  return translateV5Result<T>(result);
+}
+
 function throwGetProductsExecutionError(message: string): never {
   const validationMatch = message.match(/^Invalid get_products request(?: at ([^:]+))?:/);
   const invalidRequest = validationMatch !== null
@@ -821,7 +845,7 @@ export class TrainingSalesPlatform
       { allowAdvisories: true },
     ),
 
-    buyProducts: async (req, ctx) => translateV5Result(
+    buyProducts: async (req, ctx) => translateV5CommitmentResult(
       await handleBuyProducts(
         withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleBuyProducts>[0],
         buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),

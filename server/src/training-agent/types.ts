@@ -316,6 +316,17 @@ export interface SeededMeasurementCatalog {
   metrics: Array<{ metric_id: string; [key: string]: unknown }>;
 }
 
+/** Seller-internal booking calendar seeded via comply_test_controller.seed_product's
+ * fixture.availability. Drives windowed forecast partitioning for
+ * offer_filters.availability_horizon (get_products/list_products/request_proposals)
+ * and buy-time PRODUCT_UNAVAILABLE validation in create_media_buy. Kept out of
+ * seededProducts so the calendar never round-trips through the Product response
+ * shape — it is not a product field. */
+export interface SeededProductAvailability {
+  min_bookable_days: number;
+  booked_windows: Array<{ start_time: string; end_time: string }>;
+}
+
 export interface ComplyExtensions {
   accountStatuses: Map<string, string>;
   siSessions: Map<string, { status: string; terminationReason?: string }>;
@@ -325,6 +336,9 @@ export interface ComplyExtensions {
    * on the static catalog so storyboards can reference fixture IDs without
    * polluting the shared catalog. Merged into get_products output. */
   seededProducts: Map<string, Record<string, unknown>>;
+  /** Booking calendars seeded via seed_product's fixture.availability, keyed by product_id.
+   * See SeededProductAvailability. */
+  seededProductAvailability: Map<string, SeededProductAvailability>;
   /** Pricing options seeded via seed_pricing_option, keyed by `<product_id>:<pricing_option_id>`. */
   seededPricingOptions: Map<string, Record<string, unknown>>;
   /** Creative formats seeded via comply_test_controller.seed_creative_format.

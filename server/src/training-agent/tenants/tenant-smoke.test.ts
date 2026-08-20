@@ -1382,12 +1382,15 @@ describe('tenant routing smoke', () => {
         total_budget: { amount: 1_000, currency: 'USD' },
         start_time: '2027-06-01T00:00:00Z',
         end_time: '2027-07-01T00:00:00Z',
-      }) as { result?: { structuredContent?: { adcp_error?: {
+      }) as { result?: { structuredContent?: { status?: string; errors?: Array<{
         code?: string;
         field?: string;
         details?: { rejected_value?: string; accepted_values?: string[] };
-      } } } };
-      expect(invalidPricing.result?.structuredContent?.adcp_error).toMatchObject({
+      }> } } };
+      // buy_products rejections surface as the media-buy-commitment-response
+      // "Commitment Error" arm: status "failed" plus a preserved errors[] array.
+      expect(invalidPricing.result?.structuredContent?.status).toBe('failed');
+      expect(invalidPricing.result?.structuredContent?.errors?.[0]).toMatchObject({
         code: 'INVALID_PRICING_OPTION',
         field: 'purchases[0].pricing_option_id',
         details: { rejected_value: 'not-advertised', accepted_values: [pricingOptionId] },
@@ -1402,8 +1405,9 @@ describe('tenant routing smoke', () => {
         total_budget: { amount: 1_000, currency: 'USD' },
         start_time: '2027-06-01T00:00:00Z',
         end_time: '2027-07-01T00:00:00Z',
-      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
-      expect(stalePricing.result?.structuredContent?.adcp_error).toMatchObject({
+      }) as { result?: { structuredContent?: { status?: string; errors?: Array<{ code?: string; field?: string }> } } };
+      expect(stalePricing.result?.structuredContent?.status).toBe('failed');
+      expect(stalePricing.result?.structuredContent?.errors?.[0]).toMatchObject({
         code: 'INVALID_REQUEST',
         field: 'pricing_version',
       });
