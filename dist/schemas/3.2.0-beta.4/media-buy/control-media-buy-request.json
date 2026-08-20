@@ -1,0 +1,334 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/media-buy/control-media-buy-request.json",
+  "title": "Control Media Buy Request",
+  "description": "Apply operational delivery controls or non-commercial metadata changes inside the MediaBuy's accepted proposal envelope. Provide at least one control field. cancellation_reason requires canceled: true; cancellation is mutually exclusive with every other control. Sellers return REQUOTE_REQUIRED when budget, targeting, or another control would change the commercial envelope; the buyer then forks the accepted proposal through refine_proposals. Creative mutation, new products/packages, flight changes, pricing changes, and billing-term changes are not accepted here.",
+  "x-tool-summary": "Rename, pause, resume, cancel, or adjust delivery controls without changing accepted commercial terms.",
+  "type": "object",
+  "x-mutates-state": true,
+  "x-governed-commitment": {
+    "scope": "conditional",
+    "triggers": [
+      "increases_obligation",
+      "resumes_execution",
+      "reallocates_delivery"
+    ],
+    "exemptions": [
+      "cancel",
+      "pause",
+      "decrease_only"
+    ],
+    "precedence": "trigger_overrides_exemption"
+  },
+  "x-operation-family": "control_media_buy",
+  "x-added-in": "3.2.0",
+  "x-legacy-fallback": {
+    "tool": "update_media_buy",
+    "mode": "orchestrated"
+  },
+  "properties": {
+    "adcp_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/version-envelope.json#/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/version-envelope.json#/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "account": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-account-ref.json"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "media_buy"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required optimistic-concurrency revision from the latest MediaBuy snapshot."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "\\S",
+      "description": "Replace the human-readable MediaBuy name as revision-checked operational metadata. This display label is not an identifier, financial reference, or change to the accepted commercial terms."
+    },
+    "paused": {
+      "type": "boolean"
+    },
+    "canceled": {
+      "type": "boolean",
+      "const": true,
+      "description": "Exercise an already-accepted unilateral cancellation right. A cancellation requiring seller agreement is requested by refining the accepted proposal."
+    },
+    "cancellation_reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "total_budget": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "daily_budget_cap": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "Replace the hard aggregate daily cap; null removes it. Numeric changes apply immediately with current-cap-day spend counted and do not redistribute purchase caps."
+    },
+    "budget_cap_timezone": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "description": "Replace the shared IANA cap-day timezone override; null restores the default selected by budget_capping.timezone_basis (Account.timezone or fixed_timezone). A timezone change begins at the next boundary under the previously effective timezone."
+    },
+    "budget_allocation": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-budget-allocation.json"
+    },
+    "pacing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/pacing.json"
+    },
+    "bidding": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/bidding-policy.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "packages": {
+      "type": "array",
+      "description": "Operational patches keyed by package_id. Each package_id MUST appear at most once; sellers reject duplicate IDs atomically.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "unique_package_ids": {
+            "key": "package_id",
+            "on_violation": "reject_before_mutation"
+          }
+        }
+      },
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/media-buy/package-control.json"
+      },
+      "minItems": 1
+    },
+    "reporting_webhook": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/reporting-webhook.json"
+    },
+    "governance_context": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "push_notification_config": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/push-notification-config.json"
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "account",
+    "media_buy_id",
+    "revision"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "name"
+      ]
+    },
+    {
+      "required": [
+        "paused"
+      ]
+    },
+    {
+      "required": [
+        "canceled"
+      ]
+    },
+    {
+      "required": [
+        "total_budget"
+      ]
+    },
+    {
+      "required": [
+        "daily_budget_cap"
+      ]
+    },
+    {
+      "required": [
+        "budget_cap_timezone"
+      ]
+    },
+    {
+      "required": [
+        "budget_allocation"
+      ]
+    },
+    {
+      "required": [
+        "pacing"
+      ]
+    },
+    {
+      "required": [
+        "bidding"
+      ]
+    },
+    {
+      "required": [
+        "packages"
+      ]
+    },
+    {
+      "required": [
+        "reporting_webhook"
+      ]
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "cancellation_reason"
+        ]
+      },
+      "then": {
+        "required": [
+          "canceled"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "canceled"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "name"
+              ]
+            },
+            {
+              "required": [
+                "paused"
+              ]
+            },
+            {
+              "required": [
+                "total_budget"
+              ]
+            },
+            {
+              "required": [
+                "daily_budget_cap"
+              ]
+            },
+            {
+              "required": [
+                "budget_cap_timezone"
+              ]
+            },
+            {
+              "required": [
+                "budget_allocation"
+              ]
+            },
+            {
+              "required": [
+                "pacing"
+              ]
+            },
+            {
+              "required": [
+                "bidding"
+              ]
+            },
+            {
+              "required": [
+                "packages"
+              ]
+            },
+            {
+              "required": [
+                "reporting_webhook"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "creatives"
+        ]
+      },
+      {
+        "required": [
+          "creative_assignments"
+        ]
+      },
+      {
+        "required": [
+          "new_packages"
+        ]
+      },
+      {
+        "required": [
+          "start_time"
+        ]
+      },
+      {
+        "required": [
+          "end_time"
+        ]
+      },
+      {
+        "required": [
+          "invoice_recipient"
+        ]
+      }
+    ]
+  }
+}

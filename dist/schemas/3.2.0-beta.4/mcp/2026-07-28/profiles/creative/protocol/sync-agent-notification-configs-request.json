@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/mcp/2026-07-28/profiles/creative/protocol/sync-agent-notification-configs-request.json",
+  "type": "object",
+  "x-mutates-state": true,
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values."
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "deprecated": true,
+      "minimum": 1,
+      "maximum": 99,
+      "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_configs": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/external:core~1agent-notification-config.json"
+          },
+          {
+            "if": {
+              "required": [
+                "authentication"
+              ]
+            },
+            "then": {
+              "properties": {
+                "authentication": {
+                  "required": [
+                    "credentials"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "maxItems": 16
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_configs"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/agent-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "subscriber_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "event_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "capabilities.changed"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes"
+          ],
+          "additionalProperties": false
+        },
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "subscriber_id",
+        "url",
+        "event_types"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/auth-scheme.json": {
+      "deprecated": true,
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "description": "Register, replace, pause, or clear caller-scoped agent-level webhook subscribers. This task manages notifications whose lifecycle belongs to the seller agent itself rather than to an account or media buy. The initial use case is `capabilities.changed`, which invalidates cached `get_adcp_capabilities` responses. Declarative semantics match account-level `notification_configs[]`, but the replacement is scoped to the authenticated caller or registry identity: the submitted array is that caller's complete desired set, keyed by `subscriber_id`; persisted subscribers for that caller whose `subscriber_id` does not appear in the submitted array are removed; sending `[]` clears only that caller's set. Sellers MUST reject this task unless `get_adcp_capabilities.adcp.capability_changes.notifications.supported` is true."
+}
