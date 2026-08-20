@@ -1579,6 +1579,10 @@
           "$ref": "/schemas/media-buy/product-purchase.json",
           "description": "Canonical direct product selection without creatives or negotiated term overrides"
         },
+        "compatibility-purchase-coordinator-input": {
+          "$ref": "/schemas/media-buy/legacy-purchase-continuation-input.json",
+          "description": "SDK-local fail-closed input for redeeming a deprecated products-only compatibility continuation"
+        },
         "commercial-terms": {
           "$ref": "/schemas/media-buy/commercial-terms.json",
           "description": "Typed immutable commercial envelope shared by direct purchases and proposals"

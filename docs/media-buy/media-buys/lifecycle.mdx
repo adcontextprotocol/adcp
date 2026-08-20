@@ -48,6 +48,42 @@ Commercial changes outside the accepted envelope return `REQUOTE_REQUIRED`.
 Begin an amendment from the snapshot's `accepted_proposal_id`, then revise,
 finalize, and accept the successor proposal.
 
+### Compact operations form a saga
+
+Each compact mutation is atomic by itself, but a workflow containing more than
+one mutation is not atomic as a group. In particular, purchase followed by
+creative sync has this boundary:
+
+1. `buy_products` or `accept_proposal` commits the MediaBuy and returns
+   `purchase_bindings[]` with seller-assigned package IDs.
+2. `sync_creatives` uploads library creatives and applies assignment operations.
+3. A failure in step 2 leaves step 1 committed. The buyer reads the MediaBuy,
+   fixes and retries trafficking, or exercises an available cancellation right.
+
+The same rule applies when a legacy `update_media_buy` request is decomposed
+into proposal acceptance, operational control, and creative sync. Those calls
+have independent validation, authorization, idempotency, async-task, and
+failure boundaries. A commercial amendment can succeed while the following
+control or creative assignment fails, and a control can succeed while a later
+assignment fails. Implementations MUST NOT describe such a sequence as an
+atomic translation of the compatibility facade.
+
+Some compatibility requests therefore require the facade itself. A placement
+targeting replacement that removes a placement used by an assignment must
+replace or reroute that assignment in the same `update_media_buy` mutation.
+`control_media_buy` cannot carry creative assignments, so `control_media_buy`
+followed by `sync_creatives` is not equivalent. Inline-only creative sellers
+also have no compact creative continuation and use `create_media_buy` or
+`update_media_buy` for package-scoped bodies.
+
+Other facade-only or explicitly lossy create shapes include
+`artifact_webhook`, per-package initial pause, inline catalog bodies or filters,
+and a buyer-authored exact `committed_metrics` set. Compact callers synchronize
+catalogs before purchase and accept that a catalog can remain after a failed
+purchase. Direct compact purchase derives reporting commitments from published
+terms; an exact set is lossless only when it is already captured by the
+proposal being accepted.
+
 ## State machine
 
 ### Media buy states
@@ -121,9 +157,22 @@ another. `available_actions` tells compact clients whether the next change
 routes to `control_media_buy`, proposal refinement, creative assignment, or
 another task. Prefer it over inferring routing from the state enum.
 
+A display-name-only change routes to `control_media_buy`. `name` is
+revision-checked non-commercial metadata: changing it increments the MediaBuy
+revision without changing the accepted terms or creating an accepted-proposal
+successor.
+
 Use `sync_creatives.assignment_operations` for creative changes. Creative
 assignment is independent from commercial control and does not increment the
-MediaBuy revision merely because an assignment changed.
+MediaBuy revision merely because an assignment changed. There is no shared
+optimistic-concurrency fence between `sync_creatives` and
+`control_media_buy`: a successful sync can change assignment state while the
+MediaBuy `revision` remains unchanged. By contrast, a creative-assignment or
+inline-creative mutation performed inside the `update_media_buy` compatibility
+facade is part of that atomic MediaBuy update and MUST increment `revision`.
+Clients mixing the two surfaces must re-read both package assignments and the
+MediaBuy before computing a replacement; the revision alone cannot prove that
+assignment state is unchanged.
 
 ## Guaranteed / PG deal variation
 
@@ -182,6 +231,15 @@ commitment, supply or update library creatives with `sync_creatives`, then use
 explicit `assignment_operations` to assign them to packages. A compact seller
 advertises the creative workflow it supports; callers should not infer an
 inline-creative path from older tool availability.
+
+This sequence does not move request-time validation across the commitment
+boundary. On the compatibility facades, one invalid inline creative or
+assignment fails the complete create or update without mutation. On the compact
+path, the buy already exists when package-aware creative validation runs. A
+strict sync prevents partial creative or assignment mutation within that sync,
+but it cannot undo the preceding purchase. Later policy review is different
+from either validation case: a review rejection does not roll back a valid
+facade mutation or compact purchase.
 
 When required formats lack creative coverage, the buy enters
 `pending_creatives`. After assignments cover the package's effective
