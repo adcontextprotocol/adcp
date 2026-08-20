@@ -52,6 +52,7 @@ caller:
 prerequisites:
   description: |
     The controller seeds a non-guaranteed video product with US inventory,
+    one-country package targeting, one-entry radius proximity targeting,
     Nielsen DMA support, two targetable publisher-scoped placements, list
     targeting support, enumerated age intervals, and deterministic browser
     inventory. Chrome, Firefox, and unclassifiable browser traffic are
@@ -87,6 +88,13 @@ fixtures:
         - action: "update_targeting"
           modes: ["self_serve"]
       overlay_support:
+        geo_countries:
+          max_values_per_package: 1
+        geo_countries_exclude:
+          max_values_per_package: 1
+        geo_proximity:
+          radius: true
+          max_values_per_package: 1
         geo_metros:
           systems: ["nielsen_dma"]
         placement_selection:
@@ -389,6 +397,10 @@ phases:
                 - publisher_domain: "pinnacle-media.example"
                   placement_id: "feed"
           required_overlay_support:
+            geo_countries: true
+            geo_countries_exclude: true
+            geo_proximity:
+              radius: true
             geo_metros:
               systems: ["nielsen_dma"]
             placement_selection: true
@@ -408,10 +420,11 @@ phases:
           are scoped to US feed inventory, the selected property and collection
           lists, the Fire OS exclusion, and Chrome or unclassified browser
           traffic with Safari excluded. Exact acceptance omits
-          targeting_resolution. overlay_support confirms later DMA, placement,
-          property-list, collection-list, platform, and independent browser
-          inclusion/exclusion control without returning one product per possible
-          value.
+          targeting_resolution. overlay_support confirms later country,
+          radius-proximity, DMA, placement, property-list, collection-list,
+          platform, and independent browser inclusion/exclusion control without
+          returning one product per possible value. Country and proximity
+          cardinality limits are disclosed after capability matching.
         context_outputs:
           - key: "exact_product_id"
             path: "products[0].product_id"
@@ -436,6 +449,18 @@ phases:
           - check: field_present
             path: "products[0].overlay_support.geo_metros"
             description: "Product supports later Nielsen DMA targeting as requested"
+          - check: field_value
+            path: "products[0].overlay_support.geo_countries.max_values_per_package"
+            value: 1
+            description: "Country inclusion support discloses its per-package cardinality limit"
+          - check: field_value
+            path: "products[0].overlay_support.geo_countries_exclude.max_values_per_package"
+            value: 1
+            description: "Country exclusion support independently discloses its per-package cardinality limit"
+          - check: field_value
+            path: "products[0].overlay_support.geo_proximity.max_values_per_package"
+            value: 1
+            description: "Radius proximity support discloses its per-package entry limit"
           - check: field_value
             path: "products[0].overlay_support.placement_selection.max_values_per_package"
             value: 2
@@ -973,6 +998,61 @@ phases:
   - id: inventory_targeting_lifecycle
     title: "Persist purchased inventory and platform targeting through create and update"
     steps:
+      - id: reject_country_exclusion_cardinality_on_create
+        title: "Reject too many country exclusions on create"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          idempotency_key: "$generate:uuid_v4#targeting_aware_discovery_country_exclusion_create"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.exact_product_id"
+              pricing_option_id: "$context.exact_pricing_option_id"
+              bid_price: 14.0
+              budget: 5000
+              targeting_overlay:
+                geo_countries: ["US"]
+                geo_countries_exclude: ["CA", "MX"]
+                device_platform_exclude: ["fire_os"]
+                browser: ["chrome", "safari", "unknown"]
+                browser_exclude: ["safari"]
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_allowlist_v1"
+                collection_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_collections_v1"
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "feed"
+        expected: |
+          Reject with UNSUPPORTED_FEATURE before creating a media buy because
+          two country exclusions exceed the advertised one-value package
+          limit.
+        validations:
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Create enforces the product's country exclusion limit"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_countries_exclude"
+            description: "Error.field identifies the overflowing exclusion field"
+
       - id: create_feed_package
         title: "Create from exact discovery result"
         task: create_media_buy
@@ -1137,6 +1217,87 @@ phases:
             path: "affected_packages[0].targeting_overlay.browser_exclude[1]"
             description: "Update returns exactly one browser exclusion"
 
+      - id: reject_country_cardinality_overflow
+        title: "Reject more country values than the product supports"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.placement_media_buy_id"
+          idempotency_key: "$generate:uuid_v4#targeting_aware_discovery_country_cardinality"
+          packages:
+            - package_id: "$context.placement_package_id"
+              targeting_overlay:
+                geo_countries: ["US", "CA"]
+                device_platform_exclude: ["fire_os"]
+                browser: ["chrome", "firefox"]
+                browser_exclude: ["unknown"]
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_allowlist_v1"
+                collection_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_collections_v1"
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "short_video"
+        expected: |
+          Reject atomically with UNSUPPORTED_FEATURE because two country values
+          exceed the advertised one-value package limit. The prior US-only
+          package targeting remains committed.
+        validations:
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "A package cannot exceed the product's disclosed country limit"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_countries"
+            description: "Error.field identifies the targeting field that exceeded its limit"
+
+      - id: read_after_rejected_country_overflow
+        title: "Verify rejected country update was atomic"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.placement_media_buy_id"]
+        expected: |
+          Return the prior US-only package state immediately after the rejected
+          update, before any later successful targeting replacement can mask an
+          invalid partial mutation.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_equals_context
+            path: "media_buys[0].packages[0].package_id"
+            context_key: "placement_package_id"
+            description: "Readback targets the package whose update was rejected"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.geo_countries[0]"
+            value: "US"
+            description: "Rejected overflow left the committed country unchanged"
+          - check: field_absent
+            path: "media_buys[0].packages[0].targeting_overlay.geo_countries[1]"
+            description: "Rejected overflow did not append a second country"
+
       - id: reject_incompatible_browser_platform
         title: "Reject an incompatible browser and device combination"
         task: update_media_buy
@@ -1257,6 +1418,122 @@ phases:
             allowed_values: ["INVALID_REQUEST"]
             description: "Duplicate placement references are rejected"
 
+      - id: update_to_single_proximity
+        title: "Add one supported radius target"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.placement_media_buy_id"
+          idempotency_key: "$generate:uuid_v4#targeting_aware_discovery_single_proximity"
+          packages:
+            - package_id: "$context.placement_package_id"
+              targeting_overlay:
+                geo_countries: ["US"]
+                geo_proximity:
+                  - lat: 40.7128
+                    lng: -74.006
+                    label: "North venue"
+                    radius: { value: 5, unit: "km" }
+                device_platform_exclude: ["fire_os"]
+                browser: ["chrome", "firefox"]
+                browser_exclude: ["unknown"]
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_allowlist_v1"
+                collection_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_collections_v1"
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "short_video"
+        expected: |
+          Accept one radius entry because it is within the Product's
+          advertised one-entry package limit.
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.placement_package_id"
+              targeting_overlay:
+                geo_proximity:
+                  - lat: 40.7128
+                    lng: -74.006
+                    label: "North venue"
+                    radius: { value: 5, unit: "km" }
+            description: "Update echoes the accepted one-entry proximity target"
+          - check: field_absent
+            path: "affected_packages[0].targeting_overlay.geo_proximity[1]"
+            description: "Accepted proximity targeting has exactly one entry"
+
+      - id: reject_proximity_cardinality_overflow
+        title: "Reject more proximity entries than the product supports"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.placement_media_buy_id"
+          idempotency_key: "$generate:uuid_v4#targeting_aware_discovery_proximity_cardinality"
+          packages:
+            - package_id: "$context.placement_package_id"
+              targeting_overlay:
+                geo_countries: ["US"]
+                geo_proximity:
+                  - lat: 40.7128
+                    lng: -74.006
+                    label: "North venue"
+                    radius: { value: 5, unit: "km" }
+                  - lat: 34.0522
+                    lng: -118.2437
+                    label: "South venue"
+                    radius: { value: 5, unit: "km" }
+                device_platform_exclude: ["fire_os"]
+                browser: ["chrome", "firefox"]
+                browser_exclude: ["unknown"]
+                property_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_allowlist_v1"
+                collection_list:
+                  agent_url: "https://governance.pinnacle-agency.example"
+                  list_id: "acme_outdoor_collections_v1"
+                placement_selection:
+                  mode: "selected"
+                  placement_refs:
+                    - publisher_domain: "pinnacle-media.example"
+                      placement_id: "short_video"
+        expected: |
+          Reject atomically with UNSUPPORTED_FEATURE because two proximity
+          entries exceed the advertised one-entry package limit. The accepted
+          North venue radius remains committed.
+        validations:
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "A package cannot exceed the product's disclosed proximity limit"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_proximity"
+            description: "Error.field identifies the overflowing proximity field"
+
       - id: read_updated_placement
         title: "Verify purchased placement state"
         task: get_media_buys
@@ -1274,7 +1551,7 @@ phases:
         expected: |
           Return complete effective targeting with short_video selected. The
           stored package does not expose a separate effective-placement source
-          of truth. All three rejected updates were atomic and left this state
+          of truth. All five rejected updates were atomic and left this state
           unchanged.
         validations:
           - check: response_schema
@@ -1299,6 +1576,20 @@ phases:
             path: "media_buys[0].packages[0].targeting_overlay.device_platform_exclude[0]"
             value: "fire_os"
             description: "Readback preserves the purchased platform exclusion"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.geo_countries[0]"
+            value: "US"
+            description: "Rejected country overflow left the committed country unchanged"
+          - check: field_absent
+            path: "media_buys[0].packages[0].targeting_overlay.geo_countries[1]"
+            description: "Rejected country overflow did not append a second country"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.geo_proximity[0].radius.value"
+            value: 5
+            description: "Readback preserves the accepted one-entry radius target"
+          - check: field_absent
+            path: "media_buys[0].packages[0].targeting_overlay.geo_proximity[1]"
+            description: "Rejected proximity overflow did not append a second entry"
           - check: field_contains
             path: "media_buys[0].packages[0].targeting_overlay.browser[*]"
             value: "chrome"
