@@ -12,10 +12,50 @@ Supported controls include:
 - pause, resume, and an already-permitted unilateral cancellation;
 - total, aggregate-daily, and package budget controls;
 - budget allocation, pacing, and bidding;
-- package targeting, catalog references, keyword, impression, and optimization controls; and
+- package targeting, catalog references, keyword, impression, and optimization controls;
+- MediaBuy display-name metadata; and
 - reporting-webhook configuration.
 
 It does not accept creatives, creative assignments, new products/packages, flight-date changes, pricing changes, or billing-term changes. Those concerns use their dedicated lifecycle or a proposal refinement.
+
+## Transaction boundary
+
+One `control_media_buy` request is atomic under the supplied MediaBuy
+`revision`. That fence covers only the operational fields in this request.
+[`sync_creatives`](/docs/creative/task-reference/sync_creatives) has a separate idempotency and atomicity boundary, does not
+increment MediaBuy revision for assignment changes, and cannot join this
+transaction. There is no shared fence between control and assignment state.
+
+`name` is revision-checked non-commercial metadata. Changing it updates the
+shared trafficking display label and increments MediaBuy revision, but does not
+change the accepted commercial terms or create an accepted-proposal successor.
+
+Consequently, a targeting replacement that removes a placement used by an
+existing creative assignment cannot be performed as control followed by sync
+without a race window. Use the [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) compatibility facade to send
+the complete targeting and assignment replacements in one transaction. The
+same facade is required for inline-only sellers, because they do not advertise
+`sync_creatives` as a later creative path.
+
+Commercial amendment followed by operational control is also a saga, not one
+transaction. If [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) applies the amendment and a subsequent
+control fails, the amended commercial snapshot remains accepted. Re-read the
+MediaBuy and its new revision before retrying control. A compatibility request
+that requires commercial and operational fields to succeed together must be
+handled atomically through `update_media_buy`, not silently decomposed.
+
+Root `canceled: true` is mutually exclusive with every package and other
+control; a mixed compact request is invalid before mutation. Within a package,
+`canceled: true` is likewise mutually exclusive with that package's other
+fields. This differs from the compatibility facade, where root cancellation
+takes precedence and other fields are ignored with a warning.
+
+Catalog controls accept only IDs previously managed through [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs).
+They cannot atomically ingest an inline catalog body, and a catalog synchronized
+before a later failed control remains on the account. This task also cannot add
+the compatibility facade's `artifact_webhook`, recreate a per-package initial
+pause atomically with purchase, or author an exact initial
+`committed_metrics` set.
 
 **Request schema:** [`/schemas/v3/media-buy/control-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/control-media-buy-request.json)
 

@@ -543,6 +543,8 @@ export interface MediaBuyProductAllowedActionState {
 
 export interface MediaBuyState {
   mediaBuyId: string;
+  /** Human-readable trafficking label; not identity or commercial terms. */
+  name?: string;
   accountRef: AccountRef;
   brandRef?: BrandRef;
   status: string;
@@ -558,6 +560,7 @@ export interface MediaBuyState {
   budgetAllocation?: Record<string, unknown>;
   aggregatePacing?: string;
   aggregateBidding?: Record<string, unknown>;
+  invoiceRecipient?: Record<string, unknown>;
   reportingWebhook?: Record<string, unknown>;
   packages: PackageState[];
   productAllowedActions?: MediaBuyProductAllowedActionState[];
@@ -646,6 +649,9 @@ export interface PackageState {
    * catalog changes; formats_pending is derived from it at read time. */
   formatsToProvide?: Array<Record<string, unknown>>;
   creativeAssignments: string[];
+  /** Complete legacy trafficking rows retained for lossless create/update
+   * readback. Delivery simulation still indexes the creative IDs separately. */
+  creativeAssignmentDetails?: Array<Record<string, unknown>>;
   targeting?: PackageTargeting;
   context?: Record<string, unknown>;
   legacyOmitProductId?: boolean;

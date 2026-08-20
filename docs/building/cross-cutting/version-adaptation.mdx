@@ -66,9 +66,9 @@ AdCP 3.2's compact lifecycle replaces the broad `get_products`, `create_media_bu
 
 | Current SDK method | Legacy peer tool | Fallback mode | Required behavior |
 |---|---|---|---|
-| `listProducts` | `get_products` wholesale | `orchestrated` | Translate the common case directly; when exact `product_ids` are requested, page and filter until every requested ID is found or the feed is exhausted |
-| `requestProposals` | `get_products` brief | `orchestrated` | Return immutable draft snapshots with source IDs preserved |
-| `refineProposals` | `get_products` refine or proposal finalize | `orchestrated` | Mint draft revisions or committed held snapshots with source-result correspondence and atomic finalize batches |
+| `listProducts` | `get_products` wholesale | `orchestrated` | Translate only the representable criteria subset. A normal compact result requires a real seller-issued feed version and cache scope; exact `product_ids` require paging one stable feed until every ID is found or the feed is exhausted. 3.0 and 2.5 cannot supply the ordinary fenced result. |
+| `requestProposals` | `get_products` brief | `orchestrated` | Project genuine proposals only when every canonical commercial term is present. A products-only legacy result becomes the projection-only `products_available` compatibility outcome with an actionable continuation; never fabricate a proposal or digest. |
+| `refineProposals` | `get_products` refine or proposal finalize | `orchestrated` | Translate only dimensions the legacy peer represents exactly. Mint and durably map immutable successors; finalize batches require the same all-or-none hold boundary. |
 | `declineProposals` | none | `none` | Throw a typed capability error before sending a call; never silently discard terminal feedback |
 | `buyProducts` | `create_media_buy` explicit packages | `orchestrated` | Translate product purchases to packages without adding creatives, then materialize the accepted proposal snapshot expected by the current result |
 | `acceptProposal` | `create_media_buy` proposal mode | `orchestrated` | Execute a new-buy proposal directly; amendment/cancellation proposals require an SDK-managed compatibility workflow or a typed capability error when the legacy seller cannot preserve it |
@@ -76,9 +76,84 @@ AdCP 3.2's compact lifecycle replaces the broad `get_products`, `create_media_bu
 
 Client SDKs SHOULD expose the current methods as their primary API and choose the peer path from `media_buy.lifecycle_tools`. A directly advertised current tool always wins. A `direct` fallback may run transparently. An `orchestrated` fallback may run transparently only when the SDK ships a handwritten adapter that preserves the current tool's result completeness, terminal state, atomicity, and idempotency semantics; the manifest classification does not synthesize that state machine. In particular, SDKs adapting a direct 3.x creation MUST retain the accepted commercial snapshot locally when the legacy seller cannot return it, and MUST not pretend a legacy seller supports proposal-based amendments. Each underlying legacy mutation needs its own deterministic replay identity, and retrying the current SDK call must resume rather than restart the sequence. Otherwise the SDK MUST throw a typed `CapabilityUnsupportedError` carrying `requested_tool`, the peer's advertised tools, and `fallback_mode`.
 
-For proposal finalization, the adapter MUST retain a durable mapping from the current successor `proposal_id` to the legacy source ID that `get_products` finalized. A later `acceptProposal` sends the mapped legacy ID to `create_media_buy` while returning and retaining the current immutable successor snapshot. The mapping is part of the adapter's replay state: losing it, reusing the source ID as the current ID, or minting a second successor on retry violates the 3.2 contract.
+`orchestrated` is conditional, not a promise that every valid compact payload can
+be sent to every earlier 3.x peer. Adapters MUST preflight each structured field
+and fail before calling the peer when the older version has no exact
+representation. They MUST preserve legacy `incomplete[]`, time-budget, and
+product-pagination semantics instead of turning a partial result into complete
+success. In particular, 2.5 has no wholesale-feed contract, while 3.0 has
+wholesale pagination but no seller-issued feed or pricing fence. Released 3.1
+can support a normal `listProducts` projection only when the seller returns a
+real scope-correct wholesale feed version and all requested criteria map
+exactly.
+
+### Products-only brief results
+
+A valid 2.5, 3.0, or 3.1 brief may return useful products and no proposals.
+Compact compatibility preserves that result as `products_available`. This is a
+projection-only compatibility outcome: native 3.2 sellers do not emit it, and
+ordinary `request_proposals` success still contains a genuine proposal.
+
+Its `purchase_continuation` is discriminated:
+
+- `listed_purchase` is available only after the coordinator re-reads the exact
+  selected products through a real seller-issued, account-scoped feed and
+  obtains its feed and pricing fences. Those seller values flow unchanged into
+  `buyProducts`.
+- `legacy_create` routes to established explicit-package `create_media_buy`
+  when no truthful fence exists. It declares
+  `feed_version_not_atomic` and `pricing_version_not_atomic`. For AdCP 2.5 it
+  additionally declares `mutation_idempotency_not_guaranteed`; 3.0 and 3.1
+  declare that loss when the actual peer cannot provide their mutation replay
+  guarantee. It fails closed unless the caller explicitly accepts every
+  returned loss before mutation.
+
+Client SDKs expose that second path through an SDK-local
+`continueLegacyPurchase` operation using the generated
+`CompatibilityPurchaseCoordinatorInput` type. The input carries a coordinator
+idempotency key, the opaque token, the bound account, selected product IDs, the
+exact accepted loss set, and the proposed source-version `create_media_buy`
+payload. It is not an AdCP tool payload. The coordinator validates every
+binding, exact consent, expiry, source-version request schema, and token claim
+before sending only the legacy create request. Exact retries resume durable
+state; crash-ambiguous mutations fail unless they can be reconciled
+authoritatively.
+
+The coordinator never promotes products into a feed on the seller's behalf and
+never synthesizes `feed_version`, `pricing_version`, a proposal,
+`commercial_terms`, or `terms_digest`. A projection token may bind the observed
+response to the caller, account, and selected payload, but it is not a
+seller-issued atomic fence. The legacy seller still revalidates availability
+and price during create. This compatibility outcome and its legacy continuation
+are deprecated in 3.2 and removed in AdCP 4.0.
+
+In the reverse direction, a 3.2 seller advertising established
+`get_products` and `create_media_buy` facades keeps products returned by a
+products-only brief executable through that same legacy create facade. An
+established buyer is never required to understand `products_available` or an
+SDK-local continuation token.
+
+For every proposal revision and finalization, the adapter MUST retain a durable mapping from the current successor `proposal_id` to the legacy source ID. A later `acceptProposal` sends the mapped legacy ID to `create_media_buy` while returning and retaining the current immutable successor snapshot. The mapping is part of the adapter's replay state: losing it, reusing the source ID as the current ID, or minting a second successor on retry violates the 3.2 contract. A legacy proposal may be projected only when the adapter can source every required purchase price, resolved flight, brand, and other canonical term. Valid legacy proposals may omit those facts; the adapter returns `products_available` or a typed capability error rather than filling the gaps itself.
+
+Simple free-text refinement and product `include`/`omit` operations may map when
+their result is a complete successor. Typed budget, CPM, impression, flight,
+alternative-count, criteria-replacement, amendment, and cancellation semantics
+need exact adapters or a pre-mutation failure. Legacy `more_like_this` maps to
+free text only with explicit lossy consent. Legacy proposal `omit` is response
+filtering and MUST NOT be interpreted as terminal `declineProposals`; no legacy
+decline fallback exists.
+
+Released legacy `get_products` does not provide the compact tasks' required
+mutation-idempotency contract. Durable local replay state is necessary but is
+not sufficient when a process can crash after the seller commits and before the
+adapter records the response. Unless the adapter can authoritatively reconcile
+that state, it MUST fail the fallback rather than claim compact exactly-once
+behavior.
 
 These tools deliberately retain distinct `operation_family` values. Fallback metadata describes SDK adaptation, not cross-name authorization, idempotency equivalence, task recovery, or webhook identity. A client adapter MUST be authorized for the actual legacy call; a grant for a split tool does not transfer across names. Server SDKs may implement the current lifecycle once and derive the deprecated facades for 3.x callers, but may advertise only behavior the adapter actually preserves.
+
+The complete version and transaction-boundary matrix is in
+[`specs/legacy-compact-lifecycle-compatibility.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/legacy-compact-lifecycle-compatibility.md).
 
 ## Mechanism 2 — Migrate SDK majors via co-existence
 
