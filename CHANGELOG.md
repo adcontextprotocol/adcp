@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.18
+
+### Patch Changes
+
+- 71706fb: Complete the PAIR OpenRTB profile mapping, including
+  matcher, match method, publisher scope, key rotation, and TMP's lossy scope
+  boundary.
+
 ## 3.1.17
 
 ### Patch Changes
