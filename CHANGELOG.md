@@ -450,6 +450,14 @@
 
 - Cross-role governance enforcement: the experimental `governance.campaign` surface will add typed `target_agent`, task-scoped `adcp.governance_enforcement`, critical task/payload/commitment JWS bindings, intent-only conditions negotiation, and governance-authoritative settlement. The implementation may merge during 3.2 development; the beta-to-GA period provides the experimental-surface notice window. See the 3.2 release notes and migration guide.
 
+## 3.1.18
+
+### Patch Changes
+
+- 71706fb: Complete the PAIR OpenRTB profile mapping, including
+  matcher, match method, publisher scope, key rotation, and TMP's lossy scope
+  boundary.
+
 ## 3.1.17
 
 ### Patch Changes
