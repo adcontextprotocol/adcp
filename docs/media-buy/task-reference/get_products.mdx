@@ -260,6 +260,22 @@ place-type and catalog-version arrays must be subsets of the corresponding
 product support arrays. Unrequested object fields and numeric seller limits do
 not participate. Missing or unknown requirements do not match.
 
+For country inclusion, country exclusion, and proximity targeting, Product
+support may disclose `max_values_per_package`. Country support uses either
+legacy `true` or `{ "max_values_per_package": N }`; proximity support places
+the limit alongside its supported methods and transport modes. The numeric
+limit never belongs in `required_overlay_support`. It applies independently to
+one targeting field on one package and is not a value allowlist,
+media-buy-wide constraint, or inventory promise. A create or update that
+exceeds the limit fails atomically with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) and identifies
+the overflowing targeting field.
+
+Although numeric limits do not participate in requirement matching, every
+returned Product's accepted effective targeting must satisfy the limits it
+discloses. A candidate whose concrete `targeting_overlay` exceeds a maximum is
+excluded unless the seller returns a distinct configured Product with a
+disclosed, compliant targeting modification.
+
 Support guarantees the ability to select a value subject to disclosed limits;
 it does not guarantee inventory or forecast every possible value. Forecasts
 returned when only future support was requested describe the product's
