@@ -67,16 +67,13 @@ for ((index = 0; index < SHARD_COUNT; index += 1)); do
 
   echo ""
   echo "=== Storyboard shard ${shard_number}/${SHARD_COUNT} ==="
-  run_shard "${index}" > "${shard_log}" 2>&1
-  runner_status=$?
-
-  # Preserve per-storyboard and failure details, but ensure only the final
-  # aggregate below matches the graders' `storyboards:` / `steps:` patterns.
-  sed -E \
-    -e 's/^([[:space:]]*)--- Totals ---/\1--- Shard result ---/' \
-    -e 's/^([[:space:]]*)storyboards: ([0-9]+\/[0-9]+ clean)$/\1shard result: \2/' \
-    -e 's/^([[:space:]]*)steps: (.*)$/\1shard step result: \2/' \
-    "${shard_log}"
+  # Stream progress so hosted runners never see a long silent process. tee
+  # retains the raw totals for aggregation while the line-buffered transform
+  # ensures only the final aggregate matches the graders' patterns.
+  run_shard "${index}" 2>&1 \
+    | tee "${shard_log}" \
+    | perl -pe 'BEGIN { $| = 1 } s/^(\s*)--- Totals ---/$1--- Shard result ---/; s/^(\s*)storyboards: ([0-9]+\/[0-9]+ clean)$/$1shard result: $2/; s/^(\s*)steps: (.*)$/$1shard step result: $2/'
+  runner_status=${PIPESTATUS[0]}
 
   storyboard_totals=$(sed -nE 's/^[[:space:]]*storyboards: ([0-9]+)\/([0-9]+) clean$/\1 \2/p' "${shard_log}" | tail -1)
   step_totals=$(sed -nE 's/^[[:space:]]*steps: ([0-9]+) passed \| ([0-9]+) failed \| ([0-9]+) skipped \| ([0-9]+) not applicable$/\1 \2 \3 \4/p' "${shard_log}" | tail -1)
