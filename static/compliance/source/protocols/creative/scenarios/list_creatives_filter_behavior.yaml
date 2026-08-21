@@ -1,5 +1,5 @@
 id: media_buy_seller/list_creatives_filter_behavior
-version: "1.0.0"
+version: "1.0.1"
 introduced_in: "3.2"
 title: "Sales agent applies deterministic creative filters"
 category: media_buy_seller
@@ -9,6 +9,10 @@ track: creative
 required_tools:
   - list_creatives
   - comply_test_controller
+
+requires_capability:
+  path: creative.has_creative_library
+  equals: true
 
 narrative: |
   A sales agent may expose its creative library through list_creatives, where

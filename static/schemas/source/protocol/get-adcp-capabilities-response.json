@@ -818,6 +818,12 @@
           "uniqueItems": true,
           "default": ["brief"]
         },
+        "measurement_terms_acceptance": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this seller can accept the default measurement_terms it advertises on a product. A value of true means the seller can return a product carrying measurement_terms for a measurement-specific brief and accept those terms unchanged on a package for that product. This opts the seller into conformance scenarios that discover and replay the product's own terms. False or absent means acceptance is outside the seller's advertised scope, but the seller must still reject unsupported terms with TERMS_REJECTED rather than being graded on an acceptance path it did not claim.",
+          "x-added-in": "3.2.0"
+        },
         "availability_horizon": {
           "type": "boolean",
           "default": false,

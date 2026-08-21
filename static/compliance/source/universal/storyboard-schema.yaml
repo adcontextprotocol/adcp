@@ -139,13 +139,14 @@
 #   rule above), not a schema concern — the same storyboard runs against
 #   different topologies.)
 #
-# Applicability order: a storyboard-level `requires_capability` predicate MUST
-#   be evaluated before the runner evaluates `requires`. When the capability
-#   predicate is not satisfied, the runner emits `not_applicable` and MUST NOT
-#   report a missing runtime requirement. Only an agent that selected the
-#   storyboard by satisfying `requires_capability` can receive
-#   `requirement_unmet`. This keeps optional capability storyboards out of the
-#   coverage totals of agents that never claimed the capability.
+# Applicability order: storyboard-level `requires_capability` and
+#   `requires_all_capabilities` predicates MUST be evaluated before the runner
+#   evaluates `requires`. When any capability predicate is not satisfied, the
+#   runner emits `not_applicable` and MUST NOT report a missing runtime
+#   requirement. Only an agent that selected the storyboard by satisfying every
+#   authored capability predicate can receive `requirement_unmet`. This keeps
+#   optional capability storyboards out of the coverage totals of agents that
+#   never claimed the capability.
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
 #   Known values: controller | seeded_state | real_wire | webhook_receiver | multi_agent |
@@ -316,6 +317,21 @@
 #   multiple matchers. The same field is also legal on a phase; phase-level
 #   gates skip only that phase and are useful when a universal storyboard
 #   contains protocol-specific phase families.)
+#
+# requires_all_capabilities: object[] (optional — storyboard-level AND gate
+#   for two or more capability predicates. Each entry has the same shape and
+#   matcher rules as `requires_capability`. Every entry MUST pass before the
+#   storyboard is selected. When this field and `requires_capability` are both
+#   present, all predicates across both declarations MUST pass.
+#
+#   minItems: 2 — use `requires_capability` for a single predicate. Runners MUST
+#   fail-load empty or single-entry arrays so an incomplete compound gate cannot
+#   silently widen a storyboard's applicability.
+#
+#   Compound gates fail closed when the raw `get_adcp_capabilities` payload is
+#   unavailable. Tool advertisement or auto-registration MUST NOT substitute
+#   for an explicit capability declaration. Supported by @adcp/sdk starting in
+#   14.0.0-beta.4.)
 #
 # required_any_of_tools: array (optional — declarative one-of-N tool-advertisement
 #   gate at storyboard load time. Each array entry is an OR-family object:

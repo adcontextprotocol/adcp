@@ -1,5 +1,5 @@
 id: sales_guaranteed
-version: "1.0.0"
+version: "1.0.1"
 title: "Guaranteed media buy with human IO approval"
 protocol: media-buy
 category: sales_guaranteed
@@ -13,6 +13,7 @@ requires_scenarios:
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
   - media_buy_seller/measurement_terms_rejected
+  - media_buy_seller/measurement_terms_accepted
   - media_buy_seller/pending_creatives_to_start
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/inventory_list_no_match
@@ -61,13 +62,14 @@ narrative: |
   `committed` can be executed before `expires_at`.
 
   The requires_io_approval capability is scoped to creates that reference products with
-  delivery_type: guaranteed (those in this storyboard's primary fixtures). Four of the
+  delivery_type: guaranteed (those in this storyboard's primary fixtures). Five of the
   general seller scenarios included via requires_scenarios — measurement_terms_rejected,
-  pending_creatives_to_start, inventory_list_targeting, and invalid_transitions — use
-  open-ended product briefs and must complete creates synchronously, returning a media_buy_id
-  directly rather than a task envelope. This storyboard seeds non-guaranteed fixture products
-  so those four scenarios have a synchronous-create path available. A seller whose catalog
-  contains only guaranteed products will fail those four shared scenarios.
+  measurement_terms_accepted, pending_creatives_to_start, inventory_list_targeting, and
+  invalid_transitions — use open-ended product briefs and must complete creates synchronously,
+  returning a media_buy_id directly rather than a task envelope. This storyboard seeds
+  non-guaranteed fixture products so those five scenarios have a synchronous-create path
+  available. A seller whose catalog
+  contains only guaranteed products will fail those five shared scenarios.
 
 agent:
   interaction_model: media_buy_seller
@@ -96,8 +98,8 @@ fixtures:
   products:
     # Non-guaranteed products listed first so open-brief get_products calls (used by
     # requires_scenarios) resolve to products[0] as a non-guaranteed product, enabling
-    # synchronous creates. The four shared scenarios (measurement_terms_rejected,
-    # pending_creatives_to_start, inventory_list_targeting, invalid_transitions) capture
+    # synchronous creates. The five shared scenarios (measurement_terms_rejected,
+    # measurement_terms_accepted, pending_creatives_to_start, inventory_list_targeting, invalid_transitions) capture
     # products[0].product_id and must get a non-guaranteed ID to complete synchronously.
     - product_id: "display_outdoor_non_guaranteed"
       delivery_type: "non_guaranteed"
@@ -522,6 +524,9 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: creative_sync
     title: "Creative sync"
+    requires_capability:
+      path: creative.has_creative_library
+      equals: true
     narrative: |
       With the IO signed and the media buy active, the buyer syncs creative assets
       to your platform. Each package has creative format requirements that the buyer
@@ -582,6 +587,7 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: delivery_monitoring
     title: "Delivery and reporting"
+    depends_on: [confirm_active]
     narrative: |
       The campaign is live with guaranteed delivery commitments. The buyer monitors
       delivery to ensure the seller is meeting the SLA guarantees from the IO.
