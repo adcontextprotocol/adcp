@@ -1,0 +1,26 @@
+{
+  "policy_id": "creative_ux_non_intrusive",
+  "source": "registry",
+  "version": "1.0.0",
+  "name": "Creative non-intrusive user-experience standard",
+  "description": "Prohibits creative behavior that alters or obstructs the publisher experience without declared permission.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "governance_domains": ["creative"],
+  "effective_date": "2026-08-21",
+  "source_url": "https://docs.adcontextprotocol.org/docs/governance/creative/policy-backed-rejections#initial-registry-policies",
+  "source_name": "AgenticAdvertising.org",
+  "policy": "An advertising creative must remain within the interaction and layout permissions declared by the selected product and format. Unless explicitly permitted, it must not create overlays outside its placement, cover publisher content, open pop-ups or interstitials, become sticky, resize or reflow the publisher page, capture unrelated input, or play audible media without user activation. The seller or its governance agent must publish any permissions it relies on. A seller that detects unauthorized intrusive behavior must reject the creative and identify this policy.",
+  "guidance": "Evaluate behavior relative to the selected product and format; an overlay is not a violation when that interaction is explicitly contracted. Buyer remediation: remove the unauthorized behavior or select a product and format that declares support for it.",
+  "exemplars": {
+    "pass": [{
+      "scenario": "A creative remains inside its contracted slot and starts audio only after the user selects a visible play control.",
+      "explanation": "The creative stays within its placement and audible playback follows deliberate interaction."
+    }],
+    "fail": [{
+      "scenario": "A standard display placement injects a full-page overlay and starts audible playback on load even though the product declares neither behavior.",
+      "explanation": "The creative obstructs publisher content and plays audio without permission or user activation."
+    }]
+  }
+}

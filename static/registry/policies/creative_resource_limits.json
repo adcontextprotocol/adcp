@@ -1,0 +1,26 @@
+{
+  "policy_id": "creative_resource_limits",
+  "source": "registry",
+  "version": "1.0.0",
+  "name": "Creative runtime resource limits",
+  "description": "Requires creative CPU, main-thread, memory, and network use to remain within published seller limits.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "governance_domains": ["creative"],
+  "effective_date": "2026-08-21",
+  "source_url": "https://docs.adcontextprotocol.org/docs/governance/creative/policy-backed-rejections#initial-registry-policies",
+  "source_name": "AgenticAdvertising.org",
+  "policy": "An advertising creative's runtime CPU use, main-thread execution, memory use, and network-request volume must remain within the limits published by the enforcing seller or its governance agent for the selected product and evaluation profile. The evaluator must publish the applied limits and, on failure, report the exceeded metric and observed value. A seller must not reject under this policy without an applicable published limit. A creative that exceeds an applicable limit must be rejected with this policy.",
+  "guidance": "Use a reproducible device, network, interaction, and observation profile. Buyer remediation: reduce animation and script work, remove unnecessary dependencies, consolidate requests, and confirm the observed metrics fall below the published limits.",
+  "exemplars": {
+    "pass": [{
+      "scenario": "Under the seller's published evaluation profile, a creative stays below every declared CPU, main-thread, memory, and request limit.",
+      "explanation": "All measured resource values satisfy the applicable published thresholds."
+    }],
+    "fail": [{
+      "scenario": "A looping animation consumes 65% CPU where the seller's published product profile permits at most 30%, and the report identifies both values.",
+      "explanation": "The measured CPU use exceeds an applicable, disclosed limit."
+    }]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "policy_id": "creative_security_impression_manipulation",
+  "source": "registry",
+  "version": "1.0.0",
+  "name": "Creative impression-manipulation prohibition",
+  "description": "Prohibits creative-controlled stacking, stuffing, hiding, or duplicate rendering used to inflate impressions.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "governance_domains": ["creative"],
+  "effective_date": "2026-08-21",
+  "source_url": "https://docs.adcontextprotocol.org/docs/governance/creative/policy-backed-rejections#initial-registry-policies",
+  "source_name": "AgenticAdvertising.org",
+  "policy": "An advertising creative must not create hidden, stacked, stuffed, off-screen, zero-opacity, or duplicate ad renderings or media players for the purpose or effect of generating impressions that are not represented by the seller's intended placement. This policy applies to behavior caused by the creative payload; seller inventory fraud that is not caused by the creative is outside its scope. A seller that detects creative-caused impression manipulation must reject the creative and identify this policy.",
+  "guidance": "Inspect the rendered document and network activity for undeclared ad containers or players. Buyer remediation: remove hidden, duplicate, or nested rendering behavior and ensure the payload renders only in the contracted placement.",
+  "exemplars": {
+    "pass": [{
+      "scenario": "One display tag renders one visible creative in the contracted slot and fires its declared impression measurement once.",
+      "explanation": "The creative represents the intended placement without hidden or duplicate rendering."
+    }],
+    "fail": [{
+      "scenario": "A display tag creates several one-pixel off-screen iframes that each load another ad and record an impression.",
+      "explanation": "The payload generates hidden, duplicate ad impressions outside the intended placement."
+    }]
+  }
+}

@@ -71,6 +71,27 @@ directories grow.
    alone.
 4. Run `npm run check:registry` locally to confirm the entry passes the bar.
 
+## Policy-backed interoperability codes
+
+A registry policy can also provide a stable cross-agent compliance or rejection
+identifier without adding an enum to an AdCP schema. A governance agent
+advertises support as `registry:{policy_id}` and returns a binary compliance
+value; an enforcing seller references the bare `policy_id` on the applicable
+error-details surface.
+
+Keep the axes separate:
+
+- The policy ID identifies the rule that was applied.
+- Agent-defined features describe observations made by a detector.
+- The agent and methodology identify who detected the observation and how.
+- Task- or lifecycle-specific reason codes identify when the decision occurred.
+
+Do not mint policies for scanner vendors, private account deny-lists, or other
+provenance and transaction state. Parameterized policies must say which limits
+the seller or evaluating agent is responsible for publishing. See
+`docs/governance/creative/policy-backed-rejections.mdx` for the complete
+creative rejection pattern.
+
 ## Non-goals
 
 - This bar does **not** apply to inline `PolicyEntry` values used in

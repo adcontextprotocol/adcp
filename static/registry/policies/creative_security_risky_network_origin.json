@@ -1,0 +1,26 @@
+{
+  "policy_id": "creative_security_risky_network_origin",
+  "source": "registry",
+  "version": "1.0.0",
+  "name": "Creative risky-network-origin restriction",
+  "description": "Requires creative network dependencies to pass the enforcing seller's published origin-risk controls.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "governance_domains": ["creative"],
+  "effective_date": "2026-08-21",
+  "source_url": "https://docs.adcontextprotocol.org/docs/governance/creative/policy-backed-rejections#initial-registry-policies",
+  "source_name": "AgenticAdvertising.org",
+  "policy": "Every network origin contacted by an advertising creative must satisfy the enforcing seller's published origin-risk controls at evaluation time. The seller or its governance agent must publish the classification methodology and, on failure, identify the rejected origin and current classification in its detailed report or rejection reason. A seller must not use this policy as an unexplained advertiser or account deny-list. A creative that calls an origin classified as unsafe under the published controls must be rejected with this policy.",
+  "guidance": "Origin reputation is time-dependent and seller-parameterized. Return the observed origin and classification without disclosing private threat intelligence. Buyer remediation: remove or replace the dependency; use the seller's appeal process when the classification appears incorrect.",
+  "exemplars": {
+    "pass": [{
+      "scenario": "A display tag loads only its declared creative host and measurement endpoints, and each passes the seller's published origin-risk checks at evaluation time.",
+      "explanation": "Every observed dependency satisfies the enforcing seller's declared controls."
+    }],
+    "fail": [{
+      "scenario": "An otherwise ordinary tag loads an obfuscated script from an origin currently classified as malware-distributing by the seller's published evaluation method.",
+      "explanation": "The creative depends on an origin that fails the applicable risk controls."
+    }]
+  }
+}

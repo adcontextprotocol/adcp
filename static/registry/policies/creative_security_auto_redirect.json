@@ -1,0 +1,26 @@
+{
+  "policy_id": "creative_security_auto_redirect",
+  "source": "registry",
+  "version": "1.0.0",
+  "name": "Creative automatic-navigation prohibition",
+  "description": "Prohibits redirects, forced application opens, and click hijacking without deliberate user interaction.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "governance_domains": ["creative"],
+  "effective_date": "2026-08-21",
+  "source_url": "https://docs.adcontextprotocol.org/docs/governance/creative/policy-backed-rejections#initial-registry-policies",
+  "source_name": "AgenticAdvertising.org",
+  "policy": "An advertising creative must not navigate the top-level browsing context, open an application or application store, synthesize a click, or start a redirect chain unless the user deliberately interacts with a clearly presented control. Navigation caused by timers, page load, pointer movement, invisible overlays, or click interception is prohibited. A seller that detects prohibited navigation must reject the creative and identify this policy.",
+  "guidance": "Test the creative before interaction and exercise each visible control. Buyer remediation: remove automatic redirects, forced-open logic, invisible click targets, and click interception; preserve navigation only after explicit user activation.",
+  "exemplars": {
+    "pass": [{
+      "scenario": "A user clicks a visible Learn more button and the creative opens the disclosed advertiser landing page.",
+      "explanation": "Navigation follows deliberate interaction with a clearly presented control."
+    }],
+    "fail": [{
+      "scenario": "Two seconds after rendering, a display tag replaces the publisher page with an application-store destination even though the user did not interact.",
+      "explanation": "The creative initiates top-level navigation without user activation."
+    }]
+  }
+}
