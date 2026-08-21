@@ -913,9 +913,10 @@ skip_result:
       evaluated false or a bounded observation contract exhausted without
       observing its trigger. Applicability-gate examples include the agent not
       declaring the protocol or specialism this storyboard targets, or a
-      scenario's requires_capability check finding an optional capability set
-      to false. For this form, detail MUST cite the failed gate and the agent's
-      relevant declared supported_protocols, specialisms, or capability value.
+      scenario's requires_capability or requires_all_capabilities check finding
+      an optional capability set to false. For this form, detail MUST cite the
+      failed gate and the agent's relevant declared supported_protocols,
+      specialisms, or capability value.
 
       Observation exhaustion is distinct from an applicability-gate failure.
       When rate_limit_trip_runner reaches max_attempts without observing

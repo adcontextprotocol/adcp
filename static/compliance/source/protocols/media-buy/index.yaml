@@ -1,5 +1,5 @@
 id: media_buy_seller
-version: "1.0.0"
+version: "1.0.1"
 title: "Media buy seller agent"
 category: media_buy_seller
 summary: "Seller agent that receives briefs, returns products, accepts media buys, and reports delivery."
@@ -12,6 +12,7 @@ requires_scenarios:
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
   - media_buy_seller/measurement_terms_rejected
+  - media_buy_seller/measurement_terms_accepted
   - media_buy_seller/pending_creatives_to_start
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/inventory_list_no_match
@@ -53,15 +54,15 @@ requires_scenarios:
 narrative: |
   You run a sell-side platform — a publisher, SSP, retail media network, or any system that
   sells advertising inventory. A buyer agent connects to discover your products, create
-  media buys, sync creatives, and monitor delivery. Your agent handles the full lifecycle
-  from brief to reporting.
+  media buys, and monitor delivery. When your platform advertises a creative library,
+  the required creative scenarios also validate creative sync and library behavior.
 
   This storyboard walks through the core media buy flow: account setup, product discovery,
-  buy creation, creative sync, and delivery monitoring.
+  buy creation, and delivery monitoring.
 
-  Governance integration, product refinement, and proposal finalization are tested by
-  required scenarios that run alongside this storyboard. See requires_scenarios for the
-  full set of seller behaviors validated.
+  Creative sync, governance integration, product refinement, and proposal finalization
+  are tested by capability-gated required scenarios that run alongside this storyboard.
+  See requires_scenarios for the full set of seller behaviors validated.
 
 context:
   governance_agent_url: "https://test-agent.adcontextprotocol.org"
@@ -624,96 +625,9 @@ phases:
             value: "media_buy_seller--create_media_buy"
             description: "get_media_buys includes persisted media-buy context from create_media_buy"
 
-  - id: creative_sync
-    title: "Creative sync"
-    depends_on: [create_buy]
-    requires_capability:
-      path: account.timezone.supported_timezones
-      present: false
-    narrative: |
-      With the media buy confirmed, the buyer syncs creative assets to your platform.
-      Each package in the buy has creative format requirements — the buyer discovered
-      these during product discovery and now pushes matching assets.
-
-      The canonical manifest must satisfy an option returned by the product. If the
-      seller advertises a format option but rejects a conforming manifest at sync time,
-      the buyer cannot fulfill the creative requirements.
-
-      Your platform validates each creative against the format specs and returns
-      per-creative status. If assets need review or transcoding, the operation may
-      go async.
-
-    steps:
-      - id: sync_creatives
-        title: "Push canonical creative assets"
-        narrative: |
-          The buyer uploads creative assets for the confirmed packages. The first
-          creative uses $context.product_format_kind captured from the product's
-          canonical format_options[] declaration. This is the acceptance roundtrip:
-          the seller must accept a manifest satisfying its own declaration.
-
-          Your platform validates each creative against the format specs, transcodes
-          if necessary, and returns per-creative status.
-        task: sync_creatives
-        schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
-        doc_ref: "/creative/task-reference/sync_creatives"
-        comply_scenario: creative_sync
-        stateful: true
-        expected: |
-          Accept and validate creatives:
-          - Per-creative action: created or updated
-          - Per-creative status: accepted, pending_review, or rejected
-          - Validation errors for rejected creatives
-          - Platform-assigned IDs if applicable
-
-          The first creative uses the canonical format_kind extracted from get_products.
-
-        sample_request:
-          account: *media_buy_lifecycle_account
-          creatives:
-            - creative_id: "video_30s_trail_pro"
-              name: "Trail Pro 3000 - 30s CTV Spot"
-              format_kind: "$context.product_format_kind"
-              assets:
-                video:
-                  asset_type: "video"
-                  url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4"
-                  width: 1920
-                  height: 1080
-                  duration_ms: 30000
-                  mime_type: "video/mp4"
-            - creative_id: "display_trail_pro_300x250"
-              name: "Trail Pro 3000 - Display 300x250"
-              format_kind: "image"
-              assets:
-                image:
-                  asset_type: "image"
-                  url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png"
-                  width: 300
-                  height: 250
-                  mime_type: "image/png"
-          idempotency_key: "$generate:uuid_v4#media_buy_seller_creative_sync_sync_creatives"
-          context:
-            correlation_id: "media_buy_seller--sync_creatives"
-
-        validations:
-          - check: response_schema
-            description: "Response matches sync-creatives-response.json schema"
-          - check: field_present
-            path: "creatives[0].action"
-            description: "Each creative has an action (created/updated)"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "media_buy_seller--sync_creatives"
-            description: "Context correlation_id returned unchanged"
-
   - id: delivery_monitoring
     title: "Delivery and reporting"
-    depends_on: [create_buy, creative_sync]
+    depends_on: [create_buy]
     requires_capability:
       path: account.timezone.supported_timezones
       present: false
@@ -982,70 +896,9 @@ phases:
             value: "media_buy_seller--create_media_buy"
             description: "get_media_buys includes persisted media-buy context from create_media_buy"
 
-  - id: buyer_selected_creative_sync
-    title: "Buyer-selected timezone creative sync"
-    depends_on: [buyer_selected_create_buy]
-    requires_capability:
-      path: account.timezone.account_selection
-      equals: buyer_selected
-    steps:
-      - id: sync_creatives_buyer_selected_timezone
-        title: "Push creative assets for the timezone-bound account"
-        task: sync_creatives
-        schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
-        doc_ref: "/creative/task-reference/sync_creatives"
-        comply_scenario: creative_sync
-        stateful: true
-        sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            timezone: "$context.account_timezone"
-            sandbox: true
-          creatives:
-            - creative_id: "video_30s_trail_pro"
-              name: "Trail Pro 3000 - 30s CTV Spot"
-              format_kind: "$context.product_format_kind"
-              assets:
-                video:
-                  asset_type: "video"
-                  url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4"
-                  width: 1920
-                  height: 1080
-                  duration_ms: 30000
-                  mime_type: "video/mp4"
-            - creative_id: "display_trail_pro_300x250"
-              name: "Trail Pro 3000 - Display 300x250"
-              format_kind: "image"
-              assets:
-                image:
-                  asset_type: "image"
-                  url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png"
-                  width: 300
-                  height: 250
-                  mime_type: "image/png"
-          idempotency_key: "$generate:uuid_v4#media_buy_seller_buyer_timezone_sync_creatives"
-          context:
-            correlation_id: "media_buy_seller--sync_creatives"
-        validations:
-          - check: response_schema
-            description: "Response matches sync-creatives-response.json schema"
-          - check: field_present
-            path: "creatives[0].action"
-            description: "Each creative has an action (created/updated)"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "media_buy_seller--sync_creatives"
-            description: "Context correlation_id returned unchanged"
-
   - id: buyer_selected_delivery_monitoring
     title: "Buyer-selected timezone delivery and reporting"
-    depends_on: [buyer_selected_create_buy, buyer_selected_creative_sync]
+    depends_on: [buyer_selected_create_buy]
     requires_capability:
       path: account.timezone.account_selection
       equals: buyer_selected

@@ -187,7 +187,7 @@ test('parent flow carries the correct complete natural AccountRef through each t
   assert.equal(buyerSync.sample_request.accounts[0].sandbox, true);
 
   const defaultLifecycle = doc.phases.filter(phase =>
-    ['governance_setup', 'product_discovery', 'create_buy', 'creative_sync', 'delivery_monitoring'].includes(phase.id)
+    ['governance_setup', 'product_discovery', 'create_buy', 'delivery_monitoring'].includes(phase.id)
   );
   const buyerLifecycle = doc.phases.filter(phase => phase.id.startsWith('buyer_selected_') && phase.id !== 'buyer_selected_account_setup');
   const defaultAccount = {
@@ -197,8 +197,8 @@ test('parent flow carries the correct complete natural AccountRef through each t
   };
   const buyerAccount = { ...defaultAccount, timezone: '$context.account_timezone' };
 
-  assert.deepEqual(accountRefsIn(defaultLifecycle), Array(6).fill(defaultAccount));
-  assert.deepEqual(accountRefsIn(buyerLifecycle), Array(6).fill(buyerAccount));
+  assert.deepEqual(accountRefsIn(defaultLifecycle), Array(5).fill(defaultAccount));
+  assert.deepEqual(accountRefsIn(buyerLifecycle), Array(5).fill(buyerAccount));
   assert.doesNotMatch(JSON.stringify(doc), /\$context\.account_id/);
   assert.equal(doc.phases.flatMap(phase => phase.steps).some(candidate => candidate.task === 'list_accounts'), false);
 });
