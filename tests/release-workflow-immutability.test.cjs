@@ -3,10 +3,18 @@
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
+const crypto = require('crypto');
+const YAML = require('yaml');
 
 const repoRoot = path.join(__dirname, '..');
+const changesetsActionSha = '198f833dd7d863100ea6e28967bc9a9fdefadb0a';
+const changesetsActionFixtureDir = path.join(
+  repoRoot,
+  'tests/fixtures/changesets-action-v2.1.0'
+);
 const workflowPath = path.join(repoRoot, '.github/workflows/release.yml');
 const workflow = fs.readFileSync(workflowPath, 'utf8');
+const workflowConfig = YAML.parse(workflow);
 const eolReleaseBranches = ['2.5-maintenance', '2.6.x'];
 const activeWorkflowPaths = [
   'apps-web-check.yml',
@@ -35,6 +43,30 @@ const releaseRelevance = extractStep('Detect release-relevant push');
 const artifactDetection = extractStep('Detect committed release artifacts');
 const changesetsStep = extractStep('Create Release Pull Request or Tag Release');
 const uploadStep = extractStep('Upload protocol tarball to GitHub Release');
+const changesetsStepConfig = workflowConfig.jobs.release.steps.find(
+  step => step.name === 'Create Release Pull Request or Tag Release'
+);
+const changesetsActionContractSource = fs.readFileSync(
+  path.join(changesetsActionFixtureDir, 'action.yml'),
+  'utf8'
+);
+const changesetsActionImplementation = fs.readFileSync(
+  path.join(changesetsActionFixtureDir, 'src-index.ts'),
+  'utf8'
+);
+const changesetsActionContract = YAML.parse(changesetsActionContractSource);
+
+assert.strictEqual(
+  crypto.createHash('sha256').update(changesetsActionContractSource).digest('hex'),
+  'e3277ecb13148921adcfbc29971acb12b10ece79e7de24a200ba56dff1f6a1d7',
+  'Vendored action.yml must match changesets/action v2.1.0 at the pinned commit.'
+);
+
+assert.strictEqual(
+  crypto.createHash('sha256').update(changesetsActionImplementation).digest('hex'),
+  '012ab4141d8a1bd5db441a696fc408e5d92513a6a2be8493de72960f7b41ff30',
+  'Vendored src/index.ts must match changesets/action v2.1.0 at the pinned commit.'
+);
 
 for (const branch of eolReleaseBranches) {
   for (const workflowName of activeWorkflowPaths) {
@@ -67,6 +99,46 @@ assert(
 assert(
   changesetsStep.includes("HUSKY: '0'"),
   'Changesets automation must not rerun local pre-commit hooks while creating its release commit.'
+);
+
+assert.deepStrictEqual(
+  changesetsStepConfig,
+  {
+    name: 'Create Release Pull Request or Tag Release',
+    if: "steps.release-relevance.outputs.relevant == 'true' && steps.release-artifacts.outputs.has_release_artifacts != 'true'",
+    id: 'changesets',
+    uses: `changesets/action@${changesetsActionSha}`,
+    with: {
+      'github-token': '${{ steps.app-token.outputs.token }}',
+      'version-script': 'npm run version',
+      'publish-script': 'npx --no-install changeset git-tag',
+      'commit-message': 'Version Packages',
+      'pr-title': 'Version Packages',
+      'create-github-releases': true,
+      'push-with-git-cli': true,
+    },
+    env: {
+      HUSKY: '0',
+    },
+  },
+  'Release automation must preserve the pinned Changesets v2.1.0 input contract and git-CLI push mode.'
+);
+
+for (const inputName of Object.keys(changesetsStepConfig.with)) {
+  assert(
+    Object.hasOwn(changesetsActionContract.inputs, inputName),
+    `Pinned Changesets action does not declare configured input: ${inputName}`
+  );
+}
+
+assert(
+  changesetsActionImplementation.includes('getRequiredInput("github-token")'),
+  'Pinned Changesets action must read the configured GitHub App token input.'
+);
+
+assert(
+  changesetsActionImplementation.includes('core.getBooleanInput("push-with-git-cli")'),
+  'Pinned Changesets action must implement the configured git-CLI push mode.'
 );
 
 assert(

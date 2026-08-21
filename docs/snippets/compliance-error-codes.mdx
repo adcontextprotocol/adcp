@@ -43,6 +43,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `COMPLIANCE_UNSATISFIED` | correctable | choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement |
 | `CONFIGURATION_ERROR` | terminal | surface to a human at the seller — the buyer cannot resolve a seller-side deployment misconfiguration and MUST NOT auto-retry |
 | `CONFLICT` | transient | re-read the resource and retry with current state |
+| `CONFLICTING_SELECTORS` | correctable | emit one canonical format selector route, or make every required legacy 3.x compatibility projection select the same product format contract under the canonical v2-narrows-v1 comparison |
 | `CREATIVE_DEADLINE_EXCEEDED` | correctable | check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller |
 | `CREATIVE_INACCESSIBLE` | correctable | verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit |
 | `CREATIVE_LOCALE_NOT_ACCEPTED` | correctable | supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default |
@@ -401,6 +402,15 @@ The seller's deployment is misconfigured in a way that prevents handling the req
 **Suggested action:** re-read the resource and retry with current state
 
 Concurrent modification detected. The resource was modified by another request between read and write. Recovery: transient (re-read the resource and retry with current state).
+
+</Accordion>
+<a id="error-code-conflicting-selectors"></a>
+
+<Accordion title="CONFLICTING_SELECTORS — correctable">
+
+**Suggested action:** emit one canonical format selector route, or make every required legacy 3.x compatibility projection select the same product format contract under the canonical v2-narrows-v1 comparison
+
+A 3.x package request carries multiple resolvable format selector routes that select different canonical product format declaration sets. Sellers MUST first resolve every present route independently (<code>{"format_option_refs"}</code>, direct <code>{"format_kind"}</code> plus <code>{"params"}</code>, and deprecated <code>{"format_ids"}</code>) without applying precedence. An unresolved option reference or an unprojectable legacy ID is rejected with <code>{"UNSUPPORTED_FEATURE"}</code>, not this code. Once all routes resolve, sellers derive the product <code>{"format_options[]"}</code> entries selected by each route using directional product satisfaction and require those sets to match. Legacy parameter compatibility uses the asymmetric v2-narrows-v1 relation defined by canonical formats, not raw object equality. For fixed-size image selectors, both width and height participate in compatibility. Sellers MUST reject different format shapes, selected option sets, or incompatible dimensions rather than silently choosing the canonical route. <code>{"error.field"}</code> SHOULD point at the conflicting package, and <code>{"error.details"}</code> SHOULD identify the supplied selector routes and their normalized canonical summaries. Recovery: correctable (emit one canonical selector route, or make a required legacy 3.x compatibility projection select the same product format contract).
 
 </Accordion>
 <a id="error-code-creative-deadline-exceeded"></a>

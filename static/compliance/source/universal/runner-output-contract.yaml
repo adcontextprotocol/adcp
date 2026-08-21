@@ -62,6 +62,7 @@ authored_check_kinds:
   - a2a_submitted_artifact
   - a2a_context_continuity
   - field_less_than
+  - field_greater_than
   - field_equals_context
   - field_in_context_array
   - all_fields_in_context_array
@@ -198,6 +199,7 @@ validation_result:
                               # resource_equals_agent_url | oauth_metadata_graph |
                               # any_of | refs_resolve |
                               # a2a_submitted_artifact | field_less_than |
+                              # field_greater_than |
                               # field_equals_context | field_in_context_array |
                               # all_fields_in_context_array |
                               # upstream_traffic |
@@ -281,6 +283,9 @@ validation_result:
                               #                          value (a finite number) is
                               #                          captured here; when from a
                               #                          literal `value`, that literal.
+                              #   field_greater_than   → literal finite-number
+                              #                          threshold the field MUST be
+                              #                          strictly greater than.
                               #   field_equals_context → comparand the field MUST
                               #                          deep-equal. The runtime value
                               #                          resolved from
@@ -362,6 +367,9 @@ validation_result:
                               #                          (any JSON type); null when the field
                               #                          was missing
                               #   field_less_than      → the observed value at `path`
+                              #                          (number when resolvable, null
+                              #                          when the field was missing).
+                              #   field_greater_than   → the observed value at `path`
                               #                          (number when resolvable, null
                               #                          when the field was missing).
                               #   field_equals_context → the observed value at `path`
@@ -905,9 +913,10 @@ skip_result:
       evaluated false or a bounded observation contract exhausted without
       observing its trigger. Applicability-gate examples include the agent not
       declaring the protocol or specialism this storyboard targets, or a
-      scenario's requires_capability check finding an optional capability set
-      to false. For this form, detail MUST cite the failed gate and the agent's
-      relevant declared supported_protocols, specialisms, or capability value.
+      scenario's requires_capability or requires_all_capabilities check finding
+      an optional capability set to false. For this form, detail MUST cite the
+      failed gate and the agent's relevant declared supported_protocols,
+      specialisms, or capability value.
 
       Observation exhaustion is distinct from an applicability-gate failure.
       When rate_limit_trip_runner reaches max_attempts without observing

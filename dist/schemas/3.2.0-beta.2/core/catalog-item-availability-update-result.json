@@ -1,0 +1,275 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog-item-availability-update-result.json",
+  "title": "Catalog Item Availability Update Result",
+  "description": "Seller acknowledgement for one buyer-authored catalog item availability update.",
+  "type": "object",
+  "properties": {
+    "request_index": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Zero-based index of the corresponding item_availability_updates entry."
+    },
+    "catalog_id": {
+      "type": "string",
+      "description": "Catalog ID from the request.",
+      "x-entity": "catalog"
+    },
+    "catalog_generation": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Catalog generation from the request.",
+      "x-entity": "catalog_generation"
+    },
+    "item_id": {
+      "type": "string",
+      "description": "Item ID from the request.",
+      "x-entity": "catalog_item"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "suppress",
+        "restore"
+      ],
+      "description": "Action from the request."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "applied",
+        "unchanged",
+        "failed"
+      ],
+      "description": "applied means the requested overlay transition completed, including replacement or removal of an existing expires_at; unchanged means the item was already in the requested buyer-availability state with the same expiry; failed means no transition was applied."
+    },
+    "availability": {
+      "type": "string",
+      "enum": [
+        "active",
+        "suppressed"
+      ],
+      "description": "Persisted buyer-authored state after an applied or unchanged result."
+    },
+    "overlay_revision": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Persisted state revision after an applied or unchanged result. Applied increments the request's expected_overlay_revision exactly once; unchanged preserves it."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Persisted expiry after this update, present only for a suppressed state with an expiry."
+    },
+    "applied_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Seller timestamp when the buyer-availability state took effect. Required for applied. Optional for unchanged when the seller knows the timestamp of the already-persisted state."
+    },
+    "errors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog-item-availability-error.json"
+      },
+      "description": "Why this item update failed. Required when status is failed."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+    }
+  },
+  "required": [
+    "request_index",
+    "catalog_id",
+    "catalog_generation",
+    "item_id",
+    "action",
+    "status"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "errors"
+        ],
+        "propertyNames": {
+          "enum": [
+            "request_index",
+            "catalog_id",
+            "catalog_generation",
+            "item_id",
+            "action",
+            "status",
+            "errors"
+          ]
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "applied_at"
+              ]
+            },
+            {
+              "required": [
+                "availability"
+              ]
+            },
+            {
+              "required": [
+                "overlay_revision"
+              ]
+            },
+            {
+              "required": [
+                "expires_at"
+              ]
+            }
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "availability",
+          "overlay_revision"
+        ],
+        "not": {
+          "required": [
+            "errors"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "errors": {
+            "contains": {
+              "properties": {
+                "code": {
+                  "const": "REFERENCE_NOT_FOUND"
+                }
+              },
+              "required": [
+                "code"
+              ]
+            }
+          }
+        },
+        "required": [
+          "errors"
+        ]
+      },
+      "then": {
+        "properties": {
+          "errors": {
+            "maxItems": 1,
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog-item-reference-not-found-error.json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "applied"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "applied_at"
+        ],
+        "not": {
+          "required": [
+            "errors"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "expires_at"
+        ]
+      },
+      "then": {
+        "properties": {
+          "availability": {
+            "const": "suppressed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "suppress"
+          },
+          "status": {
+            "enum": [
+              "applied",
+              "unchanged"
+            ]
+          }
+        },
+        "required": [
+          "action",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "availability": {
+            "const": "suppressed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "restore"
+          },
+          "status": {
+            "enum": [
+              "applied",
+              "unchanged"
+            ]
+          }
+        },
+        "required": [
+          "action",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "availability": {
+            "const": "active"
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

@@ -19,6 +19,38 @@ const canonicalizationVectors = JSON.parse(fs.readFileSync(
   'utf8',
 ));
 
+const rootDotNegativeVector = JSON.parse(fs.readFileSync(
+  path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'test-vectors',
+    'request-signing',
+    'profile-3.2',
+    'negative',
+    '002-multiple-trailing-dots.json',
+  ),
+  'utf8',
+));
+
+const rootDotPositiveVector = JSON.parse(fs.readFileSync(
+  path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'test-vectors',
+    'request-signing',
+    'profile-3.2',
+    'positive',
+    '001-post-with-content-digest.json',
+  ),
+  'utf8',
+));
+
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
 
 function readSchema(uri) {
@@ -54,6 +86,7 @@ describe('brand response authorization cross-check vectors', () => {
   });
 
   it('uses the shared AdCP URL canonicalization contract', () => {
+    assert.equal(canonicalizationVectors.version, '3.2');
     for (const vector of canonicalizationVectors.cases) {
       assert.equal(
         canonicalizeFixtureUrl(vector.input_url),
@@ -61,6 +94,21 @@ describe('brand response authorization cross-check vectors', () => {
         vector.name,
       );
     }
+  });
+
+  it('executes the multiple-root-dot signing-profile negative vector', () => {
+    assert.equal(rootDotNegativeVector.signing_profile_version, '3.2');
+    assert.equal(
+      rootDotNegativeVector.expected_outcome.error_code,
+      'request_target_uri_malformed',
+    );
+    assert.equal(canonicalizeFixtureUrl(rootDotNegativeVector.request.url), null);
+    assert.equal(
+      rootDotNegativeVector.request.headers.Signature,
+      rootDotPositiveVector.request.headers.Signature,
+      'the negative vector must reuse the valid equivalent-host signature',
+    );
+    assert.equal(rootDotNegativeVector.request.body, rootDotPositiveVector.request.body);
   });
 
   it('rejects a string key_ops lookalike', () => {

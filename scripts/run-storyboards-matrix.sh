@@ -246,18 +246,18 @@ if [ "${FLOOR_SET}" = "3.0-compat" ]; then
     "governance:65:135"
     "creative:65:137"
     "creative-builder:65:121"
-    "brand:65:80"
-    "si:62:84"
+    "brand:65:78"
+    "si:63:77"
   )
 else
   TENANTS=(
     "signals:74:111"
-    "sales:74:380"
+    "sales:120:534"
     "governance:73:151"
     "creative:73:169"
     "creative-builder:70:146"
     "brand:73:96"
-    "si:94:99"
+    "si:157:91"
   )
 fi
 
@@ -274,6 +274,13 @@ REQUIRED_CLEAN_CURRENT_SALES=(
   "wholesale_feed_products"
   "wholesale_feed_product_webhooks"
   "wholesale_feed_bulk_webhooks"
+)
+REQUIRED_EXACT_CURRENT_SALES=(
+  "media_buy_seller/compact_direct_buy_lifecycle:7:0"
+  "media_buy_seller/compact_product_lifecycle:9:0"
+  "media_buy_seller/declined_proposal_refinement:6:0"
+  "media_buy_seller/declined_proposal_execution:8:0"
+  "media_buy_seller/expired_proposal_execution:8:0"
 )
 REQUIRED_CLEAN_CURRENT_SIGNALS=(
   "wholesale_feed_signals"
@@ -327,6 +334,21 @@ storyboard_passed() {
       if (found) exit 0
       exit 1
     }
+  ' "${log_file}"
+}
+
+storyboard_executed_exactly() {
+  local storyboard_id="$1"
+  local expected_passed="$2"
+  local expected_skipped="$3"
+  local log_file="$4"
+  awk -v id="${storyboard_id}" -v passed="${expected_passed}" -v skipped="${expected_skipped}" '
+    $0 ~ "^[[:space:]]+" id "([[:space:]]|$)" {
+      pattern = "[[:space:]]✓[[:space:]]+" passed "P / " skipped "S"
+      if ($0 ~ pattern) found = 1
+      exit
+    }
+    END { exit found ? 0 : 1 }
   ' "${log_file}"
 }
 
@@ -385,6 +407,18 @@ for entry in "${TENANTS[@]}"; do
         else
           failed_floor="required-clean ${storyboard_id} did not pass"
         fi
+      fi
+    done
+    for requirement in "${REQUIRED_EXACT_CURRENT_SALES[@]}"; do
+      storyboard_id="${requirement%%:*}"
+      counts="${requirement#*:}"
+      expected_passed="${counts%%:*}"
+      expected_skipped="${counts##*:}"
+      if storyboard_executed_exactly "${storyboard_id}" "${expected_passed}" "${expected_skipped}" "${log}"; then
+        echo "  ✓ required-exact ${storyboard_id} (${expected_passed}P / ${expected_skipped}S)"
+      else
+        status="✗"
+        failed_floor="${failed_floor:+${failed_floor}; }required-exact ${storyboard_id} did not pass ${expected_passed} steps with ${expected_skipped} skips"
       fi
     done
   fi

@@ -1,5 +1,5 @@
 id: media_buy_seller/dependency_impairment_cardinality
-version: "1.0.0"
+version: "1.0.1"
 title: "Dependency impairment cardinality — impairments[] tracks each offline resource independently"
 category: media_buy_seller
 summary: "Two creatives on two packages of the same buy. Rejects them sequentially and verifies impairments[] grows 0 → 1 → 2; recovers them sequentially via swap-assignment and verifies impairments[] shrinks 2 → 1 → 0. Pressure-tests the inverse rule under cardinality — a seller emitting any impairment entry rather than the right one fails."
@@ -13,19 +13,20 @@ required_tools:
   - update_media_buy
   - comply_test_controller
 
-# Capability gate: this scenario grades the snapshot-coherence surface, so it
-# runs only for sellers that declare media_buy.propagation_surfaces including
-# "snapshot". Webhook-only or out_of_band sellers grade not_applicable instead
-# of false-failing on a contract that does not apply to them — the opt-out the
-# propagation_surfaces schema already documents (get-adcp-capabilities-response.json)
-# but that was never wired into this scenario. Requires the `contains:` matcher
+# Capability gates: this scenario grades the creative snapshot-coherence
+# surface, so it runs only for sellers that both expose a creative library and
+# declare media_buy.propagation_surfaces including "snapshot". Webhook-only,
+# out_of_band, and library-less sellers grade not_applicable instead of
+# false-failing on a contract that does not apply to them. Requires the `contains:` matcher
 # (@adcp/sdk >= 7.70). Sellers that OMIT propagation_surfaces inherit the
 # ["snapshot"] default and are graded here only on @adcp/sdk >= 9.2.0, which
 # materializes capability-gate schema defaults; earlier runners skip them as
 # not_applicable (adcp-client#2278).
-requires_capability:
-  path: media_buy.propagation_surfaces
-  contains: "snapshot"
+requires_all_capabilities:
+  - path: media_buy.propagation_surfaces
+    contains: "snapshot"
+  - path: creative.has_creative_library
+    equals: true
 
 narrative: |
   The base dependency_impairment scenario tests forward + inverse + health-iff

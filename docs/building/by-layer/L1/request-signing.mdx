@@ -40,6 +40,14 @@ The AdCP signing profile covers these request components:
 
 If any covered component changes after signing, verification fails.
 
+For DNS hosts, signers and verifiers MUST remove one trailing root-label dot
+after IDNA ToASCII processing and before deriving both `@target-uri` and
+`@authority`. Thus `https://example.com./p` signs as
+`https://example.com/p` with authority `example.com`; U-label and A-label IDN
+forms produce the same bytes. Multiple trailing dots are malformed and MUST be
+rejected. This codifies the shipping SDK behavior under
+[DR-0008](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0008-sdk-canon-for-wire-contracts.md).
+
 ### Key separation
 
 Every agent publishes signing keys with a distinct `kid` and `adcp_use` tag:

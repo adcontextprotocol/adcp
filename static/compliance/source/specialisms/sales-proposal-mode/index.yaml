@@ -1,5 +1,5 @@
 id: sales_proposal_mode
-version: "1.0.0"
+version: "1.0.1"
 title: "Media buy via proposal acceptance"
 protocol: media-buy
 category: sales_proposal_mode
@@ -12,8 +12,10 @@ requires_scenarios:
   - media_buy_seller/proposal_finalize
   - media_buy_seller/proposal_finalize_asap_timing
   - media_buy_seller/proposal_not_found_errors
+  - media_buy_seller/outcome_target
   - media_buy_seller/delivery_reporting
   - media_buy_seller/measurement_terms_rejected
+  - media_buy_seller/measurement_terms_accepted
   - media_buy_seller/pending_creatives_to_start
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/inventory_list_no_match
@@ -429,6 +431,9 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: creative_sync
     title: "Creative sync"
+    requires_capability:
+      path: creative.has_creative_library
+      equals: true
     narrative: |
       With the proposal accepted and the media buy confirmed, the buyer syncs creative
       assets. The buyer first checks what formats the accepted products require, then
@@ -501,6 +506,7 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: delivery
     title: "Delivery and reporting"
+    depends_on: [accept_proposal]
     narrative: |
       The campaign from the accepted proposal is live. The buyer monitors delivery
       to verify the proposal's forecasts are tracking.

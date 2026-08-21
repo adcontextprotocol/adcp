@@ -1,5 +1,5 @@
 id: media_buy_seller/per_creative_conversion_attribution
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller surfaces per-creative conversion attribution in delivery reporting"
 category: media_buy_seller
 summary: "Verifies that a seller advertising conversion_tracking.per_creative_attribution can register two creatives on a single package, accept a media buy with a CPA event-kind goal, ingest conversion events, and surface a populated by_package[].by_creative[] breakdown carrying conversions per creative in get_media_buy_delivery. Sibling to media_buy_seller/performance_buy_flow gated on the per_creative_attribution sub-capability: sellers that report attribution only at the line / package / placement / campaign granularity (retail-media, MMP-mediated mobile, CTV performance) grade not_applicable, not failing."
@@ -13,9 +13,11 @@ track: media_buy
 # on this bit rather than on conversion_tracking presence is what keeps
 # honest coarser-granularity implementations from failing on the per-creative
 # breakdown that performance_buy_flow deliberately defers.
-requires_capability:
-  path: media_buy.conversion_tracking.per_creative_attribution
-  equals: true
+requires_all_capabilities:
+  - path: media_buy.conversion_tracking.per_creative_attribution
+    equals: true
+  - path: creative.has_creative_library
+    equals: true
 
 required_tools:
   - get_products

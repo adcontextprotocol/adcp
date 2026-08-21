@@ -1,0 +1,88 @@
+---
+title: control_media_buy
+description: "Apply operational delivery controls within accepted MediaBuy terms."
+"og:title": "AdCP control_media_buy Task"
+testable: true
+---
+
+`control_media_buy` applies operational changes that remain inside the immutable commercial envelope accepted for the MediaBuy. It requires the current `revision` for optimistic concurrency.
+
+Supported controls include:
+
+- pause, resume, and an already-permitted unilateral cancellation;
+- total, aggregate-daily, and package budget controls;
+- budget allocation, pacing, and bidding;
+- package targeting, catalog references, keyword, impression, and optimization controls;
+- MediaBuy display-name metadata; and
+- reporting-webhook configuration.
+
+It does not accept creatives, creative assignments, new products/packages, flight-date changes, pricing changes, or billing-term changes. Those concerns use their dedicated lifecycle or a proposal refinement.
+
+## Transaction boundary
+
+One `control_media_buy` request is atomic under the supplied MediaBuy
+`revision`. That fence covers only the operational fields in this request.
+[`sync_creatives`](/dist/docs/3.1.19/creative/task-reference/sync_creatives) has a separate idempotency and atomicity boundary, does not
+increment MediaBuy revision for assignment changes, and cannot join this
+transaction. There is no shared fence between control and assignment state.
+
+`name` is revision-checked non-commercial metadata. Changing it updates the
+shared trafficking display label and increments MediaBuy revision, but does not
+change the accepted commercial terms or create an accepted-proposal successor.
+
+Consequently, a targeting replacement that removes a placement used by an
+existing creative assignment cannot be performed as control followed by sync
+without a race window. Use the [`update_media_buy`](/dist/docs/3.1.19/media-buy/task-reference/update_media_buy) compatibility facade to send
+the complete targeting and assignment replacements in one transaction. The
+same facade is required for inline-only sellers, because they do not advertise
+`sync_creatives` as a later creative path.
+
+Commercial amendment followed by operational control is also a saga, not one
+transaction. If [`accept_proposal`](/dist/docs/3.1.19/media-buy/task-reference/accept_proposal) applies the amendment and a subsequent
+control fails, the amended commercial snapshot remains accepted. Re-read the
+MediaBuy and its new revision before retrying control. A compatibility request
+that requires commercial and operational fields to succeed together must be
+handled atomically through `update_media_buy`, not silently decomposed.
+
+Root `canceled: true` is mutually exclusive with every package and other
+control; a mixed compact request is invalid before mutation. Within a package,
+`canceled: true` is likewise mutually exclusive with that package's other
+fields. This differs from the compatibility facade, where root cancellation
+takes precedence and other fields are ignored with a warning.
+
+Catalog controls accept only IDs previously managed through [`sync_catalogs`](/dist/docs/3.1.19/media-buy/task-reference/sync_catalogs).
+They cannot atomically ingest an inline catalog body, and a catalog synchronized
+before a later failed control remains on the account. This task also cannot add
+the compatibility facade's `artifact_webhook`, recreate a per-package initial
+pause atomically with purchase, or author an exact initial
+`committed_metrics` set.
+
+**Request schema:** [`/schemas/3.1.19/media-buy/control-media-buy-request.json`](https://adcontextprotocol.org/schemas/3.1.19/media-buy/control-media-buy-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441012",
+  "account": { "account_id": "account_123" },
+  "media_buy_id": "media_buy_789",
+  "revision": 4,
+  "daily_budget_cap": 5000,
+  "pacing": "even",
+  "packages": [
+    {
+      "package_id": "package_video",
+      "daily_budget_cap": 3000,
+      "paused": true
+    }
+  ]
+}
+```
+
+Daily-cap changes apply immediately and atomically with spend already incurred in the current cap day counted. Lowering a cap below current-day spend pauses further applicable delivery without reversing prior spend. `null` removes an aggregate or package cap. A media-buy `budget_cap_timezone` change starts at the next boundary under the previously effective timezone; package controls never carry their own timezone.
+
+When an otherwise valid control would exceed the accepted budget, targeting, or delivery envelope, the seller returns [`REQUOTE_REQUIRED`](/dist/docs/3.1.19/building/verification/compliance-catalog#error-code-requote-required). The buyer reads `accepted_proposal_id` from [`get_media_buys`](/dist/docs/3.1.19/media-buy/task-reference/get_media_buys), passes it to [`refine_proposals`](/dist/docs/3.1.19/media-buy/task-reference/refine_proposals) to create a draft amendment, finalizes that draft into a committed hold, and applies it through [`accept_proposal`](/dist/docs/3.1.19/media-buy/task-reference/accept_proposal). This pointer survives SDK restart and moves atomically after each accepted amendment.
+
+A completed in-envelope control MAY include `warnings[]` for non-blocking observations, such as a material inventory shortfall forecast observed after the applied control. A continuing condition is also readable as an indicator through `get_media_buys`. Failed and submitted controls never carry this warning surface. Flight-date changes are not controls; a `flight_change_creates_pacing_risk` warning belongs on the completed `accept_proposal` response that applies the amendment.
+
+`canceled: true` is direct only when the accepted cancellation policy already grants the caller that right. A cancellation requiring counterparty agreement uses `refine_proposals` with `change_kind: "cancellation"`.
+
+Seller-initiated cancellation does not call a buyer tool. The seller advances the MediaBuy revision and records `cancellation.canceled_by: "seller"`; `get_media_buys` is the normative recovery surface. A durable compact-lifecycle status-change webhook is intentionally not inferred from the per-operation async callback and remains 4.0 work.

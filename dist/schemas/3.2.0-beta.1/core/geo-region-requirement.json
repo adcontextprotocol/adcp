@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/geo-region-requirement.json",
+  "title": "Geographic Region Requirement",
+  "description": "Buyer minimum requirements for ISO 3166-2 subdivision values that must remain independently selectable later. Country keys prevent a false cross-country capability claim. all_values requires support for every protocol-valid ISO subdivision active in the seller's support snapshot when the declaration is issued; values requests an exact finite candidate set. Exact delivery values known now belong in get_products.targeting_overlay instead.",
+  "type": "object",
+  "properties": {
+    "countries": {
+      "type": "object",
+      "description": "Required ISO subdivision support keyed by ISO 3166-1 alpha-2 country.",
+      "propertyNames": {
+        "pattern": "^[A-Z]{2}$"
+      },
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "all_values": {
+                "type": "boolean",
+                "const": true,
+                "description": "Require every protocol-valid ISO 3166-2 subdivision active in the seller's returned support snapshot for this country to remain selectable."
+              }
+            },
+            "required": [
+              "all_values"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "array",
+                "description": "Exact finite set of ISO 3166-2 identifiers the buyer may select later.",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "values"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minProperties": 1
+    }
+  },
+  "required": [
+    "countries"
+  ],
+  "additionalProperties": false,
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "country_prefix_matches_map_key": {
+        "map_field": "countries",
+        "values_field": "values"
+      }
+    },
+    "spec": "docs/media-buy/advanced-topics/targeting.mdx#geo_regions"
+  }
+}

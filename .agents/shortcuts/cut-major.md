@@ -73,7 +73,7 @@ CHANGELOG source-of-truth changes to `main` via regular PRs first.
 
 ## 4. Merge the Version Packages PR
 
-On merge, `release.yml` runs `changeset tag` + `createGithubReleases: true`.
+On merge, `release.yml` runs `changeset git-tag` + `create-github-releases: true`.
 Verify afterward:
 
 ```bash
@@ -91,7 +91,7 @@ curl -s https://adcontextprotocol.org/protocol/ | jq '.versions[].version'
 gh pr list --search "snapshot docs for v3.0.0" --state all
 ```
 
-If `changeset tag` didn't create the tag (silent no-op), the most likely
+If `changeset git-tag` didn't create the tag (silent no-op), the most likely
 cause is `privatePackages.tag` not set to `true` in `.changeset/config.json`
 — private packages are skipped by default. If that's the issue, fix config
 and create the tag/release manually:

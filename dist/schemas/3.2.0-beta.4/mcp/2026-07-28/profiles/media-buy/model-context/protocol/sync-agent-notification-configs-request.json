@@ -1,0 +1,130 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string"
+    },
+    "adcp_major_version": {
+      "type": "integer"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "notification_configs": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/external:core~1agent-notification-config.json"
+          },
+          {
+            "if": {
+              "required": [
+                "authentication"
+              ]
+            },
+            "then": {
+              "properties": {
+                "authentication": {
+                  "required": [
+                    "credentials"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_configs"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string"
+        },
+        "adcp_major_version": {
+          "type": "integer"
+        }
+      }
+    },
+    "external:core/agent-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "subscriber_id": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "event_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "capabilities.changed"
+            ]
+          }
+        },
+        "authentication": {
+          "type": "object",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              }
+            },
+            "credentials": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "schemes"
+          ]
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "subscriber_id",
+        "url",
+        "event_types"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

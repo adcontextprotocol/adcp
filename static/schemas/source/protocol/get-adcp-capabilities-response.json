@@ -818,6 +818,18 @@
           "uniqueItems": true,
           "default": ["brief"]
         },
+        "measurement_terms_acceptance": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this seller can accept the default measurement_terms it advertises on a product. A value of true means the seller can return a product carrying measurement_terms for a measurement-specific brief and accept those terms unchanged on a package for that product. This opts the seller into conformance scenarios that discover and replay the product's own terms. False or absent means acceptance is outside the seller's advertised scope, but the seller must still reject unsupported terms with TERMS_REJECTED rather than being graded on an acceptance path it did not claim.",
+          "x-added-in": "3.2.0"
+        },
+        "availability_horizon": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this seller supports flexible-window availability discovery: parsing offer_filters.availability_horizon and answering with time-dimensioned forecast points that carry availability_status. Sellers declaring true MUST apply the full window contract — half-open non-overlapping windows that partition the requested horizon (or signal gaps via incomplete[]), with availability_status computed from all booking eligibility constraints, not only competing holds. false or absent means flexible-window support is unknown: buyers SHOULD use exact start_date/end_date filtering, and sellers MAY ignore the field or reject it. Conformance storyboards gate flexible-window checks on this declaration.",
+          "x-added-in": "3.2.0"
+        },
         "lifecycle_tools": {
           "type": "array",
           "description": "Compact product and MediaBuy lifecycle operation names this seller supports. Added in AdCP 3.2 as task-specific contracts that form the 4.0 lifecycle foundation. Sellers may advertise any supported subset while retaining the deprecated get_products/create_media_buy/update_media_buy facades throughout 3.x. Each stateful split task has its own idempotency identity; callers MUST retry with the same tool name.",
@@ -898,6 +910,12 @@
           "type": "boolean",
           "description": "Conformance declaration that this seller supports proposals through either the compact request/refine/finalize lifecycle or the legacy get_products facade. accept_proposal, or the create_media_buy compatibility facade, consumes a finalized committed proposal_id before expires_at.",
           "default": false
+        },
+        "outcome_target": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this seller supports reverse-forecast planning: parsing criteria.outcome_target (a compact goal — a forecastable-metric delivery metric or an event-type conversion event — plus a desired volume) and solving for budget, answering with total_budget_guidance on proposals and forecasts whose points carry the goal's key in metrics. false or absent means support is unknown: buyers SHOULD express outcome goals in brief prose instead, and sellers reject a structured outcome_target with UNSUPPORTED_FEATURE rather than silently ignoring it.",
+          "x-added-in": "3.2.0"
         },
         "governance_aware": {
           "type": "boolean",
@@ -1153,8 +1171,28 @@
                   "additionalProperties": true
                 },
                 "language": {
-                  "type": "boolean",
-                  "description": "Whether seller supports language targeting (ISO 639-1 codes)"
+                  "description": "Language-preference targeting support. A legacy boolean is a coarse declaration. The structured form can enumerate the exact canonical BCP 47 targeting ranges the seller accepts. Buyers MUST treat supported_languages as exact selectable values: a declared 'fr' does not by itself authorize a request for 'fr-CA'. Sellers MUST reject unsupported requested values rather than silently widening or dropping them.",
+                  "oneOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "supported": {
+                          "type": "boolean",
+                          "description": "Whether seller supports language-preference targeting"
+                        },
+                        "supported_languages": {
+                          "type": "array",
+                          "description": "Exact canonical BCP 47 language ranges accepted in targeting.language. Omission means the seller makes no exhaustive language-list declaration.",
+                          "items": {
+                            "$ref": "/schemas/core/locale-tag.json"
+                          }
+                        }
+                      }
+                    }
+                  ]
                 },
                 "keyword_targets": {
                   "type": "object",
@@ -2049,6 +2087,45 @@
             "additionalProperties": true
           }
         },
+        "preview": {
+          "type": "object",
+          "description": "Per-route preview_creative capability metadata. New 3.2 producers whose supported_formats[] explicitly advertises a routable preview operation MUST emit this block. rendering_origin describes how each route is implemented but is informational and never grants presentation authority: only a matching publisher-origin placement preview_provider delegation can do that. routes[].capability_id MUST equal the set of capability IDs on supported_formats[] entries whose operations contains preview.",
+          "required": ["routes"],
+          "properties": {
+            "routes": {
+              "type": "array",
+              "description": "Agent-local preview routes and their implementation origin. Authority is resolved from publisher placement delegation, never from this self-description.",
+              "items": {
+                "type": "object",
+                "required": ["capability_id", "rendering_origin"],
+                "properties": {
+                  "capability_id": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9_-]+$",
+                    "description": "Agent-local creative.supported_formats[].capability_id accepted by preview_creative."
+                  },
+                  "rendering_origin": {
+                    "type": "string",
+                    "enum": ["platform_native", "agent_approximation"],
+                    "description": "Informational implementation origin. platform_native means the route uses the serving platform's preview machinery; agent_approximation means the agent renders an approximation. Neither value grants authority without a publisher preview_provider delegation."
+                  }
+                },
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "x-adcp-validation": {
+                "unique_item_properties": ["capability_id"]
+              }
+            }
+          },
+          "additionalProperties": false,
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "routes": "capability_id_set_equals_routable_capability_ids_of_creative.supported_formats_entries_with_preview_operation"
+            },
+            "spec": "docs/creative/canonical-formats.mdx#rendering-authority-and-fallback-order"
+          }
+        },
         "localization": {
           "type": "object",
           "description": "Materialized creative-localization support for sync_creatives/list_creatives, including source-only monolingual topology. Presence opts the agent into exact locale-variant round-trip, strict RFC 4647 Lookup, optional buyer-declared language-family fallback rules, explicit final default/unmatched behavior, creative-wide review, transactional replacement, seller product-format locale-policy enforcement, and delivery attribution. This is a coarse structural capability, not a promise that every locale/format/account combination is accepted; sellers publish accepted ranges on product format declarations and validate each write before mutation. Omit this object when localization is unsupported.",
@@ -2097,6 +2174,38 @@
               "has_creative_library": { "type": "boolean", "const": true }
             },
             "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supported_formats": {
+                "contains": {
+                  "type": "object",
+                  "properties": {
+                    "capability_id": {
+                      "type": "string"
+                    },
+                    "operations": {
+                      "contains": { "const": "preview" }
+                    }
+                  },
+                  "required": ["capability_id", "operations"]
+                }
+              }
+            },
+            "required": ["supported_formats"]
+          },
+          "then": {
+            "required": ["preview"]
+          }
+        },
+        {
+          "if": {
+            "required": ["preview"]
+          },
+          "then": {
+            "required": ["supported_formats"]
           }
         }
       ]

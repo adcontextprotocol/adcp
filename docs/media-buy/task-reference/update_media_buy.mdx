@@ -20,6 +20,42 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 
 When a specific action is unsupported for a given buy for business reasons (contractual obligations, platform constraints, policy), the seller MUST omit only that action from `valid_actions` (and the corresponding entry from `available_actions[]`) on the buy rather than silently rejecting the corresponding update. **Creation surface is not a business reason.** Sellers MUST NOT return [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state) on an otherwise-valid update against a non-AdCP-created buy, and MUST NOT return a buy with systematically empty `valid_actions` simply because it was booked outside AdCP — that pattern is indistinguishable from hiding the buy and violates the [Account Ownership vs. Creation Surface](/docs/media-buy/specification#account-ownership-vs-creation-surface) rule.
 
+## Compatibility transaction boundary
+
+One `update_media_buy` request is one atomic mutation. The seller validates the
+complete post-update state before applying any field. Invalid inline creative
+bodies or creative assignments therefore fail the entire request, including
+otherwise-valid budget, targeting, catalog, pause, and billing changes in the
+same payload. No package, assignment, library creative, or MediaBuy field from
+the rejected update may change.
+
+Creative review occurs after that request-time boundary. A valid inline
+creative can enter review as part of a successful update. If policy review later
+rejects it, the rejection changes creative or package-approval state and may
+prevent a pending buy from activating or impair an active buy; it does not
+reverse the successful update or restore the prior commercial and operational
+fields.
+
+This facade is required when targeting and assignments must change together.
+For example, narrowing `placement_selection` while removing or rerouting
+assignments that reference the removed placements is one atomic package update.
+[`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) does not accept assignments, so a control followed by
+[`sync_creatives`](/docs/creative/task-reference/sync_creatives) is a non-atomic saga and cannot substitute for this shape.
+
+The same limitation applies to any compatibility request that mixes commercial
+amendment, operational control, and creative mutation. Compact proposal
+acceptance, `control_media_buy`, and `sync_creatives` each have their own
+idempotency, authorization, async-task, and failure boundary. One can succeed
+while the next fails. Adapters MUST either execute the facade atomically or
+surface the incompatibility; they MUST NOT silently split the request and claim
+equivalent atomicity.
+
+`invoice_recipient` is a concrete example with no lossless public compact
+mapping: [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) has no typed billing-entity refinement, and its
+free-text `ask` cannot carry or authorize a structured `BusinessEntity`.
+Sellers therefore need a private typed atomic amendment behind this facade or
+must reject the field before mutation.
+
 ## Action vocabulary and field mapping
 
 Buyers express intent through actions; the seller declares the actions available on each buy via the structured `available_actions[]` field (authoritative) and the flat `valid_actions[]` field (legacy, deprecated in 4.0). When both fields are present, consumers MUST prefer `available_actions[]` — it carries the resolved `mode`, optional `sla`, and optional `terms_ref` that the flat string array cannot represent. When a buyer issues an `update_media_buy` request, the seller maps the request's fields to one or more actions and rejects with [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) (carrying `attempted_action`, `reason`, and `currently_available_actions` in `error.details`) if any mapped action is not in the buy's resolved `available_actions[]`.
@@ -31,6 +67,7 @@ The mapping is normative — sellers and SDKs MUST use this table to translate b
 | `pause` | `paused: true` |  |
 | `resume` | `paused: false` |  |
 | `cancel` | `canceled: true`, `cancellation_reason` | Irreversible |
+| `update_name` | `name` | Display metadata only; does not amend accepted commercial terms |
 | `extend_flight` | `end_time`, `packages[].end_time` (later than current) | End-time push only |
 | `shorten_flight` | `end_time`, `packages[].end_time` (earlier than current) | End-time pull only |
 | `update_flight_dates` | `start_time`, `end_time`, `packages[].start_time`, `packages[].end_time` (shift) | Start-shift distinct from extend/shorten; covers both buy-level and package-level dates |
@@ -232,6 +269,45 @@ On fixed-mode success, `affected_packages` MUST contain the full post-update sta
 `revision` is the expected current media-buy revision. Some implementations call this value `expected_revision` internally; on the AdCP wire the field is `revision`. The field is optional for backward compatibility. When it is present, sellers MUST check it atomically with the write that applies a mutating update; reading the current value in application code, comparing it, then writing later can race another writer and lose an update. If the stored revision differs from the request's `revision`, the seller rejects with `CONFLICT` and applies no changes.
 
 Every mutating update increments `revision` and returns the new value in the success response. Validation-only requests, reads, and exact idempotency replays do not increment it; exact replays return the prior revision. Clients SHOULD pass the latest observed revision on every update intended to change state, then reload with `get_media_buys` and retry with a fresh `idempotency_key` when they receive `CONFLICT`.
+
+Creative and assignment mutations made through this facade are part of the
+MediaBuy transaction and increment `revision`. The standalone
+[`sync_creatives`](/docs/creative/task-reference/sync_creatives) task does not increment MediaBuy revision and does not share
+this optimistic-concurrency fence. An unchanged revision therefore cannot prove
+that assignment state is unchanged. A client that mixes the two surfaces must
+re-read current assignments before sending a complete replacement.
+
+### Accepted-proposal coherence
+
+For a MediaBuy that exposes `accepted_proposal`, a successful compatibility
+update that changes the accepted commercial envelope MUST create an accepted
+successor snapshot and atomically advance `accepted_proposal_id`,
+`accepted_proposal_terms_digest`, and `accepted_proposal` with the MediaBuy
+revision. The successor points to the prior accepted proposal and records the
+pre-update revision as its base. A later compact amendment then starts from the
+terms actually in force rather than a stale pre-update snapshot.
+
+Operational changes that remain inside the accepted envelope and creative-only
+changes do not create a commercial successor. If the seller cannot commit the
+commercial update and successor snapshot together, it rejects the facade
+request without mutation.
+
+### Cancellation precedence
+
+Root `canceled: true` cancels the entire MediaBuy and takes precedence over
+`packages[].canceled` and every other field in the same compatibility request.
+The seller applies only root cancellation and `cancellation_reason`, releases
+all package assignments, ignores the other fields, and SHOULD return a
+structured warning naming what was ignored. Package cancellation is evaluated
+independently only when root `canceled` is absent. This precedence rule is
+specific to the compatibility facade; compact [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) makes root
+cancellation mutually exclusive with package and other controls.
+
+Within one package entry, `canceled: true` takes precedence over that package's
+sibling fields. The seller applies only package cancellation and its reason and
+SHOULD warn about the ignored sibling fields. Root changes and other package
+entries still participate in the same atomic update unless root cancellation
+is present.
 
 ### Reporting Webhook Object
 
@@ -938,12 +1014,12 @@ Check `affected_packages` in response to confirm changes were applied correctly.
 
 ## Usage Notes
 
-- Updates are atomic - either all changes apply or none do
+- One compatibility-facade request is atomic: either all non-ignored changes apply or none do. Root cancellation is the documented exception—it wins and other fields are ignored with a warning. Splitting the request across compact tasks is not atomic.
 - Both media buys and packages can be referenced by publisher IDs
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
 - `implementation_date` indicates when changes take effect (null if pending approval)
-- **Inline creatives**: The `creatives` array replaces the package's inline creative bodies. If the seller advertises `creative.has_creative_library: true`, use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) to update existing library creatives and `creative_assignments` to assign existing library creatives. If the seller advertises `inline_creative_management: true` without a creative library, use `packages[].creatives` here for inline creative add, replace, and removal workflows.
+- **Inline creatives**: The `creatives` array replaces the package's inline creative bodies. If the seller advertises `creative.has_creative_library: true`, use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) to update existing library creatives and `creative_assignments` to assign existing library creatives. If the seller advertises `inline_creative_management: true` without a creative library, use `packages[].creatives` here for inline creative add, replace, and removal workflows. Invalid request-time bodies fail the whole update; later review rejection does not roll back a successful update.
 
 <Note>
 **Campaign Governance — Modification Phase**

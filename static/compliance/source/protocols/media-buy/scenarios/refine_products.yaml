@@ -1,11 +1,15 @@
 id: media_buy_seller/refine_products
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller handles product refinement"
 category: media_buy_seller
 summary: "Verifies that a media buy seller supports buying_mode: refine with product-level and request-level changes."
 track: media_buy
 required_tools:
   - get_products
+
+requires_capability:
+  path: media_buy.buying_modes
+  contains: refine
 
 narrative: |
   After a buyer receives products from a brief, they refine the results without starting
@@ -17,8 +21,9 @@ narrative: |
   refinement_applied showing how each request was handled. This is the standard negotiation
   loop — brief, review, refine, repeat until satisfied.
 
-  Every media buy seller that supports negotiation (not just wholesale) must handle
-  product-level refinement.
+  Sellers that advertise `refine` in `media_buy.buying_modes` must handle
+  product-level refinement. Sellers that do not advertise that buying mode grade
+  this scenario not_applicable even when `get_products` is registered.
 
 agent:
   interaction_model: media_buy_seller

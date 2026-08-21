@@ -17,7 +17,7 @@ import type { TenantConfig } from '@adcp/sdk/server';
 import { TrainingBrandPlatform } from '../v6-brand-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { customToolFor } from './custom-tool-helper.js';
-import { listAccountsTool } from './account-tools.js';
+import { listAccountsTool, syncGovernanceTool } from './account-tools.js';
 import { handleCreativeApproval, handleSearchBrands } from '../brand-handlers.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
 import { verifyBrandClaimHandler, verifyBrandClaimsHandler } from '../brand-claim-handlers.js';
@@ -117,6 +117,7 @@ export function buildBrandTenantConfig(host: string, options: { storyboardCompat
       serverOptions: {
         customTools: {
           ...(options.storyboardCompat?.version !== '3.0' && {
+            sync_governance: syncGovernanceTool(options.storyboardCompat),
             search_brands: customToolFor(
               'search_brands',
               'Search the agent roster and return public brand stubs with canonical relationship trust state.',

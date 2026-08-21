@@ -1,0 +1,33 @@
+---
+title: Connected TV
+description: "Canonical hosted-video and VAST contracts for CTV, SSAI, CSAI, and companion experiences."
+"og:title": "AdCP — Connected TV"
+---
+
+CTV uses the standard `video_hosted` and `video_vast` canonicals. SSAI/CSAI mode, app environment, ad-pod position, measurement availability, and inventory guarantees belong on the product or placement.
+
+```json
+{
+  "publisher_domain": "tv.streamhaus.example",
+  "format_option_id": "ctv_ssai_30s",
+  "format_kind": "video_hosted",
+  "params": {
+    "width": 1920,
+    "height": 1080,
+    "duration_ms_exact": 30000,
+    "containers": ["mp4"],
+    "video_codecs": ["h264"],
+    "audio_codecs": ["aac"],
+    "slots": [
+      { "asset_group_id": "video_main", "asset_type": "video", "required": true },
+      { "asset_group_id": "companion_image", "asset_type": "image", "required": false }
+    ]
+  }
+}
+```
+
+For CSAI or third-party delivery, use `video_vast` and a required `vast_tag` slot. A multi-output creative agent may advertise separate SSAI and VAST capability IDs; buyers select them with `target_capability_ids[]` and receive portable canonical manifests.
+
+Preview on the seller/publisher endpoint when device chrome, companion placement, ad-pod context, or remote-control interaction matters. The impression-time CTV renderer remains the seller runtime behind `sync_creatives`.
+
+See [Video](/dist/docs/3.2.0-beta.0/creative/channels/video), [Multi-agent orchestration](/dist/docs/3.2.0-beta.0/creative/multi-agent-orchestration), and [Creative delivery](/dist/docs/3.2.0-beta.0/creative/task-reference/get_creative_delivery).

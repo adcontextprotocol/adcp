@@ -76,6 +76,7 @@ export const MUTATING_TOOLS: ReadonlySet<string> = new Set([
   'provide_performance_feedback',
   'request_proposals',
   'refine_proposals',
+  'report_plan_adjustment',
   'report_plan_outcome',
   'report_usage',
   'si_initiate_session',

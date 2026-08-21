@@ -66,6 +66,7 @@
     "TERMS_REJECTED",
     "BIDDING_PLACEMENT_CONFLICT",
     "AMBIGUOUS_BIDDING_POLICY",
+    "CONFLICTING_SELECTORS",
     "REQUOTE_REQUIRED",
     "VERSION_UNSUPPORTED",
     "CAMPAIGN_SUSPENDED",
@@ -176,6 +177,7 @@
     "TERMS_REJECTED": "Buyer-proposed measurement_terms were rejected by the seller. The error details SHOULD identify which specific term was rejected and the seller's acceptable range or supported vendors. Recovery: correctable (adjust the proposed terms and retry, or omit measurement_terms to accept the product's defaults).",
     "BIDDING_PLACEMENT_CONFLICT": "The authored media-buy/package bidding scopes cannot be represented by the provider's native campaign, package, or shared-strategy placement rules. Sellers MUST detect this before any provider mutation and SHOULD identify the conflicting scopes and provider constraint in error.details. Recovery: correctable (remove or align package overrides, move the policy to the supported scope, or choose a compatible budget mode/product combination).",
     "AMBIGUOUS_BIDDING_POLICY": "The same effective package combines the canonical bidding block with legacy bid_price or monetary optimization-goal target fields, so two bidding interpretations are present. Sellers MUST reject rather than choosing a winner. Recovery: correctable (emit only the 3.2 bidding block or only one legacy representation).",
+    "CONFLICTING_SELECTORS": "A 3.x package request carries multiple resolvable format selector routes that select different canonical product format declaration sets. Sellers MUST first resolve every present route independently (`format_option_refs`, direct `format_kind` plus `params`, and deprecated `format_ids`) without applying precedence. An unresolved option reference or an unprojectable legacy ID is rejected with `UNSUPPORTED_FEATURE`, not this code. Once all routes resolve, sellers derive the product `format_options[]` entries selected by each route using directional product satisfaction and require those sets to match. Legacy parameter compatibility uses the asymmetric v2-narrows-v1 relation defined by canonical formats, not raw object equality. For fixed-size image selectors, both width and height participate in compatibility. Sellers MUST reject different format shapes, selected option sets, or incompatible dimensions rather than silently choosing the canonical route. `error.field` SHOULD point at the conflicting package, and `error.details` SHOULD identify the supplied selector routes and their normalized canonical summaries. Recovery: correctable (emit one canonical selector route, or make a required legacy 3.x compatibility projection select the same product format contract).",
     "REQUOTE_REQUIRED": "A control_media_buy request, or the 3.x update_media_buy facade, would exceed the accepted commercial envelope. The seller is declining the requested shape at the current terms. Distinct from TERMS_REJECTED (measurement) and POLICY_VIOLATION (content). Sellers SHOULD populate error.details.envelope_field with the field path(s) that breached the envelope. AdCP 3.2 callers refine the MediaBuy's accepted_proposal_id to obtain a typed amendment; legacy 3.1 callers adjust the update, rediscover terms, or create a separate buy.",
     "VERSION_UNSUPPORTED": "The declared adcp_version (release-precision) or adcp_major_version (deprecated) is not supported by this seller. The error details SHOULD follow `error-details/version-unsupported.json` — `supported_versions` (release-precision strings) is authoritative for retry; `supported_majors` is deprecated. Recovery: correctable (re-pin to a release in supported_versions and retry; or call get_adcp_capabilities without a version pin to discover supported_versions).",
     "CAMPAIGN_SUSPENDED": "Campaign governance has been suspended pending human review; the governance agent MUST reject `check_governance` and `report_plan_outcome` calls on the affected plan until the escalation is resolved. Distinct from `ACCOUNT_SUSPENDED` (account-wide) — this is scoped to a single plan/campaign. Recovery: transient (wait for the escalation to resolve; contact the plan operator if the suspension persists).",
@@ -469,6 +471,10 @@
     "AMBIGUOUS_BIDDING_POLICY": {
       "recovery": "correctable",
       "suggestion": "remove either the canonical bidding block or all legacy bidding fields from the effective package"
+    },
+    "CONFLICTING_SELECTORS": {
+      "recovery": "correctable",
+      "suggestion": "emit one canonical format selector route, or make every required legacy 3.x compatibility projection select the same product format contract under the canonical v2-narrows-v1 comparison"
     },
     "REQUOTE_REQUIRED": {
       "recovery": "correctable",
