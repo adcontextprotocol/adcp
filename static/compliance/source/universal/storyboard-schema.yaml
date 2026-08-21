@@ -139,13 +139,14 @@
 #   rule above), not a schema concern — the same storyboard runs against
 #   different topologies.)
 #
-# Applicability order: a storyboard-level `requires_capability` predicate MUST
-#   be evaluated before the runner evaluates `requires`. When the capability
-#   predicate is not satisfied, the runner emits `not_applicable` and MUST NOT
-#   report a missing runtime requirement. Only an agent that selected the
-#   storyboard by satisfying `requires_capability` can receive
-#   `requirement_unmet`. This keeps optional capability storyboards out of the
-#   coverage totals of agents that never claimed the capability.
+# Applicability order: storyboard-level `requires_capability` and
+#   `requires_all_capabilities` predicates MUST be evaluated before the runner
+#   evaluates `requires`. When any capability predicate is not satisfied, the
+#   runner emits `not_applicable` and MUST NOT report a missing runtime
+#   requirement. Only an agent that selected the storyboard by satisfying every
+#   authored capability predicate can receive `requirement_unmet`. This keeps
+#   optional capability storyboards out of the coverage totals of agents that
+#   never claimed the capability.
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
 #   Known values: controller | seeded_state | real_wire | webhook_receiver | multi_agent |
@@ -317,6 +318,21 @@
 #   gates skip only that phase and are useful when a universal storyboard
 #   contains protocol-specific phase families.)
 #
+# requires_all_capabilities: object[] (optional — storyboard-level AND gate
+#   for two or more capability predicates. Each entry has the same shape and
+#   matcher rules as `requires_capability`. Every entry MUST pass before the
+#   storyboard is selected. When this field and `requires_capability` are both
+#   present, all predicates across both declarations MUST pass.
+#
+#   minItems: 2 — use `requires_capability` for a single predicate. Runners MUST
+#   fail-load empty or single-entry arrays so an incomplete compound gate cannot
+#   silently widen a storyboard's applicability.
+#
+#   Compound gates fail closed when the raw `get_adcp_capabilities` payload is
+#   unavailable. Tool advertisement or auto-registration MUST NOT substitute
+#   for an explicit capability declaration. Supported by @adcp/sdk starting in
+#   14.0.0-beta.4.)
+#
 # required_any_of_tools: array (optional — declarative one-of-N tool-advertisement
 #   gate at storyboard load time. Each array entry is an OR-family object:
 #
@@ -431,6 +447,14 @@
 #           pricing_options:
 #             - pricing_option_id: "test-pricing"
 #               pricing_model: "cpm"
+#           # Optional seller-internal calendar state for availability-window
+#           # scenarios. Consumed by seeding only — never emitted as a product
+#           # response field. Windows are half-open RFC3339 instants.
+#           availability:
+#             min_bookable_days: 3
+#             booked_windows:
+#               - start_time: "2099-09-20T00:00:00Z"
+#                 end_time: "2099-09-27T00:00:00Z"
 #       accounts:
 #         - account_id: "acct_test"
 #           fixture:
@@ -1000,10 +1024,12 @@
 #               # in sample_request / context_inputs.
 #
 #   Special path prefix `task_completion.<inner>`: when the immediate response
-#   is a non-terminal task envelope (status `submitted` / `working` /
-#   `input-required`, carrying a `task_id`), the runner polls `tasks/get`
-#   until the task reaches a terminal state and resolves `<inner>` against
-#   the completion artifact's `data` instead of the immediate response. Use
+#   carries a non-terminal AdCP response (status `submitted` / `working` /
+#   `input-required`, carrying a `task_id`), the runner polls the AdCP task
+#   until it reaches a terminal state and resolves `<inner>` against the
+#   completion result instead of the immediate response. On the AdCP v3 A2A profile,
+#   this means fresh `get_task_status` invocations; MCP may use its advertised
+#   AdCP polling task, including the legacy `tasks/get` alias. Use
 #   for captures whose value only exists on the completion artifact — e.g.
 #   the seller-assigned `media_buy_id` on an IO-signing / async-signed HITL
 #   flow where `create_media_buy` returns `submitted` and the ID lands on
@@ -1027,8 +1053,8 @@
 #     See runner-output-contract.yaml > validation_result for the output shape.
 #   - The accumulator is storyboard-run-scoped; values do not leak across runs.
 #   - Special path prefix `task_completion.<inner>`: when the immediate
-#     response is a non-terminal task envelope (status submitted/working,
-#     with a task_id), the runner polls `tasks/get` until the task exits
+#     response carries a non-terminal AdCP status (submitted/working,
+#     with a task_id), the runner polls the AdCP task until it exits
 #     {submitted, working}. On `completed`: resolves <inner> against the
 #     `result` payload; a missing path grades this step as
 #     capture_path_not_resolvable. On any other status (failed, canceled,
@@ -1393,6 +1419,8 @@
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
 #                "oauth_metadata_graph",
 #                "any_of", "refs_resolve", "a2a_submitted_artifact",
+#                "field_greater_than" (strict finite-number comparison against
+#                a literal threshold),
 #                "field_less_than" / "field_equals_context" /
 #                "field_in_context_array" (compare a field on this
 #                step's response against a value captured by a prior step — see
@@ -1506,7 +1534,8 @@
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
 # value: any (expected value — string, number, or boolean; required when check is "field_value";
 #             accepted (optional) when check is "field_value_or_absent";
-#             accepted (optional) on "field_less_than" as a literal comparand when
+#             required on "field_greater_than"; accepted (optional) on
+#             "field_less_than" as a literal comparand when
 #             `context_key` is not set)
 # allowed_values: array (acceptable values for "field_value", "field_value_or_absent",
 #                        "field_contains", "http_status_in", "error_code", "any_of")
@@ -1526,6 +1555,10 @@
 #   Passes when the field is absent OR present and equal to `value` / contained in
 #   `allowed_values`; fails only when the field is present with a disallowed value.
 #   Use for fields that the spec permits to be omitted but MUST NOT carry a wrong value
+#
+# field_greater_than check:
+#   Requires the value at `path` and the literal `value` threshold to be finite
+#   numbers, and passes only when the observed value is strictly greater.
 #   when present (e.g., a `replayed` flag that MAY be omitted on a fresh path but MUST
 #   NOT be true). Accepts both `value` (single expected value) and `allowed_values` (set
 #   membership); at least one of the two MUST be provided. A `field_value_or_absent` check
@@ -1595,12 +1628,29 @@
 #   setup error. `value: true` means the request should be accepted; `value:
 #   false` means the request should be rejected for a format-selector cause.
 #
-#   The check normalizes legacy `format_ids[]` through `v1_format_ref[]` and the
-#   v1-to-canonical registry, resolves `format_option_refs[]`, and applies
-#   directional product gating for fixed dimensions, duration declarations,
-#   canonical params, and range containment. Negative cases only pass when the
-#   observed rejection is attributable to formats, so unrelated auth or tenant
-#   failures do not mask selector bugs.
+#   The check evaluates each present selector route independently before
+#   applying precedence:
+#   1. Resolve `format_option_refs[]`, normalize legacy `format_ids[]` through
+#      `v1_format_ref[]` and the v1-to-canonical registry, and materialize the
+#      direct `format_kind`/`params` declaration. If any option reference is
+#      unresolved or any legacy ID is unprojectable, local_satisfied is false;
+#      a negative step asserting this path pairs the check with an
+#      `error_code: UNSUPPORTED_FEATURE` validation.
+#   2. For every resolved route, derive the target product's selected
+#      `format_options[]` entries using directional product gating for fixed
+#      dimensions, duration declarations, canonical params, and range
+#      containment. Legacy compatibility uses the asymmetric v2-narrows-v1
+#      relation from canonical-formats.mdx, not raw declaration equality.
+#   3. When multiple routes are present, their selected product-option sets
+#      MUST match. Different format shapes, option sets, or incompatible
+#      dimensions make local_satisfied false; a negative step asserting this
+#      path pairs the check with `error_code: CONFLICTING_SELECTORS`.
+#   4. Only after every route resolves and the selected sets agree does the
+#      runner apply package precedence: format_option_refs, then direct
+#      format_kind/params, then format_ids.
+#
+#   Negative cases only pass when the observed rejection is attributable to
+#   formats, so unrelated auth or tenant failures do not mask selector bugs.
 #
 #   Fields:
 #     check: canonical_format_satisfaction

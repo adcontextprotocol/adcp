@@ -1,0 +1,899 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/creative/list-creatives-response.json",
+  "title": "List Creatives Response",
+  "description": "Response from creative library query with filtered results, metadata, and optional enriched data",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "query_summary": {
+      "type": "object",
+      "description": "Summary of the query that was executed",
+      "properties": {
+        "total_matching": {
+          "type": "integer",
+          "description": "Total number of creatives matching filters (across all pages)",
+          "minimum": 0
+        },
+        "returned": {
+          "type": "integer",
+          "description": "Number of creatives returned in this response",
+          "minimum": 0
+        },
+        "filters_applied": {
+          "type": "array",
+          "description": "List of filters that were applied to the query",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sort_applied": {
+          "type": "object",
+          "description": "Sort order that was applied",
+          "properties": {
+            "field": {
+              "type": "string"
+            },
+            "direction": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/sort-direction.json"
+            }
+          }
+        }
+      },
+      "required": [
+        "total_matching",
+        "returned"
+      ],
+      "additionalProperties": true
+    },
+    "pagination": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/pagination-response.json"
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Array of creative assets matching the query",
+      "items": {
+        "type": "object",
+        "properties": {
+          "creative_id": {
+            "type": "string",
+            "description": "Unique identifier for the creative",
+            "x-entity": "creative"
+          },
+          "account": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/account.json",
+            "description": "Account that owns this creative"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable creative name"
+          },
+          "format_id": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/format-id.json",
+            "deprecated": true,
+            "description": "**DEPRECATED in 3.2.** Legacy named-format path. New listed creatives use `format_kind` and optional `format_option_ref`."
+          },
+          "format_kind": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/canonical-format-kind.json",
+            "description": "Canonical 3.2 path. The canonical format kind this creative targets. Mutually exclusive with deprecated `format_id`."
+          },
+          "format_option_ref": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/format-option-ref.json",
+            "description": "Optional reference to the concrete canonical format option this creative targets. Required when `format_kind` alone is ambiguous in the enclosing product context."
+          },
+          "status": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/creative-status.json",
+            "description": "Current approval status of the creative"
+          },
+          "created_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the creative was created"
+          },
+          "updated_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the creative was last modified"
+          },
+          "assets": {
+            "type": "object",
+            "description": "Assets for this creative, keyed by asset_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema.",
+            "patternProperties": {
+              "^[a-z0-9_]+$": {
+                "oneOf": [
+                  {
+                    "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/assets/asset-union.json"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/assets/asset-union.json"
+                    },
+                    "minItems": 1
+                  }
+                ]
+              }
+            },
+            "additionalProperties": true
+          },
+          "localization": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/creative-localization-readback.json",
+            "description": "Authoritative exact materialized locale-variant state. Present for localized creatives when complete. The enclosing creative status is the single review lifecycle for all variants.",
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "lifecycle_source": "enclosing_creative.status",
+                "source_assets": "must_equal_enclosing_creative.assets",
+                "sync_list_round_trip": {
+                  "source_equal_properties": [
+                    "locale_variant_id",
+                    "locale"
+                  ],
+                  "target_match_key": "locale_variant_id",
+                  "target_set": "exact",
+                  "target_equal_properties": [
+                    "locale"
+                  ],
+                  "localization_equal_properties": [
+                    "default_locale_variant_id",
+                    "unmatched_locale_action",
+                    "locale_fallbacks"
+                  ]
+                }
+              },
+              "spec": "docs/creative/task-reference/list_creatives.mdx#localized-creative-readback"
+            }
+          },
+          "localization_unavailable": {
+            "type": "object",
+            "description": "Per-creative fail-closed state returned instead of localization when the seller knows the creative is localized but cannot construct complete exact readback. The creative remains in this page and counts toward query_summary.returned and pagination; buyers may continue using the base creative fields but MUST NOT infer locale eligibility.",
+            "properties": {
+              "errors": {
+                "type": "array",
+                "items": {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/error.json"
+                },
+                "minItems": 1
+              },
+              "retryable": {
+                "type": "boolean",
+                "description": "Whether a later list_creatives call may recover without buyer mutation."
+              }
+            },
+            "required": [
+              "errors",
+              "retryable"
+            ],
+            "additionalProperties": true
+          },
+          "tags": {
+            "type": "array",
+            "description": "User-defined tags for organization and searchability",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rights": {
+            "type": "array",
+            "description": "Exact rights constraints retained from the buyer's creative submission. Presence is presentation readback, not proof that the seller accepted or verified the rights.",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/rights-constraint.json"
+            },
+            "minItems": 1
+          },
+          "rights_attestation_evaluations": {
+            "type": "array",
+            "description": "Complete seller-produced verifier-of-record results for retained rights references. Buyers MUST ignore any evaluation they originally supplied and rely only on this seller readback for this seller's eligibility decision. This array has no independent item ceiling because rights is not capped; under a required policy every applicable retained constraint needs a corresponding current verified result.",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/rights-attestation-evaluation.json"
+            },
+            "minItems": 1
+          },
+          "concept_id": {
+            "type": "string",
+            "description": "Creative concept this creative belongs to. Concepts group related creatives across sizes and formats."
+          },
+          "concept_name": {
+            "type": "string",
+            "description": "Human-readable concept name"
+          },
+          "variables": {
+            "type": "array",
+            "description": "Dynamic content variables (DCO slots) for this creative. Included when include_variables=true.",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/creative-variable.json"
+            }
+          },
+          "assignments": {
+            "type": "object",
+            "description": "Current package assignments (included when include_assignments=true)",
+            "properties": {
+              "assignment_count": {
+                "type": "integer",
+                "description": "Total number of active package assignments",
+                "minimum": 0
+              },
+              "returned_assignment_count": {
+                "type": "integer",
+                "description": "Number of rows present in assigned_packages for this response.",
+                "minimum": 0,
+                "maximum": 200
+              },
+              "matching_assignment_count": {
+                "type": "integer",
+                "description": "Total active assignments matching filters.indicator_types. MUST be present exactly when assignment_projection was matching. May exceed returned_assignment_count.",
+                "minimum": 0
+              },
+              "assignments_truncated": {
+                "type": "boolean",
+                "description": "True exactly when more qualifying assignments exist than were returned under assignment_limit. Qualifying means assignment_count for the all projection and matching_assignment_count for the matching projection. Buyers needing complete state repair through get_media_buys."
+              },
+              "assigned_packages": {
+                "type": "array",
+                "description": "Bounded package assignment projection. Under assignment_projection: matching, contains only assignments carrying a requested indicator type; otherwise contains active assignments up to assignment_limit. The response ceiling is enforced via verifier_constraints rather than maxItems, so payloads from 3.1 sellers remain schema-valid.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "package_id": {
+                      "type": "string",
+                      "description": "Package identifier",
+                      "x-entity": "package"
+                    },
+                    "media_buy_id": {
+                      "type": "string",
+                      "description": "Media buy containing this package. A seller advertising list_creatives in media_buy.relationship_notifications.projection_tasks MUST include this field on every assignment row, including rows where indicators is omitted as unknown, so buyers can key and reread the relationship unambiguously when package IDs are reused across media buys.",
+                      "x-entity": "media_buy"
+                    },
+                    "assigned_date": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When this assignment was created"
+                    },
+                    "approval_status": {
+                      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/creative-approval-status.json",
+                      "description": "Aggregate approval state for this creative in this package assignment. This mirrors the same relationship in get_media_buys. Sellers advertising list_creatives as an indicator projection task MUST include it; partially_approved requires approval_scopes."
+                    },
+                    "rejection_reason": {
+                      "type": "string",
+                      "description": "Human-readable explanation when approval_status is rejected. Mirrors get_media_buys for the same relationship."
+                    },
+                    "approval_scopes": {
+                      "type": "array",
+                      "description": "Complete, disjoint publisher/placement approval partition when approval_status is partially_approved. A normalized scope appears once. For one publisher, use either one publisher-wide row or placement-specific rows, never both. Omit when one approval_status applies uniformly to the whole assignment. The same scoped outcomes are mirrored on get_media_buys.",
+                      "items": {
+                        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/creative-approval-scope.json"
+                      },
+                      "minItems": 2,
+                      "uniqueItems": true,
+                      "x-adcp-validation": {
+                        "verifier_constraints": {
+                          "unique_by_normalized_scope": true,
+                          "forbid_publisher_wide_and_placement_overlap": true
+                        },
+                        "spec": "specs/relationship-scoped-indicators.md#placement-and-reverse-projection"
+                      }
+                    },
+                    "indicators": {
+                      "type": "array",
+                      "description": "Current seller indicators that are true for this creative in this package assignment. The package assignment supplies the default delivery scope; an indicator may narrow further with scope. Omitted means unknown or not evaluated. A present empty array means the seller completed the evaluation identified by indicators_evaluated_scope at indicators_as_of and asserts no current indicator in that evaluated scope.",
+                      "items": {
+                        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/indicator.json"
+                      },
+                      "uniqueItems": true
+                    },
+                    "indicator_types_evaluated": {
+                      "type": "array",
+                      "description": "Indicator types covered by this assignment snapshot. Required whenever indicators is present; omitted types remain unknown.",
+                      "items": {
+                        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/indicator-type.json"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true
+                    },
+                    "indicators_as_of": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When the seller last completed the evaluation represented by indicators for this relationship. Required whenever indicators is present, including an empty array."
+                    },
+                    "indicators_evaluated_scope": {
+                      "type": "array",
+                      "description": "Optional publisher or placement scopes covered by this evaluation. Omit when indicators covers the whole package–creative assignment. When present, scopes not listed remain unknown; every returned indicator.scope entry MUST be contained by this set.",
+                      "items": {
+                        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/indicator-scope.json"
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true
+                    }
+                  },
+                  "required": [
+                    "package_id",
+                    "assigned_date"
+                  ],
+                  "dependencies": {
+                    "indicators": [
+                      "media_buy_id",
+                      "indicator_types_evaluated",
+                      "indicators_as_of"
+                    ],
+                    "indicator_types_evaluated": [
+                      "indicators",
+                      "indicators_as_of"
+                    ],
+                    "indicators_as_of": [
+                      "indicators",
+                      "indicator_types_evaluated"
+                    ],
+                    "indicators_evaluated_scope": [
+                      "indicators",
+                      "indicator_types_evaluated",
+                      "indicators_as_of"
+                    ]
+                  },
+                  "allOf": [
+                    {
+                      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/indicator-bearing.json"
+                    },
+                    {
+                      "properties": {
+                        "indicator_types_evaluated": {
+                          "items": {
+                            "enum": [
+                              "creative_fatigue",
+                              "creative_quality_opportunity"
+                            ]
+                          }
+                        },
+                        "indicators": {
+                          "items": {
+                            "properties": {
+                              "type": {
+                                "enum": [
+                                  "creative_fatigue",
+                                  "creative_quality_opportunity"
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "indicators_evaluated_scope"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "indicators": {
+                            "items": {
+                              "required": [
+                                "scope"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "approval_status": {
+                            "const": "partially_approved"
+                          }
+                        },
+                        "required": [
+                          "approval_status"
+                        ]
+                      },
+                      "then": {
+                        "required": [
+                          "approval_scopes"
+                        ],
+                        "properties": {
+                          "approval_scopes": {
+                            "allOf": [
+                              {
+                                "contains": {
+                                  "properties": {
+                                    "approval_status": {
+                                      "const": "approved"
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "contains": {
+                                  "properties": {
+                                    "approval_status": {
+                                      "enum": [
+                                        "pending_review",
+                                        "rejected"
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "required": [
+                          "approval_scopes"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "approval_status": {
+                            "const": "partially_approved"
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "required": [
+              "assignment_count"
+            ],
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "assigned_packages_requires_returned_count_and_truncated_flag": true,
+                "returned_assignment_count_equals_assigned_packages_length": true,
+                "returned_assignment_count_lte_assignment_count": true,
+                "matching_assignment_count_present_iff_matching_projection": true,
+                "matching_assignment_count_between_returned_and_assignment_count": true,
+                "assignments_truncated_iff_qualifying_count_exceeds_returned_count": true
+              },
+              "spec": "specs/relationship-scoped-indicators.md#query-contract"
+            },
+            "additionalProperties": true
+          },
+          "snapshot": {
+            "type": "object",
+            "description": "Lightweight delivery snapshot (included when include_snapshot=true). For detailed performance analytics, use get_creative_delivery.",
+            "properties": {
+              "as_of": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When this snapshot was captured by the platform"
+              },
+              "staleness_seconds": {
+                "type": "integer",
+                "description": "Maximum age of this data in seconds. For example, 3600 means the data may be up to 1 hour old.",
+                "minimum": 0
+              },
+              "impressions": {
+                "type": "integer",
+                "description": "Lifetime impressions across all assignments. Not scoped to any date range.",
+                "minimum": 0
+              },
+              "last_served": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Last time this creative served an impression. Absent when the creative has never served."
+              }
+            },
+            "required": [
+              "as_of",
+              "staleness_seconds",
+              "impressions"
+            ],
+            "additionalProperties": true
+          },
+          "snapshot_unavailable_reason": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/snapshot-unavailable-reason.json",
+            "description": "Machine-readable reason the snapshot is omitted. Present only when include_snapshot was true and snapshot data is unavailable for this creative."
+          },
+          "items": {
+            "type": "array",
+            "description": "Items for multi-asset formats like carousels and native ads (included when include_items=true)",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/creative-item.json"
+            }
+          },
+          "pricing_options": {
+            "type": "array",
+            "description": "Pricing options for using this creative (serving, delivery). Used by ad servers and library agents. Transformation agents expose build pricing on canonical transformer.pricing_options entries from list_transformers instead. Present when include_pricing=true and account provided. The buyer passes the applied pricing_option_id in report_usage.",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/vendor-pricing-option.json"
+            },
+            "minItems": 1
+          },
+          "purge": {
+            "type": "object",
+            "description": "Tombstone block — present only when this record is a soft-purged creative surfaced via `include_purged: true`. The record's `status` field reflects the last status before purge (frozen — buyers MUST treat the creative as gone; assignments, snapshot, and serving operations no longer apply). Tombstones surface for the seller's webhook activity retention window (30 days from `purge.at`). Hard purges (`purge_kind: hard` on the webhook) do not surface on this read — the [`creative.purged`](https://adcontextprotocol.org/schemas/v3/creative/creative-purged-webhook.json) webhook is the only signal.",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "soft"
+                ],
+                "description": "Always `soft` on tombstones — hard purges do not surface on this read."
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp when the creative was destroyed. Matches the `purged_at` field on the corresponding `creative.purged` webhook fire."
+              },
+              "reason_code": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/creative-event-reason-code.json",
+                "description": "Categorical reason for the purge. Matches the value the seller emitted on the corresponding `creative.purged` webhook fire."
+              }
+            },
+            "required": [
+              "kind",
+              "at",
+              "reason_code"
+            ],
+            "additionalProperties": false
+          },
+          "webhook_activity": {
+            "type": "array",
+            "description": "Recent webhook fires scoped to this creative — creative.status_changed, creative.purged, creative.assignment_changed, and assignment-level indicators.changed deliveries. Present only when include_webhook_activity is true. Account-anchored records include subscriber_id; the parent creative_id disambiguates the record. Retention: 30 days from completed_at. See snapshot-and-log.mdx § Webhook activity log pattern.",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/webhook-activity-record.json"
+            },
+            "maxItems": 200
+          }
+        },
+        "required": [
+          "creative_id",
+          "name",
+          "status",
+          "created_date",
+          "updated_date"
+        ],
+        "oneOf": [
+          {
+            "title": "Listed creative (named-format reference)",
+            "required": [
+              "format_id"
+            ],
+            "not": {
+              "required": [
+                "format_kind"
+              ]
+            }
+          },
+          {
+            "title": "Listed creative (canonical format kind)",
+            "required": [
+              "format_kind"
+            ],
+            "not": {
+              "required": [
+                "format_id"
+              ]
+            }
+          }
+        ],
+        "additionalProperties": true,
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "localization"
+              ]
+            },
+            "then": {
+              "required": [
+                "status",
+                "assets"
+              ],
+              "not": {
+                "required": [
+                  "localization_unavailable"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "localization_unavailable"
+              ]
+            },
+            "then": {
+              "required": [
+                "status"
+              ],
+              "not": {
+                "required": [
+                  "localization"
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "required": [
+                "rights_attestation_evaluations"
+              ]
+            },
+            "then": {
+              "required": [
+                "rights"
+              ]
+            }
+          }
+        ],
+        "x-adcp-validation": {
+          "rights_readback": {
+            "automatic_companion_fields": {
+              "rights_attestation_evaluations": [
+                "creative_id",
+                "rights"
+              ]
+            },
+            "pairing": "Every evaluation.reference MUST exactly equal one attestation_refs entry on the returned constraint with matching rights_id and content_digest.",
+            "required_policy": "When media_buy.rights_attestations.requirement is required, every applicable constraint on a serving-eligible creative MUST have at least one current verified evaluation. Missing, stale, or non-verified evaluation makes the creative ineligible; status alone is never authorization."
+          }
+        }
+      }
+    },
+    "format_summary": {
+      "type": "object",
+      "description": "Breakdown of creatives by canonical format kind. Keys SHOULD be `format_kind` values; an implementation may append a stable option suffix when separate product or publisher options must be distinguished.",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "type": "integer",
+          "description": "Number of creatives with this format",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "status_summary": {
+      "type": "object",
+      "description": "Breakdown of creatives by status",
+      "properties": {
+        "processing": {
+          "type": "integer",
+          "description": "Number of creatives being processed",
+          "minimum": 0
+        },
+        "approved": {
+          "type": "integer",
+          "description": "Number of approved creatives",
+          "minimum": 0
+        },
+        "pending_review": {
+          "type": "integer",
+          "description": "Number of creatives pending review",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "integer",
+          "description": "Number of rejected creatives",
+          "minimum": 0
+        },
+        "archived": {
+          "type": "integer",
+          "description": "Number of archived creatives",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors (e.g., invalid filters, account not found)",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/error.json"
+      }
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "When true, this response contains simulated data from sandbox mode."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "query_summary",
+    "pagination",
+    "creatives"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Library query with creatives and variables",
+      "data": {
+        "status": "completed",
+        "query_summary": {
+          "total_matching": 2,
+          "returned": 2,
+          "filters_applied": [
+            "concept_ids=concept_holiday_2026",
+            "statuses=approved"
+          ]
+        },
+        "pagination": {
+          "has_more": false,
+          "total_count": 2
+        },
+        "creatives": [
+          {
+            "creative_id": "ft_88201",
+            "name": "Holiday Sale - Medium Rectangle",
+            "format_kind": "image",
+            "status": "approved",
+            "created_date": "2026-01-10T14:00:00Z",
+            "updated_date": "2026-02-20T09:30:00Z",
+            "assets": {
+              "banner_image": {
+                "asset_type": "image",
+                "url": "https://cdn.example.com/holiday_300x250.png",
+                "width": 300,
+                "height": 250
+              },
+              "clickthrough_url": {
+                "asset_type": "url",
+                "url": "https://acmecorp.example.com/holiday-sale"
+              }
+            },
+            "tags": [
+              "holiday_2026",
+              "display"
+            ],
+            "concept_id": "concept_holiday_2026",
+            "concept_name": "Holiday 2026 Campaign",
+            "variables": [
+              {
+                "variable_id": "headline_text",
+                "name": "Headline",
+                "variable_type": "text",
+                "default_value": "Holiday Sale - 50% Off",
+                "required": true
+              },
+              {
+                "variable_id": "hero_image",
+                "name": "Hero Image",
+                "variable_type": "image",
+                "required": false
+              }
+            ]
+          },
+          {
+            "creative_id": "ft_88202",
+            "name": "Holiday Sale - Leaderboard",
+            "format_kind": "image",
+            "status": "approved",
+            "created_date": "2026-01-10T14:30:00Z",
+            "updated_date": "2026-02-20T09:35:00Z",
+            "assets": {
+              "banner_image": {
+                "asset_type": "image",
+                "url": "https://cdn.example.com/holiday_728x90.png",
+                "width": 728,
+                "height": 90
+              },
+              "clickthrough_url": {
+                "asset_type": "url",
+                "url": "https://acmecorp.example.com/holiday-sale"
+              }
+            },
+            "tags": [
+              "holiday_2026",
+              "display"
+            ],
+            "concept_id": "concept_holiday_2026",
+            "concept_name": "Holiday 2026 Campaign",
+            "variables": []
+          }
+        ],
+        "format_summary": {
+          "display_static_300x250": 1,
+          "display_static_728x90": 1
+        },
+        "status_summary": {
+          "approved": 2,
+          "pending_review": 0,
+          "rejected": 0,
+          "archived": 0
+        }
+      }
+    },
+    {
+      "description": "Library query with webhook_activity and a purged tombstone",
+      "data": {
+        "status": "completed",
+        "query_summary": {
+          "total_matching": 2,
+          "returned": 2,
+          "filters_applied": [
+            "include_purged=true",
+            "include_webhook_activity=true"
+          ]
+        },
+        "pagination": {
+          "has_more": false,
+          "total_count": 2
+        },
+        "creatives": [
+          {
+            "creative_id": "ft_88201",
+            "name": "Holiday Sale - Medium Rectangle",
+            "format_kind": "image",
+            "status": "rejected",
+            "created_date": "2026-01-10T14:00:00Z",
+            "updated_date": "2026-05-18T14:18:42Z",
+            "webhook_activity": [
+              {
+                "idempotency_key": "whk_01HW9D2T3VXQ5M7K9N1P3R5S7U",
+                "notification_id": "cs_ft88201_2026_05_18a",
+                "subscriber_id": "buyer-primary",
+                "fired_at": "2026-05-18T14:20:00Z",
+                "completed_at": "2026-05-18T14:20:00Z",
+                "notification_type": "creative.status_changed",
+                "attempt": 1,
+                "status": "success",
+                "url": "https://buyer.example/webhooks/adcp/creative",
+                "http_status_code": 200,
+                "response_time_ms": 142,
+                "payload_size_bytes": 612,
+                "error_message": null
+              }
+            ]
+          },
+          {
+            "creative_id": "ft_87100",
+            "name": "Holiday Sale - Leaderboard (purged)",
+            "format_kind": "image",
+            "status": "approved",
+            "created_date": "2025-11-01T10:00:00Z",
+            "updated_date": "2026-05-18T02:59:48Z",
+            "purge": {
+              "kind": "soft",
+              "at": "2026-05-18T02:59:48Z",
+              "reason_code": "retention_expired"
+            },
+            "webhook_activity": [
+              {
+                "idempotency_key": "whk_01HW9H4X5ZTQ8R0O2P4S6U8V0X",
+                "notification_id": "cp_ft87100_retention",
+                "subscriber_id": "buyer-primary",
+                "fired_at": "2026-05-18T03:00:00Z",
+                "completed_at": "2026-05-18T03:00:00Z",
+                "notification_type": "creative.purged",
+                "attempt": 1,
+                "status": "success",
+                "url": "https://buyer.example/webhooks/adcp/creative",
+                "http_status_code": 200,
+                "response_time_ms": 178,
+                "payload_size_bytes": 484,
+                "error_message": null
+              }
+            ]
+          }
+        ],
+        "format_summary": {
+          "display_static_300x250": 1,
+          "display_static_728x90": 1
+        },
+        "status_summary": {
+          "approved": 1,
+          "pending_review": 0,
+          "rejected": 1,
+          "archived": 0
+        }
+      }
+    }
+  ]
+}

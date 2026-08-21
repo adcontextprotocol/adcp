@@ -23,7 +23,7 @@
         "preview_url": {
           "type": "string",
           "format": "uri",
-          "description": "URL to an HTML page that renders this piece. Can be embedded in an iframe."
+          "description": "Untrusted URL to an HTML page that renders this piece. Consumers MUST load it only in a cross-origin iframe with an empty sandbox token set and a caller-enforced restrictive CSP. Provider embedding metadata is advisory and MUST NOT loosen that policy."
         },
         "role": {
           "type": "string",
@@ -53,7 +53,8 @@
           "properties": {
             "recommended_sandbox": {
               "type": "string",
-              "description": "Recommended iframe sandbox attribute value (e.g., 'allow-scripts allow-same-origin')"
+              "const": "",
+              "description": "Empty iframe sandbox token set. Provider metadata MUST NOT grant scripts, same-origin, navigation, popups, forms, downloads, or other capabilities."
             },
             "requires_https": {
               "type": "boolean",
@@ -68,6 +69,10 @@
               "description": "Content Security Policy requirements for embedding"
             }
           }
+        },
+        "renderer": {
+          "$ref": "/schemas/core/preview-renderer-metadata.json",
+          "description": "Optional renderer implementation and safety metadata for audit and reproducibility. Authority is still resolved from capability discovery and placement delegation."
         }
       },
       "required": [
@@ -93,7 +98,7 @@
         },
         "preview_html": {
           "type": "string",
-          "description": "Raw HTML for this rendered piece. Can be embedded directly in the page without iframe. Security warning: Only use with trusted creative agents as this bypasses iframe sandboxing."
+          "description": "Untrusted HTML. Consumers MUST NOT inject it into the host DOM. Render only as iframe srcdoc with an empty sandbox token set and a caller-enforced restrictive CSP; provider embedding metadata is advisory and MUST NOT loosen that policy."
         },
         "role": {
           "type": "string",
@@ -123,7 +128,8 @@
           "properties": {
             "recommended_sandbox": {
               "type": "string",
-              "description": "Recommended iframe sandbox attribute value (e.g., 'allow-scripts allow-same-origin')"
+              "const": "",
+              "description": "Empty iframe sandbox token set. Provider metadata MUST NOT grant scripts, same-origin, navigation, popups, forms, downloads, or other capabilities."
             },
             "requires_https": {
               "type": "boolean",
@@ -138,6 +144,10 @@
               "description": "Content Security Policy requirements for embedding"
             }
           }
+        },
+        "renderer": {
+          "$ref": "/schemas/core/preview-renderer-metadata.json",
+          "description": "Optional renderer implementation and safety metadata for audit and reproducibility. Authority is still resolved from capability discovery and placement delegation."
         }
       },
       "required": [
@@ -164,11 +174,11 @@
         "preview_url": {
           "type": "string",
           "format": "uri",
-          "description": "URL to an HTML page that renders this piece. Can be embedded in an iframe."
+          "description": "Untrusted URL to an HTML page that renders this piece. Consumers MUST load it only in a cross-origin iframe with an empty sandbox token set and a caller-enforced restrictive CSP. Provider embedding metadata is advisory and MUST NOT loosen that policy."
         },
         "preview_html": {
           "type": "string",
-          "description": "Raw HTML for this rendered piece. Can be embedded directly in the page without iframe. Security warning: Only use with trusted creative agents as this bypasses iframe sandboxing."
+          "description": "Untrusted HTML. Consumers MUST NOT inject it into the host DOM. Render only as iframe srcdoc with an empty sandbox token set and a caller-enforced restrictive CSP; provider embedding metadata is advisory and MUST NOT loosen that policy."
         },
         "role": {
           "type": "string",
@@ -198,7 +208,8 @@
           "properties": {
             "recommended_sandbox": {
               "type": "string",
-              "description": "Recommended iframe sandbox attribute value (e.g., 'allow-scripts allow-same-origin')"
+              "const": "",
+              "description": "Empty iframe sandbox token set. Provider metadata MUST NOT grant scripts, same-origin, navigation, popups, forms, downloads, or other capabilities."
             },
             "requires_https": {
               "type": "boolean",
@@ -213,6 +224,10 @@
               "description": "Content Security Policy requirements for embedding"
             }
           }
+        },
+        "renderer": {
+          "$ref": "/schemas/core/preview-renderer-metadata.json",
+          "description": "Optional renderer implementation and safety metadata for audit and reproducibility. Authority is still resolved from capability discovery and placement delegation."
         }
       },
       "required": [

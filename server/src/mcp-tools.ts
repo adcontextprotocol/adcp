@@ -430,7 +430,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "list_brands",
     description:
-      "List brands in the registry. Includes brands with published brand.json, community-contributed brands, and enriched brands. Can filter by source type and search by name or domain.",
+      "List brands in the registry, including cached relationship trust state. Includes brands with published brand.json, community-contributed brands, and enriched brands. Can filter by source type and search by name or domain.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -926,7 +926,10 @@ export class MCPToolHandler {
           }], withSdkSafeTransport({}));
           const client = multiClient.agent("query");
 
-          const result = await client.executeTask("get_products", params);
+          const result = await client.executeTask(
+            "get_products",
+            params as unknown as Parameters<typeof client.executeTask<"get_products">>[1],
+          );
 
           if (!result.success) {
             return {
@@ -1457,6 +1460,9 @@ export class MCPToolHandler {
           has_manifest: b.has_manifest,
           house_domain: b.house_domain,
           keller_type: b.keller_type,
+          relationship_trust: b.relationship_trust,
+          relationship_verified_at: b.relationship_verified_at,
+          claimed_house_domain: b.claimed_house_domain,
         }));
 
         return {

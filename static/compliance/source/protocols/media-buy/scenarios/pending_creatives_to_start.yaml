@@ -1,17 +1,18 @@
 id: media_buy_seller/pending_creatives_to_start
-version: "1.0.0"
+version: "1.0.1"
 title: "Creative sync unblocks pending_creatives → pending_start"
 category: media_buy_seller
 summary: "Verifies that a media buy created without creatives sits in pending_creatives until sync_creatives completes, then transitions to pending_start."
 track: media_buy
 
-# This scenario requires an explicit auto-approval declaration. Sellers that
-# declare `require_human`, or omit the field because approval behavior is
-# legacy-unspecified, grade not_applicable rather than false-failing on a
-# manual-review workflow.
-requires_capability:
-  path: media_buy.creative_approval_mode
-  equals: auto_approve
+# This scenario requires both a creative library and an explicit auto-approval
+# declaration. Sellers that lack either capability grade not_applicable rather
+# than false-failing on an out-of-scope or manual-review workflow.
+requires_all_capabilities:
+  - path: media_buy.creative_approval_mode
+    equals: auto_approve
+  - path: creative.has_creative_library
+    equals: true
 
 required_tools:
   - get_products

@@ -1,0 +1,618 @@
+id: media_buy_seller/demographic_targeting
+version: "1.0.0"
+title: "Seller compiles portable age intent exactly and exposes lossless readback"
+category: media_buy_seller
+summary: "Verifies product-scoped continuous, interval, and signal-backed demographic execution; explicit open-bound and unknown-age handling; exact bucket unions; direct-create rejection of inexact predicates; and exact package readback."
+track: media_buy
+
+requires_capability:
+  path: media_buy.execution.targeting.demographics.supported
+  equals: true
+
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buys
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  Demographic targeting separates portable buyer intent from seller execution.
+  The buyer always submits a canonical age predicate. Each product declares
+  whether it can execute arbitrary bounds, seller-owned intervals, or signals
+  with authoritative demographic predicates. The seller proves the result by
+  returning requested and applied predicates plus the concrete execution mode.
+
+  Exactness means set equality over inclusive integer ages and the separate
+  unknown-age member. A fresh create/update request is rejected when it cannot
+  be compiled exactly. During get_products, the seller may instead offer a
+  request-scoped configured product with a sparse targeting modification; that
+  acceptance path is covered by targeting_aware_discovery. A stored package is
+  never broader or narrower than the targeting the buyer accepted.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - demographic_targeting
+  examples:
+    - "Publishers with native continuous age controls"
+    - "Retail media networks backed by fixed demographic buckets"
+    - "Sellers that compile demographics to catalogued audience signals"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The controller seeds three non-guaranteed products: continuous bounds,
+    enumerated intervals, and signal-backed execution. All products explicitly
+    declare unknown-age behavior.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "demographic_continuous_display"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+      demographic_targeting:
+        age:
+          execution_modes: ["continuous_bounds"]
+          min_supported_age: 18
+          max_supported_age: 65
+          supports_unbounded_min: true
+          supports_unbounded_max: true
+          unknown_handling: "selectable"
+    - product_id: "demographic_bucket_video"
+      delivery_type: "non_guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_30s"
+      demographic_targeting:
+        age:
+          execution_modes: ["enumerated_intervals"]
+          unknown_handling: "always_excluded"
+          intervals:
+            - interval_id: "age_18_24"
+              age: { min: 18, max: 24, include_unknown: false }
+            - interval_id: "age_25_34"
+              age: { min: 25, max: 34, include_unknown: false }
+            - interval_id: "age_35_44"
+              age: { min: 35, max: 44, include_unknown: false }
+    - product_id: "demographic_signal_audio"
+      delivery_type: "non_guaranteed"
+      channels: ["audio"]
+      format_ids:
+        - id: "audio_30s"
+      demographic_targeting:
+        age:
+          execution_modes: ["signals"]
+          unknown_handling: "always_excluded"
+      signal_targeting_allowed: true
+      signal_targeting_options:
+        - signal_ref:
+            scope: "product"
+            signal_id: "adults_25_34"
+          name: "Adults 25–34"
+          value_type: "binary"
+          restricted_attributes: ["age"]
+          demographic_predicate:
+            age: { min: 25, max: 34, include_unknown: false }
+  pricing_options:
+    - product_id: "demographic_continuous_display"
+      pricing_option_id: "demographic_continuous_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 5.0
+    - product_id: "demographic_bucket_video"
+      pricing_option_id: "demographic_bucket_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 12.0
+    - product_id: "demographic_signal_audio"
+      pricing_option_id: "demographic_signal_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 9.0
+
+phases:
+  - id: discover_product_execution
+    title: "Discover product-scoped demographic execution"
+    narrative: |
+      The global capability only says that the seller implements this surface.
+      The buyer reads each product to learn its exact compiler and unknown-age
+      behavior.
+    steps:
+      - id: get_demographic_products
+        title: "Read demographic product capabilities"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_demographic_targeting_discover_product_execution_get_demographic_products"
+          buying_mode: "wholesale"
+          fields: ["product_id", "pricing_options", "demographic_targeting", "signal_targeting_options"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "demographic_targeting--get_products"
+        expected: |
+          Return the seeded products with product-scoped demographic_targeting
+          declarations. The signal-backed option includes an authoritative
+          demographic_predicate and restricted_attributes containing age.
+        context_outputs:
+          - key: "continuous_product_id"
+            path: "products[0].product_id"
+          - key: "continuous_pricing_option_id"
+            path: "products[0].pricing_options[0].pricing_option_id"
+          - key: "bucket_product_id"
+            path: "products[1].product_id"
+          - key: "bucket_pricing_option_id"
+            path: "products[1].pricing_options[0].pricing_option_id"
+          - key: "signal_product_id"
+            path: "products[2].product_id"
+          - key: "signal_pricing_option_id"
+            path: "products[2].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "products[0].demographic_targeting.age.execution_modes[0]"
+            value: "continuous_bounds"
+            description: "First product declares continuous bounds"
+          - check: field_value
+            path: "products[0].demographic_targeting.age.supports_unbounded_max"
+            value: true
+            description: "Continuous product explicitly accepts open-upper predicates"
+          - check: field_value
+            path: "products[1].demographic_targeting.age.execution_modes[0]"
+            value: "enumerated_intervals"
+            description: "Second product declares seller-owned intervals"
+          - check: field_value
+            path: "products[2].signal_targeting_options[0].restricted_attributes[0]"
+            value: "age"
+            description: "Age signal is structurally marked as restricted"
+          - check: field_present
+            path: "products[2].signal_targeting_options[0].demographic_predicate"
+            description: "Signal-backed execution publishes authoritative semantics"
+
+  - id: execute_continuous_bounds
+    title: "Execute exact bounds with both unknown-age choices"
+    steps:
+      - id: create_continuous_demographic_buy
+        title: "Create two exactly compiled packages"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.continuous_product_id"
+              pricing_option_id: "$context.continuous_pricing_option_id"
+              bid_price: 7.0
+              budget: 5000
+              targeting_overlay:
+                demographics:
+                  age: { min: 21, max: 35, include_unknown: false }
+            - product_id: "$context.continuous_product_id"
+              pricing_option_id: "$context.continuous_pricing_option_id"
+              bid_price: 7.0
+              budget: 5000
+              targeting_overlay:
+                demographics:
+                  age: { min: 65, include_unknown: true }
+          idempotency_key: "$generate:uuid_v4#demographic_targeting_continuous"
+          context:
+            correlation_id: "demographic_targeting--create_continuous"
+        expected: |
+          Accept both packages exactly. include_unknown false and true are
+          distinct predicates and neither is defaulted. The second package is
+          65+, not age 65 only, because supports_unbounded_max is true.
+        context_outputs:
+          - key: "continuous_media_buy_id"
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller assigns a media buy id"
+
+      - id: read_continuous_resolution
+        title: "Verify exact continuous readback"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.continuous_media_buy_id"]
+        expected: |
+          Return requested and applied predicates for both packages. Each pair
+          is equal, equivalent is true, and execution is continuous_bounds.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.equivalent"
+            value: true
+            description: "Ages 21–35 were applied exactly"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.execution.type"
+            value: "continuous_bounds"
+            description: "Readback names the execution mechanism"
+          - check: field_value
+            path: "media_buys[0].packages[1].targeting_resolution.demographics.applied.age.include_unknown"
+            value: true
+            description: "Unknown-age inclusion is preserved explicitly"
+          - check: field_value
+            path: "media_buys[0].packages[1].targeting_resolution.demographics.requested.age.min"
+            value: 65
+            description: "Open-upper request preserves its inclusive lower bound"
+          - check: field_value
+            path: "media_buys[0].packages[1].targeting_resolution.demographics.applied.age.min"
+            value: 65
+            description: "Applied predicate remains 65+"
+          - check: field_absent
+            path: "media_buys[0].packages[1].targeting_resolution.demographics.applied.age.max"
+            description: "Seller does not narrow the open upper bound to max_supported_age"
+
+  - id: execute_exact_interval_union
+    title: "Execute an exact union of seller-owned age intervals"
+    steps:
+      - id: create_exact_bucket_union_buy
+        title: "Request ages 18–34 from two adjacent buckets"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.bucket_product_id"
+              pricing_option_id: "$context.bucket_pricing_option_id"
+              bid_price: 14.0
+              budget: 5000
+              targeting_overlay:
+                demographics:
+                  age: { min: 18, max: 34, include_unknown: false }
+          idempotency_key: "$generate:uuid_v4#demographic_targeting_exact_bucket_union"
+        expected: |
+          Accept the request exactly by unioning age_18_24 and age_25_34.
+          Neither interval alone is sufficient, and no extra age is introduced.
+        context_outputs:
+          - key: "bucket_media_buy_id"
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller creates the exact bucket-backed buy"
+
+      - id: read_exact_bucket_union
+        title: "Verify both intervals and the exact applied predicate"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.bucket_media_buy_id"]
+        expected: |
+          Return the exact ages 18–34 predicate with equivalent true and both
+          interval identifiers in enumerated_intervals execution readback.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.equivalent"
+            value: true
+            description: "Bucket union is exactly equal to the buyer request"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.applied.age.min"
+            value: 18
+            description: "Applied union starts at age 18"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.applied.age.max"
+            value: 34
+            description: "Applied union ends at age 34"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.execution.type"
+            value: "enumerated_intervals"
+            description: "Readback identifies interval execution"
+          - check: field_contains
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.execution.interval_ids"
+            value: "age_18_24"
+            description: "Readback includes the first contributing interval"
+          - check: field_contains
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.execution.interval_ids"
+            value: "age_25_34"
+            description: "Readback includes the second contributing interval"
+
+  - id: reject_inexact_intervals
+    title: "Reject a bucket compilation that changes the set"
+    steps:
+      - id: create_inexact_bucket_buy
+        title: "Request ages 21–35 from fixed buckets"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.bucket_product_id"
+              pricing_option_id: "$context.bucket_pricing_option_id"
+              bid_price: 14.0
+              budget: 5000
+              targeting_overlay:
+                demographics:
+                  age: { min: 21, max: 35, include_unknown: false }
+          idempotency_key: "$generate:uuid_v4#demographic_targeting_inexact_bucket"
+        expected: |
+          Reject with UNSUPPORTED_FEATURE. The error points at demographics and
+          may direct the buyer back to get_products for a configured alternative.
+          The seller does not book 18–44, 25–34, or silently drop targeting under
+          this fresh create request.
+        validations:
+          - check: error_code
+            allowed_values: ["UNSUPPORTED_FEATURE"]
+            description: "Seller rejects a well-formed but inexact predicate"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.demographics"
+            description: "Error identifies the predicate that cannot be compiled"
+          - check: field_present
+            path: "errors[0].suggestion"
+            description: "Seller gives a buyer-reviewable predicate to resubmit"
+
+      - id: reject_unknown_handling_mismatch
+        title: "Reject unknown-age inclusion on an always-excluded product"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.bucket_product_id"
+              pricing_option_id: "$context.bucket_pricing_option_id"
+              bid_price: 14.0
+              budget: 5000
+              targeting_overlay:
+                demographics:
+                  age: { min: 25, max: 34, include_unknown: true }
+          idempotency_key: "$generate:uuid_v4#demographic_targeting_unknown_mismatch"
+        expected: |
+          Reject with UNSUPPORTED_FEATURE because the product declares
+          unknown_handling always_excluded. The seller does not silently change
+          include_unknown to false and does not create a package.
+        validations:
+          - check: error_code
+            allowed_values: ["UNSUPPORTED_FEATURE"]
+            description: "Seller rejects unsupported unknown-age membership"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.demographics.age.include_unknown"
+            description: "Error points to the incompatible unknown-age choice"
+
+      - id: reject_empty_age_restriction_intersection
+        title: "Reject demographic targeting disjoint from age eligibility"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.continuous_product_id"
+              pricing_option_id: "$context.continuous_pricing_option_id"
+              bid_price: 7.0
+              budget: 5000
+              targeting_overlay:
+                demographics:
+                  age: { max: 20, include_unknown: false }
+                age_restriction:
+                  min: 21
+                  verification_required: true
+          idempotency_key: "$generate:uuid_v4#demographic_targeting_empty_intersection"
+        expected: |
+          Reject with VALIDATION_ERROR or INVALID_REQUEST because demographic
+          ages at most 20 intersected with age_restriction min 21 is empty. The
+          seller does not remove either control or create an undeliverable package.
+        validations:
+          - check: error_code
+            allowed_values: ["VALIDATION_ERROR", "INVALID_REQUEST"]
+            description: "Seller rejects the empty demographic and eligibility intersection"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.demographics.age"
+            description: "Error points to the demographic side of the empty intersection"
+
+      - id: reject_reversed_age_bounds
+        title: "Reject a minimum age greater than the maximum"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.continuous_product_id"
+              pricing_option_id: "$context.continuous_pricing_option_id"
+              bid_price: 7.0
+              budget: 5000
+              targeting_overlay:
+                demographics:
+                  age: { min: 36, max: 21, include_unknown: false }
+          idempotency_key: "$generate:uuid_v4#demographic_targeting_reversed_bounds"
+        expected: |
+          Reject with INVALID_REQUEST and point to the age predicate. JSON Schema
+          draft-07 cannot compare sibling values, so this is a required seller
+          runtime validation.
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST"]
+            description: "Seller rejects reversed inclusive bounds"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.demographics.age"
+            description: "Error points to the invalid age range"
+
+  - id: execute_signal_predicate
+    title: "Resolve an exact authoritative signal"
+    steps:
+      - id: create_signal_demographic_buy
+        title: "Create ages 25–34 through a signal-backed product"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.signal_product_id"
+              pricing_option_id: "$context.signal_pricing_option_id"
+              bid_price: 11.0
+              budget: 5000
+              targeting_overlay:
+                demographics:
+                  age: { min: 25, max: 34, include_unknown: false }
+          idempotency_key: "$generate:uuid_v4#demographic_targeting_signal"
+        expected: |
+          Resolve the request through the product's adults_25_34 signal because
+          its authoritative predicate is exactly equal to buyer intent.
+        context_outputs:
+          - key: "signal_media_buy_id"
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+
+      - id: read_signal_resolution
+        title: "Verify the signal ref and exact predicate"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.signal_media_buy_id"]
+        expected: |
+          Return equivalent requested/applied predicates and execution type
+          signals with the exact product-local signal_ref used by the seller.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.equivalent"
+            value: true
+            description: "Signal predicate exactly matches buyer intent"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.execution.type"
+            value: "signals"
+            description: "Readback identifies signal-backed execution"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_resolution.demographics.execution.signal_refs[0].signal_id"
+            value: "adults_25_34"
+            description: "Readback carries the authoritative signal identity"

@@ -1,0 +1,248 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/media-buy/buy-products-request.json",
+  "title": "Buy Products Request",
+  "description": "Create a MediaBuy directly from published product offers. This buyer-composed path accepts published commercial terms, supports targeting and delivery controls, and never accepts inline creatives or creative assignments. The seller records an immutable accepted proposal snapshot so later commercial amendments can use refine_proposals.",
+  "x-tool-summary": "Create a media buy directly from published seller products and record its accepted commercial snapshot.",
+  "type": "object",
+  "x-mutates-state": true,
+  "x-governed-commitment": {
+    "scope": "always"
+  },
+  "x-operation-family": "buy_products",
+  "x-added-in": "3.2.0",
+  "x-legacy-fallback": {
+    "tool": "create_media_buy",
+    "mode": "orchestrated"
+  },
+  "properties": {
+    "adcp_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/version-envelope.json#/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/version-envelope.json#/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "account": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/canonical-account-ref.json"
+        }
+      ],
+      "description": "Execution account. A natural-key account is the single brand source and MUST NOT be combined with top-level brand."
+    },
+    "brand": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/brand-key.json"
+    },
+    "advertiser_industry": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/advertiser-industry.json",
+      "description": "Industry classification for this campaign. Sellers may infer it from the resolved brand manifest when omitted."
+    },
+    "feed_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "list_products feed_version containing the published offers being accepted. Sellers reject stale or mismatched versions rather than silently applying changed terms."
+    },
+    "pricing_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "list_products pricing_version containing the accepted rate. Buyers MUST include this whenever list_products returned one; omission means the seller does not version pricing separately."
+    },
+    "purchases": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/media-buy/product-purchase.json"
+      },
+      "minItems": 1
+    },
+    "total_budget": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional hard aggregate daily spend ceiling in total_budget.currency or the media buy's derived currency. It bounds the shared daily spend pool without allocating or reserving amounts for purchases."
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional IANA timezone override shared by every aggregate and purchase daily cap. Requires buyer_timezone_override support; otherwise rejected with UNSUPPORTED_FEATURE. When omitted, budget_capping.timezone_basis selects Account.timezone or fixed_timezone."
+    },
+    "budget_allocation": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/canonical-budget-allocation.json"
+    },
+    "start_time": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/start-timing.json"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "pacing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/pacing.json"
+    },
+    "bidding": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/bidding-policy.json"
+    },
+    "paused": {
+      "type": "boolean",
+      "default": false
+    },
+    "purchase_order_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "invoice_recipient": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/business-entity.json",
+      "description": "Authorized per-buy billing entity override."
+    },
+    "governance_context": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "push_notification_config": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/push-notification-config.json"
+    },
+    "reporting_webhook": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/reporting-webhook.json",
+      "description": "Optional reporting delivery configuration established atomically with the MediaBuy. This is execution metadata and is not part of the immutable product pricing terms."
+    },
+    "opportunity": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/opportunity-context.json"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "closed"
+            }
+          },
+          "if": {
+            "properties": {
+              "status": {
+                "const": "closed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "close_reason": {
+                "const": "accepted_with_seller"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Optional planning-cycle closure for a direct product purchase. Success infers closed with accepted_with_seller when status is omitted; an explicit status MUST carry that same closure."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "account",
+    "feed_version",
+    "purchases",
+    "start_time",
+    "end_time"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "brand"
+      ]
+    },
+    {
+      "properties": {
+        "account": {
+          "required": [
+            "brand",
+            "operator"
+          ]
+        }
+      }
+    }
+  ],
+  "allOf": [
+    {
+      "not": {
+        "properties": {
+          "account": {
+            "required": [
+              "brand",
+              "operator"
+            ]
+          }
+        },
+        "required": [
+          "account",
+          "brand"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "packages"
+        ]
+      },
+      {
+        "required": [
+          "proposal_id"
+        ]
+      },
+      {
+        "required": [
+          "creatives"
+        ]
+      },
+      {
+        "required": [
+          "creative_assignments"
+        ]
+      },
+      {
+        "required": [
+          "artifact_webhook"
+        ]
+      }
+    ]
+  }
+}

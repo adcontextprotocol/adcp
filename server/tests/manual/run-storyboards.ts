@@ -167,6 +167,14 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
     'creative_transformers/refine_variant',
     'Same blocker as creative_transformers/build_variants: refinement depends on the skipped parent build_variant_id and returns the same BuildCreativeVariantSuccess creatives[]/variants[] response shape. Remove when the packaged storyboard runner accepts that variant arm.',
   ],
+  [
+    'media_buy_seller/canonical_formats/reject_conflicting_dual_emission',
+    'adcontextprotocol/adcp-client#2392: the packaged SDK canonicalizes away a co-present deprecated format_ids route before both platform execution and canonical_format_satisfaction grading. Raw receiver behavior is covered by training-agent unit tests. Remove when the SDK preserves and equivalence-checks every selector route.',
+  ],
+  [
+    'media_buy_seller/canonical_formats/reject_unprojectable_legacy_dual_emission',
+    'adcontextprotocol/adcp-client#2392: the packaged SDK drops an unprojectable deprecated format_ids route before the platform can return UNSUPPORTED_FEATURE. Raw receiver behavior is covered by training-agent unit tests. Remove when the SDK exposes unresolved legacy routes to the receiver.',
+  ],
 ]);
 
 const THREE_ZERO_COMPAT_KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
@@ -279,7 +287,7 @@ function normalizeThreeZeroStaleStoryboardDates(value: unknown): void {
   }
 }
 
-function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
+function patchStoryboardForLocalRunner(sb: Storyboard): Storyboard {
   let patched = sb;
   if (sb.id === 'creative/creative_lifecycle_webhooks') {
     patched = structuredClone(sb) as Storyboard;
@@ -295,6 +303,34 @@ function patchThreeZeroStoryboard(sb: Storyboard): Storyboard {
             subscriber_id: 'buyer-primary',
           },
         };
+      }
+    }
+  }
+
+  if (sb.id === 'media_buy_seller/canonical_formats') {
+    patched = structuredClone(patched) as Storyboard;
+    for (const phase of patched.phases ?? []) {
+      for (const step of phase.steps ?? []) {
+        if (
+          step.id === 'reject_conflicting_dual_emission'
+          || step.id === 'reject_unprojectable_legacy_dual_emission'
+        ) {
+          // These locally skipped probes remain stateful in the published
+          // contract; only prevent their SDK-blocked skip from cascading to
+          // later independent steps in this in-process runner.
+          step.stateful = false;
+        }
+        if (
+          step.id !== 'create_media_buy_with_direct_canonical_selector'
+          && step.id !== 'reject_conflicting_canonical_routes'
+        ) continue;
+        // adcontextprotocol/adcp-client#2392: the packaged local grader still
+        // requires every product param for direct satisfaction and applies
+        // option-ref precedence before grading a co-present direct route. The
+        // receiver call and all other assertions still run; only the stale
+        // local semantic assertion is suppressed until the SDK is directional.
+        step.validations = (step.validations ?? [])
+          .filter(validation => validation.check !== 'canonical_format_satisfaction');
       }
     }
   }
@@ -580,7 +616,7 @@ async function main() {
   const jwksResolver = new StaticJwksResolver(getPublicJwks().keys as AdcpJsonWebKey[]);
 
   for (const sb of all) {
-    const storyboard = patchThreeZeroStoryboard(sb);
+    const storyboard = patchStoryboardForLocalRunner(sb);
     // Isolate storyboards from each other: a previous storyboard may have
     // seeded governance plans, media buys, creatives, etc. into a session
     // keyed by the same brand domain. Without this reset the next

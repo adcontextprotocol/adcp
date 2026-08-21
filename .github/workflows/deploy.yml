@@ -229,7 +229,7 @@ jobs:
           flyctl machines list
           exit 1
 
-      # Smoke each training-agent tenant URL after the rolling restart.
+      # Smoke each public training-agent route after the rolling restart.
       # Catches production-only failures that don't surface in CI: SDK
       # init guards that throw under NODE_ENV=production (PR #3869),
       # in-memory task registry refusal (PR #3854), missing migrations,
@@ -238,7 +238,7 @@ jobs:
       # is sufficient: a healthy MCP endpoint returns 200 (when the
       # public token is set) or 401 (when it isn't). 4xx other than 401
       # and any 5xx are deploy-fatal.
-      - name: Smoke training-agent tenants
+      - name: Smoke training-agent routes
         env:
           PUBLIC_TEST_AGENT_TOKEN: ${{ secrets.PUBLIC_TEST_AGENT_TOKEN }}
         run: |
@@ -246,6 +246,9 @@ jobs:
           base="https://test-agent.adcontextprotocol.org"
           paths=(
             "/sales/mcp"
+            "/sales/profiles/typed-negotiation/mcp"
+            "/sales/profiles/constrained-seller/mcp"
+            "/sales/profiles/finalization-failure/mcp"
             "/signals/mcp"
             "/governance/mcp"
             "/creative/mcp"

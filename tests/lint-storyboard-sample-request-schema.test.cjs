@@ -275,6 +275,13 @@ test('normalizeSubstitutions produces a schema-valid digest placeholder', () => 
   assert.match(digest, /^sha256:[A-Za-z0-9_-]{43}$/);
 });
 
+test('normalizeSubstitutions produces a schema-valid currency placeholder', () => {
+  assert.equal(normalizeSubstitutions('$context.pricing_currency', {
+    type: 'string',
+    pattern: '^[A-Z]{3}$',
+  }), 'USD');
+});
+
 // Object-typed substitution synthesis — the lint change landed in this PR.
 // A substitution that lands at an object location (plain or inside a
 // discriminated oneOf) must produce a shape-valid placeholder or ajv will

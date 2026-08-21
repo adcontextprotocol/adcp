@@ -47,24 +47,24 @@ Discover a seller's protocol support and capabilities across all AdCP protocols.
 
 ## Tool-Based Discovery
 
-AdCP uses native MCP/A2A tool discovery. **The presence of `get_adcp_capabilities` in an agent's tool list indicates AdCP support.**
+AdCP uses native MCP tool discovery and the [AdCP A2A Profile Extension v3](/docs/building/by-layer/L0/a2a-profile-extension) on A2A 1.0. **The presence of `get_adcp_capabilities` in an agent's tool or skill list indicates that runtime AdCP discovery is available.**
 
 ```
 Discovery Flow:
-1. Browse agent's tool list (MCP) or skills (A2A)
-2. See 'get_adcp_capabilities' tool → Agent supports AdCP
+1. Browse the agent's tool list (MCP), or find and activate the versioned AdCP profile in AgentCard.capabilities.extensions[] (A2A)
+2. See the get_adcp_capabilities tool/skill → Runtime AdCP discovery is available
 3. Call get_adcp_capabilities → Get version, protocols, features, capabilities
 4. Proceed based on returned capabilities
 ```
 
 This approach:
 
-- Uses standard MCP/A2A mechanisms (no custom extensions)
+- Uses native MCP discovery or A2A 1.0's standard extension mechanism
 - Always returns current capabilities (not stale metadata)
 - Single source of truth for all capability information
 
 :::note
-The agent card extension (`adcp-extension.json`) has been removed in v3. Use tool-based discovery instead.
+The A2A profile declaration identifies only the wire binding. Its `params` member is omitted or empty. Do not place AdCP versions, domains, or feature flags there: `get_adcp_capabilities` remains the single runtime authority for those values. The unversioned v2 `adcp-extension.json` capability payload remains removed.
 :::
 
 ## Version Negotiation
@@ -209,9 +209,10 @@ The declaration is part of the experimental `governance.campaign` surface, so an
 
 Advertising a task also commits the service to deterministic applicability. It resolves the commercial account from the request or existing resource before the side effect; when it cannot do so, it returns [`ACCOUNT_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-account-required). It never treats a missing token as evidence that the buyer is ungoverned. Conditional task annotations use `trigger_overrides_exemption`: any commitment-increasing part of a mixed atomic update requires governance.
 
-Current conformance runners continue to grade the legacy `media_buy.governance_aware` create path. Task-scoped grading for this new block will land with role-specific observable workflows; until then, registries MUST NOT present the experimental declaration as a certified claim.
-
-The legacy `media_buy.governance_aware` boolean remains the compatibility claim for the historically graded `create_media_buy` consultation path. Agents use the core block for explicit task-scoped claims.
+AdCP 3.2 conformance selects role-specific governance workflows from exact
+entries in `adcp.governance_enforcement.tasks[]`. The legacy
+`media_buy.governance_aware` boolean remains a compatibility signal for older
+runners, but it is not the 3.2 certification gate.
 
 ### adcp.attestations
 
@@ -425,7 +426,11 @@ Media-buy protocol capabilities. Only present if `media_buy` is in `supported_pr
 
 #### lifecycle_tools
 
-AdCP 3.2 sellers use `lifecycle_tools` to advertise any supported subset of `get_products`, `list_products`, `request_proposals`, `refine_proposals`, `decline_proposals`, `buy_products`, `accept_proposal`, and `control_media_buy`. When absent, buyers use the legacy `get_products`, `create_media_buy`, and `update_media_buy` facades. The compact tools share the authorization framework with their legacy peers, but grants remain task-specific and each stateful tool has its own idempotency identity: retry with the same tool name and payload. SDKs use the release manifest's `legacy_fallback` metadata to distinguish a direct one-call translation from a stateful orchestration or an unsupported fallback; see [Same-major tool replacements](/docs/building/cross-cutting/version-adaptation#same-major-tool-replacements).
+AdCP 3.2 sellers use `lifecycle_tools` to advertise any supported subset of `get_products`, `list_products`, `request_proposals`, `refine_proposals`, `decline_proposals`, `buy_products`, `accept_proposal`, and `control_media_buy`. When absent, buyers use the legacy `get_products`, `create_media_buy`, and `update_media_buy` facades. The advertised subset is a statement of supported surfaces, not a quality signal: a seller that omits `list_products` offers no wholesale feed and is fully conformant — wholesale-path conformance scenarios are capability-gated and grade not applicable for sellers that do not advertise the surface. Buyers SHOULD NOT infer inventory breadth or planning capability from the subset a seller advertises. The compact tools share the authorization framework with their legacy peers, but grants remain task-specific and each stateful tool has its own idempotency identity: retry with the same tool name and payload. SDKs use the release manifest's `legacy_fallback` metadata to distinguish a direct one-call translation from a stateful orchestration or an unsupported fallback; see [Same-major tool replacements](/docs/building/cross-cutting/version-adaptation#same-major-tool-replacements).
+
+#### availability_horizon
+
+`media_buy.availability_horizon: true` declares flexible-window availability discovery: the seller parses `offer_filters.availability_horizon` and answers with `time`-dimensioned forecast points carrying `availability_status` — half-open, non-overlapping windows that partition the requested horizon (gaps signalled via `incomplete[]`), with status computed from all booking eligibility constraints, not only competing holds. See [Flexible Availability Windows](/docs/media-buy/product-discovery/media-products#flexible-availability-windows). When `false` or absent, support is unknown: buyers SHOULD use exact `start_date`/`end_date` filtering instead, and sellers MAY ignore the field or reject it. Conformance storyboards gate flexible-window checks on this declaration.
 
 #### proposal_refinement
 
@@ -443,9 +448,14 @@ When `lifecycle_tools` includes `refine_proposals`, `proposal_refinement` option
 
 `alternatives.count` has a protocol maximum of 10. `max_alternatives` may accompany `alternatives` to publish a lower pre-flight count ceiling and therefore cannot exceed 10. A request whose `alternatives.count` exceeds that declared ceiling MUST fail at task level with [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error); `error.field` identifies the offending `refinements[i].alternatives.count`. Sellers MUST NOT silently clamp the count or reinterpret the ceiling as an `alternatives_unavailable` result.
 
-An explicit `supported_dimensions` list is authoritative, including an empty list meaning the seller supports `ask`-only refinement but no typed dimensions. Buyers SHOULD NOT send omitted dimensions, and sellers MUST reject them at task level with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). Such errors SHOULD carry the [`error-details/unsupported-refinement-dimension.json`](https://adcontextprotocol.org/schemas/latest/error-details/unsupported-refinement-dimension.json) shape — `details.unsupported_dimension` and `details.supported_dimensions` — so an authorized buyer can remove or translate unsupported fields without another capability round trip. This task-level rejection applies to the complete request: no sibling refinement succeeds and no proposal is created, even when the unsupported dimension appears after otherwise supported entries. When `proposal_refinement` is absent, support is unknown; sellers report unsupported dimensions through `partial` or `unable` results instead. `proposal_refinement` is valid only when `lifecycle_tools` includes `refine_proposals`.
+An explicit `supported_dimensions` list is authoritative, including an empty list meaning the seller supports `ask`-only refinement but no typed dimensions. Buyers SHOULD NOT send omitted dimensions, and sellers MUST reject them at task level with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). Such errors SHOULD carry the [`error-details/unsupported-refinement-dimension.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.0/error-details/unsupported-refinement-dimension.json) shape — `details.unsupported_dimension` and `details.supported_dimensions` — so an authorized buyer can remove or translate unsupported fields without another capability round trip. This task-level rejection applies to the complete request: no sibling refinement succeeds and no proposal is created, even when the unsupported dimension appears after otherwise supported entries. When `proposal_refinement` is absent, support is unknown; sellers report unsupported dimensions through `partial` or `unable` results instead. `proposal_refinement` is valid only when `lifecycle_tools` includes `refine_proposals`.
 
 This capability is about parse and validation support, never commercial willingness. Free-text `ask` interpretation remains seller competence rather than a boolean capability. Multi-proposal finalization deliberately retains its separate failure-as-discovery model through [`MULTI_FINALIZE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-multi-finalize-unsupported): it describes atomic infrastructure topology, while the core typed revision fields must be discoverable before a deterministic buyer constructs a request.
+
+#### outcome_target
+
+`media_buy.outcome_target: true` declares reverse-forecast planning: the seller parses `criteria.outcome_target` (a compact goal — a `forecastable-metric` delivery metric or an `event-type` conversion event — plus a desired volume) and solves for budget, answering with `total_budget_guidance` on proposals and forecasts whose points carry the goal's key in `metrics`. See [Reverse forecasting](/docs/media-buy/task-reference/request_proposals#reverse-forecasting-with-outcome_target). When `false` or absent, support is unknown: buyers SHOULD express outcome goals in `brief` prose instead, and sellers reject a structured `outcome_target` with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) rather than silently ignoring it.
+
 #### budget_capping
 
 `budget_capping` advertises hard daily caps independently at `media_buy` and `package` scopes. A media-buy cap bounds aggregate daily spend without allocating it; package caps add subordinate ceilings and are never reservations. Sellers MUST reject an undeclared scope with `UNSUPPORTED_FEATURE` before mutation and MUST NOT reinterpret `daily_budget_cap` as a soft pacing target.
@@ -515,6 +525,23 @@ Declares the seller's tenant-wide creative approval posture after creatives are 
 | `require_human` | One or more products/accounts may require manual review before creatives become eligible to serve. Treat this as a tenant-wide worst-case ceiling until a product-level override exists. |
 
 Sellers with mixed approval policies SHOULD declare `require_human` unless every product/account that can be reached by the advertised agent supports automatic eligibility after automated validation. When the field is absent, approval behavior is legacy-unspecified; runners SHOULD NOT treat omission as an affirmative `auto_approve` claim. `ai_assisted` is intentionally not a value until the protocol defines what assistance changes in observable behavior.
+
+#### measurement_terms_acceptance
+
+`media_buy.measurement_terms_acceptance: true` declares that the seller can accept the
+default `measurement_terms` it advertises on at least one product. A buyer discovers
+those terms with [`get_products`](/docs/media-buy/task-reference/get_products), replays
+the exact object on a package in
+[`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), and receives the
+confirmed terms on the resulting package. This declaration does not promise acceptance
+of arbitrary buyer-authored terms or of terms that differ from the product default.
+
+Compliance runners execute `media_buy_seller/measurement_terms_accepted` only when this
+capability is true. When it is false or absent, that affirmative scenario is not
+applicable, but the universal `media_buy_seller/measurement_terms_rejected` contract
+still applies: unsupported terms must fail with
+[`TERMS_REJECTED`](/docs/building/verification/compliance-catalog#error-code-terms-rejected)
+rather than being silently ignored.
 
 #### supported_indicator_types and relationship_notifications
 
@@ -668,7 +695,7 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 | `geo_places` | object | Named-place targeting keyed by collision-safe identifier system, with exact country/type support, catalog versions, and resolver metadata |
 | `age_restriction` | object | Age restriction capabilities with `supported` flag and `verification_methods` |
 | `demographics` | object | Seller-wide discovery rollup for canonical demographic targeting. `supported: true` means at least one product supports the surface; inspect each product's `demographic_targeting` declaration for exact execution. |
-| `language` | boolean | Language targeting (ISO 639-1 codes) |
+| `language` | boolean or object | Language-preference targeting. The structured form may declare `supported` and exact selectable BCP 47 ranges in `supported_languages`; the boolean is the legacy coarse declaration. |
 | `keyword_targets` | object | Keyword targeting with `supported_match_types` array (`broad`, `phrase`, `exact`). Presence indicates support. |
 | `negative_keywords` | object | Negative keyword targeting with `supported_match_types` array. Presence indicates support. |
 | `collection_list` | boolean | Collection list inclusion targeting. `true` is a seller-wide rollup; inspect each product's `overlay_support`. |
@@ -921,6 +948,7 @@ Creative protocol capabilities. Only present if `creative` is in `supported_prot
 |-------|------|-------------|
 | `supports_compliance` | boolean | When `true`, this creative agent can process briefs with compliance requirements and validate them against its canonical supported-format declarations. |
 | `supported_formats` | object[] | Canonical creative operation catalog. New 3.2 producers MUST emit a stable `capability_id`, a full canonical `format` declaration, and explicit `operations` (`build`, `validate`, `preview`). Exact publisher support carries `{publisher_domain, format_option_id}` inside `format`; generic capabilities declare a satisfiable canonical parameter envelope. For 3.x compatibility, consumers accept entries without `capability_id` and interpret absent `operations` as `build`; such entries can be matched by contract but not selected through a capability-ID route. Replaces [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) in 3.2. |
+| `preview` | object | Per-route [`preview_creative`](/docs/creative/task-reference/preview_creative) declaration. `routes[].capability_id` names `supported_formats[]` entries whose `operations` includes `preview`; `rendering_origin` reports `platform_native` or `agent_approximation` per route. This self-description is informational and never grants authority; only a matching publisher placement `preview_provider` delegation does. See [rendering authority](/docs/creative/canonical-formats#rendering-authority-and-fallback-order). |
 | `supports_transformers` | boolean | When `true`, this creative agent offers account-scoped transformers — the selectable units of build capability (voices, models, styles) discovered via [`list_transformers`](/docs/creative/task-reference/list_transformers) and selected with `transformer_id` (plus the typed `config` bag) on [`build_creative`](/docs/creative/task-reference/build_creative). When `false` or absent, the agent does not expose transformers; `list_transformers` is unavailable and `build_creative` ignores `transformer_id`/`config`. Pre-call discriminator for routing across creative agents. |
 | `supports_refinement` | boolean | When `true`, this creative agent retains produced `build_variant` leaves (for an agent-defined window) and can re-build from one via `refine_from_build_variant_id` on [`build_creative`](/docs/creative/task-reference/build_creative) — applying a natural-language instruction in `message` plus an optional `config` delta, returning new lineage-linked variants. A build-time capability independent of generation/transformation. When `false` or absent, `refine_from_build_variant_id` returns [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); refine via the transform path (`creative_manifest` + `message`) instead. |
 | `refinable_retention_seconds` | integer | When `supports_refinement` is `true`, the **guaranteed-minimum** window (a floor, not a ceiling) during which a produced `build_variant_id` stays refinable via `refine_from_build_variant_id`. A ref within the window SHOULD resolve; the agent MAY retain longer. Omit to leave the window agent-defined (buyers treat refinability as best-effort and handle [`REFERENCE_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-reference-not-found)). |
@@ -1654,7 +1682,10 @@ const buy = await client.createMediaBuy({
             }
           }
         },
-        "language": true,
+        "language": {
+          "supported": true,
+          "supported_languages": ["en", "fr-CA", "es"]
+        },
         "keyword_targets": {
           "supported_match_types": ["broad", "phrase", "exact"]
         },
@@ -1776,7 +1807,13 @@ An agent can implement multiple protocols from a single endpoint. This is common
           "params": { "width": 300, "height": 250 }
         }
       }
-    ]
+    ],
+    "preview": {
+      "routes": [{
+        "capability_id": "display_image_generator",
+        "rendering_origin": "platform_native"
+      }]
+    }
   }
 }
 ```

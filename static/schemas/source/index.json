@@ -4,7 +4,7 @@
   "title": "AdCP Schema Registry",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "3.1.1",
+  "adcp_version": "3.2.0-beta.4",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
@@ -486,6 +486,10 @@
           "$ref": "/schemas/core/forecast-dimension-signal.json",
           "description": "Signal forecast dimension variant"
         },
+        "forecast-dimension-time": {
+          "$ref": "/schemas/core/forecast-dimension-time.json",
+          "description": "Calendar-window forecast dimension variant for availability windows"
+        },
         "forecast-vendor-metric-value": {
           "$ref": "/schemas/core/forecast-vendor-metric-value.json",
           "description": "Forecasted vendor-defined measurement value with low/mid/high bounds"
@@ -578,6 +582,10 @@
           "$ref": "/schemas/core/platform-extension-ref.json",
           "description": "Reference to a platform extension definition (URI + content digest)."
         },
+        "reference-renderer": {
+          "$ref": "/schemas/core/reference-renderer.json",
+          "description": "Pinned npm package export for a non-authoritative community reference presentation."
+        },
         "store-item": {
           "$ref": "/schemas/core/store-item.json",
           "description": "A physical store or location with coordinates, address, and catchment areas for proximity targeting"
@@ -653,6 +661,22 @@
         "placement-definition": {
           "$ref": "/schemas/core/placement-definition.json",
           "description": "Canonical placement definition published in a publisher's adagents.json"
+        },
+        "presentation-ref": {
+          "$ref": "/schemas/core/presentation-ref.json",
+          "description": "Immutable publisher-namespaced reference to placement presentation metadata."
+        },
+        "placement-presentation": {
+          "$ref": "/schemas/core/placement-presentation.json",
+          "description": "Declarative, non-executable placement chrome and creative-slot composition contract."
+        },
+        "preview-provider": {
+          "$ref": "/schemas/core/preview-provider.json",
+          "description": "Publisher-scoped delegation to an AdCP creative preview provider."
+        },
+        "preview-renderer-metadata": {
+          "$ref": "/schemas/core/preview-renderer-metadata.json",
+          "description": "Audit identity and safety metadata for a preview renderer implementation."
         },
         "mcp-webhook-payload": {
           "$ref": "/schemas/core/mcp-webhook-payload.json",
@@ -1177,6 +1201,10 @@
           "$ref": "/schemas/enums/forecast-range-unit.json",
           "description": "How to interpret forecast points: spend curve, reach/frequency curve, temporal (weekly/daily), or outcome targets (clicks/conversions)"
         },
+        "availability-status": {
+          "$ref": "/schemas/enums/availability-status.json",
+          "description": "Bookability of the inventory a forecast row describes (available, unavailable)"
+        },
         "demographic-system": {
           "$ref": "/schemas/enums/demographic-system.json",
           "description": "Audience measurement systems for demographic notation (nielsen, barb, agf, oztam, mediametrie, custom)"
@@ -1531,6 +1559,10 @@
           "$ref": "/schemas/media-buy/product-discovery-criteria.json",
           "description": "Structured offer, catalog, and policy criteria shared by compact discovery tools"
         },
+        "outcome-target": {
+          "$ref": "/schemas/media-buy/outcome-target.json",
+          "description": "Reverse-forecast planning input: a compact metric or event goal plus desired volume the seller solves budget for"
+        },
         "proposal-refinement": {
           "$ref": "/schemas/media-buy/proposal-refinement.json",
           "description": "One immutable proposal revision request"
@@ -1546,6 +1578,10 @@
         "product-purchase": {
           "$ref": "/schemas/media-buy/product-purchase.json",
           "description": "Canonical direct product selection without creatives or negotiated term overrides"
+        },
+        "compatibility-purchase-coordinator-input": {
+          "$ref": "/schemas/media-buy/legacy-purchase-continuation-input.json",
+          "description": "SDK-local fail-closed input for redeeming a deprecated products-only compatibility continuation"
         },
         "commercial-terms": {
           "$ref": "/schemas/media-buy/commercial-terms.json",
@@ -2160,6 +2196,16 @@
             "description": "Outcome acceptance status with budget impact and findings"
           }
         },
+        "report-plan-adjustment": {
+          "request": {
+            "$ref": "/schemas/governance/report-plan-adjustment-request.json",
+            "description": "Seller-authenticated append-only commitment adjustment report"
+          },
+          "response": {
+            "$ref": "/schemas/governance/report-plan-adjustment-response.json",
+            "description": "Accepted adjustment with gross, restored-headroom, and net budget state"
+          }
+        },
         "get-plan-audit-logs": {
           "request": {
             "$ref": "/schemas/governance/get-plan-audit-logs-request.json",
@@ -2525,5 +2571,5 @@
       "code": "// Use everit-org/json-schema or similar library"
     }
   ],
-  "published_version": "3.1.1"
+  "published_version": "3.2.0-beta.4"
 }

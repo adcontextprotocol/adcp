@@ -25,6 +25,11 @@
       "minimum": 1,
       "description": "Height in pixels"
     },
+    "file_size_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Image file size in bytes. Required by agents that advertise a max_file_size_kb constraint."
+    },
     "pixel_ratio": {
       "type": "number",
       "exclusiveMinimum": 0,

@@ -1,5 +1,5 @@
 id: media_buy_seller/available_actions
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller carries product allowed actions into per-buy available actions"
 category: media_buy_seller
 summary: "Validates the AdCP 3.1 media-buy action-discovery flow: product allowed_actions[], buy available_actions[], SLAWindow duration fields, self-serve mutation, and ACTION_NOT_ALLOWED enforcement."
@@ -10,9 +10,11 @@ default_agent: sales
 # pause-shaped negative probes test available_actions, not pending creative
 # review. Sellers with manual creative review grade not_applicable instead of
 # false-failing on the lifecycle prerequisite.
-requires_capability:
-  path: media_buy.creative_approval_mode
-  equals: auto_approve
+requires_all_capabilities:
+  - path: media_buy.creative_approval_mode
+    equals: auto_approve
+  - path: creative.has_creative_library
+    equals: true
 
 required_tools:
   - get_products

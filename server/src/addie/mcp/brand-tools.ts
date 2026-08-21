@@ -102,7 +102,7 @@ export const BRAND_TOOLS: AddieTool[] = [
   },
   {
     name: 'list_brands',
-    description: 'List brands in the registry with optional filters. Can filter by source type and search by name or domain.',
+    description: 'List brands in the registry with optional filters and cached relationship trust state. Can filter by source type and search by name or domain.',
     usage_hints: 'Use when asked about brands in the registry, or to find brands by name.',
     input_schema: {
       type: 'object',
@@ -487,6 +487,9 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       has_manifest: b.has_manifest,
       house_domain: b.house_domain,
       keller_type: b.keller_type,
+      relationship_trust: b.relationship_trust,
+      relationship_verified_at: b.relationship_verified_at,
+      claimed_house_domain: b.claimed_house_domain,
     }));
 
     return JSON.stringify({ brands: result, count: result.length }, null, 2);

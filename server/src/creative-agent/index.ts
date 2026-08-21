@@ -7,19 +7,89 @@
 
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
-import rateLimit from 'express-rate-limit';
-import { createHash } from 'node:crypto';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import { createHash, randomUUID } from 'node:crypto';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { unlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Readable, Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createLogger } from '../logger.js';
 import { constantTimeEqual } from '../utils/constant-time-equal.js';
 import { createCreativeAgentServer } from './task-handlers.js';
-import { getPreview, cleanExpiredPreviews } from './preview-store.js';
+import {
+  getPreview,
+  getPreviewAssetSource,
+  getOrCreatePreviewAssetDownload,
+  releasePreviewAssetDownload,
+  cleanExpiredPreviews,
+  MAX_PREVIEW_ASSET_BYTES,
+} from './preview-store.js';
 import { CommunityMirrorDatabase } from '../db/community-mirror-db.js';
+import { safeFetch } from '../utils/url-security.js';
 
 const logger = createLogger('creative-agent-routes');
 
 const CREATIVE_AGENT_TOKEN = process.env.CREATIVE_AGENT_TOKEN;
 const STARTUP_TIME = new Date().toISOString();
+const ALLOWED_PREVIEW_ASSET_TYPES = new Set([
+  'image/avif', 'image/gif', 'image/jpeg', 'image/png', 'image/webp',
+  'video/mp4', 'video/quicktime', 'video/webm',
+  'audio/aac', 'audio/flac', 'audio/mp4', 'audio/mpeg', 'audio/ogg',
+  'audio/wav', 'audio/webm', 'audio/x-wav',
+]);
+
+class PreviewAssetTooLargeError extends Error {}
+
+async function downloadPreviewAsset(sourceUrl: string) {
+  const upstream = await safeFetch(sourceUrl, {
+    method: 'GET',
+    maxRedirects: 0,
+    headers: { Accept: 'image/avif,image/gif,image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,audio/*' },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!upstream.ok || !upstream.body) throw new Error('Preview asset fetch failed');
+
+  const contentType = upstream.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() ?? '';
+  if (!ALLOWED_PREVIEW_ASSET_TYPES.has(contentType)) {
+    await upstream.body.cancel();
+    throw new TypeError('Unsupported preview asset type');
+  }
+  const declaredLength = Number(upstream.headers.get('content-length') ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_PREVIEW_ASSET_BYTES) {
+    await upstream.body.cancel();
+    throw new PreviewAssetTooLargeError('Preview asset exceeds size limit');
+  }
+
+  // Keep request-controlled asset tokens out of filesystem paths. The store
+  // associates this independently generated filename with the token after the
+  // download completes.
+  const path = join(tmpdir(), `adcp-preview-asset-${randomUUID()}`);
+  let size = 0;
+  const limiter = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      size += chunk.length;
+      callback(size > MAX_PREVIEW_ASSET_BYTES
+        ? new PreviewAssetTooLargeError('Preview asset exceeds size limit')
+        : null, chunk);
+    },
+  });
+  try {
+    // Both the network and file streams honor backpressure. The completed file
+    // is then shared by all requests for this token rather than re-fetched.
+    await pipeline(
+      Readable.from(upstream.body as AsyncIterable<Uint8Array>),
+      limiter,
+      createWriteStream(path, { flags: 'wx', mode: 0o600 }),
+    );
+    return { path, contentType, size };
+  } catch (error) {
+    await unlink(path).catch(() => {});
+    throw error;
+  }
+}
 
 function setCORSHeaders(res: Response): void {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -42,6 +112,15 @@ function requireToken(req: Request, res: Response, next: NextFunction): void {
     return;
   }
   next();
+}
+
+export function previewQuotaKey(req: Request): string {
+  // The reference endpoint has a single optional bearer secret rather than
+  // user accounts. Bind that authenticated credential to the caller's network
+  // identity; anonymous callers are isolated by the same network quota key.
+  const credential = req.headers.authorization ?? 'anonymous';
+  const network = ipKeyGenerator(req.ip ?? req.socket?.remoteAddress ?? 'unknown');
+  return createHash('sha256').update(`${credential}\0${network}`).digest('hex');
 }
 
 const CREATIVE_AGENT_HOST = 'creative.adcontextprotocol.org';
@@ -161,6 +240,13 @@ export function createCreativeAgentRouter(): Router {
       });
     },
   });
+  const previewAssetRateLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: { xForwardedForHeader: false, ip: false },
+  });
 
   // MCP endpoint
   router.post('/mcp', mcpRateLimiter, requireToken, async (req: Request, res: Response) => {
@@ -169,7 +255,7 @@ export function createCreativeAgentRouter(): Router {
     let server: ReturnType<typeof createCreativeAgentServer> | null = null;
     try {
       const agentBaseUrl = getAgentBaseUrl(req);
-      server = createCreativeAgentServer(agentBaseUrl);
+      server = createCreativeAgentServer(agentBaseUrl, previewQuotaKey(req));
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
@@ -215,6 +301,47 @@ export function createCreativeAgentRouter(): Router {
   });
 
   // Preview hosting endpoint
+  router.get('/preview-assets/:id', previewAssetRateLimiter, async (req: Request, res: Response) => {
+    res.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'none'; object-src 'none'; base-uri 'none'; sandbox");
+    const tokenExists = getPreviewAssetSource(req.params.id) !== null;
+    const assetDownload = getOrCreatePreviewAssetDownload(
+      req.params.id,
+      MAX_PREVIEW_ASSET_BYTES,
+      sourceUrl => downloadPreviewAsset(sourceUrl),
+    );
+    if (!assetDownload) {
+      res.status(tokenExists ? 503 : 404).send(tokenExists
+        ? 'Preview asset capacity is temporarily unavailable'
+        : 'Preview asset not found or expired');
+      return;
+    }
+    try {
+      const asset = await assetDownload;
+      res.setHeader('Content-Type', asset.contentType);
+      res.setHeader('Content-Length', asset.size);
+      res.setHeader('Cache-Control', 'private, max-age=300');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.status(200);
+      await pipeline(createReadStream(asset.path), res);
+    } catch (error) {
+      logger.warn({ error }, 'Creative agent: preview asset proxy failed');
+      if (!res.headersSent) {
+        res.status(error instanceof PreviewAssetTooLargeError ? 413 : error instanceof TypeError ? 415 : 502)
+          .send(error instanceof PreviewAssetTooLargeError
+            ? 'Preview asset exceeds size limit'
+            : error instanceof TypeError
+              ? 'Unsupported preview asset type'
+              : 'Preview asset fetch failed');
+      } else {
+        res.destroy();
+      }
+    } finally {
+      releasePreviewAssetDownload(req.params.id);
+    }
+  });
+
   router.get('/preview/:id', (req: Request, res: Response) => {
     const html = getPreview(req.params.id);
     if (!html) {
@@ -223,7 +350,7 @@ export function createCreativeAgentRouter(): Router {
     }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('X-Frame-Options', 'ALLOWALL');
-    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; frame-ancestors *");
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors *");
     res.send(html);
   });
 

@@ -107,7 +107,9 @@ An artifact represents content context where ad placements occur - identified by
 
 ## Dialogue Flow
 
-Calibration supports back-and-forth dialogue using the protocol's conversation management. The seller sends content, the verification agent responds with an evaluation and explanation, and the seller can respond with questions or try different content - all within the same conversation context.
+Calibration supports a sequence of typed evaluations using A2A conversation
+correlation. Each turn remains a complete `calibrate_content` invocation; a
+`contextId` groups the evaluations but does not make free text authoritative.
 
 ### A2A Example
 
@@ -115,14 +117,16 @@ Calibration supports back-and-forth dialogue using the protocol's conversation m
 // Seller sends artifact to evaluate
 const response1 = await a2a.send({
   message: {
+    messageId: crypto.randomUUID(),
+    role: "ROLE_USER",
     parts: [{
-      kind: "data",
       data: {
         skill: "calibrate_content",
-        parameters: {
+        input: {
+          idempotency_key: crypto.randomUUID(),
           standards_id: "nike_brand_safety",
           artifact: {
-            property_id: { type: "domain", value: "reddit.com" },
+            property_rid: "01916f3a-a1d3-7000-8000-000000000040",
             artifact_id: "r_news_politics_123",
             assets: [
               { type: "text", role: "title", content: "Political News Article" }
@@ -135,30 +139,46 @@ const response1 = await a2a.send({
 });
 // Response: verdict=fail with feature breakdown
 
-// Seller asks follow-up question about the decision
+// Seller tests a more explicitly balanced version in the same context.
 const response2 = await a2a.send({
-  contextId: response1.contextId,
   message: {
+    messageId: crypto.randomUUID(),
+    contextId: response1.contextId,
+    role: "ROLE_USER",
     parts: [{
-      kind: "text",
-      text: "This is factual news, not opinion. Should balanced journalism be excluded?"
+      data: {
+        skill: "calibrate_content",
+        input: {
+          idempotency_key: crypto.randomUUID(),
+          standards_id: "nike_brand_safety",
+          artifact: {
+            property_rid: "01916f3a-a1d3-7000-8000-000000000040",
+            artifact_id: "r_news_balanced_124",
+            assets: [
+              { type: "text", role: "title", content: "Balanced Political News Analysis" }
+            ]
+          }
+        }
+      }
     }]
   }
 });
-// Verification agent clarifies that brand policy excludes ALL political content
+// Verification agent still reports the policy boundary through typed output.
 
 // Seller tries different artifact
 const response3 = await a2a.send({
-  contextId: response1.contextId,
   message: {
+    messageId: crypto.randomUUID(),
+    contextId: response1.contextId,
+    role: "ROLE_USER",
     parts: [{
-      kind: "data",
       data: {
         skill: "calibrate_content",
-        parameters: {
+        input: {
+          idempotency_key: crypto.randomUUID(),
           standards_id: "nike_brand_safety",
           artifact: {
-            property_id: { type: "domain", value: "reddit.com" },
+            property_rid: "01916f3a-a1d3-7000-8000-000000000040",
             artifact_id: "r_running_tips_456",
             assets: [
               { type: "text", role: "title", content: "Running Tips" }
@@ -179,7 +199,7 @@ const response3 = await a2a.send({
 const response1 = await mcp.call('calibrate_content', {
   standards_id: "nike_brand_safety",
   artifact: {
-    property_id: { type: "domain", value: "reddit.com" },
+    property_rid: "01916f3a-a1d3-7000-8000-000000000040",
     artifact_id: "r_news_politics_123",
     assets: [
       { type: "text", role: "title", content: "Political News Article" }
@@ -193,7 +213,7 @@ const response2 = await mcp.call('calibrate_content', {
   context_id: response1.context_id,
   standards_id: "nike_brand_safety",
   artifact: {
-    property_id: { type: "domain", value: "reddit.com" },
+    property_rid: "01916f3a-a1d3-7000-8000-000000000040",
     artifact_id: "r_news_politics_123",
     assets: [
       { type: "text", role: "title", content: "Political News Article" }
@@ -207,7 +227,7 @@ const response3 = await mcp.call('calibrate_content', {
   context_id: response1.context_id,
   standards_id: "nike_brand_safety",
   artifact: {
-    property_id: { type: "domain", value: "reddit.com" },
+    property_rid: "01916f3a-a1d3-7000-8000-000000000040",
     artifact_id: "r_running_tips_456",
     assets: [
       { type: "text", role: "title", content: "Running Tips" }

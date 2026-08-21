@@ -117,6 +117,12 @@ Every agent satisfies the universal layer. Each `supported_protocols` claim adds
 
 Agents MUST NOT declare a capability whose storyboards they do not pass. See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for the full taxonomy and [Validate Your Agent](/docs/building/verification/validate-your-agent) for how to run the suite locally.
 
+The non-executable [cross-role governance index](/compliance/latest/universal/governance.yaml)
+maps the shared governance contract to capability-gated media-buy, signals,
+rights, and creative proofs. It is discoverability metadata, not an additional
+universal storyboard; only an agent's exact
+`adcp.governance_enforcement.tasks[]` claims select those role-specific tests.
+
 ## Universal conformance
 
 Every agent MUST pass every storyboard below.

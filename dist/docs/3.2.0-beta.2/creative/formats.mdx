@@ -1,0 +1,130 @@
+---
+title: Creative Formats
+description: "Canonical creative format contracts in AdCP 3.2: publisher acceptance, product deliverability, creative-agent capabilities, and portable manifests."
+"og:title": "AdCP — Creative Formats"
+---
+
+AdCP 3.2 uses canonical creative declarations end to end. A declaration answers what assets and constraints a delivery surface accepts. It is not the identity of the creative agent that produced the assets.
+
+Named `format_id` objects and `list_creative_formats` are deprecated compatibility surfaces. New implementations use the model below. Fields named exactly `format_ids` are removed in AdCP 4.0; singular `format_id`, named-format definitions, and the task follow separate schedules.
+
+## The three authorities
+
+| Question | Source of truth |
+|---|---|
+| What does a publisher surface accept? | Publisher `adagents.json.formats[]` |
+| What can a sales agent deliver for this product? | `Product.format_options[]` from `get_products` |
+| What can a creative agent build, validate, or preview? | `get_adcp_capabilities.creative.supported_formats[]` |
+
+These declarations share the same canonical shape so buyers can compare them, but they are independent claims. A creative agent does not become publisher-authoritative by copying a publisher identity, and a sales product does not enumerate approved creative vendors.
+
+## Canonical declaration
+
+```json
+{
+  "publisher_domain": "shorts.streamhaus.example",
+  "format_option_id": "vertical_video",
+  "format_kind": "video_hosted",
+  "params": {
+    "width": 1080,
+    "height": 1920,
+    "duration_ms_range": [5000, 60000],
+    "video_codecs": ["h264"],
+    "slots": [
+      { "asset_group_id": "video_main", "asset_type": "video", "required": true },
+      { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true }
+    ]
+  }
+}
+```
+
+- `format_kind` selects the canonical vocabulary.
+- `params` narrows that canonical with dimensions, durations, codecs, slots, and other structural constraints.
+- `{publisher_domain, format_option_id}` identifies an exact publisher-owned option when applicable.
+- Product-local options omit `publisher_domain` and use `format_option_id` within the product.
+
+Commercial facts—price, floor, availability, auction mechanics, and deal eligibility—belong on the product and pricing option, not in format parameters.
+
+## Creative-agent capability
+
+A creative agent wraps a canonical declaration in an agent-local operation entry:
+
+```json
+{
+  "capability_id": "streamhaus_vertical_video_builder",
+  "operations": ["build", "validate", "preview"],
+  "format": {
+    "publisher_domain": "shorts.streamhaus.example",
+    "format_option_id": "vertical_video",
+    "format_kind": "video_hosted",
+    "params": {
+      "width": 1080,
+      "height": 1920,
+      "duration_ms_range": [5000, 60000]
+    }
+  }
+}
+```
+
+Because the capability entry includes `preview`, the enclosing capability response also lists `streamhaus_vertical_video_builder` in `creative.preview.routes[]` and declares its informational `rendering_origin`. Capability IDs route operations; they do not make the preview authoritative.
+
+The buyer passes `capability_id` to that same agent as `build_creative.target_capability_id`. The returned manifest does not carry the capability ID because it must remain portable.
+
+## Portable manifest
+
+```json
+{
+  "format_kind": "video_hosted",
+  "format_option_ref": {
+    "scope": "publisher",
+    "publisher_domain": "shorts.streamhaus.example",
+    "format_option_id": "vertical_video"
+  },
+  "assets": {
+    "video_main": {
+      "asset_type": "video",
+      "url": "https://cdn.acmeoutdoor.example/vertical-launch.mp4",
+      "width": 1080,
+      "height": 1920,
+      "duration_ms": 30000
+    },
+    "landing_page_url": {
+      "asset_type": "url",
+      "url": "https://acmeoutdoor.example/trail-pro"
+    }
+  }
+}
+```
+
+Use `format_option_ref` when the receiving product has multiple options of the same kind or needs an exact publisher/product option. Otherwise `format_kind` plus the manifest assets may be sufficient.
+
+## Matching and satisfaction
+
+Canonical compatibility is directional. A creative capability or manifest satisfies a target only when it meets every target constraint:
+
+- Exact dimensions and durations must match.
+- A requested range must be contained within the accepted range; overlap is insufficient.
+- Required slots must be present with compatible asset types.
+- An exact publisher claim must match both `publisher_domain` and `format_option_id`.
+- Equal `format_kind` values alone do not prove compatibility.
+
+For a product with multiple included placements, the selected format set must cover every placement. A seller must reject or refine a package with an uncovered placement; it must not silently remove inventory. If a multi-publisher product omits `placements[]`, each `publisher_properties[]` selector is an eligibility slice: product-local options apply to every slice, publisher-scoped options only to their publisher, and an indeterminate slice fails closed until the seller supplies placements or a refined product.
+
+## Discovery flow
+
+1. Call `get_products` and read the selected product's `format_options[]`.
+2. Resolve publisher-backed options from the publisher's `adagents.json.formats[]` when needed.
+3. Query the registry by canonical kind or exact publisher option to find creative agents.
+4. Call the selected creative agent's `get_adcp_capabilities` directly.
+5. Pass its local `capability_id` to `build_creative`.
+6. Submit the returned canonical manifest through `sync_creatives`.
+
+The impression-time renderer is the seller/publisher delivery runtime behind `sync_creatives`. It is not discovered as a creative-agent endpoint merely because it composes the ad at serve time.
+
+## Related
+
+- [Canonical formats specification](/dist/docs/3.2.0-beta.2/creative/canonical-formats)
+- [Creative manifests](/dist/docs/3.2.0-beta.2/creative/creative-manifests)
+- [`get_adcp_capabilities`](/dist/docs/3.2.0-beta.2/protocol/get_adcp_capabilities)
+- [`build_creative`](/dist/docs/3.2.0-beta.2/creative/task-reference/build_creative)
+- [Deprecated `list_creative_formats`](/dist/docs/3.2.0-beta.2/creative/task-reference/list_creative_formats)

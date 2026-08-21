@@ -13,7 +13,7 @@
         "task": { "type": "string", "const": "control_media_buy" },
         "action": {
           "type": "string",
-          "enum": ["pause", "resume", "cancel", "increase_budget", "decrease_budget", "reallocate_budget", "update_budget_allocation", "update_targeting", "update_pacing", "update_bidding", "update_frequency_caps", "update_catalog_assignments", "update_keywords", "update_optimization_goals", "update_impression_goal", "update_spend_target", "update_reporting_webhook", "remove_packages"]
+          "enum": ["pause", "resume", "cancel", "update_name", "increase_budget", "decrease_budget", "reallocate_budget", "update_budget_allocation", "update_targeting", "update_pacing", "update_bidding", "update_frequency_caps", "update_catalog_assignments", "update_keywords", "update_optimization_goals", "update_impression_goal", "update_spend_target", "update_reporting_webhook", "remove_packages"]
         },
         "mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
         "sla": { "$ref": "/schemas/core/sla-window.json" },

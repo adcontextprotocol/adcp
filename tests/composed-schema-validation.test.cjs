@@ -3965,6 +3965,28 @@ async function runTests() {
     cleanControl,
     'control_media_buy accepts operational controls inside accepted terms'
   );
+  const nameControl = {
+    idempotency_key: 'control-media-buy-name-0001',
+    account: { account_id: 'account-clean-1' },
+    media_buy_id: 'media-buy-1',
+    revision: 4,
+    name: 'Acme autumn campaign'
+  };
+  await testSchemaValidation(
+    '/schemas/media-buy/control-media-buy-request.json',
+    nameControl,
+    'control_media_buy accepts a revision-checked MediaBuy name change'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/control-media-buy-request.json',
+    { ...nameControl, canceled: true },
+    'control_media_buy keeps cancellation mutually exclusive with a name change'
+  );
+  await testSchemaValidation(
+    '/schemas/core/canonical-media-buy-action.json',
+    { task: 'control_media_buy', action: 'update_name', mode: 'self_serve' },
+    'canonical MediaBuy actions route name changes through control_media_buy'
+  );
   await testSchemaValidation(
     '/schemas/creative/sync-creatives-request.json',
     {
@@ -4396,7 +4418,95 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     { products: [] },
-    'request_proposals cannot return products without a proposal'
+    'request_proposals products-only compatibility requires an explicit outcome and continuation'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'products_available',
+      products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
+      incomplete: [{
+        scope: 'proposals',
+        description: 'The established seller returned products but did not construct a proposal.'
+      }],
+      purchase_continuation: {
+        kind: 'legacy_create',
+        continuation_token: 'products-only-composed-token-01',
+        continuation_expires_at: '2027-01-01T00:05:00Z',
+        product_ids: ['brief-composed-video'],
+        source_adcp_version: '3.1',
+        losses: ['feed_version_not_atomic', 'pricing_version_not_atomic'],
+        requires_explicit_acceptance: true
+      }
+    },
+    'request_proposals preserves a products-only established result without fabricating proposal terms'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'products_available',
+      products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
+      purchase_continuation: {
+        kind: 'listed_purchase',
+        product_ids: ['brief-composed-video'],
+        cache_scope: 'account',
+        feed_version: 'account-feed-v17',
+        pricing_version: 'account-pricing-v9'
+      }
+    },
+    'request_proposals can direct an adapter to obtain a real account-scoped listing fence'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'products_available',
+      products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
+      incomplete: [{
+        scope: 'pricing',
+        description: 'The established seller did not return complete pricing.'
+      }],
+      purchase_continuation: {
+        kind: 'listed_purchase',
+        product_ids: ['brief-composed-video'],
+        cache_scope: 'account',
+        feed_version: 'account-feed-v17',
+        pricing_version: 'account-pricing-v9'
+      }
+    },
+    'listed purchase cannot claim an atomic fence when pricing is incomplete'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'products_available',
+      products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
+      proposals: [{ proposal_id: 'synthetic-proposal' }],
+      purchase_continuation: {
+        kind: 'legacy_create',
+        continuation_token: 'products-only-composed-token-01',
+        continuation_expires_at: '2027-01-01T00:05:00Z',
+        product_ids: ['brief-composed-video'],
+        losses: ['feed_version_not_atomic', 'pricing_version_not_atomic'],
+        requires_explicit_acceptance: true
+      }
+    },
+    'products_available cannot carry a synthetic proposal or terms digest'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'products_available',
+      products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
+      purchase_continuation: {
+        kind: 'legacy_create',
+        continuation_token: 'products-only-composed-token-01',
+        continuation_expires_at: '2027-01-01T00:05:00Z',
+        product_ids: ['brief-composed-video'],
+        losses: ['feed_version_not_atomic'],
+        requires_explicit_acceptance: true
+      }
+    },
+    'legacy products-only continuation names every lost fence and fails closed'
   );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
