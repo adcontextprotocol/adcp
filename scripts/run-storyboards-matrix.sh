@@ -252,7 +252,7 @@ if [ "${FLOOR_SET}" = "3.0-compat" ]; then
 else
   TENANTS=(
     "signals:74:111"
-    "sales:120:545"
+    "sales:120:534"
     "governance:73:151"
     "creative:73:169"
     "creative-builder:70:146"

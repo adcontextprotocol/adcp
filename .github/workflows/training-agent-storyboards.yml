@@ -83,12 +83,13 @@ jobs:
           # The exhaustive harness intentionally runs storyboards outside this
           # tenant's claimed specialisms. Protect the meaningful sales surface
           # with the passing-step floor and the required clean/exact gates below.
-          # Observed under SDK 14 beta.4: 121 clean / 546 passing. Keep a
-          # one-storyboard/step tolerance while exact lifecycle gates remain strict.
+          # Observed under SDK 14 beta.4 after capability-scoping optional creative
+          # library phases: 125 clean / 535 passing. Keep a one-step tolerance while
+          # exact lifecycle gates remain strict.
           - surface: current
             tenant: sales
             min_clean_storyboards: 120
-            min_passing_steps: 545
+            min_passing_steps: 534
           - surface: current
             tenant: governance
             min_clean_storyboards: 73
