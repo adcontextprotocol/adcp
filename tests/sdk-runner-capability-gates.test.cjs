@@ -439,3 +439,95 @@ test('direct creative-sync phases have authoritative library gates', () => {
     }, index.id);
   }
 });
+
+test('library-less sellers still execute delivery from the create-buy anchor', async () => {
+  const indexPath = path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'protocols',
+    'media-buy',
+    'index.yaml'
+  );
+  const source = YAML.parse(fs.readFileSync(indexPath, 'utf8'));
+  const sourcePhases = new Map(source.phases.map(phase => [phase.id, phase]));
+  const creativeSource = sourcePhases.get('creative_sync');
+  const deliverySource = sourcePhases.get('delivery_monitoring');
+
+  assert.deepEqual(deliverySource.depends_on, ['create_buy']);
+
+  const storyboard = {
+    id: 'libraryless_delivery_anchor_regression',
+    version: '1.0.0',
+    title: 'Library-less delivery anchor regression',
+    category: 'media_buy_seller',
+    summary: 'Regression',
+    narrative: 'Regression',
+    agent: { interaction_model: 'media_buy_seller', capabilities: [] },
+    caller: { role: 'buyer_agent' },
+    phases: [
+      {
+        id: 'create_buy',
+        title: 'Create buy',
+        steps: [{
+          id: 'create_state',
+          title: 'Create state',
+          task: 'get_products',
+          stateful: true,
+          sample_request: { brief: 'create state' },
+        }],
+      },
+      {
+        id: creativeSource.id,
+        title: creativeSource.title,
+        requires_capability: creativeSource.requires_capability,
+        steps: [{
+          id: 'creative_state',
+          title: 'Creative state',
+          task: 'sync_creatives',
+          stateful: true,
+          sample_request: { creatives: [] },
+        }],
+      },
+      {
+        id: deliverySource.id,
+        title: deliverySource.title,
+        depends_on: deliverySource.depends_on,
+        steps: [{
+          id: 'delivery_state',
+          title: 'Delivery state',
+          task: 'get_products',
+          stateful: true,
+          sample_request: { brief: 'delivery state' },
+        }],
+      },
+    ],
+  };
+
+  let getProductsCalls = 0;
+  const tools = ['get_adcp_capabilities', 'get_products', 'sync_creatives'];
+  const result = await runStoryboard('https://agent.example/mcp', storyboard, {
+    _profile: {
+      tools,
+      raw_capabilities: { creative: { has_creative_library: false } },
+    },
+    agentTools: tools,
+    _client: {
+      resetContext() {},
+      async getProducts() {
+        getProductsCalls++;
+        return { success: true, data: { products: [] } };
+      },
+    },
+  });
+
+  assert.equal(result.overall_passed, true);
+  assert.equal(getProductsCalls, 2);
+  const creativeResult = result.phases.find(phase => phase.phase_id === 'creative_sync');
+  const deliveryResult = result.phases.find(phase => phase.phase_id === 'delivery_monitoring');
+  assert.equal(creativeResult.steps[0].skip_reason, 'not_applicable');
+  assert.notEqual(deliveryResult.steps[0].skipped, true);
+  assert.equal(deliveryResult.steps[0].passed, true);
+});
