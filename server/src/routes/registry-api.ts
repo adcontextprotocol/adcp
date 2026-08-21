@@ -8346,11 +8346,17 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(400).json({ error: "context too large" });
         }
 
+        // adcp#6735 — pre-populate the storyboard-declared test kit so
+        // `from_test_kit` steps run with the credential the storyboard was
+        // authored against; `withHostedAuthTestKit`'s `!nextAuth.api_key`
+        // guard then no-ops the run-auth bearer substitution.
+        const declaredTestKit = getTestKitForStoryboard(storyboard.id);
         const result = await runStoryboardStep(
           agentUrl,
           storyboard,
           req.params.stepId,
           withSdkSafeTransport(withHostedStoryboardRunOptions({
+            ...(declaredTestKit && { test_kit: declaredTestKit }),
             ...(sdkAuth && { auth: sdkAuth }),
             ...(context && { context }),
           }, runTarget, authProbeTask)),
