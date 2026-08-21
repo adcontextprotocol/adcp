@@ -1,0 +1,145 @@
+---
+title: Managing Response Size
+sidebarTitle: Managing Response Size
+description: "How to keep AdCP responses lean with proposal planning, product field selection, pagination, feed versioning, and client-side projection."
+"og:title": "AdCP — Managing Response Size"
+---
+
+When a buyer agent calls an AdCP seller, the response can range from a few
+seller-planned proposals to a wholesale mirror containing detailed product,
+signal, and placement metadata. This page covers the controls that keep those
+responses right-sized—and the client-side projection that matters most.
+
+## Wire response ≠ model context
+
+The single most important point: **the bytes on the wire are not what your model has to consume.**
+
+AdCP responses are structured data. An MCP response arrives as `structuredContent` — typed JSON that the client parses before any model sees it. An A2A response pairs a human-readable `TextPart` with an authoritative `DataPart`. In both cases, a well-built client stores the full response and projects or summarizes it before prompting the next model turn.
+
+```
+Seller agent → structured response (full data)
+                    ↓
+Client stores raw response
+                    ↓
+Client projects / summarizes → model context (lean)
+```
+
+If your agent is forwarding raw tool results into the model context unchanged, the fix is in the client, not the protocol. Store the response, extract what the model needs for its next decision, and reference the stored data by ID when details are needed later.
+
+<Warning>
+  **Naive-host caveat.** Some MCP hosts pass the entire `structuredContent` blob into the model context as-is. If you control the host, project before prompting. If you don't, the controls below become your primary defense against oversized context.
+</Warning>
+
+## Ask for a plan when you want curation
+
+Use `request_proposals` when the seller should turn a campaign brief into a
+small set of actionable plans:
+
+```json
+{
+  "adcp_version": "3.2-beta.0",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655442001",
+  "account": { "account_id": "account_123" },
+  "brand": { "domain": "acme-outdoor.example" },
+  "brief": "Build a concise premium-video plan for Acme Outdoor's Q4 launch. Prioritize completed views.",
+  "criteria": {
+    "offer_filters": { "channels": ["olv"] },
+    "targeting_overlay": { "geo_countries": ["US"] }
+  }
+}
+```
+
+The seller returns immutable draft proposals rather than a catalog page. Use
+typed `refine_proposals` requests to narrow the plan without retransmitting the
+full source response.
+
+Use `list_products` instead when the buyer wants published offers or maintains
+a wholesale mirror. A mirror is a feed-synchronization topology, not a cheaper
+proposal mode.
+
+## `fields` selector for lightweight discovery
+
+When you only need a subset of published product data, pass `fields` to
+`list_products`:
+
+```json
+{
+  "adcp_version": "3.2-beta.0",
+  "account": { "account_id": "account_123" },
+  "criteria": {
+    "offer_filters": { "channels": ["olv"] }
+  },
+  "fields": ["product_id", "name", "pricing_options"],
+  "max_results": 10
+}
+```
+
+This is useful when:
+- Your agent is scanning multiple sellers and only needs IDs and prices for initial comparison
+- You want to skip heavy fields like `product_card`, `product_card_detailed`, `placements`, or signal metadata
+- You're building a summary view before drilling into specific products
+
+Without `fields`, the seller returns the full product object — including visual card definitions, placement specs, and any bundled signal metadata. For a first-pass discovery across multiple sellers, that's more data than you need.
+
+## Pagination for cardinality control
+
+`list_products` uses cursor-based pagination:
+
+| Parameter | Description |
+|---|---|
+| `max_results` | Maximum products per page |
+| `cursor` | Opaque cursor from the previous response |
+
+Response:
+
+| Field | Description |
+|---|---|
+| `next_cursor` | Cursor for the next page; omitted on the terminal page |
+| `feed_version` | Opaque version of the selected offer feed |
+| `pricing_version` | Optional separately versioned pricing layer |
+| `cache_scope` | Whether versions describe the public or account layer |
+
+Pass `next_cursor` into the next `list_products` request. A mirror stores
+`feed_version` with its `cache_scope` and uses account-level product webhooks
+for routine changes. Conditional reads with `if_feed_version` repair gaps or
+confirm that a selected feed is unchanged; they do not replace a healthy
+webhook stream.
+
+## Truncation flags on delivery
+
+[`get_media_buy_delivery`](/dist/docs/3.0.26/media-buy/task-reference/get_media_buy_delivery) returns breakdown arrays (by geo, by creative, by day, etc.) that can grow large. Each breakdown array has a sibling boolean flag — `by_geo_truncated`, `by_creative_truncated`, etc. — that tells you whether the returned rows are the complete set or just the top-N:
+
+| Flag value | Meaning |
+|---|---|
+| `false` | All rows are present |
+| `true` | Additional rows exist beyond what was returned |
+
+When a flag is `true`, the returned rows are sorted by the requested metric descending — you have the most significant breakdowns, and the tail is omitted. This is by design: delivery breakdowns are for optimization decisions, not archival reporting. If you need the full dataset, use the seller's native reporting API.
+
+## Putting it together
+
+A token-efficient AdCP integration follows this pattern:
+
+1. **Use `request_proposals` for seller curation.** Ask for plans instead of downloading a feed and prompting a model to rediscover seller expertise.
+2. **Use typed `refine_proposals`.** Carry proposal IDs and changes, not the full prior response, into the next turn.
+3. **Store raw responses client-side.** Don't feed full product objects into the model context. Extract what matters, summarize the rest.
+4. **Read truncation flags before paginating delivery.** If `by_geo_truncated: false`, you already have everything — no need for follow-up calls.
+5. **Treat wholesale as synchronization.** Bootstrap with `list_products`, apply product webhooks, and use versioned reads for repair.
+
+<CardGroup cols={2}>
+  <Card title="Discovery and planning" icon="magnifying-glass" href="/dist/docs/3.0.26/media-buy/product-discovery/">
+    Choose published offers, wholesale mirroring, or seller-planned proposals.
+  </Card>
+  <Card title="list_products reference" icon="list" href="/dist/docs/3.0.26/media-buy/task-reference/list_products">
+    Field selection, cursor pagination, feed versions, and mirror repair.
+  </Card>
+  <Card title="Delivery reporting" icon="chart-line" href="/dist/docs/3.0.26/media-buy/task-reference/get_media_buy_delivery">
+    Breakdown arrays, truncation flags, and sort semantics.
+  </Card>
+  <Card title="How agents communicate" icon="arrows-left-right" href="/dist/docs/3.0.26/building/concepts/how-agents-communicate">
+    MCP vs A2A transport and how responses are structured.
+  </Card>
+  <Card title="Media products" icon="box" href="/dist/docs/3.0.26/media-buy/product-discovery/media-products">
+    Product structure, `product_card` vs `product_card_detailed`, and rendering.
+  </Card>
+</CardGroup>
