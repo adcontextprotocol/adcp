@@ -168,10 +168,6 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
     'Same blocker as creative_transformers/build_variants: refinement depends on the skipped parent build_variant_id and returns the same BuildCreativeVariantSuccess creatives[]/variants[] response shape. Remove when the packaged storyboard runner accepts that variant arm.',
   ],
   [
-    'media_buy_seller/availability_windows/list_with_horizon',
-    'adcontextprotocol/adcp-client#2637: the packaged SDK response validators (through 14.0.0-beta.4) reject the flexible-window vocabulary (time forecast dimension, availability_status) this step asserts. The platform behavior is covered by training-agent unit tests (training-agent-availability-windows.test.ts). Remove when the SDK regenerates validators against a protocol release containing adcp#6644.',
-  ],
-  [
     'media_buy_seller/canonical_formats/reject_conflicting_dual_emission',
     'adcontextprotocol/adcp-client#2392: the packaged SDK canonicalizes away a co-present deprecated format_ids route before both platform execution and canonical_format_satisfaction grading. Raw receiver behavior is covered by training-agent unit tests. Remove when the SDK preserves and equivalence-checks every selector route.',
   ],

@@ -60,7 +60,7 @@ working during the 3.x compatibility window.
   proposal negotiation is a 3.2 feature.
 - Capability projection removes lifecycle and proposal-refinement metadata for
   pre-3.2 callers.
-- The current wire bundle is `3.2-beta.3`; `3.2-beta.0` remains only as the
+- The current wire bundle is `3.2-beta.4`; `3.2-beta.0` remains only as the
   historical feature-introduction boundary for rejected discovery responses.
 
 ## Invariants for future changes

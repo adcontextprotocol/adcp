@@ -46,7 +46,7 @@ delivery constraints use structured criteria:
 const proposals = await Promise.all(
   sellers.map((seller) =>
     seller.requestProposals({
-      adcp_version: '3.2-beta.3',
+      adcp_version: '3.2-beta.4',
       idempotency_key: 'acme-q2-proposals-001',
       account: { account_id: 'account_123' },
       brand: { domain: 'acme-outdoor.example' },
@@ -108,7 +108,7 @@ draft with typed constraints:
 
 ```javascript
 const refined = await streamHaus.refineProposals({
-  adcp_version: '3.2-beta.3',
+  adcp_version: '3.2-beta.4',
   idempotency_key: 'acme-q2-refine-001',
   refinements: [
     {
@@ -154,7 +154,7 @@ creates a committed successor and an inventory hold:
 
 ```javascript
 const finalized = await streamHaus.refineProposals({
-  adcp_version: '3.2-beta.3',
+  adcp_version: '3.2-beta.4',
   idempotency_key: 'acme-q2-finalize-001',
   refinements: [
     {
@@ -170,7 +170,7 @@ accepts that exact snapshot:
 
 ```javascript
 const buy = await streamHaus.acceptProposal({
-  adcp_version: '3.2-beta.3',
+  adcp_version: '3.2-beta.4',
   idempotency_key: 'acme-q2-accept-001',
   account: { account_id: 'account_123' },
   proposal_id: 'proposal_streamhaus_003',
@@ -200,7 +200,7 @@ required format has coverage, then moves to `pending_start` or `active`.
 
 ```javascript
 await streamHaus.syncCreatives({
-  adcp_version: '3.2-beta.3',
+  adcp_version: '3.2-beta.4',
   idempotency_key: 'acme-q2-creatives-001',
   account: { account_id: 'account_123' },
   creatives: [
@@ -255,7 +255,7 @@ a package or adjust a budget inside the accepted commercial envelope, he uses
 
 ```javascript
 const controlled = await streamHaus.controlMediaBuy({
-  adcp_version: '3.2-beta.3',
+  adcp_version: '3.2-beta.4',
   idempotency_key: 'acme-q2-control-001',
   account: { account_id: 'account_123' },
   media_buy_id: buy.media_buy_id,

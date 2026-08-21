@@ -226,7 +226,7 @@ describe('comply_test_controller', () => {
 
     it('advertises force_get_products_arm for the 3.2 beta release', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
-        adcp_version: '3.2-beta.3',
+        adcp_version: '3.2-beta.4',
         adcp_major_version: 3,
         scenario: 'list_scenarios',
         account: ACCOUNT,
@@ -1126,7 +1126,7 @@ describe('comply_test_controller', () => {
       });
 
       const rejectedCompactControl = await simulateCallTool(server, 'control_media_buy', {
-        adcp_version: '3.2-beta.3',
+        adcp_version: '3.2-beta.4',
         account: ACCOUNT,
         media_buy_id: 'created_from_allowed_actions',
         revision: updated.revision,

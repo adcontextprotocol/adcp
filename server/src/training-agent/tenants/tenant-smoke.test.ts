@@ -462,7 +462,7 @@ describe('tenant routing smoke', () => {
       );
 
       const capabilitiesResponse = await callTenantTool(url, 3, 'get_adcp_capabilities', {
-        adcp_version: '3.2-beta.3',
+        adcp_version: '3.2-beta.4',
         adcp_major_version: 3,
       }) as {
         result?: { structuredContent?: {
@@ -475,8 +475,8 @@ describe('tenant routing smoke', () => {
           };
         } };
       };
-      expect(capabilitiesResponse.result?.structuredContent?.adcp_version).toBe('3.2-beta.3');
-      expect(capabilitiesResponse.result?.structuredContent?.adcp?.supported_versions).toContain('3.2-beta.3');
+      expect(capabilitiesResponse.result?.structuredContent?.adcp_version).toBe('3.2-beta.4');
+      expect(capabilitiesResponse.result?.structuredContent?.adcp?.supported_versions).toContain('3.2-beta.4');
       const mediaBuy = capabilitiesResponse.result?.structuredContent?.media_buy;
       expect(mediaBuy?.supports_proposals).toBe(true);
       expect(mediaBuy?.lifecycle_tools).toEqual([
@@ -521,7 +521,7 @@ describe('tenant routing smoke', () => {
       }
 
       const requested = await callTenantTool(url, 4, 'request_proposals', {
-        adcp_version: '3.2-beta.3',
+        adcp_version: '3.2-beta.4',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-request-0001',
         account: {
@@ -535,12 +535,12 @@ describe('tenant routing smoke', () => {
           proposals?: Array<{ proposal_id?: string }>;
         } };
       };
-      expect(requested.result?.structuredContent?.adcp_version).toBe('3.2-beta.3');
+      expect(requested.result?.structuredContent?.adcp_version).toBe('3.2-beta.4');
       const sourceProposalId = requested.result?.structuredContent?.proposals?.[0]?.proposal_id;
       expect(sourceProposalId, JSON.stringify(requested)).toBeTruthy();
 
       const partial = await callTenantTool(url, 5, 'refine_proposals', {
-        adcp_version: '3.2-beta.3',
+        adcp_version: '3.2-beta.4',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-refine-three-0001',
         account: {
@@ -561,14 +561,14 @@ describe('tenant routing smoke', () => {
         } };
       };
       const counteroffer = partial.result?.structuredContent;
-      expect(counteroffer?.adcp_version).toBe('3.2-beta.3');
+      expect(counteroffer?.adcp_version).toBe('3.2-beta.4');
       expect(counteroffer?.adcp_error).toBeUndefined();
       expect(counteroffer?.results?.[0]?.outcome, JSON.stringify(counteroffer)).toBe('partial');
       expect(counteroffer?.results?.[0]?.reason_code).toBe('alternatives_unavailable');
       expect(counteroffer?.results?.[0]?.proposals).toHaveLength(2);
 
       const refined = await callTenantTool(url, 6, 'refine_proposals', {
-        adcp_version: '3.2-beta.3',
+        adcp_version: '3.2-beta.4',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-refine-two-0001',
         account: {
@@ -589,7 +589,7 @@ describe('tenant routing smoke', () => {
         } };
       };
       const refinement = refined.result?.structuredContent;
-      expect(refinement?.adcp_version).toBe('3.2-beta.3');
+      expect(refinement?.adcp_version).toBe('3.2-beta.4');
       expect(refinement?.adcp_error).toBeUndefined();
       expect(refinement?.results?.[0]?.outcome).toBe('revised');
       expect(refinement?.results?.[0]?.proposals).toHaveLength(2);
@@ -597,7 +597,7 @@ describe('tenant routing smoke', () => {
       const revisedProposalId = refinement?.results?.[0]?.proposals?.[0]?.proposal_id;
       expect(revisedProposalId).toEqual(expect.any(String));
       const finalized = await callTenantTool(url, 7, 'refine_proposals', {
-        adcp_version: '3.2-beta.3',
+        adcp_version: '3.2-beta.4',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-finalize-0001',
         refinements: [{ proposal_id: revisedProposalId, action: 'finalize' }],
@@ -1736,9 +1736,9 @@ describe('tenant routing smoke', () => {
         };
       };
       const mediaBuy = body.result?.structuredContent?.media_buy;
-      expect(body.result?.structuredContent?.adcp_version).toBe('3.2-beta.3');
+      expect(body.result?.structuredContent?.adcp_version).toBe('3.2-beta.4');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
-      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.3']);
+      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.4']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
@@ -2642,7 +2642,7 @@ describe('tenant routing smoke', () => {
         field: 'adcp_version',
         details: {
           adcp_version: '4.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.3'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.4'],
         },
       });
       expect(unsupportedBody.result?.structuredContent?.context?.correlation_id).toBe('tenant-local-version-unsupported');
@@ -3043,7 +3043,7 @@ describe('tenant routing smoke', () => {
       };
       const payload = {
         idempotency_key: 'tenant-products-idempotency-0001',
-        adcp_version: '3.2-beta.3',
+        adcp_version: '3.2-beta.4',
         buying_mode: 'wholesale',
         account,
       };
@@ -3161,7 +3161,7 @@ describe('tenant routing smoke', () => {
         brand: account.brand,
       }) as { result?: { structuredContent?: { adcp_version?: string; products?: Array<{ product_id?: string }>; replayed?: boolean } } };
       expect(aliasReplay.result?.structuredContent).not.toHaveProperty('adcp_error');
-      expect(aliasReplay.result?.structuredContent?.adcp_version).toBe('3.2-beta.3');
+      expect(aliasReplay.result?.structuredContent?.adcp_version).toBe('3.2-beta.4');
       expect(aliasReplay.result?.structuredContent?.products?.map(product => product.product_id))
         .toEqual(first.result?.structuredContent?.products?.map(product => product.product_id));
       expect(aliasReplay.result?.structuredContent?.replayed).toBeUndefined();
@@ -3330,7 +3330,7 @@ describe('tenant routing smoke', () => {
         sandbox: true,
       };
       const directive = await callTenantTool(url, 91, 'comply_test_controller', {
-        adcp_version: '3.2-beta.3',
+        adcp_version: '3.2-beta.4',
         account,
         scenario: 'force_get_products_arm',
         params: {
@@ -3342,7 +3342,7 @@ describe('tenant routing smoke', () => {
       expect(directive.result?.structuredContent?.success).toBe(true);
 
       const rejected = await callTenantTool(url, 92, 'get_products', {
-        adcp_version: '3.2-beta.3',
+        adcp_version: '3.2-beta.4',
         adcp_major_version: 3,
         idempotency_key: 'tenant-products-rejected-0001',
         buying_mode: 'brief',
