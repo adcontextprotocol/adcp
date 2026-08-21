@@ -8,7 +8,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.2 beta whil
 # Migrating from 3.1 to 3.2
 
 <Warning>
-**3.2 is in beta.** Beta.3 is the current protocol checkpoint, with exact
+**3.2 is in beta.** Beta.4 is the current protocol checkpoint, with exact
 TypeScript support in `@adcp/sdk@14.0.0-beta.5`. Python and Go support remain
 pending. Keep production traffic pinned to `"3.1"` while validating 3.2 in
 staging.
@@ -33,13 +33,13 @@ For prerelease artifacts and SDK timing, use the [3.2 beta program](/docs/refere
 | 5 | Media-buy implementations | Move create/update success handling completely to `media_buy_status`. |
 | 6 | Signing implementations | Require `content-digest` coverage and migrate request `Signature` and `Content-Digest` binary values to RFC 8941 padded Base64. |
 | 7 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
-| 8 | Compliance operators | Pair `@adcp/sdk@14.0.0-beta.5` with exact beta.3 for TypeScript testing; require an equally explicit support statement for every other SDK. |
+| 8 | Compliance operators | Pair `@adcp/sdk@14.0.0-beta.5` with exact beta.4 for TypeScript testing; require an equally explicit support statement for every other SDK. |
 
 ## Required to claim 3.2 behavior
 
 ### Serve and echo the exact release
 
-During beta, prerelease matching is exact. A seller serving beta.3 advertises
+During beta, prerelease matching is exact. A seller serving beta.4 advertises
 `"3.2-beta.4"`. Do not advertise stable `"3.2"` before GA, silently negotiate
 between beta ordinals, or treat a major-only declaration as evidence of 3.2
 support.
