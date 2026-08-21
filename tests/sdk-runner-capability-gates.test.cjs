@@ -125,6 +125,69 @@ test('inventory-list storyboards skip sellers that declare property-list support
   }
 });
 
+test('creative fate storyboard requires advertised creative library support', async () => {
+  const storyboardPath = path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'protocols',
+    'media-buy',
+    'scenarios',
+    'creative_fate_after_cancellation.yaml'
+  );
+  const storyboard = YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+
+  assert.deepEqual(storyboard.requires_capability, {
+    path: 'creative.has_creative_library',
+    equals: true,
+  });
+
+  const unsupportedProfiles = [
+    {
+      rawCapabilities: { creative: { has_creative_library: false } },
+      errorPattern: /creative\.has_creative_library/,
+    },
+    {
+      rawCapabilities: {},
+      errorPattern: /agent did not declare support/,
+    },
+  ];
+
+  for (const { rawCapabilities, errorPattern } of unsupportedProfiles) {
+    const result = await runStoryboard('https://agent.example/mcp', storyboard, {
+      _profile: { tools, raw_capabilities: rawCapabilities },
+      agentTools: tools,
+    });
+
+    assert.equal(result.overall_passed, true);
+    assert.equal(result.failed_count, 0);
+    assert.equal(result.skipped_count, 1);
+    assert.equal(result.phases.length, 1);
+    assert.equal(result.phases[0].phase_id, 'capability_unsupported');
+    assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported');
+    assert.match(result.phases[0].steps[0].error, errorPattern);
+  }
+
+  const supported = await runStoryboard(
+    'https://agent.example/mcp',
+    { ...storyboard, prerequisites: undefined, phases: [] },
+    {
+      _profile: {
+        tools,
+        raw_capabilities: { creative: { has_creative_library: true } },
+      },
+      agentTools: tools,
+    }
+  );
+
+  assert.equal(supported.overall_passed, true);
+  assert.equal(supported.phases[0].phase_id, 'no_phases');
+  assert.equal(supported.phases[0].steps[0].skip_reason, 'no_phases');
+});
+
 test('inventory-list no-match requires canonical rejection and fails accepted buys', async () => {
   const storyboardPath = path.join(
     __dirname,
