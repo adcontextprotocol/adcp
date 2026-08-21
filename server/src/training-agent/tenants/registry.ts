@@ -189,7 +189,7 @@ function buildDefaultServerOptions(
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
-    adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : '3.2-beta.3',
+    adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : '3.2-beta.4',
     idempotency: getSdkIdempotencyStore(),
     webhooks: getWebhookSigningMaterial(),
     taskWebhookEmitter: {
