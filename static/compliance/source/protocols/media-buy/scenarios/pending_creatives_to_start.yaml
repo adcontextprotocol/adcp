@@ -1,5 +1,5 @@
 id: media_buy_seller/pending_creatives_to_start
-version: "1.0.0"
+version: "1.0.1"
 title: "Creative sync unblocks pending_creatives → pending_start"
 category: media_buy_seller
 summary: "Verifies that a media buy created without creatives sits in pending_creatives until sync_creatives completes, then transitions to pending_start."
@@ -9,6 +9,10 @@ required_tools:
   - create_media_buy
   - sync_creatives
   - get_media_buys
+
+requires_capability:
+  path: creative.has_creative_library
+  equals: true
 
 narrative: |
   When a buyer creates a media buy without creative_assignments, the seller cannot start
