@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.1.19
+
+### Patch Changes
+
+- 76710cd: Gate creative-library and product-refinement compliance paths on advertised 3.1 capabilities, and keep measurement-term acceptance outside the universal rejection scenario.
+
 ## 3.1.18
 
 ### Patch Changes
