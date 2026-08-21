@@ -526,6 +526,23 @@ Declares the seller's tenant-wide creative approval posture after creatives are 
 
 Sellers with mixed approval policies SHOULD declare `require_human` unless every product/account that can be reached by the advertised agent supports automatic eligibility after automated validation. When the field is absent, approval behavior is legacy-unspecified; runners SHOULD NOT treat omission as an affirmative `auto_approve` claim. `ai_assisted` is intentionally not a value until the protocol defines what assistance changes in observable behavior.
 
+#### measurement_terms_acceptance
+
+`media_buy.measurement_terms_acceptance: true` declares that the seller can accept the
+default `measurement_terms` it advertises on at least one product. A buyer discovers
+those terms with [`get_products`](/docs/media-buy/task-reference/get_products), replays
+the exact object on a package in
+[`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), and receives the
+confirmed terms on the resulting package. This declaration does not promise acceptance
+of arbitrary buyer-authored terms or of terms that differ from the product default.
+
+Compliance runners execute `media_buy_seller/measurement_terms_accepted` only when this
+capability is true. When it is false or absent, that affirmative scenario is not
+applicable, but the universal `media_buy_seller/measurement_terms_rejected` contract
+still applies: unsupported terms must fail with
+[`TERMS_REJECTED`](/docs/building/verification/compliance-catalog#error-code-terms-rejected)
+rather than being silently ignored.
+
 #### supported_indicator_types and relationship_notifications
 
 Lists the seller interpretations available on media-buy resource relationships.
