@@ -6,7 +6,7 @@ description: "AdCP 3.2 models the IAB Tech Lab CTV Ad Portfolio's six on-glass e
 
 # CTV Experience Profiles
 
-The IAB Tech Lab CTV Ad Portfolio defines seven ad experiences for connected-TV home screens and players: Linear, Menu, Pause, Screensaver, Overlay, Squeezeback, and In-Scene. Linear CTV video needs no new modeling — it's ordinary `video_vast` or `video_hosted` with no experience declared. This page covers the other six, which AdCP 3.2 expresses through a shared `ctv_ad_experience` vocabulary layered on existing canonical formats. No `ctv_*` canonical kinds exist; a format option declares at most one experience, and sellers offering several experiences publish sibling format options.
+The IAB Tech Lab CTV Ad Portfolio defines seven ad experiences for connected-TV home screens and players: Linear, Menu, Pause, Screensaver, Overlay, Squeezeback, and In-Scene. Linear CTV video needs no new modeling — it's ordinary `video_vast` or `video_hosted` with no experience declared. This page covers the other six, which AdCP 3.2 expresses through a shared `ctv_ad_experience` vocabulary layered on existing canonical formats. No `ctv_*` canonical kinds exist; a format option declares eligibility for at most one experience, and sellers offering several experiences publish sibling format options.
 
 This is a creative-**supply** contract, not a restatement of IAB's OpenRTB signaling table. The [signaling annex](#openrtb-and-adcom-signaling-annex) below documents that bridge separately, because what a seller signals on the wire (OpenRTB `plcmt`, Native `plcmttype`) and what a buyer ships as a creative manifest are different concerns. See [Canonical formats](/docs/creative/canonical-formats) for the full canonical-format model this page builds on, and [Connected TV](/docs/creative/channels/ctv) for the delivery-model (SSAI/CSAI) guide this page complements.
 
@@ -33,19 +33,30 @@ Validation rejects any `ctv_ad_experience` value on a canonical format that isn'
 | `pause` | `image` (with copy via `slots_override`), `video_vast` (nonlinear) | Netflix and Disney's largest pause-ad products ingest a raw image plus copy — no VAST tag involved; sellers that do ingest VAST for pause remain covered |
 | `screensaver` | `image`, `video_hosted`, `video_vast` (nonlinear) | Seller-composited ambient surfaces accept whichever asset shape the platform renders on idle |
 | `overlay` | `native_in_feed` (asset bundle), `video_vast` (nonlinear) | Overlay sellers split on ingestion: asset-bundle sellers take video, logo, imagery, copy, and activation copy without VAST tags (`native_in_feed`); VAST-ingesting pipelines use NonLinearAds (`video_vast`). A seller offering both publishes sibling format options |
-| `squeezeback` | `video_vast` (nonlinear), `sponsored_placement` | No public buyer wire format exists for squeezeback; frames are typically seller-composited from a catalog/brief, with `video_vast` covering sellers that do accept a VAST-delivered creative for the squeezed region |
-| `in_scene` | `video_vast` (nonlinear), `sponsored_placement` | Brand-placement class; IAB forbids interactivity here regardless of delivery path |
+| `squeezeback` | `video_vast` (nonlinear), `sponsored_placement` | Choose by resolution boundary: `video_vast` receives a finished buyer-supplied asset; `sponsored_placement` lets the seller resolve a catalog reference into the rendered frame at serve time |
+| `in_scene` | `video_vast` (nonlinear), `sponsored_placement` | Choose by the same resolution boundary; brand-placement class, with interactivity forbidden regardless of delivery path |
 
 Linear CTV video declares no `ctv_ad_experience` at all — it's plain `video_vast` or `video_hosted`.
+
+## Buy-time commitment and runtime eligibility
+
+`ctv_ad_experience` describes where one format option is eligible to render. It does **not** by itself promise that every impression in the product will use that experience. The ordinary product and package format-selection contract determines when the choice becomes binding:
+
+- **Buyer-selected or guaranteed inventory** — the package commits a specific format option. The accepted package's `formats_to_provide` contains that option, so selecting a `pause` option is a firm buy-time commitment to pause inventory.
+- **Runtime-resolved inventory** — the product publishes one sibling format option per eligible experience. The accepted package's `formats_to_provide` identifies the option set for which the seller requires creative coverage; the buyer supplies compatible creatives for those options, and the player chooses among the covered options per impression from viewer state. `formats_pending` exposes any required option that still lacks creative coverage.
+
+A runtime selector MUST use only a creative validated for the option it chooses. It cannot reinterpret one option's creative under a different `ctv_ad_experience`, silently drop an uncovered required option, or treat a product-level union as permission to violate placement-level format narrowing. If the buyer wants to cover fewer options than the seller requires, that is a package refinement before commitment, not an implicit runtime fallback.
+
+Cells with multiple permitted canonicals use the same model: the seller publishes one sibling format option per canonical it accepts, and normal option selection resolves the contract. There is no `fallback_canonical` field. For `squeezeback` and `in_scene`, choose `sponsored_placement` when the seller resolves a catalog reference at serve time; choose `video_vast` when the seller receives a finished asset, even if that asset was produced earlier from catalog data.
 
 ## Constraint profiles
 
 Beyond the matrix, each experience carries its own conditional constraints, enforced where noted on the canonical's schema:
 
 - **`overlay`, `squeezeback`** — minimum duration of 10 seconds (`duration_ms_exact` or the floor of `duration_ms_range` must be at least `10000`).
-- **`in_scene`** — minimum 3-second brand-exposure duration, and **no interactivity**: `vpaid_enabled` and `simid_supported` must both be `false` (or absent) on the format option.
+- **`in_scene`** — minimum 3-second brand-exposure duration, and **no interactivity**: `vpaid_enabled` must be `false` (or absent). The all-profile SIMID prohibition below also applies.
 - **`pause`** — no duration floor. The unit ends on a viewer or device action (resume, timeout), not a fixed clock.
-- **SIMID support is always explicit, never inferred.** A format option sets `simid_supported: true` deliberately; a nonlinear creative that supports SIMID still MUST carry a non-interactive `<StaticResource>` or `<MediaFile>` fallback so players without SIMID support still render something.
+- **Every `video_vast` CTV profile forbids SIMID.** VAST 4.1+ carries SIMID through `<InteractiveCreativeFile apiFramework="SIMID">` under Linear `<MediaFiles>`; `NonLinearAds` has no such element. Because all five video-backed CTV profiles require `creative_type: "nonlinear"`, `simid_supported` must be `false` or absent. Viewer activation on these surfaces uses `activation_methods`; NonLinearAds may still use their own `HTMLResource` plus `apiFramework` interactivity where the specific profile permits it.
 
 ### `creative_type` and the `linear_required` migration
 
@@ -89,7 +100,7 @@ This means `validate_input` checks two different things depending on the target:
 - **`targets: [{ kind: "canonical", id: "video_vast" }]`** validates manifest structure only — asset types, VAST delivery shape, and any asset-level hints such as `duration_ms` on the `vast_tag` asset. It cannot evaluate `ctv_ad_experience`, because the manifest doesn't carry it.
 - **`targets: [{ kind: "product", id: "..." }]`** validates the manifest against that product's specific format-option declaration, including its experience and duration constraints. A `vast_tag` asset whose `duration_ms` hint is below an `overlay` product's 10-second floor returns `validated_fail` with a `duration_ms_range`-style violation citing the product's declared floor.
 
-Whether a given format option's `ctv_ad_experience` pairing is legal at all is evaluated when the format option itself is authored, before any buyer manifest exists to check. The enforcement is two-layer: **JSON Schema conditionals** (in the canonical's `allOf`) reject categorically invalid pairings — an unlisted experience value, `menu` on `video_vast`, missing `creative_type: "nonlinear"`, or `vpaid_enabled: true` on `in_scene`; **the semantic validator** (`ctv_experience_matrix` check) enforces everything else — duration floors (overlay/squeezeback ≥ 10 s, in_scene ≥ 3 s), the matrix row for unlisted canonicals such as `html5`, and the `focus_video_pairing` slot check. The `ctv_activation_copy_slots` constraint remains advisory until the validation response has a `warnings[]` channel; it is declared in schema prose but is not currently enforced. Rules appear in one place only: numeric duration constants live exclusively in the semantic validator, not duplicated into schema conditionals. See [Canonical formats — validate_input](/docs/creative/canonical-formats#validation-flow--validate_input) for the general `validate_input` contract.
+Whether a given format option's `ctv_ad_experience` pairing is legal at all is evaluated when the format option itself is authored, before any buyer manifest exists to check. The enforcement is two-layer: **JSON Schema conditionals** (in the canonical's `allOf`) reject categorically invalid pairings — an unlisted experience value, `menu` on `video_vast`, missing `creative_type: "nonlinear"`, `simid_supported: true` on any `video_vast` CTV profile, or `vpaid_enabled: true` on `in_scene`; **the semantic validator** mirrors those rules for defense in depth and enforces everything else — duration floors (overlay/squeezeback ≥ 10 s, in_scene ≥ 3 s), the matrix row for unlisted canonicals such as `html5`, and the `focus_video_pairing` slot check. The `ctv_activation_copy_slots` constraint remains advisory until the validation response has a `warnings[]` channel; it is declared in schema prose but is not currently enforced. Rules appear in one place only: numeric duration constants live exclusively in the semantic validator, not duplicated into schema conditionals. See [Canonical formats — validate_input](/docs/creative/canonical-formats#validation-flow--validate_input) for the general `validate_input` contract.
 
 ## OpenRTB and AdCOM signaling annex
 
@@ -114,7 +125,7 @@ Adapters bridging AdCP to OpenRTB round-trip `pos`, `attr`, and `plcmt` through 
 
 ## VAST versioning
 
-`vast_version` supports VAST 2.0 through 4.3. VAST 4.3 ships no XSD of its own — IAB's `vast_4.2.xsd` remains the authoritative schema for 4.3 documents, so a validator MUST NOT reject a tag declaring `version="4.3"` for want of a 4.3-specific schema. VAST 4.4 is deliberately absent from the enum: `vast_4.4.xsd` is still annotated "DRAFT for working group discussion," not a published specification, and AdCP adds it only once IAB publishes a final schema. The NonLinearAds pattern every non-`menu` experience relies on remains valid under 4.2 serialization — sellers don't need 4.3 or a future 4.4 to express `overlay`, `squeezeback`, `in_scene`, `pause`, or `screensaver` creative.
+`vast_version` supports VAST 2.0 through 4.3. VAST 4.3 ships no XSD of its own — IAB's `vast_4.2.xsd` remains the authoritative schema for 4.3 documents, so a validator MUST NOT reject a tag declaring `version="4.3"` for want of a 4.3-specific schema. VAST 4.4 is deliberately absent from the enum: `vast_4.4.xsd` is still annotated "DRAFT for working group discussion," not a published specification, and AdCP adds it only once IAB publishes a final schema. The non-interactive NonLinearAds pattern every non-`menu` experience relies on remains valid under 4.2 serialization — sellers don't need 4.3 or a future 4.4 to express `overlay`, `squeezeback`, `in_scene`, `pause`, or `screensaver` creative. This does not make SIMID serializable under NonLinearAds; SIMID's `<InteractiveCreativeFile>` remains Linear-only.
 
 ## Measurement
 

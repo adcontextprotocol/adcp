@@ -3437,22 +3437,38 @@ describe('validate_input handler: CTV experience profiles', () => {
     ]));
   });
 
-  it('rejects in_scene on video_vast when simid_supported is true', async () => {
+  it.each(['pause', 'screensaver', 'overlay', 'squeezeback', 'in_scene'])(
+    'rejects SIMID on the nonlinear %s video_vast profile',
+    async (experience) => {
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const seeded = await seedCtvProduct(server, 'video_vast', {
+        ctv_ad_experience: experience,
+        creative_type: 'nonlinear',
+        duration_ms_exact: 15000,
+        vpaid_enabled: false,
+        simid_supported: true,
+      });
+      const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+      const results = result.results as Array<Record<string, unknown>>;
+      expect(results[0].result_kind).toBe('validated_fail');
+      expect(results[0].violations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ rule: 'ctv_nonlinear_no_simid', field: 'params.simid_supported', predicted: true }),
+      ]));
+    },
+  );
+
+  it('accepts SIMID on an ordinary linear video_vast option with no CTV experience', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const seeded = await seedCtvProduct(server, 'video_vast', {
-      ctv_ad_experience: 'in_scene',
-      creative_type: 'nonlinear',
-      duration_ms_exact: 3000,
-      vpaid_enabled: false,
+      creative_type: 'linear',
       simid_supported: true,
     });
     const result = await validateCtvProduct(server, 'video_vast', seeded);
 
-    const results = result.results as Array<Record<string, unknown>>;
-    expect(results[0].result_kind).toBe('validated_fail');
-    expect(results[0].violations).toEqual(expect.arrayContaining([
-      expect.objectContaining({ rule: 'ctv_in_scene_no_interactivity', field: 'params.simid_supported', predicted: true }),
-    ]));
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
   });
 
   it('rejects linear_required: true combined with creative_type nonlinear as a contradiction', async () => {

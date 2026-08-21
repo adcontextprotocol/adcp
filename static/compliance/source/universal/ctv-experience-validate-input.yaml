@@ -8,7 +8,7 @@
 # declarations are THEMSELVES invalid against the canonical schema's
 # `x-adcp-validation.verifier_constraints` (menu on video_vast, pause on
 # native_in_feed, creative_type:linear on an overlay option, a 5-second
-# duration on an overlay option, simid_supported on an in_scene option,
+# duration on an overlay option, simid_supported on a nonlinear CTV option,
 # full_motion on a pause image). A conformant seller never actually
 # authors these — the canonical JSON Schema's `allOf` conditionals already
 # reject the schema-expressible ones at product-authoring time (see
@@ -415,7 +415,7 @@ fixtures:
 
     - product_id: "ctv_invalid_in_scene_simid"
       name: "CTV Invalid — In-Scene with simid_supported"
-      description: "Seeded product whose format_option declares ctv_ad_experience: in_scene with simid_supported: true; in_scene forbids interactivity — used only to test runtime defense in depth."
+      description: "Seeded product whose nonlinear format_option declares ctv_ad_experience: in_scene with simid_supported: true; every video_vast CTV profile forbids SIMID because VAST serializes InteractiveCreativeFile only under Linear MediaFiles — used only to test runtime defense in depth."
       publisher_properties:
         - publisher_domain: "tv.streamhaus.example"
           selection_type: "all"
@@ -973,7 +973,7 @@ phases:
             description: "Violation points at the seeded product's own duration_ms_exact declaration, not the manifest"
 
       - id: reject_in_scene_simid_supported
-        title: "Reject in_scene declared with simid_supported: true"
+        title: "Reject SIMID on a nonlinear CTV experience"
         task: validate_input
         schema_ref: "creative/validate-input-request.json"
         response_schema_ref: "creative/validate-input-response.json"
@@ -1005,11 +1005,11 @@ phases:
           - check: field_value
             path: "results[0].result_kind"
             value: "validated_fail"
-            description: "in_scene forbids simid_supported: true — no interactivity is permitted"
+            description: "Every video_vast CTV experience is nonlinear, where VAST cannot serialize SIMID"
           - check: field_value
             path: "results[0].violations[0].rule"
-            value: "ctv_in_scene_no_interactivity"
-            description: "Violation cites the video_vast verifier_constraints in_scene interactivity rule"
+            value: "ctv_nonlinear_no_simid"
+            description: "Violation cites the video_vast verifier constraint that keeps SIMID on Linear creatives"
           - check: field_value
             path: "results[0].violations[0].field"
             value: "params.simid_supported"

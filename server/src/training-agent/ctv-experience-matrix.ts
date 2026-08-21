@@ -78,10 +78,11 @@ export function ctvExperienceMatrixViolation(formatKind: string, params: Record<
 /**
  * video_vast per-experience constraints:
  * - ctv_ad_experience present -> creative_type required and must be "nonlinear".
+ * - ctv_nonlinear_no_simid: every CTV experience forbids simid_supported;
+ *   VAST carries InteractiveCreativeFile only under Linear MediaFiles.
  * - ctv_duration_floors: overlay/squeezeback >= 10000ms, in_scene >= 3000ms,
  *   pause/screensaver have no floor.
- * - ctv_in_scene_no_interactivity: in_scene forbids vpaid_enabled and
- *   simid_supported.
+ * - ctv_in_scene_no_interactivity: in_scene additionally forbids vpaid_enabled.
  * - creative_type_precedence: linear_required: true contradicts
  *   creative_type nonlinear|either.
  */
@@ -100,6 +101,15 @@ export function videoVastCtvViolations(params: Record<string, unknown>): CtvViol
       });
     }
 
+    if (params.simid_supported === true) {
+      violations.push({
+        rule: 'ctv_nonlinear_no_simid',
+        field: 'params.simid_supported',
+        expected: false,
+        predicted: true,
+      });
+    }
+
     const floorMs = VIDEO_VAST_DURATION_FLOOR_MS[experience];
     if (floorMs !== undefined && !meetsDurationFloor(params, floorMs)) {
       violations.push({
@@ -115,14 +125,6 @@ export function videoVastCtvViolations(params: Record<string, unknown>): CtvViol
         violations.push({
           rule: 'ctv_in_scene_no_interactivity',
           field: 'params.vpaid_enabled',
-          expected: false,
-          predicted: true,
-        });
-      }
-      if (params.simid_supported === true) {
-        violations.push({
-          rule: 'ctv_in_scene_no_interactivity',
-          field: 'params.simid_supported',
           expected: false,
           predicted: true,
         });
