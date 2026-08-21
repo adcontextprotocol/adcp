@@ -5619,6 +5619,99 @@ function outwardProposal(proposal: Record<string, unknown>, products: Map<string
       ? proposal.__canonical_terms_digest
       : proposalTermsDigest(terms),
     ...(isRecord(proposal.insertion_order) && { insertion_order: proposal.insertion_order }),
+    // Reverse-forecast planning (criteria.outcome_target): these are only
+    // populated when the source request_proposals call carried outcome_target
+    // (see computeOutcomeTargetPlan). Absent otherwise — outcome_target
+    // support must never change the shape of an unrelated proposal.
+    ...(isRecord(proposal.__outcome_target_guidance) && {
+      total_budget_guidance: structuredClone(proposal.__outcome_target_guidance),
+    }),
+    ...(isRecord(proposal.__outcome_target_forecast) && {
+      forecast: structuredClone(proposal.__outcome_target_forecast),
+    }),
+  };
+}
+
+// ── Reverse-forecast planning (criteria.outcome_target) ─────────────────────
+//
+// Deterministic reference model, not a market claim. A buyer states a
+// desired metric or event volume; the seller solves for the budget that
+// plans to deliver it. OUTCOME_TARGET_METRIC_RESPONSE_RATE models 1 click
+// per 1,000 impressions; OUTCOME_TARGET_EVENT_RESPONSE_RATE models 1
+// conversion event per 5,000 impressions (an added funnel step beyond a
+// click). Both are training-fixture constants, not real delivery estimates.
+const OUTCOME_TARGET_METRIC_RESPONSE_RATE = 0.001;
+const OUTCOME_TARGET_EVENT_RESPONSE_RATE = 0.0002;
+const OUTCOME_TARGET_DEFAULT_CPM = 10;
+const OUTCOME_TARGET_FORECAST_RATIOS = [0.5, 1, 1.5] as const;
+
+/** The metrics{} key a goal's forecast points carry: the metric name for a
+ * metric goal, or the event type (custom_event_name when custom) for an
+ * event goal — the same key the buyer will later use on optimization_goals. */
+function outcomeTargetGoalKey(goal: Record<string, unknown>): string {
+  if (goal.kind === 'event') {
+    return goal.event_type === 'custom' ? String(goal.custom_event_name) : String(goal.event_type);
+  }
+  return String(goal.metric);
+}
+
+/** A 'spend' metric goal restates the budget the seller is solving for —
+ * there is no plan to construct. Per outcome-target.json, declaring sellers
+ * MAY reject such a goal with INVALID_REQUEST. */
+function outcomeTargetIsUnplannable(goal: Record<string, unknown>): boolean {
+  return goal.kind === 'metric' && goal.metric === 'spend';
+}
+
+function outcomeTargetForecastRangeUnit(goal: Record<string, unknown>): string {
+  if (goal.kind === 'event') return 'conversions';
+  return goal.metric === 'clicks' ? 'clicks' : 'spend';
+}
+
+/** Solve a deterministic budget and delivery curve for one proposal against
+ * a request_proposals criteria.outcome_target goal. CPM comes from the
+ * proposal's first allocation's first pricing option (fixed_price, else
+ * floor_price, else a $10 reference CPM) so every goal has a defined
+ * answer even against auction-only or unpriced fixtures. */
+function computeOutcomeTargetPlan(
+  goal: Record<string, unknown>,
+  volume: number,
+  proposal: Proposal,
+  productsById: Map<string, Product>,
+): { totalBudgetGuidance: Record<string, unknown>; forecast: Record<string, unknown> } {
+  const goalKey = outcomeTargetGoalKey(goal);
+  const responseRate = goal.kind === 'event'
+    ? OUTCOME_TARGET_EVENT_RESPONSE_RATE
+    : OUTCOME_TARGET_METRIC_RESPONSE_RATE;
+  const impressions = volume / responseRate;
+  const firstAllocation = proposal.allocations[0];
+  const product = firstAllocation ? productsById.get(firstAllocation.product_id) : undefined;
+  const firstPricing = product?.pricing_options?.[0] as PricingOptionView | undefined;
+  const cpm = typeof firstPricing?.fixed_price === 'number'
+    ? firstPricing.fixed_price
+    : typeof firstPricing?.floor_price === 'number'
+      ? firstPricing.floor_price
+      : OUTCOME_TARGET_DEFAULT_CPM;
+  const budget = Math.round((impressions / 1000) * cpm);
+  const now = Date.now();
+  const points = OUTCOME_TARGET_FORECAST_RATIOS.map(ratio => ({
+    budget: Math.round(ratio * budget),
+    metrics: { [goalKey]: { mid: Math.round(ratio * volume) } },
+  }));
+  return {
+    totalBudgetGuidance: {
+      min: Math.round(0.8 * budget),
+      recommended: budget,
+      max: Math.round(1.25 * budget),
+      currency: 'USD',
+    },
+    forecast: {
+      points,
+      forecast_range_unit: outcomeTargetForecastRangeUnit(goal),
+      method: 'modeled',
+      currency: 'USD',
+      generated_at: toUtcSecondsIso(now),
+      valid_until: toUtcSecondsIso(now + 5 * 60 * 1000),
+    },
   };
 }
 
@@ -7613,6 +7706,23 @@ async function handleGetProductsUnlocked(
     }) as Proposal[];
   const requireProposals = buyingMode === 'brief'
     && (req as unknown as Record<string, unknown>).__require_proposals === true;
+  // criteria.outcome_target expands to a top-level field by
+  // expandProductDiscoveryCriteria; only request_proposals sets
+  // __require_proposals, so this is scoped to that tool.
+  const outcomeTarget = requireProposals && isRecord((req as unknown as Record<string, unknown>).outcome_target)
+    ? (req as unknown as Record<string, unknown>).outcome_target as Record<string, unknown>
+    : undefined;
+  const outcomeTargetGoal = outcomeTarget && isRecord(outcomeTarget.goal) ? outcomeTarget.goal : undefined;
+  if (outcomeTargetGoal && outcomeTargetIsUnplannable(outcomeTargetGoal)) {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: "The seller cannot plan against a 'spend' goal because it restates the budget being solved for.",
+        field: 'criteria.outcome_target.goal',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
   if (requireProposals) {
     const exactProductIds = Array.isArray((req as unknown as Record<string, unknown>).product_ids)
       ? new Set(((req as unknown as Record<string, unknown>).product_ids as unknown[])
@@ -7719,6 +7829,9 @@ async function handleGetProductsUnlocked(
         .digest('hex')
         .slice(0, 24);
       const proposalId = `proposal_request_${digest}`;
+      const outcomeTargetPlan = outcomeTargetGoal && typeof outcomeTarget?.volume === 'number'
+        ? computeOutcomeTargetPlan(outcomeTargetGoal, outcomeTarget.volume, proposal, productsById)
+        : undefined;
       const snapshot = {
         ...proposal,
         proposal_id: proposalId,
@@ -7730,6 +7843,10 @@ async function handleGetProductsUnlocked(
         ...(proposalAccountScope && { __account_scope: proposalAccountScope }),
         ...(typeof requestOpportunity?.opportunity_id === 'string'
           && { __opportunity_id: requestOpportunity.opportunity_id }),
+        ...(outcomeTargetPlan && {
+          __outcome_target_guidance: outcomeTargetPlan.totalBudgetGuidance,
+          __outcome_target_forecast: outcomeTargetPlan.forecast,
+        }),
       } as unknown as Proposal;
       return existingById.get(proposalId)
         ?? withCanonicalProposalEnvelope(
@@ -12386,6 +12503,11 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       // forecast points carrying availability_status. See
       // applyAvailabilityHorizonForecasts / handleGetProductsUnlocked.
       availability_horizon: true,
+      // Reverse-forecast planning: parses criteria.outcome_target and
+      // answers with total_budget_guidance plus a forecast whose points
+      // carry the goal's metric/event key in metrics. See
+      // computeOutcomeTargetPlan / handleGetProductsUnlocked.
+      outcome_target: true,
       performance_feedback: {
         reports_application_status: true,
       },

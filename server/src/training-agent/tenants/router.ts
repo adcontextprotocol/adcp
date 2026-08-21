@@ -825,6 +825,7 @@ function projectTenantCapabilities(
         delete mediaBuy.proposal_refinement;
         delete mediaBuy.supports_proposals;
         delete mediaBuy.availability_horizon;
+        delete mediaBuy.outcome_target;
       }
       const salesProjection = salesCapabilityProjection();
       structured.media_buy = {
@@ -836,6 +837,10 @@ function projectTenantCapabilities(
           // offer_filters.availability_horizon and answers with
           // time-dimensioned forecast points (see handleGetProductsUnlocked).
           availability_horizon: true,
+          // Reverse-forecast planning: the platform parses
+          // criteria.outcome_target and answers with total_budget_guidance
+          // plus a forecast (see computeOutcomeTargetPlan).
+          outcome_target: true,
         }),
         ...(proposalNegotiationProfile && supportsGetProductsRejected(servedVersion) && {
           supports_proposals: true,
