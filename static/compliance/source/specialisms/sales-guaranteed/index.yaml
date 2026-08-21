@@ -1,5 +1,5 @@
 id: sales_guaranteed
-version: "1.0.0"
+version: "1.0.1"
 title: "Guaranteed media buy with human IO approval"
 protocol: media-buy
 category: sales_guaranteed
@@ -506,6 +506,9 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: creative_sync
     title: "Creative sync"
+    requires_capability:
+      path: creative.has_creative_library
+      equals: true
     narrative: |
       With the IO signed and the media buy active, the buyer syncs creative assets
       to your platform. Each package has creative format requirements that the buyer
@@ -568,6 +571,7 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: delivery_monitoring
     title: "Delivery and reporting"
+    depends_on: [confirm_active]
     narrative: |
       The campaign is live with guaranteed delivery commitments. The buyer monitors
       delivery to ensure the seller is meeting the SLA guarantees from the IO.

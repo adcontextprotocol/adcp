@@ -1,5 +1,5 @@
 id: sales_broadcast_tv
-version: "1.0.0"
+version: "1.0.1"
 title: "Broadcast linear TV seller agent"
 protocol: media-buy
 category: sales_broadcast_tv
@@ -422,6 +422,9 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: creative_sync
     title: "Creative sync"
+    requires_capability:
+      path: creative.has_creative_library
+      equals: true
     narrative: |
       Broadcast creative sync differs from digital in three ways. First, assets are
       broadcast-grade video files — no VAST wrappers, no impression trackers, no click
@@ -559,6 +562,7 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: delivery_monitoring
     title: "Delivery and reporting"
+    depends_on: [create_buy]
     narrative: |
       Broadcast delivery reporting operates on a fundamentally different timeline than
       digital. Live ratings are available within 24 hours, but the numbers that matter
@@ -680,6 +684,7 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: reconciliation
     title: "Post-flight reconciliation"
+    depends_on: [delivery_monitoring]
     narrative: |
       Broadcast reconciliation cannot happen until C7 data has matured for every air
       date in the flight. For a flight ending December 31, final C7 data for the last

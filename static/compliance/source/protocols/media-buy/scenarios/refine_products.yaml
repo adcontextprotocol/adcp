@@ -1,11 +1,15 @@
 id: media_buy_seller/refine_products
-version: "1.0.0"
+version: "1.0.1"
 title: "Seller handles product refinement"
 category: media_buy_seller
 summary: "Verifies that a media buy seller supports buying_mode: refine with product-level and request-level changes."
 track: media_buy
 required_tools:
   - get_products
+
+requires_capability:
+  path: media_buy.buying_modes
+  contains: refine
 
 narrative: |
   After a buyer receives products from a brief, they refine the results without starting
