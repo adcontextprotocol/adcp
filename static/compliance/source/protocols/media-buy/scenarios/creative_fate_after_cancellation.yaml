@@ -1,5 +1,5 @@
 id: media_buy_seller/creative_fate_after_cancellation
-version: "1.0.0"
+version: "1.0.1"
 title: "Creative lifecycle is decoupled from media buy lifecycle"
 category: media_buy_seller
 summary: "Validates that canceling a media buy releases package-creative assignments but leaves the underlying creatives in the library with their review state intact, and that buyers can reuse released creatives on a new buy."
@@ -10,6 +10,10 @@ required_tools:
   - update_media_buy
   - sync_creatives
   - list_creatives
+
+requires_capability:
+  path: creative.has_creative_library
+  equals: true
 
 narrative: |
   Per the creative library model (docs/creative/creative-libraries#creative-state-and-assignment-state-are-separate)

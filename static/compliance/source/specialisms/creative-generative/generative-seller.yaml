@@ -1,5 +1,5 @@
 id: creative_generative/seller
-version: "1.0.0"
+version: "1.0.1"
 title: "Generative seller agent"
 category: creative_generative
 summary: "Seller agent that generates creatives from briefs at buy time — no pre-built assets required."
@@ -11,7 +11,6 @@ required_tools:
   - sync_creatives
   - get_media_buy_delivery
 requires_scenarios:
-  - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
 
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource
