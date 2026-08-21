@@ -7627,6 +7627,7 @@ function validateSellerRenderedStatefulDisplayManifest(
   const hasVideoMainSlot = effectiveSlots.some(slot => slot.asset_group_id === 'video_main');
 
   const transitionIds = new Set<string>();
+  const exitCauses = new Map<string, string>();
   const adjacency = new Map<string, string[]>();
   const timerEdges: Array<{ from: string; to: string; delayMs?: number; field: string }> = [];
   for (const [transitionIndex, rawTransition] of transitions.entries()) {
@@ -7688,6 +7689,30 @@ function validateSellerRenderedStatefulDisplayManifest(
         expected: 'direction is valid only on scroll_threshold transitions',
         predicted: trigger,
       });
+    }
+
+    // Exits from a state must be deterministic: two transitions out of the
+    // same state may not share an identical cause tuple. Distinct causes
+    // (tap vs hover, down-scroll vs up-scroll) may coexist — the seller
+    // runtime arms whichever inputs the device supports.
+    if (fromStateId && trigger) {
+      const direction = typeof rawTransition.direction === 'string' ? rawTransition.direction : 'down';
+      const causeParts: Record<string, string> = { trigger };
+      if (trigger === 'user_action') causeParts.input = input ?? '';
+      if (trigger === 'media_event') causeParts.media_event = mediaEvent ?? '';
+      if (trigger === 'scroll_threshold') causeParts.direction = direction;
+      const causeKey = `${fromStateId}|${JSON.stringify(causeParts)}`;
+      const priorTransition = exitCauses.get(causeKey);
+      if (priorTransition !== undefined) {
+        violations.push({
+          rule: 'transition_exit_determinism',
+          field: `params.transitions[${transitionIndex}]`,
+          expected: `at most one transition out of state "${fromStateId}" per cause (trigger/input/media_event/direction)`,
+          predicted: { conflicting_with: priorTransition, cause: causeParts },
+        });
+      } else {
+        exitCauses.set(causeKey, transitionId ?? `transitions[${transitionIndex}]`);
+      }
     }
 
     if (trigger === 'media_event') {

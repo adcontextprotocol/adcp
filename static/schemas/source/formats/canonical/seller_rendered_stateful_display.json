@@ -360,6 +360,7 @@
       "initial_state_resolution": "initial_state_id must resolve to a declared state",
       "single_state_shape": "when states has one entry, transitions must be absent or empty and initial_state_id must equal the sole state; when states has more than one entry, transitions must be present and non-empty",
       "transition_id_uniqueness": "transitions[].transition_id values must be unique",
+      "transition_exit_determinism": "at most one transition out of a given state per cause tuple (trigger, plus input for user_action, media_event for media_event, direction for scroll_threshold); distinct causes may coexist and the seller runtime arms whichever inputs the device supports",
       "transition_state_resolution": "transition endpoints must resolve to distinct declared states",
       "scroll_progress_bounds": "scroll_start_percent must be less than scroll_end_percent",
       "scroll_linked_binding": "transition_mode scroll_linked is valid only with trigger scroll_progress",

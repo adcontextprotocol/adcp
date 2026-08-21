@@ -333,3 +333,26 @@ test('promoted custom shapes produce structured migration warnings for at least 
   }
   assert.equal(promotedShapeWarning({ format_kind: 'custom', format_shape: 'roadblock' }, vocabulary), undefined);
 });
+
+test('coordinated_placements inline format menu tracks the canonical roster', () => {
+  const coordinated = readJson('static/schemas/source/formats/canonical/coordinated_placements.json');
+  const inlineBranch = coordinated.properties.components.items.anyOf
+    .find(branch => Array.isArray(branch.oneOf));
+  assert.ok(inlineBranch, 'inline component branch with a oneOf menu exists');
+  const menuKinds = inlineBranch.oneOf
+    .map(entry => entry.properties.format_kind.const)
+    .sort();
+
+  const canonicalDir = path.join(schemasDir, 'formats/canonical');
+  const expected = fs.readdirSync(canonicalDir)
+    .filter(name => name.endsWith('.json') && !name.startsWith('_'))
+    .map(name => name.replace(/\.json$/, ''))
+    .filter(kind => kind !== 'coordinated_placements')
+    .sort();
+
+  assert.deepEqual(
+    menuKinds,
+    expected,
+    'inline format menu must list every canonical except coordinated_placements (custom has no canonical schema file); update the oneOf when adding a canonical'
+  );
+});

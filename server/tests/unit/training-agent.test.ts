@@ -4215,6 +4215,58 @@ describe('validate_input handler', () => {
     });
   });
 
+  it('rejects two transitions out of one state with the same cause tuple', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-exit-determinism.example' }, operator: 'pinnacle-agency.example' };
+    const threeStates = [
+      { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }] },
+      { state_id: 'b', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 90 }] },
+      { state_id: 'c', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 60 }] },
+    ];
+    await seedSrsdProduct(server, account, 'srsd_ambiguous_exits', {
+      initial_state_id: 'a',
+      states: threeStates,
+      transitions: [
+        { transition_id: 'race_one', from_state_id: 'a', to_state_id: 'b', trigger: 'timer', delay_ms: 5000, transition_mode: 'instant' },
+        { transition_id: 'race_two', from_state_id: 'a', to_state_id: 'c', trigger: 'timer', delay_ms: 5000, transition_mode: 'instant' },
+      ],
+      user_controls: { dismissible: false, user_collapsible: false },
+    });
+
+    const manifest = {
+      format_kind: 'seller_rendered_stateful_display',
+      assets: { landing_page_url: { asset_type: 'url', url: 'https://acme.example' } },
+    };
+    const ambiguous = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'srsd_ambiguous_exits' }],
+    });
+    expect(ambiguous.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'transition_exit_determinism' }),
+      ]),
+    });
+
+    await seedSrsdProduct(server, account, 'srsd_distinct_exits', {
+      initial_state_id: 'a',
+      states: threeStates,
+      transitions: [
+        { transition_id: 'auto', from_state_id: 'a', to_state_id: 'b', trigger: 'timer', delay_ms: 5000, transition_mode: 'instant' },
+        { transition_id: 'tap_open', from_state_id: 'a', to_state_id: 'c', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
+        { transition_id: 'hover_open', from_state_id: 'a', to_state_id: 'c', trigger: 'user_action', input: 'hover', transition_mode: 'instant' },
+      ],
+      user_controls: { dismissible: false, user_collapsible: false },
+    });
+    const distinct = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'srsd_distinct_exits' }],
+    });
+    expect(distinct.result.results[0].result_kind).toBe('validated_pass');
+  });
+
   it('rejects a javascript slot override on seller_rendered_stateful_display, direct and via coordinated shared_slots', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = { brand: { domain: 'srsd-javascript-slot.example' }, operator: 'pinnacle-agency.example' };
