@@ -170,7 +170,7 @@ describe('wrapper contract', () => {
     const target = hostedComplianceTarget();
     const index = loadComplianceIndex(hostedComplianceOptions(target));
     expect(index.adcp_version).toBe(DEFAULT_HOSTED_COMPLIANCE_VERSION);
-    expect(DEFAULT_HOSTED_COMPLIANCE_VERSION).toBe('3.0.18');
+    expect(DEFAULT_HOSTED_COMPLIANCE_VERSION).toBe('3.0.25');
     expect(DEFAULT_HOSTED_COMPLIANCE_LINE).toBe('3.0');
     expect(HOSTED_FULL_COMPLIANCE_TIMEOUT_MS).toBe(600_000);
     expect(target.requested).toBe(DEFAULT_HOSTED_COMPLIANCE_LINE);
@@ -182,7 +182,7 @@ describe('wrapper contract', () => {
   it('resolves compliance target aliases against checked-in caches', () => {
     const stable = hostedComplianceTarget('3.0');
     expect(stable.requested).toBe('3.0');
-    expect(stable.version).toBe('3.0.18');
+    expect(stable.version).toBe('3.0.25');
     expect(stable.version).toMatch(/^3\.0\.\d+$/);
 
     const beta = hostedComplianceTarget('3.1-beta');
@@ -244,8 +244,8 @@ describe('wrapper contract', () => {
   });
 
   it('caps hosted aliases at compliance bundles published through npm', () => {
-    expect(hostedComplianceTarget('3.0').version).toBe('3.0.18');
-    expect(hostedComplianceTarget('3.1').version).toBe('3.1.13');
+    expect(hostedComplianceTarget('3.0').version).toBe('3.0.25');
+    expect(hostedComplianceTarget('3.1').version).toBe('3.1.18');
     expect(hostedComplianceTarget('3.1-beta').version).toBe('3.1.0-beta.7');
     expect(hostedComplianceTarget('3.1-rc').version).toBe('3.1.0-rc.14');
     expect(() => hostedComplianceTarget('3.1.12')).toThrow(/not available from a published/);
