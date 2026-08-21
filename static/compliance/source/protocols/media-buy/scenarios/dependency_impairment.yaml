@@ -1,5 +1,5 @@
 id: media_buy_seller/dependency_impairment
-version: "2.0.0"
+version: "2.0.1"
 title: "Dependency impairment end-to-end — resource transition propagates to media buy health"
 category: media_buy_seller
 summary: "Forces a creative from approved → rejected on a non-terminal media buy, verifies the buy reflects health: impaired with a matching impairments[] entry, and recovers via assignment swap to a different creative (canonical recovery vector — re-approval of the same creative_id is uncommon in production)."
@@ -13,19 +13,13 @@ required_tools:
   - update_media_buy
   - comply_test_controller
 
-# Capability gate: this scenario grades the snapshot-coherence surface, so it
-# runs only for sellers that declare media_buy.propagation_surfaces including
-# "snapshot". Webhook-only or out_of_band sellers grade not_applicable instead
-# of false-failing on a contract that does not apply to them — the opt-out the
-# propagation_surfaces schema already documents (get-adcp-capabilities-response.json)
-# but that was never wired into this scenario. Requires the `contains:` matcher
-# (@adcp/sdk >= 7.70). Sellers that OMIT propagation_surfaces inherit the
-# ["snapshot"] default and are graded here only on @adcp/sdk >= 9.2.0, which
-# materializes capability-gate schema defaults; earlier runners skip them as
-# not_applicable (adcp-client#2278).
+# The 3.1 runner supports one storyboard-level capability predicate. Gate the
+# whole creative workflow on the library declaration, then repeat the snapshot
+# predicate on every phase so webhook-only and out_of_band sellers remain out
+# of scope as well.
 requires_capability:
-  path: media_buy.propagation_surfaces
-  contains: "snapshot"
+  path: creative.has_creative_library
+  equals: true
 
 narrative: |
   Per the dependency-impairment surface ([adcp#2855](https://github.com/adcontextprotocol/adcp/issues/2855)
@@ -118,6 +112,9 @@ prerequisites:
 
 phases:
   - id: setup
+    requires_capability: &snapshot_gate
+      path: media_buy.propagation_surfaces
+      contains: "snapshot"
     title: "Create an active buy with a creative assignment"
     narrative: |
       Discover a product, create a media buy, sync one creative into the library
@@ -339,6 +336,7 @@ phases:
             description: "Controller acknowledged the directive"
 
   - id: baseline_healthy
+    requires_capability: *snapshot_gate
     title: "Baseline: buy reads as healthy, no impairments"
     narrative: |
       With the creative at approved and assigned, the buy MUST report
@@ -383,6 +381,7 @@ phases:
             description: "impairments[] is empty (or absent) in the baseline — no resources are offline yet"
 
   - id: transition_offline
+    requires_capability: *snapshot_gate
     title: "Force the creative to rejected"
     narrative: |
       The seller transitions the creative from approved → rejected via
@@ -422,6 +421,7 @@ phases:
             description: "Controller acknowledged the rejection directive"
 
   - id: verify_impaired
+    requires_capability: *snapshot_gate
     title: "Buy reads as impaired with a matching impairments[] entry"
     narrative: |
       After the rejection, the buy MUST report `health: impaired` and
@@ -520,6 +520,7 @@ phases:
             description: "At least one impairment entry matches the rejected creative, affected package, and rejected transition (forward rule)"
 
   - id: swap_recovery
+    requires_capability: *snapshot_gate
     title: "Recover via assignment swap — different creative replaces the rejected one"
     narrative: |
       Sync a second creative (B) into the library as approved, then use

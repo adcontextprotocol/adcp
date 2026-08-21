@@ -1,17 +1,16 @@
 id: media_buy_seller/pending_creatives_to_start
-version: "1.0.0"
+version: "1.0.1"
 title: "Creative sync unblocks pending_creatives → pending_start"
 category: media_buy_seller
 summary: "Verifies that a media buy created without creatives sits in pending_creatives until sync_creatives completes, then transitions to pending_start."
 track: media_buy
 
-# This scenario requires an explicit auto-approval declaration. Sellers that
-# declare `require_human`, or omit the field because approval behavior is
-# legacy-unspecified, grade not_applicable rather than false-failing on a
-# manual-review workflow.
+# This scenario requires a creative library. The 3.1 runner supports one
+# storyboard-level capability predicate, so the auto-approval predicate is
+# repeated on each phase below to preserve both applicability conditions.
 requires_capability:
-  path: media_buy.creative_approval_mode
-  equals: auto_approve
+  path: creative.has_creative_library
+  equals: true
 
 required_tools:
   - get_products
@@ -52,6 +51,9 @@ prerequisites:
 
 phases:
   - id: setup
+    requires_capability: &auto_approval_gate
+      path: media_buy.creative_approval_mode
+      equals: auto_approve
     title: "Discover products and formats"
     steps:
       - id: get_products_brief
@@ -91,6 +93,7 @@ phases:
             description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
 
   - id: create_without_creatives
+    requires_capability: *auto_approval_gate
     title: "Create media buy without creative_assignments"
     narrative: |
       The buyer intentionally omits creative_assignments. The seller must accept the
@@ -168,6 +171,7 @@ phases:
             description: "Created package echoes package-level context for legacy package correlation"
 
   - id: supply_creatives
+    requires_capability: *auto_approval_gate
     title: "Supply creatives and assign to the package"
     narrative: |
       The buyer syncs a creative with the format the product requires, then updates the
@@ -260,6 +264,7 @@ phases:
             description: "Envelope task-status is completed on synchronous update success (protocol-envelope.json required: [status])"
 
   - id: verify_transition
+    requires_capability: *auto_approval_gate
     title: "Verify the status transition"
     narrative: |
       Independently of the update_media_buy response, call get_media_buys to confirm the

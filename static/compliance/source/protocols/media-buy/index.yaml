@@ -1,5 +1,5 @@
 id: media_buy_seller
-version: "1.0.0"
+version: "1.0.1"
 title: "Media buy seller agent"
 category: media_buy_seller
 summary: "Seller agent that receives briefs, returns products, accepts media buys, and reports delivery."
@@ -587,6 +587,9 @@ phases:
 
   - id: creative_sync
     title: "Creative sync"
+    requires_capability:
+      path: creative.has_creative_library
+      equals: true
     narrative: |
       With the media buy confirmed, the buyer syncs creative assets to your platform.
       Each package in the buy has creative format requirements — the buyer discovered
@@ -745,6 +748,7 @@ phases:
 
   - id: delivery_monitoring
     title: "Delivery and reporting"
+    depends_on: [create_buy]
     narrative: |
       The campaign is live. The buyer monitors delivery through two tasks:
       get_media_buys for status and get_media_buy_delivery for performance metrics.

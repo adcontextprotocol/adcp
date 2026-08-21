@@ -9,6 +9,23 @@ const YAML = require('yaml');
 
 const { runStoryboard } = require('@adcp/sdk/testing');
 
+const mediaBuyScenarioRoot = path.join(
+  __dirname,
+  '..',
+  'static',
+  'compliance',
+  'source',
+  'protocols',
+  'media-buy',
+  'scenarios'
+);
+
+function loadMediaBuyScenario(name) {
+  return YAML.parse(
+    fs.readFileSync(path.join(mediaBuyScenarioRoot, `${name}.yaml`), 'utf8')
+  );
+}
+
 test('runStoryboard skips an equals-gated storyboard when the capability path is absent', async () => {
   const storyboard = {
     id: 'equals_absent_regression',
@@ -323,4 +340,102 @@ test('create_media_buy async storyboard requires its advertised controller scena
 
   assert.equal(advertisedResult.overall_passed, true);
   assert.equal(advertisedResult.phases[0].phase_id, 'no_phases');
+});
+
+test('creative-dependent seller scenarios fail closed for library-less sellers', async () => {
+  for (const name of [
+    'pending_creatives_to_start',
+    'creative_fate_after_cancellation',
+    'dependency_impairment',
+    'dependency_impairment_cardinality',
+  ]) {
+    const storyboard = loadMediaBuyScenario(name);
+    assert.deepEqual(storyboard.requires_capability, {
+      path: 'creative.has_creative_library',
+      equals: true,
+    });
+
+    const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+    const result = await runStoryboard('https://agent.example/mcp', storyboard, {
+      _profile: {
+        tools,
+        raw_capabilities: { creative: { has_creative_library: false } },
+      },
+      agentTools: tools,
+    });
+
+    assert.equal(result.overall_passed, true, name);
+    assert.equal(result.skipped_count, 1, name);
+    assert.equal(result.phases[0].phase_id, 'capability_unsupported', name);
+    assert.match(result.phases[0].steps[0].error, /creative\.has_creative_library/, name);
+  }
+});
+
+test('3.1 compound applicability remains enforced through phase gates', () => {
+  const expected = new Map([
+    ['pending_creatives_to_start', {
+      path: 'media_buy.creative_approval_mode',
+      equals: 'auto_approve',
+    }],
+    ['dependency_impairment', {
+      path: 'media_buy.propagation_surfaces',
+      contains: 'snapshot',
+    }],
+    ['dependency_impairment_cardinality', {
+      path: 'media_buy.propagation_surfaces',
+      contains: 'snapshot',
+    }],
+  ]);
+
+  for (const [name, gate] of expected) {
+    const storyboard = loadMediaBuyScenario(name);
+    assert.ok(storyboard.phases.length > 0, name);
+    for (const phase of storyboard.phases) {
+      assert.deepEqual(phase.requires_capability, gate, `${name}/${phase.id}`);
+    }
+  }
+});
+
+test('3.1 scopes refinement and keeps only universal measurement rejection', async () => {
+  const refinement = loadMediaBuyScenario('refine_products');
+  assert.deepEqual(refinement.requires_capability, {
+    path: 'media_buy.buying_modes',
+    contains: 'refine',
+  });
+
+  const tools = ['get_adcp_capabilities', ...refinement.required_tools];
+  const result = await runStoryboard('https://agent.example/mcp', refinement, {
+    _profile: {
+      tools,
+      raw_capabilities: { media_buy: { buying_modes: ['brief'] } },
+    },
+    agentTools: tools,
+  });
+  assert.equal(result.overall_passed, true);
+  assert.equal(result.phases[0].phase_id, 'capability_unsupported');
+
+  const measurement = loadMediaBuyScenario('measurement_terms_rejected');
+  assert.deepEqual(measurement.phases.map(phase => phase.id), [
+    'discover_products',
+    'reject_terms',
+  ]);
+});
+
+test('direct creative-sync phases have authoritative library gates', () => {
+  const sourceRoot = path.join(__dirname, '..', 'static', 'compliance', 'source');
+  const indexPaths = [
+    path.join(sourceRoot, 'protocols', 'media-buy', 'index.yaml'),
+    ...['sales-broadcast-tv', 'sales-guaranteed', 'sales-proposal-mode'].map(name =>
+      path.join(sourceRoot, 'specialisms', name, 'index.yaml')
+    ),
+  ];
+
+  for (const indexPath of indexPaths) {
+    const index = YAML.parse(fs.readFileSync(indexPath, 'utf8'));
+    const phase = index.phases.find(candidate => candidate.id === 'creative_sync');
+    assert.deepEqual(phase.requires_capability, {
+      path: 'creative.has_creative_library',
+      equals: true,
+    }, index.id);
+  }
 });

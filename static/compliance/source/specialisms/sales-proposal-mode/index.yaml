@@ -1,5 +1,5 @@
 id: sales_proposal_mode
-version: "1.0.0"
+version: "1.0.1"
 title: "Media buy via proposal acceptance"
 protocol: media-buy
 category: sales_proposal_mode
@@ -426,6 +426,9 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: creative_sync
     title: "Creative sync"
+    requires_capability:
+      path: creative.has_creative_library
+      equals: true
     narrative: |
       With the proposal accepted and the media buy confirmed, the buyer syncs creative
       assets. The buyer first checks what formats the accepted products require, then
@@ -543,6 +546,7 @@ phases:
             description: "Context correlation_id returned unchanged"
   - id: delivery
     title: "Delivery and reporting"
+    depends_on: [accept_proposal]
     narrative: |
       The campaign from the accepted proposal is live. The buyer monitors delivery
       to verify the proposal's forecasts are tracking.

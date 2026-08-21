@@ -1,5 +1,5 @@
 id: media_buy_seller/dependency_impairment_cardinality
-version: "1.0.0"
+version: "1.0.1"
 title: "Dependency impairment cardinality — impairments[] tracks each offline resource independently"
 category: media_buy_seller
 summary: "Two creatives on two packages of the same buy. Rejects them sequentially and verifies impairments[] grows 0 → 1 → 2; recovers them sequentially via swap-assignment and verifies impairments[] shrinks 2 → 1 → 0. Pressure-tests the inverse rule under cardinality — a seller emitting any impairment entry rather than the right one fails."
@@ -13,19 +13,13 @@ required_tools:
   - update_media_buy
   - comply_test_controller
 
-# Capability gate: this scenario grades the snapshot-coherence surface, so it
-# runs only for sellers that declare media_buy.propagation_surfaces including
-# "snapshot". Webhook-only or out_of_band sellers grade not_applicable instead
-# of false-failing on a contract that does not apply to them — the opt-out the
-# propagation_surfaces schema already documents (get-adcp-capabilities-response.json)
-# but that was never wired into this scenario. Requires the `contains:` matcher
-# (@adcp/sdk >= 7.70). Sellers that OMIT propagation_surfaces inherit the
-# ["snapshot"] default and are graded here only on @adcp/sdk >= 9.2.0, which
-# materializes capability-gate schema defaults; earlier runners skip them as
-# not_applicable (adcp-client#2278).
+# The 3.1 runner supports one storyboard-level capability predicate. Gate the
+# whole creative workflow on the library declaration, then repeat the snapshot
+# predicate on every phase so webhook-only and out_of_band sellers remain out
+# of scope as well.
 requires_capability:
-  path: media_buy.propagation_surfaces
-  contains: "snapshot"
+  path: creative.has_creative_library
+  equals: true
 
 narrative: |
   The base dependency_impairment scenario tests forward + inverse + health-iff
@@ -98,6 +92,9 @@ prerequisites:
 
 phases:
   - id: setup
+    requires_capability: &snapshot_gate
+      path: media_buy.propagation_surfaces
+      contains: "snapshot"
     title: "Create a buy with two packages, two creatives, two assignments"
     narrative: |
       Discover a product, create a buy with two packages (same product is
@@ -396,6 +393,7 @@ phases:
             description: "impairments[] is empty (cardinality zero baseline)"
 
   - id: reject_first_cardinality_one
+    requires_capability: *snapshot_gate
     title: "Reject creative A — impairments[] cardinality 1, scoped to package_a"
     narrative: |
       Force creative A to rejected. The buy MUST report exactly ONE
@@ -525,6 +523,7 @@ phases:
           # an `array_length` check kind — tracked in a follow-up.
 
   - id: reject_second_cardinality_two
+    requires_capability: *snapshot_gate
     title: "Reject creative B — impairments[] grows to cardinality 2"
     narrative: |
       Force creative B to rejected. The buy MUST report exactly TWO
@@ -643,6 +642,7 @@ phases:
           # a creative that isn't offline, failing the invariant.
 
   - id: recover_first_via_swap
+    requires_capability: *snapshot_gate
     title: "Swap package_a's binding to a fresh creative C — cardinality back to 1"
     narrative: |
       Sync creative C (approved), then update_media_buy to swap
@@ -800,6 +800,7 @@ phases:
             description: "impairments[1] MUST NOT exist — the swap recovered A's dependency; only B remains rejected. Cardinality decrement check."
 
   - id: recover_second_via_swap
+    requires_capability: *snapshot_gate
     title: "Swap package_b's binding to a fresh creative D — cardinality back to 0"
     narrative: |
       Sync creative D (approved), swap package_b's binding from B → D, read
