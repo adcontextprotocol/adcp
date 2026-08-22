@@ -54,7 +54,7 @@
       "description": "Deprecated 3.x compatibility field. For an acceptance mismatch, this is the effective product/seller intersection when known. Modern emitters use the typed sets and mismatch_reason."
     }
   },
-  "oneOf": [
+  "anyOf": [
     {
       "title": "Asset outside accepted version intersection",
       "properties": { "mismatch_reason": { "const": "asset_outside_acceptance" } },

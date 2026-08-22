@@ -261,6 +261,7 @@ phases:
                 asset_type: "vast"
                 delivery_type: "url"
                 url: "https://vast.acme.example/tag.xml"
+                vast_version: "4.0"
           targets:
             - kind: "canonical"
               id: "video_vast"
