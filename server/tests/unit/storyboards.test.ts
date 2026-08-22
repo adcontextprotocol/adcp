@@ -156,6 +156,27 @@ describe('getTestKitForStoryboard', () => {
     }
     throw new Error('Expected at least one storyboard to declare prerequisites.test_kit');
   });
+
+  // adcp#6735 — the mode-gate storyboard's declared kit must resolve WITH its
+  // auth block: the hosted call sites pre-populate options.test_kit from this
+  // resolver, and withHostedAuthTestKit's !nextAuth.api_key guard relies on
+  // the kit carrying the credential to no-op the run-auth bearer substitution.
+  it('resolves the mode-gate kit with its live credential', () => {
+    const kit = getTestKitForStoryboard('comply_controller_mode_gate');
+    expect(kit).toBeDefined();
+    const auth = kit!.auth as { api_key?: string } | undefined;
+    expect(auth?.api_key).toBeTruthy();
+  });
+
+  it('resolves a storyboard kit from the selected compliance target', () => {
+    const target = hostedComplianceTarget('3.1');
+    const options = hostedComplianceOptions(target);
+    const kit = getTestKitForStoryboard('media_buy_seller/canonical_formats', options);
+
+    expect(kit?.id).toBe('acme_outdoor');
+    const auth = kit!.auth as { api_key?: string } | undefined;
+    expect(auth?.api_key).toBeTruthy();
+  });
 });
 
 describe('wrapper contract', () => {
@@ -320,6 +341,23 @@ describe('wrapper contract', () => {
 
     expect(options.test_kit?.auth?.api_key).toBe('secret-token');
     expect(options.test_kit?.auth?.probe_task).toBe('list_creatives');
+  });
+
+  // adcp#6735 — the load-bearing guard for declared-kit pre-population: when
+  // the call site placed the storyboard-declared kit (with its own api_key)
+  // into options.test_kit, the run-auth bearer must NOT substitute over it.
+  it('does not substitute the run bearer over a pre-populated declared kit credential', () => {
+    const declaredKit = getTestKitForStoryboard('comply_controller_mode_gate');
+    expect(declaredKit).toBeDefined();
+    const options = withHostedAuthTestKit({
+      test_kit: declaredKit,
+      auth: { type: 'bearer', token: 'seller-run-bearer' },
+    });
+
+    const declaredKey = (declaredKit!.auth as { api_key?: string }).api_key;
+    expect(declaredKey).toBeTruthy();
+    expect(options.test_kit?.auth?.api_key).toBe(declaredKey);
+    expect(options.test_kit?.auth?.api_key).not.toBe('seller-run-bearer');
   });
 
   it('threads hosted static fixture auth into the runtime test kit when no operator auth is supplied', () => {
