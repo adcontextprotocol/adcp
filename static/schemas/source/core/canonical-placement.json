@@ -20,7 +20,70 @@
     "video_placement_types": { "type": "array", "items": { "$ref": "/schemas/enums/video-placement-type.json" }, "minItems": 1, "uniqueItems": true },
     "audio_distribution_types": { "type": "array", "items": { "$ref": "/schemas/enums/audio-distribution-type.json" }, "minItems": 1, "uniqueItems": true },
     "sponsored_placement_types": { "type": "array", "items": { "$ref": "/schemas/enums/sponsored-placement-type.json" }, "minItems": 1, "uniqueItems": true },
-    "social_placement_surfaces": { "type": "array", "items": { "$ref": "/schemas/enums/social-placement-surface.json" }, "minItems": 1, "uniqueItems": true }
+    "social_placement_surfaces": { "type": "array", "items": { "$ref": "/schemas/enums/social-placement-surface.json" }, "minItems": 1, "uniqueItems": true },
+    "identifiers": {
+      "type": "array",
+      "description": "Optional external inventory identifiers for this placement. Externally governed values should be authority-prefixed; seller-local values are scoped by the surrounding publisher namespace. For publisher_ref placements, the effective set is the union of publisher and product declarations, de-duplicated by exact (type, value).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": { "$ref": "/schemas/enums/identifier-types.json" },
+          "value": { "type": "string" }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": true
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "dooh_placement_attributes": {
+      "type": "object",
+      "description": "DOOH screen and scheduled-loop facts. These fields do not define creative acceptance, which is governed exclusively by effective canonical format_options. For publisher_ref placements, product slot and loop values override publisher defaults while repeated screen_resolution and motion values must equal the publisher facts.",
+      "properties": {
+        "slot_duration_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Scheduled duration of one ad slot in seconds; not the creative-duration contract."
+        },
+        "loop_duration_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Duration of the full ad loop rotation in seconds and the canonical source for loop duration."
+        },
+        "screen_resolution": {
+          "type": "object",
+          "description": "Physical screen resolution; canonical format dimensions remain authoritative for creative acceptance.",
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          },
+          "required": ["width", "height"],
+          "additionalProperties": false
+        },
+        "motion": {
+          "$ref": "/schemas/enums/dooh-motion-type.json",
+          "description": "Physical motion capability, not an accepted-format declaration."
+        }
+      },
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "slot_fits_loop": {
+            "left_path": "slot_duration_seconds",
+            "operator": "less_than_or_equal",
+            "right_path": "loop_duration_seconds",
+            "evaluate_after": "publisher_ref_resolution"
+          },
+          "publisher_ref_resolution": {
+            "override_fields": ["slot_duration_seconds", "loop_duration_seconds"],
+            "inherit_when_omitted": true,
+            "must_equal_fields": ["screen_resolution", "motion"],
+            "identifier_merge": "union_by_type_and_value"
+          }
+        },
+        "spec": "docs/media-buy/product-discovery/media-products.mdx#dooh-placement-attributes"
+      },
+      "additionalProperties": true
+    }
   },
   "required": ["kind", "placement_id", "mode"],
   "allOf": [

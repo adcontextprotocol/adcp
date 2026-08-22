@@ -1095,7 +1095,7 @@
         },
         "identifier-types": {
           "$ref": "/schemas/enums/identifier-types.json",
-          "description": "Valid identifier types for property identification across different media types"
+          "description": "Valid identifier types for property and placement identification across different media types"
         },
         "publisher-identifier-types": {
           "$ref": "/schemas/enums/publisher-identifier-types.json",
@@ -1120,6 +1120,10 @@
         "social-placement-surface": {
           "$ref": "/schemas/enums/social-placement-surface.json",
           "description": "Declared social-placement surface classifications for social inventory"
+        },
+        "dooh-motion-type": {
+          "$ref": "/schemas/enums/dooh-motion-type.json",
+          "description": "Physical motion capabilities of digital out-of-home screens"
         },
         "task-status": {
           "$ref": "/schemas/enums/task-status.json",

@@ -52,8 +52,14 @@
         },
         "loop_duration_seconds": {
           "type": "integer",
-          "description": "Duration of the ad loop rotation in seconds",
-          "minimum": 1
+          "description": "Deprecated compatibility copy of the placement-level dooh_placement_attributes.loop_duration_seconds, which is the canonical source. Retained for backward compatibility; new integrations read the placement-level field. When both are present they MUST agree. A product that offers different loop durations under different prices MUST expose distinct placements or products rather than vary this compatibility copy by pricing option.",
+          "minimum": 1,
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "must_equal_effective_placement_field": "dooh_placement_attributes.loop_duration_seconds"
+            },
+            "spec": "docs/media-buy/advanced-topics/pricing-models.mdx#flat-rate"
+          }
         },
         "min_plays_per_hour": {
           "type": "integer",

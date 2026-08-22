@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/identifier-types.json",
-  "title": "Property Identifier Types",
-  "description": "Valid identifier types for property identification across different media types",
+  "title": "Identifier Types",
+  "description": "Valid identifier types for property and placement identification across different media types",
   "type": "string",
   "enum": [
     "domain",
@@ -42,7 +42,7 @@
     "bundle_id": "Generic app bundle identifier",
     "venue_id": "DOOH venue identifier",
     "screen_id": "DOOH screen identifier within a venue",
-    "openooh_venue_type": "OpenOOH venue taxonomy classification",
+    "openooh_venue_type": "OpenOOH Venue Taxonomy enumeration ID, prefixed with the taxonomy authority and version for unambiguous interchange (for example openooh-1.1:20501 for Retail / Malls / Concourse). Bare or dotted hierarchy values are ambiguous and SHOULD NOT be emitted by new senders.",
     "rss_url": "RSS feed URL for podcast or content feed",
     "apple_podcast_id": "Apple Podcasts numeric ID",
     "spotify_collection_id": "Spotify show or collection URI",
