@@ -659,7 +659,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -689,7 +689,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -706,7 +706,7 @@ phases:
             - { kind: "product", id: "premium_seller_rendered_stateful_display" }
         validations:
           - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
-          - { check: field_value, path: "results[0].violations[0].rule", value: "state_canvas_width" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "state_canvas_dimensions" }
 
   - id: supply_mode_manifests
     title: "supply_mode-consistent manifests across components, rendered_canvases, and layered_source"
@@ -725,7 +725,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -754,7 +754,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -782,7 +782,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -809,7 +809,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -845,7 +845,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -871,7 +871,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -897,7 +897,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -924,7 +924,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -950,7 +950,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -981,7 +981,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -1007,7 +1007,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -1036,7 +1036,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -1065,7 +1065,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -1092,7 +1092,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -1113,7 +1113,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -1139,7 +1139,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -1165,7 +1165,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -1200,7 +1200,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
@@ -1234,7 +1234,7 @@ phases:
         comply_scenario: canonical_format_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.0"
+          adcp_version: "3.2-beta.4"
           account:
             brand: { domain: "acmeoutdoor.example" }
             operator: "pinnacle-agency.example"
