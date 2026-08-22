@@ -10,7 +10,6 @@ requires_capability:
   contains: city
 
 required_tools:
-  - get_adcp_capabilities
   - get_products
   - create_media_buy
   - update_media_buy

@@ -14,7 +14,6 @@ requires:
   - controller
 
 required_tools:
-  - get_adcp_capabilities
   - list_accounts
   - create_media_buy
   - get_media_buys
