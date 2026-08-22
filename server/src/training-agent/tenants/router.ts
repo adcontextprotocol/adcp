@@ -927,6 +927,7 @@ function projectWholesaleCapabilities(
       profile: 'adcp/webhook-signing/v1',
       algorithms: ['ed25519'],
       legacy_hmac_fallback: true,
+      delivery_retry_horizon_seconds: 86400,
     };
   };
 

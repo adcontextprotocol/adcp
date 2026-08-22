@@ -1848,6 +1848,69 @@ async function runTests() {
 
   log('');
 
+  log('Get AdCP Capabilities Response (webhook delivery retry horizon):', 'info');
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      webhook_signing: {
+        supported: true,
+        delivery_retry_horizon_seconds: 86400
+      }
+    },
+    'Webhook signing accepts the 24h delivery retry horizon floor'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      webhook_signing: { supported: true }
+    },
+    'Existing 3.x webhook signing remains schema-valid without the additive retry horizon'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      webhook_signing: { supported: false }
+    },
+    'Webhook signing supported=false does not require a retry horizon'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      webhook_signing: {
+        supported: true,
+        delivery_retry_horizon_seconds: 86399
+      }
+    },
+    'Webhook delivery retry horizon rejects values below 24h'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      webhook_signing: {
+        supported: true,
+        delivery_retry_horizon_seconds: 604801
+      }
+    },
+    'Webhook delivery retry horizon rejects values above 7d'
+  );
+
+  log('');
+
   log('Get AdCP Capabilities Response (adcp.capability_changes.notifications oneOf discriminator):', 'info');
 
   await testSchemaValidation(

@@ -12563,6 +12563,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         profile: 'adcp/webhook-signing/v1',
         algorithms: ['ed25519'],
         legacy_hmac_fallback: true,
+        delivery_retry_horizon_seconds: 86400,
       },
       identity: {
         brand_json_url: `${getAgentUrl()}/.well-known/brand.json`,
