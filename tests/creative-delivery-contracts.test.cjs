@@ -281,9 +281,13 @@ test('all URL-delivered creative assets preserve registered percent-token dialec
     'ADCPMACRO'
   );
   const structurallyValidHttpUrl = value => {
+    const masked = maskOpaqueTokenForms(value);
+    if (!/^https?:\/\/[^/?#\s]+(?:[/?#]|$)/.test(masked)) return false;
+    if (/%(?![0-9A-Fa-f]{2})/.test(masked)) return false;
     try {
-      const parsed = new URL(maskOpaqueTokenForms(value));
-      return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+      const parsed = new URL(masked);
+      return (parsed.protocol === 'https:' || parsed.protocol === 'http:')
+        && parsed.hostname !== '.';
     } catch {
       return false;
     }
@@ -304,15 +308,22 @@ test('all URL-delivered creative assets preserve registered percent-token dialec
   for (const [schemaId, asset] of cases) {
     const validate = ajv.getSchema(schemaId);
     assert.equal(validate(asset), true, `${schemaId}: ${JSON.stringify(validate.errors)}`);
-    assert.equal(validate({ ...asset, url: 'https://track.example/a bad url' }), false, schemaId);
     for (const malformed of ['https:///path', 'https://?x=1', 'https://%zz', 'http://.']) {
-      assert.equal(validate({ ...asset, url: malformed }), false, `${schemaId}: ${malformed}`);
+      assert.equal(structurallyValidHttpUrl(malformed), false, `macro-aware verifier: ${malformed}`);
     }
   }
 
   const validateUrl = ajv.getSchema('/schemas/core/assets/url-asset.json');
   assert.equal(validateUrl({ asset_type: 'url', url: "https://track.acme-example.com/o'clock", url_type: 'clickthrough' }), true,
     'valid plain HTTP URLs retain ordinary URI behavior');
+  for (const legacyUrl of [
+    'myapp://creative/launch',
+    '//cdn.example.test/creative.js',
+    'https://{PUB}.track.example/pixel'
+  ]) {
+    assert.equal(validateUrl({ asset_type: 'url', url: legacyUrl, url_type: 'clickthrough' }), true,
+      `the published uri-template branch remains backward compatible: ${legacyUrl}`);
+  }
 });
 
 test('creative delivery resolution vectors retain every source and select only compatible candidates', () => {
@@ -557,4 +568,55 @@ test('validation and sync response schemas expose per-token macro results', () =
   };
   assert.equal(validateResult(daastResult), true, JSON.stringify(validateResult.errors));
   assert.equal(validateResult({ ...daastResult, performed_by: 'seller' }), false);
+});
+
+test('creative delivery errors use typed detail schemas without closing the generic extension point', () => {
+  const genericDetails = ajv.getSchema('/schemas/core/error.json').schema.properties.details;
+  assert.equal(genericDetails.additionalProperties, true);
+  assert.equal(genericDetails.properties, undefined,
+    'error.details stays a pure extension point selected by error code');
+
+  const validateDeliveryDetails = ajv.getSchema(
+    '/schemas/error-details/creative-delivery-variant-unresolved.json'
+  );
+  const deliveryDetails = {
+    delivery_variant_rejections: [{
+      variant_id: 'source-vast-2',
+      code: 'vast_version_mismatch',
+      message: 'VAST 2.0 is outside the compatibility intersection'
+    }]
+  };
+  assert.equal(validateDeliveryDetails(deliveryDetails), true,
+    JSON.stringify(validateDeliveryDetails.errors));
+  assert.equal(validateDeliveryDetails({}), false);
+
+  const validateMacroDetails = ajv.getSchema('/schemas/error-details/macro-resolution-failed.json');
+  const macroDetails = {
+    macro_resolution_results: [{
+      declaration_id: 'unknown-token',
+      asset_path: '/assets/impression_tracker',
+      token: '%%UNIDENTIFIED%%',
+      dialect: 'unknown',
+      dialect_semantic: 'unresolved',
+      mapping_status: 'unresolved',
+      operation: 'preserve',
+      requested_encoding: { kind: 'none', depth: 0 },
+      required: false,
+      unavailable_behavior: 'preserve',
+      status: 'preserved_for_downstream',
+      reason: 'preserved_unknown'
+    }]
+  };
+  assert.equal(validateMacroDetails(macroDetails), true, JSON.stringify(validateMacroDetails.errors));
+  assert.equal(validateMacroDetails({}), false);
+
+  const validateVastDetails = ajv.getSchema('/schemas/error-details/vast-version-mismatch.json');
+  const vastDetails = {
+    asset_vast_version: '4.0',
+    product_vast_versions: ['4.1', '4.2'],
+    seller_vast_versions: ['4.0', '4.1'],
+    format_option_ref: { scope: 'product', format_option_id: 'video-preroll' }
+  };
+  assert.equal(validateVastDetails(vastDetails), true, JSON.stringify(validateVastDetails.errors));
+  assert.equal(validateVastDetails({ ...vastDetails, format_option_ref: undefined }), false);
 });

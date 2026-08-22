@@ -430,7 +430,7 @@ Creative change submitted after the package's creative_deadline. Distinct from C
 
 **Suggested action:** inspect every error.details.delivery_variant_rejections entry, then choose a compatible format option or supply a compatible representation
 
-No representation in a pre-binding CreativeSource is compatible with the selected target capability or product format option. The resolver MUST retain all source variants and MUST include one <code>{"error.details.delivery_variant_rejections[]"}</code> entry per candidate; silent seller guessing is forbidden. Recovery: correctable (choose a compatible product/format option, add a compatible source representation, or fix the rejected asset contract).
+No representation in a pre-binding CreativeSource is compatible with the selected target capability or product format option. The resolver MUST retain all source variants and MUST include one <code>{"error.details.delivery_variant_rejections[]"}</code> entry per candidate, conforming to <code>{"error-details/creative-delivery-variant-unresolved.json"}</code>; silent seller guessing is forbidden. Recovery: correctable (choose a compatible product/format option, add a compatible source representation, or fix the rejected asset contract).
 
 </Accordion>
 <a id="error-code-creative-inaccessible"></a>
@@ -724,7 +724,7 @@ One or more catalog items failed schema validation during sync_catalogs. Recover
 
 **Suggested action:** inspect error.details.macro_resolution_results and route to a resolver that supports the declared dialect, semantic, owner, and encoding depth
 
-One or more declared creative macro tokens cannot be resolved or safely preserved under the selected product and seller capability intersection. Sellers MUST include per-token <code>{"error.details.macro_resolution_results"}</code>; unknown or ambiguous tokens remain byte-preserved and MUST NOT receive guessed values. Recovery: correctable (route to a compatible execution path, correct the verified declaration, or assign the proper downstream resolver).
+One or more declared creative macro tokens cannot be resolved or safely preserved under the selected product and seller capability intersection. Sellers MUST include per-token <code>{"error.details.macro_resolution_results"}</code>, conforming to <code>{"error-details/macro-resolution-failed.json"}</code>; unknown or ambiguous tokens remain byte-preserved and MUST NOT receive guessed values. Recovery: correctable (route to a compatible execution path, correct the verified declaration, or assign the proper downstream resolver).
 
 </Accordion>
 <a id="error-code-media-buy-not-found"></a>
@@ -1176,7 +1176,7 @@ A submitted <code>{"vast"}</code> asset failed document-level validation: the in
 
 **Suggested action:** inspect error.details.asset_vast_version, product_vast_versions, seller_vast_versions, and format_option_ref; select a source representation in the product/seller intersection or correct a document that disagrees with its asset declaration
 
-A submitted <code>{"vast"}</code> asset is version-incompatible when its exact <code>{"vast_version"}</code> is absent from the intersection of the selected product format option's <code>{"params.vast_versions"}</code> and the seller's <code>{"execution.creative_specs.vast_versions"}</code>, or when an inspected document's <code>{"<VAST version>"}</code> differs from the asset declaration. Sellers SHOULD include <code>{"asset_vast_version"}</code>, <code>{"product_vast_versions"}</code>, <code>{"seller_vast_versions"}</code>, and <code>{"format_option_ref"}</code> in <code>{"error.details"}</code>. Distinct from <code>{"VERSION_UNSUPPORTED"}</code>, which concerns AdCP protocol negotiation. Recovery: correctable (select a source VAST representation in the compatibility intersection; never relabel the asset).
+A submitted <code>{"vast"}</code> asset is version-incompatible when its exact <code>{"vast_version"}</code> is absent from the intersection of the selected product format option's <code>{"params.vast_versions"}</code> and the seller's <code>{"execution.creative_specs.vast_versions"}</code>, or when an inspected document's <code>{"<VAST version>"}</code> differs from the asset declaration. Sellers MUST include <code>{"asset_vast_version"}</code>, <code>{"product_vast_versions"}</code>, <code>{"seller_vast_versions"}</code>, and <code>{"format_option_ref"}</code> in <code>{"error.details"}</code>, conforming to <code>{"error-details/vast-version-mismatch.json"}</code>. Distinct from <code>{"VERSION_UNSUPPORTED"}</code>, which concerns AdCP protocol negotiation. Recovery: correctable (select a source VAST representation in the compatibility intersection; never relabel the asset).
 
 </Accordion>
 <a id="error-code-vast-wrapper-depth-exceeded"></a>

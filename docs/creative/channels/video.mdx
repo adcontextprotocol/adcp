@@ -90,7 +90,7 @@ AdCP defines three validation levels for `vast` assets. Sellers declare the leve
 - MUST reject documents whose root element is not `<VAST>` with `VAST_PARSE_FAILED` (`error.details.reason: "no_vast_root"`).
 - MUST reject documents whose `<VAST version>` attribute is missing or differs from the asset's singular `vast_version`.
 - MUST reject an asset whose `vast_version` is outside the product `params.vast_versions` and seller `creative_specs.vast_versions` intersection with `VAST_VERSION_MISMATCH`.
-- MUST include `asset_vast_version`, `product_vast_versions`, `seller_vast_versions`, and the selected `format_option_ref` in `error.details` for `VAST_VERSION_MISMATCH`.
+- MUST include `asset_vast_version`, `product_vast_versions`, `seller_vast_versions`, and the selected `format_option_ref` in `error.details` for `VAST_VERSION_MISMATCH`, conforming to [`error-details/vast-version-mismatch.json`](https://adcontextprotocol.org/schemas/v3/error-details/vast-version-mismatch.json).
 - SHOULD reject documents containing no `<Ad>` element, and `<InLine>` linear creatives carrying no `<MediaFile>`, with `VAST_PARSE_FAILED` (`error.details.reason: "no_ad"` / `"no_media_file"`).
 - SHOULD verify that media, tracking, and click URLs use HTTPS.
 - MUST preserve undeclared macro tokens as opaque bytes. When an asset supplies `macro_declarations`, validate each token against the product and seller macro-resolution capability intersection and report per-token results.

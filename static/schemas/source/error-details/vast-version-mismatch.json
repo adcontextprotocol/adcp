@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/vast-version-mismatch.json",
+  "title": "VAST Version Mismatch Details",
+  "description": "Required compatibility details for VAST_VERSION_MISMATCH. Reports the asset's exact version and both acceptance sets used for deterministic resolution.",
+  "type": "object",
+  "properties": {
+    "asset_vast_version": {
+      "$ref": "/schemas/enums/vast-version.json"
+    },
+    "product_vast_versions": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/vast-version.json"
+      },
+      "uniqueItems": true
+    },
+    "seller_vast_versions": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/vast-version.json"
+      },
+      "uniqueItems": true
+    },
+    "format_option_ref": {
+      "$ref": "/schemas/core/format-option-ref.json"
+    }
+  },
+  "required": [
+    "asset_vast_version",
+    "product_vast_versions",
+    "seller_vast_versions",
+    "format_option_ref"
+  ],
+  "additionalProperties": true
+}
