@@ -29,6 +29,7 @@ function finish() {
   console.log('\\n--- Totals ---');
   console.log('  storyboards: 1/1 clean');
   console.log('  steps: ' + (10 + index) + ' passed | ' + index + ' failed | ' + (index + 1) + ' skipped | ' + (index + 2) + ' not applicable');
+  if (process.env.SELF_KILL_AFTER_TOTALS === '1') process.kill(process.pid, 'SIGKILL');
   process.exit(1);
 }
 const delay = Number(process.env.FAKE_RUNNER_DELAY_MS ?? 0);
@@ -46,6 +47,16 @@ test('runner shards the applicable storyboard list into deterministic contiguous
     /Math\.floor\(applicable\.length \* shard\.index \/ shard\.count\)/,
   );
   assert.match(source, /applicable\.slice\(shardStart, shardEnd\)/);
+});
+
+test('runner flushes complete shard totals before bypassing stalled platform disposal', () => {
+  const source = fs.readFileSync(RUNNER_FILE, 'utf8');
+  const totalsIndex = source.indexOf('console.log(`  steps: ${totals.passed} passed');
+  const flushIndex = source.indexOf("process.stdout.write('', resolve)");
+  const killIndex = source.indexOf("process.kill(process.pid, 'SIGKILL')");
+  assert.ok(totalsIndex >= 0, 'expected final totals output');
+  assert.ok(flushIndex > totalsIndex, 'stdout must flush after final totals');
+  assert.ok(killIndex > flushIndex, 'forced shard exit must follow stdout flush');
 });
 
 test('sharded runner preserves storyboard lines and emits one aggregate totals block', (t) => {
@@ -103,6 +114,21 @@ test('sharded runner omits aggregate totals when any shard is interrupted', (t) 
   assert.equal(result.status, 1);
   assert.doesNotMatch(result.stdout, /storyboards:/);
   assert.match(result.stderr, /shard 2\/2 exited 143 without a complete totals block/);
+});
+
+test('sharded runner aggregates complete totals from a self-terminated shard', (t) => {
+  const { directory, runner } = makeFakeRunner();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  const result = spawnSync('bash', [SHARDED_RUNNER, '--shard-count', '1'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    env: { ...process.env, STORYBOARD_RUNNER_BIN: runner, SELF_KILL_AFTER_TOTALS: '1' },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /storyboards: 1\/1 clean/);
+  assert.match(result.stdout, /steps: 10 passed \| 0 failed \| 1 skipped \| 2 not applicable/);
 });
 
 test('current /sales runs isolated shard jobs behind one aggregate required check', () => {

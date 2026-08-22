@@ -906,7 +906,19 @@ async function main() {
   console.log(`  steps: ${totals.passed} passed | ${totals.failed} failed | ${totals.skipped} skipped | ${totals.not_applicable} not applicable`);
 
   await close();
-  process.exit(totals.failed > 0 || failing.some(r => r.error) ? 1 : 0);
+  const exitCode = totals.failed > 0 || failing.some(r => r.error) ? 1 : 0;
+  if (shard) {
+    // Shard wrappers grade the complete totals block above, not this process
+    // status. Large SDK runs can stall inside Node/V8 platform disposal after
+    // process.exit() has begun, retaining the compiled schema graph until a
+    // hosted runner kills the job. Ensure preceding stdout writes have reached
+    // the pipe, then terminate the already-complete shard without running that
+    // redundant shutdown path. Non-sharded/manual runs retain their normal
+    // success/failure exit status.
+    await new Promise<void>(resolve => process.stdout.write('', resolve));
+    process.kill(process.pid, 'SIGKILL');
+  }
+  process.exit(exitCode);
 }
 
 main().catch(err => {
