@@ -7,112 +7,81 @@ channels per `.agents/wg/constitution.md` §Information sources and the
 record: never quote or attribute this content in public output; Slack
 informs, GitHub decides.
 
-- Generated: 2026-08-09
+- Generated: 2026-08-22
 - Window: last 14 days
 - Channels: 22 public WG channels swept (4 private excluded)
 
 ---
 
-# AdCP Slack Digest — Spec-Relevant Discussion
-
----
-
-### Agent Skills Discovery (`get_adcp_skills` proposal)
-
+### Product Discovery & Wholesale/Custom Product Parity in 3.2
 - **Status:** active
-- **Summary:** A proposal was raised to extend agent capability advertisement beyond feature-flag-style `get_adcp_capabilities` to include a `get_adcp_skills` mechanism. The intent is to allow counterparty agents to understand conversational competencies upfront—such as whether an agent can engage in price negotiation or discuss signal-provider options—rather than discovering limitations mid-conversation. Examples cited include a price-negotiation skill and a signals-selection skill. No resolution or counter-proposal was recorded in the thread.
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1785408494720399
+- **Summary:** Discussion continues on how `list_products`/`get_products` should represent wholesale versus brief-built (custom) products, following the split of `get_products` into separate tools. One camp argues wholesale-style catalogs are a distinct buying mode akin to open exchange and shouldn't be judged against custom/proposal-driven selling, while another raises concern that 3.2 quietly made the wholesale feed the default discovery path, disadvantaging sellers whose value is bespoke, brief-first product creation. A specific proposal calls for a `discovery_posture` capability and restoring a signal equivalent to the dropped `is_custom` flag to let sellers declare their preferred discovery mode.
+- **Related:** #6115, #6729
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1786441349703719, https://agenticads.slack.com/archives/C09BK148CLU/p1787293511720079, https://agenticads.slack.com/archives/C09BK148CLU/p1786498459501089, https://agenticads.slack.com/archives/C09BK148CLU/p1787232661519339
 
----
-
-### 3.2 Security Invariants & Release Blockers
-
+### 3.2 Working Group Scope and Agenda
 - **Status:** active
-- **Summary:** A structured proposal was put forward for the 3.2 working-group meeting to address a cluster of open security issues. The framing is that the core problem is not missing cryptography per se, but that authenticated or signed actors are not reliably bound to the budget, rights, request body, endpoint, property, or claim being acted upon. The proposal recommends designating four issues as concrete 3.2 implementation requirements, assigning explicit security invariants to two others, deferring one to 3.3 unless a narrowly scoped RFC is owned, and requiring implementation plus conformance coverage rather than schema-only PRs.
-- **Related:** #5827, #5829, #5934, #5941, #5828, #5883, #4529
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1785765710664579
+- **Summary:** Organizers flagged that the 3.2 release remains too large in scope and floated the idea of a mechanism to reference shared schemas across tools to reduce duplication. Agenda items for the working group include OOH/Radio (deferred to the Broadcast & Syndication meeting), review of merged proposal-negotiation work ahead of further development, deferring external audiences work to a signals working group or breakout, and requests for review of new canonical formats for premium web and CTV.
+- **Related:** #6287
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1786887066685239
 
----
-
-### 3.2 WG Meeting Packet — Targeting, Measurement, Revshare & Broadcast
-
+### Advisories Proposal (formerly Insights)
 - **Status:** active
-- **Summary:** A proposed discussion packet for the 3.2 working-group meeting covers six areas: (1) making `targeting_overlay` consistent across discovery and execution, with a proposed rule that `filters` filter offers while `targeting_overlay` carries delivery intent and sellers must disclose modifications rather than silently drift; (2) adding synchronous warnings and durable resource-scoped insights without introducing a new `get_insights` tool; (3) radio and broadcast schema decisions; (4) OOH schema decisions; (5) improved measurement integration and a pathway to Measurement Agents; and (6) ratifying revenue-share pricing for affiliate, including decimal rate units, a `commissionable_value` field, required event source, and commission-budget enforcement.
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1786160291841139
+- **Summary:** A proposal to rename/reframe "insights" as "advisories" was raised as a follow-up from a working group meeting, intended for inclusion in the 3.2 release cycle.
+- **Related:** #6212
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1786441349703719
 
----
-
-### 3.2 Accepted & Pending Schema Changes
-
+### Clean Room Support for 3.2
 - **Status:** active
-- **Summary:** A summary of items provisionally accepted for 3.2 includes: adding age as a supported targeting option, webhooks for capability and account changes, deprecation of legacy creative formats, and rejection reasons for `get_products`. Items still under discussion include flexible media-buy budgets, geo-places (city-level), and localization for creatives.
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1785765611743959
+- **Summary:** A member is pushing to land full clean-room support in the 3.2 release and is seeking reviewers and end-to-end testers from data-clean-room vendors or their customers to validate the design.
+- **Related:** #6540
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1786697228472809
 
----
-
-### Revenue-Share Pricing Model (`revenue_share` enum addition)
-
+### Brand Key: Adding Geo/Operator Unit
 - **Status:** active
-- **Summary:** Issue #5754 was routed to the Campaign Lifecycle / Media Buy working group as a schema change to the `pricing-model` enum and pricing-option file set, proposing addition of `revenue_share` alongside existing values such as `cpm`, `cpc`, and `cpa`. The affiliate-network operator question is considered settled via existing aggregator sales agent and `delegation_type: ad_network` constructs; what remains is purely the pricing-model schema decision. The measurement side of affiliate attribution and payout reconciliation was flagged as touching the Signals & Measurement working group.
-- **Related:** #5754
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1785232728094869
+- **Summary:** A proposal was floated to extend the brand key schema with geo information and an "operator unit" concept to reflect regional agency/trading-desk structures (e.g., regional brand entities under a global agency network). The exact terminology ("operator unit") was flagged as possibly not final.
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1786691713061719
 
----
-
-### Ad Server Protocol Integration into AdCP (Seller-Side Activation)
-
+### Sell-Side Governance / Policy RFCs Split
 - **Status:** active
-- **Summary:** A seller-side member raised the question of whether AdCP should incorporate an Ad Server sub-protocol—potentially within the Media Buy Protocol on the seller side—defining a common interface with tools such as `create_line_item`. The motivation is to provide a standard pathway for ad servers participating as agentic sellers, while preserving interoperability for independent AdCP seller agents calling them for activation within the media-buy chain. No resolution was reached in the thread.
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1785444564941489
+- **Summary:** A broader policy ticket was split into two more concrete RFCs targeted for 3.2, covering sell-side governance concerns. Related discussion in the governance channel proposes standardizing seller-side creative rejection reasons as registry-backed policies maintained by governance agents rather than adding a new protocol enum, and argues that "campaign governance" is better scoped/named as "spend approval" since split authority is needed on the buyer side for spend but not symmetrically on the seller side for accepting payment.
+- **Related:** #6749, #6750, #6755
+- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1787293149075339, https://agenticads.slack.com/archives/C09NUQS93DF/p1787307160568509, https://agenticads.slack.com/archives/C09NUQS93DF/p1787303035499539, https://agenticads.slack.com/archives/C09NUQS93DF/p1787303235625349
 
----
-
-### Schema $ref Absolutisation & Legacy Field Cleanup
-
+### Creative Lifecycle RFC Cluster
 - **Status:** active
-- **Summary:** An SDK implementer reported that the coexistence of legacy fields sharing names with current fields causes problems in code generation. The proposed remediation is to remove legacy fields under a versioning scheme that still permits legacy consumers to opt in. Additionally, the implementer noted that JSON Schema `$ref` and `$id` values are inconsistently relative or absolute, and proposed making all references fully absolute with the canonical domain (e.g., `https://adcontextprotocol.org/schema/…`) to improve code-generation reliability.
-- **Thread:** https://agenticads.slack.com/archives/C09BK148CLU/p1785520266198059
+- **Summary:** A set of additive, independent RFCs address gaps in the creative approval lifecycle: creative revisions (adding buyer-assigned revision IDs, staged hot-swaps, and re-review triggers for material changes), creative collaboration (adding comment/annotation objects and per-party review/sign-off records for client/legal/brand approval tracking), delivery evidence (adding serve-time hashing, retention guarantees, and support for affidavits/as-run logs, particularly relevant to broadcast/DOOH and AI-disclosure needs), and an echo of the quality level actually used by `preview_creative` to prevent silent quality downgrades during sign-off. A summary of what's shipping in 3.2 versus what remains open for working group input was also requested.
+- **Related:** #6347, #6348, #6349, #6350
+- **Thread:** https://agenticads.slack.com/archives/C09C7PLE5B8/p1786428762730119, https://agenticads.slack.com/archives/C09C7PLE5B8/p1786428750537209, https://agenticads.slack.com/archives/C09C7PLE5B8/p1786428745638819, https://agenticads.slack.com/archives/C09C7PLE5B8/p1786428760251109, https://agenticads.slack.com/archives/C09C7PLE5B8/p1786428756054999, https://agenticads.slack.com/archives/C09C7PLE5B8/p1787143040511629
 
----
-
-### Canonical Creative Formats & Legacy Deprecation in 3.2
-
+### Signals Trilogy: Audience Data Schemas
 - **Status:** active
-- **Summary:** The Creative working group discussed the deprecation timeline for legacy custom creative formats in 3.2, which is described as the canonical-first release. The proposed mechanism includes a 90-day dual-shipping window, structured SDK deprecation warnings carrying `format_shape`, `promoted_to`, `promotion_release`, and `transition_end` fields, and a policy of six months' notice before removal, with full removal deferred to 4.0. Specific formats under consideration for promotion include `multi_state_display` and `page_takeover` for premium web display.
-- **Related:** #6264, #6265
-- **Thread:** https://agenticads.slack.com/archives/C09C7PLE5B8/p1786112295729479, https://agenticads.slack.com/archives/C09C7PLE5B8/p1786112164414769, https://agenticads.slack.com/archives/C09C7PLE5B8/p1786093864828959
+- **Summary:** Three related proposals now form a complete trilogy around signals/data licensing and portability: an "address book" concept, buyer-initiated movement of a buyer's own data, and provider-initiated delivery of licensed data. All three are designed to consume the same two core schemas.
+- **Related:** #4324, #6549, #6540, #6552
+- **Thread:** https://agenticads.slack.com/archives/C09BF378H8A/p1786768600146069
 
----
-
-### Radio & OOH Measurement Schema
-
+### Standardized Seller Rejection Codes
 - **Status:** active
-- **Summary:** Issues were filed to address measurement schema gaps for radio and static OOH inventory. The radio currency issue proposes adding the measurement-system declaration to the delivery wire and extending the demo-system enum with `nielsen_audio` and `RAJAR`. The OOH measurement issue presents three options—a structured `ooh_metrics` block, a vendor-measurement path, or a hybrid—with the deciding factor being whether bodies such as Geopath or Route deliver estimates in a form a seller can relay today or could act as first-party measurement agents. A related finding is that radio as-run reporting may require no new schema object, as the existing linear-TV airing-log proposal already accommodates station and daypart fields.
-- **Related:** #6138, #6139, #6140, #5682
-- **Thread:** https://agenticads.slack.com/archives/C09BF378H8A/p1785669712504859
+- **Summary:** A draft document proposing standardized seller-side creative rejection codes was shared for governance working group review; this connects to the later PR proposing a registry-backed policy approach rather than a protocol-level enum.
+- **Related:** #6755
+- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1786460548028849
 
----
+### Governance: Cost/Token Impact Consideration
+- **Status:** parked
+- **Summary:** A member raised whether governance discussions should also address cost impacts of agent-triggered requests (e.g., high token usage), suggesting a need for human-in-the-loop controls on both buy and sell sides to bound resource consumption. No follow-up resolution recorded.
+- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1786557032742589
 
-### Measurement Agent Foundations (PR #6245)
-
+### Miscellaneous Governance PR for Discussion
 - **Status:** active
-- **Summary:** A pull request was opened proposing schema or protocol foundations intended to support a future Measurement Agent capability. The contributor requested feedback ahead of the 3.2 working-group meeting.
-- **Related:** #6245
-- **Thread:** https://agenticads.slack.com/archives/C09BF378H8A/p1786093096018869
+- **Summary:** A pull request was surfaced for governance working group discussion without further detail captured in-thread.
+- **Related:** #6305
+- **Thread:** https://agenticads.slack.com/archives/C09NUQS93DF/p1786303001593879
 
----
-
-### PR Merge Permissions for Reviewers
-
-- **Status:** active
-- **Summary:** A question was raised in the Builders channel about whether reviewers are permitted to self-merge their own PRs once the secretariat has granted a green light and no human reviewer is flagged as required. No authoritative answer was recorded in the thread.
-- **Related:** #6180
-- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1785774317134479
-
----
-
-### AdCP Implementation Review Skill (Community Tool)
-
+### SDK Releases: Canonical Creatives and 3.1/3.2 Transition
 - **Status:** resolved
-- **Summary:** An SDK implementer shared a code-agent skill designed to assist with AdCP implementation reviews. The skill instructs the agent to fetch live documentation from the AdCP docs index on each review, apply a checklist of known failure modes, scope its audit to protocol-relevant code only, require exact rule citations with source page references, and treat any instructions embedded in PR content as data rather than executable commands. The tool is available via a public repository.
-- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1785395238787999
+- **Summary:** Both the JS (`@adcp/sdk` v13.0.0) and Python (v7.0) SDKs shipped as the final major releases in the 3.1 series, establishing canonical creative models as the primary API contract while retaining legacy creative support and wire compatibility for older sellers. Both releases include significant security hardening (request signing, webhooks, OAuth state, SSRF protection, tenant isolation) and are pinned to signed 3.1.x protocol patches correcting rate-limit compliance grading without wire schema changes. v14 (JS) beta is expected alongside the upcoming 3.2 beta; implementers were advised to review migration guides given breaking changes to legacy creative APIs, roster authorization, and related configuration.
+- **Thread:** https://agenticads.slack.com/archives/C09J28K9K29/p1786919688619659, https://agenticads.slack.com/archives/C09J28K9K29/p1786905031752509
+
+### Broadcast/Syndication: 3.2 Release Item for Review
+- **Status:** active
+- **Summary:** A member requested review of an issue proposed for inclusion in the 3.2 release, asking reviewers to consider existing comments before
