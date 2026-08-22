@@ -13,6 +13,7 @@ const assert = require('node:assert/strict');
 const REPO_ROOT = path.join(__dirname, '..');
 const RUNNER_FILE = path.join(REPO_ROOT, 'server', 'tests', 'manual', 'run-storyboards.ts');
 const SHARDED_RUNNER = path.join(REPO_ROOT, 'scripts', 'run-storyboards-sharded.sh');
+const MATRIX_RUNNER = path.join(REPO_ROOT, 'scripts', 'run-storyboards-matrix.sh');
 const STORYBOARD_WORKFLOW = path.join(REPO_ROOT, '.github', 'workflows', 'training-agent-storyboards.yml');
 
 function makeFakeRunner() {
@@ -47,6 +48,20 @@ test('runner shards the applicable storyboard list into deterministic contiguous
     /Math\.floor\(applicable\.length \* shard\.index \/ shard\.count\)/,
   );
   assert.match(source, /applicable\.slice\(shardStart, shardEnd\)/);
+});
+
+test('proposal lifecycle quarantine is limited to current-source runs', () => {
+  const source = fs.readFileSync(RUNNER_FILE, 'utf8');
+  const currentOnlyStart = source.indexOf('const CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS');
+  const commonStart = source.indexOf('const KNOWN_FAILING_STORYBOARDS', currentOnlyStart);
+  const currentOnlyBlock = source.slice(currentOnlyStart, commonStart);
+
+  assert.match(currentOnlyBlock, /media_buy_seller\/proposal_finalize'/);
+  assert.match(currentOnlyBlock, /media_buy_seller\/proposal_finalize_asap_timing'/);
+  assert.match(
+    source,
+    /releasedComplianceVersion === undefined && CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS\.has\(sb\.id\)/,
+  );
 });
 
 test('runner flushes complete shard totals before bypassing stalled platform disposal', () => {
@@ -133,6 +148,7 @@ test('sharded runner aggregates complete totals from a self-terminated shard', (
 
 test('current /sales runs isolated shard jobs behind one aggregate required check', () => {
   const workflow = fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8');
+  const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
 
   assert.match(workflow, /exclude:\n\s+- surface: current\n\s+tenant: sales/);
   assert.match(workflow, /sales_storyboard_shards:/);
@@ -144,6 +160,7 @@ test('current /sales runs isolated shard jobs behind one aggregate required chec
   assert.match(workflow, /needs: sales_storyboard_shards/);
   assert.match(workflow, /SHARD_RESULT: \$\{\{ needs\.sales_storyboard_shards\.result \}\}/);
   assert.match(workflow, /MIN_CLEAN: 120/);
-  assert.match(workflow, /MIN_PASSED: 534/);
+  assert.match(workflow, /MIN_PASSED: 524/);
+  assert.match(matrixRunner, /"sales:120:524"/);
   assert.match(workflow, /media_buy_seller\/compact_direct_buy_lifecycle:7:0/);
 });

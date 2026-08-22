@@ -252,7 +252,9 @@ if [ "${FLOOR_SET}" = "3.0-compat" ]; then
 else
   TENANTS=(
     "signals:74:111"
-    "sales:120:534"
+    # #6776 removes ten passing steps from two already-failing proposal
+    # storyboards. Restore 534 with their current-source quarantine.
+    "sales:120:524"
     "governance:73:151"
     "creative:73:169"
     "creative-builder:70:146"

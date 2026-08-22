@@ -557,7 +557,10 @@ jobs:
           CLEAN: ${{ steps.aggregate.outputs.clean }}
           PASSED: ${{ steps.aggregate.outputs.passed }}
           MIN_CLEAN: 120
-          MIN_PASSED: 534
+          # #6776 quarantines two already-failing proposal storyboards whose
+          # ten passing setup/lifecycle steps previously inflated this count.
+          # Restore 534 when the quarantine is removed.
+          MIN_PASSED: 524
         run: |
           set -euo pipefail
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
