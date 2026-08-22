@@ -7,6 +7,8 @@ description: "Universal macros in AdCP insert dynamic tracking data into creativ
 
 Universal macros enable buyers to include dynamic tracking data in their creatives without needing to know each publisher's ad server implementation details. Macros are placeholders that get replaced with actual values at impression time.
 
+Universal semantics and source syntax are separate. `{CACHEBUSTER}`, `[CACHEBUSTING]`, and a vendor token can share a cache-busting meaning while requiring different resolvers and encoding. Never translate from spelling alone.
+
 ## Overview
 
 When you provide creative assets to AdCP, you can include universal macro placeholders in:
@@ -32,6 +34,198 @@ https://track.brand.com/imp?
   device=ABC-123-DEF&
   cb=87654321
 ```
+
+## Declared source-token contracts
+
+Delivery assets may attach `macro_declarations[]`. Each entry describes one occurrence of one exact source token. Company names are not dialect values: `dialect` is the small family enum `adcp | iab_vast | iab_daast | vendor | unknown`; IAB and vendor entries add an authority-controlled `dialect_namespace` and immutable `dialect_revision`.
+
+The namespace identifies the registry, while the revision pins the exact mapping bytes. For the live IAB VAST macro registry, use its canonical published registry URL as the namespace and an immutable source commit or content digest as the revision; a VAST document version is not a macro-registry revision because the registry evolves independently. Compatibility requires exact namespace and revision equality—implementations never treat a moving branch name or “latest” content as the revision.
+
+Translation and value resolution are different operations. `translate_to_native` changes an AdCP token into a declared downstream token without inserting a runtime value. The translated asset replaces the old declaration with the supplied `translation_target`. `resolve_value` inserts a concrete value using the exact encoding profile. `preserve` performs no mutation.
+
+The first contract permits one translation hop followed by value resolution; `translation_target.next_operation` is therefore fixed to `resolve_value`, which prevents cycles and unbounded chains. On the sales execution path, a translation is compatible only when both seller-wide and selected-product sets contain the source translation tuple and an exact target resolution tuple. On `build_creative`, `preview_creative`, and `validate_input`, the selected `creative.supported_formats[]` route is the authoritative capability set and build-time operations use `performed_by: creative_agent`; no seller authority is borrowed. The emitted target declaration keeps the source `declaration_id`, `location`, `required`, and `unavailable_behavior`, and replaces token, dialect identity, operation, actor, and encoding from `translation_target`.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/assets/display-tag-asset.json",
+  "asset_type": "display_tag",
+  "delivery_type": "tag_url",
+  "url": "https://ads.acme-example.com/render?cb=[CACHEBUSTING]&click=%%ACME_CLICK_ESC2%%&gdpr={GDPR}&consent={GDPR_CONSENT}&gpp={GPP_STRING}&player=[PLAYERSTATE]&unknown=%%VENDOR_TOKEN%%",
+  "macro_declarations": [
+    {
+      "declaration_id": "cachebuster",
+      "token": "[CACHEBUSTING]",
+      "dialect": "iab_vast",
+      "dialect_namespace": "https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html",
+      "dialect_revision": "git:e0858cd714474bf17ef61065097456d7643ff838",
+      "dialect_semantic": "CACHEBUSTING",
+      "mapping_status": "verified_universal",
+      "universal_semantic": "CACHEBUSTER",
+      "operation": "resolve_value",
+      "performed_by": "request_executor",
+      "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+      "encoding": { "kind": "iab_vast_uri", "depth": 1 },
+      "required": true,
+      "unavailable_behavior": "reject"
+    },
+    {
+      "declaration_id": "nested-click",
+      "token": "%%ACME_CLICK_ESC2%%",
+      "dialect": "vendor",
+      "dialect_namespace": "https://macros.acme-example.com/registry",
+      "dialect_revision": "mapping-v1",
+      "dialect_semantic": "CLICK_ESC2",
+      "mapping_status": "verified_universal",
+      "universal_semantic": "CLICK_URL",
+      "operation": "resolve_value",
+      "performed_by": "seller",
+      "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+      "encoding": { "kind": "rfc3986", "depth": 2 },
+      "required": true,
+      "unavailable_behavior": "reject"
+    },
+    {
+      "declaration_id": "gdpr-applies",
+      "token": "{GDPR}",
+      "dialect": "adcp",
+      "dialect_semantic": "GDPR",
+      "mapping_status": "verified_universal",
+      "universal_semantic": "GDPR",
+      "operation": "resolve_value",
+      "performed_by": "seller",
+      "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+      "encoding": { "kind": "none", "depth": 0 },
+      "required": true,
+      "unavailable_behavior": "reject"
+    },
+    {
+      "declaration_id": "tcf-consent",
+      "token": "{GDPR_CONSENT}",
+      "dialect": "adcp",
+      "dialect_semantic": "GDPR_CONSENT",
+      "mapping_status": "verified_universal",
+      "universal_semantic": "GDPR_CONSENT",
+      "operation": "resolve_value",
+      "performed_by": "seller",
+      "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+      "encoding": { "kind": "rfc3986", "depth": 1 },
+      "required": false,
+      "unavailable_behavior": "omit_parameter"
+    },
+    {
+      "declaration_id": "gpp-string",
+      "token": "{GPP_STRING}",
+      "dialect": "adcp",
+      "dialect_semantic": "GPP_STRING",
+      "mapping_status": "verified_universal",
+      "universal_semantic": "GPP_STRING",
+      "operation": "resolve_value",
+      "performed_by": "seller",
+      "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+      "encoding": { "kind": "rfc3986", "depth": 1 },
+      "required": false,
+      "unavailable_behavior": "omit_parameter"
+    },
+    {
+      "declaration_id": "player-state",
+      "token": "[PLAYERSTATE]",
+      "dialect": "iab_vast",
+      "dialect_namespace": "https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html",
+      "dialect_revision": "git:e0858cd714474bf17ef61065097456d7643ff838",
+      "dialect_semantic": "PLAYERSTATE",
+      "mapping_status": "dialect_defined",
+      "operation": "resolve_value",
+      "performed_by": "request_executor",
+      "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+      "encoding": { "kind": "iab_vast_uri", "depth": 1 },
+      "required": false,
+      "unavailable_behavior": "dialect_sentinel"
+    },
+    {
+      "declaration_id": "unidentified-token",
+      "token": "%%VENDOR_TOKEN%%",
+      "dialect": "unknown",
+      "dialect_semantic": "unresolved",
+      "mapping_status": "unresolved",
+      "operation": "preserve",
+      "location": { "field": "url", "occurrence": 0, "context": "opaque" },
+      "encoding": { "kind": "none", "depth": 0 },
+      "required": false,
+      "unavailable_behavior": "preserve"
+    }
+  ]
+}
+```
+
+The click redirect's depth of two is part of the contract, not an implementation hint. `rfc3986` encodes UTF-8 bytes outside the RFC 3986 unreserved set once per depth. `iab_vast_uri` follows the cited VAST registry's one-pass rules, including array serialization and unavailable-value sentinels. A resolver never invents consent strings, device identifiers, vendor IDs, impression IDs, or fallback values.
+
+`dialect_semantic` is the cited namespace's exact meaning. `universal_semantic` appears only for a verified mapping into AdCP's closed universal vocabulary. A dialect-defined token such as `[PLAYERSTATE]` remains specific without being mislabeled as a generic vendor semantic. Unknown tokens are schema-constrained to optional, zero-encoding preservation.
+
+Every `declaration_id` is unique within its asset. Each declared token must exist at the named zero-based occurrence, and every claimed occurrence must have exactly one declaration. This occurrence-level rule prevents one encoding contract from being applied indiscriminately to the same spelling in a URL, path, or opaque markup context.
+
+## Capability matching and validation
+
+Sellers publish a seller-wide ceiling in `execution.creative_specs.macro_resolution_capabilities`. The selected product format option publishes the binding set in `params.macro_resolution_capabilities`. Each entry is one exact semantic/operation/actor contract; it does not create a cross-product from a semantic list and maximum depth.
+
+Standalone creative agents use a separate route rule: the selected `creative.supported_formats[]` entry's `params.macro_resolution_capabilities` is authoritative for build, preview, and validation, and its build-time entries name `performed_by: creative_agent`. The sales seller∩product intersection is evaluated later if the resulting manifest enters a seller execution path.
+
+```json
+{
+  "format_kind": "video_vast",
+  "params": {
+    "vast_versions": ["3.0", "4.0"],
+    "macro_resolution_capabilities": [
+      {
+        "dialect": "adcp",
+        "dialect_semantic": "GDPR_CONSENT",
+        "mapping_status": "verified_universal",
+        "universal_semantic": "GDPR_CONSENT",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "supported_contexts": ["url_query_value"],
+        "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+      },
+      {
+        "dialect": "iab_vast",
+        "dialect_namespace": "https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html",
+        "dialect_revision": "git:e0858cd714474bf17ef61065097456d7643ff838",
+        "dialect_semantic": "PLAYERSTATE",
+        "mapping_status": "dialect_defined",
+        "operation": "resolve_value",
+        "performed_by": "request_executor",
+        "supported_contexts": ["url_query_value"],
+        "supported_encodings": [{ "kind": "iab_vast_uri", "depth": 1 }]
+      }
+    ]
+  }
+}
+```
+
+Compatibility matches dialect family, namespace, revision, exact dialect semantic, verified universal mapping when present, operation, actor, occurrence context, and exact encoding. Local capabilities are required only when the local path performs the operation. A token owned by an advertised downstream request executor is classified `resolvable`; its source bytes remain unchanged until that actor runs. `preserved_for_downstream` is reserved for an intentional `preserve` operation with no exact resolver claim.
+
+`request_executor` is functional rather than organizational: it is the component actually issuing the governed VAST/DAAST or tracking request, whether that is a client player, publisher player, SSAI service, or another execution component.
+
+`validate_input` and `sync_creatives` return one path-addressable `macro_resolution_results[]` entry per declaration:
+
+- `resolvable` — the selected path advertises the exact operation; no serve-time result is implied;
+- `preserved_for_downstream` — the declaration intentionally requests byte-preserved handoff and makes no exact resolver claim;
+- `unsupported` — no compatible resolver/capability exists; or
+- `ambiguous` — the declaration does not establish one safe meaning.
+
+A required `unsupported` or `ambiguous` token fails with `MACRO_RESOLUTION_FAILED`. Results include the asset pointer, declaration ID, requested encoding, structured reason, and advertised encoding candidates.
+
+## Relationship to existing macro surfaces
+
+The occurrence contract extends the existing lifecycle; it does not replace it:
+
+1. `format.supported_macros` is the legacy named-format projection of accepted AdCP universal semantics. It does not prove native-dialect execution, ownership, or encoding.
+2. `build_creative.macro_values` and preview macro values supply concrete raw values. With declarations, a value binds only a verified-universal `resolve_value` occurrence performed_by `creative_agent` and advertised by the selected creative route, after delivery-variant selection, using its exact encoding. It never bypasses `translate_to_native` or the target capability chain. Without declarations, the legacy behavior remains unchanged for 3.x compatibility.
+3. `translateUniversalMacros` has a raw `native` arm and a one-pass encoded `value` arm. With declarations, a native mapping performs `translate_to_native`, emits the exact target token unchanged, and replaces the source declaration with its `translation_target`; a concrete mapping follows the declaration's encoding. Existing unmapped/frozen-consent diagnostics remain mandatory.
+4. Dropping an unmapped query parameter is behavior of that explicitly invoked legacy helper. It is not the ingest or transport default. Assets without declarations retain opaque-token transport and are not proven compatible.
+5. Webhook `supported_macros` describes runtime webhook arguments, while preview/build `macros` are sample values. Neither is a creative-token resolution capability.
+6. The proposed #6207 product tracking contract remains responsible for whether a seller honors and fires buyer tracker asset types. When it lands, its detailed substitution claims reuse these exact macro capability entries; it does not redefine dialect, ownership, or encoding.
+
+Catalog-item universal semantics retain their existing stricter rule: UTF-8/NFC values receive exactly one RFC 3986 unreserved-set encoding pass. A declaration cannot weaken or add nesting to that governed catalog substitution profile; nested redirect encoding applies only to a separately cited click-redirect mapping.
 
 ## Available Macros by Format
 
@@ -267,7 +461,7 @@ The following rules apply to all catalog-item macros listed above — both the I
 - **Nested macro expansion is prohibited.** A catalog-item value that itself contains text matching AdCP's `{MACRO_NAME}` syntax MUST NOT be re-expanded. Sales agents perform AdCP macro substitution in one pass: source placeholders are replaced with literal values, and those literal values are not re-scanned. A `{JOB_ID}` value of `vacancy-{DEVICE_ID}-42` produces the literal string `vacancy-%7BDEVICE_ID%7D-42` (after percent-encoding of the braces) in the emitted URL, not a second-round expansion. This rule binds AdCP's `{...}` syntax only; catalog-item values containing downstream ad-server macro syntaxes (`%%...%%`, `${...}`, `[...]`, `{{...}}`) remain the sales agent's responsibility to neutralize when targeting an ad server that would interpret them — percent-encoding per the rule above typically suffices, since `%`, `$`, `[`, `]`, and `{` all land outside the `unreserved` set.
 - **Scope is URL contexts only.** These rules apply when a catalog-item macro is substituted into a URL context. When a catalog-item macro is substituted into an HTML-attribute context (for example, a banner template's `href` or `data-*` attribute rendered server-side), percent-encoding per this section does not by itself prevent attribute-context breakout; the renderer MUST additionally apply HTML-attribute escaping — the two encodings are layered, not alternatives, because the value must survive both the URL parser and the HTML attribute parser. AdCP's normative contract bounds to the URL-context case; publisher-side HTML-attribute handling is out of scope for this spec.
 
-Non-catalog macros (`{MEDIA_BUY_ID}`, `{PACKAGE_ID}`, `{CREATIVE_ID}`, `{GEO}`, `{COUNTRY}`, `{DEVICE_TYPE}`, etc.) are populated from publisher- or ad-server-mediated state, not from buyer-supplied feed data. Their encoding contract is governed by the ad-server integration (OpenRTB, VAST), which percent-encodes by convention. Some macros in this class derive from attacker-spoofable inputs (`{USER_AGENT}`, `{REFERRER}`, `{PAGE_URL}`, `{DOMAIN}`, `{APP_BUNDLE}` come from request headers or page metadata); the OpenRTB / ad-server encoding convention is the control today. This spec's normative MUST deliberately scopes to the buyer-controlled catalog-item class — a narrower, verifiable contract than a universal canonicalization rule.
+Non-catalog macros (`{MEDIA_BUY_ID}`, `{PACKAGE_ID}`, `{CREATIVE_ID}`, `{COUNTRY}`, `{DEVICE_TYPE}`, etc.) are populated from publisher- or ad-server-mediated state, not from buyer-supplied feed data. Their encoding contract is governed by the ad-server integration (OpenRTB, VAST), which percent-encodes by convention. Some macros in this class derive from attacker-spoofable inputs (`{USER_AGENT}`, `{REFERRER}`, `{PAGE_URL}`, `{DOMAIN}`, `{APP_BUNDLE}` come from request headers or page metadata); the OpenRTB / ad-server encoding convention is the control today. This spec's normative MUST deliberately scopes to the buyer-controlled catalog-item class — a narrower, verifiable contract than a universal canonicalization rule.
 
 **Conformance fixture.** Reference test vectors pinning the encoding behavior — reserved-character breakout, nested-expansion literal preservation, CRLF injection, non-ASCII — are versioned at [`static/compliance/source/test-vectors/catalog-macro-substitution.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/compliance/source/test-vectors/catalog-macro-substitution.json). Sales agents SHOULD validate their substitution code against these vectors before shipping.
 
@@ -302,7 +496,7 @@ Non-catalog macros (`{MEDIA_BUY_ID}`, `{PACKAGE_ID}`, `{CREATIVE_ID}`, `{GEO}`, 
 - Mix AdCP macros (`{MEDIA_BUY_ID}`) with VAST macros (`[CACHEBUSTING]`)
 - AdCP macros use `{CURLY_BRACES}`
 - VAST macros use `[SQUARE_BRACKETS]`
-- Both work together seamlessly
+- Declare dialect, owner, and encoding when compatibility must be proven before trafficking
 
 ### Display Creative with Tracking
 
@@ -374,6 +568,8 @@ Non-catalog macros (`{MEDIA_BUY_ID}`, `{PACKAGE_ID}`, `{CREATIVE_ID}`, `{GEO}`, 
 ## Macro Availability by Inventory Type
 
 Not all macros are available in all inventory types. Check format specifications to see which macros are supported.
+
+This matrix is informative implementation guidance, not a capability claim. The selected product format option's exact `macro_resolution_capabilities` entry is authoritative for dialect identity, operation, actor, context, and encoding; legacy named formats may expose only the coarser `supported_macros` projection.
 
 **Important**: The columns below represent format types (Display, Video, etc.) which can run in different environments (app vs web). For example:
 - Display ads in mobile apps have `DEVICE_ID` (✅*), but display ads on web do not
@@ -458,36 +654,23 @@ Inspect the selected canonical declaration to see which macros it supports:
   "format_option_id": "video_30s_vast",
   "format_kind": "video_vast",
   "params": {
-    "supported_macros": [
-    {
-      "macro": "{MEDIA_BUY_ID}",
-      "category": "identity",
-      "description": "AdCP media buy identifier",
-      "required": false,
-      "privacy_sensitive": false,
-      "example_value": "mb_spring_2025"
-    },
-    {
-      "macro": "{DEVICE_ID}",
-      "category": "identity",
-      "description": "Mobile advertising ID (IDFA/AAID)",
-      "required": false,
-      "privacy_sensitive": true,
-      "example_value": "ABC-123-DEF-456"
-    },
-    {
-      "macro": "{GDPR}",
-      "category": "privacy",
-      "description": "GDPR applicability flag",
-      "required": true,
-      "privacy_sensitive": false,
-      "example_value": "1"
-    }
-    ],
-    "vast_macros_supported": true
+    "macro_resolution_capabilities": [
+      {
+        "dialect": "adcp",
+        "dialect_semantic": "GDPR_CONSENT",
+        "mapping_status": "verified_universal",
+        "universal_semantic": "GDPR_CONSENT",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "supported_contexts": ["url_query_value"],
+        "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+      }
+    ]
   }
 }
 ```
+
+Legacy named formats may still expose `supported_macros` as an array of universal macro names. That is a compatibility projection, not proof of actor, native dialect, context, or encoding support.
 
 ### 2. Include Macros in Creatives
 
@@ -522,6 +705,8 @@ Sales agents don't have to hand-roll the rewrite. The `@adcp/sdk` package ships 
 URL's query-parameter values. Each macro maps to either a **native** ad-server token
 (left raw, filled by the ad server at impression time) or a concrete **value** the
 agent already knows (substituted now, percent-encoded per RFC 3986):
+
+The behavior below is the established undeclared-token compatibility path. With occurrence declarations, a `native` mapping implements `translate_to_native` and emits the target declaration, while a concrete value follows the declaration's exact encoding profile. The helper's safety and privacy diagnostics are unchanged in either mode.
 
 ```typescript
 import { translateUniversalMacros } from '@adcp/sdk';
@@ -692,7 +877,7 @@ if (LIMIT_AD_TRACKING == 1 || DEVICE_ID == '' || DEVICE_ID == '00000000-0000-000
 
 ### URL Encoding
 
-No need to URL-encode macro placeholders. The ad server handles encoding of actual values automatically.
+Do not URL-encode the placeholder token itself. Supply raw values to the actor named by the occurrence declaration; that actor applies the declaration's exact encoding profile. Depending on the execution path, the actor may be the seller, source ad server, or request executor.
 
 **Example**:
 ```
@@ -700,11 +885,11 @@ No need to URL-encode macro placeholders. The ad server handles encoding of actu
 ✅ CORRECT: https://track.com/imp?device={DEVICE_ID}
 ```
 
-The ad server will URL-encode the actual value when replacing the macro.
+The declared actor encodes the concrete value exactly as specified. Callers must not pre-encode values, and downstream actors must not add an undeclared pass.
 
 ### Template Syntax
 
-AdCP macro-bearing URLs validate as [RFC 6570 URI templates (Level 1)](https://datatracker.ietf.org/doc/html/rfc6570#section-1.2) — simple `{var}` substitution only. Level 2–4 operators (`{+SKU}`, `{#SKU}`, `{.SKU}`, `{/SKU}`, `{;SKU}`, `{?SKU}`, `{&SKU}`) are **not** used by AdCP and must not appear in manifests. The ad server performs literal string replacement, not RFC 6570 expansion.
+AdCP macro-bearing URLs are not RFC 6570 templates. Plain URLs retain ordinary absolute HTTP(S) URI validation. For structural validation, verifiers mask recognized token lexical forms (`{NAME}`, `${NAME}`, `[NAME]`, and `%%NAME%%`) with an RFC 3986 unreserved sentinel and validate the resulting absolute HTTP(S) URI. This masking applies whether the occurrence is declared or travels on the undeclared 3.x compatibility path; it assigns no meaning, actor, or encoding and does not change the original bytes. RFC 6570 operators (`{+SKU}`, `{#SKU}`, `{?SKU}`, and similar forms) have no special expansion meaning. Processing is literal token replacement only when an applicable declaration or the explicit legacy helper authorizes it.
 
 ## Implementation Notes for Sales Agents
 
@@ -780,7 +965,7 @@ This separation is inherited from IAB OpenRTB Native: a click has **exactly one 
 
 **Preserving the buyer's clickthrough parameters.** Inserting a click macro can strip query parameters already present on the buyer-supplied clickthrough URL — including ones the agent does not recognize, such as a buyer-side vendor's click identifier — which silently breaks downstream attribution. An agent that forwards these parameters applies the encoding discipline [Substitution safety](#substitution-safety-catalog-item-macros) defines for catalog-item values (Unicode NFC normalization, then percent-encoding to the RFC 3986 `unreserved` set) to any value derived from buyer- or third-party-supplied data, so preservation does not reopen URL-context breakout, CRLF injection, or bidi spoofing. Whether to make parameter preservation a normative requirement is part of the click-tracking proposal under working-group review ([#5693](https://github.com/adcontextprotocol/adcp/issues/5693)).
 
-**Getting a buyer's click identifier onto the landing.** A `click_tracker` is a count beacon: it records the click but does not place its identifier into the user's landing session, because only `landing_page_url` is navigated. When a buyer needs its click identifier to reach the landing (for click-level conversion attribution), the reliable, redirect-free pattern is to put that identifier directly on the `landing_page_url` it supplies — either as a literal value (`&buyer_click_id=abc123`) or composed from an AdCP macro the buyer controls (`&buyer_click_id={CREATIVE_ID}`, expanded by the sales agent at serve time). `{buyer_click_id}` is not itself an AdCP macro — the macro set is a closed registry (see [Available Macros](#available-macros-by-format)), so the buyer supplies the value, not a new token. Because the identifier rides on the one navigated URL, no party's redirect has to be the terminal hop. This works for any identifier the buyer can supply or derive ahead of serve time, and avoids multi-party redirect chaining entirely.
+**Getting a buyer's click identifier onto the landing.** A `click_tracker` is a count beacon: it records the click but does not place its identifier into the user's landing session, because only `landing_page_url` is navigated. When a buyer needs its click identifier to reach the landing (for click-level conversion attribution), the reliable, redirect-free pattern is to put that identifier directly on the `landing_page_url` it supplies — either as a literal value (`&buyer_click_id=abc123`) or composed from an AdCP macro the buyer controls (`&buyer_click_id={CREATIVE_ID}`, expanded by the sales agent at serve time). `{buyer_click_id}` is not itself an AdCP universal macro — that universal set is closed even though qualified vendor dialects remain extensible — so the buyer supplies the value, not a new universal token. Because the identifier rides on the one navigated URL, no party's redirect has to be the terminal hop. This works for any identifier the buyer can supply or derive ahead of serve time, and avoids multi-party redirect chaining entirely.
 
 Identifiers that can only be minted at click time (inside a vendor's own redirect) cannot survive on a count beacon, and routing the user *through* the vendor's redirect so its identifier lands requires a chaining contract AdCP does not define. A buyer-declarable "this tracker must be in the navigation path" slot semantic is under working-group discussion ([#5693](https://github.com/adcontextprotocol/adcp/issues/5693)); until it lands, the count beacon is the default and in-path identifier survival is out of scope.
 

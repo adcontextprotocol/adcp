@@ -20,9 +20,17 @@
       "type": "string",
       "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$"
     },
+    "vast_versions": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/vast-version.json" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "VAST versions accepted by this product format option. The asset still declares exactly one `vast_version`; compatibility requires membership in this set and the seller-wide execution set."
+    },
     "vast_version": {
       "$ref": "/schemas/enums/vast-version.json",
-      "description": "Required VAST version."
+      "deprecated": true,
+      "description": "Deprecated one-element alias for `vast_versions`. Producers use either the singular legacy alias or the plural 3.2 field, never both."
     },
     "vpaid_enabled": {
       "type": "boolean",
@@ -70,5 +78,6 @@
       "type": "boolean"
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": { "required": ["vast_version", "vast_versions"] }
 }

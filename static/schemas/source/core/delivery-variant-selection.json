@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/delivery-variant-selection.json",
+  "title": "Delivery Variant Selection",
+  "description": "Readback lineage from a seller-bound manifest or CreativeAsset to the pre-binding CreativeSource representation selected for it.",
+  "type": "object",
+  "properties": {
+    "source_creative_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "creative"
+    },
+    "source_revision_id": { "type": "string", "minLength": 1, "x-entity": "creative_source_revision" },
+    "selected_variant_id": { "type": "string", "minLength": 1, "x-entity": "creative_delivery_variant" },
+    "resolved_by": {
+      "type": "string",
+      "enum": ["buyer", "seller"],
+      "description": "Who performed deterministic compatibility resolution. Seller selection is valid only when the seller advertised that capability; silent guessing is forbidden."
+    }
+  },
+  "required": ["source_creative_id", "source_revision_id", "selected_variant_id", "resolved_by"],
+  "additionalProperties": false
+}

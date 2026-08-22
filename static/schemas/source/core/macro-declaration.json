@@ -1,0 +1,238 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/macro-declaration.json",
+  "title": "Macro Declaration",
+  "description": "The source-faithful contract for one occurrence of one macro token. It identifies the current dialect, verified mapping status, exact asset-field occurrence, next processing operation, actor, and encoding. Translation and concrete value resolution are separate operations: a translator emits the declared native token and replaces this declaration with the target declaration. Unknown tokens are always byte-preserved.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "adcp_semantic_identity": "when dialect is adcp, dialect_semantic must equal universal_semantic",
+      "declaration_id_uniqueness": "declaration_id must be unique within the containing asset",
+      "token_occurrence": "location must identify the declared zero-based occurrence of token in location.field",
+      "asset_field": "location.field must exist on and be permitted by the containing asset type",
+      "catalog_universal_profile": "catalog semantics require seller resolve_value in a URL context with exactly one rfc3986 pass",
+      "omit_parameter_scope": "omit_parameter requires the token to occupy the complete URL query-parameter value"
+    },
+    "spec": "docs/creative/universal-macros.mdx#declared-source-token-contracts"
+  },
+  "type": "object",
+  "properties": {
+    "declaration_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "minLength": 1,
+      "description": "Identifier unique within the enclosing asset, used to correlate validation results."
+    },
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Exact byte-preserved token expression at this occurrence, including delimiters."
+    },
+    "dialect": { "$ref": "/schemas/enums/macro-dialect.json" },
+    "dialect_namespace": {
+      "type": "string",
+      "format": "uri",
+      "description": "Authority-controlled registry or mapping URI. Required for IAB VAST and vendor dialects."
+    },
+    "dialect_revision": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Immutable registry/mapping revision, release, commit, or digest. Required for IAB VAST and vendor dialects."
+    },
+    "dialect_semantic": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Exact semantic identifier in the cited dialect, such as `CACHEBUSTING`, `PLAYERSTATE`, or a documented vendor name. This is not inferred from token spelling."
+    },
+    "mapping_status": { "$ref": "/schemas/enums/macro-mapping-status.json" },
+    "universal_semantic": {
+      "$ref": "/schemas/enums/universal-macro.json",
+      "description": "Verified AdCP universal meaning. Present only when mapping_status is `verified_universal`."
+    },
+    "operation": { "$ref": "/schemas/enums/macro-processing-operation.json" },
+    "performed_by": {
+      "$ref": "/schemas/enums/macro-resolver.json",
+      "description": "Actor authorized to perform the declared translation or value resolution. Omitted for preservation."
+    },
+    "translation_target": {
+      "$ref": "/schemas/core/macro-translation-target.json",
+      "description": "Required only for `translate_to_native`. The output token contract that replaces this declaration after translation."
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string",
+          "enum": ["url", "markup", "content", "ad_request_url", "clickthrough_url"],
+          "description": "Asset field containing this occurrence."
+        },
+        "occurrence": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Zero-based occurrence of this exact token within the named field."
+        },
+        "context": { "$ref": "/schemas/enums/macro-value-context.json" }
+      },
+      "required": ["field", "occurrence", "context"],
+      "additionalProperties": false
+    },
+    "encoding": {
+      "$ref": "/schemas/core/macro-encoding.json",
+      "description": "Encoding for the concrete value. Translation/preservation uses `none` at depth zero."
+    },
+    "required": {
+      "type": "boolean",
+      "description": "Whether terminal delivery must fail if the declared operation cannot complete."
+    },
+    "unavailable_behavior": {
+      "type": "string",
+      "enum": ["preserve", "omit_parameter", "dialect_sentinel", "reject"],
+      "description": "Action when the responsible actor has no value. Omission is legal only for a complete URL query-value occurrence; dialect sentinels require a cited dialect rule."
+    }
+  },
+  "required": [
+    "declaration_id",
+    "token",
+    "dialect",
+    "dialect_semantic",
+    "mapping_status",
+    "operation",
+    "location",
+    "encoding",
+    "required",
+    "unavailable_behavior"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "dialect": { "enum": ["iab_vast", "iab_daast", "vendor"] } }, "required": ["dialect"] },
+      "then": { "required": ["dialect_namespace", "dialect_revision"] }
+    },
+    {
+      "if": { "properties": { "dialect": { "enum": ["adcp", "unknown"] } }, "required": ["dialect"] },
+      "then": { "not": { "anyOf": [{ "required": ["dialect_namespace"] }, { "required": ["dialect_revision"] }] } }
+    },
+    {
+      "if": { "properties": { "mapping_status": { "const": "verified_universal" } }, "required": ["mapping_status"] },
+      "then": { "required": ["universal_semantic"] },
+      "else": { "not": { "required": ["universal_semantic"] } }
+    },
+    {
+      "if": { "properties": { "dialect": { "const": "adcp" } }, "required": ["dialect"] },
+      "then": {
+        "required": ["universal_semantic"],
+        "properties": {
+          "dialect_semantic": { "$ref": "/schemas/enums/universal-macro.json" },
+          "mapping_status": { "const": "verified_universal" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "dialect": { "const": "unknown" } }, "required": ["dialect"] },
+      "then": {
+        "properties": {
+          "mapping_status": { "const": "unresolved" },
+          "operation": { "const": "preserve" },
+          "encoding": { "properties": { "kind": { "const": "none" }, "depth": { "const": 0 } } },
+          "required": { "const": false },
+          "unavailable_behavior": { "const": "preserve" }
+        },
+        "not": { "anyOf": [{ "required": ["performed_by"] }, { "required": ["translation_target"] }, { "required": ["universal_semantic"] }] }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "translate_to_native" } }, "required": ["operation"] },
+      "then": {
+        "required": ["performed_by", "translation_target"],
+        "properties": {
+          "mapping_status": { "enum": ["verified_universal", "dialect_defined"] },
+          "encoding": { "properties": { "kind": { "const": "none" }, "depth": { "const": 0 } } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "resolve_value" } }, "required": ["operation"] },
+      "then": {
+        "required": ["performed_by"],
+        "properties": { "mapping_status": { "enum": ["verified_universal", "dialect_defined"] } },
+        "not": { "required": ["translation_target"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "dialect": { "enum": ["iab_vast", "iab_daast"] }, "operation": { "const": "resolve_value" } },
+        "required": ["dialect", "operation"]
+      },
+      "then": { "properties": { "performed_by": { "const": "request_executor" } } }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "preserve" } }, "required": ["operation"] },
+      "then": {
+        "properties": {
+          "encoding": { "properties": { "kind": { "const": "none" }, "depth": { "const": 0 } } },
+          "required": { "const": false },
+          "unavailable_behavior": { "const": "preserve" }
+        },
+        "not": { "anyOf": [{ "required": ["performed_by"] }, { "required": ["translation_target"] }] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "location": { "properties": { "context": { "const": "opaque" } }, "required": ["context"] } },
+        "required": ["location"]
+      },
+      "then": {
+        "properties": {
+          "operation": { "const": "preserve" },
+          "encoding": { "properties": { "kind": { "const": "none" }, "depth": { "const": 0 } } },
+          "required": { "const": false },
+          "unavailable_behavior": { "const": "preserve" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "universal_semantic": {
+            "enum": ["CATALOG_ID", "SKU", "GTIN", "OFFERING_ID", "JOB_ID", "HOTEL_ID", "FLIGHT_ID", "VEHICLE_ID", "LISTING_ID", "STORE_ID", "PROGRAM_ID", "DESTINATION_ID", "ITEM_NAME", "ITEM_DESCRIPTION", "ITEM_TAGLINE", "ITEM_PRICE", "ITEM_PRICE_CURRENCY"]
+          }
+        },
+        "required": ["universal_semantic"]
+      },
+      "then": {
+        "properties": {
+          "operation": { "const": "resolve_value" },
+          "performed_by": { "const": "seller" },
+          "location": { "properties": { "context": { "enum": ["url_query_value", "url_path_segment"] } } },
+          "encoding": { "properties": { "kind": { "const": "rfc3986" }, "depth": { "const": 1 } } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "required": { "const": true } }, "required": ["required"] },
+      "then": { "properties": { "unavailable_behavior": { "const": "reject" } } }
+    },
+    {
+      "if": { "properties": { "unavailable_behavior": { "const": "omit_parameter" } }, "required": ["unavailable_behavior"] },
+      "then": {
+        "properties": {
+          "operation": { "const": "resolve_value" },
+          "location": { "properties": { "context": { "const": "url_query_value" } } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "unavailable_behavior": { "const": "preserve" } }, "required": ["unavailable_behavior"] },
+      "then": { "properties": { "operation": { "const": "preserve" } } }
+    },
+    {
+      "if": { "properties": { "unavailable_behavior": { "const": "dialect_sentinel" } }, "required": ["unavailable_behavior"] },
+      "then": {
+        "properties": {
+          "dialect": { "const": "iab_vast" },
+          "operation": { "const": "resolve_value" },
+          "required": { "const": false }
+        }
+      }
+    }
+  ]
+}

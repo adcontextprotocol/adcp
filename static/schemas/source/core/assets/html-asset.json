@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/assets/html-asset.json",
   "title": "HTML Asset",
-  "description": "Inline HTML content asset. For URL-delivered HTML5 banner bundles, use the zip asset type instead. For single-URL iframe-rendered tag references, use the url asset type with an appropriate url_type.",
+  "description": "Inline HTML content asset. For seller-hosted HTML5 banner bundles, use the zip asset type. For third-party display markup or paired redirects, use the display_tag asset so the trafficking representation remains explicit.",
   "type": "object",
   "properties": {
     "asset_type": {

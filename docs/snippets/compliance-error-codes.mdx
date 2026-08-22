@@ -45,6 +45,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `CONFLICT` | transient | re-read the resource and retry with current state |
 | `CONFLICTING_SELECTORS` | correctable | emit one canonical format selector route, or make every required legacy 3.x compatibility projection select the same product format contract under the canonical v2-narrows-v1 comparison |
 | `CREATIVE_DEADLINE_EXCEEDED` | correctable | check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller |
+| `CREATIVE_DELIVERY_VARIANT_UNRESOLVED` | correctable | inspect every error.details.delivery_variant_rejections entry, then choose a compatible format option or supply a compatible representation |
 | `CREATIVE_INACCESSIBLE` | correctable | verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit |
 | `CREATIVE_LOCALE_NOT_ACCEPTED` | correctable | supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default |
 | `CREATIVE_NOT_FOUND` | correctable | verify creative_id via list_creatives, or sync_creatives to register it |
@@ -72,6 +73,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `INVALID_USAGE_DATA` | correctable | check required fields for the vendor type (vendor_cost, currency, account at minimum), fix invalid values, and resubmit |
 | `IO_REQUIRED` | correctable | review the proposal's insertion_order, accept terms, and include io_acceptance on accept_proposal; use create_media_buy only for 3.x compatibility |
 | `ITEM_VALIDATION_FAILED` | correctable | check item_issues for per-item rejection reasons and fix the offending items |
+| `MACRO_RESOLUTION_FAILED` | correctable | inspect error.details.macro_resolution_results and route to a resolver that supports the declared dialect, semantic, owner, and encoding depth |
 | `MEDIA_BUY_NOT_FOUND` | correctable | verify media_buy_id; for legacy correlation use get_media_buys plus context, such as context.internal_campaign_id |
 | `MULTI_FINALIZE_UNSUPPORTED` | correctable | sequence single-proposal finalize calls — one finalize entry per get_products refine[] call or per refine_proposals refinements[] call |
 | `NOT_CANCELLABLE` | correctable | check the seller's cancellation policy or contact the seller |
@@ -118,7 +120,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `UNSUPPORTED_PROVISIONING` | correctable | re-issue with the entry shape the seller supports — <code>{"account: {account_id: ...}"}</code> for settings-update sellers with account-id namespaces, or <code>{"brand+operator+billing"}</code> for provisioning sellers; check seller documentation or capability declaration for which modes are implemented |
 | `VALIDATION_ERROR` | correctable | review error details and fix field values |
 | `VAST_PARSE_FAILED` | correctable | inspect error.details.reason (not_xml, no_vast_root, no_ad, no_media_file), fix the VAST document, and resubmit |
-| `VAST_VERSION_MISMATCH` | correctable | re-tag with a version from error.details.supported_versions, or correct the asset's declared vast_version to match the document |
+| `VAST_VERSION_MISMATCH` | correctable | inspect error.details.asset_vast_version, product_vast_versions, seller_vast_versions, and format_option_ref; select a source representation in the product/seller intersection or correct a document that disagrees with its asset declaration |
 | `VAST_WRAPPER_DEPTH_EXCEEDED` | correctable | inspect error.details.reason (depth, loop, timeout); flatten the wrapper chain, reduce redirects below the format's max_wrapper_depth, or fix the failing hop |
 | `VERSION_UNSUPPORTED` | correctable | re-pin to a release in supported_versions and retry, or call get_adcp_capabilities without a version pin to discover supported_versions |
 
@@ -422,6 +424,15 @@ A 3.x package request carries multiple resolvable format selector routes that se
 Creative change submitted after the package's creative_deadline. Distinct from CREATIVE_REJECTED (content-policy, brand-safety, or accessibility-review failure). Recovery: correctable (check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller).
 
 </Accordion>
+<a id="error-code-creative-delivery-variant-unresolved"></a>
+
+<Accordion title="CREATIVE_DELIVERY_VARIANT_UNRESOLVED — correctable">
+
+**Suggested action:** inspect every error.details.delivery_variant_rejections entry, then choose a compatible format option or supply a compatible representation
+
+No representation in a pre-binding CreativeSource is compatible with the selected target capability or product format option. The resolver MUST retain all source variants and MUST include one <code>{"error.details.delivery_variant_rejections[]"}</code> entry per candidate; silent seller guessing is forbidden. Recovery: correctable (choose a compatible product/format option, add a compatible source representation, or fix the rejected asset contract).
+
+</Accordion>
 <a id="error-code-creative-inaccessible"></a>
 
 <Accordion title="CREATIVE_INACCESSIBLE — correctable">
@@ -705,6 +716,15 @@ The committed proposal requires a signed insertion order but no io_acceptance wa
 **Suggested action:** check item_issues for per-item rejection reasons and fix the offending items
 
 One or more catalog items failed schema validation during sync_catalogs. Recovery: correctable (check item_issues for per-item rejection reasons and fix the offending items).
+
+</Accordion>
+<a id="error-code-macro-resolution-failed"></a>
+
+<Accordion title="MACRO_RESOLUTION_FAILED — correctable">
+
+**Suggested action:** inspect error.details.macro_resolution_results and route to a resolver that supports the declared dialect, semantic, owner, and encoding depth
+
+One or more declared creative macro tokens cannot be resolved or safely preserved under the selected product and seller capability intersection. Sellers MUST include per-token <code>{"error.details.macro_resolution_results"}</code>; unknown or ambiguous tokens remain byte-preserved and MUST NOT receive guessed values. Recovery: correctable (route to a compatible execution path, correct the verified declaration, or assign the proper downstream resolver).
 
 </Accordion>
 <a id="error-code-media-buy-not-found"></a>
@@ -1154,9 +1174,9 @@ A submitted <code>{"vast"}</code> asset failed document-level validation: the in
 
 <Accordion title="VAST_VERSION_MISMATCH — correctable">
 
-**Suggested action:** re-tag with a version from error.details.supported_versions, or correct the asset's declared vast_version to match the document
+**Suggested action:** inspect error.details.asset_vast_version, product_vast_versions, seller_vast_versions, and format_option_ref; select a source representation in the product/seller intersection or correct a document that disagrees with its asset declaration
 
-A submitted <code>{"vast"}</code> asset's document declares a <code>{"<VAST version>"}</code> attribute that does not match the asset's declared <code>{"vast_version"}</code>, does not satisfy the format's <code>{"vast_version"}</code> requirement, or is not in the seller's declared <code>{"creative_specs.vast_versions"}</code>. Returned by sellers performing document-level VAST validation (<code>{"creative_specs.vast_validation"}</code> of <code>{"document"}</code> or <code>{"wrapper"}</code>). Distinct from <code>{"VERSION_UNSUPPORTED"}</code> (AdCP protocol version negotiation, unrelated to creative documents). Sellers SHOULD set <code>{"error.field"}</code> to the offending asset path and SHOULD include the accepted versions in <code>{"error.details.supported_versions"}</code>. Recovery: correctable (re-tag with an accepted VAST version, or correct the asset's declared <code>{"vast_version"}</code>).
+A submitted <code>{"vast"}</code> asset is version-incompatible when its exact <code>{"vast_version"}</code> is absent from the intersection of the selected product format option's <code>{"params.vast_versions"}</code> and the seller's <code>{"execution.creative_specs.vast_versions"}</code>, or when an inspected document's <code>{"<VAST version>"}</code> differs from the asset declaration. Sellers SHOULD include <code>{"asset_vast_version"}</code>, <code>{"product_vast_versions"}</code>, <code>{"seller_vast_versions"}</code>, and <code>{"format_option_ref"}</code> in <code>{"error.details"}</code>. Distinct from <code>{"VERSION_UNSUPPORTED"}</code>, which concerns AdCP protocol negotiation. Recovery: correctable (select a source VAST representation in the compatibility intersection; never relabel the asset).
 
 </Accordion>
 <a id="error-code-vast-wrapper-depth-exceeded"></a>

@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/macro-resolution-result.json",
+  "title": "Macro Resolution Result",
+  "description": "Path-addressable preflight result for one declaration. `resolvable` means the selected execution path advertises the exact operation; it does not claim that serve-time substitution has already occurred.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "adcp_semantic_identity": "when dialect is adcp, dialect_semantic must equal universal_semantic"
+    },
+    "spec": "docs/creative/universal-macros.mdx#capability-matching-and-validation"
+  },
+  "type": "object",
+  "properties": {
+    "declaration_id": { "type": "string", "minLength": 1 },
+    "asset_path": {
+      "type": "string",
+      "pattern": "^/",
+      "description": "JSON Pointer to the asset carrying the declaration."
+    },
+    "token": { "type": "string", "minLength": 1 },
+    "dialect": { "$ref": "/schemas/enums/macro-dialect.json" },
+    "dialect_namespace": { "type": "string", "format": "uri" },
+    "dialect_revision": { "type": "string", "minLength": 1 },
+    "dialect_semantic": { "type": "string", "minLength": 1 },
+    "mapping_status": { "$ref": "/schemas/enums/macro-mapping-status.json" },
+    "universal_semantic": { "$ref": "/schemas/enums/universal-macro.json" },
+    "operation": { "$ref": "/schemas/enums/macro-processing-operation.json" },
+    "performed_by": { "$ref": "/schemas/enums/macro-resolver.json" },
+    "requested_encoding": { "$ref": "/schemas/core/macro-encoding.json" },
+    "required": { "type": "boolean" },
+    "unavailable_behavior": {
+      "type": "string",
+      "enum": ["preserve", "omit_parameter", "dialect_sentinel", "reject"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["resolvable", "preserved_for_downstream", "unsupported", "ambiguous"]
+    },
+    "reason": { "$ref": "/schemas/enums/macro-resolution-reason.json" },
+    "matched_encodings": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/macro-encoding.json" },
+      "description": "Exact advertised profiles considered for this match, when relevant."
+    },
+    "message": { "type": "string", "minLength": 1 }
+  },
+  "required": [
+    "declaration_id",
+    "asset_path",
+    "token",
+    "dialect",
+    "dialect_semantic",
+    "mapping_status",
+    "operation",
+    "requested_encoding",
+    "required",
+    "unavailable_behavior",
+    "status",
+    "reason"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "dialect": { "enum": ["iab_vast", "iab_daast", "vendor"] } }, "required": ["dialect"] },
+      "then": { "required": ["dialect_namespace", "dialect_revision"] }
+    },
+    {
+      "if": { "properties": { "dialect": { "enum": ["adcp", "unknown"] } }, "required": ["dialect"] },
+      "then": { "not": { "anyOf": [{ "required": ["dialect_namespace"] }, { "required": ["dialect_revision"] }] } }
+    },
+    {
+      "if": { "properties": { "mapping_status": { "const": "verified_universal" } }, "required": ["mapping_status"] },
+      "then": { "required": ["universal_semantic"] },
+      "else": { "not": { "required": ["universal_semantic"] } }
+    },
+    {
+      "if": { "properties": { "operation": { "enum": ["translate_to_native", "resolve_value"] } }, "required": ["operation"] },
+      "then": { "required": ["performed_by"] }
+    },
+    {
+      "if": {
+        "properties": { "dialect": { "enum": ["iab_vast", "iab_daast"] }, "operation": { "const": "resolve_value" } },
+        "required": ["dialect", "operation"]
+      },
+      "then": { "properties": { "performed_by": { "const": "request_executor" } } }
+    },
+    {
+      "if": { "properties": { "dialect": { "const": "adcp" } }, "required": ["dialect"] },
+      "then": {
+        "required": ["universal_semantic"],
+        "properties": {
+          "dialect_semantic": { "$ref": "/schemas/enums/universal-macro.json" },
+          "mapping_status": { "const": "verified_universal" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "dialect": { "const": "unknown" } }, "required": ["dialect"] },
+      "then": {
+        "properties": {
+          "mapping_status": { "const": "unresolved" },
+          "operation": { "const": "preserve" },
+          "requested_encoding": { "properties": { "kind": { "const": "none" }, "depth": { "const": 0 } } },
+          "required": { "const": false },
+          "unavailable_behavior": { "const": "preserve" },
+          "status": { "const": "preserved_for_downstream" },
+          "reason": { "const": "preserved_unknown" }
+        },
+        "not": { "anyOf": [{ "required": ["performed_by"] }, { "required": ["universal_semantic"] }] }
+      }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "preserve" } }, "required": ["operation"] },
+      "then": {
+        "properties": {
+          "requested_encoding": { "properties": { "kind": { "const": "none" }, "depth": { "const": 0 } } },
+          "required": { "const": false },
+          "unavailable_behavior": { "const": "preserve" },
+          "status": { "const": "preserved_for_downstream" }
+        },
+        "not": { "required": ["performed_by"] }
+      }
+    },
+    {
+      "if": { "properties": { "required": { "const": true } }, "required": ["required"] },
+      "then": { "properties": { "unavailable_behavior": { "const": "reject" } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "resolvable" } }, "required": ["status"] },
+      "then": { "properties": { "reason": { "const": "capability_match" } } }
+    },
+    {
+      "if": { "properties": { "status": { "const": "preserved_for_downstream" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "operation": { "const": "preserve" },
+          "reason": { "enum": ["preserved_unknown", "preserved_for_downstream"] }
+        },
+        "not": { "required": ["performed_by"] }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "unsupported" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "reason": {
+            "enum": ["dialect_unsupported", "namespace_mismatch", "revision_mismatch", "semantic_unsupported", "operation_unsupported", "resolver_mismatch", "context_unsupported", "encoding_unsupported"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "ambiguous" } }, "required": ["status"] },
+      "then": { "properties": { "reason": { "const": "ambiguous_mapping" } } }
+    }
+  ]
+}

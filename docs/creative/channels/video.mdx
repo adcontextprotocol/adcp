@@ -58,11 +58,23 @@ AdCP separates hosted video bytes (`video_hosted`) from VAST delivery (`video_va
 }
 ```
 
-Use a `vast` asset with either a URL or inline XML according to the selected declaration. The seller validates wrapper depth, media files, duration, macros, and supported VAST features.
+Use a `vast` asset with either a URL or inline XML according to the selected declaration. The asset's singular `vast_version` is the exact version it supplies. The format option's plural `vast_versions` is the accepted set for that product/player path; seller-wide `execution.creative_specs.vast_versions` is only a ceiling.
+
+Version compatibility is the intersection:
+
+```text
+asset.vast_version
+  ∈ product.format_option.params.vast_versions
+  ∩ seller.execution.creative_specs.vast_versions
+```
+
+For example, a seller may advertise a platform ceiling through VAST 4.2 while one product accepts only VAST 3.0 and 4.0. The product set wins for that product. Never relabel an asset to a newer version merely because the destination supports it.
+
+For ordinary legacy VAST submission, an omitted seller or product version set retains 3.x compatibility and document validation follows the peer's negotiated behavior. Late-bound `CreativeSource` resolution is stricter: every VAST candidate declares `vast_version`, and both the selected product option and seller must advertise non-empty plural sets. Absence means compatibility is unproven, not “all versions.” During migration, producers emit either deprecated singular `vast_version` for older consumers or plural `vast_versions` for 3.2 consumers; the two fields are mutually exclusive so they cannot contradict one another.
 
 ### VAST Validation
 
-Format-layer validation of `vast` assets is structural: the manifest must satisfy the format's `requirements` (today, `vast_version`), and [`validate_input`](/docs/creative/canonical-formats#validation-flow--validate_input) checks manifest shape only. The VAST document itself is opaque at that level, so a structurally valid manifest can still carry an unplayable tag that fails silently at serve time.
+Format-layer validation of `vast` assets is structural: the manifest must satisfy the format's plural accepted `vast_versions` set, and [`validate_input`](/docs/creative/canonical-formats#validation-flow--validate_input) checks manifest shape and declared compatibility. The VAST document itself is opaque at that level, so a structurally valid manifest can still carry an unplayable tag that fails at serve time.
 
 AdCP defines three validation levels for `vast` assets. Sellers declare the level they perform via `creative_specs.vast_validation` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities); absent means `structural`. Validation runs at `sync_creatives` time, including `dry_run`. `validate_input` remains manifest-structure-only at every level.
 
@@ -76,10 +88,12 @@ AdCP defines three validation levels for `vast` assets. Sellers declare the leve
 
 - MUST parse the document (inline `content`, or one response fetched from `url`) as XML and reject unparseable documents with `VAST_PARSE_FAILED` (`error.details.reason: "not_xml"`).
 - MUST reject documents whose root element is not `<VAST>` with `VAST_PARSE_FAILED` (`error.details.reason: "no_vast_root"`).
-- MUST reject documents whose `<VAST version>` attribute is missing or does not match the asset's declared `vast_version`, the format's `vast_version` requirement, or the seller's declared `creative_specs.vast_versions`, with `VAST_VERSION_MISMATCH` (`error.details.supported_versions` lists the accepted versions).
+- MUST reject documents whose `<VAST version>` attribute is missing or differs from the asset's singular `vast_version`.
+- MUST reject an asset whose `vast_version` is outside the product `params.vast_versions` and seller `creative_specs.vast_versions` intersection with `VAST_VERSION_MISMATCH`.
+- MUST include `asset_vast_version`, `product_vast_versions`, `seller_vast_versions`, and the selected `format_option_ref` in `error.details` for `VAST_VERSION_MISMATCH`.
 - SHOULD reject documents containing no `<Ad>` element, and `<InLine>` linear creatives carrying no `<MediaFile>`, with `VAST_PARSE_FAILED` (`error.details.reason: "no_ad"` / `"no_media_file"`).
 - SHOULD verify that media, tracking, and click URLs use HTTPS.
-- MUST treat unresolved ad-server macros in URLs (`[MACRO]`, `${MACRO}`, `{UNIVERSAL_MACRO}`) as opaque tokens, never as validation failures. Macro correctness and substitution verification are out of scope for this contract.
+- MUST preserve undeclared macro tokens as opaque bytes. When an asset supplies `macro_declarations`, validate each token against the product and seller macro-resolution capability intersection and report per-token results.
 
 **Wrapper-chain validation.** Sellers declaring `wrapper` additionally:
 
@@ -95,11 +109,11 @@ AdCP defines three validation levels for `vast` assets. Sellers declare the leve
 | Code | Meaning |
 |------|---------|
 | `VAST_PARSE_FAILED` | Document is not well-formed XML, has no `<VAST>` root, no `<Ad>`, or an inline linear creative has no `<MediaFile>` |
-| `VAST_VERSION_MISMATCH` | Document's `<VAST version>` disagrees with the declared `vast_version`, the format requirement, or the seller's supported versions |
+| `VAST_VERSION_MISMATCH` | Document version differs from the asset declaration, or the asset version is outside the product/seller intersection |
 | `VAST_WRAPPER_DEPTH_EXCEEDED` | Wrapper chain exceeds `max_wrapper_depth`, loops, or a hop timed out |
 
 ## Vertical and flexible video
 
 Vertical short video is still `video_hosted`; use width/height or aspect-ratio parameters and, for an exact publisher contract, `{publisher_domain, format_option_id}`. Equal canonical kind alone is not proof that a generic video builder satisfies a publisher's duration, codec, slot, or composition constraints.
 
-See [CTV](/docs/creative/channels/ctv), [Canonical formats](/docs/creative/canonical-formats), and [Creative manifests](/docs/creative/creative-manifests).
+See [Creative delivery variants](/docs/creative/delivery-variants), [CTV](/docs/creative/channels/ctv), [Canonical formats](/docs/creative/canonical-formats), and [Creative manifests](/docs/creative/creative-manifests).

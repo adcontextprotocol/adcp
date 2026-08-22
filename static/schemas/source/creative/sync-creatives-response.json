@@ -95,6 +95,11 @@
                   "type": "string"
                 }
               },
+              "macro_resolution_results": {
+                "type": "array",
+                "items": { "$ref": "/schemas/core/macro-resolution-result.json" },
+                "description": "Per-token result for declared macros. Sellers include this on accepted items when macro declarations were evaluated, and may include it alongside a failed item's structured errors."
+              },
               "preview_url": {
                 "type": "string",
                 "format": "uri",

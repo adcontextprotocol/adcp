@@ -1,0 +1,560 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+const { isDeepStrictEqual } = require('node:util');
+const Ajv = require('ajv').default;
+const addFormats = require('ajv-formats').default;
+
+const ROOT = path.resolve(__dirname, '..');
+const SCHEMAS = path.join(ROOT, 'static/schemas/source');
+const VECTORS = path.join(ROOT, 'static/compliance/source/test-vectors/creative-delivery-resolution.json');
+const VECTOR_SCHEMA = path.join(ROOT, 'static/compliance/source/test-vectors/creative-delivery-resolution.schema.json');
+const MACRO_VECTORS = path.join(ROOT, 'static/compliance/source/test-vectors/macro-processing.json');
+const MACRO_VECTOR_SCHEMA = path.join(ROOT, 'static/compliance/source/test-vectors/macro-processing.schema.json');
+
+function loadAllSchemas(ajv) {
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.json')) {
+        const schema = JSON.parse(fs.readFileSync(full, 'utf8'));
+        if (schema.$id && !ajv.getSchema(schema.$id)) ajv.addSchema(schema, schema.$id);
+      }
+    }
+  }
+  walk(SCHEMAS);
+}
+
+function makeAjv() {
+  const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true });
+  addFormats(ajv);
+  ajv.addFormat('uri-template', true);
+  loadAllSchemas(ajv);
+  return ajv;
+}
+
+const ajv = makeAjv();
+
+test('display tag delivery variants are discriminated and paired redirects are atomic', () => {
+  const validate = ajv.getSchema('/schemas/core/assets/display-tag-asset.json');
+  assert.ok(validate);
+
+  assert.equal(validate({
+    asset_type: 'display_tag',
+    delivery_type: 'tag_url',
+    url: 'https://ads.acme-example.com/render?cb={CACHEBUSTER}'
+  }), true);
+  assert.equal(validate({
+    asset_type: 'display_tag',
+    delivery_type: 'inline_markup',
+    markup_type: 'iframe_javascript',
+    markup: '<iframe src="https://ads.acme-example.com/render"></iframe>'
+  }), true);
+  assert.equal(validate({
+    asset_type: 'display_tag',
+    delivery_type: 'paired_redirect',
+    ad_request_url: 'https://ads.acme-example.com/ad',
+    clickthrough_url: 'https://click.acme-example.com/redirect'
+  }), true);
+
+  assert.equal(validate({
+    asset_type: 'display_tag',
+    delivery_type: 'paired_redirect',
+    ad_request_url: 'https://ads.acme-example.com/ad'
+  }), false, 'half-present paired redirects must fail');
+  assert.equal(validate({
+    asset_type: 'html',
+    delivery_type: 'inline_markup',
+    markup_type: 'standard',
+    markup: '<a>not an HTML5 bundle</a>'
+  }), false, 'third-party markup cannot be classified as html/html5');
+});
+
+test('VAST assets stay singular while format and seller acceptance are plural enums', () => {
+  const format = ajv.getSchema('/schemas/formats/canonical/video_vast.json');
+  assert.equal(format({ vast_versions: ['3.0', '4.0', '4.3'] }), true);
+  assert.equal(format({ vast_version: '4.0' }), true, 'deprecated one-element alias remains valid');
+  assert.equal(format({ vast_version: '4.0', vast_versions: ['4.0'] }), false,
+    'singular and plural aliases are mutually exclusive so they cannot diverge');
+  assert.equal(format({ vast_version: '4.0', vast_versions: ['3.0'] }), false);
+  assert.equal(format({ vast_versions: ['4.4'] }), false);
+
+  const capabilities = JSON.parse(fs.readFileSync(
+    path.join(SCHEMAS, 'protocol/get-adcp-capabilities-response.json'),
+    'utf8'
+  ));
+  const vastSchema = capabilities.properties.media_buy.properties.execution.properties.creative_specs.properties.vast_versions;
+  assert.equal(vastSchema.items.$ref, '/schemas/enums/vast-version.json');
+  assert.deepEqual(ajv.getSchema('/schemas/enums/vast-version.json').schema.enum.slice(-2), ['4.2', '4.3']);
+
+  const resolution = capabilities.properties.creative.properties.delivery_variant_resolution;
+  assert.equal(resolution.properties.supported.const, true);
+  assert.deepEqual(resolution.properties.strategies.items.enum, ['source_order', 'highest_compatible_vast']);
+  assert.match(resolution.description, /MUST NOT guess silently/);
+});
+
+test('macro declarations enforce resolver ownership and exact URL encoding depth', () => {
+  const validate = ajv.getSchema('/schemas/core/macro-declaration.json');
+  const valid = {
+    declaration_id: 'nested-click',
+    token: '%%ACME_CLICK_ESC2%%',
+    dialect: 'vendor',
+    dialect_namespace: 'https://macros.acme-example.com/registry',
+    dialect_revision: 'mapping-v1',
+    dialect_semantic: 'CLICK_ESC2',
+    mapping_status: 'verified_universal',
+    universal_semantic: 'CLICK_URL',
+    operation: 'resolve_value',
+    performed_by: 'seller',
+    location: { field: 'url', occurrence: 0, context: 'url_query_value' },
+    encoding: { kind: 'rfc3986', depth: 2 },
+    required: true,
+    unavailable_behavior: 'reject'
+  };
+  assert.equal(validate(valid), true);
+  assert.equal(validate({ ...valid, encoding: { kind: 'rfc3986', depth: 0 } }), false);
+  assert.equal(validate({ ...valid, encoding: { kind: 'none', depth: 1 } }), false);
+  assert.equal(validate({ ...valid, performed_by: 'whoever_guesses' }), false);
+  assert.equal(validate({ ...valid, dialect: 'ttd' }), false, 'dialect aliases must not bypass the governed enum');
+  assert.equal(validate({ ...valid, required: true, unavailable_behavior: 'omit_parameter' }), false);
+  assert.equal(validate({ ...valid, mapping_status: 'dialect_defined' }), false, 'universal mappings cannot survive without verified status');
+
+  const adcp = {
+    ...valid,
+    token: '{CACHEBUSTER}',
+    dialect: 'adcp',
+    dialect_semantic: 'CACHEBUSTER',
+    universal_semantic: 'CACHEBUSTER'
+  };
+  delete adcp.dialect_namespace;
+  delete adcp.dialect_revision;
+  assert.equal(validate(adcp), true);
+  assert.equal(validate({ ...adcp, performed_by: 'creative_agent' }), true,
+    'standalone build/preview execution has an actor distinct from seller trafficking');
+  assert.equal(validate({ ...adcp, dialect_semantic: 'PRIVATE' }), false);
+  const semanticIdentityIsValid = declaration => declaration.dialect !== 'adcp' ||
+    declaration.dialect_semantic === declaration.universal_semantic;
+  assert.equal(semanticIdentityIsValid(adcp), true);
+  assert.equal(semanticIdentityIsValid({ ...adcp, dialect_semantic: 'TIMESTAMP' }), false,
+    'the published AdCP semantic-identity verifier rejects unequal universal names');
+  assert.equal(validate.schema['x-adcp-validation'].verifier_constraints.adcp_semantic_identity.includes('must equal'), true);
+  assert.equal(validate({ ...adcp, mapping_status: 'dialect_defined', universal_semantic: undefined }), false);
+  assert.equal(validate({ ...adcp, location: { field: 'url', occurrence: 0, context: 'opaque' } }), false,
+    'opaque locations are preserve-only');
+  assert.equal(validate({ ...adcp, dialect_semantic: 'SKU', universal_semantic: 'SKU', encoding: { kind: 'rfc3986', depth: 2 } }), false,
+    'catalog values have exactly one RFC3986 pass');
+
+  const unknown = {
+    declaration_id: 'unknown-token',
+    token: '%%UNIDENTIFIED%%',
+    dialect: 'unknown',
+    dialect_semantic: 'unresolved',
+    mapping_status: 'unresolved',
+    operation: 'preserve',
+    location: { field: 'url', occurrence: 0, context: 'opaque' },
+    encoding: { kind: 'none', depth: 0 },
+    required: false,
+    unavailable_behavior: 'preserve'
+  };
+  assert.equal(validate(unknown), true);
+  assert.equal(validate({ ...unknown, performed_by: 'seller' }), false);
+  assert.equal(validate({ ...unknown, universal_semantic: 'CACHEBUSTER' }), false);
+
+  const daastResolution = {
+    declaration_id: 'daast-error',
+    token: '[ERRORCODE]',
+    dialect: 'iab_daast',
+    dialect_namespace: 'https://iabtechlab.com/standards/daast',
+    dialect_revision: 'DAAST-1.1',
+    dialect_semantic: 'ERRORCODE',
+    mapping_status: 'dialect_defined',
+    operation: 'resolve_value',
+    performed_by: 'request_executor',
+    location: { field: 'url', occurrence: 0, context: 'url_query_value' },
+    encoding: { kind: 'rfc3986', depth: 1 },
+    required: true,
+    unavailable_behavior: 'reject'
+  };
+  assert.equal(validate(daastResolution), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...daastResolution, performed_by: 'seller' }), false,
+    'IAB DAAST values are supplied by the component executing the request');
+
+  const validateUrlAsset = ajv.getSchema('/schemas/core/assets/url-asset.json');
+  const declaredAsset = {
+    asset_type: 'url',
+    url_type: 'tracker_pixel',
+    url: 'https://track.acme-example.com/pixel?x=%%UNIDENTIFIED%%',
+    macro_declarations: [unknown]
+  };
+  assert.equal(validateUrlAsset(declaredAsset), true, JSON.stringify(validateUrlAsset.errors));
+  assert.equal(validateUrlAsset({
+    ...declaredAsset,
+    macro_declarations: [{ ...unknown, location: { ...unknown.location, field: 'markup' } }]
+  }), false, 'asset schemas constrain declaration fields to fields that the asset actually carries');
+
+  const occurrencesAreValid = asset => {
+    const seenIds = new Set();
+    const seenOccurrences = new Set();
+    return asset.macro_declarations.every(declaration => {
+      if (seenIds.has(declaration.declaration_id)) return false;
+      seenIds.add(declaration.declaration_id);
+      const value = asset[declaration.location.field];
+      if (typeof value !== 'string') return false;
+      let offset = 0;
+      let index = -1;
+      for (let occurrence = 0; occurrence <= declaration.location.occurrence; occurrence++) {
+        index = value.indexOf(declaration.token, offset);
+        if (index < 0) return false;
+        offset = index + declaration.token.length;
+      }
+      const occurrenceKey = `${declaration.location.field}:${index}:${declaration.token.length}`;
+      if (seenOccurrences.has(occurrenceKey)) return false;
+      seenOccurrences.add(occurrenceKey);
+      return true;
+    });
+  };
+  assert.equal(occurrencesAreValid(declaredAsset), true);
+  assert.equal(occurrencesAreValid({
+    ...declaredAsset,
+    macro_declarations: [{ ...unknown, location: { ...unknown.location, occurrence: 999 } }]
+  }), false);
+  assert.equal(occurrencesAreValid({ ...declaredAsset, macro_declarations: [unknown, structuredClone(unknown)] }), false);
+
+  const validateCapability = ajv.getSchema('/schemas/core/macro-resolution-capability.json');
+  assert.equal(validateCapability({
+    dialect: 'iab_vast',
+    dialect_namespace: 'https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html',
+    dialect_revision: 'git:e0858cd714474bf17ef61065097456d7643ff838',
+    dialect_semantic: 'PLAYERSTATE',
+    mapping_status: 'dialect_defined',
+    operation: 'resolve_value',
+    performed_by: 'request_executor',
+    supported_contexts: ['url_query_value'],
+    supported_encodings: [{ kind: 'iab_vast_uri', depth: 1 }]
+  }), true);
+  assert.equal(validateCapability({
+    dialect: 'unknown',
+    dialect_semantic: 'unresolved',
+    mapping_status: 'dialect_defined',
+    operation: 'resolve_value',
+    performed_by: 'seller',
+    supported_contexts: ['opaque'],
+    supported_encodings: [{ kind: 'none', depth: 0 }]
+  }), false, 'unknown dialects can be preserved but never advertised as resolvable');
+  assert.equal(validateCapability({
+    dialect: 'adcp',
+    dialect_semantic: 'CACHEBUSTER',
+    mapping_status: 'verified_universal',
+    universal_semantic: 'CACHEBUSTER',
+    operation: 'resolve_value',
+    performed_by: 'seller',
+    supported_contexts: ['opaque'],
+    supported_encodings: [{ kind: 'rfc3986', depth: 1 }]
+  }), false, 'capabilities cannot advertise mutation in opaque contexts');
+  const daastCapability = {
+    dialect: 'iab_daast',
+    dialect_namespace: 'https://iabtechlab.com/standards/daast',
+    dialect_revision: 'DAAST-1.1',
+    dialect_semantic: 'ERRORCODE',
+    mapping_status: 'dialect_defined',
+    operation: 'resolve_value',
+    performed_by: 'request_executor',
+    supported_contexts: ['url_query_value'],
+    supported_encodings: [{ kind: 'rfc3986', depth: 1 }]
+  };
+  assert.equal(validateCapability(daastCapability), true, JSON.stringify(validateCapability.errors));
+  assert.equal(validateCapability({ ...daastCapability, performed_by: 'seller' }), false);
+
+  const validateTarget = ajv.getSchema('/schemas/core/macro-translation-target.json');
+  const { declaration_id, location, required, unavailable_behavior, operation, ...targetFields } = daastResolution;
+  const daastTarget = { ...targetFields, next_operation: 'resolve_value' };
+  assert.equal(validateTarget(daastTarget), true, JSON.stringify(validateTarget.errors));
+  assert.equal(validateTarget({ ...daastTarget, performed_by: 'seller' }), false);
+});
+
+test('all URL-delivered creative assets preserve registered percent-token dialects', () => {
+  const macroUrl = 'https://track.acme-example.com/pixel?cb=%%CACHEBUSTER%%&click=%%ACME_CLICK_ESC2%%';
+  const maskOpaqueTokenForms = value => value.replace(
+    /%%[A-Za-z0-9_.:-]+%%|\$\{[A-Za-z][A-Za-z0-9_]*\}|\{[A-Za-z][A-Za-z0-9_]*\}|\[[A-Za-z][A-Za-z0-9_]*\]/g,
+    'ADCPMACRO'
+  );
+  const structurallyValidHttpUrl = value => {
+    try {
+      const parsed = new URL(maskOpaqueTokenForms(value));
+      return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+    } catch {
+      return false;
+    }
+  };
+  assert.equal(structurallyValidHttpUrl(macroUrl), true,
+    'undeclared legacy token spellings are masked for structure without assigning semantics');
+  assert.match(ajv.getSchema('/schemas/core/macro-bearing-url.json').schema['x-adcp-validation']
+    .verifier_constraints.macro_aware_uri, /undeclared 3\.x compatibility path/);
+  const cases = [
+    ['/schemas/core/assets/url-asset.json', { asset_type: 'url', url: macroUrl, url_type: 'tracker_pixel' }],
+    ['/schemas/core/assets/pixel-tracker-asset.json', { asset_type: 'pixel_tracker', event: 'impression', url: macroUrl }],
+    ['/schemas/core/assets/vast-tracker-asset.json', { asset_type: 'vast_tracker', vast_event: 'start', url: macroUrl }],
+    ['/schemas/core/assets/daast-tracker-asset.json', { asset_type: 'daast_tracker', daast_event: 'start', url: macroUrl }],
+    ['/schemas/core/assets/vast-asset.json', { asset_type: 'vast', delivery_type: 'url', url: macroUrl }],
+    ['/schemas/core/assets/daast-asset.json', { asset_type: 'daast', delivery_type: 'url', url: macroUrl }]
+  ];
+
+  for (const [schemaId, asset] of cases) {
+    const validate = ajv.getSchema(schemaId);
+    assert.equal(validate(asset), true, `${schemaId}: ${JSON.stringify(validate.errors)}`);
+    assert.equal(validate({ ...asset, url: 'https://track.example/a bad url' }), false, schemaId);
+    for (const malformed of ['https:///path', 'https://?x=1', 'https://%zz', 'http://.']) {
+      assert.equal(validate({ ...asset, url: malformed }), false, `${schemaId}: ${malformed}`);
+    }
+  }
+
+  const validateUrl = ajv.getSchema('/schemas/core/assets/url-asset.json');
+  assert.equal(validateUrl({ asset_type: 'url', url: "https://track.acme-example.com/o'clock", url_type: 'clickthrough' }), true,
+    'valid plain HTTP URLs retain ordinary URI behavior');
+});
+
+test('creative delivery resolution vectors retain every source and select only compatible candidates', () => {
+  const fixture = JSON.parse(fs.readFileSync(VECTORS, 'utf8'));
+  const validateFixture = ajv.compile(JSON.parse(fs.readFileSync(VECTOR_SCHEMA, 'utf8')));
+  const validateSource = ajv.getSchema('/schemas/core/creative-source.json');
+  assert.equal(validateFixture(fixture), true, JSON.stringify(validateFixture.errors));
+
+  for (const vector of fixture.vectors) {
+    assert.equal(validateSource(vector.source), true, `${vector.name}: ${JSON.stringify(validateSource.errors)}`);
+    const compatible = [];
+    const rejections = [];
+
+    for (const variant of vector.source.delivery_variants) {
+      if (variant.format_kind !== vector.target.format_kind) {
+        rejections.push({ variant_id: variant.variant_id, code: 'incompatible_format_kind' });
+        continue;
+      }
+      const firstAsset = Object.values(variant.assets)[0];
+      if (variant.format_kind === 'display_tag' &&
+          !vector.target.supported_delivery_variants.includes(firstAsset.delivery_type)) {
+        rejections.push({ variant_id: variant.variant_id, code: 'unsupported_delivery_variant' });
+        continue;
+      }
+      if (variant.format_kind === 'video_vast') {
+        const version = firstAsset.vast_version;
+        if (!vector.target.vast_versions.includes(version) || !vector.seller.vast_versions.includes(version)) {
+          rejections.push({ variant_id: variant.variant_id, code: 'vast_version_mismatch' });
+          continue;
+        }
+      }
+      compatible.push(variant);
+    }
+
+    const selected = vector.strategy === 'highest_compatible_vast'
+      ? compatible.toSorted((a, b) => Number(Object.values(b.assets)[0].vast_version) - Number(Object.values(a.assets)[0].vast_version))[0]
+      : compatible[0];
+
+    assert.deepEqual(compatible.map(v => v.variant_id), vector.expected.compatible_variant_ids, vector.name);
+    assert.equal(selected?.variant_id ?? null, vector.expected.selected_variant_id, vector.name);
+    assert.deepEqual(vector.source.delivery_variants.map(v => v.variant_id), vector.expected.retained_variant_ids, vector.name);
+    assert.deepEqual(rejections, vector.expected.rejections.map(({ variant_id, code }) => ({ variant_id, code })), vector.name);
+  }
+
+  const uniqueVariantIds = source => new Set(source.delivery_variants.map(variant => variant.variant_id)).size ===
+    source.delivery_variants.length;
+  const duplicate = structuredClone(fixture.vectors[0].source);
+  duplicate.delivery_variants[1].variant_id = duplicate.delivery_variants[0].variant_id;
+  assert.equal(uniqueVariantIds(duplicate), false, 'duplicate source representation IDs fail operational validation');
+
+  const validateVariant = ajv.getSchema('/schemas/core/creative-delivery-variant.json');
+  const vastWithoutVersion = structuredClone(fixture.vectors[1].source.delivery_variants[0]);
+  delete vastWithoutVersion.assets.vast_tag.vast_version;
+  assert.equal(validateVariant(vastWithoutVersion), false, 'late-bound VAST variants require exact asset versions');
+
+  const validateBuild = ajv.getSchema('/schemas/media-buy/build-creative-request.json');
+  const resolutionRequest = {
+    idempotency_key: 'resolve-source-0001',
+    creative_source: fixture.vectors[0].source,
+    target_capability_id: 'paired_redirect_300x250'
+  };
+  assert.equal(validateBuild(resolutionRequest), true, JSON.stringify(validateBuild.errors));
+  assert.equal(validateBuild({ ...resolutionRequest, macro_values: { CACHEBUSTER: '123' } }), true,
+    'selection precedes binding and retained source declarations remain unchanged');
+});
+
+test('macro processing vectors preserve bytes and match exact owner/context/encoding contracts', () => {
+  const fixture = JSON.parse(fs.readFileSync(MACRO_VECTORS, 'utf8'));
+  const validateFixture = ajv.compile(JSON.parse(fs.readFileSync(MACRO_VECTOR_SCHEMA, 'utf8')));
+  assert.equal(validateFixture(fixture), true, JSON.stringify(validateFixture.errors));
+
+  const encodingEqual = (left, right) => left.kind === right.kind && left.depth === right.depth;
+  const evaluateLayer = (declaration, capabilities) => {
+    let candidates = capabilities.filter(capability => capability.dialect === declaration.dialect);
+    if (!candidates.length) return 'dialect_unsupported';
+    candidates = candidates.filter(capability => capability.dialect_namespace === declaration.dialect_namespace);
+    if (!candidates.length) return 'namespace_mismatch';
+    candidates = candidates.filter(capability => capability.dialect_revision === declaration.dialect_revision);
+    if (!candidates.length) return 'revision_mismatch';
+    candidates = candidates.filter(capability =>
+      capability.dialect_semantic === declaration.dialect_semantic &&
+      capability.universal_semantic === declaration.universal_semantic
+    );
+    if (!candidates.length) return 'semantic_unsupported';
+    candidates = candidates.filter(capability => capability.operation === declaration.operation);
+    if (!candidates.length) return 'operation_unsupported';
+    candidates = candidates.filter(capability => capability.performed_by === declaration.performed_by);
+    if (!candidates.length) return 'resolver_mismatch';
+    candidates = candidates.filter(capability => capability.supported_contexts.includes(declaration.location.context));
+    if (!candidates.length) return 'context_unsupported';
+    if (declaration.operation === 'translate_to_native') {
+      candidates = candidates.filter(capability =>
+        isDeepStrictEqual(capability.translation_target, declaration.translation_target)
+      );
+      return candidates.length ? null : 'semantic_unsupported';
+    }
+    candidates = candidates.filter(capability =>
+      capability.supported_encodings?.some(encoding => encodingEqual(encoding, declaration.encoding))
+    );
+    return candidates.length ? null : 'encoding_unsupported';
+  };
+  const strictRfc3986 = value => encodeURIComponent(value).replace(/[!'()*]/g, char =>
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+
+  for (const vector of fixture.vectors) {
+    const declaration = vector.declaration;
+    let status;
+    let reason;
+    let output = vector.source;
+
+    if (declaration.operation === 'preserve') {
+      status = 'preserved_for_downstream';
+      reason = declaration.dialect === 'unknown' ? 'preserved_unknown' : 'preserved_for_downstream';
+    } else {
+      reason = evaluateLayer(declaration, vector.seller_capabilities) ||
+        evaluateLayer(declaration, vector.product_capabilities);
+      if (reason) {
+        status = 'unsupported';
+      } else {
+        status = 'resolvable';
+        reason = 'capability_match';
+        if (declaration.operation === 'translate_to_native') {
+          const target = declaration.translation_target;
+          const emittedDeclaration = {
+            declaration_id: declaration.declaration_id,
+            token: target.token,
+            dialect: target.dialect,
+            ...(target.dialect_namespace && { dialect_namespace: target.dialect_namespace }),
+            ...(target.dialect_revision && { dialect_revision: target.dialect_revision }),
+            dialect_semantic: target.dialect_semantic,
+            mapping_status: target.mapping_status,
+            ...(target.universal_semantic && { universal_semantic: target.universal_semantic }),
+            operation: target.next_operation,
+            performed_by: target.performed_by,
+            location: structuredClone(declaration.location),
+            encoding: structuredClone(target.encoding),
+            required: declaration.required,
+            unavailable_behavior: declaration.unavailable_behavior
+          };
+          const chainReason = evaluateLayer(emittedDeclaration, vector.seller_capabilities) ||
+            evaluateLayer(emittedDeclaration, vector.product_capabilities);
+          if (chainReason) {
+            status = 'unsupported';
+            reason = chainReason;
+          } else {
+            output = output.replace(declaration.token, target.token);
+            if (vector.expected.emitted_declaration) {
+              assert.deepEqual(emittedDeclaration, vector.expected.emitted_declaration, vector.name);
+            }
+            if (vector.value !== undefined && vector.expected.final_output) {
+              const encoded = strictRfc3986(vector.value);
+              const finalOutput = output.replace(target.token, encoded);
+              assert.equal(finalOutput, vector.expected.final_output, vector.name);
+            }
+          }
+        } else if (vector.value !== undefined && declaration.operation === 'resolve_value') {
+          let encoded = vector.value;
+          if (declaration.encoding.kind === 'rfc3986') {
+            for (let pass = 0; pass < declaration.encoding.depth; pass++) encoded = strictRfc3986(encoded);
+          }
+          output = output.replace(declaration.token, encoded);
+        }
+      }
+    }
+
+    assert.equal(status, vector.expected.status, vector.name);
+    assert.equal(reason, vector.expected.reason, vector.name);
+    assert.equal(output, vector.expected.output, vector.name);
+  }
+
+  const declarationIdsAreUnique = declarations =>
+    new Set(declarations.map(declaration => declaration.declaration_id)).size === declarations.length;
+  const firstDeclaration = fixture.vectors[0].declaration;
+  const declarations = [
+    firstDeclaration,
+    { ...structuredClone(firstDeclaration), declaration_id: 'second-occurrence' }
+  ];
+  assert.equal(declarationIdsAreUnique(declarations), true);
+  assert.equal(declarationIdsAreUnique([...declarations, structuredClone(firstDeclaration)]), false,
+    'duplicate declaration IDs fail occurrence-level operational validation');
+
+  const translationVector = fixture.vectors.find(vector => vector.declaration.operation === 'translate_to_native');
+  assert.ok(translationVector);
+  assert.equal(translationVector.seller_capabilities.length, 2, 'translation requires source and target capability tuples');
+  assert.equal(translationVector.product_capabilities.length, 2, 'the selected product also closes the target chain');
+});
+
+test('validation and sync response schemas expose per-token macro results', () => {
+  const validateInputResultSchema = ajv.getSchema('/schemas/creative/validate-input-result.json').schema;
+  const syncResponse = ajv.getSchema('/schemas/creative/sync-creatives-response.json').schema;
+  assert.equal(validateInputResultSchema.properties.macro_resolution_results.items.$ref, '/schemas/core/macro-resolution-result.json');
+  const syncItem = syncResponse.oneOf[0].properties.creatives.items;
+  assert.equal(syncItem.properties.macro_resolution_results.items.$ref, '/schemas/core/macro-resolution-result.json');
+
+  const validateResult = ajv.getSchema('/schemas/core/macro-resolution-result.json');
+  const unknownResult = {
+    declaration_id: 'unknown-token',
+    asset_path: '/assets/impression_tracker',
+    token: '%%UNIDENTIFIED%%',
+    dialect: 'unknown',
+    dialect_semantic: 'unresolved',
+    mapping_status: 'unresolved',
+    operation: 'preserve',
+    requested_encoding: { kind: 'none', depth: 0 },
+    required: false,
+    unavailable_behavior: 'preserve',
+    status: 'preserved_for_downstream',
+    reason: 'preserved_unknown'
+  };
+  assert.equal(validateResult(unknownResult), true, JSON.stringify(validateResult.errors));
+  assert.equal(validateResult({ ...unknownResult, status: 'resolvable', reason: 'capability_match' }), false);
+  assert.equal(validateResult({ ...unknownResult, status: 'unsupported', reason: 'capability_match' }), false);
+  assert.equal(validateResult({
+    ...unknownResult,
+    dialect: 'adcp',
+    dialect_semantic: 'CACHEBUSTER',
+    mapping_status: 'verified_universal',
+    universal_semantic: 'CACHEBUSTER',
+    operation: 'resolve_value',
+    performed_by: 'seller',
+    requested_encoding: { kind: 'rfc3986', depth: 1 },
+    status: 'preserved_for_downstream',
+    reason: 'preserved_for_downstream'
+  }), false, 'an advertised resolver is resolvable or unsupported, never a preservation result');
+  const daastResult = {
+    declaration_id: 'daast-error',
+    asset_path: '/assets/error_tracker',
+    token: '[ERRORCODE]',
+    dialect: 'iab_daast',
+    dialect_namespace: 'https://iabtechlab.com/standards/daast',
+    dialect_revision: 'DAAST-1.1',
+    dialect_semantic: 'ERRORCODE',
+    mapping_status: 'dialect_defined',
+    operation: 'resolve_value',
+    performed_by: 'request_executor',
+    requested_encoding: { kind: 'rfc3986', depth: 1 },
+    required: true,
+    unavailable_behavior: 'reject',
+    status: 'resolvable',
+    reason: 'capability_match'
+  };
+  assert.equal(validateResult(daastResult), true, JSON.stringify(validateResult.errors));
+  assert.equal(validateResult({ ...daastResult, performed_by: 'seller' }), false);
+});

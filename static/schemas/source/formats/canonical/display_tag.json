@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/formats/canonical/display_tag.json",
   "title": "Canonical Format: Display Tag",
-  "description": "Third-party-served display tag (JS, iframe, or 1×1 redirect). The buyer's adserver hosts the creative; the seller calls the tag URL at impression time. Slot: `tag_url` (url asset with appropriate `url_type`). Tracking model: opaque to seller — third party serves and measures. Click tracking via redirect URL substitution using universal_macros. Distinct from `image` (static asset hosted by seller) and `html5` (zip bundle hosted by seller).",
+  "description": "Third-party-served display creative delivered as one of three explicit representations: a single ad-request URL, byte-preserved inline markup, or an atomic paired redirect (`ad_request_url` plus `clickthrough_url`). The backward-compatible default slot remains `tag_url` (`url_type: ad_request`). Format options accepting inline or paired delivery override `slots` with a `display_tag` asset and declare `supported_delivery_variants`. Tracking is opaque to the seller except for declared macro resolution. Distinct from `image` and seller-hosted `html5` zip bundles.",
   "allOf": [
     {
       "$ref": "/schemas/formats/canonical/_base.json"
@@ -190,7 +190,7 @@
           "required": false
         }
       ],
-      "description": "Default slots for display_tag canonical. Buyer ships a URL pointing at the third-party-served creative (JS, iframe, or 1×1 redirect) plus an optional backup image. Click and impression macros are substituted into the tag URL by the seller using `universal_macros`."
+      "description": "Backward-compatible URL-delivery slots. `tag_url` MUST use `url_type: ad_request`. A format option accepting `inline_markup` or `paired_redirect` overrides this list with a required slot whose `asset_type` is `display_tag`; the display-tag asset keeps paired redirect URLs atomic."
     },
     "width": {
       "type": "integer",
@@ -247,6 +247,7 @@
     },
     "supported_tag_types": {
       "type": "array",
+      "deprecated": true,
       "items": {
         "type": "string",
         "enum": [
@@ -255,7 +256,17 @@
           "1x1_redirect"
         ]
       },
-      "description": "Tag delivery mechanisms accepted."
+      "description": "Deprecated ambiguous mechanism list. Use `supported_delivery_variants`; markup subtype lives on the `display_tag` asset."
+    },
+    "supported_delivery_variants": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["tag_url", "inline_markup", "paired_redirect"]
+      },
+      "description": "Closed set of delivery representations this format option can traffic. `paired_redirect` means one atomic ad-request/click-through pair (Internal Redirect semantics), never independently matchable URL slots."
     },
     "ssl_required": {
       "type": "boolean",

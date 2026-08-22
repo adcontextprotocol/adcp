@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-source.json",
+  "title": "Creative Source",
+  "description": "Pre-binding creative intake object that preserves multiple equivalent delivery representations under one logical creative and revision. `variant_semantics: \"one_of\"` is explicit: exactly one compatible representation is selected for a seller-bound manifest; these variants are not repeatable slot cardinality and MUST NOT rotate.",
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "creative",
+      "description": "Stable logical creative identifier across all representations and later seller-bound manifests."
+    },
+    "revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "creative_source_revision",
+      "description": "Immutable source revision identifier. A material source change creates a new revision; resolution does not."
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "variant_semantics": {
+      "type": "string",
+      "const": "one_of",
+      "description": "Exactly one compatible delivery representation may be selected for each seller-bound output."
+    },
+    "delivery_variants": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "/schemas/core/creative-delivery-variant.json" },
+      "description": "Equivalent source representations. `variant_id` values MUST be unique within this array and unsupported entries MUST be retained unchanged."
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Default provenance for every retained representation and for the selected seller-bound output unless a variant supplies a narrower provenance object."
+    }
+  },
+  "required": ["creative_id", "revision_id", "name", "variant_semantics", "delivery_variants"],
+  "additionalProperties": true
+}

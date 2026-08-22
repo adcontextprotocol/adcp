@@ -62,8 +62,8 @@
           },
           "asset_type": {
             "type": "string",
-            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "published_post", "zip", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"],
-            "description": "Discriminator selecting the asset schema this slot accepts. SDK codegen uses this to type the slot value. `published_post` is an existing-post reference asset, not uploaded media bytes and not a catalog row. `card` is the multi-card carousel element type (see card-asset.json). `pixel_tracker` / `vast_tracker` / `daast_tracker` are the renderer-fired measurement-tracker primitives — see `/schemas/core/assets/pixel-tracker-asset.json` and the VAST / DAAST tracker schemas. `object` is a last-resort fallback for structured non-asset inputs that don't fit any primitive asset_type — prefer specific types whenever possible."
+            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "display_tag", "webhook", "brief", "catalog", "published_post", "zip", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"],
+            "description": "Discriminator selecting the asset schema this slot accepts. SDK codegen uses this to type the slot value. `display_tag` is the atomic third-party display representation (URL, inline markup, or paired redirect). `published_post` is an existing-post reference asset. `pixel_tracker` / `vast_tracker` / `daast_tracker` are renderer-fired tracker primitives. `object` is a last-resort fallback."
           },
           "required": {
             "type": "boolean",
@@ -189,7 +189,7 @@
           {
             "$comment": "Non-size asset types (url, catalog, published_post, html, css, javascript, webhook, daast, vast, card, object, pixel_tracker, vast_tracker, daast_tracker) reject both — there's no defined per-slot size semantics on those.",
             "if": {
-              "properties": { "asset_type": { "enum": ["url", "catalog", "published_post", "html", "css", "javascript", "webhook", "daast", "vast", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"] } },
+              "properties": { "asset_type": { "enum": ["url", "catalog", "published_post", "html", "css", "javascript", "webhook", "daast", "vast", "display_tag", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"] } },
               "required": ["asset_type"]
             },
             "then": {
@@ -208,6 +208,17 @@
         "$ref": "/schemas/core/downstream-connection-requirement.json"
       },
       "description": "Downstream platform connections or grants required to use this format declaration. These are in addition to the single AdCP caller credential. Use this when a platform product requires multiple downstream grants, such as an advertiser account connection plus a publisher identity or post authorization for published-post references."
+    },
+    "macro_resolution_capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "/schemas/core/macro-resolution-capability.json" },
+      "description": "Binding product-format processing capabilities for exact macro dialect identities, semantics, operations, actors, contexts, and encodings. Absence means undeclared, not supported on the opt-in declared-token path. Seller-wide capabilities are only a ceiling. This field does not claim that a buyer tracker asset is honored/fired; the proposed product tracking-capabilities contract owns that separate behavior.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "translation_chain_closure": "every translate_to_native entry must have an exact matching resolve_value entry for its translation_target in this same array"
+        }
+      }
     },
     "reference_mutability": {
       "type": "string",

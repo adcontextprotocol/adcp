@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/assets/display-tag-asset.json",
+  "title": "Display Tag Asset",
+  "description": "One atomic third-party display delivery representation. `delivery_type` distinguishes a single ad-request URL, byte-preserved inline markup, and a paired redirect whose ad-request and click-through URLs MUST travel together. This is not an HTML5 bundle: seller-hosted HTML5 zip files use `asset_type: \"zip\"` under `format_kind: \"html5\"`.",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "display_tag",
+      "description": "Discriminator identifying an atomic third-party display-tag representation."
+    },
+    "macro_declarations": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/macro-declaration.json" },
+      "minItems": 1,
+      "description": "Exact macro tokens present anywhere in this representation. Tokens remain byte-preserved until the resolver named by each declaration substitutes them."
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this asset, overriding manifest-level provenance."
+    }
+  },
+  "required": ["asset_type"],
+  "discriminator": { "propertyName": "delivery_type" },
+  "oneOf": [
+    {
+      "title": "Tag URL",
+      "type": "object",
+      "properties": {
+        "asset_type": { "type": "string", "const": "display_tag" },
+        "macro_declarations": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              { "$ref": "/schemas/core/macro-declaration.json" },
+              { "properties": { "location": { "properties": { "field": { "const": "url" } } } } }
+            ]
+          },
+          "minItems": 1
+        },
+        "provenance": { "$ref": "/schemas/core/provenance.json" },
+        "delivery_type": { "type": "string", "const": "tag_url" },
+        "url": {
+          "$ref": "/schemas/core/macro-bearing-url.json",
+          "description": "Ad-request URL invoked at impression time. It is equivalent to the backward-compatible `url` asset with `url_type: \"ad_request\"`."
+        }
+      },
+      "required": ["asset_type", "delivery_type", "url"],
+      "not": {
+        "anyOf": [
+          { "required": ["markup"] },
+          { "required": ["ad_request_url"] },
+          { "required": ["clickthrough_url"] }
+        ]
+      }
+    },
+    {
+      "title": "Inline markup",
+      "type": "object",
+      "properties": {
+        "asset_type": { "type": "string", "const": "display_tag" },
+        "macro_declarations": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              { "$ref": "/schemas/core/macro-declaration.json" },
+              { "properties": { "location": { "properties": { "field": { "const": "markup" } } } } }
+            ]
+          },
+          "minItems": 1
+        },
+        "provenance": { "$ref": "/schemas/core/provenance.json" },
+        "delivery_type": { "type": "string", "const": "inline_markup" },
+        "markup_type": {
+          "type": "string",
+          "enum": ["iframe_javascript", "javascript", "standard"],
+          "description": "How the destination traffics the byte-preserved markup."
+        },
+        "markup": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1048576,
+          "description": "Exact third-party tag markup. Receivers MUST preserve its bytes and MUST NOT reinterpret it as a seller-hosted HTML5 bundle."
+        }
+      },
+      "required": ["asset_type", "delivery_type", "markup_type", "markup"],
+      "not": {
+        "anyOf": [
+          { "required": ["url"] },
+          { "required": ["ad_request_url"] },
+          { "required": ["clickthrough_url"] }
+        ]
+      }
+    },
+    {
+      "title": "Paired redirect",
+      "type": "object",
+      "properties": {
+        "asset_type": { "type": "string", "const": "display_tag" },
+        "macro_declarations": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              { "$ref": "/schemas/core/macro-declaration.json" },
+              { "properties": { "location": { "properties": { "field": { "enum": ["ad_request_url", "clickthrough_url"] } } } } }
+            ]
+          },
+          "minItems": 1
+        },
+        "provenance": { "$ref": "/schemas/core/provenance.json" },
+        "delivery_type": { "type": "string", "const": "paired_redirect" },
+        "ad_request_url": {
+          "$ref": "/schemas/core/macro-bearing-url.json",
+          "description": "Image or ad-request URL entered into the destination ad server. This field deliberately accepts byte-preserved vendor tokens that are not RFC 6570 URI templates."
+        },
+        "clickthrough_url": {
+          "$ref": "/schemas/core/macro-bearing-url.json",
+          "description": "Click-through URL paired with `ad_request_url`. This field deliberately accepts byte-preserved vendor tokens that are not RFC 6570 URI templates. The pair MUST NOT be split, mixed, or revised independently."
+        }
+      },
+      "required": ["asset_type", "delivery_type", "ad_request_url", "clickthrough_url"],
+      "not": {
+        "anyOf": [
+          { "required": ["url"] },
+          { "required": ["markup"] }
+        ]
+      }
+    }
+  ],
+  "additionalProperties": true
+}

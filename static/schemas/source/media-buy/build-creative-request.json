@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-request.json",
   "title": "Build Creative Request",
-  "description": "Request to transform, generate, refine, or retrieve a creative manifest. Supports four modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) refinement of a prior produced variant via refine_from_build_variant_id (re-build with a natural-language message + config delta), (4) retrieval from a creative library by creative_id. Produces target manifest(s) through canonical capabilities advertised in `get_adcp_capabilities.creative.supported_formats[]`. In 3.2, provide `target_capability_id` for one output or `target_capability_ids` for multiple outputs. Legacy `target_format_id` / `target_format_ids` remain accepted during the 3.x compatibility window but are deprecated.",
+  "description": "Request to transform, generate, resolve, refine, or retrieve a creative manifest. Supports five modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) deterministic selection from a pre-binding CreativeSource, (4) refinement of a prior produced variant via refine_from_build_variant_id, and (5) retrieval from a creative library by creative_id. Produces target manifest(s) through canonical capabilities advertised in `get_adcp_capabilities.creative.supported_formats[]`. CreativeSource input additionally requires `creative.delivery_variant_resolution.supported: true`. In 3.2, provide `target_capability_id` for one output or `target_capability_ids` for multiple outputs. Legacy named-format selectors remain accepted during the 3.x compatibility window but are deprecated.",
   "x-tool-summary": "Generate, transform, refine, retrieve, or adapt creative manifests for advertised creative capabilities.",
   "type": "object",
   "allOf": [
@@ -71,6 +71,16 @@
     {
       "$comment": "Refinement targets one prior creative, not a catalog fan-out.",
       "not": { "required": ["refine_from_build_variant_id", "max_creatives"] }
+    },
+    {
+      "$comment": "A pre-binding CreativeSource is a complete source input and cannot be mixed with a manifest, library creative, or refinement handle.",
+      "not": {
+        "anyOf": [
+          { "required": ["creative_source", "creative_manifest"] },
+          { "required": ["creative_source", "creative_id"] },
+          { "required": ["creative_source", "refine_from_build_variant_id"] }
+        ]
+      }
     }
   ],
   "x-mutates-state": true,
@@ -95,6 +105,10 @@
     "creative_manifest": {
       "$ref": "/schemas/core/creative-manifest.json",
       "description": "Creative manifest to transform or generate from. On the canonical 3.2 path it carries `format_kind`, optional `format_option_ref`, and the required input assets. For transformation (for example resizing or reformatting), this is the complete creative to adapt. When creative_id is provided, the agent resolves the creative from its library and this field is ignored."
+    },
+    "creative_source": {
+      "$ref": "/schemas/core/creative-source.json",
+      "description": "Pre-binding logical creative with explicitly `one_of` equivalent delivery representations. The selected target capability supplies the binding format option. The resolver retains every input variant, selects exactly one compatible representation, and returns a manifest carrying `delivery_variant_selection`. If macro_values is present, variant selection happens first and binding affects only the derived selected output; the retained source bytes and declarations never change. When none is compatible, the request fails with `CREATIVE_DELIVERY_VARIANT_UNRESOLVED` and one `delivery_variant_rejections` entry per candidate."
     },
     "creative_id": {
       "type": "string",
@@ -313,7 +327,7 @@
     },
     "macro_values": {
       "type": "object",
-      "description": "Macro values to pre-substitute into the output manifest's assets. Keys are universal macro names (e.g., CLICK_URL, CACHEBUSTER); values are the substitution strings. The creative agent translates universal macros to its platform's native syntax. Substitution is literal — all occurrences of each macro in output assets are replaced with the provided value. The caller is responsible for URL-encoding values if the output context requires it. Macros not provided here remain as {MACRO} placeholders for the sales agent to resolve at serve time. Creative agents MUST ignore keys they do not recognize — unknown macro names are not an error.",
+      "description": "Raw concrete values offered for build-time binding, keyed by AdCP universal semantic (for example CLICK_URL or CACHEBUSTER). With declarations, a value binds only a verified-universal `resolve_value` occurrence performed_by `creative_agent`, using that declaration's exact context and encoding; callers MUST NOT pre-encode it. The selected `creative.supported_formats[]` route's macro_resolution_capabilities is the binding build/preview capability set; seller-wide and product sets apply only on the sales execution path. Values never short-circuit `translate_to_native`: translation emits its target declaration and the complete target capability chain remains required. For creative_source, selection happens before binding and the retained source remains byte-identical. Without declarations, the 3.x legacy path remains: creative agents may translate recognized AdCP tokens using the existing `translateUniversalMacros` contract, preserve omitted placeholders for the sales agent, and ignore unknown keys. Existing unmapped/frozen-consent diagnostics remain required.",
       "additionalProperties": {
         "type": "string"
       }

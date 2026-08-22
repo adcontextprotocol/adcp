@@ -7,8 +7,17 @@
   "properties": {
     "vast_version": {
       "$ref": "/schemas/enums/vast-version.json",
-      "description": "Required VAST version"
+      "deprecated": true,
+      "description": "Deprecated one-element alias for `vast_versions`. Producers use either the singular legacy alias or the plural 3.2 field, never both."
+    },
+    "vast_versions": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/vast-version.json" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Accepted VAST version set for this asset requirement."
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": { "required": ["vast_version", "vast_versions"] }
 }

@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/macro-bearing-url.json",
+  "title": "Macro-bearing HTTP URL",
+  "description": "Absolute HTTP(S) URL that may contain byte-preserved macro delimiters not legal in a strict URI, including `%%...%%`, `[...]`, and `${...}`. Plain URLs retain normal URI validation. Macro-bearing URLs require a valid lexical authority and valid percent triplets; an AdCP verifier replaces each declared token with an unreserved sentinel and validates the resulting absolute HTTP(S) URI. Token semantics are established only by `macro_declarations`.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "macro_aware_uri": "mask recognized token lexical forms with an RFC3986 unreserved sentinel, whether declared or on the undeclared 3.x compatibility path, then require a valid absolute HTTP or HTTPS URI; masking assigns no semantics"
+    },
+    "spec": "docs/creative/universal-macros.mdx#template-syntax"
+  },
+  "type": "string",
+  "anyOf": [
+    {
+      "format": "uri",
+      "pattern": "^https?://(?:[A-Za-z0-9._~!$&'()*+,;=:%-]+@)?(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:.]+\\])(?::[0-9]{1,5})?(?:[/?#]|$)"
+    },
+    {
+      "pattern": "^https?://(?:[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:.]+\\])(?::[0-9]{1,5})?(?:[/?#](?:[^%\\s\\u0000-\\u001F\\u007F\"<>`\\\\]|%[0-9A-Fa-f]{2}|%%[A-Za-z0-9_.:-]+%%)*)?$"
+    }
+  ]
+}
