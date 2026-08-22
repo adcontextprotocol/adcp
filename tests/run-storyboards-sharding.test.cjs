@@ -110,7 +110,9 @@ test('current /sales runs isolated shard jobs behind one aggregate required chec
 
   assert.match(workflow, /exclude:\n\s+- surface: current\n\s+tenant: sales/);
   assert.match(workflow, /sales_storyboard_shards:/);
-  assert.match(workflow, /shard: \[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11\]/);
+  assert.match(workflow, /max-parallel: 4/);
+  assert.match(workflow, /shard: \[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23\]/);
+  assert.match(workflow, /SALES_SHARD_COUNT: 24/);
   assert.match(workflow, /--shard-index "\$\{\{ matrix\.shard \}\}"/);
   assert.match(workflow, /sales_storyboards:\n\s+name: Storyboards \(current \/sales\)/);
   assert.match(workflow, /needs: sales_storyboard_shards/);
