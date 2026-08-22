@@ -4808,6 +4808,418 @@ describe('validate_input handler', () => {
   });
 });
 
+// ── validate_input handler: CTV experience profiles (spec #6428) ───
+
+describe('validate_input handler: CTV experience profiles', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  let seedCounter = 0;
+
+  async function seedCtvProduct(
+    server: ReturnType<typeof createTrainingAgentServer>,
+    formatKind: string,
+    params: Record<string, unknown>,
+  ): Promise<{ account: Record<string, unknown>; productId: string; formatOptionId: string }> {
+    seedCounter += 1;
+    const domain = `ctv-experience-${seedCounter}.example`;
+    const productId = `ctv_experience_product_${seedCounter}`;
+    const formatOptionId = `ctv_experience_option_${seedCounter}`;
+    const account = { brand: { domain }, operator: 'pinnacle-agency.example' };
+    const seed = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain },
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          channels: ['ctv'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: formatKind,
+            format_option_id: formatOptionId,
+            params,
+          }],
+        },
+      },
+    });
+    expect(seed.result.success).toBe(true);
+    return { account, productId, formatOptionId };
+  }
+
+  const MANIFEST_ASSETS: Record<string, Record<string, unknown>> = {
+    video_vast: {
+      vast_tag: { asset_type: 'vast', delivery_type: 'url', url: 'https://cdn.acme.example/tag.xml' },
+    },
+    native_in_feed: {
+      title: { asset_type: 'text', content: 'Menu Hero' },
+      advertiser_name: { asset_type: 'text', content: 'Acme' },
+      landing_page_url: { asset_type: 'url', url: 'https://acme.example' },
+    },
+    image: {
+      image_main: { asset_type: 'image', url: 'https://cdn.acme.example/pause.png', width: 1920, height: 1080 },
+    },
+    video_hosted: {
+      video_main: { asset_type: 'video', url: 'https://cdn.acme.example/screensaver.mp4', width: 1920, height: 1080 },
+    },
+    sponsored_placement: {
+      source_catalog: { asset_type: 'catalog', type: 'product' },
+    },
+    html5: {
+      html5_bundle: { asset_type: 'zip', url: 'https://cdn.acme.example/bundle.zip' },
+    },
+  };
+
+  async function validateCtvProduct(
+    server: ReturnType<typeof createTrainingAgentServer>,
+    formatKind: string,
+    seeded: { account: Record<string, unknown>; productId: string; formatOptionId: string },
+    assetOverrides?: Record<string, unknown>,
+  ) {
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account: seeded.account,
+      manifest: {
+        format_kind: formatKind,
+        format_option_ref: { scope: 'product', format_option_id: seeded.formatOptionId },
+        assets: { ...MANIFEST_ASSETS[formatKind], ...assetOverrides },
+      },
+      targets: [{ kind: 'product', id: seeded.productId }],
+    });
+    return result;
+  }
+
+  it('rejects menu ctv_ad_experience on video_vast (matrix only permits pause|screensaver|overlay|squeezeback|in_scene)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      ctv_ad_experience: 'menu',
+      creative_type: 'nonlinear',
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'ctv_experience_matrix', field: 'params.ctv_ad_experience', predicted: 'menu' }),
+    ]));
+  });
+
+  it('rejects pause ctv_ad_experience on native_in_feed (matrix only permits menu and overlay)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'native_in_feed', {
+      ctv_ad_experience: 'pause',
+    });
+    const result = await validateCtvProduct(server, 'native_in_feed', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'ctv_experience_matrix', field: 'params.ctv_ad_experience', predicted: 'pause' }),
+    ]));
+  });
+
+  it('accepts overlay ctv_ad_experience on native_in_feed (asset-bundle overlay contract)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'native_in_feed', {
+      ctv_ad_experience: 'overlay',
+      activation_methods: ['qr_code'],
+    });
+    const result = await validateCtvProduct(server, 'native_in_feed', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_pass');
+  });
+
+  it('accepts pause ctv_ad_experience on image (market-critical pause-frame contract)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'image', {
+      ctv_ad_experience: 'pause',
+    });
+    const result = await validateCtvProduct(server, 'image', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('accepts overlay on video_vast with creative_type nonlinear and a 15s duration', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      ctv_ad_experience: 'overlay',
+      creative_type: 'nonlinear',
+      duration_ms_exact: 15000,
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('rejects overlay on video_vast when duration is below the 10s floor', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      ctv_ad_experience: 'overlay',
+      creative_type: 'nonlinear',
+      duration_ms_exact: 5000,
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'ctv_duration_floors', field: 'params.duration_ms_exact', predicted: 5000 }),
+    ]));
+  });
+
+  it('rejects overlay on video_vast when creative_type is linear', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      ctv_ad_experience: 'overlay',
+      creative_type: 'linear',
+      duration_ms_exact: 15000,
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'ctv_experience_matrix', field: 'params.creative_type', predicted: 'linear' }),
+    ]));
+  });
+
+  it.each(['pause', 'screensaver', 'overlay', 'squeezeback', 'in_scene'])(
+    'rejects SIMID on the nonlinear %s video_vast profile',
+    async (experience) => {
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const seeded = await seedCtvProduct(server, 'video_vast', {
+        ctv_ad_experience: experience,
+        creative_type: 'nonlinear',
+        duration_ms_exact: 15000,
+        vpaid_enabled: false,
+        simid_supported: true,
+      });
+      const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+      const results = result.results as Array<Record<string, unknown>>;
+      expect(results[0].result_kind).toBe('validated_fail');
+      expect(results[0].violations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ rule: 'ctv_nonlinear_no_simid', field: 'params.simid_supported', predicted: true }),
+      ]));
+    },
+  );
+
+  it('accepts SIMID on an ordinary linear video_vast option with no CTV experience', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      creative_type: 'linear',
+      simid_supported: true,
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('rejects linear_required: true combined with creative_type nonlinear as a contradiction', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      linear_required: true,
+      creative_type: 'nonlinear',
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'creative_type_precedence', field: 'params.creative_type', predicted: 'nonlinear' }),
+    ]));
+  });
+
+  it('accepts linear_required: true with no creative_type declared (treated as linear)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      linear_required: true,
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('rejects focus_behavior autoplay_muted on native_in_feed menu when the effective slots omit video', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'native_in_feed', {
+      ctv_ad_experience: 'menu',
+      focus_behavior: 'autoplay_muted',
+      slots: [
+        { asset_group_id: 'title', asset_type: 'text', required: true },
+        { asset_group_id: 'advertiser_name', asset_type: 'text', required: true },
+        { asset_group_id: 'landing_page_url', asset_type: 'url', required: true },
+      ],
+    });
+    const result = await validateCtvProduct(server, 'native_in_feed', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'focus_video_pairing', field: 'params.focus_behavior', predicted: 'autoplay_muted' }),
+    ]));
+  });
+
+  it('accepts focus_behavior autoplay_muted on native_in_feed menu when the default slots include video', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'native_in_feed', {
+      ctv_ad_experience: 'menu',
+      focus_behavior: 'autoplay_muted',
+    });
+    const result = await validateCtvProduct(server, 'native_in_feed', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('rejects a menu manifest video asset that is not asset_type vast (Native 1.2 vasttag)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'native_in_feed', {
+      ctv_ad_experience: 'menu',
+      focus_behavior: 'autoplay_muted',
+    });
+    const result = await validateCtvProduct(server, 'native_in_feed', seeded, {
+      video: { asset_type: 'video', url: 'https://cdn.acme.example/menu-hero.mp4', width: 1920, height: 1080 },
+    });
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'asset_type', field: 'assets.video.asset_type', expected: 'vast', predicted: 'video' }),
+    ]));
+  });
+
+  it('rejects menu_placement declared without ctv_ad_experience (schema requires it; semantic layer restates it)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'native_in_feed', {
+      menu_placement: 'tile',
+    });
+    const result = await validateCtvProduct(server, 'native_in_feed', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'menu_profile_fields', field: 'params.menu_placement' }),
+    ]));
+  });
+
+  it('accepts screensaver ctv_ad_experience on video_hosted', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_hosted', {
+      ctv_ad_experience: 'screensaver',
+    });
+    const result = await validateCtvProduct(server, 'video_hosted', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('rejects overlay ctv_ad_experience on video_hosted (matrix only permits screensaver)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_hosted', {
+      ctv_ad_experience: 'overlay',
+    });
+    const result = await validateCtvProduct(server, 'video_hosted', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'ctv_experience_matrix', field: 'params.ctv_ad_experience', predicted: 'overlay' }),
+    ]));
+  });
+
+  it('accepts squeezeback ctv_ad_experience on sponsored_placement', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'sponsored_placement', {
+      ctv_ad_experience: 'squeezeback',
+    });
+    const result = await validateCtvProduct(server, 'sponsored_placement', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('rejects full_motion motion_level on image (static canonical)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'image', {
+      motion_level: 'full_motion',
+    });
+    const result = await validateCtvProduct(server, 'image', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'motion_level_static_canonical', field: 'params.motion_level', predicted: 'full_motion' }),
+    ]));
+  });
+
+  it('rejects ctv_ad_experience on a canonical with no matrix entry (e.g. html5)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'html5', {
+      ctv_ad_experience: 'pause',
+    });
+    const result = await validateCtvProduct(server, 'html5', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'ctv_experience_matrix', field: 'params.ctv_ad_experience', predicted: 'pause' }),
+    ]));
+  });
+
+  it('returns a non-blocking warning when an activation copy slot is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      activation_methods: ['push_notification'],
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_pass');
+    expect(results[0].violations).toBeUndefined();
+    expect(results[0].warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        rule: 'ctv_activation_copy_slots',
+        field: 'params.activation_methods',
+        predicted: ['activation_message'],
+      }),
+    ]));
+  });
+
+  it('accepts push_notification activation_methods when the activation_message copy slot is declared', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      activation_methods: ['push_notification'],
+      slots: [
+        { asset_group_id: 'vast_tag', asset_type: 'vast', required: true },
+        { asset_group_id: 'activation_message', asset_type: 'text' },
+      ],
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+});
+
 // ── create_media_buy handler ───────────────────────────────────────
 
 describe('create_media_buy handler', () => {

@@ -230,6 +230,23 @@ const NEGATIVE_CASES = {
       },
     },
   ],
+  '/schemas/formats/canonical/video_vast.json': [
+    {
+      label: 'ordinary linear VAST accepts SIMID',
+      expected: true,
+      doc: { creative_type: 'linear', simid_supported: true },
+    },
+    ...['pause', 'screensaver', 'overlay', 'squeezeback', 'in_scene'].map(ctv_ad_experience => ({
+      label: `${ctv_ad_experience} nonlinear CTV profile rejects SIMID`,
+      expected: false,
+      doc: { ctv_ad_experience, creative_type: 'nonlinear', simid_supported: true },
+    })),
+    {
+      label: 'nonlinear CTV profile accepts explicit SIMID false',
+      expected: true,
+      doc: { ctv_ad_experience: 'pause', creative_type: 'nonlinear', simid_supported: false },
+    },
+  ],
   '/schemas/formats/canonical/image.json': [
     {
       label: 'size-mode mutex: width+height AND sizes[] rejected',
