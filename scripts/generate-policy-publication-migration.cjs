@@ -157,9 +157,13 @@ WHERE policies.version = EXCLUDED.version
 `;
 
 const output = path.join(MIGRATION_DIR, `${migrationName}.sql`);
-if (fs.existsSync(output)) {
-  fail(`Refusing to overwrite existing migration: ${path.relative(REPO_ROOT, output)}`);
+try {
+  fs.writeFileSync(output, sql, { flag: 'wx' });
+} catch (error) {
+  if (error.code === 'EEXIST') {
+    fail(`Refusing to overwrite existing migration: ${path.relative(REPO_ROOT, output)}`);
+  }
+  throw error;
 }
 
-fs.writeFileSync(output, sql);
 console.log(`Wrote ${path.relative(REPO_ROOT, output)} with ${entries.length} policies.`);
