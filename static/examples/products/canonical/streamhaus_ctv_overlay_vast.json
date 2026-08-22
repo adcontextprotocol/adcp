@@ -1,0 +1,51 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "streamhaus_ctv_overlay_vast",
+  "name": "StreamHaus CTV Overlay — VAST NonLinear",
+  "description": "Semi-transparent overlay layered over playing content on StreamHaus's CTV app, delivered as a VAST NonLinearAds creative (10-30 second minimum-duration window). SIMID is explicitly unsupported because VAST serializes InteractiveCreativeFile only under Linear MediaFiles; this NonLinear creative uses its ordinary resource and any seller-supported NonLinear interactivity instead. Push-notification activation ships buyer-supplied copy through the added activation_message slot (max 115 characters) and is an engagement event layered on the one rendered impression, never an additional impression.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "tv.streamhaus.example",
+      "selection_type": "all"
+    }
+  ],
+  "channels": ["ctv"],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "streamhaus_overlay_vast_cpm",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "floor_price": 22
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 120,
+    "timezone": "America/Los_Angeles",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "engagements", "spend", "quartile_data"],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "video_vast",
+      "format_option_id": "streamhaus_overlay_nonlinear",
+      "display_name": "StreamHaus Overlay — VAST NonLinear, 10-30s",
+      "params": {
+        "ctv_ad_experience": "overlay",
+        "creative_type": "nonlinear",
+        "duration_ms_range": [10000, 30000],
+        "simid_supported": false,
+        "activation_methods": ["push_notification"],
+        "vast_versions": ["4.2"],
+        "ssl_required": true,
+        "slots": [
+          { "asset_group_id": "vast_tag", "asset_type": "vast", "required": true },
+          { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false },
+          { "asset_group_id": "activation_message", "asset_type": "text", "required": true, "max_chars": 115 }
+        ]
+      }
+    }
+  ]
+}

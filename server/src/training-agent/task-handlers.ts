@@ -79,6 +79,7 @@ import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getCanonicalBase } from './canonical-base.js';
 import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
 import { getPromotedFormatShapes } from '../services/format-shape-promotion-registry.js';
+import { validateCtvSemantics } from './ctv-experience-matrix.js';
 import {
   evaluateTrainingProposal,
   proposalCapabilitiesForProfile,
@@ -350,6 +351,7 @@ const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
     { asset_group_id: 'display_url', asset_type: 'text' },
     { asset_group_id: 'rating', asset_type: 'text' },
     { asset_group_id: 'price', asset_type: 'text' },
+    { asset_group_id: 'video', asset_type: 'vast' },
     { asset_group_id: 'impression_tracker', asset_type: 'pixel_tracker' },
     { asset_group_id: 'viewability_tracker', asset_type: 'pixel_tracker' },
     { asset_group_id: 'click_tracker', asset_type: 'pixel_tracker' },
@@ -393,6 +395,13 @@ const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
 const CANONICAL_ALLOWED_SLOT_ASSET_TYPES: Record<string, string[]> = {
   seller_rendered_stateful_display: ['image', 'video', 'text', 'url', 'zip', 'pixel_tracker'],
 };
+// Canonical-specific additive slot types that are valid for declared
+// refinements without belonging in the canonical's default slot set.
+const CANONICAL_ADDITIONAL_SLOT_ASSET_TYPES: Record<string, string[]> = {
+  // Copy-bearing CTV activations add character-limited text slots such as
+  // activation_message; they are not part of every VAST manifest by default.
+  video_vast: ['text'],
+};
 // Cross-cutting asset types every canonical accepts regardless of its own
 // default slots: impression/click/viewability trackers, plus `brief` for the
 // asset_source: agent_synthesized / synthesis_nondeterministic pattern that
@@ -413,7 +422,8 @@ function allowedAssetTypesForCanonical(kind: string): Set<string> {
   const explicit = CANONICAL_ALLOWED_SLOT_ASSET_TYPES[kind];
   if (explicit) return new Set(explicit);
   const defaultTypes = (CANONICAL_FORMAT_SLOTS[kind] ?? []).map(slot => slot.asset_type);
-  return new Set([...defaultTypes, ...CANONICAL_UNIVERSALLY_ALLOWED_ASSET_TYPES]);
+  const additionalTypes = CANONICAL_ADDITIONAL_SLOT_ASSET_TYPES[kind] ?? [];
+  return new Set([...defaultTypes, ...additionalTypes, ...CANONICAL_UNIVERSALLY_ALLOWED_ASSET_TYPES]);
 }
 
 function slotAssetTypeAllowlistViolations(
@@ -10272,6 +10282,9 @@ async function validateProductTarget(
     semanticViolations = semanticResult.violations;
     semanticWarnings = semanticResult.warnings;
   }
+  const ctvSemanticResult = validateCtvSemantics(formatKind, params, slots);
+  semanticViolations.push(...ctvSemanticResult.violations);
+  semanticWarnings.push(...ctvSemanticResult.warnings);
   const violations = [
     ...declarationSchemaViolations,
     ...validateManifestSlots(manifest, slots),
