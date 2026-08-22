@@ -433,8 +433,6 @@ jobs:
       SALES_SHARD_COUNT: 24
     steps:
       - uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
