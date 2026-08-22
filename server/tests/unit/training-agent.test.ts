@@ -4329,6 +4329,72 @@ describe('validate_input handler', () => {
     expect(distinct.result.results[0].result_kind).toBe('validated_pass');
   });
 
+  it('pins state-graph resolution, slot bindings, and identifier uniqueness', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-graph-guards.example' }, operator: 'pinnacle-agency.example' };
+    const manifest = {
+      format_kind: 'seller_rendered_stateful_display',
+      assets: { landing_page_url: { asset_type: 'url', url: 'https://acme.example' } },
+    };
+    const baseParams = {
+      initial_state_id: 'a',
+      states: [
+        { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }] },
+        { state_id: 'b', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 90 }] },
+        { state_id: 'c', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 60 }] },
+      ],
+      transitions: [
+        { transition_id: 'a_to_b', from_state_id: 'a', to_state_id: 'b', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
+        { transition_id: 'b_to_c', from_state_id: 'b', to_state_id: 'c', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
+      ],
+      user_controls: { dismissible: false, user_collapsible: false },
+    };
+    const cases: Array<{ productId: string; rule: string; params: Record<string, unknown> }> = [];
+
+    const invalidInitial = structuredClone(baseParams);
+    invalidInitial.initial_state_id = 'missing';
+    cases.push({ productId: 'srsd_invalid_initial', rule: 'initial_state_resolution', params: invalidInitial });
+
+    const invalidTransition = structuredClone(baseParams);
+    invalidTransition.transitions[1].to_state_id = 'missing';
+    cases.push({ productId: 'srsd_invalid_transition_state', rule: 'transition_state_resolution', params: invalidTransition });
+
+    const unreachableState = structuredClone(baseParams);
+    unreachableState.transitions = [unreachableState.transitions[0]];
+    cases.push({ productId: 'srsd_unreachable_state', rule: 'state_reachability', params: unreachableState });
+
+    const invalidBinding = structuredClone(baseParams);
+    invalidBinding.states[0].slot_bindings = ['undeclared_slot'];
+    cases.push({ productId: 'srsd_invalid_slot_binding', rule: 'slot_binding_resolution', params: invalidBinding });
+
+    const duplicateState = structuredClone(baseParams);
+    duplicateState.states.push(structuredClone(duplicateState.states[2]));
+    cases.push({ productId: 'srsd_duplicate_state', rule: 'unique_state_id', params: duplicateState });
+
+    const duplicateBreakpoint = structuredClone(baseParams);
+    duplicateBreakpoint.states[0].breakpoints.push(structuredClone(duplicateBreakpoint.states[0].breakpoints[0]));
+    cases.push({ productId: 'srsd_duplicate_breakpoint', rule: 'unique_breakpoint_id', params: duplicateBreakpoint });
+
+    const duplicateTransition = structuredClone(baseParams);
+    duplicateTransition.transitions[1].transition_id = duplicateTransition.transitions[0].transition_id;
+    cases.push({ productId: 'srsd_duplicate_transition', rule: 'unique_transition_id', params: duplicateTransition });
+
+    for (const testCase of cases) {
+      await seedSrsdProduct(server, account, testCase.productId, testCase.params);
+      const { result } = await simulateCallTool(server, 'validate_input', {
+        account,
+        manifest,
+        targets: [{ kind: 'product', id: testCase.productId }],
+      });
+      expect(result.results[0]).toMatchObject({
+        result_kind: 'validated_fail',
+        violations: expect.arrayContaining([
+          expect.objectContaining({ rule: testCase.rule }),
+        ]),
+      });
+    }
+  });
+
   it('rejects a javascript slot override on seller_rendered_stateful_display, direct and via coordinated shared_slots', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = { brand: { domain: 'srsd-javascript-slot.example' }, operator: 'pinnacle-agency.example' };
@@ -4553,189 +4619,70 @@ describe('validate_input handler', () => {
     });
   });
 
-  it('rejects initial_state_id that does not resolve to a declared state', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const account = { brand: { domain: 'srsd-initial-state-resolution.example' }, operator: 'pinnacle-agency.example' };
-    await seedSrsdProduct(server, account, 'srsd_bad_initial_state', {
-      initial_state_id: 'nonexistent',
-      states: [{
-        state_id: 'only',
-        anchoring: 'inline',
-        close_affordance: false,
-        breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }],
-      }],
-      user_controls: { dismissible: false, user_collapsible: false },
-    });
-
-    const { result } = await simulateCallTool(server, 'validate_input', {
-      account,
-      manifest: { format_kind: 'seller_rendered_stateful_display', assets: {} },
-      targets: [{ kind: 'product', id: 'srsd_bad_initial_state' }],
-    });
-
-    expect(result.results[0]).toMatchObject({
-      result_kind: 'validated_fail',
-      violations: expect.arrayContaining([
-        expect.objectContaining({ rule: 'initial_state_resolution' }),
-      ]),
-    });
-  });
-
-  it('rejects transition endpoints that do not resolve to declared states', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const account = { brand: { domain: 'srsd-transition-state-resolution.example' }, operator: 'pinnacle-agency.example' };
-    await seedSrsdProduct(server, account, 'srsd_bad_transition_endpoint', {
-      initial_state_id: 'a',
-      states: [
-        { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }] },
-      ],
-      transitions: [
-        { transition_id: 't1', from_state_id: 'a', to_state_id: 'ghost', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
-      ],
-      user_controls: { dismissible: false, user_collapsible: false },
-    });
-
-    const { result } = await simulateCallTool(server, 'validate_input', {
-      account,
-      manifest: { format_kind: 'seller_rendered_stateful_display', assets: { landing_page_url: { asset_type: 'url', url: 'https://acme.example' } } },
-      targets: [{ kind: 'product', id: 'srsd_bad_transition_endpoint' }],
-    });
-
-    expect(result.results[0]).toMatchObject({
-      result_kind: 'validated_fail',
-      violations: expect.arrayContaining([
-        expect.objectContaining({ rule: 'transition_state_resolution' }),
-      ]),
-    });
-  });
-
-  it('rejects a declaration where a non-initial state is unreachable from initial_state_id', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const account = { brand: { domain: 'srsd-state-reachability.example' }, operator: 'pinnacle-agency.example' };
-    await seedSrsdProduct(server, account, 'srsd_unreachable_state', {
-      initial_state_id: 'a',
-      states: [
-        { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }] },
-        { state_id: 'b', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 90 }] },
-      ],
-      transitions: [
-        { transition_id: 't1', from_state_id: 'b', to_state_id: 'a', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
-      ],
-      user_controls: { dismissible: false, user_collapsible: false },
-    });
-
-    const { result } = await simulateCallTool(server, 'validate_input', {
-      account,
-      manifest: { format_kind: 'seller_rendered_stateful_display', assets: { landing_page_url: { asset_type: 'url', url: 'https://acme.example' } } },
-      targets: [{ kind: 'product', id: 'srsd_unreachable_state' }],
-    });
-
-    expect(result.results[0]).toMatchObject({
-      result_kind: 'validated_fail',
-      violations: expect.arrayContaining([
-        expect.objectContaining({ rule: 'state_reachability' }),
-      ]),
-    });
-  });
-
-  it('rejects slot_bindings that reference an undeclared asset_group_id', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const account = { brand: { domain: 'srsd-slot-binding-resolution.example' }, operator: 'pinnacle-agency.example' };
-    await seedSrsdProduct(server, account, 'srsd_bad_slot_binding', {
-      initial_state_id: 'only',
-      states: [{
-        state_id: 'only',
-        anchoring: 'inline',
-        close_affordance: false,
-        breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }],
-        slot_bindings: ['headline', 'nonexistent_slot'],
-      }],
-      user_controls: { dismissible: false, user_collapsible: false },
-    });
-
-    const { result } = await simulateCallTool(server, 'validate_input', {
-      account,
-      manifest: { format_kind: 'seller_rendered_stateful_display', assets: {} },
-      targets: [{ kind: 'product', id: 'srsd_bad_slot_binding' }],
-    });
-
-    expect(result.results[0]).toMatchObject({
-      result_kind: 'validated_fail',
-      violations: expect.arrayContaining([
-        expect.objectContaining({ rule: 'slot_binding_resolution' }),
-      ]),
-    });
-  });
-
-  it('rejects duplicate state_id, transition_id, and breakpoint_id values', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const account = { brand: { domain: 'srsd-uniqueness.example' }, operator: 'pinnacle-agency.example' };
-
-    await seedSrsdProduct(server, account, 'srsd_duplicate_state_id', {
-      initial_state_id: 'a',
-      states: [
-        { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }] },
-        { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'tablet', width: 728, height: 90 }] },
-      ],
-      user_controls: { dismissible: false, user_collapsible: false },
-    });
-    const dupState = await simulateCallTool(server, 'validate_input', {
-      account,
-      manifest: { format_kind: 'seller_rendered_stateful_display', assets: {} },
-      targets: [{ kind: 'product', id: 'srsd_duplicate_state_id' }],
-    });
-    expect(dupState.result.results[0]).toMatchObject({
-      result_kind: 'validated_fail',
-      violations: expect.arrayContaining([expect.objectContaining({ rule: 'state_id_uniqueness' })]),
-    });
-
-    await seedSrsdProduct(server, account, 'srsd_duplicate_transition_id', {
-      initial_state_id: 'a',
-      states: [
-        { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }] },
-        { state_id: 'b', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 90 }] },
-      ],
-      transitions: [
-        { transition_id: 'same', from_state_id: 'a', to_state_id: 'b', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
-        { transition_id: 'same', from_state_id: 'b', to_state_id: 'a', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
-      ],
-      user_controls: { dismissible: false, user_collapsible: false },
-    });
-    const dupTransition = await simulateCallTool(server, 'validate_input', {
-      account,
-      manifest: { format_kind: 'seller_rendered_stateful_display', assets: { landing_page_url: { asset_type: 'url', url: 'https://acme.example' } } },
-      targets: [{ kind: 'product', id: 'srsd_duplicate_transition_id' }],
-    });
-    expect(dupTransition.result.results[0]).toMatchObject({
-      result_kind: 'validated_fail',
-      violations: expect.arrayContaining([expect.objectContaining({ rule: 'transition_id_uniqueness' })]),
-    });
-
-    await seedSrsdProduct(server, account, 'srsd_duplicate_breakpoint_id', {
-      initial_state_id: 'only',
-      states: [{
-        state_id: 'only',
-        anchoring: 'inline',
-        close_affordance: false,
-        breakpoints: [
-          { breakpoint_id: 'desktop', width: 970, height: 250 },
-          { breakpoint_id: 'desktop', width: 728, height: 90 },
-        ],
-      }],
-      user_controls: { dismissible: false, user_collapsible: false },
-    });
-    const dupBreakpoint = await simulateCallTool(server, 'validate_input', {
-      account,
-      manifest: { format_kind: 'seller_rendered_stateful_display', assets: {} },
-      targets: [{ kind: 'product', id: 'srsd_duplicate_breakpoint_id' }],
-    });
-    expect(dupBreakpoint.result.results[0]).toMatchObject({
-      result_kind: 'validated_fail',
-      violations: expect.arrayContaining([expect.objectContaining({ rule: 'breakpoint_id_uniqueness' })]),
-    });
-  });
 
   // ── coordinated_placements v2 semantics ─────────────────────────────
+
+  it('pins coordinated placement resolution and declaration uniqueness', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'coordinated-resolution.example' }, operator: 'pinnacle-agency.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'coordinated_resolution_guards',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'guaranteed',
+          placements: [
+            { kind: 'seller_inline', placement_id: 'skin', publisher_domain: 'coordinated-resolution.example', name: 'Skin', mode: 'included' },
+            { kind: 'seller_inline', placement_id: 'masthead', publisher_domain: 'coordinated-resolution.example', name: 'Masthead', mode: 'included' },
+          ],
+          format_options: [{
+            format_kind: 'coordinated_placements',
+            format_option_id: 'takeover',
+            canonical_formats_only: true,
+            params: {
+              components: [
+                {
+                  component_id: 'duplicate',
+                  placement_ref: { publisher_domain: 'coordinated-resolution.example', placement_id: 'missing' },
+                  required: true,
+                  format_kind: 'image',
+                  params: { width: 300, height: 250 },
+                },
+                {
+                  component_id: 'duplicate',
+                  placement_ref: { publisher_domain: 'coordinated-resolution.example', placement_id: 'masthead' },
+                  required: false,
+                  format_kind: 'image',
+                  params: { width: 970, height: 250 },
+                },
+              ],
+              shared_slots: [
+                { asset_group_id: 'cta', asset_type: 'text', consumed_by: ['duplicate'] },
+                { asset_group_id: 'cta', asset_type: 'text', consumed_by: ['duplicate'] },
+              ],
+            },
+          }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { format_kind: 'coordinated_placements', assets: {}, component_assets: {} },
+      targets: [{ kind: 'product', id: 'coordinated_resolution_guards' }],
+    });
+    expect(result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'coordinated_component_placement_ref' }),
+        expect.objectContaining({ rule: 'unique_component_id' }),
+        expect.objectContaining({ rule: 'coordinated_shared_slot_unique' }),
+      ]),
+    });
+  });
 
   it('validates sequence_values contiguity, allowing ties', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -4803,61 +4750,6 @@ describe('validate_input handler', () => {
     ]));
   });
 
-  it('rejects a coordinated_placements component whose placement_ref does not resolve to a product placement', async () => {
-    const server = createTrainingAgentServer(DEFAULT_CTX);
-    const account = { brand: { domain: 'coordinated-placement-ref-resolution.example' }, operator: 'pinnacle-agency.example' };
-    await simulateCallTool(server, 'comply_test_controller', {
-      account,
-      brand: account.brand,
-      scenario: 'seed_product',
-      params: {
-        product_id: 'coordinated_bad_placement_ref',
-        fixture: {
-          channels: ['display'],
-          delivery_type: 'guaranteed',
-          placements: [
-            { kind: 'seller_inline', placement_id: 'masthead', publisher_domain: 'coordinated-placement-ref-resolution.example', name: 'Masthead', mode: 'included' },
-          ],
-          format_options: [{
-            format_kind: 'coordinated_placements',
-            format_option_id: 'takeover',
-            canonical_formats_only: true,
-            params: {
-              components: [
-                {
-                  component_id: 'masthead',
-                  placement_ref: { publisher_domain: 'coordinated-placement-ref-resolution.example', placement_id: 'masthead' },
-                  required: true,
-                  format_kind: 'image',
-                  params: { width: 970, height: 250 },
-                },
-                {
-                  component_id: 'skin',
-                  placement_ref: { publisher_domain: 'coordinated-placement-ref-resolution.example', placement_id: 'skin_does_not_exist' },
-                  required: true,
-                  format_kind: 'image',
-                  params: { width: 2560, height: 1440 },
-                },
-              ],
-            },
-          }],
-        },
-      },
-    });
-
-    const { result } = await simulateCallTool(server, 'validate_input', {
-      account,
-      manifest: { format_kind: 'coordinated_placements', assets: {}, component_assets: {} },
-      targets: [{ kind: 'product', id: 'coordinated_bad_placement_ref' }],
-    });
-
-    expect(result.results[0]).toMatchObject({
-      result_kind: 'validated_fail',
-      violations: expect.arrayContaining([
-        expect.objectContaining({ rule: 'placement_ref_resolution' }),
-      ]),
-    });
-  });
 
   it('collapses two components onto the same placement when publisher_domain spelling varies', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
