@@ -49,10 +49,23 @@ AdCP separates hosted video bytes (`video_hosted`) from VAST delivery (`video_va
 
 ```json
 {
+  "technical_requirements_complete": true,
   "format_kind": "video_vast",
   "params": {
     "duration_ms_range": [15000, 30000],
     "vast_versions": ["3.0", "4.0", "4.1", "4.2"],
+    "media_file_requirements": {
+      "mime_types": ["video/mp4"],
+      "containers": ["mp4"],
+      "codecs": ["avc1.4d401f"],
+      "min_width": 1280,
+      "max_width": 1920,
+      "min_height": 720,
+      "max_height": 1080,
+      "min_bitrate_kbps": 1500,
+      "max_bitrate_kbps": 8000,
+      "max_file_size_bytes": 50000000
+    },
     "slots": [{ "asset_group_id": "vast_tag", "asset_type": "vast", "required": true }]
   }
 }
@@ -71,6 +84,14 @@ asset.vast_version
 For example, a seller may advertise a platform ceiling through VAST 4.2 while one product accepts only VAST 3.0 and 4.0. The product set wins for that product. Never relabel an asset to a newer version merely because the destination supports it.
 
 For ordinary legacy VAST submission, an omitted seller or product version set retains 3.x compatibility and document validation follows the peer's negotiated behavior. Late-bound `CreativeSource` resolution is stricter: every VAST candidate declares `vast_version`, and both the selected product option and seller must advertise non-empty plural sets. Absence means compatibility is unproven, not “all versions.” During migration, producers emit either deprecated singular `vast_version` for older consumers or plural `vast_versions` for 3.2 consumers; the two fields are mutually exclusive so they cannot contradict one another.
+
+### MediaFile technical acceptance
+
+`params.media_file_requirements` describes the VAST player's accepted MediaFile renditions: MIME type, container, codec, dimensions, bitrate, and maximum exact bytes. For each applicable resolved `<InLine>` linear creative, at least one `<MediaFile>` MUST satisfy every declared requirement. Requirements cannot be assembled across siblings: one MP4 may satisfy the MIME and codec constraints while a different WebM satisfies the dimensions, but neither is compatible unless one rendition satisfies the full set. Other incompatible sibling renditions do not reject an otherwise compatible creative.
+
+VAST metadata is the first source of evidence: `type`, `codec`, `width`, `height`, bitrate attributes, and `fileSize` where the applicable VAST version provides them. Fixed `bitrate` must fall within declared bounds; an adaptive `minBitrate`/`maxBitrate` interval must be fully contained by those bounds, not merely overlap them. A receiver MAY safely inspect referenced media bytes and SHOULD prefer the observed byte count if it conflicts with `fileSize`. It MUST NOT infer a container only from a URI filename extension. When metadata needed for a declared constraint is missing and safe inspection does not establish it, compatibility is unproven; the receiver does not guess.
+
+Omitted MediaFile constraints follow the enclosing declaration's `technical_requirements_complete` value. When every applicable declaration layer asserts completeness, omission means no constraint and the seller cannot later reject a conforming creative for an unpublished MIME, container, codec, dimension, bitrate, or file-size rule. Without that complete assertion, omission means undeclared, not unlimited. `max_file_size_bytes` is always an exact byte count; elsewhere AdCP defines 1 KB as exactly 1,000 bytes and 1 MB as exactly 1,000,000 bytes.
 
 ### VAST Validation
 
@@ -92,6 +113,7 @@ AdCP defines three validation levels for `vast` assets. Sellers declare the leve
 - MUST reject an asset whose `vast_version` is outside the product `params.vast_versions` and seller `creative_specs.vast_versions` intersection with `VAST_VERSION_MISMATCH`.
 - MUST include `asset_vast_version`, `product_vast_versions`, `seller_vast_versions`, and the selected `format_option_ref` in `error.details` for `VAST_VERSION_MISMATCH`, conforming to [`error-details/vast-version-mismatch.json`](https://adcontextprotocol.org/schemas/v3/error-details/vast-version-mismatch.json).
 - SHOULD reject documents containing no `<Ad>` element, and `<InLine>` linear creatives carrying no `<MediaFile>`, with `VAST_PARSE_FAILED` (`error.details.reason: "no_ad"` / `"no_media_file"`).
+- MUST evaluate declared `media_file_requirements` against each applicable `<InLine>` linear creative and reject a creative for which no single `<MediaFile>` satisfies the full declared set. A document-level check evaluates the fetched document; wrapper-level validation evaluates the terminal resolved `<InLine>` document.
 - SHOULD verify that media, tracking, and click URLs use HTTPS.
 - MUST preserve undeclared macro tokens as opaque bytes. When an asset supplies `macro_declarations`, validate each token against the product and seller macro-resolution capability intersection and report per-token results.
 

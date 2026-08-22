@@ -63,7 +63,7 @@
     },
     "min_bitrate_kbps": { "type": "integer", "minimum": 1 },
     "max_bitrate_kbps": { "type": "integer", "minimum": 1 },
-    "max_file_size_mb": { "type": "integer", "minimum": 1 },
+    "max_file_size_mb": { "type": "integer", "minimum": 1, "description": "Maximum file size, where 1 MB is exactly 1,000,000 bytes." },
     "frame_rates": {
       "type": "array",
       "items": { "type": "number" }

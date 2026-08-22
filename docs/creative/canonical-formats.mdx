@@ -346,6 +346,18 @@ Do not use “renderer” for all three roles; it hides the trust and routing bo
 
 Creative declarations describe structural production and acceptance constraints. Price, floor, availability, auction mechanics, and deal eligibility remain product or pricing facts; copying them into format parameters would create multiple authorities for the same commercial term.
 
+### Technical completeness and file-size units
+
+Technical constraints are explicit; canonical prose, examples, common practice, and implementation defaults are never hidden acceptance requirements. For every applicable product, publisher, and placement declaration:
+
+- `technical_requirements_complete: true` means the declaration enumerates every technical creative-acceptance constraint within that layer's authority. An omitted technical field means no constraint at that layer.
+- `technical_requirements_complete: false`, or omission of the assertion, means omitted technical fields are undeclared. Omission means neither “supported” nor “no constraint,” and consumers MUST NOT infer a value.
+- The resolved product/placement contract is complete only when every applicable declaration layer asserts `technical_requirements_complete: true`. A seller making that effective assertion commits that a creative satisfying the published technical contract will not later be rejected for an undisclosed technical constraint.
+
+Completeness is not general creative approval. Policy, legal, security, malware, transport/fetch failure, corrupt bytes, or a material mismatch between declared metadata and inspected content can still cause rejection. For custom formats and platform extensions, a completeness assertion includes the technical constraints in the referenced schema artifacts.
+
+Creative file-size units are decimal and exact throughout AdCP: a field ending in `_kb` uses **1 KB = 1,000 bytes**, a field ending in `_mb` uses **1 MB = 1,000,000 bytes**, and a field ending in `_bytes` is an exact byte count. Implementations MUST NOT substitute binary KiB/MiB units for these fields.
+
 Classification follows the buyer deliverable and who renders it, not the behavioral richness of the placement. For example, a buyer-uploaded MP4 in a docking player is `video_hosted`; an opaque third-party tag that produces the same experience is `display_tag`. Maintainers and catalog encoders can verify these boundaries against the [AdCP 3.2 classification vectors](https://github.com/adcontextprotocol/adcp/blob/main/static/test-vectors/canonical-format-classification.json).
 
 A publisher declares the format contract and enough production semantics for a buyer to know what it must supply: canonical kind, parameter constraints, slots, asset source, composition model, and required connections. It does **not** maintain a vendor list of every creative agent capable of producing that contract. Creative agents self-declare compatibility.

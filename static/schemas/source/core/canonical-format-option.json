@@ -7,6 +7,10 @@
   "properties": {
     "format_option_id": { "type": "string", "minLength": 1 },
     "publisher_domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" },
+    "technical_requirements_complete": {
+      "type": "boolean",
+      "description": "When true, every technical creative-acceptance constraint for this declaration layer is expressed and omitted technical fields mean no constraint. When false or absent, omitted technical fields are undeclared and MUST NOT be inferred. The effective contract is complete only when every applicable declaration layer asserts true."
+    },
     "display_name": { "type": "string", "minLength": 1 },
     "sample_render_url": { "type": "string", "format": "uri", "pattern": "^https://" },
     "applies_to_channels": {
