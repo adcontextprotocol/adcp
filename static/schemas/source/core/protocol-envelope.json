@@ -42,7 +42,7 @@
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
-      "description": "Push notification configuration for async task updates (A2A and REST protocols). Echoed from the request to confirm webhook settings. Specifies URL, authentication scheme (Bearer or HMAC-SHA256), and credentials. MCP uses progress notifications instead of webhooks."
+      "description": "AdCP application-layer webhook configuration for async task updates over MCP, A2A, or REST. Echoed from the request to confirm webhook settings. It is distinct from transport-native progress or A2A TaskPushNotificationConfig delivery and can outlive the originating transport session."
     },
     "governance_context": {
       "type": "string",

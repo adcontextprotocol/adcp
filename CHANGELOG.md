@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.2.0-beta.5
+
+### Minor Changes
+
+- 496920a: Define cross-transport async identity and convergence rules for direct
+  responses, AdCP polling, A2A tasks, continuations, and webhooks. The contract
+  separates identifier namespaces, makes terminal settlement and publication
+  single-winner, binds webhook delivery keys immutably to payloads, requires
+  recoverable continuation-generation handoffs, preserves legacy composite
+  atomicity, and advertises webhook retry horizons.
+- 81c409b: Add conformance surface for outcome_target reverse forecasting. The new `media_buy_seller/outcome_target` scenario (required by the sales-proposal-mode specialism, gated on `media_buy.outcome_target`) grades the answer contract: `total_budget_guidance` on every returned proposal and a forecast whose points carry the goal's metric or event key, with `forecast_range_unit` `clicks`/`conversions` structuring the curves. Fixes the canonical-proposal gap the contract exposed (#6745): `core/canonical-proposal.json` gains optional `total_budget_guidance` and `forecast`, restoring parity with the legacy proposal's planning outputs so the compact `request_proposals` lifecycle can actually express the answer. The training agent implements a deterministic reverse-forecast reference model.
+- 4097b73: Add creative rejection conformance for the one-policy-per-error invariant. The new controller-gated `creative/policy_backed_rejections` storyboard first discovers an isolated product that declares exactly the automatic-redirect and HTTPS-only registry policies, then submits a canonical hosted display tag that deterministically violates both. Conformance requires exactly two `CREATIVE_REJECTED` entries with one `details.policy_id` each. The runner contract also publishes the reusable `array_length` assertion used to grade exact error cardinality.
+- 1607036: Scope optional media-buy compliance paths to the capabilities sellers actually advertise. Creative-library storyboards now require an explicit library claim, including compound gates where another applicability predicate already exists. Measurement-term acceptance is split from the universal rejection contract behind a new optional capability, and product refinement requires the `refine` buying mode. Sellers outside these optional surfaces will see the affected scenarios move from runnable badge/completeness denominators to not applicable.
+
+### Patch Changes
+
+- 8074975: Align the AdCP 3.2 beta compliance surface and training agent with `@adcp/sdk@14.0.0-beta.5`. The beta.5 validators carry the flexible-window availability vocabulary, so the `availability_windows` `list_with_horizon` step is no longer registered known-failing (closes the adcp-client#2637 exclusion) and the scenario grades all eight steps. Wire pins move from `3.2-beta.3` to `3.2-beta.4` across the training agent, compliance scenarios, and versioned reference docs.
+
 ## 3.2.0-beta.4
 
 ### Minor Changes
