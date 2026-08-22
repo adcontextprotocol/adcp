@@ -48,9 +48,6 @@ jobs:
   storyboards:
     name: Storyboards (${{ matrix.surface }} /${{ matrix.tenant }})
     runs-on: ubuntu-latest
-    # Current /sales is split across fresh processes to stay below hosted
-    # runner memory pressure. Allow install, overlay, and startup overhead for
-    # all four shards; the timeout is a safety ceiling, not an expected run.
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -63,6 +60,12 @@ jobs:
         # are the frozen latest dist/compliance/3.0.x bundle baseline.
         # Rising is fine; regressing fails CI.
         tenant: [signals, sales, governance, creative, creative-builder, brand, si]
+        # Current /sales is large enough to exceed a hosted runner's resource envelope
+        # when its shards run sequentially. Dedicated shard jobs below keep
+        # each process isolated while preserving one aggregate required check.
+        exclude:
+          - surface: current
+            tenant: sales
         include:
           # #3965 Class C closed by per-tenant /<tenant>/mcp-strict route
           # restoration. The 6.0.0 multi-tenant migration (#3713) dropped the
@@ -85,16 +88,6 @@ jobs:
             tenant: signals
             min_clean_storyboards: 74
             min_passing_steps: 111
-          # The exhaustive harness intentionally runs storyboards outside this
-          # tenant's claimed specialisms. Protect the meaningful sales surface
-          # with the passing-step floor and the required clean/exact gates below.
-          # Observed under SDK 14 beta.4 after capability-scoping optional creative
-          # library phases: 125 clean / 535 passing. Keep a one-step tolerance while
-          # exact lifecycle gates remain strict.
-          - surface: current
-            tenant: sales
-            min_clean_storyboards: 120
-            min_passing_steps: 534
           - surface: current
             tenant: governance
             min_clean_storyboards: 73
@@ -267,11 +260,7 @@ jobs:
           # dev ergonomics). CI grades pass/fail via the floor check below,
           # not the runner's exit code. `|| true` keeps the step alive past
           # the runner so the parse + regression-check stages can run.
-          if [ "${{ matrix.surface }}" = "current" ] && [ "${{ matrix.tenant }}" = "sales" ]; then
-            bash scripts/run-storyboards-sharded.sh --shard-count 4
-          else
-            npx tsx server/tests/manual/run-storyboards.ts
-          fi 2>&1 | tee /tmp/storyboards.log || true
+          npx tsx server/tests/manual/run-storyboards.ts 2>&1 | tee /tmp/storyboards.log || true
           # `grep` returning empty is not a fatal error here — we want to
           # detect that explicitly below.
           clean=$(grep -oE 'storyboards: [0-9]+/[0-9]+' /tmp/storyboards.log | tail -1 | grep -oE '^storyboards: [0-9]+' | grep -oE '[0-9]+$')
@@ -334,53 +323,6 @@ jobs:
             regression_help "passing steps" "${PASSED}" "${MIN_PASSED}"
             exit 1
           fi
-
-      - name: Enforce required-clean storyboards
-        if: matrix.surface == 'current' && matrix.tenant == 'sales'
-        run: |
-          set -euo pipefail
-          required_clean=(
-            "media_buy_seller/billing_finality_delivery"
-            "media_buy_seller/canonical_formats"
-            "media_buy_seller/vendor_metric_catalog_precondition"
-            "canonical_format_validate_input"
-            "notification_config_event_scope"
-            "notification_config_lifecycle"
-            "notification_config_rejections"
-            "wholesale_feed_products"
-            "wholesale_feed_product_webhooks"
-            "wholesale_feed_bulk_webhooks"
-          )
-          for storyboard_id in "${required_clean[@]}"; do
-            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
-              echo "Required-clean storyboard passed: ${storyboard_id}"
-            else
-              echo "::error::Required-clean storyboard did not pass on /sales current surface: ${storyboard_id}"
-              echo "Last matching log lines:"
-              grep -F "${storyboard_id}" /tmp/storyboards.log || true
-              exit 1
-            fi
-          done
-          required_exact=(
-            "media_buy_seller/compact_direct_buy_lifecycle:7:0"
-            "media_buy_seller/compact_product_lifecycle:9:0"
-            "media_buy_seller/declined_proposal_refinement:6:0"
-            "media_buy_seller/declined_proposal_execution:8:0"
-            "media_buy_seller/expired_proposal_execution:8:0"
-          )
-          for requirement in "${required_exact[@]}"; do
-            storyboard_id="${requirement%%:*}"
-            counts="${requirement#*:}"
-            expected_passed="${counts%%:*}"
-            expected_skipped="${counts##*:}"
-            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓[[:space:]]+${expected_passed}P / ${expected_skipped}S" /tmp/storyboards.log >/dev/null; then
-              echo "Required-exact storyboard passed: ${storyboard_id} (${expected_passed}P / ${expected_skipped}S)"
-            else
-              echo "::error::Required-exact storyboard counts changed on /sales current surface: ${storyboard_id}"
-              grep -F "${storyboard_id}" /tmp/storyboards.log || true
-              exit 1
-            fi
-          done
 
       - name: Enforce signals required-clean storyboards
         if: matrix.surface == 'current' && matrix.tenant == 'signals'
@@ -473,6 +415,204 @@ jobs:
             else
               echo "::error::Required-clean storyboard did not pass on /si current surface: ${storyboard_id}"
               echo "Last matching log lines:"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
+
+  sales_storyboard_shards:
+    name: Sales storyboard shard (${{ matrix.shard }}/12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    env:
+      SALES_SHARD_COUNT: 12
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+      - name: Overlay in-repo compliance source onto SDK cache
+        run: bash scripts/overlay-compliance-cache.sh
+
+      - name: Run /sales storyboard shard
+        env:
+          TENANT_PATH: sales
+          PUBLIC_TEST_AGENT_TOKEN: storyboard-ci-token
+        run: |
+          set -uo pipefail
+          log="/tmp/storyboards-sales-${{ matrix.shard }}.log"
+          npx tsx server/tests/manual/run-storyboards.ts \
+            --shard-index "${{ matrix.shard }}" \
+            --shard-count "${SALES_SHARD_COUNT}" 2>&1 | tee "${log}" || true
+          set -e
+          if ! grep -Eq '^[[:space:]]*storyboards: [0-9]+/[0-9]+ clean$' "${log}" ||
+             ! grep -Eq '^[[:space:]]*steps: [0-9]+ passed \| [0-9]+ failed \| [0-9]+ skipped \| [0-9]+ not applicable$' "${log}"; then
+            echo "::error::Storyboard shard ${{ matrix.shard }}/${SALES_SHARD_COUNT} did not emit a complete totals block"
+            exit 1
+          fi
+
+      - name: Upload /sales shard log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: storyboards-current-sales-shard-${{ matrix.shard }}
+          path: /tmp/storyboards-sales-${{ matrix.shard }}.log
+          retention-days: 14
+          if-no-files-found: error
+
+  sales_storyboards:
+    name: Storyboards (current /sales)
+    if: always()
+    needs: sales_storyboard_shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download /sales shard logs
+        uses: actions/download-artifact@v7
+        with:
+          pattern: storyboards-current-sales-shard-*
+          path: /tmp/storyboards-sales-shards
+          merge-multiple: true
+
+      - name: Aggregate /sales storyboard results
+        id: aggregate
+        env:
+          SHARD_RESULT: ${{ needs.sales_storyboard_shards.result }}
+          SALES_SHARD_COUNT: 12
+        run: |
+          set -euo pipefail
+          if [ "${SHARD_RESULT}" != "success" ]; then
+            echo "::error::At least one /sales storyboard shard failed: ${SHARD_RESULT}"
+            exit 1
+          fi
+
+          shopt -s nullglob
+          logs=(/tmp/storyboards-sales-shards/storyboards-sales-*.log)
+          if [ "${#logs[@]}" -ne "${SALES_SHARD_COUNT}" ]; then
+            echo "::error::Expected ${SALES_SHARD_COUNT} /sales shard logs, found ${#logs[@]}"
+            exit 1
+          fi
+
+          : > /tmp/storyboards.log
+          clean_sum=0
+          total_sum=0
+          passed_sum=0
+          failed_sum=0
+          skipped_sum=0
+          not_applicable_sum=0
+          for log in "${logs[@]}"; do
+            cat "${log}" >> /tmp/storyboards.log
+            echo >> /tmp/storyboards.log
+            storyboard_totals=$(sed -nE 's/^[[:space:]]*storyboards: ([0-9]+)\/([0-9]+) clean$/\1 \2/p' "${log}" | tail -1)
+            step_totals=$(sed -nE 's/^[[:space:]]*steps: ([0-9]+) passed \| ([0-9]+) failed \| ([0-9]+) skipped \| ([0-9]+) not applicable$/\1 \2 \3 \4/p' "${log}" | tail -1)
+            if [ -z "${storyboard_totals}" ] || [ -z "${step_totals}" ]; then
+              echo "::error::Incomplete totals in ${log}"
+              exit 1
+            fi
+            read -r shard_clean shard_total <<< "${storyboard_totals}"
+            read -r shard_passed shard_failed shard_skipped shard_not_applicable <<< "${step_totals}"
+            clean_sum=$((clean_sum + shard_clean))
+            total_sum=$((total_sum + shard_total))
+            passed_sum=$((passed_sum + shard_passed))
+            failed_sum=$((failed_sum + shard_failed))
+            skipped_sum=$((skipped_sum + shard_skipped))
+            not_applicable_sum=$((not_applicable_sum + shard_not_applicable))
+          done
+
+          {
+            echo "--- Aggregate totals ---"
+            echo "  storyboards: ${clean_sum}/${total_sum} clean"
+            echo "  steps: ${passed_sum} passed | ${failed_sum} failed | ${skipped_sum} skipped | ${not_applicable_sum} not applicable"
+          } | tee -a /tmp/storyboards.log
+          {
+            echo "clean=${clean_sum}"
+            echo "passed=${passed_sum}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload aggregate /sales log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: storyboards-log-current-sales
+          path: /tmp/storyboards.log
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Enforce /sales non-regression
+        env:
+          CLEAN: ${{ steps.aggregate.outputs.clean }}
+          PASSED: ${{ steps.aggregate.outputs.passed }}
+          MIN_CLEAN: 120
+          MIN_PASSED: 534
+        run: |
+          set -euo pipefail
+          echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
+          echo "Passing steps: ${PASSED} (floor: ${MIN_PASSED})"
+          if [ "${CLEAN}" -lt "${MIN_CLEAN}" ]; then
+            echo "::error::Regression: ${CLEAN} clean storyboards is below the ${MIN_CLEAN} floor (tenant: /sales)."
+            exit 1
+          fi
+          if [ "${PASSED}" -lt "${MIN_PASSED}" ]; then
+            echo "::error::Regression: ${PASSED} passing steps is below the ${MIN_PASSED} floor (tenant: /sales)."
+            exit 1
+          fi
+
+      - name: Enforce /sales required-clean storyboards
+        run: |
+          set -euo pipefail
+          required_clean=(
+            "media_buy_seller/billing_finality_delivery"
+            "media_buy_seller/canonical_formats"
+            "media_buy_seller/vendor_metric_catalog_precondition"
+            "canonical_format_validate_input"
+            "notification_config_event_scope"
+            "notification_config_lifecycle"
+            "notification_config_rejections"
+            "wholesale_feed_products"
+            "wholesale_feed_product_webhooks"
+            "wholesale_feed_bulk_webhooks"
+          )
+          for storyboard_id in "${required_clean[@]}"; do
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then
+              echo "Required-clean storyboard passed: ${storyboard_id}"
+            else
+              echo "::error::Required-clean storyboard did not pass on /sales current surface: ${storyboard_id}"
+              grep -F "${storyboard_id}" /tmp/storyboards.log || true
+              exit 1
+            fi
+          done
+
+          required_exact=(
+            "media_buy_seller/compact_direct_buy_lifecycle:7:0"
+            "media_buy_seller/compact_product_lifecycle:9:0"
+            "media_buy_seller/declined_proposal_refinement:6:0"
+            "media_buy_seller/declined_proposal_execution:8:0"
+            "media_buy_seller/expired_proposal_execution:8:0"
+          )
+          for requirement in "${required_exact[@]}"; do
+            storyboard_id="${requirement%%:*}"
+            counts="${requirement#*:}"
+            expected_passed="${counts%%:*}"
+            expected_skipped="${counts##*:}"
+            if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓[[:space:]]+${expected_passed}P / ${expected_skipped}S" /tmp/storyboards.log >/dev/null; then
+              echo "Required-exact storyboard passed: ${storyboard_id} (${expected_passed}P / ${expected_skipped}S)"
+            else
+              echo "::error::Required-exact storyboard counts changed on /sales current surface: ${storyboard_id}"
               grep -F "${storyboard_id}" /tmp/storyboards.log || true
               exit 1
             fi
