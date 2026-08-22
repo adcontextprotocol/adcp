@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/formats/canonical/seller_rendered_stateful_display.json",
   "title": "Canonical Format: Seller-Rendered Stateful Display",
-  "description": "Seller-rendered display unit whose declaration is an executable template contract: buyer-known visual states, explicit transitions, breakpoint canvases, and per-state slot bindings. The seller owns the runtime; `supply_mode` declares which end the buyer feeds. Sellers offering this canonical MUST support `preview_creative` returning a deterministic render of every state × breakpoint from a candidate manifest; preview approval replaces manual proof rounds. Buyer-executable HTML/MRAID is `html5`, a buyer-delivered tag is `display_tag`, arbitrary games/hotspots/scripts remain `custom`, and per-impression algorithmic assembly is `responsive_creative`.",
+  "description": "Seller-rendered display unit whose declaration is an executable template contract: buyer-known visual states, explicit transitions, breakpoint canvases, and per-state slot bindings. The seller owns the runtime; `supply_mode` declares which end the buyer feeds. Sellers offering `components` or `rendered_canvases` supply mode MUST support `preview_creative` returning a deterministic render of every state × breakpoint from a candidate manifest; the buyer reviews the returned previews before assigning the creative, replacing a separate physical proof round. The `layered_source` mode uses the standard seller-production preview path (`production_window_business_days` applies). Buyer-executable HTML/MRAID is `html5`, a buyer-delivered tag is `display_tag`, arbitrary games/hotspots/scripts remain `custom`, and per-impression algorithmic assembly is `responsive_creative`.",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
     "experimental": {
@@ -36,7 +36,7 @@
         { "asset_group_id": "layered_source", "asset_type": "zip", "required": false },
         { "asset_group_id": "font_files", "asset_type": "zip", "required": false }
       ],
-      "description": "Default manifest slots; which are consumed depends on `supply_mode`. `state_canvases` images MUST carry `state_id` and `breakpoint_id`, and `state_click_urls` entries MUST carry `state_id` (semantic validators resolve the bindings). Component images SHOULD carry `focal_point` for deterministic seller cropping. `landing_page_url` is the default destination (see `clickthrough`). `font_files` MUST contain only buyer-licensed fonts; publisher-proprietary fonts never travel in manifests. Only image, video, text, url, and zip slot asset types are accepted — executable types (javascript, html, css, webhook) are rejected even via `slots` overrides."
+      "description": "Default manifest slots; which are consumed depends on `supply_mode`. `state_canvases` images MUST carry `state_id` and `breakpoint_id`, and `state_click_urls` entries MUST carry `state_id` (semantic validators resolve the bindings). Component images SHOULD carry `focal_point` for deterministic seller cropping. `landing_page_url` is the default destination (see `clickthrough`). `font_files` MUST contain only buyer-licensed fonts; publisher-proprietary fonts never travel in manifests. Only image, video, text, url, zip, and pixel_tracker slot asset types are accepted — executable types (javascript, html, css, webhook) are rejected even via `slots` overrides."
     },
     "states": {
       "type": "array",

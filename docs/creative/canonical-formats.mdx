@@ -122,7 +122,7 @@ Component images (`logo`, `imagery`) SHOULD carry `focal_point` (a normalized `[
 
 #### Deterministic preview replaces the proof round
 
-Sellers offering this canonical MUST support `preview_creative` rendering every declared state × breakpoint from a candidate manifest, in every supply mode. This is what turns a 6–20 business-day proof-and-revise cycle into an API round-trip: the manifest is deterministically renderable, so there is no structural reason to hold a manual proof in reserve. Buyer approval of the returned previews is the acceptance step, replacing a separate physical proof round. (`preview_render.role` has no typed per-state binding — see below — so sellers label each state × breakpoint render descriptively through that field.)
+Sellers offering `components` or `rendered_canvases` supply modes MUST support `preview_creative` rendering every declared state × breakpoint from a candidate manifest. This is what turns a 6–20 business-day proof-and-revise cycle into an API round-trip: the manifest is deterministically renderable, so there is no structural reason to hold a manual proof in reserve. The buyer reviews the returned previews before assigning the creative, replacing a separate physical proof round. (`layered_source` mode uses the standard seller-production preview path described above; `production_window_business_days` applies.) (`preview_render.role` has no typed per-state binding — see below — so sellers label each state × breakpoint render descriptively through that field.)
 
 #### Single-state reveal units
 
