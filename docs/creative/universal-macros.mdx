@@ -212,7 +212,7 @@ Compatibility matches dialect family, namespace, revision, exact dialect semanti
 - `unsupported` — no compatible resolver/capability exists; or
 - `ambiguous` — the declaration does not establish one safe meaning.
 
-A required `unsupported` or `ambiguous` token fails with `MACRO_RESOLUTION_FAILED`. Results include the asset pointer, declaration ID, requested encoding, structured reason, and advertised encoding candidates.
+A required `unsupported` or `ambiguous` token fails with `MACRO_RESOLUTION_FAILED`. Its `error.details` MUST conform to [`error-details/macro-resolution-failed.json`](https://adcontextprotocol.org/schemas/v3/error-details/macro-resolution-failed.json). Results include the asset pointer, declaration ID, requested encoding, structured reason, and advertised encoding candidates.
 
 ## Relationship to existing macro surfaces
 
