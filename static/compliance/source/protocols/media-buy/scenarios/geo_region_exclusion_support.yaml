@@ -10,7 +10,6 @@ requires_capability:
   contains: FR-44
 
 required_tools:
-  - get_adcp_capabilities
   - get_products
   - create_media_buy
   - get_media_buys

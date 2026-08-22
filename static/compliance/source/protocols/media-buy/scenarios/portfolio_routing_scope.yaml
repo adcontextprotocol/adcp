@@ -7,7 +7,6 @@ track: media_buy
 introduced_in: "3.2"
 
 required_tools:
-  - get_adcp_capabilities
   - get_products
 
 narrative: |
