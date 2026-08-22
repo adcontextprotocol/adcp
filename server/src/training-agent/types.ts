@@ -702,6 +702,7 @@ export interface CreativeManifest {
   format_kind?: string;
   format_option_ref?: Record<string, unknown>;
   assets: Record<string, ManifestAsset | ManifestAsset[]>;
+  component_assets?: Record<string, Record<string, ManifestAsset | ManifestAsset[]>>;
 }
 
 export interface CreativeState {
@@ -713,6 +714,7 @@ export interface CreativeState {
   formatKind?: string;
   formatOptionRef?: Record<string, unknown>;
   assets?: Record<string, ManifestAsset | ManifestAsset[]>;
+  componentAssets?: Record<string, Record<string, ManifestAsset | ManifestAsset[]>>;
   name?: string;
   status: string;
   syncedAt: string;

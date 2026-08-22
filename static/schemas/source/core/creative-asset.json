@@ -48,6 +48,14 @@
       },
       "additionalProperties": true
     },
+    "component_assets": {
+      "type": "object",
+      "description": "Component-addressed canonical asset maps for `coordinated_placements`. Keys match coordinated component IDs. This field is preserved by creative-library sync and list readback; it MUST be absent for every other format kind.",
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": { "$ref": "/schemas/core/creative-assets.json" }
+      },
+      "additionalProperties": false
+    },
     "inputs": {
       "type": "array",
       "description": "Preview contexts for generative formats - defines what scenarios to generate previews for",
@@ -156,6 +164,14 @@
     }
   ],
   "allOf": [
+    {
+      "if": {
+        "properties": { "format_kind": { "const": "coordinated_placements" } },
+        "required": ["format_kind"]
+      },
+      "then": { "required": ["component_assets"] },
+      "else": { "not": { "required": ["component_assets"] } }
+    },
     {
       "$comment": "The 3.2 canonical VAST sync path requires one exact asset version. The deprecated named-format branch remains compatible with older 3.x payloads.",
       "if": {

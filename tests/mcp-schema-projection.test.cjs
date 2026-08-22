@@ -43,12 +43,13 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
-// Macro occurrence contracts add one shared, structurally enforced declaration
-// graph to sync_creatives. Keep that measured media-buy increase isolated from
-// the creative profile instead of relaxing every role's prompt budget.
+// Main reached 139 bytes of headroom at 384 KiB within a day of the budget
+// landing, and schema-bearing features add roughly 1-2 KiB of inlined context.
+// Keep explicit per-profile budgets while allowing headroom until the shared-
+// dictionary projection removes per-tool inlining.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 392,
-  creative: 388,
+  'media-buy': 400,
+  creative: 400,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product

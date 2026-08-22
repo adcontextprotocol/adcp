@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-manifest.json",
   "title": "Creative Manifest",
-  "description": "Complete specification of a creative: format identification + assets. In 3.2 a manifest uses `format_kind` (the canonical format name it targets), paired with optional `format_option_ref` when a product has multiple declarations sharing that kind. The deprecated `format_id` named-format branch remains only for 3.x wire compatibility. Everything the creative needs — images, text, briefs, catalogs — lives in the assets map declared by the matching format declaration.",
+  "description": "Complete specification of a creative: format identification + assets. In 3.2 a manifest uses `format_kind` (the canonical format name it targets), paired with optional `format_option_ref` when a product has multiple declarations sharing that kind. The deprecated `format_id` named-format branch remains only for 3.x wire compatibility. Ordinary and shared assets live in `assets`; a `coordinated_placements` additionally namespaces each component's canonical slots under `component_assets.<component_id>`.",
   "type": "object",
   "properties": {
     "format_id": {
@@ -12,7 +12,7 @@
     },
     "format_kind": {
       "$ref": "/schemas/core/canonical-format-kind.json",
-      "description": "Canonical 3.2 path. The canonical format name this manifest targets (e.g., `image`, `video_hosted`, `audio_daast`, `sponsored_placement`). Selects the contract against which the seller validates the manifest's assets. Mutually exclusive with deprecated `format_id`."
+      "description": "Canonical 3.2 path. The canonical format name this manifest targets (e.g., `image`, `video_hosted`, `seller_rendered_stateful_display`, `coordinated_placements`). Selects the contract against which the seller validates the manifest's assets. Mutually exclusive with deprecated `format_id`."
     },
     "format_option_ref": {
       "$ref": "/schemas/core/format-option-ref.json",
@@ -38,6 +38,14 @@
         }
       },
       "additionalProperties": true
+    },
+    "component_assets": {
+      "type": "object",
+      "description": "Component-addressed asset maps for `coordinated_placements`. Each key MUST match one `params.components[].component_id`; its value supplies that component's canonical slots. Shared assets remain in top-level `assets` and are injected only into components named by `shared_slots[].consumed_by`. This namespace allows two components to use the same canonical slot name, such as `image_main`, without collision. It MUST be absent for non-`coordinated_placements` manifests.",
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": { "$ref": "/schemas/core/creative-assets.json" }
+      },
+      "additionalProperties": false
     },
     "brand": {
       "$ref": "/schemas/core/brand-ref.json",
@@ -91,6 +99,14 @@
     }
   ],
   "allOf": [
+    {
+      "if": {
+        "properties": { "format_kind": { "const": "coordinated_placements" } },
+        "required": ["format_kind"]
+      },
+      "then": { "required": ["component_assets"] },
+      "else": { "not": { "required": ["component_assets"] } }
+    },
     {
       "$comment": "The 3.2 canonical VAST path requires one exact asset version. The deprecated named-format branch remains compatible with older 3.x payloads.",
       "if": {

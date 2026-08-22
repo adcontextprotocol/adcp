@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/product-format-declaration.json",
   "title": "Product Format Declaration",
-  "description": "Inline format declaration on a product. The `format_kind` discriminator names which canonical format the product narrows; `params` carries the canonical's parameter schema (slots, dimensions, durations, codecs, character limits, platform_extensions, etc.). Optional `format_option_id` (stable identifier for routing when a product's `format_options` contains multiple declarations sharing the same `format_kind`), optional `publisher_domain` (namespace for the format option when it comes from a publisher adagents.json catalog), `display_name` (seller-controlled human-readable label for dashboard and catalog UIs), and `applies_to_channels` (subset of the product's declared channels this declaration applies to — lets a multi-channel product carry distinct format_options per channel). Discriminated-union shape generates clean tagged unions in TypeScript and Pydantic codegen. Replaces v1's named-format pattern (where products referenced a separately-defined format file via compound `format_id`). Canonical product-bound declarations are the AdCP 3.2 authoring path; v1 named formats remain only as deprecated 3.x compatibility projections.\n\n**Closed-set semantics (normative).** `format_options[]` is the closed set of accepted formats for this product. Sellers MUST reject `create_media_buy` requests targeting any `format_kind` (or format option reference) not present in this list — typically with `UNSUPPORTED_FEATURE` or a seller-specific code; the rejection is structural, not negotiable. `seller_preference` modulates *within* the accepted set (a soft ranking hint between equally-acceptable options), it is NOT an enforcement axis. A product wanting to say 'this format is the only one that works' lists exactly that one entry in `format_options[]`; everything else falls outside the set and is rejected by the closed-set rule.\n\n**Format matching vs satisfaction (normative).** Legacy named formats MUST be normalized to canonical declarations before comparison; do not exact-match raw `(agent_url, id)` pairs once a `format_id` has been projected through `canonical`, `v1_format_ref`, or the canonical mapping registry. Equivalence matching can treat a legacy fixed-size display ID and `format_kind: \"image\"` with matching `width`/`height` as the same underlying shape. Product satisfaction is stricter and directional: when this declaration specifies fixed constraints such as `width`, `height`, `duration_ms_exact`, or `duration_ms_range`, a buyer request or creative manifest MUST declare and satisfy those constraints. A broad request with no dimensions or duration does not satisfy a fixed-size or fixed-duration product; a broad product MAY accept a more specific creative unless another product constraint excludes it. Duration precedence is `duration_ms_exact` > `duration_ms_range`. Range constraints use containment: a range-based request satisfies this declaration only when every value it permits falls within this declaration's accepted range; overlap alone is insufficient. An exact value satisfies a range when the exact value falls inside the accepted interval. For hosted audio/video, a null range endpoint is unbounded: [null, 60000] means up to 60s, and [15000, null] means at least 15s; [null, null] is invalid because at least one endpoint must be bounded.\n\n**Custom format_kind** (`format_kind: \"custom\"`): for adopter-defined shapes that don't fit the 12 canonicals (multi-placement takeover, roadblock, branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lens, playable, live event sponsorship). When `format_kind` is `custom`, the declaration MUST carry `format_shape` (recognized global pattern from the [format-shape vocabulary registry](/schemas/core/format-shape-vocabulary.json)) AND `format_schema` (URI+digest reference to a fetchable schema describing the actual `params` and `slots`). Buyer agents fetch the schema, validate manifests structurally, and reason about manifests without per-seller integration code. See [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666) for the canonical promotion queue.",
+  "description": "Inline format declaration on a product. The `format_kind` discriminator names which canonical format the product narrows; `params` carries the canonical's parameter schema (slots, dimensions, durations, codecs, character limits, platform_extensions, etc.). Optional `format_option_id` (stable identifier for routing when a product's `format_options` contains multiple declarations sharing the same `format_kind`), optional `publisher_domain` (namespace for the format option when it comes from a publisher adagents.json catalog), `display_name` (seller-controlled human-readable label for dashboard and catalog UIs), and `applies_to_channels` (subset of the product's declared channels this declaration applies to — lets a multi-channel product carry distinct format_options per channel). Discriminated-union shape generates clean tagged unions in TypeScript and Pydantic codegen. Replaces v1's named-format pattern (where products referenced a separately-defined format file via compound `format_id`). Canonical product-bound declarations are the AdCP 3.2 authoring path; v1 named formats remain only as deprecated 3.x compatibility projections.\n\n**Closed-set semantics (normative).** `format_options[]` is the closed set of accepted formats for this product. Sellers MUST reject `create_media_buy` requests targeting any `format_kind` (or format option reference) not present in this list — typically with `UNSUPPORTED_FEATURE` or a seller-specific code; the rejection is structural, not negotiable. `seller_preference` modulates *within* the accepted set (a soft ranking hint between equally-acceptable options), it is NOT an enforcement axis. A product wanting to say 'this format is the only one that works' lists exactly that one entry in `format_options[]`; everything else falls outside the set and is rejected by the closed-set rule.\n\n**Format matching vs satisfaction (normative).** Legacy named formats MUST be normalized to canonical declarations before comparison; do not exact-match raw `(agent_url, id)` pairs once a `format_id` has been projected through `canonical`, `v1_format_ref`, or the canonical mapping registry. Equivalence matching can treat a legacy fixed-size display ID and `format_kind: \"image\"` with matching `width`/`height` as the same underlying shape. Product satisfaction is stricter and directional: when this declaration specifies fixed constraints such as `width`, `height`, `duration_ms_exact`, or `duration_ms_range`, a buyer request or creative manifest MUST declare and satisfy those constraints. A broad request with no dimensions or duration does not satisfy a fixed-size or fixed-duration product; a broad product MAY accept a more specific creative unless another product constraint excludes it. Duration precedence is `duration_ms_exact` > `duration_ms_range`. Range constraints use containment: a range-based request satisfies this declaration only when every value it permits falls within this declaration's accepted range; overlap alone is insufficient. An exact value satisfies a range when the exact value falls inside the accepted interval. For hosted audio/video, a null range endpoint is unbounded: [null, 60000] means up to 60s, and [15000, null] means at least 15s; [null, null] is invalid because at least one endpoint must be bounded.\n\n**Custom format_kind** (`format_kind: \"custom\"`): for adopter-defined shapes that don't fit the 14 canonicals (branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lens, playable, live event sponsorship). When `format_kind` is `custom`, the declaration MUST carry `format_shape` (recognized global pattern from the [format-shape vocabulary registry](/schemas/core/format-shape-vocabulary.json)) AND `format_schema` (URI+digest reference to a fetchable schema describing the actual `params` and `slots`). Buyer agents fetch the schema, validate manifests structurally, and reason about manifests without per-seller integration code. See [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666) for the canonical promotion queue.",
   "type": "object",
   "required": ["format_kind", "params"],
   "discriminator": { "propertyName": "format_kind" },
@@ -57,7 +57,7 @@
     },
     "format_shape": {
       "type": "string",
-      "description": "REQUIRED when `format_kind: \"custom\"`; otherwise MUST be absent. Recognized global pattern this custom shape is an instance of, drawn from the [format-shape vocabulary registry](/schemas/core/format-shape-vocabulary.json) (`multi_placement_takeover`, `roadblock`, `branded_content`, `cross_screen_sponsorship`, `sponsorship_lockup`, `newsletter_sponsorship`, `ar_lens`, `playable`, `live_event_sponsorship`, …). Non-canonical values valid (validators MAY soft-warn) — adopters CAN ship a shape that isn't yet in the registry. Adding entries is a vocabulary PR. Once a `format_shape` entry sees 2+ adopters with substantively similar `format_schema` content for 90+ days, the working group promotes it to a first-class canonical."
+      "description": "REQUIRED when `format_kind: \"custom\"`; otherwise MUST be absent. Recognized global pattern this custom shape is an instance of, drawn from the [format-shape vocabulary registry](/schemas/core/format-shape-vocabulary.json) (`branded_content`, `cross_screen_sponsorship`, `sponsorship_lockup`, `newsletter_sponsorship`, `ar_lens`, `playable`, `live_event_sponsorship`, …). Non-canonical values are valid (validators MAY soft-warn) — adopters CAN ship a shape that isn't yet in the registry. Adding entries is a vocabulary PR. Once a `format_shape` entry sees 2+ adopters with substantively similar `format_schema` content for 90+ days, the working group may promote it to a first-class canonical. Retired vocabulary entries `multi_state_display` and `multi_placement_takeover` remain temporarily recognizable for migration; new declarations MUST use their promoted canonicals and validators SHOULD emit `FORMAT_SHAPE_PROMOTED`. `roadblock` remains an inventory/exclusivity classifier and is not a promoted creative format."
     },
     "v1_format_ref": {
       "type": "array",
@@ -231,8 +231,24 @@
       "required": ["format_kind", "params"]
     },
     {
+      "title": "Seller-Rendered Stateful Display Format Declaration",
+      "properties": {
+        "format_kind": { "type": "string", "const": "seller_rendered_stateful_display" },
+        "params": { "$ref": "/schemas/formats/canonical/seller_rendered_stateful_display.json" }
+      },
+      "required": ["format_kind", "params"]
+    },
+    {
+      "title": "Coordinated Placements Format Declaration",
+      "properties": {
+        "format_kind": { "type": "string", "const": "coordinated_placements" },
+        "params": { "$ref": "/schemas/formats/canonical/coordinated_placements.json" }
+      },
+      "required": ["format_kind", "params"]
+    },
+    {
       "title": "Custom Format Declaration",
-      "description": "Adopter-defined shape that doesn't fit the 12 canonicals. Requires `format_shape` (vocabulary-registered global pattern) and `format_schema` (URI+digest reference to a fetchable schema describing the actual params/slots). `params` shape is governed by the fetched schema rather than baked into AdCP — kept as `type: object` here with `additionalProperties: true` because the canonical schema validates dynamically post-fetch.",
+      "description": "Adopter-defined shape that doesn't fit the 14 canonicals. Requires `format_shape` (vocabulary-registered global pattern) and `format_schema` (URI+digest reference to a fetchable schema describing the actual params/slots). `params` shape is governed by the fetched schema rather than baked into AdCP — kept as `type: object` here with `additionalProperties: true` because the canonical schema validates dynamically post-fetch.",
       "properties": {
         "format_kind": { "type": "string", "const": "custom" },
         "params": {
@@ -324,25 +340,25 @@
       }
     },
     {
-      "description": "NYTimes Homepage Takeover — custom format_kind, classified against the multi_placement_takeover format_shape, with format_schema pointing at NYTimes's hosted schema. Buyer agents fetch the schema by uri@digest (cached, immutable) and validate the manifest structurally. `canonical_formats_only: true` is required for custom declarations — no v1 named format can express the multi-placement shape.",
+      "description": "StreamHaus Branded Feature — a still-custom branded-content format with format_schema pointing at the fictional seller's hosted schema. Buyer agents fetch the schema by uri@digest (cached, immutable) and validate the manifest structurally. `canonical_formats_only: true` is required for custom declarations because no v1 named format expresses this bespoke composition.",
       "data": {
         "format_kind": "custom",
         "canonical_formats_only": true,
-        "format_shape": "multi_placement_takeover",
+        "format_shape": "branded_content",
         "format_schema": {
-          "uri": "https://nytimes.example/schemas/formats/homepage_takeover_v3",
+          "uri": "https://ads.streamhaus.example/schemas/formats/branded_feature_v1",
           "digest": "sha256:e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0a3"
         },
-        "format_option_id": "nytimes_homepage_takeover_premium",
-        "display_name": "Homepage Takeover — Premium Sponsorship",
-        "applies_to_channels": ["display", "olv"],
+        "format_option_id": "streamhaus_branded_feature",
+        "display_name": "StreamHaus branded feature",
+        "applies_to_channels": ["display"],
         "params": {
           "components": [
-            { "placement_type": "homepage_skin", "required": true },
-            { "placement_type": "preroll_video", "required": true },
+            { "placement_type": "feature_header", "required": true },
+            { "placement_type": "sponsored_story_card", "required": true },
             { "placement_type": "sponsorship_lockup", "required": true }
           ],
-          "exclusivity_window_hours": 24,
+          "exclusivity_window_hours": 12,
           "ssl_required": true
         }
       }

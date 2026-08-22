@@ -34,6 +34,10 @@
       "type": "string",
       "description": "Description of what this URL points to"
     },
+    "state_id": {
+      "type": "string",
+      "description": "Binding used only when this URL populates a `seller_rendered_stateful_display` `state_click_urls` slot. It MUST match one declared `states[].state_id` (semantic validators resolve it); at most one entry per state. Omit for ordinary URL slots."
+    },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
       "description": "Provenance metadata for this asset, overrides manifest-level provenance"
