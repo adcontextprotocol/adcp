@@ -30,6 +30,7 @@
     "viewability",
     "quartile_data",
     "dooh_metrics",
+    "ooh_metrics",
     "cost_per_click",
     "cost_per_completed_view",
     "cpm",
