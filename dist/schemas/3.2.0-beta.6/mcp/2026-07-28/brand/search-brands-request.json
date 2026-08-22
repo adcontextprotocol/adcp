@@ -1,0 +1,910 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/mcp/2026-07-28/brand/search-brands-request.json",
+  "title": "Search Brands Request",
+  "description": "Discover brands on a brand agent's roster using a natural language query. Returns lightweight brand stubs — use get_brand_identity to fetch full identity data for a selected brand_id, and get_rights to fetch pricing options. Read-only; naturally idempotent.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "query": {
+      "type": "string",
+      "description": "Natural language description of the brands to find. The agent interprets intent, category, and roster coverage from this text.",
+      "maxLength": 2000
+    },
+    "industries": {
+      "type": "array",
+      "description": "Optional industry filter. The agent restricts results to brands operating in these industries. Values follow the advertiser-industry taxonomy; the agent SHOULD accept unknown values gracefully per the advertiser-industry extension policy.",
+      "items": {
+        "$ref": "#/$defs/external:enums~1advertiser-industry.json"
+      },
+      "minItems": 1
+    },
+    "countries": {
+      "type": "array",
+      "description": "Optional market filter. Returns brands with rights availability in at least one of the specified countries (ISO 3166-1 alpha-2).",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "buyer_brand": {
+      "$ref": "#/$defs/external:core~1brand-ref.json",
+      "description": "The buyer's brand. When provided, the agent SHOULD apply the same compatibility filtering as get_rights — filtering out brands with category conflicts, competitor exclusions, or dietary restrictions that would prevent licensing. When omitted, results are returned without compatibility filtering."
+    },
+    "pagination": {
+      "$ref": "#/$defs/external:core~1pagination-request.json",
+      "description": "Pagination parameters for large result sets"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "query"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:enums/advertiser-industry.json": {
+      "title": "Advertiser Industry",
+      "description": "Standardized advertiser industry classification. Top-level categories classify the advertiser's primary business. Dot-notation subcategories (e.g., 'media_entertainment.podcasts') provide platform-specific precision where needed. Sellers map these to platform-native codes (Spotify ADV categories, LinkedIn industry IDs, IAB Content Taxonomy, etc.). Sellers MUST accept unknown values gracefully — treat unrecognized values as the parent category (strip the subcategory) or as uncategorized. This ensures forward compatibility as the taxonomy evolves.",
+      "type": "string",
+      "x-extensible": true,
+      "x-pattern": "^[a-z][a-z0-9_]+(\\.[a-z][a-z0-9_]+)?$",
+      "enum": [
+        "automotive",
+        "automotive.electric_vehicles",
+        "automotive.parts_accessories",
+        "automotive.luxury",
+        "beauty_cosmetics",
+        "beauty_cosmetics.skincare",
+        "beauty_cosmetics.fragrance",
+        "beauty_cosmetics.haircare",
+        "cannabis",
+        "cpg",
+        "cpg.personal_care",
+        "cpg.household",
+        "dating",
+        "education",
+        "education.higher_education",
+        "education.online_learning",
+        "education.k12",
+        "energy_utilities",
+        "energy_utilities.renewable",
+        "fashion_apparel",
+        "fashion_apparel.luxury",
+        "fashion_apparel.sportswear",
+        "finance",
+        "finance.banking",
+        "finance.insurance",
+        "finance.investment",
+        "finance.cryptocurrency",
+        "food_beverage",
+        "food_beverage.alcohol",
+        "food_beverage.restaurants",
+        "food_beverage.packaged_goods",
+        "gambling_betting",
+        "gambling_betting.sports_betting",
+        "gambling_betting.casino",
+        "gaming",
+        "gaming.mobile",
+        "gaming.console_pc",
+        "gaming.esports",
+        "government_nonprofit",
+        "government_nonprofit.political",
+        "government_nonprofit.charity",
+        "healthcare",
+        "healthcare.pharmaceutical",
+        "healthcare.medical_devices",
+        "healthcare.wellness",
+        "home_garden",
+        "home_garden.furniture",
+        "home_garden.home_improvement",
+        "media_entertainment",
+        "media_entertainment.podcasts",
+        "media_entertainment.music",
+        "media_entertainment.film_tv",
+        "media_entertainment.publishing",
+        "media_entertainment.live_events",
+        "pets",
+        "professional_services",
+        "professional_services.legal",
+        "professional_services.consulting",
+        "real_estate",
+        "real_estate.residential",
+        "real_estate.commercial",
+        "recruitment_hr",
+        "retail",
+        "retail.ecommerce",
+        "retail.department_stores",
+        "sports_fitness",
+        "sports_fitness.equipment",
+        "sports_fitness.teams_leagues",
+        "technology",
+        "technology.software",
+        "technology.hardware",
+        "technology.ai_ml",
+        "telecom",
+        "telecom.mobile_carriers",
+        "telecom.internet_providers",
+        "transportation_logistics",
+        "travel_hospitality",
+        "travel_hospitality.airlines",
+        "travel_hospitality.hotels",
+        "travel_hospitality.cruise",
+        "travel_hospitality.tourism"
+      ],
+      "enumDescriptions": {
+        "automotive": "Automotive manufacturers, dealerships, and auto industry",
+        "automotive.electric_vehicles": "Electric vehicle manufacturers and charging infrastructure",
+        "automotive.parts_accessories": "Auto parts, accessories, and aftermarket products",
+        "automotive.luxury": "Luxury and premium automotive brands",
+        "beauty_cosmetics": "Beauty, cosmetics, and prestige skincare brands. Distinct from cpg.personal_care — use beauty_cosmetics for brands whose identity is rooted in beauty (L'Oreal Paris, Estee Lauder, Sephora) and cpg.personal_care for mass-market personal hygiene (Dove, Colgate)",
+        "beauty_cosmetics.skincare": "Skincare brands and dermatological products",
+        "beauty_cosmetics.fragrance": "Perfume and fragrance brands",
+        "beauty_cosmetics.haircare": "Professional and prestige haircare brands",
+        "cannabis": "Cannabis products and dispensaries. Subject to heavy platform restrictions — most platforms require explicit category declaration for ad acceptance",
+        "cpg": "Consumer packaged goods — mass-market products sold through retail. For food and beverage manufacturers, use food_beverage. For prestige beauty, use beauty_cosmetics",
+        "cpg.personal_care": "Mass-market personal care and hygiene products (deodorant, toothpaste, soap). For prestige beauty brands, use beauty_cosmetics",
+        "cpg.household": "Household cleaning and maintenance products",
+        "dating": "Dating apps and matchmaking services. Subject to platform restrictions similar to gambling_betting",
+        "education": "Educational institutions and learning services",
+        "education.higher_education": "Universities, colleges, and graduate programs",
+        "education.online_learning": "Online courses, MOOCs, and digital education platforms",
+        "education.k12": "Primary and secondary education",
+        "energy_utilities": "Energy companies and utilities",
+        "energy_utilities.renewable": "Renewable energy, solar, wind, and clean technology",
+        "fashion_apparel": "Clothing, footwear, and fashion accessories",
+        "fashion_apparel.luxury": "Luxury fashion and designer brands",
+        "fashion_apparel.sportswear": "Athletic and sportswear brands",
+        "finance": "Financial services, banking, and insurance",
+        "finance.banking": "Retail and commercial banking",
+        "finance.insurance": "Insurance products and services",
+        "finance.investment": "Investment, wealth management, and brokerage",
+        "finance.cryptocurrency": "Cryptocurrency exchanges and blockchain financial products",
+        "food_beverage": "Food and beverage companies — manufacturers (Coca-Cola, Nestle), restaurants, and alcohol brands. For non-food packaged goods, use cpg",
+        "food_beverage.alcohol": "Alcoholic beverages (beer, wine, spirits). Subject to platform age-gating and regional restrictions",
+        "food_beverage.restaurants": "Restaurants, fast food, and food delivery",
+        "food_beverage.packaged_goods": "Packaged food and non-alcoholic beverages",
+        "gambling_betting": "Gambling, sports betting, and wagering. Subject to heavy platform restrictions — most platforms require explicit category declaration",
+        "gambling_betting.sports_betting": "Sports betting and daily fantasy sports",
+        "gambling_betting.casino": "Online casinos and traditional gambling",
+        "gaming": "Video games and interactive entertainment",
+        "gaming.mobile": "Mobile gaming",
+        "gaming.console_pc": "Console and PC gaming",
+        "gaming.esports": "Esports teams, tournaments, and streaming",
+        "government_nonprofit": "Government agencies and nonprofit organizations",
+        "government_nonprofit.political": "Political advertising and advocacy. Subject to platform transparency and disclosure requirements",
+        "government_nonprofit.charity": "Charitable organizations and fundraising",
+        "healthcare": "Healthcare, pharmaceuticals, and medical",
+        "healthcare.pharmaceutical": "Pharmaceutical and biotech companies. Subject to platform restrictions on drug advertising",
+        "healthcare.medical_devices": "Medical devices and health technology",
+        "healthcare.wellness": "Wellness, supplements, and alternative health",
+        "home_garden": "Home furnishing, improvement, and garden",
+        "home_garden.furniture": "Furniture and home decor",
+        "home_garden.home_improvement": "Home improvement, tools, and renovation",
+        "media_entertainment": "Media, entertainment, and content",
+        "media_entertainment.podcasts": "Podcast networks and podcast-first brands",
+        "media_entertainment.music": "Music labels, streaming, and artists",
+        "media_entertainment.film_tv": "Film studios, TV networks, and streaming services",
+        "media_entertainment.publishing": "Book publishers, magazines, and digital publications",
+        "media_entertainment.live_events": "Concerts, festivals, and live entertainment",
+        "pets": "Pet food, supplies, and veterinary services",
+        "professional_services": "Professional and business services",
+        "professional_services.legal": "Law firms and legal services",
+        "professional_services.consulting": "Management and business consulting",
+        "real_estate": "Real estate, property, and construction",
+        "real_estate.residential": "Residential real estate and housing",
+        "real_estate.commercial": "Commercial real estate and property management",
+        "recruitment_hr": "Job boards, staffing agencies, and HR technology",
+        "retail": "Retail stores and e-commerce",
+        "retail.ecommerce": "Online-first retailers and marketplaces",
+        "retail.department_stores": "Department stores and multi-brand retailers",
+        "sports_fitness": "Sports, fitness, and athletics",
+        "sports_fitness.equipment": "Sports and fitness equipment",
+        "sports_fitness.teams_leagues": "Professional sports teams and leagues",
+        "technology": "Technology companies and digital services",
+        "technology.software": "Software products, platforms, and SaaS",
+        "technology.hardware": "Consumer electronics and hardware",
+        "technology.ai_ml": "Artificial intelligence and machine learning companies",
+        "telecom": "Telecommunications and connectivity",
+        "telecom.mobile_carriers": "Mobile network operators",
+        "telecom.internet_providers": "Internet service providers and broadband",
+        "transportation_logistics": "Shipping, logistics, and freight services",
+        "travel_hospitality": "Travel, hospitality, and tourism",
+        "travel_hospitality.airlines": "Airlines and air travel",
+        "travel_hospitality.hotels": "Hotels, resorts, and accommodation",
+        "travel_hospitality.cruise": "Cruise lines and ocean travel",
+        "travel_hospitality.tourism": "Tourism boards and travel agencies"
+      }
+    },
+    "external:core/brand-ref.json": {
+      "title": "Brand Reference",
+      "description": "Reference to a brand by domain and optional brand_id. The domain hosts /.well-known/brand.json or is registered in the brand registry. For single-brand domains, brand_id can be omitted. For house-of-brands domains, brand_id identifies the specific brand. For creative production, brand.json is the canonical source of master brand identity (logo, palette, fonts, voice, and visual guidelines), subject only to the supported per-call fields in brand_kit_override. Catalogs supply product or item payload; catalog item asset groups, including property- or franchise-level logos, are item identity and do not override these master brand fields.",
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json",
+          "description": "Brand identifier within the house portfolio. Optional for single-brand domains."
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit for a global/default identity. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account identity and is not delivery targeting."
+        },
+        "industries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Inline override for the brand's industries. Useful when the caller cannot modify the brand's canonical brand.json but needs to declare industries for governance (e.g., Annex III vertical detection). brand.json remains the canonical source; when omitted here, governance agents SHOULD resolve from brand.json."
+        },
+        "data_subject_contestation": {
+          "type": "object",
+          "description": "Inline override for the brand's contestation contact point. Useful when the operator does not control brand.json but needs to discharge Art 22(3) for this plan. brand.json is canonical; when omitted, governance agents resolve brand → house → missing.",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "email"
+              ]
+            }
+          ],
+          "additionalProperties": false
+        },
+        "brand_kit_override": {
+          "type": "object",
+          "description": "Inline override for brand-kit fields normally resolved from `/.well-known/brand.json` on `domain` (logo, colors, voice, tagline). Use when brand.json is missing, stale, or inappropriate for this specific call — e.g., a campaign-scoped tagline, a co-branded creative, a freshly-rebranded color palette the brand.json hasn't shipped yet. Same inline-override pattern as `industries` and `data_subject_contestation` above: brand.json is canonical, the override is per-call. Adopters needing to override fields outside this subset (`voice_attributes`, `prohibited_terms`, etc.) MUST publish a different brand.json and reference it via a different `domain` — the inline override is intentionally narrow to a small high-traffic subset.\n\n**Merge semantics (normative).** The merge is **field-level**, not whole-object replacement. Each field within `brand_kit_override` (`logo`, `colors`, `voice`, `tagline`) is evaluated independently — when a field is present on the override the override value applies; when a field is absent the brand.json value applies (or is absent if brand.json doesn't carry one either). For composite fields (`colors.primary`, `colors.secondary`, `colors.accent`), the merge is one level deeper: each color slot is evaluated independently — a producer can override `colors.primary` while still inheriting `colors.secondary` from brand.json. SDKs MUST NOT treat a present `brand_kit_override.colors` as wiping the brand.json `colors` block entirely; only the per-slot fields present in the override take precedence. Without this rule, a partial-override semantics would diverge across SDKs and produce inconsistent rendering for the same payload.",
+          "properties": {
+            "logo": {
+              "$ref": "#/$defs/external:core~1assets~1image-asset.json",
+              "description": "Override logo asset."
+            },
+            "colors": {
+              "type": "object",
+              "description": "Override brand colors (hex strings).",
+              "properties": {
+                "primary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "secondary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "accent": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                }
+              },
+              "additionalProperties": true
+            },
+            "voice": {
+              "type": "string",
+              "description": "Override brand-voice description for surface-composed text/audio output."
+            },
+            "tagline": {
+              "type": "string",
+              "description": "Override tagline."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "domain": "nova-brands.com",
+          "brand_id": "spark"
+        },
+        {
+          "domain": "nova-brands.com",
+          "brand_id": "glow"
+        },
+        {
+          "domain": "acme-corp.com"
+        },
+        {
+          "domain": "nova-athletics.example",
+          "countries": [
+            "NL"
+          ]
+        }
+      ]
+    },
+    "external:core/brand-id.json": {
+      "title": "Brand ID",
+      "description": "Identifier for a brand within a house portfolio. Must be lowercase alphanumeric with underscores only. The house chooses this identifier.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand",
+      "examples": [
+        "tide",
+        "cheerios",
+        "air_jordan",
+        "nike",
+        "pampers"
+      ]
+    },
+    "external:core/assets/image-asset.json": {
+      "title": "Image Asset",
+      "description": "Image asset with URL and dimensions",
+      "type": "object",
+      "properties": {
+        "asset_type": {
+          "type": "string",
+          "const": "image",
+          "description": "Discriminator identifying this as an image asset. See /schemas/creative/asset-types for the registry."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the image asset"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Width in pixels"
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Height in pixels"
+        },
+        "file_size_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Image file size in bytes. Required by agents that advertise a max_file_size_kb constraint."
+        },
+        "pixel_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Intrinsic pixels per logical render pixel (for example `2` for a 600×500 image intended to render at 300×250). Optional because a validator can infer the ratio when the target format declares logical dimensions. When supplied, it MUST agree with both `width / logical_width` and `height / logical_height`; it is never a substitute for the intrinsic `width` and `height` fields."
+        },
+        "state_id": {
+          "type": "string",
+          "description": "Binding used only when this image populates a `seller_rendered_stateful_display` `state_canvases` slot. It MUST match one declared `states[].state_id` (semantic validators resolve it). Omit for ordinary image slots."
+        },
+        "breakpoint_id": {
+          "type": "string",
+          "description": "Binding used only when this image populates a `seller_rendered_stateful_display` `state_canvases` slot. It MUST match one breakpoint declared on the selected state (semantic validators resolve it). Omit for ordinary image slots."
+        },
+        "focal_point": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "Normalized `[x, y]` coordinates (0–1 from top-left) of the image's visual anchor. Seller-side renderers crop toward the focal point when deriving renditions across breakpoints and aspect ratios; absent, cropping falls back to center-weighted defaults."
+        },
+        "format": {
+          "type": "string",
+          "description": "Image file format (jpg, png, gif, webp, etc.)"
+        },
+        "alt_text": {
+          "type": "string",
+          "description": "Alternative text for accessibility",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "#/$defs/external:core~1provenance.json",
+          "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+        }
+      },
+      "required": [
+        "asset_type",
+        "url",
+        "width",
+        "height"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/provenance.json": {
+      "title": "Provenance",
+      "description": "Declares how content was produced, whether AI was involved, and what disclosure obligations apply. Attaches to creative manifests, individual assets, or content-standards artifacts. When present at multiple levels, the most specific provenance object replaces the inherited one entirely (no field-level merging). Provenance is a claim by the declaring party — receiving parties should verify claims independently via their own detection tools.",
+      "type": "object",
+      "properties": {
+        "digital_source_type": {
+          "$ref": "#/$defs/external:enums~1digital-source-type.json",
+          "description": "IPTC-aligned classification of AI involvement in producing this content"
+        },
+        "synthetic_depiction": {
+          "type": "boolean",
+          "description": "Assessed declaration of whether the content synthetically depicts a real or fictional person performing or appearing in a way that was generated or materially manipulated rather than captured as depicted. `true` covers both a fully synthetic performer and material manipulation of a real performer; `false` is an assessed declaration that the content does not contain such a depiction. Absence means the content has not been assessed for synthetic depiction. This field does not claim consent, legality, or independent verification, and receivers MUST NOT derive it solely from `digital_source_type`."
+        },
+        "ai_tool": {
+          "type": "object",
+          "description": "AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI metadata fields and C2PA claim_generator.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name of the AI tool or model (e.g., 'DALL-E 3', 'Stable Diffusion XL', 'Gemini')"
+            },
+            "version": {
+              "type": "string",
+              "description": "Version identifier for the AI tool or model (e.g., '25.1', '0125', '2.1'). For generative models, use the model version rather than the API version."
+            },
+            "provider": {
+              "type": "string",
+              "description": "Organization that provides the AI tool (e.g., 'OpenAI', 'Stability AI', 'Google')"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "human_oversight": {
+          "type": "string",
+          "description": "Level of human involvement in the AI-assisted creation process. Independent of `disclosure.required` — the protocol does not derive disclosure obligations from oversight level. Some regulations include carve-outs for human-edited or human-directed AI output, but those carve-outs have factual prerequisites the schema cannot evaluate. Asserting `edited` or `directed` does not by itself justify `disclosure.required: false`.",
+          "enum": [
+            "none",
+            "prompt_only",
+            "selected",
+            "edited",
+            "directed"
+          ],
+          "enumDescriptions": {
+            "none": "Fully automated with no human involvement in generation",
+            "prompt_only": "Human provided the prompt or instructions but did not review outputs",
+            "selected": "Human selected from multiple AI-generated candidates",
+            "edited": "Human edited or refined AI-generated output",
+            "directed": "Human directed the creative process with AI as an assistive tool"
+          }
+        },
+        "declared_by": {
+          "type": "object",
+          "description": "Party declaring this provenance. Identifies who attached the provenance claim, enabling receiving parties to assess trust.",
+          "properties": {
+            "agent_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL of the agent or service that declared this provenance"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "creator",
+                "advertiser",
+                "agency",
+                "platform",
+                "tool"
+              ],
+              "description": "Role of the declaring party in the supply chain",
+              "enumDescriptions": {
+                "creator": "The party that created or generated the content",
+                "advertiser": "The brand or advertiser that owns the content",
+                "agency": "Agency acting on behalf of the advertiser",
+                "platform": "Ad platform or publisher that processed the content",
+                "tool": "Automated tool or service that attached provenance metadata"
+              }
+            }
+          },
+          "required": [
+            "role"
+          ]
+        },
+        "declared_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this provenance claim was made (ISO 8601). Distinct from created_time, which records when the content itself was produced. A provenance claim may be attached well after content creation, for example when retroactively declaring AI involvement for regulatory compliance."
+        },
+        "created_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this content was created or generated (ISO 8601)"
+        },
+        "c2pa": {
+          "type": "object",
+          "description": "C2PA sidecar manifest reference. Links to a detached cryptographic provenance manifest for this content. Note: file-level C2PA bindings break when ad servers transcode, resize, or re-encode assets. For pipelines with intermediaries, consider embedded_provenance as the primary provenance mechanism.",
+          "properties": {
+            "manifest_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL to the C2PA manifest store for this content"
+            }
+          },
+          "required": [
+            "manifest_url"
+          ]
+        },
+        "embedded_provenance": {
+          "type": "array",
+          "description": "Provenance metadata embedded within the content stream. Each entry declares one embedding layer: structured provenance data carried inside the content itself, as distinct from sidecar references (c2pa.manifest_url). Embedded provenance survives operations that break sidecar and file-level bindings: ad-server transcoding, CMS ingestion, copy-paste, reformatting, and CDN re-encoding. For ad-tech pipelines where content passes through multiple intermediaries, embedded provenance is the reliable path for provenance that persists from declaration through delivery. This is a declaration by the embedding party. The receiving party (the seller) is the verifier-of-record: it confirms the claim by calling a governance agent it trusts (typically one published in `creative_policy.accepted_verifiers`).",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "$ref": "#/$defs/external:enums~1embedded-provenance-method.json",
+                "description": "How provenance data is carried within the content"
+              },
+              "standard": {
+                "type": "string",
+                "description": "Standard the embedding conforms to, if any (e.g., 'c2pa' for C2PA Section A.7 text manifest embedding)"
+              },
+              "provider": {
+                "type": "string",
+                "description": "Organization that performed the embedding (e.g., 'Encypher', 'Digimarc'). Display label and audit context — not a wire identifier."
+              },
+              "verify_agent": {
+                "type": "object",
+                "description": "Buyer's representation that this embedding can be verified by a governance agent on the seller's `creative_policy.accepted_verifiers` list. The `agent_url` MUST match (canonicalized) one of the seller's published `accepted_verifiers[].agent_url` entries; sellers reject `sync_creatives` submissions whose `verify_agent.agent_url` is off-list with `PROVENANCE_VERIFIER_NOT_ACCEPTED`. This is buyer-supplied evidence, not buyer-driven routing — the seller is the verifier-of-record and the seller controls which agent it actually calls (the seller MAY use a different on-list agent if it determines this is more appropriate; the seller does not call buyer-asserted endpoints outside its allowlist). MAY be omitted for self-verifiable embeddings (e.g., a C2PA text manifest with a public key the seller already trusts).",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "URL of the governance agent the buyer represents was used to embed/verify this layer. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
+                  },
+                  "feature_id": {
+                    "type": "string",
+                    "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `encypher.markers_present_v2`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the provenance data was embedded (ISO 8601)"
+              }
+            },
+            "required": [
+              "method",
+              "provider"
+            ]
+          }
+        },
+        "watermarks": {
+          "type": "array",
+          "description": "Content watermarks applied to this asset. Each entry declares one watermarking layer: a content modification that encodes an identifier or fingerprint within the asset. Watermarks differ from embedded provenance: a watermark encodes an identifier (who generated it, who owns it), while embedded provenance carries or references a structured provenance record (the full chain of custody). A single asset may carry both. Aligns with C2PA action taxonomy: c2pa.watermarked.bound (watermark linked to a C2PA manifest) and c2pa.watermarked.unbound (watermark independent of any manifest). This is a declaration by the watermarking party. The receiving party (the seller) is the verifier-of-record: it confirms the claim by calling a governance agent it trusts (typically one published in `creative_policy.accepted_verifiers`).",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "media_type": {
+                "$ref": "#/$defs/external:enums~1watermark-media-type.json",
+                "description": "Media category of the watermarked content"
+              },
+              "provider": {
+                "type": "string",
+                "description": "Organization that applied the watermark (e.g., 'Imatag', 'Steg.AI', 'Encypher'). Display label and audit context — not a wire identifier."
+              },
+              "verify_agent": {
+                "type": "object",
+                "description": "Buyer's representation that this watermark can be detected by a governance agent on the seller's `creative_policy.accepted_verifiers` list. The `agent_url` MUST match (canonicalized) one of the seller's published `accepted_verifiers[].agent_url` entries; sellers reject `sync_creatives` submissions whose `verify_agent.agent_url` is off-list with `PROVENANCE_VERIFIER_NOT_ACCEPTED`. This is buyer-supplied evidence, not buyer-driven routing — the seller is the verifier-of-record and the seller controls which agent it actually calls (the seller MAY use a different on-list agent if it determines this is more appropriate; the seller does not call buyer-asserted endpoints outside its allowlist).",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "URL of the governance agent the buyer represents was used to apply/detect this watermark. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
+                  },
+                  "feature_id": {
+                    "type": "string",
+                    "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `imatag.watermark_detected`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "c2pa_action": {
+                "$ref": "#/$defs/external:enums~1c2pa-watermark-action.json",
+                "description": "C2PA action classification for this watermark"
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the watermark was applied (ISO 8601)"
+              }
+            },
+            "required": [
+              "media_type",
+              "provider"
+            ]
+          }
+        },
+        "disclosure": {
+          "type": "object",
+          "description": "Regulatory disclosure requirements for this content. Indicates whether AI disclosure is required and under which jurisdictions.",
+          "properties": {
+            "required": {
+              "type": "boolean",
+              "description": "The declaring party's claim that AI disclosure is required for this content under applicable regulations. This is a declared signal carried through the supply chain — useful as a routing and audit input — not a regulatory determination made by the protocol. Receiving parties remain responsible for their own jurisdictional analysis and should not treat `required: false` as compliance cover."
+            },
+            "jurisdictions": {
+              "type": "array",
+              "description": "Jurisdictions where disclosure obligations apply",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "country": {
+                    "type": "string",
+                    "description": "ISO 3166-1 alpha-2 country code (e.g., 'US', 'DE', 'CN')"
+                  },
+                  "region": {
+                    "type": "string",
+                    "description": "Sub-national region code (e.g., 'CA' for California, 'BY' for Bavaria)"
+                  },
+                  "regulation": {
+                    "type": "string",
+                    "description": "Regulation identifier (e.g., 'eu_ai_act_article_50', 'ca_sb_942', 'cn_deep_synthesis')"
+                  },
+                  "label_text": {
+                    "type": "string",
+                    "description": "Required disclosure label text for this jurisdiction, in the local language"
+                  },
+                  "render_guidance": {
+                    "type": "object",
+                    "description": "How the disclosure should be rendered for this jurisdiction. Expresses the declaring party's intent for persistence and position based on regulatory requirements. Publishers control actual rendering but governance agents can audit whether guidance was followed.",
+                    "minProperties": 1,
+                    "properties": {
+                      "persistence": {
+                        "$ref": "#/$defs/external:enums~1disclosure-persistence.json",
+                        "description": "How long the disclosure must persist during content playback or display"
+                      },
+                      "min_duration_ms": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Minimum display duration in milliseconds for initial persistence. Recommended when persistence is initial — without it, the duration is at the publisher's discretion. At serve time the publisher reads this from provenance since the brief is not available."
+                      },
+                      "positions": {
+                        "type": "array",
+                        "description": "Preferred disclosure positions in priority order. The first position a format supports should be used.",
+                        "items": {
+                          "$ref": "#/$defs/external:enums~1disclosure-position.json"
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      },
+                      "ext": {
+                        "$ref": "#/$defs/external:core~1ext.json"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "country",
+                  "regulation"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "required"
+          ]
+        },
+        "verification": {
+          "type": "array",
+          "description": "Third-party verification or detection results for this content. Multiple services may independently evaluate the same content. Provenance is a claim — verification results attached by the declaring party are supplementary. The enforcing party (e.g., seller/publisher) should run its own verification via get_creative_features or calibrate_content.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "verified_by": {
+                "type": "string",
+                "description": "Name of the verification service (e.g., 'DoubleVerify', 'Hive Moderation', 'Reality Defender')"
+              },
+              "verified_time": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the verification was performed (ISO 8601)"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "authentic",
+                  "ai_generated",
+                  "ai_modified",
+                  "inconclusive"
+                ],
+                "description": "Verification outcome"
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Confidence score of the verification result (0.0 to 1.0)"
+              },
+              "details_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to the full verification report"
+              }
+            },
+            "required": [
+              "verified_by",
+              "result"
+            ]
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      }
+    },
+    "external:enums/digital-source-type.json": {
+      "title": "Digital Source Type",
+      "description": "Classification of AI involvement in content creation, aligned with IPTC digitalsourcetype vocabulary. Used in provenance metadata to declare how a creative asset, artifact, or individual asset was produced.",
+      "type": "string",
+      "enum": [
+        "digital_capture",
+        "digital_creation",
+        "trained_algorithmic_media",
+        "composite_with_trained_algorithmic_media",
+        "algorithmic_media",
+        "composite_capture",
+        "composite_synthetic",
+        "human_edits",
+        "data_driven_media"
+      ],
+      "enumDescriptions": {
+        "digital_capture": "Captured by a digital device (camera, scanner, screen recording) with no AI involvement",
+        "digital_creation": "Created by a human using digital tools (Photoshop, Illustrator, After Effects) without AI generation",
+        "trained_algorithmic_media": "Generated entirely by a trained AI model (DALL-E, Midjourney, Stable Diffusion, Sora)",
+        "composite_with_trained_algorithmic_media": "Human-created content combined with AI-generated elements (e.g., photo with AI background)",
+        "algorithmic_media": "Produced by deterministic algorithms without machine learning (procedural generation, rule-based systems)",
+        "composite_capture": "Multiple digital captures composited together without AI",
+        "composite_synthetic": "Composite of multiple elements where at least one is AI-generated (e.g., stock photo composited with AI-generated background)",
+        "human_edits": "Content augmented, corrected, or enhanced by humans using non-generative tools",
+        "data_driven_media": "Assembled from structured data feeds (DCO templates, product catalogs, weather-triggered variants)"
+      }
+    },
+    "external:enums/embedded-provenance-method.json": {
+      "title": "Embedded Provenance Method",
+      "description": "How provenance data is carried within the content stream. Distinguishes between format-level manifest embedding (where the manifest travels inside the file container) and provenance markers (where invisible markers in the content itself encode or reference a provenance record). Both survive operations that strip sidecar metadata, but provenance markers additionally survive content-level transformations such as copy-paste, reformatting, and CMS re-encoding.",
+      "type": "string",
+      "enum": [
+        "manifest_wrapper",
+        "provenance_markers"
+      ],
+      "enumDescriptions": {
+        "manifest_wrapper": "A provenance manifest embedded in the file container per format-specific rules (e.g., JUMBF box in JPEG, C2PATextManifestWrapper in plaintext per C2PA Section A.7). The manifest travels with the file but is tied to the file's byte structure.",
+        "provenance_markers": "Invisible markers embedded within the content stream that encode or reference a provenance record. Designed to survive reformatting, copy-paste, CMS ingestion, and ad-server transcoding that breaks file-level bindings."
+      }
+    },
+    "external:enums/watermark-media-type.json": {
+      "title": "Watermark Media Type",
+      "description": "Media category of a content watermark. Identifies what kind of content the watermark is applied to, which determines the detection and verification methods required.",
+      "type": "string",
+      "enum": [
+        "audio",
+        "image",
+        "video",
+        "text"
+      ],
+      "enumDescriptions": {
+        "audio": "Watermark applied to audio content (e.g., spread-spectrum, echo hiding)",
+        "image": "Watermark applied to image content (e.g., spatial domain, frequency domain)",
+        "video": "Watermark applied to video content (e.g., per-frame image watermarking, temporal watermarking)",
+        "text": "Watermark applied to text content (e.g., synonym substitution, structural modification)"
+      }
+    },
+    "external:enums/c2pa-watermark-action.json": {
+      "title": "C2PA Watermark Action",
+      "description": "C2PA action classification for a content watermark. Distinguishes watermarks that are cryptographically linked to a C2PA manifest (bound) from watermarks that exist independently (unbound). Aligns with the c2pa.watermarked.* action family in the C2PA action taxonomy.",
+      "type": "string",
+      "enum": [
+        "c2pa.watermarked.bound",
+        "c2pa.watermarked.unbound"
+      ],
+      "enumDescriptions": {
+        "c2pa.watermarked.bound": "Watermark linked to a C2PA manifest for this asset. The watermark and manifest are mutually reinforcing: the manifest references the watermark, and the watermark can be used to locate the manifest.",
+        "c2pa.watermarked.unbound": "Watermark independent of any C2PA manifest. Applied before any provenance signing event (e.g., by the AI generator at creation time) or in pipelines where no manifest is present."
+      }
+    },
+    "external:enums/disclosure-persistence.json": {
+      "title": "Disclosure Persistence",
+      "description": "How long a disclosure must persist during content playback or display. Different jurisdictions and regulations require different persistence behaviors for AI-generated content labels. When multiple sources specify persistence for the same jurisdiction (e.g., brief and provenance), the most restrictive mode applies: continuous > initial > flexible.",
+      "type": "string",
+      "enum": [
+        "continuous",
+        "initial",
+        "flexible"
+      ],
+      "enumDescriptions": {
+        "continuous": "Disclosure must remain visible or audible throughout the entire content display duration. For video and audio, this means the full playback duration. For static formats (display, DOOH), this means the full display slot. For DOOH specifically, 'content duration' means the ad's display slot within the rotation, not the screen's full rotation cycle.",
+        "initial": "Disclosure must appear at the start of content for a minimum duration before it may be removed. Pair with min_duration_ms in render_guidance or creative brief to specify the required duration.",
+        "flexible": "Disclosure presence is sufficient; placement timing and duration are at the publisher's discretion"
+      }
+    },
+    "external:enums/disclosure-position.json": {
+      "title": "Disclosure Position",
+      "description": "Where a required disclosure should appear within a creative. Used by creative briefs to specify disclosure placement and by formats to declare which positions they can render.",
+      "type": "string",
+      "enum": [
+        "prominent",
+        "footer",
+        "audio",
+        "subtitle",
+        "overlay",
+        "end_card",
+        "pre_roll",
+        "companion"
+      ]
+    },
+    "external:core/ext.json": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/pagination-request.json": {
+      "title": "Pagination Request",
+      "description": "Standard cursor-based pagination parameters for list operations",
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Maximum number of items to return per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor from a previous response to fetch the next page"
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:core/context.json": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

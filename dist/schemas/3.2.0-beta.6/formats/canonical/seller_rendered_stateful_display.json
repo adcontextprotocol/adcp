@@ -1,0 +1,959 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/formats/canonical/seller_rendered_stateful_display.json",
+  "title": "Canonical Format: Seller-Rendered Stateful Display",
+  "description": "Seller-rendered display unit whose declaration is an executable template contract: buyer-known visual states, explicit transitions, breakpoint canvases, and per-state slot bindings. The seller owns the runtime; `supply_mode` declares which end the buyer feeds. For machine-rendered `components` and `rendered_canvases` supply, sellers MUST support `preview_creative` returning every state × breakpoint from a candidate manifest. `layered_source` instead follows the asynchronous seller-production preview path after the declared production window. `composition_model: deterministic` describes serving the finished states, not instant derivation from layered source. Buyer-executable HTML/MRAID is `html5`, a buyer-delivered tag is `display_tag`, arbitrary games/hotspots/scripts remain `custom`, and per-impression algorithmic assembly is `responsive_creative`.",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/formats/canonical/_base.json"
+    }
+  ],
+  "properties": {
+    "experimental": {
+      "default": true,
+      "description": "Experimental in AdCP 3.2 while the creative working group gathers implementation evidence across premium web and mobile/app sellers."
+    },
+    "v1_translatable": {
+      "default": false,
+      "description": "No v1 named-format equivalent can express multiple seller-rendered states and their breakpoint bindings."
+    },
+    "since_version": {
+      "default": "3.2"
+    },
+    "composition_model": {
+      "default": "deterministic"
+    },
+    "supply_mode": {
+      "type": "string",
+      "enum": [
+        "components",
+        "rendered_canvases",
+        "layered_source"
+      ],
+      "default": "components",
+      "description": "Which end of the template contract the buyer feeds. `components`: buyer supplies component slots; seller renders states (no `state_canvases`/`layered_source` assets allowed). `rendered_canvases`: buyer supplies exactly one `state_canvases` image per declared state × breakpoint pair. `layered_source`: buyer ships design source (+ optional `font_files`); seller production derives states (`production_window_business_days` applies) — transitional for sellers without executable templates."
+    },
+    "slots": {
+      "default": [
+        {
+          "asset_group_id": "state_canvases",
+          "asset_type": "image",
+          "required": false,
+          "min": 1
+        },
+        {
+          "asset_group_id": "logo",
+          "asset_type": "image",
+          "required": false
+        },
+        {
+          "asset_group_id": "imagery",
+          "asset_type": "image",
+          "required": false,
+          "min": 0
+        },
+        {
+          "asset_group_id": "headline",
+          "asset_type": "text",
+          "required": false
+        },
+        {
+          "asset_group_id": "messaging",
+          "asset_type": "text",
+          "required": false
+        },
+        {
+          "asset_group_id": "cta",
+          "asset_type": "text",
+          "required": false
+        },
+        {
+          "asset_group_id": "legal_text",
+          "asset_type": "text",
+          "required": false
+        },
+        {
+          "asset_group_id": "video_main",
+          "asset_type": "video",
+          "required": false
+        },
+        {
+          "asset_group_id": "landing_page_url",
+          "asset_type": "url",
+          "required": true
+        },
+        {
+          "asset_group_id": "state_click_urls",
+          "asset_type": "url",
+          "required": false,
+          "min": 0
+        },
+        {
+          "asset_group_id": "layered_source",
+          "asset_type": "zip",
+          "required": false
+        },
+        {
+          "asset_group_id": "font_files",
+          "asset_type": "zip",
+          "required": false
+        }
+      ],
+      "description": "Default manifest slots; which are consumed depends on `supply_mode`. `state_canvases` images MUST carry `state_id` and `breakpoint_id`, and `state_click_urls` entries MUST carry `state_id` (semantic validators resolve the bindings). Component images SHOULD carry `focal_point` for deterministic seller cropping. `landing_page_url` is the default destination (see `clickthrough`). `font_files` MUST contain only buyer-licensed fonts; publisher-proprietary fonts never travel in manifests. Only image, video, text, url, zip, and pixel_tracker slot asset types are accepted — executable types (javascript, html, css, webhook) are rejected even via `slots` overrides."
+    },
+    "states": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Finite visual states known at buy time; state and breakpoint IDs form the canvas-key matrix. Runtime causes live in `transitions[]`. A single-state unit (topscroll, interscroller, skin) declares one state, no transitions, and typically a `reveal` mechanic.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "state_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "Stable identifier used by `state_canvases[].state_id` and `state_click_urls[].state_id`."
+          },
+          "anchoring": {
+            "type": "string",
+            "enum": [
+              "inline",
+              "sticky_top",
+              "sticky_bottom",
+              "overlay",
+              "fullscreen_overlay",
+              "underlay"
+            ],
+            "description": "`underlay` renders the canvas beneath page content, which scrolls over it (IAB New Ad Portfolio underlay class: skins, reveal units). Transitions into `overlay`/`fullscreen_overlay` states SHOULD be user-initiated; non-user-action entries emit LEAN policy warnings."
+          },
+          "slot_bindings": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+$"
+            },
+            "description": "Asset group IDs rendered in this state (components mode). Makes the template executable: given components and bindings, assembly is deterministic. Every value MUST resolve to a declared slot. Omitted means all supplied component slots may render."
+          },
+          "motion": {
+            "type": "string",
+            "enum": [
+              "static",
+              "animated"
+            ],
+            "default": "static",
+            "description": "Whether the seller-rendered layout animates within this state (attract loops, load animations). Intra-state animation is seller-rendered; buyer canvases stay static images."
+          },
+          "max_animation_s": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Upper bound on intra-state animation duration. Required when `motion` is `animated`."
+          },
+          "breakpoints": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "breakpoint_id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "description": "Stable identifier used by `state_canvases[].breakpoint_id`."
+                },
+                "width": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "width_range": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "description": "Inclusive [minimum, maximum] accepted canvas width. The first value MUST be no greater than the second; semantic validators enforce ordering."
+                },
+                "width_mode": {
+                  "type": "string",
+                  "enum": [
+                    "full_bleed",
+                    "gutter_residual"
+                  ],
+                  "description": "Fluid width classes. `full_bleed`: edge-to-edge viewport width (IAB adhesion, topscroll). `gutter_residual`: the margin remaining beside the page content column (desktop skins). Fluid breakpoints cannot be targeted by `rendered_canvases` supply — semantic validation rejects that pairing."
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "height_range": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "description": "Inclusive [minimum, maximum] accepted canvas height. The first value MUST be no greater than the second; semantic validators enforce ordering."
+                },
+                "viewport_height_percent": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 100,
+                  "description": "Height as a percentage of the viewport (topscroll 80%, mobile skin panel 15%). Fluid; cannot be targeted by `rendered_canvases` supply."
+                },
+                "canvas_aspect_ratio": {
+                  "type": "string",
+                  "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+                  "description": "Aspect ratio the rendered canvas maintains across the size range (IAB flexible units, ratio-bucket responsive). When both fixed `width` and `height` are declared, the ratio MUST be consistent with them."
+                }
+              },
+              "required": [
+                "breakpoint_id"
+              ],
+              "allOf": [
+                {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "width"
+                      ],
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "width_range"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "width_mode"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "required": [
+                        "width_range"
+                      ],
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "width"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "width_mode"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "required": [
+                        "width_mode"
+                      ],
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "width"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "width_range"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "height"
+                      ],
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "height_range"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "viewport_height_percent"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "required": [
+                        "height_range"
+                      ],
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "height"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "viewport_height_percent"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "required": [
+                        "viewport_height_percent"
+                      ],
+                      "not": {
+                        "anyOf": [
+                          {
+                            "required": [
+                              "height"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "height_range"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ],
+              "additionalProperties": true
+            }
+          },
+          "close_affordance": {
+            "type": "boolean",
+            "description": "Whether this state visibly renders a seller-controlled close affordance. When true, rendering MUST follow IAB New Ad Portfolio close-button guidance (top-right, minimum 50×50 dp, available from state entry)."
+          }
+        },
+        "required": [
+          "state_id",
+          "anchoring",
+          "breakpoints",
+          "close_affordance"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "initial_state_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "State rendered when the unit first becomes visible. MUST resolve to `states[].state_id`; for a single-state unit it MUST equal the sole state."
+    },
+    "reveal": {
+      "type": "string",
+      "enum": [
+        "none",
+        "clip_window",
+        "scroll_parallax"
+      ],
+      "default": "none",
+      "description": "How the unit enters view, distinct from state changes. `clip_window`: canvas fixed and progressively exposed through a scrolling window (interscroller, topscroll). `scroll_parallax`: canvas moves at a different rate than content. Reveal is presentation of one canvas, not a transition; do not fabricate a second state to express it."
+    },
+    "transitions": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Bounded seller-rendered transitions between declared visual states. Required when `states` has more than one entry; MUST be omitted for single-state units. Every non-initial state MUST be reachable from `initial_state_id`. Dismissal is terminal unit behavior declared by `user_controls.dismissible`, not a hidden visual state.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "transition_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "Stable transition identifier for preview and reporting."
+          },
+          "from_state_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "to_state_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "timer",
+              "in_view_timer",
+              "scroll_threshold",
+              "scroll_progress",
+              "user_action",
+              "media_event"
+            ],
+            "description": "Cause of the transition. `timer` counts from state entry; `in_view_timer` counts viewable time in the current state (industry auto-collapse is N seconds in view). `media_event` fires on `video_main` playback milestones. The outcome is expressed separately by `to_state_id`."
+          },
+          "input": {
+            "type": "string",
+            "enum": [
+              "tap",
+              "hover",
+              "swipe_up",
+              "swipe_down",
+              "swipe_left",
+              "swipe_right",
+              "scroll",
+              "expand_control",
+              "collapse_control"
+            ],
+            "description": "Input driving a user or scroll transition. `hover` expansion is disallowed by IAB NAP guidance and emits a LEAN policy warning visible to buyers."
+          },
+          "media_event": {
+            "type": "string",
+            "enum": [
+              "video_start",
+              "video_complete"
+            ],
+            "description": "Playback milestone of `video_main` driving a `media_event` transition (endframes, collapse-on-complete)."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "down",
+              "up"
+            ],
+            "default": "down",
+            "description": "Scroll direction that arms a `scroll_threshold` transition; enables direction-aware expand/collapse cycles. Re-crossing in the opposite direction does not re-fire this transition."
+          },
+          "transition_mode": {
+            "type": "string",
+            "enum": [
+              "instant",
+              "animated",
+              "scroll_linked"
+            ],
+            "default": "instant",
+            "description": "`scroll_linked` continuously interpolates the seller-owned layout between the two declared endpoint states; it is valid only with trigger `scroll_progress` and does not permit buyer scripting."
+          },
+          "delay_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "For `timer`: delay after `from_state_id` activates (re-entry restarts it). For `in_view_timer`: accumulated viewable milliseconds in `from_state_id`. Timer-class transitions in a state cycle MUST declare at least 1000 (anti-strobe floor)."
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Duration of a seller-rendered animated transition."
+          },
+          "scroll_threshold_percent": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Viewport/page scroll threshold that starts a `scroll_threshold` transition."
+          },
+          "scroll_reference": {
+            "type": "string",
+            "enum": [
+              "document_progress",
+              "containing_scroller_progress"
+            ],
+            "description": "Reference frame for scroll percentages. Progress is `scroll_offset / max(scroll_extent - viewport_extent, 1) * 100`, measured on either the page document or the nearest seller-declared containing scroller."
+          },
+          "scroll_start_percent": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Start of the bounded scroll interval for a `scroll_progress` transition."
+          },
+          "scroll_end_percent": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "End of the bounded scroll interval for a `scroll_progress` transition. MUST be greater than `scroll_start_percent`."
+          },
+          "preserve_playback": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether `video_main` continues without restart while the seller changes state."
+          }
+        },
+        "required": [
+          "transition_id",
+          "from_state_id",
+          "to_state_id",
+          "trigger",
+          "transition_mode"
+        ],
+        "oneOf": [
+          {
+            "properties": {
+              "trigger": {
+                "type": "string",
+                "const": "timer"
+              },
+              "transition_mode": {
+                "type": "string",
+                "enum": [
+                  "instant",
+                  "animated"
+                ]
+              }
+            },
+            "required": [
+              "trigger",
+              "delay_ms"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "input"
+                  ]
+                },
+                {
+                  "required": [
+                    "media_event"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_reference"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_threshold_percent"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_start_percent"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_end_percent"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "trigger": {
+                "type": "string",
+                "const": "in_view_timer"
+              },
+              "transition_mode": {
+                "type": "string",
+                "enum": [
+                  "instant",
+                  "animated"
+                ]
+              }
+            },
+            "required": [
+              "trigger",
+              "delay_ms"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "input"
+                  ]
+                },
+                {
+                  "required": [
+                    "media_event"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_reference"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_threshold_percent"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_start_percent"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_end_percent"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "trigger": {
+                "type": "string",
+                "const": "scroll_threshold"
+              },
+              "input": {
+                "type": "string",
+                "const": "scroll"
+              },
+              "transition_mode": {
+                "type": "string",
+                "enum": [
+                  "instant",
+                  "animated"
+                ]
+              }
+            },
+            "required": [
+              "trigger",
+              "input",
+              "scroll_reference",
+              "scroll_threshold_percent"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "delay_ms"
+                  ]
+                },
+                {
+                  "required": [
+                    "media_event"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_start_percent"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_end_percent"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "trigger": {
+                "type": "string",
+                "const": "scroll_progress"
+              },
+              "input": {
+                "type": "string",
+                "const": "scroll"
+              },
+              "transition_mode": {
+                "type": "string",
+                "const": "scroll_linked"
+              }
+            },
+            "required": [
+              "trigger",
+              "input",
+              "scroll_reference",
+              "scroll_start_percent",
+              "scroll_end_percent"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "delay_ms"
+                  ]
+                },
+                {
+                  "required": [
+                    "media_event"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_threshold_percent"
+                  ]
+                },
+                {
+                  "required": [
+                    "direction"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "trigger": {
+                "type": "string",
+                "const": "user_action"
+              },
+              "transition_mode": {
+                "type": "string",
+                "enum": [
+                  "instant",
+                  "animated"
+                ]
+              }
+            },
+            "required": [
+              "trigger",
+              "input"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "delay_ms"
+                  ]
+                },
+                {
+                  "required": [
+                    "media_event"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_reference"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_threshold_percent"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_start_percent"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_end_percent"
+                  ]
+                },
+                {
+                  "required": [
+                    "direction"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "trigger": {
+                "type": "string",
+                "const": "media_event"
+              },
+              "transition_mode": {
+                "type": "string",
+                "enum": [
+                  "instant",
+                  "animated"
+                ]
+              }
+            },
+            "required": [
+              "trigger",
+              "media_event"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "input"
+                  ]
+                },
+                {
+                  "required": [
+                    "delay_ms"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_reference"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_threshold_percent"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_start_percent"
+                  ]
+                },
+                {
+                  "required": [
+                    "scroll_end_percent"
+                  ]
+                },
+                {
+                  "required": [
+                    "direction"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "additionalProperties": true
+      }
+    },
+    "clickthrough": {
+      "type": "string",
+      "enum": [
+        "required",
+        "optional",
+        "none"
+      ],
+      "default": "required",
+      "description": "Destination policy. `required` (default): manifest MUST supply `landing_page_url`. `optional`: click-optional units (in-feed brand units) may omit it. `none`: unit is non-clickable; manifests MUST NOT supply `landing_page_url` or `state_click_urls`. Per-state overrides via `state_click_urls` entries carrying `state_id`; `landing_page_url` is the fallback for unlisted states."
+    },
+    "user_controls": {
+      "type": "object",
+      "properties": {
+        "dismissible": {
+          "type": "boolean"
+        },
+        "user_collapsible": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "dismissible",
+        "user_collapsible"
+      ],
+      "additionalProperties": true,
+      "description": "When any state anchors as `overlay` or `fullscreen_overlay`, either `dismissible` MUST be true or that state's `close_affordance` MUST be true (dismissibility floor; semantic validators enforce)."
+    },
+    "canvas_constraints": {
+      "type": "array",
+      "description": "Rectangular areas constraining buyer artwork. Omitted state/breakpoint selectors apply the constraint to every canvas. For fluid or range-sized breakpoints, use percent-unit regions.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/canvas-constraint.json"
+      }
+    },
+    "duration_ms_range": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 0
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "minItems": 2,
+      "maxItems": 2,
+      "contains": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "description": "Accepted embedded-video duration [min, max]. `duration_ms_exact` takes precedence when both are present."
+    },
+    "duration_ms_exact": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+      "description": "Embedded-video aspect ratio."
+    },
+    "containers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "mp4",
+          "webm",
+          "mov"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "video_playback": {
+      "type": "string",
+      "enum": [
+        "none",
+        "auto_muted",
+        "user_initiated"
+      ]
+    },
+    "max_initial_load_kb": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_subload_kb": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Ceiling on assets loaded after the window load event (IAB LEAN subload). Pairs with `max_initial_load_kb` to mirror the New Ad Portfolio initial/subload weight pair."
+    },
+    "polite_load": {
+      "type": "boolean",
+      "description": "When true, non-initial assets load only after the host page's window load event (IAB LEAN subload boundary)."
+    }
+  },
+  "x-adcp-validation": {
+    "allowed_slot_asset_types": [
+      "image",
+      "video",
+      "text",
+      "url",
+      "zip",
+      "pixel_tracker"
+    ],
+    "verifier_constraints": {
+      "state_id_uniqueness": "states[].state_id values must be unique",
+      "initial_state_resolution": "initial_state_id must resolve to a declared state",
+      "single_state_shape": "when states has one entry, transitions must be absent or empty and initial_state_id must equal the sole state; when states has more than one entry, transitions must be present and non-empty",
+      "transition_id_uniqueness": "transitions[].transition_id values must be unique",
+      "transition_exit_determinism": "at most one transition out of a given state per cause tuple (trigger, plus input for user_action, media_event for media_event, direction for scroll_threshold); distinct causes may coexist and the seller runtime arms whichever inputs the device supports",
+      "transition_state_resolution": "transition endpoints must resolve to distinct declared states",
+      "scroll_progress_bounds": "scroll_start_percent must be less than scroll_end_percent",
+      "scroll_linked_binding": "transition_mode scroll_linked is valid only with trigger scroll_progress",
+      "state_reachability": "every non-initial state must be reachable from initial_state_id",
+      "timer_cycle_floor": "timer and in_view_timer transitions participating in a state cycle must declare delay_ms >= 1000",
+      "dismissibility_floor": "any state anchored overlay or fullscreen_overlay requires user_controls.dismissible true or that state's close_affordance true",
+      "breakpoint_id_uniqueness": "breakpoints[].breakpoint_id values must be unique within each state",
+      "width_range_order": "width_range minimum must be less than or equal to maximum",
+      "height_range_order": "height_range minimum must be less than or equal to maximum",
+      "aspect_consistency": "canvas_aspect_ratio must be consistent with fixed width and height when both are declared",
+      "duration_ms_range_order": "duration_ms_range[0] must be less than or equal to duration_ms_range[1] when both are non-null",
+      "motion_animation_bound": "max_animation_s is required when a state's motion is animated and forbidden when static",
+      "slot_binding_resolution": "states[].slot_bindings values must resolve to declared slot asset_group_ids",
+      "allowed_slot_asset_types": "declaration slots (including params.slots overrides) must not widen the canonical's allowed asset types; executable types are rejected",
+      "supply_mode_manifest": "components mode forbids state_canvases and layered_source assets; rendered_canvases mode requires full canvas coverage and forbids layered_source; layered_source mode requires a layered_source asset and forbids state_canvases",
+      "fluid_breakpoint_supply": "breakpoints using width_mode or viewport_height_percent cannot be targeted by rendered_canvases supply",
+      "state_canvas_coverage": "in rendered_canvases mode, exactly one state_canvases image per declared state and breakpoint pair",
+      "state_canvas_dimensions": "canvas width must equal declared width or fall within width_range; height must equal fixed height or fall within height_range",
+      "state_canvas_extras": "undeclared and duplicate state/breakpoint pairs are rejected",
+      "clickthrough_policy": "landing_page_url required when clickthrough is required; landing_page_url and state_click_urls forbidden when clickthrough is none",
+      "state_click_url_resolution": "state_click_urls entries must carry state_id resolving to a declared state, with at most one entry per state",
+      "lean_policy_warnings": "non-user-action transitions into overlay/fullscreen_overlay anchoring, hover-triggered expansion, and scroll transitions into overlay anchoring emit policy warnings (non-blocking)"
+    },
+    "spec": "docs/creative/canonical-formats.mdx#premium-display-in-32"
+  },
+  "required": [
+    "states",
+    "initial_state_id",
+    "user_controls"
+  ],
+  "additionalProperties": true
+}

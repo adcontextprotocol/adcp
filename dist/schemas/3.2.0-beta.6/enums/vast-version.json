@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/vast-version.json",
+  "title": "VAST Version",
+  "description": "Supported VAST (Video Ad Serving Template) specification versions. Covers every version published by IAB Tech Lab, through VAST 4.3 (released December 2022). The value mirrors the `version` attribute a VAST document declares on its root element.",
+  "$comment": "VAST 4.3 ships no XSD of its own: IAB's `vast_4.2.xsd` remains the authoritative schema for 4.3 documents, so a validator MUST NOT reject a tag declaring `version=\"4.3\"` for want of a 4.3 schema. VAST 4.4 is deliberately absent because `vast_4.4.xsd` is annotated 'DRAFT for working group discussion' and is not a published specification; add it once IAB publishes it, not before. This file is the single source of truth for the roster, per the Enum Consolidation rule in docs/spec-guidelines.md, and other schemas `$ref` it rather than restating the list.",
+  "type": "string",
+  "enum": [
+    "2.0",
+    "3.0",
+    "4.0",
+    "4.1",
+    "4.2",
+    "4.3"
+  ]
+}

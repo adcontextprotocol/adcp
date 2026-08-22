@@ -1,0 +1,4424 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/mcp/2026-07-28/media-buy/list-products-response.json",
+  "title": "List Products Response",
+  "description": "Canonical product offers and continuation state. Every product carries product_id and name; other compact detail fields follow the request's fields selection. Legacy named-format identifiers are never returned. This response never contains proposals or proposal-lifecycle fields.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "outcome"
+  },
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "listed",
+        "unchanged"
+      ],
+      "description": "Whether this response carries a product page or confirms that the selected feed has not changed."
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:core~1canonical-product.json"
+      }
+    },
+    "next_cursor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Cursor for the next page. Omitted when this is the last page."
+    },
+    "feed_version": {
+      "type": "string",
+      "description": "Opaque version of the selected offer feed. For wholesale webhook consumers this is the same scope-keyed token carried as wholesale_feed_version on product.* and wholesale_feed.bulk_change notifications."
+    },
+    "pricing_version": {
+      "type": "string",
+      "description": "Opaque version of the selected pricing layer."
+    },
+    "cache_scope": {
+      "type": "string",
+      "enum": [
+        "public",
+        "account"
+      ]
+    },
+    "incomplete": {
+      "type": "array",
+      "description": "Usable partial response with explicitly missing product-list scopes.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "products",
+              "pricing",
+              "forecast",
+              "wholesale_feed"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "estimated_wait": {
+            "$ref": "#/$defs/external:core~1duration.json"
+          }
+        },
+        "required": [
+          "scope",
+          "description"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "replayed": {
+      "type": "boolean",
+      "const": true
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "listed"
+        }
+      },
+      "required": [
+        "outcome",
+        "products",
+        "feed_version",
+        "cache_scope"
+      ]
+    },
+    {
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "unchanged"
+        }
+      },
+      "required": [
+        "outcome",
+        "feed_version",
+        "cache_scope"
+      ],
+      "not": {
+        "required": [
+          "products"
+        ]
+      }
+    }
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "proposals"
+        ]
+      },
+      {
+        "required": [
+          "refinement_applied"
+        ]
+      },
+      {
+        "required": [
+          "pagination"
+        ]
+      },
+      {
+        "required": [
+          "unchanged"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "external:core/canonical-product.json": {
+      "title": "Canonical Product",
+      "description": "Standalone compact Product view for the AdCP 3.2 lifecycle. product_id and name are the only always-returned fields; requested detail fields are optional. Legacy named formats, coarse MediaBuy actions, and the legacy Product inheritance graph are absent.",
+      "type": "object",
+      "properties": {
+        "product_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "product"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "publisher_properties": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/external:core~1publisher-property-selector.json"
+              },
+              {
+                "not": {
+                  "required": [
+                    "publisher_domains"
+                  ]
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1channels.json"
+          },
+          "uniqueItems": true
+        },
+        "video_placement_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1video-placement-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "audio_distribution_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1audio-distribution-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "sponsored_placement_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1sponsored-placement-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "social_placement_surfaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1social-placement-surface.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "format_options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-format-option.json"
+          },
+          "minItems": 1
+        },
+        "placements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-placement.json"
+          }
+        },
+        "delivery_type": {
+          "$ref": "#/$defs/external:enums~1delivery-type.json"
+        },
+        "exclusivity": {
+          "$ref": "#/$defs/external:enums~1exclusivity.json"
+        },
+        "pricing_options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-pricing-option.json"
+          },
+          "minItems": 1
+        },
+        "forecast": {
+          "$ref": "#/$defs/external:core~1canonical-delivery-forecast.json"
+        },
+        "reporting_capabilities": {
+          "$ref": "#/$defs/external:core~1canonical-reporting-capabilities.json"
+        },
+        "measurement_terms": {
+          "$ref": "#/$defs/external:core~1canonical-measurement-terms.json",
+          "description": "Default billing measurement and makegood terms inherited by a direct purchase unless a negotiated proposal replaces them."
+        },
+        "performance_standards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-performance-standard.json"
+          },
+          "minItems": 1,
+          "description": "Default performance thresholds and measurement vendors inherited by a direct purchase."
+        },
+        "catalog_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1catalog-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "signal_targeting_allowed": {
+          "type": "boolean"
+        },
+        "signal_targeting_rules": {
+          "$ref": "#/$defs/external:core~1signal-targeting-rules.json"
+        },
+        "demographic_targeting": {
+          "$ref": "#/$defs/external:core~1demographic-targeting-capability.json"
+        },
+        "audience_evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-audience-evidence.json"
+          },
+          "minItems": 1
+        },
+        "audience_evidence_selections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-audience-evidence-selection.json"
+          },
+          "minItems": 1,
+          "description": "Exact evidence snapshots that affected eligibility or ranking. Returned whenever evidence requirements affected the result, even if not requested explicitly."
+        },
+        "max_optimization_goals": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "catalog_match": {
+          "type": "object",
+          "properties": {
+            "matched_gtins": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9]{8,14}$"
+              }
+            },
+            "matched_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "matched_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "submitted_count": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "submitted_count"
+          ],
+          "additionalProperties": false
+        },
+        "brief_relevance": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "allowed_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-product-action.json"
+          },
+          "uniqueItems": true
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "product_id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/publisher-property-selector.json": {
+      "title": "Publisher Property Selector",
+      "description": "Selects properties from a publisher's adagents.json. Used for both product definitions and agent authorization. Supports three selection patterns: all properties, specific IDs, or by tags. Each selector targets one publisher via `publisher_domain` (string) or a fan-out across many publishers that share the same selector via `publisher_domains` (array). Exactly one of `publisher_domain` or `publisher_domains` MUST be present. When `publisher_domains` is used, the selector is logically equivalent to repeating the same entry once per listed domain.",
+      "discriminator": {
+        "propertyName": "selection_type"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Select all properties from one publisher domain, or from each publisher domain when `publisher_domains` is used. Consumers MAY satisfy the selector from the parent file's top-level `properties[]` when those properties carry a `publisher_domain` matching one of the listed domains (see Resolution paths in the spec).",
+          "properties": {
+            "publisher_domain": {
+              "type": "string",
+              "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation.",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            },
+            "publisher_domains": {
+              "type": "array",
+              "description": "Compact form for fanning the same selector across many publishers (e.g., a managed network listing every publisher it represents). Each entry is the domain where that publisher's adagents.json is hosted. Each listed domain MUST be canonicalized to lowercase (the `pattern` already rejects uppercase). Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "selection_type": {
+              "type": "string",
+              "const": "all",
+              "description": "Discriminator indicating all properties from each addressed publisher are included"
+            }
+          },
+          "required": [
+            "selection_type"
+          ],
+          "allOf": [
+            {
+              "not": {
+                "required": [
+                  "publisher_domain",
+                  "publisher_domains"
+                ]
+              }
+            },
+            {
+              "anyOf": [
+                {
+                  "required": [
+                    "publisher_domain"
+                  ]
+                },
+                {
+                  "required": [
+                    "publisher_domains"
+                  ]
+                }
+              ]
+            }
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "Select specific properties by ID. Single-publisher only — property IDs are publisher-scoped, so the compact `publisher_domains[]` form is intentionally NOT available for this selector. Use multiple `publisher_properties[]` entries (one per publisher) when each publisher's ID set differs.",
+          "properties": {
+            "publisher_domain": {
+              "type": "string",
+              "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com').",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            },
+            "selection_type": {
+              "type": "string",
+              "const": "by_id",
+              "description": "Discriminator indicating selection by specific property IDs"
+            },
+            "property_ids": {
+              "type": "array",
+              "description": "Specific property IDs from the publisher's adagents.json",
+              "items": {
+                "$ref": "#/$defs/external:core~1property-id.json"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "publisher_domain",
+            "selection_type",
+            "property_ids"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "Select properties by tag membership. With `publisher_domains`, the same `property_tags` predicate is resolved against each listed publisher's adagents.json — the common managed-network case where every represented site tags inventory with a shared label. Consumers MAY also satisfy the predicate from the parent file's top-level `properties[]` when those properties carry a `publisher_domain` matching one of the selector's `publisher_domains[]` (see Resolution paths in the spec).",
+          "properties": {
+            "publisher_domain": {
+              "type": "string",
+              "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation.",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            },
+            "publisher_domains": {
+              "type": "array",
+              "description": "Compact form for fanning the same tag predicate across many publishers (canonical managed-network shape). Each entry is the domain where that publisher's adagents.json is hosted. Each listed domain MUST be canonicalized to lowercase (the `pattern` already rejects uppercase). Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "selection_type": {
+              "type": "string",
+              "const": "by_tag",
+              "description": "Discriminator indicating selection by property tags"
+            },
+            "property_tags": {
+              "type": "array",
+              "description": "Property tags resolved against each addressed publisher's adagents.json, OR against the parent file's top-level `properties[]` when those properties carry a `publisher_domain` matching the selector. Selector covers all properties carrying any of these tags.",
+              "items": {
+                "$ref": "#/$defs/external:core~1property-tag.json"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "selection_type",
+            "property_tags"
+          ],
+          "allOf": [
+            {
+              "not": {
+                "required": [
+                  "publisher_domain",
+                  "publisher_domains"
+                ]
+              }
+            },
+            {
+              "anyOf": [
+                {
+                  "required": [
+                    "publisher_domain"
+                  ]
+                },
+                {
+                  "required": [
+                    "publisher_domains"
+                  ]
+                }
+              ]
+            }
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/property-id.json": {
+      "title": "Property ID",
+      "description": "Identifier for a publisher property. Must be lowercase alphanumeric with underscores only.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "property",
+      "examples": [
+        "cnn_ctv_app",
+        "homepage",
+        "mobile_ios",
+        "instagram"
+      ]
+    },
+    "external:core/property-tag.json": {
+      "title": "Property Tag",
+      "description": "Tag for categorizing publisher properties. Must be lowercase alphanumeric with underscores only.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "examples": [
+        "ctv",
+        "premium",
+        "news",
+        "sports",
+        "meta_network",
+        "social_media"
+      ]
+    },
+    "external:enums/channels.json": {
+      "title": "Media Channel",
+      "description": "Standardized advertising media channels describing how buyers allocate budget. Channels are planning abstractions, not technical substrates. See the Media Channel Taxonomy specification for detailed definitions.",
+      "type": "string",
+      "enum": [
+        "display",
+        "olv",
+        "social",
+        "search",
+        "ctv",
+        "linear_tv",
+        "radio",
+        "streaming_audio",
+        "podcast",
+        "dooh",
+        "ooh",
+        "print",
+        "cinema",
+        "email",
+        "gaming",
+        "retail_media",
+        "influencer",
+        "affiliate",
+        "product_placement",
+        "sponsored_intelligence"
+      ],
+      "enumDescriptions": {
+        "display": "Digital display advertising (banners, native, rich media) across web and app",
+        "olv": "Online video advertising outside CTV (pre-roll, outstream, in-app video)",
+        "social": "Social media platforms (Facebook, Instagram, TikTok, LinkedIn, etc.)",
+        "search": "Search engine advertising and search networks",
+        "ctv": "Connected TV and streaming on television screens",
+        "linear_tv": "Traditional broadcast and cable television",
+        "radio": "Traditional AM/FM radio broadcast",
+        "streaming_audio": "Digital audio streaming services (Spotify, Pandora, etc.)",
+        "podcast": "Podcast advertising (host-read or dynamically inserted)",
+        "dooh": "Digital out-of-home screens in public spaces",
+        "ooh": "Classic out-of-home (physical billboards, transit, etc.)",
+        "print": "Newspapers, magazines, and other print publications",
+        "cinema": "Movie theater advertising",
+        "email": "Email advertising and sponsored newsletter content",
+        "gaming": "In-game advertising across platforms",
+        "retail_media": "Retail media networks and commerce marketplaces (Amazon, Walmart, Instacart)",
+        "influencer": "Creator and influencer marketing partnerships",
+        "affiliate": "Affiliate networks, comparison sites, and performance-based partnerships",
+        "product_placement": "Product placement, branded content, and sponsorship integrations",
+        "sponsored_intelligence": "Sponsored Intelligence — advertising within AI assistants, AI search, and generative AI experiences via the reversed data flow"
+      }
+    },
+    "external:enums/video-placement-type.json": {
+      "title": "Video Placement Type",
+      "description": "Declared video placement classification for OLV and other video inventory, using the IAB Tech Lab/OpenRTB 2.6 video.plcmt definitions with AdCP-native value names. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "type": "string",
+      "enum": [
+        "instream",
+        "accompanying_content",
+        "interstitial",
+        "standalone"
+      ],
+      "enumDescriptions": {
+        "instream": "OpenRTB 2.6 video.plcmt=1: video ads played before, during, or after streaming video content requested by the user.",
+        "accompanying_content": "OpenRTB 2.6 video.plcmt=2: video ads played with accompanying video content in a player associated with the page or app content.",
+        "interstitial": "OpenRTB 2.6 video.plcmt=3: video ads shown as an interstitial experience, typically between content or app states.",
+        "standalone": "OpenRTB 2.6 video.plcmt=4: video ads shown without associated video content, also called no-content or standalone video."
+      }
+    },
+    "external:enums/audio-distribution-type.json": {
+      "title": "Audio Distribution Type",
+      "description": "Declared audio distribution classification for radio, streaming-audio, podcast, and other audio inventory, using IAB Tech Lab/OpenRTB 2.6 audio.feed definitions with AdCP-native value names. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "type": "string",
+      "enum": [
+        "music_streaming_service",
+        "fm_am_broadcast",
+        "podcast",
+        "catch_up_radio",
+        "web_radio",
+        "video_game",
+        "text_to_speech"
+      ],
+      "enumDescriptions": {
+        "music_streaming_service": "OpenRTB 2.6 audio.feed=1: music streaming service.",
+        "fm_am_broadcast": "OpenRTB 2.6 audio.feed=2: FM/AM broadcast, including live content broadcast over the air and also available via online streaming.",
+        "podcast": "OpenRTB 2.6 audio.feed=3: original, pre-recorded content distributed as episodes in a series.",
+        "catch_up_radio": "OpenRTB 2.6 audio.feed=4: recorded segment of a radio show that was originally broadcast live.",
+        "web_radio": "OpenRTB 2.6 audio.feed=5: live audio content only available via online streaming, not as FM/AM broadcast.",
+        "video_game": "OpenRTB 2.6 audio.feed=6: background audio in video games.",
+        "text_to_speech": "OpenRTB 2.6 audio.feed=7: text-to-speech audio such as audio books or website/plugin article narration."
+      }
+    },
+    "external:enums/sponsored-placement-type.json": {
+      "title": "Sponsored Placement Type",
+      "description": "Declared sponsored-placement classification for catalog-driven retail-media inventory, distinguishing where the sponsored placement renders on the retailer surface. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "type": "string",
+      "enum": [
+        "sponsored_search",
+        "sponsored_display",
+        "sponsored_native"
+      ],
+      "enumDescriptions": {
+        "sponsored_search": "Sponsored placements rendered against retailer on-site search results, keyed to the shopper's query (e.g., Amazon Sponsored Products on search, Walmart Connect Sponsored Search).",
+        "sponsored_display": "Sponsored placements rendered in display slots across retailer browse, category, and product-detail pages outside the search results stream (e.g., Criteo Sponsored Display, Amazon Sponsored Display on-site).",
+        "sponsored_native": "Sponsored placements rendered using the retailer's native in-grid product template, blending into the organic product listing (e.g., CitrusAd native product cards, Pinterest catalog-driven collections)."
+      }
+    },
+    "external:enums/social-placement-surface.json": {
+      "title": "Social Placement Surface",
+      "description": "Declared social-placement surface classification for social inventory, distinguishing the in-app surface where a social placement renders. Values name the semantic surface, not platform brands. This is seller-declared discovery metadata, not independent verification of inventory quality or delivery context.",
+      "type": "string",
+      "enum": [
+        "feed",
+        "stories",
+        "short_video",
+        "explore",
+        "search"
+      ],
+      "enumDescriptions": {
+        "feed": "The primary scrolling home or timeline surface where posts and ads are interleaved with followed and recommended content.",
+        "stories": "The full-screen, ephemeral tap-through surface presented between or alongside users' story content.",
+        "short_video": "The full-screen, sound-on, swipe-past, algorithmically-recommended vertical short-video surface. Subsumes the platform brand names for this surface (Reels, Shorts, Spotlight, and TikTok's For You short-video experience) — platform identity belongs to a property/publisher axis, not here.",
+        "explore": "The discovery or browse surface presenting recommended content outside the user's followed graph.",
+        "search": "The in-app search-results surface, keyed to the user's query."
+      }
+    },
+    "external:core/canonical-format-option.json": {
+      "title": "Canonical Format Option",
+      "description": "Compact canonical creative-format declaration. Legacy named-format links are intentionally absent; params are validated against the canonical schema selected by format_kind without inlining every format union into product discovery.",
+      "type": "object",
+      "properties": {
+        "format_option_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "publisher_domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sample_render_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "applies_to_channels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1channels.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "seller_preference": {
+          "type": "string",
+          "enum": [
+            "preferred",
+            "accepted",
+            "discouraged"
+          ]
+        },
+        "locale_policy": {
+          "$ref": "#/$defs/external:core~1creative-locale-policy.json"
+        },
+        "canonical_formats_only": {
+          "type": "boolean",
+          "default": false
+        },
+        "experimental": {
+          "type": "boolean",
+          "default": false
+        },
+        "format_kind": {
+          "type": "string",
+          "enum": [
+            "image",
+            "html5",
+            "display_tag",
+            "image_carousel",
+            "video_hosted",
+            "video_vast",
+            "audio_hosted",
+            "audio_daast",
+            "sponsored_placement",
+            "native_in_feed",
+            "responsive_creative",
+            "agent_placement",
+            "custom"
+          ]
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "format_shape": {
+          "type": "string",
+          "minLength": 1
+        },
+        "format_schema": {
+          "$ref": "#/$defs/external:core~1platform-extension-ref.json"
+        }
+      },
+      "required": [
+        "format_kind",
+        "params"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "format_kind": {
+                "const": "custom"
+              }
+            },
+            "required": [
+              "format_kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "format_shape",
+              "format_schema",
+              "canonical_formats_only"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "format_shape"
+                  ]
+                },
+                {
+                  "required": [
+                    "format_schema"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "canonical_params": {
+            "non_custom": "validate params against /schemas/formats/canonical/{format_kind}.json",
+            "custom": "validate params against fetched format_schema uri and digest",
+            "on_violation": "reject_product"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:core/creative-locale-policy.json": {
+      "title": "Creative Locale Policy",
+      "description": "Seller-declared locale eligibility for one product or placement format declaration. Each accepted_language_ranges entry is a concrete canonical BCP 47 language range evaluated with RFC 4647 section 3.3.1 Basic Filtering: fr accepts fr, fr-CA, and fr-FR, while fr-CA accepts only fr-CA and its more-specific descendants. Ranges are ORed and wildcards are not supported. Presence is a hard assignment constraint, not a preference: at least one materialized creative locale variant must match. The seller filters the creative to eligible variants before applying buyer-declared strict Lookup, locale_fallbacks, or default behavior; buyer policy can never select a seller-ineligible variant.",
+      "type": "object",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "range_matching": "rfc4647_basic_filtering",
+          "wildcards": "not_supported",
+          "assignment_eligibility": "at_least_one_materialized_variant_must_match",
+          "selection_precedence": "filter_seller_eligible_variants_before_buyer_lookup_fallback_or_default",
+          "serve_default": "when_unmatched_locale_action_is_serve_default_default_locale_variant_id_must_reference_an_eligible_variant",
+          "placement_narrowing": "product_policy_absent_allows_any_placement_policy_else_every_placement_range_must_be_contained_by_a_product_range",
+          "legacy_projection": "no_product_or_placement_format_id_may_project_to_a_locale_constrained_option",
+          "capability_gate": "seller_must_advertise_creative.localization_and_creative.has_creative_library",
+          "assignment_policy_lifecycle": "snapshot_effective_policy_at_acceptance_catalog_changes_apply_only_to_new_or_changed_assignments"
+        },
+        "spec": "docs/creative/canonical-formats.mdx#creative-locale-policy"
+      },
+      "properties": {
+        "accepted_language_ranges": {
+          "type": "array",
+          "description": "Concrete canonical BCP 47 language ranges accepted by this format option. RFC 4647 Basic Filtering is directional: seller range fr accepts variant fr-CA, but seller range fr-CA does not accept variant fr or fr-FR. Use zxx explicitly for language-neutral creative; und means unknown and is not a wildcard.",
+          "items": {
+            "$ref": "#/$defs/external:core~1locale-tag.json"
+          },
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "accepted_language_ranges"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/locale-tag.json": {
+      "title": "Language Tag",
+      "description": "A well-formed BCP 47 language tag used by AdCP only as language identity. Script and region may refine that identity; other valid BCP 47 subtags remain part of tag matching but do not make this a general locale-settings object. It does not determine currency, time zone, number/date formatting, market, or legal jurisdiction. The AdCP canonical wire profile requires lower-case language and variants, title-case script, and upper-case region (for example `en-US`, `zh-Hant-TW`, or `x-private`). RFC 5646 comparisons are case-insensitive and its case regularization is optional; AdCP intentionally requires this stricter single wire spelling and receivers MUST reject differently cased tags rather than silently normalizing them. The schema pattern enforces the AdCP casing profile and extension structure for commonly used tags; conforming receivers additionally validate the complete RFC 5646 grammar and registry rules. Every new AdCP field carrying BCP 47 language identity or a concrete language range MUST reference this schema instead of declaring independent string constraints.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "well_formed": "rfc5646",
+          "semantic_scope": "language_identity_only",
+          "canonical_wire_profile": "adcp_bcp47_casing",
+          "rfc5646_comparison": "case_insensitive",
+          "non_profile": "reject"
+        },
+        "spec": "docs/protocol/language-and-localization.mdx#one-language-tag-primitive"
+      },
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 63,
+      "pattern": "^(?:[a-z]{2,8}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?(?:-(?:[a-z0-9]{5,8}|[0-9][a-z0-9]{3}))*(?:-[0-9a-wy-z](?:-[a-z0-9]{2,8})+)*(?:-x(?:-[a-z0-9]{1,8})+)?|x(?:-[a-z0-9]{1,8})+)$",
+      "examples": [
+        "en-US",
+        "es-ES",
+        "zh-Hant-TW",
+        "x-private"
+      ]
+    },
+    "external:core/platform-extension-ref.json": {
+      "title": "Platform Extension Reference",
+      "description": "Reference to a platform extension definition. The agent that owns the URI is authoritative for the extension's schema. Buyers fetch the definition once per content digest and cache it. Platform extensions are typically bundled in `get_products` responses under an `extensions` map keyed by `uri@digest`, eliminating the need for a separate fetch.\n\n**Within a single response**, multiple references to the same `uri` MUST carry the same `digest` — divergent digests in one response indicate producer-side error (e.g., concurrent extension revision mid-render). Buyers encountering divergent digests for the same URI MUST fail closed: treat all references to that URI as unresolved and surface a validation error rather than picking one branch silently. **Across responses**, digest divergence is normal — extension authors revise their schemas, the new digest differs, the cache key changes, and the buyer refetches. Cache by `uri@digest`, not by `uri` alone.",
+      "type": "object",
+      "required": [
+        "uri",
+        "digest"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL identifying the extension. `https://` is mandatory — `http://`, `file://`, `data:`, and other schemes are rejected at the schema layer (defense-in-depth on top of the fetch-contract normative rules). The URI base is the owning agent's URL; the path identifies the extension within that agent. Example: 'https://creative.adcontextprotocol.org/translated/meta/extensions/meta_pixel'. The full fetch contract — SSRF allowlist, response-size cap, $ref sandbox, schema-compile bounds — is documented on `product-format-declaration.json#format_schema` and applies to ALL fetches of this reference shape regardless of whether the field is named `format_schema` (load-bearing for validation) or `platform_extensions` (informational); the *transport* rules are identical, only the *consumption* semantics differ."
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "SHA-256 content digest of the extension definition (sha256:<hex>). Used to detect drift — if the agent revises the extension, the digest changes and cached definitions become invalid."
+        }
+      },
+      "additionalProperties": true,
+      "examples": [
+        {
+          "uri": "https://creative.adcontextprotocol.org/translated/meta/extensions/meta_pixel",
+          "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
+        }
+      ]
+    },
+    "external:core/canonical-placement.json": {
+      "title": "Canonical Product Placement",
+      "description": "Compact product placement with canonical format narrowing only.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "publisher_ref",
+            "seller_inline"
+          ]
+        },
+        "placement_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "placement"
+        },
+        "publisher_domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "targetable",
+            "included"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "format_options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-format-option.json"
+          },
+          "minItems": 1
+        },
+        "video_placement_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1video-placement-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "audio_distribution_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1audio-distribution-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "sponsored_placement_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1sponsored-placement-type.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "social_placement_surfaces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1social-placement-surface.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kind",
+        "placement_id",
+        "mode"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "publisher_ref"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "publisher_domain"
+            ]
+          },
+          "else": {
+            "required": [
+              "name"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/delivery-type.json": {
+      "title": "Delivery Type",
+      "description": "Type of inventory delivery",
+      "type": "string",
+      "enum": [
+        "guaranteed",
+        "non_guaranteed"
+      ],
+      "enumDescriptions": {
+        "guaranteed": "Reserved inventory with guaranteed delivery",
+        "non_guaranteed": "Inventory without reserved or guaranteed delivery, commonly auction-based or otherwise best-effort. Do not use for scheduled broadcast buys solely because final audience delivery is estimated from historical ranges or settles through third-party measurement."
+      }
+    },
+    "external:enums/exclusivity.json": {
+      "title": "Exclusivity",
+      "description": "Whether a product offers exclusive access to its inventory",
+      "type": "string",
+      "enum": [
+        "none",
+        "category",
+        "exclusive"
+      ],
+      "enumDescriptions": {
+        "none": "No exclusivity — multiple advertisers can buy this product simultaneously",
+        "category": "Category-exclusive — only one advertiser per industry category (e.g., one auto brand per collection sponsorship)",
+        "exclusive": "Sole sponsorship — only one advertiser can buy this product"
+      }
+    },
+    "external:core/canonical-pricing-option.json": {
+      "title": "Canonical Pricing Option",
+      "description": "Self-contained selected pricing terms for compact product offers and accepted commercial snapshots. Deprecated execution hints such as max_bid are absent; bidding intent lives in BiddingPolicy.",
+      "type": "object",
+      "properties": {
+        "pricing_option_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "product_pricing_option"
+        },
+        "pricing_model": {
+          "type": "string",
+          "enum": [
+            "cpm",
+            "vcpm",
+            "cpc",
+            "cpcv",
+            "cpv",
+            "cpp",
+            "cpa",
+            "revenue_share",
+            "flat_rate",
+            "time"
+          ]
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "fixed_price": {
+          "type": "number",
+          "minimum": 0
+        },
+        "floor_price": {
+          "type": "number",
+          "minimum": 0
+        },
+        "price_guidance": {
+          "$ref": "#/$defs/external:pricing-options~1price-guidance.json"
+        },
+        "min_spend_per_package": {
+          "type": "number",
+          "minimum": 0
+        },
+        "price_breakdown": {
+          "$ref": "#/$defs/external:pricing-options~1price-breakdown.json"
+        },
+        "eligible_adjustments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1adjustment-kind.json"
+          },
+          "uniqueItems": true
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "event_type": {
+          "$ref": "#/$defs/external:enums~1event-type.json"
+        },
+        "custom_event_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "event_source_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "event_source"
+        },
+        "commission_rate": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "commission_basis_description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "pricing_option_id",
+        "pricing_model",
+        "currency"
+      ],
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "fixed_price",
+              "floor_price"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "pricing_model": {
+                "const": "cpa"
+              }
+            },
+            "required": [
+              "pricing_model"
+            ]
+          },
+          "then": {
+            "required": [
+              "event_type",
+              "fixed_price"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "pricing_model": {
+                "const": "revenue_share"
+              }
+            },
+            "required": [
+              "pricing_model"
+            ]
+          },
+          "then": {
+            "required": [
+              "event_type",
+              "event_source_id",
+              "commission_rate",
+              "commission_basis_description"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "pricing_model": {
+                "enum": [
+                  "cpv",
+                  "cpp",
+                  "time"
+                ]
+              }
+            },
+            "required": [
+              "pricing_model"
+            ]
+          },
+          "then": {
+            "required": [
+              "parameters"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "event_type": {
+                "const": "custom"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "custom_event_name"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:pricing-options/price-guidance.json": {
+      "title": "Price Guidance",
+      "description": "Pricing guidance for auction-based bidding. Helps buyers calibrate bids with historical percentiles.",
+      "type": "object",
+      "properties": {
+        "p25": {
+          "type": "number",
+          "description": "25th percentile of recent winning bids",
+          "minimum": 0
+        },
+        "p50": {
+          "type": "number",
+          "description": "Median of recent winning bids",
+          "minimum": 0
+        },
+        "p75": {
+          "type": "number",
+          "description": "75th percentile of recent winning bids",
+          "minimum": 0
+        },
+        "p90": {
+          "type": "number",
+          "description": "90th percentile of recent winning bids",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "external:pricing-options/price-breakdown.json": {
+      "title": "Price Breakdown",
+      "description": "Breaks down the composition of fixed_price from a list (rate card) price through adjustments. Adjustments fall into four kinds: fees (increase buyer price), discounts (reduce buyer price), commissions (revenue splits that don't affect buyer price), and settlement terms (applied at invoicing). The invariant is: list_price with all fee and discount adjustments applied sequentially equals fixed_price. Fees increase the running price; discounts reduce it. This invariant applies only when fixed_price is present on the parent object; on auction-based packages the breakdown is informational only. All monetary values are rounded to currency precision at each step. Budgets are always denominated at the fixed_price level, inclusive of commissions.",
+      "type": "object",
+      "properties": {
+        "list_price": {
+          "type": "number",
+          "description": "Rate card or base price before any adjustments. The starting point from which fixed_price is derived by applying fee and discount adjustments sequentially.",
+          "exclusiveMinimum": 0
+        },
+        "adjustments": {
+          "type": "array",
+          "description": "Ordered list of price adjustments. Fee and discount adjustments walk list_price to fixed_price — fees increase the running price, discounts reduce it. Commission and settlement adjustments are disclosed for transparency but do not affect the buyer's committed price.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "$ref": "#/$defs/external:enums~1adjustment-kind.json"
+              },
+              "name": {
+                "type": "string",
+                "description": "Specific adjustment name. Use well-known values where applicable for interoperability.",
+                "maxLength": 64,
+                "examples": [
+                  "ad_serving",
+                  "data_targeting",
+                  "brand_safety",
+                  "volume",
+                  "negotiated",
+                  "early_booking",
+                  "agency",
+                  "intermediary",
+                  "cash_discount",
+                  "early_payment"
+                ]
+              },
+              "rate": {
+                "type": "number",
+                "description": "Adjustment as a decimal proportion (e.g., 0.15 for 15%). Always positive — kind determines the economic effect. Mutually exclusive with amount.",
+                "exclusiveMinimum": 0,
+                "exclusiveMaximum": 1
+              },
+              "amount": {
+                "type": "number",
+                "description": "Adjustment as a fixed monetary amount in the pricing option's currency. Always positive — kind determines the economic effect. Mutually exclusive with rate.",
+                "exclusiveMinimum": 0
+              },
+              "description": {
+                "type": "string",
+                "description": "Human-readable description of this adjustment (e.g., 'Malstaffel 12x', '2% Skonto 10 Tage')",
+                "maxLength": 256
+              },
+              "beneficiary": {
+                "type": "string",
+                "description": "Identifies who receives this adjustment's value. For commissions, the intermediary (e.g., a sellers.json domain, an AdCP account ID, or a human-readable party name). Optional but recommended for multi-intermediary transparency.",
+                "maxLength": 256
+              }
+            },
+            "required": [
+              "kind",
+              "name"
+            ],
+            "oneOf": [
+              {
+                "required": [
+                  "rate"
+                ]
+              },
+              {
+                "required": [
+                  "amount"
+                ]
+              }
+            ],
+            "additionalProperties": true
+          },
+          "minItems": 1,
+          "maxItems": 20
+        }
+      },
+      "required": [
+        "list_price",
+        "adjustments"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/adjustment-kind.json": {
+      "title": "Price Adjustment Kind",
+      "description": "Categorizes how a price adjustment affects the transaction",
+      "type": "string",
+      "enum": [
+        "fee",
+        "discount",
+        "commission",
+        "settlement"
+      ],
+      "enumDescriptions": {
+        "fee": "Increases the price the buyer pays and the revenue the seller receives. Applied between list_price and fixed_price (e.g., ad serving fees, data/targeting surcharges, brand safety verification).",
+        "discount": "Reduces the price the buyer pays and the revenue the seller receives. Applied between list_price and fixed_price (e.g., volume discounts, negotiated rates, early booking).",
+        "commission": "Does not change the buyer's price or budget. Represents a revenue split — the portion retained by an intermediary (e.g., agency commission). Budgets are managed inclusive of commissions.",
+        "settlement": "Does not change the committed price or budget. Applied at invoicing or payment time (e.g., cash discount for early payment). Informational for buyer agents; affects actual settlement amount."
+      }
+    },
+    "external:enums/event-type.json": {
+      "title": "Event Type",
+      "description": "Standard marketing event types for event logging, aligned with IAB ECAPI",
+      "type": "string",
+      "enum": [
+        "page_view",
+        "view_content",
+        "select_content",
+        "select_item",
+        "search",
+        "share",
+        "add_to_cart",
+        "remove_from_cart",
+        "viewed_cart",
+        "add_to_wishlist",
+        "initiate_checkout",
+        "add_payment_info",
+        "purchase",
+        "refund",
+        "lead",
+        "qualify_lead",
+        "close_convert_lead",
+        "disqualify_lead",
+        "complete_registration",
+        "subscribe",
+        "follow",
+        "content_view",
+        "watch_milestone",
+        "start_trial",
+        "app_install",
+        "app_launch",
+        "contact",
+        "schedule",
+        "donate",
+        "submit_application",
+        "custom"
+      ],
+      "enumDescriptions": {
+        "page_view": "User viewed a page",
+        "view_content": "User viewed specific content (product, article, etc.)",
+        "select_content": "User selected or clicked on content (article, video, etc.)",
+        "select_item": "User selected a specific product or item from a list",
+        "search": "User performed a search",
+        "share": "User shared content via social or messaging",
+        "add_to_cart": "User added an item to cart",
+        "remove_from_cart": "User removed an item from cart",
+        "viewed_cart": "User viewed their shopping cart",
+        "add_to_wishlist": "User added an item to a wishlist",
+        "initiate_checkout": "User started checkout process",
+        "add_payment_info": "User added payment information",
+        "purchase": "User completed a purchase",
+        "refund": "A purchase was fully or partially refunded (adjusts ROAS)",
+        "lead": "User expressed interest (form submission, signup, etc.)",
+        "qualify_lead": "Lead qualified by sales or scoring criteria",
+        "close_convert_lead": "Lead converted to a customer or closed deal",
+        "disqualify_lead": "Lead disqualified or marked as not viable",
+        "complete_registration": "User completed account registration",
+        "subscribe": "User started a paid subscription or paid membership",
+        "follow": "User made a free, durable opt-in to an account, channel, feed, list, podcast, or similar owned property",
+        "content_view": "User meaningfully consumed a content unit, such as a watch, listen, stream, episode play, or read",
+        "watch_milestone": "User reached a content progress threshold, such as 25%, 50%, 75%, 100%, or a seconds-viewed milestone",
+        "start_trial": "User started a free trial",
+        "app_install": "User installed an application",
+        "app_launch": "User launched an application",
+        "contact": "User initiated contact (call, message, etc.)",
+        "schedule": "User scheduled an appointment or event",
+        "donate": "User made a donation",
+        "submit_application": "User submitted an application (loan, job, etc.)",
+        "custom": "Custom event type (specify in custom_event_name)"
+      }
+    },
+    "external:core/canonical-delivery-forecast.json": {
+      "title": "Canonical Delivery Forecast",
+      "description": "Compact product forecast without legacy BrandRef or creative dependencies.",
+      "type": "object",
+      "properties": {
+        "points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-forecast-point.json"
+          },
+          "minItems": 1
+        },
+        "forecast_range_unit": {
+          "$ref": "#/$defs/external:enums~1forecast-range-unit.json"
+        },
+        "method": {
+          "$ref": "#/$defs/external:enums~1forecast-method.json"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "demographic_system": {
+          "$ref": "#/$defs/external:enums~1demographic-system.json"
+        },
+        "demographic": {
+          "type": "string"
+        },
+        "measurement_source": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "reach_unit": {
+          "$ref": "#/$defs/external:enums~1reach-unit.json"
+        },
+        "generated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "valid_until": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "points",
+        "method",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/canonical-forecast-point.json": {
+      "title": "Canonical Forecast Point",
+      "description": "Compact forecast row with numeric ranges and identity-only measurement-vendor references.",
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "budget": {
+          "type": "number",
+          "minimum": 0
+        },
+        "product_id": {
+          "type": "string",
+          "x-entity": "product"
+        },
+        "dimensions": {
+          "$ref": "#/$defs/external:core~1forecast-point-dimensions.json"
+        },
+        "availability_status": {
+          "$ref": "#/$defs/external:enums~1availability-status.json"
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/external:core~1forecast-range.json"
+          }
+        },
+        "viewability": {
+          "type": "object",
+          "properties": {
+            "vendor": {
+              "$ref": "#/$defs/external:core~1brand-key.json"
+            },
+            "measurable_impressions": {
+              "$ref": "#/$defs/external:core~1forecast-range.json"
+            },
+            "viewable_impressions": {
+              "$ref": "#/$defs/external:core~1forecast-range.json"
+            },
+            "viewable_rate": {
+              "$ref": "#/$defs/external:core~1forecast-range.json"
+            },
+            "viewed_seconds": {
+              "$ref": "#/$defs/external:core~1forecast-range.json"
+            },
+            "standard": {
+              "$ref": "#/$defs/external:enums~1viewability-standard.json"
+            }
+          },
+          "additionalProperties": false
+        },
+        "vendor_metric_values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-forecast-vendor-metric-value.json"
+          }
+        }
+      },
+      "required": [
+        "metrics"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/forecast-point-dimensions.json": {
+      "title": "Forecast Point Dimensions",
+      "description": "Dimension constraints represented by a ForecastPoint. Use this when one product, proposal, or signal coverage forecast needs to expose availability or forecasted delivery by country, region, placement, device, audience, signal value, time window, or intersections such as placement x country without creating separate products solely for each slice. Each item declares one dimension family via `kind`; when multiple items are present, the point represents their intersection. Sellers MUST NOT emit more than one item for each `kind` in a point. Consumers MUST NOT treat repeated kinds as OR semantics; repeated peer values such as two countries are a seller conformance issue. Dimension values are descriptors of the forecast row and are independent of pricing_options.",
+      "x-adcp-validation": {
+        "unique_item_properties": [
+          "kind"
+        ],
+        "description": "`dimensions[]` is an array for readable intersection syntax, but `kind` is a logical set key. JSON Schema draft-07 cannot express unique-by-property for this array shape, so conformance tooling should reject repeated `kind` values."
+      },
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/external:core~1forecast-dimension-geo.json"
+          },
+          {
+            "$ref": "#/$defs/external:core~1forecast-dimension-placement.json"
+          },
+          {
+            "$ref": "#/$defs/external:core~1forecast-dimension-device-type.json"
+          },
+          {
+            "$ref": "#/$defs/external:core~1forecast-dimension-device-platform.json"
+          },
+          {
+            "$ref": "#/$defs/external:core~1forecast-dimension-audience.json"
+          },
+          {
+            "$ref": "#/$defs/external:core~1forecast-dimension-signal.json"
+          },
+          {
+            "$ref": "#/$defs/external:core~1forecast-dimension-time.json"
+          }
+        ]
+      }
+    },
+    "external:core/forecast-dimension-geo.json": {
+      "title": "Geo Forecast Dimension",
+      "description": "A geographic dimension for a ForecastPoint row. Variant of ForecastPoint dimensions; see forecast-point-dimensions.json for dispatch rules.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "geo",
+          "description": "Dimension family discriminator."
+        },
+        "geo_level": {
+          "$ref": "#/$defs/external:enums~1geo-level.json",
+          "description": "Geographic level for this forecast point."
+        },
+        "system": {
+          "type": "string",
+          "description": "Classification system for metro or postal_area levels. Required when geo_level is 'metro' or 'postal_area'. Metro rows use metro-system enum values such as 'nielsen_dma'; native postal rows use country-local postal-system enum values such as 'zip' with country 'US'; deprecated legacy postal rows may use legacy-postal-system enum values such as 'us_zip'. Omit for country and region rows."
+        },
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO 3166-1 alpha-2 country code. Required for native postal_area rows and omitted for legacy postal rows, metro rows, country rows, and region rows."
+        },
+        "geo_code": {
+          "type": "string",
+          "description": "Geographic code within the level and system. Country: ISO 3166-1 alpha-2 ('US'). Region: ISO 3166-2 with country prefix ('US-CA'). Metro/postal: system-specific code ('501', '10001')."
+        },
+        "geo_name": {
+          "type": "string",
+          "description": "Human-readable geographic name (e.g., 'United States', 'California', 'New York DMA')."
+        }
+      },
+      "required": [
+        "kind",
+        "geo_level",
+        "geo_code"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "geo_level": {
+                "const": "country"
+              }
+            },
+            "required": [
+              "geo_level"
+            ]
+          },
+          "then": {
+            "properties": {
+              "geo_code": {
+                "type": "string",
+                "pattern": "^[A-Z]{2}$",
+                "description": "ISO 3166-1 alpha-2 country code."
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "system"
+                  ]
+                },
+                {
+                  "required": [
+                    "country"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "geo_level": {
+                "const": "region"
+              }
+            },
+            "required": [
+              "geo_level"
+            ]
+          },
+          "then": {
+            "properties": {
+              "geo_code": {
+                "type": "string",
+                "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$",
+                "description": "ISO 3166-2 subdivision code."
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "system"
+                  ]
+                },
+                {
+                  "required": [
+                    "country"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "geo_level": {
+                "const": "metro"
+              }
+            },
+            "required": [
+              "geo_level"
+            ]
+          },
+          "then": {
+            "properties": {
+              "system": {
+                "$ref": "#/$defs/external:enums~1metro-system.json"
+              }
+            },
+            "required": [
+              "system"
+            ],
+            "not": {
+              "required": [
+                "country"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "geo_level": {
+                "const": "postal_area"
+              }
+            },
+            "required": [
+              "geo_level"
+            ]
+          },
+          "then": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/external:core~1postal-country-system.json"
+              },
+              {
+                "properties": {
+                  "system": {
+                    "$ref": "#/$defs/external:enums~1legacy-postal-system.json"
+                  }
+                },
+                "required": [
+                  "system"
+                ],
+                "not": {
+                  "required": [
+                    "country"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/geo-level.json": {
+      "title": "Geographic Targeting Level",
+      "description": "Geographic targeting granularity levels. Some levels (metro, postal_area) require a system specification.",
+      "type": "string",
+      "enum": [
+        "country",
+        "region",
+        "metro",
+        "postal_area"
+      ]
+    },
+    "external:enums/metro-system.json": {
+      "title": "Metro Area System",
+      "description": "Metro area classification systems for geographic targeting",
+      "type": "string",
+      "enum": [
+        "nielsen_dma",
+        "uk_itl1",
+        "uk_itl2",
+        "eurostat_nuts2",
+        "custom"
+      ]
+    },
+    "external:core/postal-country-system.json": {
+      "title": "Postal Country System",
+      "description": "Valid country-local postal system pairing. Registered countries only accept their registered local systems; countries without a registered local system use postal_code or custom.",
+      "type": "object",
+      "properties": {
+        "country": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}$",
+          "description": "ISO 3166-1 alpha-2 country code."
+        },
+        "system": {
+          "$ref": "#/$defs/external:enums~1postal-system.json",
+          "description": "Country-local postal code system."
+        }
+      },
+      "required": [
+        "country",
+        "system"
+      ],
+      "anyOf": [
+        {
+          "properties": {
+            "country": {
+              "const": "US"
+            },
+            "system": {
+              "enum": [
+                "zip",
+                "zip_plus_four"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "GB"
+            },
+            "system": {
+              "enum": [
+                "outward",
+                "full"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "CA"
+            },
+            "system": {
+              "enum": [
+                "fsa",
+                "full"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "enum": [
+                "DE",
+                "CH",
+                "AT"
+              ]
+            },
+            "system": {
+              "const": "plz"
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "FR"
+            },
+            "system": {
+              "const": "code_postal"
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "AU"
+            },
+            "system": {
+              "const": "postcode"
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "BR"
+            },
+            "system": {
+              "const": "cep"
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "IN"
+            },
+            "system": {
+              "const": "pin"
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "const": "ZA"
+            },
+            "system": {
+              "const": "postal_code"
+            }
+          }
+        },
+        {
+          "properties": {
+            "country": {
+              "not": {
+                "enum": [
+                  "US",
+                  "GB",
+                  "CA",
+                  "DE",
+                  "CH",
+                  "AT",
+                  "FR",
+                  "AU",
+                  "BR",
+                  "IN",
+                  "ZA"
+                ]
+              }
+            },
+            "system": {
+              "enum": [
+                "postal_code",
+                "custom"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "external:enums/postal-system.json": {
+      "title": "Postal Code System",
+      "description": "Postal code system names for geographic targeting. Prefer country-local values with an explicit ISO 3166-1 alpha-2 country. Deprecated country-fused values remain in this published enum for 3.x compatibility.",
+      "type": "string",
+      "enum": [
+        "postal_code",
+        "zip",
+        "zip_plus_four",
+        "outward",
+        "full",
+        "fsa",
+        "plz",
+        "code_postal",
+        "postcode",
+        "cep",
+        "pin",
+        "custom",
+        "us_zip",
+        "us_zip_plus_four",
+        "gb_outward",
+        "gb_full",
+        "ca_fsa",
+        "ca_full",
+        "de_plz",
+        "fr_code_postal",
+        "au_postcode",
+        "ch_plz",
+        "at_plz"
+      ]
+    },
+    "external:enums/legacy-postal-system.json": {
+      "title": "Country-Fused Postal Code System",
+      "description": "Deprecated country-fused postal code systems for geographic targeting. Prefer postal-system with an explicit ISO 3166-1 alpha-2 country on postal area objects.",
+      "type": "string",
+      "deprecated": true,
+      "enum": [
+        "us_zip",
+        "us_zip_plus_four",
+        "gb_outward",
+        "gb_full",
+        "ca_fsa",
+        "ca_full",
+        "de_plz",
+        "fr_code_postal",
+        "au_postcode",
+        "ch_plz",
+        "at_plz"
+      ]
+    },
+    "external:core/forecast-dimension-placement.json": {
+      "title": "Placement Forecast Dimension",
+      "description": "A placement dimension for a ForecastPoint row. Variant of ForecastPoint dimensions; see forecast-point-dimensions.json for dispatch rules.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "placement",
+          "description": "Dimension family discriminator."
+        },
+        "placement_ref": {
+          "$ref": "#/$defs/external:core~1placement-ref.json",
+          "description": "Structured placement reference for this forecast row. References an entry from the product's placements array."
+        },
+        "placement_name": {
+          "type": "string",
+          "description": "Human-readable placement name, useful when the buyer has not resolved the placement catalog."
+        }
+      },
+      "required": [
+        "kind",
+        "placement_ref"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/placement-ref.json": {
+      "title": "Placement Reference",
+      "description": "Reference to a placement by publisher domain and placement ID. Placement IDs are publisher-scoped, matching the placement catalog in that publisher's adagents.json. When `publisher_domain` is omitted on legacy inputs, receivers MAY interpret the placement ID relative to the seller agent's own publisher domain; new senders SHOULD include `publisher_domain`.",
+      "type": "object",
+      "properties": {
+        "publisher_domain": {
+          "type": "string",
+          "description": "Domain where the adagents.json declaring this placement is hosted. Omitted only for legacy single-publisher seller contexts where the seller agent's own publisher domain is the namespace.",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "placement_id": {
+          "type": "string",
+          "description": "Placement ID from the publisher's adagents.json placement catalog, or an inline seller-defined placement ID interpreted within the same publisher namespace.",
+          "x-entity": "placement"
+        }
+      },
+      "required": [
+        "placement_id"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/forecast-dimension-device-type.json": {
+      "title": "Device Type Forecast Dimension",
+      "description": "A device form-factor dimension for a ForecastPoint row. Variant of ForecastPoint dimensions; see forecast-point-dimensions.json for dispatch rules.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "device_type",
+          "description": "Dimension family discriminator."
+        },
+        "device_type": {
+          "$ref": "#/$defs/external:enums~1device-type.json",
+          "description": "Device form factor for this forecast row."
+        }
+      },
+      "required": [
+        "kind",
+        "device_type"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/device-type.json": {
+      "title": "Device Type",
+      "description": "Device form factor categories for targeting and reporting. Complements device-platform (operating system) with hardware classification. OpenRTB mapping: 1 (Mobile/Tablet General) → mobile, 2 (PC) → desktop, 4 (Phone) → mobile, 5 (Tablet) → tablet, 6 (Connected Device) → ctv, 7 (Set Top Box) → ctv. DOOH inventory uses dooh.",
+      "type": "string",
+      "enum": [
+        "desktop",
+        "mobile",
+        "tablet",
+        "ctv",
+        "dooh",
+        "unknown"
+      ]
+    },
+    "external:core/forecast-dimension-device-platform.json": {
+      "title": "Device Platform Forecast Dimension",
+      "description": "An operating-system or platform dimension for a ForecastPoint row. Variant of ForecastPoint dimensions; see forecast-point-dimensions.json for dispatch rules.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "device_platform",
+          "description": "Dimension family discriminator."
+        },
+        "device_platform": {
+          "$ref": "#/$defs/external:enums~1device-platform.json",
+          "description": "Operating system or platform for this forecast row."
+        }
+      },
+      "required": [
+        "kind",
+        "device_platform"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/device-platform.json": {
+      "title": "Device Platform",
+      "description": "Operating system platforms for device targeting. Browser values from Sec-CH-UA-Platform standard, extended for CTV.",
+      "type": "string",
+      "enum": [
+        "ios",
+        "android",
+        "windows",
+        "macos",
+        "linux",
+        "chromeos",
+        "tvos",
+        "tizen",
+        "webos",
+        "fire_os",
+        "roku_os",
+        "unknown"
+      ]
+    },
+    "external:core/forecast-dimension-audience.json": {
+      "title": "Audience Forecast Dimension",
+      "description": "An audience segment dimension for a ForecastPoint row. Variant of ForecastPoint dimensions; see forecast-point-dimensions.json for dispatch rules.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "audience",
+          "description": "Dimension family discriminator."
+        },
+        "audience_id": {
+          "type": "string",
+          "description": "Audience segment identifier for this forecast row.",
+          "x-entity": "audience"
+        },
+        "audience_source": {
+          "$ref": "#/$defs/external:enums~1audience-source.json",
+          "description": "Origin of the audience segment."
+        },
+        "audience_name": {
+          "type": "string",
+          "description": "Human-readable audience segment name."
+        }
+      },
+      "required": [
+        "kind",
+        "audience_id",
+        "audience_source"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/audience-source.json": {
+      "title": "Audience Source",
+      "description": "Origin of an audience segment in delivery reporting breakdowns. Only 'synced' audiences are directly targetable via the targeting overlay; other sources are informational.",
+      "type": "string",
+      "enum": [
+        "synced",
+        "platform",
+        "third_party",
+        "lookalike",
+        "retargeting",
+        "unknown"
+      ]
+    },
+    "external:core/forecast-dimension-signal.json": {
+      "title": "Signal Forecast Dimension",
+      "description": "A signal value or signal-presence dimension for a ForecastPoint row. Variant of ForecastPoint dimensions; see forecast-point-dimensions.json for dispatch rules.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "signal",
+          "description": "Dimension family discriminator."
+        },
+        "signal_ref": {
+          "$ref": "#/$defs/external:core~1signal-ref.json",
+          "description": "Canonical signal reference for this forecast row. Required when the row needs to disambiguate product-local, data-provider, or signal-source identity. Product-relative forecasts SHOULD use signal_ref."
+        },
+        "signal_id": {
+          "type": "string",
+          "description": "Signal identifier shorthand for this forecast row. Use only when the enclosing context already identifies the signal unambiguously, such as a coverage_forecast nested directly under one get_signals signal item. Otherwise use signal_ref.",
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "x-entity": "signal"
+        },
+        "signal_value": {
+          "type": [
+            "string",
+            "number",
+            "boolean",
+            "null"
+          ],
+          "description": "Signal value bucket represented by this point. Use null with presence 'absent' to represent inventory where the signal is not present. Omit when the row describes any present value rather than one specific value."
+        },
+        "presence": {
+          "type": "string",
+          "enum": [
+            "present",
+            "absent"
+          ],
+          "description": "Whether the signal is present for this point. Use 'absent' for the explicit not-present bucket."
+        },
+        "signal_name": {
+          "type": "string",
+          "description": "Human-readable signal name, useful when the buyer has not resolved the signal definition."
+        },
+        "signal_value_name": {
+          "type": "string",
+          "description": "Human-readable label for the signal value bucket."
+        }
+      },
+      "required": [
+        "kind",
+        "presence"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "signal_ref"
+          ]
+        },
+        {
+          "required": [
+            "signal_id"
+          ]
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "presence": {
+                "const": "absent"
+              }
+            },
+            "required": [
+              "presence"
+            ]
+          },
+          "then": {
+            "properties": {
+              "signal_value": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "signal_value"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "presence": {
+                "const": "present"
+              }
+            },
+            "required": [
+              "presence"
+            ]
+          },
+          "then": {
+            "properties": {
+              "signal_value": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:core/signal-ref.json": {
+      "title": "Signal Ref",
+      "description": "Reference to a named signal definition. Uses scope as discriminator: 'data_provider' for a signal resolved through published adagents.json signals[], 'signal_source' for a source-native signal resolved through the issuing signal source, or 'product' for a product-local signal option. Scope is the resolution path, not provenance; authoritative enrichment lives on the seller, signal source, or data-provider signal definition, not on this reference.",
+      "x-entity": "signal",
+      "discriminator": {
+        "propertyName": "scope"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Product-scoped signal. The signal_id is meaningful only within the selected product/package context and MUST match a Product.included_signals[].signal_ref.signal_id or Product.signal_targeting_options[].signal_ref.signal_id for that product, depending on whether the signal is descriptive or selectable.",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "product",
+              "description": "Discriminator indicating the signal resolves through the selected product's included_signals or signal_targeting_options."
+            },
+            "signal_id": {
+              "type": "string",
+              "description": "Product-local signal identifier. For local signals exposed on both get_signals and get_products, this MUST match get_signals.signals[].signal_ref.signal_id for the same signal.",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            }
+          },
+          "required": [
+            "scope",
+            "signal_id"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "data_provider_domain"
+                ]
+              },
+              {
+                "required": [
+                  "signal_source_url"
+                ]
+              },
+              {
+                "required": [
+                  "agent_url"
+                ]
+              },
+              {
+                "required": [
+                  "source"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "Data-provider-scoped signal. The signal_id resolves through the data provider's published adagents.json signals[] and can be authorization-verified there.",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "data_provider",
+              "description": "Discriminator indicating the signal resolves through a data provider's published adagents.json signals[]."
+            },
+            "data_provider_domain": {
+              "type": "string",
+              "description": "Domain that publishes the signal definition in its adagents.json signals[].",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            },
+            "signal_id": {
+              "type": "string",
+              "description": "Signal identifier within the data provider's published adagents.json signals[].",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            }
+          },
+          "required": [
+            "scope",
+            "data_provider_domain",
+            "signal_id"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "agent_url"
+                ]
+              },
+              {
+                "required": [
+                  "signal_source_url"
+                ]
+              },
+              {
+                "required": [
+                  "source"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "Signal-source-scoped signal. Use this for source-native signals that are not published in upstream adagents.json signals[]. The buyer trusts the issuing signal source for this identity; use scope 'data_provider' instead when the signal is published in adagents.json signals[], even if the publisher is also the seller or signal source.",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "signal_source",
+              "description": "Discriminator indicating the signal resolves through the issuing signal source."
+            },
+            "signal_source_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL of the signal source that issues this source-native signal."
+            },
+            "signal_id": {
+              "type": "string",
+              "description": "Signal identifier within the issuing signal source's signal set.",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            }
+          },
+          "required": [
+            "scope",
+            "signal_source_url",
+            "signal_id"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "data_provider_domain"
+                ]
+              },
+              {
+                "required": [
+                  "agent_url"
+                ]
+              },
+              {
+                "required": [
+                  "source"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/forecast-dimension-time.json": {
+      "title": "Time Forecast Dimension",
+      "description": "A calendar-window dimension for a ForecastPoint row. Variant of ForecastPoint dimensions; see forecast-point-dimensions.json for dispatch rules. Windows are half-open intervals [start_time, end_time): the row covers instants at or after start_time and strictly before end_time, so adjacent windows share a boundary without overlapping. end_time MUST be after start_time; JSON Schema draft-07 cannot compare sibling values, so conformance tooling enforces the ordering. Within one forecast, sellers MUST emit non-overlapping windows and SHOULD coalesce adjacent windows whose availability_status and metrics do not materially differ. When the request scoped the forecast with offer_filters.availability_horizon, a complete forecast partitions the requested horizon; a seller that cannot cover the full horizon signals the gap through the response's incomplete[] mechanism rather than silently omitting windows.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "time",
+          "description": "Dimension family discriminator."
+        },
+        "start_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Inclusive window start (RFC 3339 date-time with timezone offset)."
+        },
+        "end_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Exclusive window end (RFC 3339 date-time with timezone offset). MUST be after start_time."
+        }
+      },
+      "required": [
+        "kind",
+        "start_time",
+        "end_time"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/availability-status.json": {
+      "title": "Availability Status",
+      "description": "Bookability of the inventory a forecast row describes, as of the forecast's generated_at. A snapshot, never a hold: valid_until bounds freshness, and proposal finalization or purchase remains the commitment boundary.",
+      "type": "string",
+      "enum": [
+        "available",
+        "unavailable"
+      ],
+      "enumDescriptions": {
+        "available": "The inventory described by this row can be booked as of generated_at. This is a snapshot, not a reservation — another buyer can take the window before this buyer commits.",
+        "unavailable": "The inventory described by this row cannot be booked. Sellers MUST apply all product booking eligibility constraints — including minimum and maximum bookable duration, day-of-week restrictions, and other scheduling rules — before reporting status; a window that fails any such constraint is 'unavailable' even when no competing hold exists. Rows may carry empty metrics. Sellers MUST NOT disclose who holds a conflicting booking."
+      }
+    },
+    "external:core/forecast-range.json": {
+      "title": "Forecast Range",
+      "description": "A forecast value with optional confidence bounds. Either mid (point estimate) or both low and high (range) must be provided. mid represents the most likely outcome. low and high represent conservative and optimistic estimates. All three can be provided together.",
+      "type": "object",
+      "properties": {
+        "low": {
+          "type": "number",
+          "description": "Conservative (low-end) forecast value",
+          "minimum": 0
+        },
+        "mid": {
+          "type": "number",
+          "description": "Expected (most likely) forecast value",
+          "minimum": 0
+        },
+        "high": {
+          "type": "number",
+          "description": "Optimistic (high-end) forecast value",
+          "minimum": 0
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "mid"
+          ]
+        },
+        {
+          "required": [
+            "low",
+            "high"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "external:core/brand-key.json": {
+      "title": "Brand Key",
+      "description": "Stable brand identity used to resolve the canonical brand manifest, optionally qualified by the countries of a commercial advertiser entity. The manifest URL is derived from domain; callers do not send brand assets or per-call brand overrides. Countries do not target delivery.",
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "description": "Domain that hosts /.well-known/brand.json or is registered for the brand.",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json",
+          "description": "Brand within a house-of-brands manifest. Omit for a single-brand domain."
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit when the identity is global or the house does not split the brand geographically. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account and proposal identity and is not delivery targeting."
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "title": "Brand ID",
+      "description": "Identifier for a brand within a house portfolio. Must be lowercase alphanumeric with underscores only. The house chooses this identifier.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand",
+      "examples": [
+        "tide",
+        "cheerios",
+        "air_jordan",
+        "nike",
+        "pampers"
+      ]
+    },
+    "external:enums/viewability-standard.json": {
+      "title": "Viewability Standard",
+      "description": "Viewability measurement standard applied to determine whether an impression qualifies as viewable. These are materially different thresholds and should not be compared across standards.",
+      "type": "string",
+      "enum": [
+        "mrc",
+        "groupm"
+      ],
+      "enumDescriptions": {
+        "mrc": "MRC/IAB standard: 50% of pixels in view for 1 continuous second (display) or 2 continuous seconds (video).",
+        "groupm": "GroupM standard: 100% of pixels in view for 1 continuous second (display) or 50% of video duration."
+      }
+    },
+    "external:core/canonical-forecast-vendor-metric-value.json": {
+      "title": "Canonical Forecast Vendor Metric Value",
+      "description": "Compact forecasted vendor metric with a BrandKey vendor pointer and no embedded brand assets.",
+      "type": "object",
+      "properties": {
+        "vendor": {
+          "$ref": "#/$defs/external:core~1brand-key.json"
+        },
+        "metric_id": {
+          "$ref": "#/$defs/external:core~1vendor-metric-id.json"
+        },
+        "value": {
+          "$ref": "#/$defs/external:core~1forecast-range.json"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "measurable_impressions": {
+          "$ref": "#/$defs/external:core~1forecast-range.json"
+        },
+        "breakdown": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "vendor",
+        "metric_id",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/vendor-metric-id.json": {
+      "title": "Vendor Metric ID",
+      "description": "Identifier for a vendor-defined metric within the vendor's vocabulary. Stable lookup key; the vendor publishes the canonical list (with category, methodology, and standard alignment) in `brand.json` `agents[type='measurement']`. Lowercase with underscores so a future enum promotion into `available-metric.json` is a literal string lift. Identifier is namespaced by the vendor — the same `metric_id` may mean different things in different vendors' vocabularies.",
+      "type": "string",
+      "x-entity": "vendor_metric",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "examples": [
+        "attention_units",
+        "gco2e_per_impression",
+        "demographic_reach",
+        "co_view_index",
+        "incremental_lift_percent"
+      ]
+    },
+    "external:enums/forecast-range-unit.json": {
+      "title": "Forecast Range Unit",
+      "description": "Describes how to interpret the points array in a DeliveryForecast — what axis the curve represents",
+      "type": "string",
+      "enum": [
+        "spend",
+        "availability",
+        "reach_freq",
+        "weekly",
+        "daily",
+        "clicks",
+        "conversions",
+        "package"
+      ],
+      "enumDescriptions": {
+        "spend": "Points at ascending budget levels. Standard budget curve showing how delivery metrics scale with spend. Default when field is omitted.",
+        "availability": "Each point represents total available inventory for the requested targeting and dates. Budget is omitted — metrics express what exists, not what a given spend level buys. Use metrics.spend to express the estimated cost. Typical for guaranteed and direct-sold inventory where the forecast is an availability check.",
+        "reach_freq": "Points at ascending reach/frequency targets. Used in broadcast planning where the publisher shows how cost scales with frequency goals.",
+        "weekly": "Metrics are per-week values. Budget refers to total campaign spend. Frequency of 3.2 means 3.2 exposures per week.",
+        "daily": "Metrics are per-day values. Budget refers to total campaign spend.",
+        "clicks": "Points at ascending click targets. Used in performance campaigns where the buyer specifies click goals.",
+        "conversions": "Points at ascending conversion targets. Used in goal-based planning (e.g., Meta-style 'tell me your goal, I'll tell you the budget').",
+        "package": "Each point represents a distinct inventory package (e.g., Good/Better/Best tiers, daypart packages, sponsorships). Points are not levels on a spend curve — they are separate products with different inventory compositions. Used by broadcast TV, audio, and DOOH sellers who sell packages rather than impressions at variable spend levels."
+      }
+    },
+    "external:enums/forecast-method.json": {
+      "title": "Forecast Method",
+      "description": "Method used to produce a delivery forecast",
+      "type": "string",
+      "enum": [
+        "estimate",
+        "modeled",
+        "guaranteed"
+      ],
+      "enumDescriptions": {
+        "estimate": "Rough approximation based on historical averages or heuristics. No delivery commitment.",
+        "modeled": "Forecast derived from platform-specific predictive models or historical data. Publisher uses this to set expectations but does not guarantee delivery.",
+        "guaranteed": "Contractually committed delivery levels backed by reserved inventory"
+      }
+    },
+    "external:enums/demographic-system.json": {
+      "title": "Demographic System",
+      "description": "Audience measurement systems for demographic notation in GRP forecasts and pricing",
+      "type": "string",
+      "enum": [
+        "nielsen",
+        "barb",
+        "agf",
+        "oztam",
+        "mediametrie",
+        "custom"
+      ],
+      "enumDescriptions": {
+        "nielsen": "Nielsen notation. Prefix: P(ersons), M(en), W(omen), A(dults), C(hildren), T(eens) + age range. Examples: P18-49, M25-54, W35+",
+        "barb": "BARB (UK). NRS social grade + age bands. Examples: ABC1 Adults, 16-34, Adults",
+        "agf": "AGF Videoforschung (Germany). Erwachsene notation + age bands. Examples: E 14-49, E 14+",
+        "oztam": "OzTAM (Australia). Age/gender bands, 4+ measurement universe",
+        "mediametrie": "Mediametrie (France). Named segments + age bands",
+        "custom": "Publisher-defined demographic notation"
+      }
+    },
+    "external:enums/reach-unit.json": {
+      "title": "Reach Unit",
+      "description": "Unit of measurement for reach and audience size metrics. Different channels and measurement providers count reach in fundamentally different units, making cross-channel comparison impossible without declaring the unit.",
+      "type": "string",
+      "enum": [
+        "individuals",
+        "households",
+        "devices",
+        "accounts",
+        "cookies",
+        "custom"
+      ],
+      "enumDescriptions": {
+        "individuals": "Unique people. Panel-based or identity-resolved measurement.",
+        "households": "Unique households or TV homes.",
+        "devices": "Unique device identifiers (IDFA, GAID, CTV device ID).",
+        "accounts": "Unique logged-in accounts (platform-specific identity).",
+        "cookies": "Unique browser cookies.",
+        "custom": "Publisher-defined reach unit. Describe in ext."
+      }
+    },
+    "external:core/ext.json": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/canonical-reporting-capabilities.json": {
+      "title": "Canonical Reporting Capabilities",
+      "description": "Compact product reporting contract. Vendor metrics use identity-only BrandKey references and do not inline brand or creative assets.",
+      "type": "object",
+      "properties": {
+        "available_reporting_frequencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1reporting-frequency.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "expected_delay_minutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timezone": {
+          "type": "string",
+          "description": "Explicit reporting-period timezone for this product. It may equal Account.timezone or differ when the upstream platform reports on a separate boundary."
+        },
+        "supports_webhooks": {
+          "type": "boolean"
+        },
+        "available_metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1available-metric.json"
+          },
+          "uniqueItems": true
+        },
+        "vendor_metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "vendor": {
+                "$ref": "#/$defs/external:core~1brand-key.json"
+              },
+              "metric_id": {
+                "$ref": "#/$defs/external:core~1vendor-metric-id.json"
+              }
+            },
+            "required": [
+              "vendor",
+              "metric_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "supports_creative_breakdown": {
+          "type": "boolean"
+        },
+        "supports_keyword_breakdown": {
+          "type": "boolean"
+        },
+        "supports_geo_breakdown": {
+          "$ref": "#/$defs/external:core~1geo-breakdown-support.json"
+        },
+        "supports_device_type_breakdown": {
+          "type": "boolean"
+        },
+        "supports_device_platform_breakdown": {
+          "type": "boolean"
+        },
+        "supports_audience_breakdown": {
+          "type": "boolean"
+        },
+        "supports_demographic_breakdown": {
+          "$ref": "#/$defs/external:core~1demographic-reporting-capability.json"
+        },
+        "supports_placement_breakdown": {
+          "type": "boolean"
+        },
+        "supports_spot_breakdown": {
+          "$ref": "#/$defs/external:core~1spot-reporting-capability.json"
+        },
+        "date_range_support": {
+          "type": "string",
+          "enum": [
+            "date_range",
+            "lifetime_only"
+          ]
+        },
+        "windowed_pull_granularities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1reporting-frequency.json"
+          },
+          "uniqueItems": true
+        },
+        "measurement_windows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1measurement-window.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "available_reporting_frequencies",
+        "expected_delay_minutes",
+        "timezone",
+        "supports_webhooks",
+        "available_metrics",
+        "date_range_support"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/reporting-frequency.json": {
+      "title": "Reporting Frequency",
+      "description": "Available frequencies for delivery reports and metrics updates. Weekly and quarterly match audience-currency publication cycles in measured channels (e.g. weekly OOH/radio increments, quarterly circulation updates); post_campaign is a single report after the flight ends. Buyers should treat a product's declared frequencies as an optimization-eligibility signal — mid-flight optimization is not meaningful against data that arrives quarterly or post-campaign.",
+      "type": "string",
+      "enum": [
+        "hourly",
+        "daily",
+        "weekly",
+        "monthly",
+        "quarterly",
+        "post_campaign"
+      ]
+    },
+    "external:enums/available-metric.json": {
+      "title": "Available Metric",
+      "description": "Standard delivery and performance metrics available for reporting",
+      "type": "string",
+      "enum": [
+        "impressions",
+        "spend",
+        "clicks",
+        "ctr",
+        "views",
+        "completed_views",
+        "completion_rate",
+        "conversions",
+        "conversion_value",
+        "commissionable_value",
+        "roas",
+        "cost_per_acquisition",
+        "new_to_brand_rate",
+        "leads",
+        "reach",
+        "frequency",
+        "grps",
+        "engagements",
+        "engagement_rate",
+        "follows",
+        "saves",
+        "profile_visits",
+        "viewability",
+        "quartile_data",
+        "dooh_metrics",
+        "cost_per_click",
+        "cost_per_completed_view",
+        "cpm",
+        "downloads",
+        "units_sold",
+        "new_to_brand_units",
+        "plays",
+        "incremental_sales_lift",
+        "brand_lift",
+        "foot_traffic",
+        "conversion_lift",
+        "brand_search_lift"
+      ]
+    },
+    "external:core/geo-breakdown-support.json": {
+      "title": "Geographic Breakdown Support",
+      "description": "Declares which geographic levels and classification systems are available for by_geo reporting breakdowns in product-level reporting_capabilities.",
+      "type": "object",
+      "properties": {
+        "country": {
+          "type": "boolean",
+          "description": "Supports country-level geo breakdown (ISO 3166-1 alpha-2)"
+        },
+        "region": {
+          "type": "boolean",
+          "description": "Supports region/state-level geo breakdown (ISO 3166-2)"
+        },
+        "metro": {
+          "type": "object",
+          "description": "Metro area breakdown support. Keys are metro-system enum values; true means supported.",
+          "propertyNames": {
+            "$ref": "#/$defs/external:enums~1metro-system.json"
+          },
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "postal_area": {
+          "description": "Postal area breakdown support. Prefer the native country-keyed map where each ISO 3166-1 alpha-2 country lists supported country-local postal systems. Deprecated legacy country-fused postal-system boolean maps remain accepted for compatibility.",
+          "$ref": "#/$defs/external:core~1postal-area-support.json"
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:core/postal-area-support.json": {
+      "title": "Postal Area Support",
+      "description": "Declares supported postal area systems. Native support is keyed by ISO 3166-1 alpha-2 country with arrays of country-local postal systems. Deprecated country-fused boolean aliases may be included during migration.",
+      "type": "object",
+      "properties": {
+        "US": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "zip",
+              "zip_plus_four"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "GB": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "outward",
+              "full"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "CA": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "fsa",
+              "full"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "DE": {
+          "type": "array",
+          "items": {
+            "const": "plz"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "CH": {
+          "type": "array",
+          "items": {
+            "const": "plz"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "AT": {
+          "type": "array",
+          "items": {
+            "const": "plz"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "FR": {
+          "type": "array",
+          "items": {
+            "const": "code_postal"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "AU": {
+          "type": "array",
+          "items": {
+            "const": "postcode"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "BR": {
+          "type": "array",
+          "items": {
+            "const": "cep"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "IN": {
+          "type": "array",
+          "items": {
+            "const": "pin"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "ZA": {
+          "type": "array",
+          "items": {
+            "const": "postal_code"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "us_zip": {
+          "type": "boolean",
+          "deprecated": true
+        },
+        "us_zip_plus_four": {
+          "type": "boolean",
+          "deprecated": true
+        },
+        "gb_outward": {
+          "type": "boolean",
+          "deprecated": true
+        },
+        "gb_full": {
+          "type": "boolean",
+          "deprecated": true
+        },
+        "ca_fsa": {
+          "type": "boolean",
+          "deprecated": true
+        },
+        "ca_full": {
+          "type": "boolean",
+          "deprecated": true
+        },
+        "de_plz": {
+          "type": "boolean",
+          "deprecated": true
+        },
+        "fr_code_postal": {
+          "type": "boolean",
+          "deprecated": true
+        },
+        "au_postcode": {
+          "type": "boolean",
+          "deprecated": true
+        },
+        "ch_plz": {
+          "type": "boolean",
+          "deprecated": true
+        },
+        "at_plz": {
+          "type": "boolean",
+          "deprecated": true
+        }
+      },
+      "propertyNames": {
+        "anyOf": [
+          {
+            "pattern": "^[A-Z]{2}$"
+          },
+          {
+            "$ref": "#/$defs/external:enums~1legacy-postal-system.json"
+          }
+        ]
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "enum": [
+            "postal_code",
+            "custom"
+          ]
+        },
+        "minItems": 1,
+        "uniqueItems": true
+      }
+    },
+    "external:core/demographic-reporting-capability.json": {
+      "title": "Demographic Reporting Capability",
+      "description": "Product-scoped demographic breakdown capability. Reporting capability is independent of demographic targeting capability: a product can execute an exact buyer age predicate while its measurement source reports only fixed age intervals. Buyers compare requested reporting ranges with this declaration before requesting by_demographic rows and MUST NOT infer reporting alignment from Product.demographic_targeting.",
+      "type": "object",
+      "properties": {
+        "age": {
+          "type": "object",
+          "description": "Machine-comparable age ranges this product can report.",
+          "properties": {
+            "reporting_modes": {
+              "type": "array",
+              "description": "Ways this product can produce age rows. exact_predicates accepts requested canonical age predicates within the declared bounds. enumerated_intervals reports only the exact intervals declared in intervals; buyers may aggregate adjacent complete intervals but MUST NOT treat a wider or narrower interval as the requested audience.",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "exact_predicates",
+                  "enumerated_intervals"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "min_reportable_age": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 150,
+              "description": "Lowest explicit min or max bound accepted by exact_predicates. Required when that mode is declared."
+            },
+            "max_reportable_age": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 150,
+              "description": "Highest explicit min or max bound accepted by exact_predicates. Required when that mode is declared."
+            },
+            "supports_unbounded_min": {
+              "type": "boolean",
+              "description": "Whether exact_predicates accepts a canonical age predicate with min omitted. Required when that mode is declared."
+            },
+            "supports_unbounded_max": {
+              "type": "boolean",
+              "description": "Whether exact_predicates accepts a canonical age predicate with max omitted. Required when that mode is declared."
+            },
+            "intervals": {
+              "type": "array",
+              "description": "Fixed reportable age intervals for enumerated_intervals. Bounds are authoritative capability data, not a protocol-wide bucket taxonomy. Optional native labels identify the measurement-system code returned with the interval.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "age": {
+                    "$ref": "#/$defs/external:core~1demographic-age-range.json"
+                  },
+                  "demographic": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "description": "Optional native demographic label returned for this interval."
+                  },
+                  "demographic_system": {
+                    "$ref": "#/$defs/external:enums~1demographic-system.json"
+                  }
+                },
+                "required": [
+                  "age"
+                ],
+                "allOf": [
+                  {
+                    "if": {
+                      "required": [
+                        "demographic"
+                      ]
+                    },
+                    "then": {
+                      "required": [
+                        "demographic_system"
+                      ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "required": [
+                        "demographic_system"
+                      ]
+                    },
+                    "then": {
+                      "required": [
+                        "demographic"
+                      ]
+                    }
+                  }
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "reporting_modes"
+          ],
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "reporting_modes": {
+                    "contains": {
+                      "const": "exact_predicates"
+                    }
+                  }
+                },
+                "required": [
+                  "reporting_modes"
+                ]
+              },
+              "then": {
+                "required": [
+                  "min_reportable_age",
+                  "max_reportable_age",
+                  "supports_unbounded_min",
+                  "supports_unbounded_max"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "reporting_modes": {
+                    "contains": {
+                      "const": "enumerated_intervals"
+                    }
+                  }
+                },
+                "required": [
+                  "reporting_modes"
+                ]
+              },
+              "then": {
+                "required": [
+                  "intervals"
+                ]
+              }
+            }
+          ],
+          "additionalProperties": false
+        },
+        "demographic_systems": {
+          "type": "array",
+          "description": "Measurement-system notations this product may return. A code remains opaque unless its capability interval and response row also carry a canonical age predicate.",
+          "items": {
+            "$ref": "#/$defs/external:enums~1demographic-system.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "may_suppress_small_cells": {
+          "type": "boolean",
+          "description": "Whether privacy, policy, or measurement thresholds may suppress otherwise reportable demographic rows. When true, buyers must inspect by_demographic_suppressed before testing whether rows reconcile to package totals."
+        }
+      },
+      "required": [
+        "may_suppress_small_cells"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "age"
+          ]
+        },
+        {
+          "required": [
+            "demographic_systems"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:core/demographic-age-range.json": {
+      "title": "Demographic Age Range",
+      "description": "A canonical audience-age predicate in completed integer years. min and max are inclusive; omitting one bound means no restriction in that direction. At least one bound is required. include_unknown is always explicit because people whose age is unavailable are not members of any numeric interval. Implementations MUST reject min greater than max; JSON Schema draft-07 cannot compare sibling numeric values.",
+      "type": "object",
+      "properties": {
+        "min": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 150,
+          "description": "Inclusive minimum age in completed years. Omit for an open lower bound."
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 150,
+          "description": "Inclusive maximum age in completed years. Omit for an open upper bound."
+        },
+        "include_unknown": {
+          "type": "boolean",
+          "description": "Whether delivery to people whose age is unavailable is part of this predicate. This field has no default and MUST be supplied."
+        }
+      },
+      "required": [
+        "include_unknown"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "min"
+          ]
+        },
+        {
+          "required": [
+            "max"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "external:core/spot-reporting-capability.json": {
+      "title": "Spot Reporting Capability",
+      "description": "Product-scoped spot-level as-run reporting capability. Presence means the seller can report stable spot identities and actual airing timestamps. available_metrics declares which delivery metrics may eventually be populated at spot grain; an empty array means the product provides airing evidence only.",
+      "type": "object",
+      "properties": {
+        "available_metrics": {
+          "type": "array",
+          "description": "Metrics available at spot grain. A declared metric may be absent from a provisional measurement window and appear when a later window supersedes it. A metric omitted from this declaration is not promised at spot grain even when it is available at package grain.",
+          "items": {
+            "$ref": "#/$defs/external:enums~1available-metric.json"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "available_metrics"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/measurement-window.json": {
+      "title": "Measurement Window",
+      "description": "A measurement maturation stage for any channel where billing-grade data is produced in phases rather than arriving final on day one. Each window represents an accumulation or processing stage with its own expected availability. Examples: broadcast/linear TV (live → C3 → C7 DVR accumulation), DOOH (tentative plays → post-IVT/fraud-check final), digital (raw impressions → GIVT filtered → SIVT filtered), podcast (7-day downloads → 30-day downloads), audio/radio (tentative → diary/panel-certified). Sellers whose data is final on first delivery omit this.",
+      "type": "object",
+      "properties": {
+        "window_id": {
+          "type": "string",
+          "maxLength": 50,
+          "description": "Identifier for this maturation stage. Standard broadcast values: 'live' (real-time viewers only), 'c3' (live + 3 days time-shifted), 'c7' (live + 7 days time-shifted). Standard values for other channels include 'tentative' (provisional data available quickly), 'final' (post-processing certified data), 'post_ivt' (digital after invalid-traffic filtering), 'post_sivt' (digital after sophisticated-IVT filtering), 'downloads_7d' / 'downloads_30d' (podcast download maturation). Sellers may define custom IDs.",
+          "examples": [
+            "live",
+            "c3",
+            "c7",
+            "tentative",
+            "final",
+            "post_ivt",
+            "downloads_30d"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Human-readable description of what this window measures",
+          "examples": [
+            "Live broadcast impressions only",
+            "Live plus 7 days of time-shifted viewing",
+            "Tentative plays before IVT and fraud-check processing",
+            "Final plays after IVT and fraud-check processing",
+            "Impressions after sophisticated invalid-traffic filtering"
+          ]
+        },
+        "duration_days": {
+          "type": "integer",
+          "description": "Number of days of accumulation included in this window before processing begins. For broadcast, this is DVR accumulation (0 = live only, 3 = live + 3 days DVR, 7 = live + 7 days DVR). For channels without an accumulation period (DOOH tentative→final, digital IVT filtering), this is 0 — maturation is entirely vendor processing time captured in expected_availability_days.",
+          "minimum": 0
+        },
+        "expected_availability_days": {
+          "type": "integer",
+          "description": "Expected number of days after delivery before this window's data is available from the measurement vendor. Captures accumulation time plus vendor processing time. Examples: broadcast C7 from VideoAmp ~22 days (7-day accumulation + ~15-day processing); DOOH tentative plays same-day; DOOH final (post-IVT/fraud-check) ~1 day; digital post-SIVT ~2–3 days.",
+          "minimum": 0
+        },
+        "is_guarantee_basis": {
+          "type": "boolean",
+          "description": "Whether this window is the basis for delivery guarantees, reconciliation, and invoicing. A product typically has one guarantee basis window (e.g., C7 for most US broadcast, post-IVT final for DOOH). Buyers reconcile against the guarantee basis window's final numbers."
+        }
+      },
+      "required": [
+        "window_id",
+        "duration_days"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/canonical-measurement-terms.json": {
+      "title": "Canonical Measurement Terms",
+      "description": "Compact billing-measurement and makegood terms. Vendor identity is a resolvable BrandKey; brand assets are never embedded.",
+      "type": "object",
+      "properties": {
+        "billing_measurement": {
+          "type": "object",
+          "properties": {
+            "vendor": {
+              "$ref": "#/$defs/external:core~1brand-key.json"
+            },
+            "max_variance_percent": {
+              "type": "number",
+              "minimum": 0,
+              "exclusiveMaximum": 100
+            },
+            "measurement_window": {
+              "type": "string",
+              "minLength": 1
+            },
+            "finalization_deadline_hours": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "vendor"
+          ],
+          "additionalProperties": false
+        },
+        "makegood_policy": {
+          "type": "object",
+          "properties": {
+            "available_remedies": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1makegood-remedy.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "available_remedies"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:enums/makegood-remedy.json": {
+      "title": "Makegood Remedy",
+      "description": "Remedy types available when a performance standard or billing measurement threshold is breached.",
+      "type": "string",
+      "enum": [
+        "additional_delivery",
+        "credit",
+        "invoice_adjustment"
+      ],
+      "enumDescriptions": {
+        "additional_delivery": "Seller extends or adds impressions to compensate for the shortfall. Delivery is like-for-like on the same campaign or a subsequent campaign within the same account.",
+        "credit": "Seller issues a credit toward future media buys on the same account.",
+        "invoice_adjustment": "Seller reduces the invoice for the current media buy to reflect actual delivered value."
+      }
+    },
+    "external:core/canonical-performance-standard.json": {
+      "title": "Canonical Performance Standard",
+      "description": "Compact committed metric threshold with resolvable vendor identity and no creative or brand-asset graph.",
+      "type": "object",
+      "properties": {
+        "metric": {
+          "$ref": "#/$defs/external:enums~1performance-standard-metric.json"
+        },
+        "threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "standard": {
+          "$ref": "#/$defs/external:enums~1viewability-standard.json"
+        },
+        "vendor": {
+          "$ref": "#/$defs/external:core~1brand-key.json"
+        }
+      },
+      "required": [
+        "metric",
+        "threshold",
+        "vendor"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/performance-standard-metric.json": {
+      "title": "Performance Standard Metric",
+      "description": "Performance metrics that support rate thresholds on media buys — the verification subset of the broader metric vocabulary. Each metric specifies whether its threshold is a floor (must exceed) or ceiling (must not exceed). Shared values with `available-metric.json` mirror the delivery vocabulary (`viewability` → `viewable_rate` family, `completion_rate` → same name); verification-only values (`ivt`, `brand_safety`, `attention_score`) are typically vendor-attested and do not appear in `available-metric.json` because they're not seller-reportable scalars — they flow through `vendor_metric_values` or vendor-scope `committed_metrics` entries with the matching `performance_standard.vendor` BrandRef anchoring identity.",
+      "type": "string",
+      "enum": [
+        "viewability",
+        "ivt",
+        "completion_rate",
+        "brand_safety",
+        "attention_score"
+      ],
+      "enumDescriptions": {
+        "viewability": "Viewable impression rate (floor — must exceed threshold). Requires viewability_standard. Denominator: measurable_impressions.",
+        "ivt": "Invalid Traffic rate (ceiling — must not exceed threshold). Denominator: total_impressions.",
+        "completion_rate": "Video or audio completion rate (floor — must exceed threshold). Denominator: total_impressions.",
+        "brand_safety": "Brand-safe impression rate (floor — must exceed threshold). Denominator: total_impressions.",
+        "attention_score": "Attention score rate (floor — must exceed threshold). Denominator: measurable_impressions."
+      }
+    },
+    "external:enums/catalog-type.json": {
+      "title": "Catalog Type",
+      "description": "The type of catalog feed. Determines the item schema and how the platform resolves catalog items. Multiple catalog types can be synced to the same account and referenced together in creatives.",
+      "type": "string",
+      "enum": [
+        "offering",
+        "product",
+        "inventory",
+        "store",
+        "promotion",
+        "hotel",
+        "flight",
+        "job",
+        "vehicle",
+        "real_estate",
+        "education",
+        "destination",
+        "app"
+      ]
+    },
+    "external:core/signal-targeting-rules.json": {
+      "title": "Signal Targeting Rules",
+      "description": "Product-level composition rules for selecting signals on packages. The selectable signal menu may come from inline signal_targeting_options or from get_signals for wholesale signal discovery when the product omits inline options. These rules are intentionally product-scoped, not seller-level get_adcp_capabilities, because a single seller may route products through different ad servers with different signal targeting limits. Sellers MUST echo the applied signal_targeting_groups on the resulting package state, including fixed/default selections the seller applies without buyer edits.",
+      "type": "object",
+      "properties": {
+        "resolution_model": {
+          "type": "string",
+          "description": "How selected signal_targeting_options are resolved against the product's inventory. 'direct_targeting' means selected signals are applied as targeting predicates to the package inventory. 'seller_planned' means selected signals are planning inputs that the seller resolves against product-specific inventory, timing, availability, reach, or pacing constraints; buyers SHOULD NOT attempt to decompose the signal selection into lower-level inventory or schedule decisions. Use 'seller_planned' for products such as linear broadcast schedules where the audience definition may be portable but the audience-to-avails plan is seller-resolved.",
+          "enum": [
+            "direct_targeting",
+            "seller_planned"
+          ],
+          "default": "direct_targeting"
+        },
+        "selection_mode": {
+          "type": "string",
+          "description": "Default selection behavior for selectable signals on this product. 'optional' means the buyer may select zero or more signals. 'required' means the buyer must select at least min_selected_signals, or 1 when min_selected_signals is omitted. 'fixed' means the seller applies the default_selected signals and the buyer cannot add or remove them; buyers SHOULD render those entries as read-only and sellers MUST echo them in package targeting_overlay.signal_targeting_groups. Use selection_group_rules for product-scoped products that need different behavior for different groups, such as fixed suppressions plus a required include tier.",
+          "enum": [
+            "optional",
+            "required",
+            "fixed"
+          ],
+          "default": "optional"
+        },
+        "min_selected_signals": {
+          "type": "integer",
+          "description": "Minimum number of signals the buyer must select when selection_mode is 'required'. If selection_mode is 'required' and this field is omitted, sellers MUST treat the minimum as 1. Defaults to 0 for optional selection.",
+          "minimum": 0
+        },
+        "max_selected_signals": {
+          "type": "integer",
+          "description": "Maximum number of signals the buyer may select for a package. Omit when there is no declared limit beyond the available options.",
+          "minimum": 1
+        },
+        "max_selected_per_group": {
+          "type": "integer",
+          "description": "Maximum number of signal_targeting_options the buyer may select from the same ProductSignalTargetingOption.selection_group. Use 1 for mutually exclusive alternatives within each option group. This limit applies to product option grouping, not to the number of child groups in packages[].targeting_overlay.signal_targeting_groups.",
+          "minimum": 1
+        },
+        "max_signal_targeting_groups": {
+          "type": "integer",
+          "description": "Maximum number of child groups allowed in packages[].targeting_overlay.signal_targeting_groups.groups. Omit when the seller has no declared limit beyond product terms.",
+          "minimum": 1
+        },
+        "max_signals_per_targeting_group": {
+          "type": "integer",
+          "description": "Maximum number of signals allowed in each packages[].targeting_overlay.signal_targeting_groups.groups[].signals array. Omit when the seller has no declared limit beyond product terms.",
+          "minimum": 1
+        },
+        "selection_group_rules": {
+          "type": "array",
+          "description": "Optional product-scoped overrides for specific ProductSignalTargetingOption.selection_group values. Use this when one product has mixed behavior, such as fixed seller-applied suppressions, a required pick-one include tier, optional buyer-selected exclusions, or heterogeneous targeting planes that must be represented as separate ANDed clauses. Rules apply only to options whose selection_group matches. When selection_group_rules are present, each packages[].targeting_overlay.signal_targeting_groups child group MUST contain signals from exactly one selection_group and one targeting_mode, and buyers MUST send at most one child group for each (selection_group, targeting_mode) pair. Sellers MUST reject duplicate, mixed, or collapsed groups that combine distinct selection_group_rules into the same child group.",
+          "items": {
+            "$ref": "#/$defs/external:core~1signal-selection-group-rule.json"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "external:core/signal-selection-group-rule.json": {
+      "title": "Signal Selection Group Rule",
+      "description": "Product-scoped override for one ProductSignalTargetingOption.selection_group value. Use this when a product has mixed signal-selection behavior, such as fixed suppressions plus a required pick-one include tier.",
+      "type": "object",
+      "properties": {
+        "selection_group": {
+          "type": "string",
+          "description": "ProductSignalTargetingOption.selection_group value this rule applies to."
+        },
+        "targeting_mode": {
+          "type": "string",
+          "description": "How options in this selection_group are intended to be used in signal_targeting_groups. 'include' maps to child groups with operator 'any'. 'exclude' maps to child groups with operator 'none'. Omit when options in the group may be used according to each option's allowed_targeting_modes.",
+          "enum": [
+            "include",
+            "exclude"
+          ]
+        },
+        "selection_mode": {
+          "type": "string",
+          "description": "Selection behavior for this selection_group. 'required' means at least min_selected_signals, or 1 when omitted. 'fixed' means default_selected options in this group are seller-applied and read-only.",
+          "enum": [
+            "optional",
+            "required",
+            "fixed"
+          ]
+        },
+        "min_selected_signals": {
+          "type": "integer",
+          "description": "Minimum selected options from this selection_group. If selection_mode is 'required' and omitted, sellers MUST treat the minimum as 1.",
+          "minimum": 0
+        },
+        "max_selected_signals": {
+          "type": "integer",
+          "description": "Maximum selected options from this selection_group.",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "selection_group"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/demographic-targeting-capability.json": {
+      "title": "Demographic Targeting Capability",
+      "description": "Product-scoped demographic execution capability. This declaration is product-scoped because one seller may route products through different ad servers. Buyers compare a requested canonical predicate with these capabilities before purchase; sellers MUST reject predicates they cannot compile exactly. A buyer that chooses a supported alternative submits that predicate as a new request.",
+      "type": "object",
+      "properties": {
+        "age": {
+          "type": "object",
+          "description": "Age-targeting execution available for this product.",
+          "properties": {
+            "execution_modes": {
+              "type": "array",
+              "description": "Ways this product can execute canonical age intent. continuous_bounds accepts canonical predicates whose explicit integer bounds fall between min_supported_age and max_supported_age, inclusive; omitted bounds additionally require the corresponding supports_unbounded_min or supports_unbounded_max flag. enumerated_intervals accepts exact unions of the declared intervals; signals resolves through signals carrying authoritative demographic_predicate metadata.",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "continuous_bounds",
+                  "enumerated_intervals",
+                  "signals"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "min_supported_age": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 150,
+              "description": "Lowest integer accepted as an explicit min or max bound by continuous_bounds. This limit does not replace an omitted min: omission means no lower age restriction. Required when that execution mode is declared."
+            },
+            "max_supported_age": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 150,
+              "description": "Highest integer accepted as an explicit min or max bound by continuous_bounds. This limit does not replace an omitted max: omission means no upper age restriction, so a request such as min 65 remains 65+ even when max_supported_age is 65. Required when that execution mode is declared."
+            },
+            "supports_unbounded_min": {
+              "type": "boolean",
+              "description": "Whether continuous_bounds accepts a predicate with min omitted. When true, the omitted min means no lower age restriction and MUST NOT be replaced by min_supported_age. When false, the seller MUST reject open-lower predicates. Required when continuous_bounds is declared."
+            },
+            "supports_unbounded_max": {
+              "type": "boolean",
+              "description": "Whether continuous_bounds accepts a predicate with max omitted. When true, the omitted max means no upper age restriction and MUST NOT be replaced by max_supported_age; for example, min 65 remains 65+. When false, the seller MUST reject open-upper predicates. Required when continuous_bounds is declared."
+            },
+            "unknown_handling": {
+              "type": "string",
+              "description": "How this product handles people whose age is unavailable. selectable honors either include_unknown value; always_excluded supports only false; always_included supports only true. A seller MUST reject a request incompatible with this declaration rather than silently changing it.",
+              "enum": [
+                "selectable",
+                "always_excluded",
+                "always_included"
+              ]
+            },
+            "supported_bases": {
+              "type": "array",
+              "description": "User-level age determination bases this product can use for exact execution. Sellers MUST publish only bases whose provenance they can preserve and audit; they MUST NOT infer a basis from an opaque platform age bucket. When omitted, the product makes no basis-aware targeting commitment and MUST reject requests that specify accepted_bases.",
+              "items": {
+                "$ref": "#/$defs/external:enums~1age-determination-basis.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "supported_verification_methods": {
+              "type": "array",
+              "description": "Age verification methods available when supported_bases contains verified. This is an availability declaration only: a method must still establish the entire requested age predicate. Threshold-only methods such as World ID cannot establish an arbitrary bounded range.",
+              "items": {
+                "$ref": "#/$defs/external:enums~1age-verification-method.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "intervals": {
+              "type": "array",
+              "description": "Seller-owned age intervals available to enumerated_intervals execution. Bounds are authoritative capability data, not a protocol-wide bucket taxonomy. Exact compilation may union adjacent intervals but MUST NOT introduce gaps or extra ages.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "interval_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Seller-scoped interval identifier echoed in demographic targeting readback.",
+                    "x-entity": "demographic_interval_id"
+                  },
+                  "age": {
+                    "$ref": "#/$defs/external:core~1demographic-age-range.json"
+                  }
+                },
+                "required": [
+                  "interval_id",
+                  "age"
+                ],
+                "additionalProperties": true
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "execution_modes",
+            "unknown_handling"
+          ],
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "execution_modes": {
+                    "contains": {
+                      "const": "continuous_bounds"
+                    }
+                  }
+                },
+                "required": [
+                  "execution_modes"
+                ]
+              },
+              "then": {
+                "required": [
+                  "min_supported_age",
+                  "max_supported_age",
+                  "supports_unbounded_min",
+                  "supports_unbounded_max"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "execution_modes": {
+                    "contains": {
+                      "const": "enumerated_intervals"
+                    }
+                  }
+                },
+                "required": [
+                  "execution_modes"
+                ]
+              },
+              "then": {
+                "required": [
+                  "intervals"
+                ]
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "supported_verification_methods"
+                ]
+              },
+              "then": {
+                "required": [
+                  "supported_bases"
+                ],
+                "properties": {
+                  "supported_bases": {
+                    "contains": {
+                      "const": "verified"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "supported_bases": {
+                    "contains": {
+                      "const": "verified"
+                    }
+                  }
+                },
+                "required": [
+                  "supported_bases"
+                ]
+              },
+              "then": {
+                "required": [
+                  "supported_verification_methods"
+                ]
+              }
+            }
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "age"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/age-determination-basis.json": {
+      "title": "Age Determination Basis",
+      "description": "User-level bases that may resolve age for demographic targeting execution. Population estimates are deliberately absent because aggregate composition cannot establish an individual impression's age.",
+      "type": "string",
+      "enum": [
+        "verified",
+        "declared",
+        "inferred"
+      ],
+      "enumDescriptions": {
+        "verified": "The user's applicable age claim was established through an age-assurance or identity-verification method.",
+        "declared": "The user supplied an age, date of birth, or threshold affirmation without independent verification.",
+        "inferred": "The user's age was predicted from behavior, attributes, or another model."
+      }
+    },
+    "external:enums/age-verification-method.json": {
+      "title": "Age Verification Method",
+      "description": "Methods for verifying user age for compliance. Does not include 'inferred' as it is not accepted for regulatory compliance.",
+      "type": "string",
+      "enum": [
+        "facial_age_estimation",
+        "id_document",
+        "digital_id",
+        "credit_card",
+        "world_id"
+      ]
+    },
+    "external:core/canonical-audience-evidence.json": {
+      "title": "Canonical Audience Evidence",
+      "description": "Compact immutable audience-evidence snapshot for product discovery. Provider identity is a BrandKey; credential and brand-asset graphs are resolved separately.",
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "audience_evidence"
+        },
+        "snapshot_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "audience_evidence_snapshot"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "audience": {
+          "$ref": "#/$defs/external:core~1audience-characteristic.json"
+        },
+        "relationship": {
+          "type": "string",
+          "enum": [
+            "composition",
+            "index",
+            "reach_estimate"
+          ]
+        },
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "fraction",
+            "ratio",
+            "count"
+          ]
+        },
+        "baseline": {
+          "type": "object",
+          "properties": {
+            "system": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "population_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "system",
+            "population_id",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        "evidence_type": {
+          "type": "string",
+          "enum": [
+            "measured",
+            "forecast",
+            "seller_declared"
+          ]
+        },
+        "methodology": {
+          "$ref": "#/$defs/external:enums~1audience-evidence-methodology.json"
+        },
+        "subject_type": {
+          "$ref": "#/$defs/external:enums~1audience-subject-type.json"
+        },
+        "resolution_method": {
+          "$ref": "#/$defs/external:enums~1audience-resolution-method.json"
+        },
+        "provider": {
+          "$ref": "#/$defs/external:core~1brand-key.json"
+        },
+        "measurement_window": {
+          "$ref": "#/$defs/external:core~1date-range.json"
+        },
+        "sample_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "methodology_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "attestation_digests": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Portable-attestation reference digests available through the evidence provider; credential bodies are not inlined into product discovery."
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "snapshot_id",
+        "version",
+        "content_digest",
+        "audience",
+        "relationship",
+        "value",
+        "unit",
+        "baseline",
+        "evidence_type",
+        "methodology",
+        "subject_type",
+        "provider",
+        "measurement_window",
+        "last_updated"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "relationship": {
+                "const": "composition"
+              }
+            },
+            "required": [
+              "relationship"
+            ]
+          },
+          "then": {
+            "properties": {
+              "unit": {
+                "const": "fraction"
+              },
+              "value": {
+                "maximum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "relationship": {
+                "const": "index"
+              }
+            },
+            "required": [
+              "relationship"
+            ]
+          },
+          "then": {
+            "properties": {
+              "unit": {
+                "const": "ratio"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "relationship": {
+                "const": "reach_estimate"
+              }
+            },
+            "required": [
+              "relationship"
+            ]
+          },
+          "then": {
+            "properties": {
+              "unit": {
+                "const": "count"
+              },
+              "value": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:core/audience-characteristic.json": {
+      "title": "Audience Characteristic",
+      "description": "A machine-comparable audience dimension and value or numeric range used in population-level audience evidence. The built-in `age` dimension uses completed years: scalar and set values and range bounds MUST be non-negative integers, and a range's min MUST be less than or equal to its max. Provider-defined dimensions SHOULD use an HTTPS URI and SHOULD identify their taxonomy so two similarly named dimensions are not assumed equivalent.",
+      "type": "object",
+      "properties": {
+        "dimension": {
+          "type": "string",
+          "description": "Canonical dimension name or HTTPS URI. AdCP 3.2 defines `age`; other values remain provider- or taxonomy-scoped.",
+          "anyOf": [
+            {
+              "const": "age"
+            },
+            {
+              "format": "uri",
+              "pattern": "^https://"
+            }
+          ]
+        },
+        "value": {
+          "description": "Scalar or set value for the dimension.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  }
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          ]
+        },
+        "range": {
+          "type": "object",
+          "description": "Inclusive numeric interval. For dimension `age`, values are completed years and MUST be non-negative integers, and min MUST be less than or equal to max. JSON Schema enforces the age value and bound types; implementations enforce the relational min <= max constraint.",
+          "properties": {
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            }
+          },
+          "minProperties": 1,
+          "additionalProperties": false
+        },
+        "taxonomy": {
+          "type": "object",
+          "description": "External system that defines the dimension or value. Taxonomy metadata is descriptive and does not create exact demographic targeting semantics.",
+          "properties": {
+            "system": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "system"
+          ],
+          "additionalProperties": false
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable display label; never the comparison key."
+        }
+      },
+      "required": [
+        "dimension"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "value"
+          ],
+          "not": {
+            "required": [
+              "range"
+            ]
+          }
+        },
+        {
+          "required": [
+            "range"
+          ],
+          "not": {
+            "required": [
+              "value"
+            ]
+          }
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "dimension": {
+                "const": "age"
+              }
+            },
+            "required": [
+              "dimension"
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "oneOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                ]
+              },
+              "range": {
+                "type": "object",
+                "properties": {
+                  "min": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "max": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "minProperties": 1,
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/audience-evidence-methodology.json": {
+      "title": "Audience Evidence Methodology",
+      "description": "How a population-level audience-evidence estimate was produced. This vocabulary is intentionally separate from signal-definition methodology: `projected` describes expansion of a sample or panel to a reference population and does not become a user-level signal-membership method.",
+      "type": "string",
+      "enum": [
+        "observed",
+        "declared",
+        "derived",
+        "inferred",
+        "modeled",
+        "projected"
+      ]
+    },
+    "external:enums/audience-subject-type.json": {
+      "title": "Audience Subject Type",
+      "description": "The kind of subject characterized by audience data or population-level evidence.",
+      "type": "string",
+      "enum": [
+        "individual",
+        "household",
+        "business",
+        "contextual",
+        "none"
+      ]
+    },
+    "external:enums/audience-resolution-method.json": {
+      "title": "Audience Resolution Method",
+      "description": "How subjects were resolved when producing a signal or population-level evidence estimate.",
+      "type": "string",
+      "enum": [
+        "deterministic_id",
+        "probabilistic_device",
+        "browser",
+        "geographic",
+        "content_signal",
+        "mixed"
+      ]
+    },
+    "external:core/date-range.json": {
+      "title": "Date Range",
+      "description": "A date range with inclusive start and end dates (ISO 8601 calendar dates). Used for billing periods, flight dates, and other calendar-day boundaries.",
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date",
+          "description": "Start date (inclusive), ISO 8601"
+        },
+        "end": {
+          "type": "string",
+          "format": "date",
+          "description": "End date (inclusive), ISO 8601"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/canonical-audience-evidence-selection.json": {
+      "title": "Canonical Audience Evidence Selection",
+      "description": "Compact decision readback pinning the evidence snapshot that affected recommendation or eligibility.",
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "audience_evidence"
+        },
+        "snapshot_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "audience_evidence_snapshot"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "decision_use": {
+          "type": "string",
+          "enum": [
+            "recommendation",
+            "eligibility",
+            "package_construction"
+          ]
+        },
+        "evidence": {
+          "$ref": "#/$defs/external:core~1canonical-audience-evidence.json"
+        },
+        "verified_attestation_digests": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "snapshot_id",
+        "version",
+        "content_digest",
+        "decision_use"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/canonical-product-action.json": {
+      "title": "Canonical Product Action",
+      "description": "Fine-grained action template advertised on a compact product. The resulting MediaBuy exposes the authoritative routed task in available_actions.",
+      "type": "object",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/external:enums~1canonical-media-buy-action.json"
+        },
+        "modes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1canonical-media-buy-action-mode.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "allowed_statuses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1media-buy-status.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "sla": {
+          "$ref": "#/$defs/external:core~1sla-window.json"
+        },
+        "terms_ref": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "modes"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/canonical-media-buy-action.json": {
+      "title": "Canonical Media Buy Action Name",
+      "description": "Fine-grained MediaBuy action vocabulary for compact product and lifecycle surfaces. Deprecated coarse 3.x actions are absent.",
+      "type": "string",
+      "enum": [
+        "pause",
+        "resume",
+        "cancel",
+        "extend_flight",
+        "shorten_flight",
+        "update_flight_dates",
+        "increase_budget",
+        "decrease_budget",
+        "reallocate_budget",
+        "update_budget_allocation",
+        "update_targeting",
+        "update_pacing",
+        "update_bidding",
+        "update_frequency_caps",
+        "update_catalog_assignments",
+        "update_keywords",
+        "update_optimization_goals",
+        "update_impression_goal",
+        "update_spend_target",
+        "update_reporting_webhook",
+        "replace_creative",
+        "update_creative_assignments",
+        "remove_creative",
+        "add_packages",
+        "remove_packages"
+      ]
+    },
+    "external:enums/canonical-media-buy-action-mode.json": {
+      "title": "Canonical Media Buy Action Mode",
+      "description": "How a seller honors a routed compact-lifecycle action.",
+      "type": "string",
+      "enum": [
+        "self_serve",
+        "conditional_self_serve",
+        "requires_approval"
+      ],
+      "enumDescriptions": {
+        "self_serve": "The declared task completes synchronously without approval.",
+        "conditional_self_serve": "The declared task completes synchronously inside seller tolerances and may become asynchronous outside them.",
+        "requires_approval": "The declared task uses the standard submitted, working, and input-required lifecycle before terminal completion."
+      }
+    },
+    "external:enums/media-buy-status.json": {
+      "title": "Media Buy Status",
+      "description": "Status of a media buy.",
+      "type": "string",
+      "enum": [
+        "pending_creatives",
+        "pending_start",
+        "active",
+        "paused",
+        "completed",
+        "rejected",
+        "canceled"
+      ],
+      "enumDescriptions": {
+        "pending_creatives": "**Buyer-side action required.** The media buy is approved by the seller and has no creatives assigned — the buyer must attach creatives via `sync_creatives` before the buy can serve. Not to be confused with a publisher-side or governance-side approval queue: the seller has already accepted the buy; only the buyer's creative submission is missing. Naming convention: `pending_X` names the lifecycle phase that is next required (here, `creatives`), not a state of waiting on seller/operator approval — consistent with `pending_start` (waiting for the flight date to begin).",
+        "pending_start": "Media buy is ready to serve and waiting for its flight date to begin.",
+        "active": "Media buy is currently running",
+        "paused": "Media buy is temporarily paused",
+        "completed": "Media buy has finished running",
+        "rejected": "Media buy was declined by the seller after creation",
+        "canceled": "Media buy was terminated before natural completion. Check cancellation.canceled_by to determine whether the buyer or seller initiated."
+      }
+    },
+    "external:core/sla-window.json": {
+      "title": "SLA Window",
+      "description": "Service-level commitment a seller declares for a given action. Optional throughout: absence means no commitment, not zero commitment — buyers querying SLA fields via #4425's `requires` predicate grammar MUST compose with `present` to avoid silently matching sellers who never declared one. Durations are ISO 8601 duration strings (e.g., `PT4H`, `PT24H`, `P1D`). Predicate evaluators that compare durations MUST normalize before comparison; `P1D` and `PT24H` are equal.",
+      "type": "object",
+      "properties": {
+        "response_max": {
+          "type": "string",
+          "description": "Maximum time from when the buyer issues the action to when the seller acknowledges receipt (mode-appropriate: synchronous response for self_serve, tolerance decision for conditional_self_serve, or queue ack for requires_approval). ISO 8601 duration.",
+          "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$",
+          "examples": [
+            "PT5M",
+            "PT4H",
+            "P1D"
+          ]
+        },
+        "completion_max": {
+          "type": "string",
+          "description": "Maximum time from buyer issuing the action to the seller completing it (mutation applied, proposal finalized, approval resolved). ISO 8601 duration.",
+          "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$",
+          "examples": [
+            "PT1H",
+            "PT24H",
+            "P2D"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:core/duration.json": {
+      "title": "Duration",
+      "description": "A time duration expressed as an interval and unit. Used for frequency cap windows, attribution windows, reach optimization windows, time budgets, and other time-based settings. When unit is 'campaign', interval must be 1 — the window spans the full campaign flight.",
+      "type": "object",
+      "properties": {
+        "interval": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of time units. Must be 1 when unit is 'campaign'."
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "seconds",
+            "minutes",
+            "hours",
+            "days",
+            "campaign"
+          ],
+          "description": "Time unit. 'seconds' for sub-minute precision. 'campaign' spans the full campaign flight."
+        }
+      },
+      "required": [
+        "interval",
+        "unit"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/context.json": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,354 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/media-buy/package-update.json",
+  "title": "Package Update",
+  "description": "Package update configuration for update_media_buy. Identifies package by package_id and specifies fields to modify. Fields not present are left unchanged. Fully-immutable fields (product_id, format_ids, format_option_refs, format_kind, params, pricing_option_id) cannot appear in update payloads — schema-enforced via the `not` constraint at the root of this object. Pre-GA `capability_ids` is also rejected rather than accepted as an extension. The reporting contract field `committed_metrics` is append-only (sellers MUST accept new entries on update but reject attempts to modify or remove existing entries with validation_error per its own description).",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "description": "Seller's ID of package to update",
+      "x-entity": "package"
+    },
+    "budget": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Updated hard spend cap for this package in the media-buy currency. Every selected pricing option in an AdCP-authored media buy MUST declare that same currency. In seller-optimized mode a number changes the package ceiling and null removes it so only the shared total and other constraints bound the package. null is invalid when the resulting allocation mode is fixed.",
+      "minimum": 0
+    },
+    "min_spend_target": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Updated soft lifetime spend target for this package. A number is valid only for seller-optimized allocation and must not exceed the resulting package budget when one exists. null removes the target. Sellers MUST validate the complete post-update state atomically.",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/pacing.json"
+    },
+    "bid_price": {
+      "type": "number",
+      "deprecated": true,
+      "description": "DEPRECATED in 3.2 and removed in the next major. Use bidding. A package update MUST NOT supply both a non-null bidding object and bid_price. During migration, bidding:null MAY accompany bid_price to clear the canonical block and set the legacy representation atomically.",
+      "minimum": 0
+    },
+    "bidding": {
+      "description": "Replace the complete package-authored bidding policy. An object replaces any prior package block and remains a complete override of the media-buy default. `{automatic:true}` explicitly selects provider automatic bidding at package scope. null clears the package-authored block so the package inherits media-buy bidding; if the media-buy block is also absent, provider automatic delivery applies. Monetary fields use the media-buy currency and require the package pricing option to declare that currency. During legacy migration, null MAY accompany bid_price or monetary optimization-goal targets; only a non-null canonical bidding object conflicts with those representations.",
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/bidding-policy.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Updated impression goal for this package",
+      "minimum": 0
+    },
+    "daily_budget_cap": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "Replace this package's hard daily cap; null removes it. Numeric changes apply immediately with current-day package spend counted. A cap below that spend pauses the package for the day; the aggregate cap remains independently binding."
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "not": {
+        "const": "asap"
+      },
+      "description": "Updated flight start date/time for this package in ISO 8601 format. Must fall within the media buy's date range."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Updated flight end date/time for this package in ISO 8601 format. Must fall within the media buy's date range."
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Pause/resume specific package (true = paused, false = active)"
+    },
+    "canceled": {
+      "type": "boolean",
+      "description": "Cancel this specific package. Cancellation is irreversible — canceled packages stop delivery and cannot be reactivated. When true, package cancellation takes precedence over sibling fields on this package: the seller applies only canceled and cancellation_reason for this package and SHOULD return a structured warning naming ignored sibling fields. Root fields and other package updates still participate in the same atomic update when root canceled is absent. Sellers MAY reject with NOT_CANCELLABLE.",
+      "const": true
+    },
+    "cancellation_reason": {
+      "type": "string",
+      "description": "Reason for canceling this package.",
+      "maxLength": 500
+    },
+    "catalogs": {
+      "type": "array",
+      "description": "Replace the catalogs this package promotes. Uses replacement semantics — the provided array replaces the current list. Omit to leave catalogs unchanged.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/catalog.json"
+      },
+      "minItems": 1
+    },
+    "optimization_goals": {
+      "type": "array",
+      "description": "Replace all optimization goals for this package. Uses replacement semantics — omit to leave goals unchanged.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/optimization-goal.json"
+      },
+      "minItems": 1
+    },
+    "targeting_overlay": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/targeting.json",
+      "description": "Complete effective targeting overlay to apply to this package. On update, this replaces the package's current effective targeting, including values originally accepted through configured-product selection; omit the field to leave targeting unchanged. Every replacement must remain executable by the product. Sellers reject unsupported or partially applicable changes and use REQUOTE_REQUIRED when a change, including a broader inventory set, falls outside the priced envelope. placement_selection is purchased-inventory targeting; mode default restores the product default, and successful readback echoes the committed selected set when enumerable. If the replacement removes a placement referenced by an existing creative assignment, the seller MUST reject the update unless the same atomic package mutation supplies a compatible complete creative_assignments replacement. Sellers MUST NOT silently delete assignments or retain orphan placement refs."
+    },
+    "keyword_targets_add": {
+      "type": "array",
+      "description": "Keyword targets to add or update on this package. Upserts by (keyword, match_type) identity: if the pair already exists, its bid_price is updated; if not, a new keyword target is added. Use targeting_overlay.keyword_targets in create_media_buy to set the initial list.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to target"
+          },
+          "match_type": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/match-type.json"
+          },
+          "bid_price": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Per-keyword bid price. Inherits currency and max_bid interpretation from the package's pricing option."
+          }
+        },
+        "required": [
+          "keyword",
+          "match_type"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "keyword_targets_remove": {
+      "type": "array",
+      "description": "Keyword targets to remove from this package. Removes matching (keyword, match_type) pairs. If a specified pair is not present, sellers SHOULD treat it as a no-op for that entry.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to stop targeting"
+          },
+          "match_type": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/match-type.json"
+          }
+        },
+        "required": [
+          "keyword",
+          "match_type"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "negative_keywords_add": {
+      "type": "array",
+      "description": "Negative keywords to add to this package. Appends to the existing negative keyword list — does not replace it. If a keyword+match_type pair already exists, sellers SHOULD treat it as a no-op for that entry. Use targeting_overlay.negative_keywords in create_media_buy to set the initial list.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to exclude"
+          },
+          "match_type": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/match-type.json"
+          }
+        },
+        "required": [
+          "keyword",
+          "match_type"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "negative_keywords_remove": {
+      "type": "array",
+      "description": "Negative keywords to remove from this package. Removes matching keyword+match_type pairs from the existing list. If a specified pair is not present, sellers SHOULD treat it as a no-op for that entry.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to stop excluding"
+          },
+          "match_type": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/match-type.json"
+          }
+        },
+        "required": [
+          "keyword",
+          "match_type"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Replace creative assignments for this package with optional rotation, grouping, weights, and placement routing. Uses replacement semantics - omit to leave assignments unchanged. rotation_mode is package-scoped: omission resolves to weighted, and every assignment MUST resolve to the same effective mode. In sequential mode, sequence_position MUST be unique within each package-local group. Sellers reject conflicts with VALIDATION_ERROR before mutation. When the same mutation narrows targeting_overlay.placement_selection, this complete replacement MUST remove or reroute every assignment reference that would otherwise be orphaned; the seller validates both changes atomically.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "package_rotation_policy": {
+            "effective_mode": "assignment.rotation_mode_or_weighted_default",
+            "mode_consistency": "all_assignments_equal",
+            "sequence_positions": "required_and_unique_per_effective_group_when_sequential",
+            "effective_group": "assignment.group_id_or_package_default",
+            "group_namespace": "package_id",
+            "on_violation": "reject_before_mutation_with_VALIDATION_ERROR"
+          }
+        },
+        "spec": "docs/reference/migration/creatives.mdx#rotation-modes-and-groups"
+      },
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/creative-assignment.json"
+      }
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Replace this package's inline creative assets. Native localization is not accepted on this path; use sync_creatives before assigning the library creative. When the seller also advertises creative.has_creative_library: true, new inline creatives enter the seller's creative library and can be reused by creative_id while retained; inline-only sellers may store them as package-scoped assets. Use creative_assignments instead for existing library creatives.",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/creative-asset.json"
+          },
+          {
+            "not": {
+              "required": [
+                "localization"
+              ]
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+    }
+  },
+  "required": [
+    "package_id"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "bidding": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "bidding"
+        ]
+      },
+      "then": {
+        "properties": {
+          "optimization_goals": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "target": {
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "cost_per",
+                          "per_ad_spend"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  }
+                },
+                "required": [
+                  "target"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "product_id"
+        ]
+      },
+      {
+        "required": [
+          "format_ids"
+        ]
+      },
+      {
+        "required": [
+          "format_option_refs"
+        ]
+      },
+      {
+        "required": [
+          "format_kind"
+        ]
+      },
+      {
+        "required": [
+          "params"
+        ]
+      },
+      {
+        "required": [
+          "capability_ids"
+        ]
+      },
+      {
+        "required": [
+          "pricing_option_id"
+        ]
+      },
+      {
+        "required": [
+          "budget_cap_timezone"
+        ]
+      },
+      {
+        "properties": {
+          "bidding": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "bidding",
+          "bid_price"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": true
+}

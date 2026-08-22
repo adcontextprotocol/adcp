@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/demographic-predicate.json",
+  "title": "Demographic Predicate",
+  "description": "Portable demographic audience intent. AdCP 3.2 standardizes canonical age predicates first; other demographic dimensions require their own portable semantics and are not inferred from seller-defined labels. Exact comparison is set equality over the inclusive integer age interval plus the separately represented unknown-age member.",
+  "type": "object",
+  "properties": {
+    "age": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/demographic-age-range.json"
+    }
+  },
+  "required": [
+    "age"
+  ],
+  "additionalProperties": true
+}

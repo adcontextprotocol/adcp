@@ -1,0 +1,190 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/demographic-targeting-capability.json",
+  "title": "Demographic Targeting Capability",
+  "description": "Product-scoped demographic execution capability. This declaration is product-scoped because one seller may route products through different ad servers. Buyers compare a requested canonical predicate with these capabilities before purchase; sellers MUST reject predicates they cannot compile exactly. A buyer that chooses a supported alternative submits that predicate as a new request.",
+  "type": "object",
+  "properties": {
+    "age": {
+      "type": "object",
+      "description": "Age-targeting execution available for this product.",
+      "properties": {
+        "execution_modes": {
+          "type": "array",
+          "description": "Ways this product can execute canonical age intent. continuous_bounds accepts canonical predicates whose explicit integer bounds fall between min_supported_age and max_supported_age, inclusive; omitted bounds additionally require the corresponding supports_unbounded_min or supports_unbounded_max flag. enumerated_intervals accepts exact unions of the declared intervals; signals resolves through signals carrying authoritative demographic_predicate metadata.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "continuous_bounds",
+              "enumerated_intervals",
+              "signals"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "min_supported_age": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 150,
+          "description": "Lowest integer accepted as an explicit min or max bound by continuous_bounds. This limit does not replace an omitted min: omission means no lower age restriction. Required when that execution mode is declared."
+        },
+        "max_supported_age": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 150,
+          "description": "Highest integer accepted as an explicit min or max bound by continuous_bounds. This limit does not replace an omitted max: omission means no upper age restriction, so a request such as min 65 remains 65+ even when max_supported_age is 65. Required when that execution mode is declared."
+        },
+        "supports_unbounded_min": {
+          "type": "boolean",
+          "description": "Whether continuous_bounds accepts a predicate with min omitted. When true, the omitted min means no lower age restriction and MUST NOT be replaced by min_supported_age. When false, the seller MUST reject open-lower predicates. Required when continuous_bounds is declared."
+        },
+        "supports_unbounded_max": {
+          "type": "boolean",
+          "description": "Whether continuous_bounds accepts a predicate with max omitted. When true, the omitted max means no upper age restriction and MUST NOT be replaced by max_supported_age; for example, min 65 remains 65+. When false, the seller MUST reject open-upper predicates. Required when continuous_bounds is declared."
+        },
+        "unknown_handling": {
+          "type": "string",
+          "description": "How this product handles people whose age is unavailable. selectable honors either include_unknown value; always_excluded supports only false; always_included supports only true. A seller MUST reject a request incompatible with this declaration rather than silently changing it.",
+          "enum": [
+            "selectable",
+            "always_excluded",
+            "always_included"
+          ]
+        },
+        "supported_bases": {
+          "type": "array",
+          "description": "User-level age determination bases this product can use for exact execution. Sellers MUST publish only bases whose provenance they can preserve and audit; they MUST NOT infer a basis from an opaque platform age bucket. When omitted, the product makes no basis-aware targeting commitment and MUST reject requests that specify accepted_bases.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/age-determination-basis.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "supported_verification_methods": {
+          "type": "array",
+          "description": "Age verification methods available when supported_bases contains verified. This is an availability declaration only: a method must still establish the entire requested age predicate. Threshold-only methods such as World ID cannot establish an arbitrary bounded range.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/age-verification-method.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "intervals": {
+          "type": "array",
+          "description": "Seller-owned age intervals available to enumerated_intervals execution. Bounds are authoritative capability data, not a protocol-wide bucket taxonomy. Exact compilation may union adjacent intervals but MUST NOT introduce gaps or extra ages.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "interval_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Seller-scoped interval identifier echoed in demographic targeting readback.",
+                "x-entity": "demographic_interval_id"
+              },
+              "age": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/demographic-age-range.json"
+              }
+            },
+            "required": [
+              "interval_id",
+              "age"
+            ],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "execution_modes",
+        "unknown_handling"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "execution_modes": {
+                "contains": {
+                  "const": "continuous_bounds"
+                }
+              }
+            },
+            "required": [
+              "execution_modes"
+            ]
+          },
+          "then": {
+            "required": [
+              "min_supported_age",
+              "max_supported_age",
+              "supports_unbounded_min",
+              "supports_unbounded_max"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "execution_modes": {
+                "contains": {
+                  "const": "enumerated_intervals"
+                }
+              }
+            },
+            "required": [
+              "execution_modes"
+            ]
+          },
+          "then": {
+            "required": [
+              "intervals"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "supported_verification_methods"
+            ]
+          },
+          "then": {
+            "required": [
+              "supported_bases"
+            ],
+            "properties": {
+              "supported_bases": {
+                "contains": {
+                  "const": "verified"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supported_bases": {
+                "contains": {
+                  "const": "verified"
+                }
+              }
+            },
+            "required": [
+              "supported_bases"
+            ]
+          },
+          "then": {
+            "required": [
+              "supported_verification_methods"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "age"
+  ],
+  "additionalProperties": true
+}

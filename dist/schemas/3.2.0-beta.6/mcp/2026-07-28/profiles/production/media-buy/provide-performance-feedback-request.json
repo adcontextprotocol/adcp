@@ -1,0 +1,1046 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/mcp/2026-07-28/profiles/production/media-buy/provide-performance-feedback-request.json",
+  "type": "object",
+  "x-mutates-state": true,
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values."
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "deprecated": true,
+      "minimum": 1,
+      "maximum": 99,
+      "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "media_buy",
+      "description": "Receiver-scoped media buy identifier. On the provider-to-orchestrator hop this is the orchestrator's measurement-facing identifier; on the orchestrator-to-seller hop it is the seller-assigned media buy identifier."
+    },
+    "package_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "package",
+      "description": "Receiver-scoped package identifier when the assertion is package-specific. The orchestrator maps its measurement-facing identifier to seller-local identifiers during fan-out."
+    },
+    "creative_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "creative",
+      "description": "Receiver-scoped creative identifier when the assertion is creative-specific. The orchestrator maps its measurement-facing identifier to seller-local identifiers during fan-out."
+    },
+    "measurement_period": {
+      "$ref": "#/$defs/external:core~1datetime-range.json",
+      "description": "Period whose performance is summarized by this assertion."
+    },
+    "performance_index": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Normalized decision signal where 1.0 equals the named baseline, values below 1.0 underperform it, and values above 1.0 outperform it. Compact-contract producers (baseline present) MUST use observed divided by baseline for higher-is-better ratio metrics and baseline divided by observed for lower-is-better ratio metrics such as cost per acquisition."
+    },
+    "baseline": {
+      "$ref": "#/$defs/external:enums~1performance-baseline.json",
+      "x-status": "experimental",
+      "description": "Expectation represented by performance_index = 1.0. Compact-contract producers MUST populate this field; it remains optional in the schema so existing 3.x request payloads remain valid."
+    },
+    "metric": {
+      "$ref": "#/$defs/external:core~1performance-feedback-metric.json",
+      "x-status": "experimental",
+      "description": "Metric this assertion describes. Omit only for holistic feedback that is not attributable to one metric."
+    },
+    "metric_type": {
+      "$ref": "#/$defs/external:enums~1metric-type.json",
+      "deprecated": true,
+      "description": "Deprecated legacy metric classification retained for existing request payloads. New implementations SHOULD use metric; when both are present consumers MUST use metric for dispatch."
+    },
+    "producer": {
+      "$ref": "#/$defs/external:core~1brand-ref.json",
+      "x-status": "experimental",
+      "description": "Brand that produced the analysis. The receiving orchestrator gateway verifies this reference against authenticated caller identity and preserves it during seller fan-out."
+    },
+    "vendor": {
+      "$ref": "#/$defs/external:core~1brand-ref.json",
+      "deprecated": true,
+      "description": "Deprecated alias for producer retained for previously documented request payloads. When both are present consumers use producer."
+    },
+    "feedback_source": {
+      "$ref": "#/$defs/external:enums~1feedback-source.json",
+      "description": "Legacy categorical source hint retained for existing request payloads."
+    },
+    "methodology": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "x-status": "experimental",
+      "description": "Producer-scoped methodology identifier such as geo_incrementality, media_mix_model, or deterministic_attribution."
+    },
+    "methodology_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "x-status": "experimental",
+      "description": "Producer-defined version of the methodology used for this assertion."
+    },
+    "study_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-status": "experimental",
+      "description": "Opaque producer-assigned study or model-run reference. Receivers use it for correlation only and MUST NOT interpret it as an experiment-execution instruction."
+    },
+    "evidence": {
+      "type": "object",
+      "x-status": "experimental",
+      "properties": {
+        "sample_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "confidence_interval": {
+          "type": "object",
+          "properties": {
+            "lower": {
+              "type": "number"
+            },
+            "upper": {
+              "type": "number"
+            },
+            "level": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            }
+          },
+          "required": [
+            "lower",
+            "upper",
+            "level"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "description": "Small inline evidence summary used to weight the assertion without transporting the full study."
+    },
+    "evidence_ref": {
+      "type": "string",
+      "format": "uri",
+      "x-status": "experimental",
+      "description": "Provider-hosted evidence or result reference for parties authorized to inspect the full study."
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time",
+      "x-status": "experimental",
+      "description": "When the producer computed this assertion."
+    },
+    "final": {
+      "type": "boolean",
+      "x-status": "experimental",
+      "description": "Whether the producer expects this assertion to be revised as data matures."
+    },
+    "supersedes_feedback_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-status": "experimental",
+      "description": "Receiver-issued feedback_id of the earlier assertion this one replaces at the same hop."
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "media_buy_id",
+    "measurement_period",
+    "performance_index"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/performance-feedback-assertion.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "media_buy_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "media_buy"
+        },
+        "package_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "package"
+        },
+        "creative_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "creative"
+        },
+        "measurement_period": {
+          "$ref": "#/$defs/external:core~1datetime-range.json"
+        },
+        "performance_index": {
+          "type": "number",
+          "minimum": 0
+        },
+        "baseline": {
+          "$ref": "#/$defs/external:enums~1performance-baseline.json",
+          "x-status": "experimental"
+        },
+        "metric": {
+          "$ref": "#/$defs/external:core~1performance-feedback-metric.json",
+          "x-status": "experimental"
+        },
+        "metric_type": {
+          "$ref": "#/$defs/external:enums~1metric-type.json",
+          "deprecated": true
+        },
+        "producer": {
+          "$ref": "#/$defs/external:core~1brand-ref.json",
+          "x-status": "experimental"
+        },
+        "vendor": {
+          "$ref": "#/$defs/external:core~1brand-ref.json",
+          "deprecated": true
+        },
+        "feedback_source": {
+          "$ref": "#/$defs/external:enums~1feedback-source.json"
+        },
+        "methodology": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "x-status": "experimental"
+        },
+        "methodology_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "x-status": "experimental"
+        },
+        "study_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "x-status": "experimental"
+        },
+        "evidence": {
+          "type": "object",
+          "x-status": "experimental",
+          "properties": {
+            "sample_size": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "confidence_interval": {
+              "type": "object",
+              "properties": {
+                "lower": {
+                  "type": "number"
+                },
+                "upper": {
+                  "type": "number"
+                },
+                "level": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "exclusiveMaximum": 1
+                }
+              },
+              "required": [
+                "lower",
+                "upper",
+                "level"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "evidence_ref": {
+          "type": "string",
+          "format": "uri",
+          "x-status": "experimental"
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date-time",
+          "x-status": "experimental"
+        },
+        "final": {
+          "type": "boolean",
+          "x-status": "experimental"
+        },
+        "supersedes_feedback_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-status": "experimental"
+        }
+      },
+      "required": [
+        "media_buy_id",
+        "measurement_period",
+        "performance_index"
+      ],
+      "additionalProperties": true,
+      "dependentRequired": {
+        "methodology": [
+          "producer"
+        ],
+        "methodology_version": [
+          "producer"
+        ]
+      }
+    },
+    "external:core/datetime-range.json": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/performance-baseline.json": {
+      "type": "string",
+      "enum": [
+        "campaign_target",
+        "control_group",
+        "seller_history",
+        "buyer_portfolio",
+        "market_benchmark",
+        "other"
+      ]
+    },
+    "external:core/performance-feedback-metric.json": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "scope"
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "standard"
+            },
+            "metric_id": {
+              "$ref": "#/$defs/external:enums~1available-metric.json"
+            },
+            "qualifier": {
+              "type": "object",
+              "properties": {
+                "viewability_standard": {
+                  "$ref": "#/$defs/external:enums~1viewability-standard.json"
+                },
+                "completion_source": {
+                  "$ref": "#/$defs/external:enums~1completion-source.json"
+                },
+                "attribution_methodology": {
+                  "$ref": "#/$defs/external:enums~1attribution-methodology.json"
+                },
+                "attribution_window": {
+                  "$ref": "#/$defs/external:core~1duration.json"
+                },
+                "lift_dimension": {
+                  "$ref": "#/$defs/external:enums~1lift-dimension.json"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "scope",
+            "metric_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "vendor"
+            },
+            "vendor": {
+              "$ref": "#/$defs/external:core~1brand-ref.json"
+            },
+            "metric_id": {
+              "$ref": "#/$defs/external:core~1vendor-metric-id.json"
+            }
+          },
+          "required": [
+            "scope",
+            "vendor",
+            "metric_id"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:enums/available-metric.json": {
+      "type": "string",
+      "enum": [
+        "impressions",
+        "spend",
+        "clicks",
+        "ctr",
+        "views",
+        "completed_views",
+        "completion_rate",
+        "conversions",
+        "conversion_value",
+        "commissionable_value",
+        "roas",
+        "cost_per_acquisition",
+        "new_to_brand_rate",
+        "leads",
+        "reach",
+        "frequency",
+        "grps",
+        "engagements",
+        "engagement_rate",
+        "follows",
+        "saves",
+        "profile_visits",
+        "viewability",
+        "quartile_data",
+        "dooh_metrics",
+        "cost_per_click",
+        "cost_per_completed_view",
+        "cpm",
+        "downloads",
+        "units_sold",
+        "new_to_brand_units",
+        "plays",
+        "incremental_sales_lift",
+        "brand_lift",
+        "foot_traffic",
+        "conversion_lift",
+        "brand_search_lift"
+      ]
+    },
+    "external:enums/viewability-standard.json": {
+      "type": "string",
+      "enum": [
+        "mrc",
+        "groupm"
+      ]
+    },
+    "external:enums/completion-source.json": {
+      "type": "string",
+      "enum": [
+        "seller_attested",
+        "vendor_attested"
+      ]
+    },
+    "external:enums/attribution-methodology.json": {
+      "type": "string",
+      "enum": [
+        "deterministic_purchase",
+        "probabilistic",
+        "panel_based",
+        "modeled"
+      ]
+    },
+    "external:core/duration.json": {
+      "type": "object",
+      "properties": {
+        "interval": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "seconds",
+            "minutes",
+            "hours",
+            "days",
+            "campaign"
+          ]
+        }
+      },
+      "required": [
+        "interval",
+        "unit"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/lift-dimension.json": {
+      "type": "string",
+      "enum": [
+        "awareness",
+        "consideration",
+        "favorability",
+        "purchase_intent",
+        "ad_recall"
+      ]
+    },
+    "external:core/brand-ref.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "industries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data_subject_contestation": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "email"
+              ]
+            }
+          ],
+          "additionalProperties": false
+        },
+        "brand_kit_override": {
+          "type": "object",
+          "properties": {
+            "logo": {
+              "$ref": "#/$defs/external:core~1assets~1image-asset.json"
+            },
+            "colors": {
+              "type": "object",
+              "properties": {
+                "primary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "secondary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "accent": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                }
+              },
+              "additionalProperties": true
+            },
+            "voice": {
+              "type": "string"
+            },
+            "tagline": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand"
+    },
+    "external:core/assets/image-asset.json": {
+      "type": "object",
+      "properties": {
+        "asset_type": {
+          "type": "string",
+          "const": "image"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "file_size_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pixel_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "state_id": {
+          "type": "string"
+        },
+        "breakpoint_id": {
+          "type": "string"
+        },
+        "focal_point": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "format": {
+          "type": "string"
+        },
+        "alt_text": {
+          "type": "string",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "#/$defs/external:core~1provenance.json"
+        }
+      },
+      "required": [
+        "asset_type",
+        "url",
+        "width",
+        "height"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/provenance.json": {
+      "type": "object",
+      "properties": {
+        "digital_source_type": {
+          "$ref": "#/$defs/external:enums~1digital-source-type.json"
+        },
+        "synthetic_depiction": {
+          "type": "boolean"
+        },
+        "ai_tool": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "human_oversight": {
+          "type": "string",
+          "enum": [
+            "none",
+            "prompt_only",
+            "selected",
+            "edited",
+            "directed"
+          ]
+        },
+        "declared_by": {
+          "type": "object",
+          "properties": {
+            "agent_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "creator",
+                "advertiser",
+                "agency",
+                "platform",
+                "tool"
+              ]
+            }
+          },
+          "required": [
+            "role"
+          ]
+        },
+        "declared_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "created_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "c2pa": {
+          "type": "object",
+          "properties": {
+            "manifest_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": [
+            "manifest_url"
+          ]
+        },
+        "embedded_provenance": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "$ref": "#/$defs/external:enums~1embedded-provenance-method.json"
+              },
+              "standard": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "verify_agent": {
+                "type": "object",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  "feature_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "method",
+              "provider"
+            ]
+          }
+        },
+        "watermarks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "media_type": {
+                "$ref": "#/$defs/external:enums~1watermark-media-type.json"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "verify_agent": {
+                "type": "object",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  "feature_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "c2pa_action": {
+                "$ref": "#/$defs/external:enums~1c2pa-watermark-action.json"
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "media_type",
+              "provider"
+            ]
+          }
+        },
+        "disclosure": {
+          "type": "object",
+          "properties": {
+            "required": {
+              "type": "boolean"
+            },
+            "jurisdictions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "country": {
+                    "type": "string"
+                  },
+                  "region": {
+                    "type": "string"
+                  },
+                  "regulation": {
+                    "type": "string"
+                  },
+                  "label_text": {
+                    "type": "string"
+                  },
+                  "render_guidance": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "properties": {
+                      "persistence": {
+                        "$ref": "#/$defs/external:enums~1disclosure-persistence.json"
+                      },
+                      "min_duration_ms": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "positions": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/external:enums~1disclosure-position.json"
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      },
+                      "ext": {
+                        "$ref": "#/$defs/external:core~1ext.json"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "country",
+                  "regulation"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "required"
+          ]
+        },
+        "verification": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "verified_by": {
+                "type": "string"
+              },
+              "verified_time": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "authentic",
+                  "ai_generated",
+                  "ai_modified",
+                  "inconclusive"
+                ]
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "details_url": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "required": [
+              "verified_by",
+              "result"
+            ]
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      }
+    },
+    "external:enums/digital-source-type.json": {
+      "type": "string",
+      "enum": [
+        "digital_capture",
+        "digital_creation",
+        "trained_algorithmic_media",
+        "composite_with_trained_algorithmic_media",
+        "algorithmic_media",
+        "composite_capture",
+        "composite_synthetic",
+        "human_edits",
+        "data_driven_media"
+      ]
+    },
+    "external:enums/embedded-provenance-method.json": {
+      "type": "string",
+      "enum": [
+        "manifest_wrapper",
+        "provenance_markers"
+      ]
+    },
+    "external:enums/watermark-media-type.json": {
+      "type": "string",
+      "enum": [
+        "audio",
+        "image",
+        "video",
+        "text"
+      ]
+    },
+    "external:enums/c2pa-watermark-action.json": {
+      "type": "string",
+      "enum": [
+        "c2pa.watermarked.bound",
+        "c2pa.watermarked.unbound"
+      ]
+    },
+    "external:enums/disclosure-persistence.json": {
+      "type": "string",
+      "enum": [
+        "continuous",
+        "initial",
+        "flexible"
+      ]
+    },
+    "external:enums/disclosure-position.json": {
+      "type": "string",
+      "enum": [
+        "prominent",
+        "footer",
+        "audio",
+        "subtitle",
+        "overlay",
+        "end_card",
+        "pre_roll",
+        "companion"
+      ]
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/vendor-metric-id.json": {
+      "type": "string",
+      "x-entity": "vendor_metric",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "external:enums/metric-type.json": {
+      "deprecated": true,
+      "type": "string",
+      "enum": [
+        "overall_performance",
+        "conversion_rate",
+        "brand_lift",
+        "click_through_rate",
+        "completion_rate",
+        "viewability",
+        "brand_safety",
+        "cost_efficiency"
+      ]
+    },
+    "external:enums/feedback-source.json": {
+      "type": "string",
+      "enum": [
+        "buyer_attribution",
+        "third_party_measurement",
+        "platform_analytics",
+        "verification_partner"
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "description": "Submits one compact optimizer-ready assertion. Measurement agents submit to a buyer-controlled orchestrator gateway through this task; the orchestrator validates, normalizes, and forwards feedback to sellers under the buyer's identity."
+}

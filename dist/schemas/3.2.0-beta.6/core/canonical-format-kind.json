@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/canonical-format-kind.json",
+  "title": "Canonical Format Kind",
+  "description": "Discriminator naming one of the 14 AdCP 3.2 canonical creative formats, plus `custom` for adopter-defined shapes. AdCP 3.2 promotes the legacy `multi_state_display` and `multi_placement_takeover` custom shapes to `seller_rendered_stateful_display` and `coordinated_placements`. When `format_kind` is `custom`, the declaration also carries `format_shape` and `format_schema`. The enum mirrors the branches in `product-format-declaration.json` and is closed for producer validation: sellers do not mint ad-hoc values. SDKs may retain unknown future values in tolerant in-memory parsers, but that does not change versioned JSON Schema validation. A seller responding to a 3.1-or-earlier request MUST project away 3.2-only kinds and emit the compatible legacy custom declaration; a strict older schema correctly rejects an unprojected newer kind. See adcp#3666 and the promotion migration contract in canonical-formats.mdx.",
+  "type": "string",
+  "enum": [
+    "image",
+    "html5",
+    "display_tag",
+    "image_carousel",
+    "video_hosted",
+    "video_vast",
+    "audio_hosted",
+    "audio_daast",
+    "sponsored_placement",
+    "native_in_feed",
+    "responsive_creative",
+    "agent_placement",
+    "seller_rendered_stateful_display",
+    "coordinated_placements",
+    "custom"
+  ]
+}

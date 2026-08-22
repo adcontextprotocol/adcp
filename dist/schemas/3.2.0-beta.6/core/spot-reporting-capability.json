@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/spot-reporting-capability.json",
+  "title": "Spot Reporting Capability",
+  "description": "Product-scoped spot-level as-run reporting capability. Presence means the seller can report stable spot identities and actual airing timestamps. available_metrics declares which delivery metrics may eventually be populated at spot grain; an empty array means the product provides airing evidence only.",
+  "type": "object",
+  "properties": {
+    "available_metrics": {
+      "type": "array",
+      "description": "Metrics available at spot grain. A declared metric may be absent from a provisional measurement window and appear when a later window supersedes it. A metric omitted from this declaration is not promised at spot grain even when it is available at package grain.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/available-metric.json"
+      },
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "available_metrics"
+  ],
+  "additionalProperties": false
+}
