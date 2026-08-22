@@ -1,0 +1,142 @@
+id: media_buy_seller/measurement_terms_accepted
+version: "1.0.0"
+title: "Seller accepts supported measurement_terms"
+category: media_buy_seller
+summary: "A seller that advertises measurement-term acceptance accepts a supported configuration and returns the confirmed terms."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+
+requires_capability:
+  path: media_buy.measurement_terms_acceptance
+  equals: true
+
+narrative: |
+  Sellers that advertise `media_buy.measurement_terms_acceptance: true` can accept the
+  default measurement_terms they advertise on a product. This scenario discovers that
+  product, replays its exact terms on a package, and verifies that the purchase succeeds
+  with the confirmed terms represented in the response.
+
+  Sellers that omit the capability or declare it false grade this scenario
+  not_applicable. They remain responsible for the universal rejection contract in
+  `media_buy_seller/measurement_terms_rejected`.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - measurement_terms
+  examples:
+    - "Broadcast sellers"
+    - "CTV sellers with measurement guarantees"
+    - "Any seller that advertises measurement-term acceptance"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller advertises media_buy.measurement_terms_acceptance and returns a product carrying
+    default measurement_terms for a measurement-specific brief.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discover_products
+    title: "Discover products"
+    steps:
+      - id: get_products_brief
+        title: "Find a product that supports measurement_terms"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products with pricing_options. At least one product should advertise
+          measurement support in the response.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_terms_accepted_discover_products_get_products_brief"
+          buying_mode: "brief"
+          brief: "Return a product with default measurement terms you can accept unchanged. Premium video inventory, Q3 flight, $50K."
+          filters:
+            is_fixed_price: true
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+          - path: "products[0].measurement_terms"
+            key: "supported_measurement_terms"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "At least one product returned"
+          - check: field_present
+            path: "products[0].pricing_options[0].fixed_price"
+            description: "The captured pricing option is fixed-price; fixed-price storyboards do not send bid_price"
+          - check: field_present
+            path: "products[0].measurement_terms"
+            description: "The product declares the default measurement terms replayed by the purchase"
+
+  - id: accept_terms
+    title: "Seller accepts supported terms"
+    narrative: |
+      The buyer proposes measurement_terms that match the seller's advertised acceptance
+      capability. The seller accepts the purchase and returns the confirmed terms.
+
+    steps:
+      - id: create_media_buy_supported_terms
+        title: "Propose seller-compatible measurement_terms"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          The buy succeeds. The response represents the accepted measurement_terms,
+          possibly normalized by the seller.
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_terms_accepted_accept_terms_create_media_buy_supported_terms"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 25000
+              pricing_option_id: "$context.pricing_option_id"
+              measurement_terms: "$context.supported_measurement_terms"
+
+          context:
+            correlation_id: "measurement_terms_accepted--supported"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media_buy_id after accepting terms"
+          - check: field_present
+            path: "packages[0].measurement_terms"
+            description: "Seller returns the confirmed measurement terms on the package"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "measurement_terms_accepted--supported"
+            description: "Context correlation_id returned unchanged"
