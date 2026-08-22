@@ -12,7 +12,7 @@
     },
     "vast_version": {
       "$ref": "/schemas/enums/vast-version.json",
-      "description": "Exact VAST version declared by the supplied URL response or inline document. Receivers MUST NOT relabel or synthesize a newer version merely because the destination accepts it."
+      "description": "Exact VAST version declared by the supplied URL response or inline document. Required by the 3.2 canonical `video_vast` manifest path; optional only on the deprecated named-format compatibility path. Receivers MUST NOT relabel or synthesize a newer version merely because the destination accepts it."
     },
     "macro_declarations": {
       "type": "array",

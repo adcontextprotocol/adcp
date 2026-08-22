@@ -55,6 +55,7 @@ AdCP separates hosted video bytes (`video_hosted`) from VAST delivery (`video_va
     "duration_ms_range": [15000, 30000],
     "vast_versions": ["3.0", "4.0", "4.1", "4.2"],
     "media_file_requirements": {
+      "delivery_methods": ["progressive"],
       "mime_types": ["video/mp4"],
       "containers": ["mp4"],
       "codecs": ["avc1.4d401f"],
@@ -87,11 +88,11 @@ For ordinary legacy VAST submission, an omitted seller or product version set re
 
 ### MediaFile technical acceptance
 
-`params.media_file_requirements` describes the VAST player's accepted MediaFile renditions: MIME type, container, codec, dimensions, bitrate, and maximum exact bytes. For each applicable resolved `<InLine>` linear creative, at least one `<MediaFile>` MUST satisfy every declared requirement. Requirements cannot be assembled across siblings: one MP4 may satisfy the MIME and codec constraints while a different WebM satisfies the dimensions, but neither is compatible unless one rendition satisfies the full set. Other incompatible sibling renditions do not reject an otherwise compatible creative.
+`params.media_file_requirements` describes the VAST player's accepted MediaFile renditions: delivery method (`progressive` or `streaming`), MIME type, container, codec, dimensions, bitrate, and maximum exact bytes. For each applicable resolved `<InLine>` linear creative, at least one `<MediaFile>` MUST satisfy every declared requirement. Requirements cannot be assembled across siblings: one progressive MP4 may satisfy the delivery, MIME, and codec constraints while a different streaming WebM satisfies the dimensions, but neither is compatible unless one rendition satisfies the full set. Other incompatible sibling renditions do not reject an otherwise compatible creative.
 
-VAST metadata is the first source of evidence: `type`, `codec`, `width`, `height`, bitrate attributes, and `fileSize` where the applicable VAST version provides them. Fixed `bitrate` must fall within declared bounds; an adaptive `minBitrate`/`maxBitrate` interval must be fully contained by those bounds, not merely overlap them. A receiver MAY safely inspect referenced media bytes and SHOULD prefer the observed byte count if it conflicts with `fileSize`. It MUST NOT infer a container only from a URI filename extension. When metadata needed for a declared constraint is missing and safe inspection does not establish it, compatibility is unproven; the receiver does not guess.
+VAST metadata is the first source of evidence: `delivery`, `type`, `codec`, `width`, `height`, bitrate attributes, and `fileSize` where the applicable VAST version provides them. Fixed `bitrate` must fall within declared bounds; an adaptive `minBitrate`/`maxBitrate` interval must be fully contained by those bounds, not merely overlap them. A receiver MAY safely inspect referenced media bytes and MUST prefer the observed byte count if it conflicts with `fileSize`. It MUST NOT infer a container only from a URI filename extension. When metadata needed for a declared constraint is missing and safe inspection does not establish it, compatibility is unproven; the receiver does not guess.
 
-Omitted MediaFile constraints follow the enclosing declaration's `technical_requirements_complete` value. When every applicable declaration layer asserts completeness, omission means no constraint and the seller cannot later reject a conforming creative for an unpublished MIME, container, codec, dimension, bitrate, or file-size rule. Without that complete assertion, omission means undeclared, not unlimited. `max_file_size_bytes` is always an exact byte count; elsewhere AdCP defines 1 KB as exactly 1,000 bytes and 1 MB as exactly 1,000,000 bytes.
+Omitted MediaFile constraints follow the enclosing declaration's `technical_requirements_complete` value. When every applicable declaration layer asserts completeness, omission means no constraint and the seller cannot later reject a conforming creative for an unpublished delivery-method, MIME, container, codec, dimension, bitrate, or file-size rule. Without that complete assertion, omission means undeclared, not unlimited. `max_file_size_bytes` is always an exact byte count; elsewhere AdCP defines 1 KB as exactly 1,000 bytes and 1 MB as exactly 1,000,000 bytes.
 
 ### VAST Validation
 
@@ -109,9 +110,12 @@ AdCP defines three validation levels for `vast` assets. Sellers declare the leve
 
 - MUST parse the document (inline `content`, or one response fetched from `url`) as XML and reject unparseable documents with `VAST_PARSE_FAILED` (`error.details.reason: "not_xml"`).
 - MUST reject documents whose root element is not `<VAST>` with `VAST_PARSE_FAILED` (`error.details.reason: "no_vast_root"`).
-- MUST reject documents whose `<VAST version>` attribute is missing or differs from the asset's singular `vast_version`.
+- MUST reject the submitted document when its `<VAST version>` attribute is missing or differs from the asset's singular `vast_version`. The asset declaration describes this submitted URL response or inline document, not every later wrapper hop.
 - MUST reject an asset whose `vast_version` is outside the product `params.vast_versions` and seller `creative_specs.vast_versions` intersection with `VAST_VERSION_MISMATCH`.
-- MUST include `asset_vast_version`, `product_vast_versions`, `seller_vast_versions`, and the selected `format_option_ref` in `error.details` for `VAST_VERSION_MISMATCH`, conforming to [`error-details/vast-version-mismatch.json`](https://adcontextprotocol.org/schemas/v3/error-details/vast-version-mismatch.json).
+- MUST emit `mismatch_reason: "asset_outside_acceptance"`, `asset_vast_version`, `product_vast_versions`, and `seller_vast_versions` for an acceptance-set failure. Include `format_option_ref` only when the selected option is addressable; a unique id-less option has no reference to invent.
+- MUST emit `mismatch_reason: "document_version_mismatch"`, `asset_vast_version`, raw `observed_document_vast_version`, and `document_role` when an inspected document violates its applicable version rule. For `wrapper` and `terminal_inline` roles, also emit `product_vast_versions` and `seller_vast_versions`, plus `format_option_ref` when the selected option is addressable, because those documents are compared with the acceptance intersection. Use `null` when the required version attribute is missing; preserve unknown/future strings verbatim for diagnosis. `supported_versions` remains a deprecated compatibility field for older 3.x peers.
+<!-- Unreleased 3.2 schema: use /schemas/latest until publication. -->
+- MUST make `VAST_VERSION_MISMATCH` details conform to [`error-details/vast-version-mismatch.json`](https://adcontextprotocol.org/schemas/latest/error-details/vast-version-mismatch.json).
 - SHOULD reject documents containing no `<Ad>` element, and `<InLine>` linear creatives carrying no `<MediaFile>`, with `VAST_PARSE_FAILED` (`error.details.reason: "no_ad"` / `"no_media_file"`).
 - MUST evaluate declared `media_file_requirements` against each applicable `<InLine>` linear creative and reject a creative for which no single `<MediaFile>` satisfies the full declared set. A document-level check evaluates the fetched document; wrapper-level validation evaluates the terminal resolved `<InLine>` document.
 - SHOULD verify that media, tracking, and click URLs use HTTPS.
@@ -122,7 +126,7 @@ AdCP defines three validation levels for `vast` assets. Sellers declare the leve
 - MUST resolve `<Wrapper>` redirects via `<VASTAdTagURI>` up to the format's declared `max_wrapper_depth` (when present) and reject deeper chains with `VAST_WRAPPER_DEPTH_EXCEEDED` (`error.details.reason: "depth"`).
 - MUST reject chains that revisit a `<VASTAdTagURI>` already seen (a loop) with `VAST_WRAPPER_DEPTH_EXCEEDED` (`error.details.reason: "loop"`).
 - SHOULD apply a per-hop timeout, rejecting with `VAST_WRAPPER_DEPTH_EXCEEDED` (`error.details.reason: "timeout"`), and MUST fetch wrapper hops over HTTPS only.
-- MUST apply document-level checks to the terminal `<InLine>` document and reject with the corresponding document-level code on failure.
+- MUST parse every fetched wrapper and the terminal `<InLine>` document, and require each observed document version to be in the product/seller acceptance intersection. Only the submitted document is compared for equality with the asset's singular declaration; wrapper and terminal documents are not relabeled as the outer asset.
 
 **Preflight, not approval.** A VAST endpoint can return a different document per request (decisioning, rotation, macros). Passing validation at sync time is a preflight of the tag's shape at that moment, not a guarantee about future responses. Sellers MUST NOT treat a passing preflight as approval of all future responses and MAY re-validate during delivery. Sellers fetching `url` assets or wrapper hops SHOULD apply the same server-side request protections (private-address blocking, redirect and size limits) they apply to any other agent-supplied URL fetch.
 

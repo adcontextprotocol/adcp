@@ -27,6 +27,9 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "/schemas/core/creative-delivery-variant.json" },
+      "x-adcp-validation": {
+        "unique_item_properties": ["variant_id"]
+      },
       "description": "Equivalent source representations. `variant_id` values MUST be unique within this array and unsupported entries MUST be retained unchanged."
     },
     "provenance": {

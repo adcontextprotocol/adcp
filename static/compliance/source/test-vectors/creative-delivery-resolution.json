@@ -20,7 +20,7 @@
                 "markup": "<iframe src=\"https://ads.acme-example.com/render\"></iframe>"
               }
             },
-            "source": { "system": "cm360", "source_variant": "iframe/JavaScript" }
+            "source": { "system": "acme_ad_server", "source_variant": "iframe/JavaScript" }
           },
           {
             "variant_id": "source-paired",
@@ -33,7 +33,7 @@
                 "clickthrough_url": "https://click.acme-example.com/redirect"
               }
             },
-            "source": { "system": "cm360", "source_variant": "Internal Redirect" }
+            "source": { "system": "acme_ad_server", "source_variant": "Internal Redirect" }
           }
         ]
       },
@@ -68,19 +68,19 @@
             "variant_id": "source-vast-2",
             "format_kind": "video_vast",
             "assets": { "vast_tag": { "asset_type": "vast", "delivery_type": "url", "url": "https://video.acme-example.com/vast/2", "vast_version": "2.0" } },
-            "source": { "system": "cm360", "source_variant": "VAST 2.0 pre-fetch" }
+            "source": { "system": "acme_ad_server", "source_variant": "VAST 2.0 pre-fetch" }
           },
           {
             "variant_id": "source-vast-3",
             "format_kind": "video_vast",
             "assets": { "vast_tag": { "asset_type": "vast", "delivery_type": "url", "url": "https://video.acme-example.com/vast/3", "vast_version": "3.0" } },
-            "source": { "system": "cm360", "source_variant": "VAST 3.0 pre-fetch" }
+            "source": { "system": "acme_ad_server", "source_variant": "VAST 3.0 pre-fetch" }
           },
           {
             "variant_id": "source-vast-4",
             "format_kind": "video_vast",
             "assets": { "vast_tag": { "asset_type": "vast", "delivery_type": "url", "url": "https://video.acme-example.com/vast/4", "vast_version": "4.0" } },
-            "source": { "system": "cm360", "source_variant": "VAST 4.0 pre-fetch" }
+            "source": { "system": "acme_ad_server", "source_variant": "VAST 4.0 pre-fetch" }
           }
         ]
       },
