@@ -95,6 +95,84 @@ test('VAST assets stay singular while format and seller acceptance are plural en
   assert.match(resolution.description, /MUST NOT guess silently/);
 });
 
+test('VAST technical acceptance is explicit, rendition-scoped, and byte-exact', () => {
+  const requirements = {
+    mime_types: ['video/mp4'],
+    containers: ['mp4'],
+    codecs: ['avc1.4d401f'],
+    min_width: 1280,
+    max_width: 1920,
+    min_height: 720,
+    max_height: 1080,
+    min_bitrate_kbps: 1500,
+    max_bitrate_kbps: 8000,
+    max_file_size_bytes: 50000000
+  };
+  const validateRequirements = ajv.getSchema('/schemas/core/vast-media-file-requirements.json');
+  assert.equal(validateRequirements(requirements), true, JSON.stringify(validateRequirements.errors));
+  assert.equal(validateRequirements({ ...requirements, mime_types: ['video/mp4; codecs=avc1'] }), false,
+    'MediaFile MIME requirements are media types, not parameterized Content-Type values');
+  assert.equal(validateRequirements({ ...requirements, max_file_size_bytes: 0 }), false,
+    'the byte limit is a positive exact count');
+  assert.equal(validateRequirements({ ...requirements, containers: ['MP4'] }), false,
+    'container identifiers use normalized lower-case tokens');
+  assert.match(validateRequirements.schema['x-adcp-validation'].verifier_constraints.range_order,
+    /min_bitrate_kbps MUST be <= max_bitrate_kbps/);
+  assert.match(validateRequirements.schema['x-adcp-validation'].verifier_constraints.adaptive_bitrate_containment,
+    /entire interval/);
+
+  const validateFormat = ajv.getSchema('/schemas/formats/canonical/video_vast.json');
+  assert.equal(validateFormat({ vast_versions: ['4.2'], media_file_requirements: requirements }), true,
+    JSON.stringify(validateFormat.errors));
+  const validateLegacyRequirements = ajv.getSchema('/schemas/core/requirements/vast-asset-requirements.json');
+  assert.equal(validateLegacyRequirements({ vast_versions: ['4.2'], media_file_requirements: requirements }), true,
+    JSON.stringify(validateLegacyRequirements.errors));
+
+  const validateDeclaration = ajv.getSchema('/schemas/core/product-format-declaration.json');
+  const declaration = {
+    format_option_id: 'vast-preroll-complete',
+    technical_requirements_complete: true,
+    format_kind: 'video_vast',
+    params: { vast_versions: ['4.2'], media_file_requirements: requirements }
+  };
+  assert.equal(validateDeclaration(declaration), true, JSON.stringify(validateDeclaration.errors));
+  const validateCompact = ajv.getSchema('/schemas/core/canonical-format-option.json');
+  assert.equal(validateCompact(declaration), true, JSON.stringify(validateCompact.errors));
+  assert.match(validateDeclaration.schema.properties.technical_requirements_complete.description,
+    /MUST NOT later be rejected for an undisclosed technical constraint/);
+  assert.match(ajv.getSchema('/schemas/formats/canonical/_base.json').schema['x-adcp-file-size-units'],
+    /1,000 bytes per KB/);
+
+  const mediaFileSatisfies = mediaFile =>
+    requirements.mime_types.some(value => value.toLowerCase() === mediaFile.mime_type.toLowerCase()) &&
+    requirements.containers.includes(mediaFile.container) &&
+    requirements.codecs.includes(mediaFile.codec) &&
+    mediaFile.width >= requirements.min_width && mediaFile.width <= requirements.max_width &&
+    mediaFile.height >= requirements.min_height && mediaFile.height <= requirements.max_height &&
+    mediaFile.bitrate_kbps >= requirements.min_bitrate_kbps &&
+    mediaFile.bitrate_kbps <= requirements.max_bitrate_kbps &&
+    mediaFile.file_size_bytes <= requirements.max_file_size_bytes;
+  const alternatives = [
+    {
+      mime_type: 'video/mp4', container: 'mp4', codec: 'avc1.4d401f',
+      width: 640, height: 360, bitrate_kbps: 900, file_size_bytes: 10000000
+    },
+    {
+      mime_type: 'video/mp4', container: 'mp4', codec: 'avc1.4d401f',
+      width: 1920, height: 1080, bitrate_kbps: 6000, file_size_bytes: 49000000
+    }
+  ];
+  assert.equal(alternatives.some(mediaFileSatisfies), true,
+    'one fully compatible rendition is sufficient despite incompatible siblings');
+  assert.equal([
+    { ...alternatives[0], width: 1920, height: 1080 },
+    { ...alternatives[1], codec: 'vp09.00.10.08' }
+  ].some(mediaFileSatisfies), false,
+    'requirements cannot be combined across different MediaFile elements');
+  assert.equal(mediaFileSatisfies({ ...alternatives[1], codec: undefined }), false,
+    'missing metadata cannot silently satisfy a declared technical constraint');
+});
+
 test('macro declarations enforce resolver ownership and exact URL encoding depth', () => {
   const validate = ajv.getSchema('/schemas/core/macro-declaration.json');
   const valid = {

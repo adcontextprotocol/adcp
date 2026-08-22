@@ -63,6 +63,8 @@ For payload schemas (the structure of the actual asset data supplied in creative
 - `duration_ms` (when applicable)
 - `format` (declared container type)
 
+File-size limits use decimal, exact units throughout AdCP: `*_kb` means 1 KB = 1,000 bytes, `*_mb` means 1 MB = 1,000,000 bytes, and `*_bytes` is an exact byte count. Do not interpret KB/MB fields as KiB/MiB.
+
 ## Asset Type Schema
 
 The official JSON schema for asset types is available at:
@@ -97,7 +99,7 @@ Video assets represent video files with specific technical requirements.
 - `acceptable_codecs`: Video codecs (h264, h265, vp8, vp9, av1)
 - `acceptable_resolutions`: List of width x height strings
 - `aspect_ratio`: Required aspect ratio (16:9, 9:16, 1:1, etc.)
-- `max_file_size_mb`: Maximum file size in megabytes
+- `max_file_size_mb`: Maximum file size in decimal megabytes (1 MB = 1,000,000 bytes)
 - `min_bitrate_mbps` / `max_bitrate_mbps`: Bitrate range in Mbps
 - `features`: Additional requirements (e.g., ["non-skippable", "sound on"])
 
@@ -123,7 +125,7 @@ Static image assets for banners, logos, and visual content.
 - `min_width` / `min_height`: Minimum dimensions (px; typically used by responsive/sizeless formats)
 - `aspect_ratio`: Required aspect ratio
 - `acceptable_formats`: Image formats (jpg, png, gif, webp, svg)
-- `max_file_size_kb`: Maximum file size in kilobytes
+- `max_file_size_kb`: Maximum file size in decimal kilobytes (1 KB = 1,000 bytes)
 - `transparency`: Whether transparency is required/supported
 - `animation_allowed`: Whether animated GIFs are accepted
 - `notes`: Additional requirements (e.g., "Must be free of text")
@@ -252,7 +254,7 @@ Audio files for audio ads and podcasts.
 - `duration_seconds`: Expected duration
 - `acceptable_formats`: Audio formats (mp3, m4a, aac, ogg)
 - `min_bitrate_kbps`: Minimum bitrate in kilobits per second
-- `max_file_size_mb`: Maximum file size in megabytes
+- `max_file_size_mb`: Maximum file size in decimal megabytes (1 MB = 1,000,000 bytes)
 - `stereo_required`: Whether stereo audio is required
 
 ### HTML Asset

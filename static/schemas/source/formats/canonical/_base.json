@@ -88,7 +88,7 @@
           "max_size_kb": {
             "type": "integer",
             "minimum": 1,
-            "description": "Per-slot file size limit in kilobytes. Valid only when `asset_type` is `image`, `video`, `audio`, or `zip`. Mutually exclusive with `max_chars` (which applies to text asset types). Schema enforces via if/then so a producer can't set both on the same slot."
+            "description": "Per-slot file size limit in exact kilobytes, where 1 KB = 1,000 bytes. Valid only when `asset_type` is `image`, `video`, `audio`, or `zip`. Mutually exclusive with `max_chars` (which applies to text asset types). Schema enforces via if/then so a producer can't set both on the same slot."
           },
           "pixel_ratios": {
             "type": "array",
@@ -232,5 +232,6 @@
     }
   },
   "additionalProperties": true,
-  "x-canonical-policy-required-params-not-enforced": "Canonical format schemas intentionally do NOT mark any of their parameter fields as `required` and use `additionalProperties: true`. The canonical is the loose contract — describing what parameters MAY narrow it. Products narrow the canonical with concrete values (and may also leave most parameters absent — buyers infer behavior from the canonical's prose description for any unspecified parameter). This is intentional, not an oversight: enforcing required params on the canonical would force every product to declare every parameter, which is the wrong direction (we want products to declare only the values that differ from sensible canonical defaults). Adopters writing strict validators should validate against the canonical's structural shape (what fields ARE valid) and apply business rules separately for product-level narrowing minima."
+  "x-canonical-policy-required-params-not-enforced": "Canonical format schemas intentionally do NOT mark parameter fields as required and use additionalProperties: true. The canonical describes which parameters MAY narrow a declaration; it does not supply hidden technical defaults. When a technical parameter is omitted, its meaning comes only from the enclosing declaration's technical_requirements_complete assertion: true means no constraint at that layer, while false or absence means undeclared. Consumers MUST NOT infer an omitted technical constraint from canonical prose, examples, common practice, or implementation defaults. This is intentional: structural schema validation and product-level technical-contract completeness are separate checks.",
+  "x-adcp-file-size-units": "Creative file-size fields ending in `_kb` use exactly 1,000 bytes per KB. Fields ending in `_mb` use exactly 1,000,000 bytes per MB. Fields ending in `_bytes` are exact byte counts."
 }

@@ -31,6 +31,10 @@
       "deprecated": true,
       "description": "Deprecated one-element alias for `vast_versions`. Producers use either the singular legacy alias or the plural 3.2 field, never both."
     },
+    "media_file_requirements": {
+      "$ref": "/schemas/core/vast-media-file-requirements.json",
+      "description": "Technical acceptance constraints for alternative VAST MediaFile renditions. Each applicable resolved InLine linear creative needs at least one MediaFile satisfying all declared constraints."
+    },
     "vpaid_enabled": {
       "type": "boolean",
       "description": "Whether VPAID interactivity is supported. When true, the VAST tag may carry VPAID JS/Flash payloads."
@@ -55,10 +59,10 @@
       "minimum": 1,
       "description": "When set, duration must equal exactly this value. Takes precedence over `duration_ms_range` when both ship."
     },
-    "min_width": { "type": "integer", "minimum": 1 },
-    "max_width": { "type": "integer", "minimum": 1 },
-    "min_height": { "type": "integer", "minimum": 1 },
-    "max_height": { "type": "integer", "minimum": 1 },
+    "min_width": { "type": "integer", "minimum": 1, "description": "Minimum placement/player width in pixels. MediaFile rendition dimensions are declared in `media_file_requirements`." },
+    "max_width": { "type": "integer", "minimum": 1, "description": "Maximum placement/player width in pixels. MediaFile rendition dimensions are declared in `media_file_requirements`." },
+    "min_height": { "type": "integer", "minimum": 1, "description": "Minimum placement/player height in pixels. MediaFile rendition dimensions are declared in `media_file_requirements`." },
+    "max_height": { "type": "integer", "minimum": 1, "description": "Maximum placement/player height in pixels. MediaFile rendition dimensions are declared in `media_file_requirements`." },
     "creative_type": {
       "type": "string",
       "enum": ["linear", "nonlinear", "either"],
