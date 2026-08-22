@@ -12,7 +12,13 @@
     },
     "vast_version": {
       "$ref": "/schemas/enums/vast-version.json",
-      "description": "VAST specification version"
+      "description": "Exact VAST version declared by the supplied URL response or inline document. Receivers MUST NOT relabel or synthesize a newer version merely because the destination accepts it."
+    },
+    "macro_declarations": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/macro-declaration.json" },
+      "minItems": 1,
+      "description": "One declaration per exact occurrence in a field carried by this asset. A URL-delivered asset can declare only occurrences in its locator `url`; tokens discovered later in a fetched VAST response require document validation evidence or an inline/snapshotted asset and MUST NOT be guessed from the locator. IAB tokens cite a registry namespace and revision rather than copying the live registry into AdCP."
     },
     "vpaid_enabled": {
       "type": "boolean",
@@ -59,9 +65,11 @@
           "description": "Discriminator indicating VAST is delivered via URL endpoint"
         },
         "url": {
-          "type": "string",
-          "format": "uri-template",
-          "description": "URL endpoint that returns VAST XML. May carry unsubstituted ad-server macros — VAST-style `[MACRO]` and `${MACRO}` placeholders are accepted as-is (RFC 6570 syntax); buyers MUST NOT pre-encode macro delimiters, since players match the literal token at substitution time."
+          "$ref": "/schemas/core/macro-bearing-url.json",
+          "description": "URL endpoint returning VAST XML. Macro delimiters remain byte-preserved; declarations distinguish occurrences in this locator URL from occurrences in inline or fetched VAST content."
+        },
+        "macro_declarations": {
+          "items": { "properties": { "location": { "properties": { "field": { "const": "url" } } } } }
         }
       },
       "required": [
@@ -79,6 +87,9 @@
         "content": {
           "type": "string",
           "description": "Inline VAST XML content"
+        },
+        "macro_declarations": {
+          "items": { "properties": { "location": { "properties": { "field": { "const": "content" } } } } }
         }
       },
       "required": [

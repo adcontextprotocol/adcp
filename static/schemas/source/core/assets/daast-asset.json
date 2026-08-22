@@ -39,6 +39,12 @@
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
       "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+    },
+    "macro_declarations": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/macro-declaration.json" },
+      "minItems": 1,
+      "description": "One declaration per occurrence in a field carried by this asset. URL-delivered assets declare only locator-URL occurrences; receivers do not infer declarations for tokens discovered later in a fetched document."
     }
   },
   "required": [
@@ -53,9 +59,11 @@
           "description": "Discriminator indicating DAAST is delivered via URL endpoint"
         },
         "url": {
-          "type": "string",
-          "format": "uri-template",
-          "description": "URL endpoint that returns DAAST XML. May carry unsubstituted ad-server macros — DAAST/VAST-style `[MACRO]` and `${MACRO}` placeholders are accepted as-is (RFC 6570 syntax); buyers MUST NOT pre-encode macro delimiters, since players match the literal token at substitution time."
+          "$ref": "/schemas/core/macro-bearing-url.json",
+          "description": "URL endpoint returning DAAST XML. Macro delimiters remain byte-preserved and are processed only under attached occurrence declarations."
+        },
+        "macro_declarations": {
+          "items": { "properties": { "location": { "properties": { "field": { "const": "url" } } } } }
         }
       },
       "required": [
@@ -73,6 +81,9 @@
         "content": {
           "type": "string",
           "description": "Inline DAAST XML content"
+        },
+        "macro_declarations": {
+          "items": { "properties": { "location": { "properties": { "field": { "const": "content" } } } } }
         }
       },
       "required": [

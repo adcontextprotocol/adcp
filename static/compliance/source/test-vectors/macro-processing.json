@@ -1,0 +1,309 @@
+{
+  "$schema": "./macro-processing.schema.json",
+  "vectors": [
+    {
+      "name": "unknown token remains byte-identical",
+      "source": "https://track.acme-example.com/pixel?x=%%UNIDENTIFIED%%",
+      "declaration": {
+        "declaration_id": "unknown-token",
+        "token": "%%UNIDENTIFIED%%",
+        "dialect": "unknown",
+        "dialect_semantic": "unresolved",
+        "mapping_status": "unresolved",
+        "operation": "preserve",
+        "location": { "field": "url", "occurrence": 0, "context": "opaque" },
+        "encoding": { "kind": "none", "depth": 0 },
+        "required": false,
+        "unavailable_behavior": "preserve"
+      },
+      "seller_capabilities": [],
+      "product_capabilities": [],
+      "expected": {
+        "status": "preserved_for_downstream",
+        "reason": "preserved_unknown",
+        "output": "https://track.acme-example.com/pixel?x=%%UNIDENTIFIED%%"
+      }
+    },
+    {
+      "name": "seller translates a universal token before downstream value resolution",
+      "source": "https://video.acme-example.com/event?cb={CACHEBUSTER}",
+      "value": "12345678",
+      "declaration": {
+        "declaration_id": "cachebuster-translation",
+        "token": "{CACHEBUSTER}",
+        "dialect": "adcp",
+        "dialect_semantic": "CACHEBUSTER",
+        "mapping_status": "verified_universal",
+        "universal_semantic": "CACHEBUSTER",
+        "operation": "translate_to_native",
+        "performed_by": "seller",
+        "translation_target": {
+          "token": "[CACHEBUSTING]",
+          "dialect": "iab_vast",
+          "dialect_namespace": "https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html",
+          "dialect_revision": "git:e0858cd714474bf17ef61065097456d7643ff838",
+          "dialect_semantic": "CACHEBUSTING",
+          "mapping_status": "verified_universal",
+          "universal_semantic": "CACHEBUSTER",
+          "next_operation": "resolve_value",
+          "performed_by": "request_executor",
+          "encoding": { "kind": "iab_vast_uri", "depth": 1 }
+        },
+        "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+        "encoding": { "kind": "none", "depth": 0 },
+        "required": true,
+        "unavailable_behavior": "reject"
+      },
+      "seller_capabilities": [
+        {
+          "dialect": "adcp",
+          "dialect_semantic": "CACHEBUSTER",
+          "mapping_status": "verified_universal",
+          "universal_semantic": "CACHEBUSTER",
+          "operation": "translate_to_native",
+          "performed_by": "seller",
+          "supported_contexts": ["url_query_value"],
+          "translation_target": {
+            "token": "[CACHEBUSTING]",
+            "dialect": "iab_vast",
+            "dialect_namespace": "https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html",
+            "dialect_revision": "git:e0858cd714474bf17ef61065097456d7643ff838",
+            "dialect_semantic": "CACHEBUSTING",
+            "mapping_status": "verified_universal",
+            "universal_semantic": "CACHEBUSTER",
+            "next_operation": "resolve_value",
+            "performed_by": "request_executor",
+            "encoding": { "kind": "iab_vast_uri", "depth": 1 }
+          }
+        },
+        {
+          "dialect": "iab_vast",
+          "dialect_namespace": "https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html",
+          "dialect_revision": "git:e0858cd714474bf17ef61065097456d7643ff838",
+          "dialect_semantic": "CACHEBUSTING",
+          "mapping_status": "verified_universal",
+          "universal_semantic": "CACHEBUSTER",
+          "operation": "resolve_value",
+          "performed_by": "request_executor",
+          "supported_contexts": ["url_query_value"],
+          "supported_encodings": [{ "kind": "iab_vast_uri", "depth": 1 }]
+        }
+      ],
+      "product_capabilities": [
+        {
+          "dialect": "adcp",
+          "dialect_semantic": "CACHEBUSTER",
+          "mapping_status": "verified_universal",
+          "universal_semantic": "CACHEBUSTER",
+          "operation": "translate_to_native",
+          "performed_by": "seller",
+          "supported_contexts": ["url_query_value"],
+          "translation_target": {
+            "token": "[CACHEBUSTING]",
+            "dialect": "iab_vast",
+            "dialect_namespace": "https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html",
+            "dialect_revision": "git:e0858cd714474bf17ef61065097456d7643ff838",
+            "dialect_semantic": "CACHEBUSTING",
+            "mapping_status": "verified_universal",
+            "universal_semantic": "CACHEBUSTER",
+            "next_operation": "resolve_value",
+            "performed_by": "request_executor",
+            "encoding": { "kind": "iab_vast_uri", "depth": 1 }
+          }
+        },
+        {
+          "dialect": "iab_vast",
+          "dialect_namespace": "https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html",
+          "dialect_revision": "git:e0858cd714474bf17ef61065097456d7643ff838",
+          "dialect_semantic": "CACHEBUSTING",
+          "mapping_status": "verified_universal",
+          "universal_semantic": "CACHEBUSTER",
+          "operation": "resolve_value",
+          "performed_by": "request_executor",
+          "supported_contexts": ["url_query_value"],
+          "supported_encodings": [{ "kind": "iab_vast_uri", "depth": 1 }]
+        }
+      ],
+      "expected": {
+        "status": "resolvable",
+        "reason": "capability_match",
+        "output": "https://video.acme-example.com/event?cb=[CACHEBUSTING]",
+        "emitted_declaration": {
+          "declaration_id": "cachebuster-translation",
+          "token": "[CACHEBUSTING]",
+          "dialect": "iab_vast",
+          "dialect_namespace": "https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html",
+          "dialect_revision": "git:e0858cd714474bf17ef61065097456d7643ff838",
+          "dialect_semantic": "CACHEBUSTING",
+          "mapping_status": "verified_universal",
+          "universal_semantic": "CACHEBUSTER",
+          "operation": "resolve_value",
+          "performed_by": "request_executor",
+          "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+          "encoding": { "kind": "iab_vast_uri", "depth": 1 },
+          "required": true,
+          "unavailable_behavior": "reject"
+        },
+        "final_output": "https://video.acme-example.com/event?cb=12345678"
+      }
+    },
+    {
+      "name": "nested click uses exactly two RFC 3986 passes",
+      "source": "https://track.acme-example.com/click?redirect=%%ACME_CLICK_ESC2%%",
+      "value": "https://brand.example/landing?item=one two",
+      "declaration": {
+        "declaration_id": "nested-click",
+        "token": "%%ACME_CLICK_ESC2%%",
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "CLICK_ESC2",
+        "mapping_status": "verified_universal",
+        "universal_semantic": "CLICK_URL",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+        "encoding": { "kind": "rfc3986", "depth": 2 },
+        "required": true,
+        "unavailable_behavior": "reject"
+      },
+      "seller_capabilities": [
+        {
+          "dialect": "vendor",
+          "dialect_namespace": "https://macros.acme-example.com/registry",
+          "dialect_revision": "mapping-v1",
+          "dialect_semantic": "CLICK_ESC2",
+          "mapping_status": "verified_universal",
+          "universal_semantic": "CLICK_URL",
+          "operation": "resolve_value",
+          "performed_by": "seller",
+          "supported_contexts": ["url_query_value"],
+          "supported_encodings": [{ "kind": "rfc3986", "depth": 2 }]
+        }
+      ],
+      "product_capabilities": [
+        {
+          "dialect": "vendor",
+          "dialect_namespace": "https://macros.acme-example.com/registry",
+          "dialect_revision": "mapping-v1",
+          "dialect_semantic": "CLICK_ESC2",
+          "mapping_status": "verified_universal",
+          "universal_semantic": "CLICK_URL",
+          "operation": "resolve_value",
+          "performed_by": "seller",
+          "supported_contexts": ["url_query_value"],
+          "supported_encodings": [{ "kind": "rfc3986", "depth": 2 }]
+        }
+      ],
+      "expected": {
+        "status": "resolvable",
+        "reason": "capability_match",
+        "output": "https://track.acme-example.com/click?redirect=https%253A%252F%252Fbrand.example%252Flanding%253Fitem%253Done%2520two"
+      }
+    },
+    {
+      "name": "maximum depth does not imply support for a different exact depth",
+      "source": "https://track.acme-example.com/click?redirect=%%ACME_CLICK_ESC2%%",
+      "value": "https://brand.example/",
+      "declaration": {
+        "declaration_id": "nested-click",
+        "token": "%%ACME_CLICK_ESC2%%",
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "CLICK_ESC2",
+        "mapping_status": "verified_universal",
+        "universal_semantic": "CLICK_URL",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+        "encoding": { "kind": "rfc3986", "depth": 2 },
+        "required": true,
+        "unavailable_behavior": "reject"
+      },
+      "seller_capabilities": [
+        {
+          "dialect": "vendor",
+          "dialect_namespace": "https://macros.acme-example.com/registry",
+          "dialect_revision": "mapping-v1",
+          "dialect_semantic": "CLICK_ESC2",
+          "mapping_status": "verified_universal",
+          "universal_semantic": "CLICK_URL",
+          "operation": "resolve_value",
+          "performed_by": "seller",
+          "supported_contexts": ["url_query_value"],
+          "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+        }
+      ],
+      "product_capabilities": [
+        {
+          "dialect": "vendor",
+          "dialect_namespace": "https://macros.acme-example.com/registry",
+          "dialect_revision": "mapping-v1",
+          "dialect_semantic": "CLICK_ESC2",
+          "mapping_status": "verified_universal",
+          "universal_semantic": "CLICK_URL",
+          "operation": "resolve_value",
+          "performed_by": "seller",
+          "supported_contexts": ["url_query_value"],
+          "supported_encodings": [{ "kind": "rfc3986", "depth": 2 }]
+        }
+      ],
+      "expected": {
+        "status": "unsupported",
+        "reason": "encoding_unsupported",
+        "output": "https://track.acme-example.com/click?redirect=%%ACME_CLICK_ESC2%%"
+      }
+    },
+    {
+      "name": "request-executor ownership must match both capability layers",
+      "source": "https://video.acme-example.com/event?state=%%ACME_RENDER_STATE%%",
+      "declaration": {
+        "declaration_id": "player-state",
+        "token": "%%ACME_RENDER_STATE%%",
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "RENDER_STATE",
+        "mapping_status": "dialect_defined",
+        "operation": "resolve_value",
+        "performed_by": "request_executor",
+        "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+        "encoding": { "kind": "rfc3986", "depth": 1 },
+        "required": true,
+        "unavailable_behavior": "reject"
+      },
+      "seller_capabilities": [
+        {
+          "dialect": "vendor",
+          "dialect_namespace": "https://macros.acme-example.com/registry",
+          "dialect_revision": "mapping-v1",
+          "dialect_semantic": "RENDER_STATE",
+          "mapping_status": "dialect_defined",
+          "operation": "resolve_value",
+          "performed_by": "request_executor",
+          "supported_contexts": ["url_query_value"],
+          "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+        }
+      ],
+      "product_capabilities": [
+        {
+          "dialect": "vendor",
+          "dialect_namespace": "https://macros.acme-example.com/registry",
+          "dialect_revision": "mapping-v1",
+          "dialect_semantic": "RENDER_STATE",
+          "mapping_status": "dialect_defined",
+          "operation": "resolve_value",
+          "performed_by": "seller",
+          "supported_contexts": ["url_query_value"],
+          "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+        }
+      ],
+      "expected": {
+        "status": "unsupported",
+        "reason": "resolver_mismatch",
+        "output": "https://video.acme-example.com/event?state=%%ACME_RENDER_STATE%%"
+      }
+    }
+  ]
+}

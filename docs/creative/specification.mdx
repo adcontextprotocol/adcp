@@ -601,7 +601,7 @@ Transform, generate, or retrieve creative manifests. Supports three modes:
 - Creative agents SHOULD honor `item_limit` when present, using the lesser of `item_limit` and the format's `max_items`
 - Creative agents MAY use AI/LLM processing for generation tasks
 - When `creative_id` is provided, creative agents MUST resolve the creative from their library
-- When `macro_values` is provided, creative agents SHOULD substitute the specified macros in the output manifest's assets and leave unresolved macros as `{MACRO}` placeholders
+- When `macro_values` is provided and occurrence declarations are present, creative agents bind only verified-universal `resolve_value` occurrences performed_by `creative_agent` and advertised by the selected `creative.supported_formats[]` route, after delivery-variant selection, using the declaration's exact encoding. They MUST NOT use a concrete value to bypass `translate_to_native` or its target-resolution capability. Without declarations, the 3.x legacy universal-macro translation behavior applies.
 - Creative agents MUST ignore unrecognized macro keys in `macro_values` — unknown macros are not an error
 - Creative agents SHOULD assign globally unique `creative_id` values; when they cannot guarantee uniqueness, `concept_id` is REQUIRED on `build_creative` requests to disambiguate
 - `build_creative` supports async responses (`status: "working"` with `context_id` polling) for generation and transformation tasks that take significant time. Library retrieval is typically synchronous.

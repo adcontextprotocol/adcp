@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/delivery-variant-rejection.json",
+  "title": "Delivery Variant Rejection",
+  "description": "Structured incompatibility reason for one candidate in a failed CreativeSource resolution.",
+  "type": "object",
+  "properties": {
+    "variant_id": { "type": "string", "minLength": 1, "x-entity": "creative_delivery_variant" },
+    "code": {
+      "type": "string",
+      "enum": [
+        "incompatible_format_kind",
+        "format_option_mismatch",
+        "unsupported_delivery_variant",
+        "vast_version_mismatch",
+        "macro_unsupported",
+        "asset_requirement_failed",
+        "other"
+      ]
+    },
+    "message": { "type": "string", "minLength": 1 },
+    "details": { "type": "object", "additionalProperties": true }
+  },
+  "required": ["variant_id", "code", "message"],
+  "additionalProperties": true
+}

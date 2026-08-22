@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-delivery-variant.json",
+  "title": "Creative Delivery Variant",
+  "description": "One equivalent trafficking representation retained before seller binding. `variant_id` is stable within its CreativeSource and identifies source representation, not rotation, A/B content, build output, locale, or a seller's served execution variant.",
+  "allOf": [
+    { "$ref": "/schemas/core/creative-manifest.json" },
+    {
+      "if": {
+        "properties": { "format_kind": { "const": "video_vast" } },
+        "required": ["format_kind"]
+      },
+      "then": {
+        "properties": {
+          "assets": {
+            "properties": {
+              "vast_tag": {
+                "type": "object",
+                "properties": {
+                  "asset_type": { "const": "vast" },
+                  "vast_version": { "$ref": "/schemas/enums/vast-version.json" }
+                },
+                "required": ["asset_type", "vast_version"]
+              }
+            },
+            "required": ["vast_tag"]
+          }
+        }
+      }
+    }
+  ],
+  "type": "object",
+  "properties": {
+    "variant_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "x-entity": "creative_delivery_variant",
+      "description": "Stable source-representation identifier, unique within the enclosing CreativeSource."
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "system": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source system namespace."
+        },
+        "source_variant": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source system's human-readable representation name."
+        },
+        "source_id": {
+          "type": "string",
+          "description": "Optional immutable source-system identifier for this representation."
+        }
+      },
+      "required": ["system", "source_variant"],
+      "additionalProperties": true
+    }
+  },
+  "required": ["variant_id", "source"],
+  "additionalProperties": true
+}

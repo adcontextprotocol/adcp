@@ -27,6 +27,10 @@
       "$ref": "/schemas/core/format-option-ref.json",
       "description": "3.1+ format-option path, optional. Structured format option reference matching one of the target product's `format_options[]` declarations. Publisher-catalog-backed options match by `{ scope: \"publisher\", publisher_domain, format_option_id }`; product-local options match by `{ scope: \"product\", format_option_id }`. Required when the target product has multiple `format_options` entries sharing the same `format_kind`; optional when `format_kind` alone routes the creative to a single declaration. Product-scoped refs require an enclosing target product/package context."
     },
+    "delivery_variant_selection": {
+      "$ref": "/schemas/core/delivery-variant-selection.json",
+      "description": "Readback lineage to the CreativeSource representation selected before this seller-bound creative was synced."
+    },
     "assets": {
       "type": "object",
       "description": "Assets required by the format, keyed by asset_id or canonical asset_group_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1` like carousel `cards` or responsive_creative `headlines`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema, including reference assets such as `published_post` when a product accepts already-published post references.",

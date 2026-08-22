@@ -60,22 +60,92 @@ Use min/max width and height for a genuinely responsive envelope. Exact-size, mu
 
 ## HTML5 and third-party tags
 
-`html5` describes a buyer-supplied HTML bundle. `display_tag` describes externally served HTML or JavaScript markup. Keep them separate because validation, hosting, security, and measurement differ.
+`html5` describes a buyer-supplied zip bundle that the seller hosts. `display_tag` describes a third-party-served representation. Keep them separate because validation, hosting, security, and measurement differ. Inline third-party markup is never an `html5` bundle.
+
+Display tags have three delivery variants:
+
+| Variant | Asset contract |
+|---|---|
+| `tag_url` | One `url` asset with `url_type: "ad_request"`, or a `display_tag` asset with `delivery_type: "tag_url"` |
+| `inline_markup` | One `display_tag` asset with byte-preserved markup and its markup type |
+| `paired_redirect` | One `display_tag` asset containing both `ad_request_url` and `clickthrough_url` |
+
+The existing `tag_url` slot remains the backward-compatible default. A seller accepting inline or paired delivery publishes an explicit option with a `display_tag` slot.
+
+### Inline iframe/JavaScript
 
 ```json
 {
+  "format_option_id": "inline_iframe_javascript_300x250",
   "format_kind": "display_tag",
   "params": {
     "width": 300,
     "height": 250,
+    "supported_delivery_variants": ["inline_markup"],
     "slots": [
-      { "asset_group_id": "serving_tag", "asset_type": "html", "required": true },
-      { "asset_group_id": "impression_tracker", "asset_type": "pixel_tracker", "required": false }
+      { "asset_group_id": "serving_tag", "asset_type": "display_tag", "required": true }
     ]
   }
 }
 ```
 
+```json
+{
+  "format_kind": "display_tag",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "inline_iframe_javascript_300x250"
+  },
+  "assets": {
+    "serving_tag": {
+      "asset_type": "display_tag",
+      "delivery_type": "inline_markup",
+      "markup_type": "iframe_javascript",
+      "markup": "<iframe src=\"https://ads.acme-example.com/render?cb=%%CACHEBUSTER%%\"></iframe>"
+    }
+  }
+}
+```
+
+### Internal Redirect
+
+A two-URL internal redirect is represented portably as `paired_redirect`; the canonical kind remains `display_tag`. The asset is atomic so its two URLs cannot be mixed across rows or revisions.
+
+```json
+{
+  "format_option_id": "gam_internal_redirect",
+  "format_kind": "display_tag",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "supported_delivery_variants": ["paired_redirect"],
+    "slots": [
+      { "asset_group_id": "serving_tag", "asset_type": "display_tag", "required": true }
+    ]
+  }
+}
+```
+
+```json
+{
+  "format_kind": "display_tag",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "gam_internal_redirect"
+  },
+  "assets": {
+    "serving_tag": {
+      "asset_type": "display_tag",
+      "delivery_type": "paired_redirect",
+      "ad_request_url": "https://ads.acme-example.com/ad?slot=42&cb=%%CACHEBUSTER%%",
+      "clickthrough_url": "https://click.acme-example.com/redirect?dest=%%DEST_URL_ESC%%"
+    }
+  }
+}
+```
+
+Both fields are required by schema. A half-present pair is invalid. Do not split the pair into independent URL slots.
+
 Buyers discover seller acceptance from `Product.format_options[]`. Creative agents that can build or validate these contracts advertise matching `creative.supported_formats[]` entries.
 
-See [Canonical formats](/docs/creative/canonical-formats), [Creative manifests](/docs/creative/creative-manifests), and [Universal macros](/docs/creative/universal-macros).
+See [Creative delivery variants](/docs/creative/delivery-variants), [Canonical formats](/docs/creative/canonical-formats), [Creative manifests](/docs/creative/creative-manifests), and [Universal macros](/docs/creative/universal-macros).
