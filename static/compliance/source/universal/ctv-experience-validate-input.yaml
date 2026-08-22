@@ -743,6 +743,7 @@ phases:
                 asset_type: "vast"
                 delivery_type: "url"
                 url: "https://vast.acmeoutdoor.example/overlay.xml"
+                vast_version: "4.2"
                 duration_ms: 20000
           targets:
             - kind: "product"
@@ -832,6 +833,7 @@ phases:
                 asset_type: "vast"
                 delivery_type: "url"
                 url: "https://vast.acmeoutdoor.example/menu-invalid.xml"
+                vast_version: "4.2"
           targets:
             - kind: "product"
               id: "ctv_invalid_menu_video_vast"
@@ -921,6 +923,7 @@ phases:
                 asset_type: "vast"
                 delivery_type: "url"
                 url: "https://vast.acmeoutdoor.example/overlay-linear-invalid.xml"
+                vast_version: "4.2"
                 duration_ms: 20000
           targets:
             - kind: "product"
@@ -964,6 +967,7 @@ phases:
                 asset_type: "vast"
                 delivery_type: "url"
                 url: "https://vast.acmeoutdoor.example/overlay-short-invalid.xml"
+                vast_version: "4.2"
           targets:
             - kind: "product"
               id: "ctv_invalid_overlay_short_duration"
@@ -1006,6 +1010,7 @@ phases:
                 asset_type: "vast"
                 delivery_type: "url"
                 url: "https://vast.acmeoutdoor.example/in-scene-invalid.xml"
+                vast_version: "4.2"
                 duration_ms: 5000
           targets:
             - kind: "product"

@@ -314,7 +314,7 @@ response = await client.preview_creative(
 
 1. Return consistent HTML from preview URLs
 2. Implement responsive preview pages
-3. Document supported macros via `supported_macros` in formats
+3. For legacy named formats, document the coarse universal set via `supported_macros`; for canonical delivery paths, publish exact `macro_resolution_capabilities` on the selected format option
 4. Clarify preview vs production differences
 5. Consider providing `interactive_url` for testing
 

@@ -63,6 +63,8 @@ For payload schemas (the structure of the actual asset data supplied in creative
 - `duration_ms` (when applicable)
 - `format` (declared container type)
 
+File-size limits use decimal, exact units throughout AdCP: `*_kb` means 1 KB = 1,000 bytes, `*_mb` means 1 MB = 1,000,000 bytes, and `*_bytes` is an exact byte count. Do not interpret KB/MB fields as KiB/MiB.
+
 ## Asset Type Schema
 
 The official JSON schema for asset types is available at:
@@ -97,7 +99,7 @@ Video assets represent video files with specific technical requirements.
 - `acceptable_codecs`: Video codecs (h264, h265, vp8, vp9, av1)
 - `acceptable_resolutions`: List of width x height strings
 - `aspect_ratio`: Required aspect ratio (16:9, 9:16, 1:1, etc.)
-- `max_file_size_mb`: Maximum file size in megabytes
+- `max_file_size_mb`: Maximum file size in decimal megabytes (1 MB = 1,000,000 bytes)
 - `min_bitrate_mbps` / `max_bitrate_mbps`: Bitrate range in Mbps
 - `features`: Additional requirements (e.g., ["non-skippable", "sound on"])
 
@@ -123,7 +125,7 @@ Static image assets for banners, logos, and visual content.
 - `min_width` / `min_height`: Minimum dimensions (px; typically used by responsive/sizeless formats)
 - `aspect_ratio`: Required aspect ratio
 - `acceptable_formats`: Image formats (jpg, png, gif, webp, svg)
-- `max_file_size_kb`: Maximum file size in kilobytes
+- `max_file_size_kb`: Maximum file size in decimal kilobytes (1 KB = 1,000 bytes)
 - `transparency`: Whether transparency is required/supported
 - `animation_allowed`: Whether animated GIFs are accepted
 - `notes`: Additional requirements (e.g., "Must be free of text")
@@ -175,6 +177,7 @@ Senders **SHOULD** include `url_type` on every URL asset. The valid values are:
 | Value | Mechanism |
 |---|---|
 | `clickthrough` | User-click destination (landing page or ad-tech redirector) |
+| `ad_request` | Invokes a third-party display creative endpoint at impression time |
 | `tracker_pixel` | Fires HTTP GET, expects 1×1 pixel or 204 response (impression / event / 3P trackers) |
 | `tracker_script` | Loads as a `<script>` tag — measurement SDKs (OMID verification, native event trackers using `method: 2`) |
 
@@ -196,6 +199,8 @@ If `url_type` is **absent**, receivers SHOULD fall back to the format's `url-ass
 | `impression_tracker`, `click_tracker` | `tracker_pixel` |
 | `viewability_tracker` | `tracker_script` — OMID and equivalent verification SDKs **require** a `<script>` tag; firing them as a pixel produces no measurement |
 | `third_party_tracker` | **No safe fallback.** Mechanism is integration-specific (DV/IAS ship both pixel and script forms). Receivers MAY reject or warn. |
+
+Display ad-request URLs also have no role-based fallback. Declare `url_type: "ad_request"` explicitly.
 
 If neither `url_type` nor a format-side `role` is available, receivers MUST NOT silently pick a mechanism — firing a clickthrough URL as a pixel (or vice versa) silently corrupts measurement and breaks the user flow. Receivers SHOULD reject the manifest.
 
@@ -249,12 +254,12 @@ Audio files for audio ads and podcasts.
 - `duration_seconds`: Expected duration
 - `acceptable_formats`: Audio formats (mp3, m4a, aac, ogg)
 - `min_bitrate_kbps`: Minimum bitrate in kilobits per second
-- `max_file_size_mb`: Maximum file size in megabytes
+- `max_file_size_mb`: Maximum file size in decimal megabytes (1 MB = 1,000,000 bytes)
 - `stereo_required`: Whether stereo audio is required
 
 ### HTML Asset
 
-HTML5 creative assets for rich media formats and third-party display tags.
+Inline HTML content assets. Seller-hosted HTML5 creative bundles use a `zip` asset. Third-party display markup uses the `display_tag` asset below.
 
 ```json
 {
@@ -275,6 +280,21 @@ HTML5 creative assets for rich media formats and third-party display tags.
 - `max_total_size_kb`: Maximum total size including all assets
 - `allowed_features`: Allowed HTML5 features
 - `restricted_features`: Features that must not be used
+
+### Display Tag Asset
+
+An atomic third-party display representation. `delivery_type` is one of `tag_url`, `inline_markup`, or `paired_redirect`. The paired form requires both `ad_request_url` and `clickthrough_url`; they cannot be trafficked or revised independently.
+
+```json
+{
+  "asset_type": "display_tag",
+  "delivery_type": "paired_redirect",
+  "ad_request_url": "https://ads.acme-example.com/ad?slot=42",
+  "clickthrough_url": "https://click.acme-example.com/redirect"
+}
+```
+
+Inline markup also records `markup_type` as `iframe_javascript`, `javascript`, or `standard`. Preserve markup bytes exactly. Do not classify it as `html5`, which means a seller-hosted zip bundle.
 
 ### VAST Asset
 
@@ -308,7 +328,7 @@ VAST (Video Ad Serving Template) tags for third-party video ad serving.
 - `delivery_type`: "url" or "inline" (required discriminator)
 - `url`: URL endpoint that returns VAST XML (required when delivery_type is "url")
 - `content`: Inline VAST XML content (required when delivery_type is "inline")
-- `vast_version`: VAST specification version (2.0, 3.0, 4.0, 4.1, 4.2, 4.3)
+- `vast_version`: Exact VAST specification version supplied by this asset (2.0, 3.0, 4.0, 4.1, 4.2, 4.3). Product format options use plural `vast_versions` for their accepted set.
 - `vpaid_enabled`: Whether VPAID (Video Player-Ad Interface Definition) is supported
 - `max_wrapper_depth`: Maximum allowed wrapper/redirect depth
 - `duration_ms`: Expected video duration in milliseconds (if known)

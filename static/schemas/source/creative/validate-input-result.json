@@ -69,6 +69,11 @@
         "additionalProperties": true
       }
     },
+    "macro_resolution_results": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/macro-resolution-result.json" },
+      "description": "Per-token compatibility against the selected target. Required or unsafe `unsupported`/`ambiguous` results make the target `validated_fail`; deliberate preservation for the declared downstream resolver may still pass."
+    },
     "warnings": {
       "type": "array",
       "description": "Non-blocking observations (e.g. LEAN policy advisories such as hover-triggered expansion or non-user-initiated entry into overlay anchoring) that do not affect `result_kind`. MAY be present alongside `validated_pass`, `validated_fail`, or `unvalidatable_nondeterministic`. Same item shape as `violations`.",
@@ -79,8 +84,8 @@
           "rule": { "type": "string" },
           "expected": {},
           "predicted": {}
-        },
-        "additionalProperties": true
+      },
+      "additionalProperties": true
       }
     }
   },

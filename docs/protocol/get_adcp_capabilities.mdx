@@ -680,6 +680,7 @@ Buyers discover AXE support via `get_adcp_capabilities` and filter products to A
 | Field | Type | Description |
 |-------|------|-------------|
 | `vast_versions` | string[] | VAST versions supported (e.g., `["4.0", "4.1", "4.2", "4.3"]`) |
+| `macro_resolution_capabilities` | object[] | Seller-wide ceiling of resolvable macro dialects, semantics, and URL-encoding depths. Product format options remain binding. |
 | `mraid_versions` | string[] | MRAID versions supported |
 | `vpaid` | boolean | VPAID support |
 | `simid` | boolean | SIMID support |
@@ -1634,6 +1635,29 @@ const buy = await client.createMediaBuy({
       "axe_integrations": ["https://axe.example.com"],
       "creative_specs": {
         "vast_versions": ["4.0", "4.1", "4.2", "4.3"],
+        "macro_resolution_capabilities": [
+          {
+            "dialect": "adcp",
+            "dialect_semantic": "GDPR_CONSENT",
+            "mapping_status": "verified_universal",
+            "universal_semantic": "GDPR_CONSENT",
+            "operation": "resolve_value",
+            "performed_by": "seller",
+            "supported_contexts": ["url_query_value"],
+            "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+          },
+          {
+            "dialect": "iab_vast",
+            "dialect_namespace": "https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html",
+            "dialect_revision": "git:e0858cd714474bf17ef61065097456d7643ff838",
+            "dialect_semantic": "PLAYERSTATE",
+            "mapping_status": "dialect_defined",
+            "operation": "resolve_value",
+            "performed_by": "request_executor",
+            "supported_contexts": ["url_query_value"],
+            "supported_encodings": [{ "kind": "iab_vast_uri", "depth": 1 }]
+          }
+        ],
         "mraid_versions": ["3.0"],
         "vpaid": false,
         "simid": true
@@ -1799,6 +1823,10 @@ An agent can implement multiple protocols from a single endpoint. This is common
     "has_creative_library": true,
     "supports_generation": true,
     "supports_transformation": false,
+    "delivery_variant_resolution": {
+      "supported": true,
+      "strategies": ["source_order", "highest_compatible_vast"]
+    },
     "supports_compliance": false,
     "bills_through_adcp": true,
     "supported_formats": [
@@ -1825,6 +1853,7 @@ This agent supports:
 
 - **Media Buy Protocol**: Product discovery, media buying, delivery reporting
 - **Creative Protocol**: Creative library management, AI-powered creative generation, variant-level delivery analytics via [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery)
+- **Delivery representation resolution**: Deterministic selection from a `CreativeSource`; absence of `delivery_variant_resolution` means callers must select before sending a seller-bound manifest
 - **Shared account**: A single account established via `sync_accounts` applies to both protocols
 
 When `supported_protocols` includes `"creative"`, inspect the `creative` capability block for the tasks and canonical formats this endpoint actually supports. [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) is deprecated in 3.2. See [Creative capabilities on sales agents](/docs/creative/sales-agent-creative-capabilities).

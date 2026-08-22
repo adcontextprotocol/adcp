@@ -300,7 +300,7 @@ Generate a creative manifest from a natural language brief, transform an existin
 - Parse natural language brief or resolve a `creative_id` from your library
 - Generate or source appropriate assets
 - Return valid manifest for the target format
-- Substitute `macro_values` into serving tags when provided
+- Apply `macro_values` under the selected occurrence declaration, or use the documented legacy path when declarations are absent
 - Optionally return preview URL
 
 See [build_creative task reference](/docs/creative/task-reference/build_creative) for complete API specification.
@@ -656,7 +656,7 @@ Platforms represent dynamic content differently. The creative protocol's `variab
 
 ### Macro handling
 
-Platforms use their own macro syntax internally. The `macro_values` parameter in `build_creative` lets the caller pass universal macro values (e.g., `CLICK_URL`) that the creative agent substitutes into the output tag using whatever syntax the platform expects.
+Platforms use their own macro syntax internally. `build_creative.macro_values` carries raw universal values. With occurrence declarations, bind only verified-universal `resolve_value` occurrences performed_by `creative_agent`, after delivery-variant selection, and apply the exact declared encoding. The selected `creative.supported_formats[]` route is the authoritative build/preview capability set; the seller-wide ∩ product rule belongs to the later sales execution path. A concrete value does not bypass `translate_to_native`; that operation must emit its target declaration and retain a complete downstream resolution chain. When declarations are absent, use the 3.x legacy translation behavior.
 
 | Universal macro | CM360 equivalent | Flashtalking equivalent |
 |---|---|---|

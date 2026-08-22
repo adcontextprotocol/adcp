@@ -34,9 +34,19 @@
       "description": "The DAAST tracking event this URL fires on. MUST NOT be `impression` (model as `url` asset with `url_type: \"tracker_pixel\"`), `clickTracking` / `customClick` (click-tracking trackers go on their own URL asset), `error`, or any of the `ViewableImpression`-element children (`viewable`, `notViewable`, `viewUndetermined`, `measurableImpression`, `viewableImpression`)."
     },
     "url": {
-      "type": "string",
-      "format": "uri-template",
-      "description": "Tracker URL that fires when `daast_event` occurs. May carry AdCP universal macros; the sales agent or ad server URL-encodes substituted values at serve time. See docs/creative/universal-macros.mdx."
+      "$ref": "/schemas/core/macro-bearing-url.json",
+      "description": "Tracker URL fired for the DAAST event. Attached declarations identify each macro occurrence, processing actor, and exact encoding profile."
+    },
+    "macro_declarations": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/macro-declaration.json" },
+          { "properties": { "location": { "properties": { "field": { "const": "url" } } } } }
+        ]
+      },
+      "minItems": 1,
+      "description": "Exact tokens in `url` and their resolver/encoding contracts."
     },
     "offset": {
       "type": "string",

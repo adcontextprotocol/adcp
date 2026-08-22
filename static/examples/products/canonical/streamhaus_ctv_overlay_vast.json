@@ -38,7 +38,7 @@
         "duration_ms_range": [10000, 30000],
         "simid_supported": false,
         "activation_methods": ["push_notification"],
-        "vast_version": "4.2",
+        "vast_versions": ["4.2"],
         "ssl_required": true,
         "slots": [
           { "asset_group_id": "vast_tag", "asset_type": "vast", "required": true },

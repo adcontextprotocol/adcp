@@ -1055,10 +1055,20 @@
               "properties": {
                 "vast_versions": {
                   "type": "array",
-                  "description": "VAST versions supported for video creatives",
-                  "items": {
-                    "type": "string",
-                    "pattern": "^[0-9]+\\.[0-9]+$"
+                  "description": "Seller-wide VAST execution ceiling. Each product format option declares its binding accepted subset in `params.vast_versions`.",
+                  "items": { "$ref": "/schemas/enums/vast-version.json" },
+                  "minItems": 1,
+                  "uniqueItems": true
+                },
+                "macro_resolution_capabilities": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "$ref": "/schemas/core/macro-resolution-capability.json" },
+                  "description": "Seller-wide ceiling for exact macro processing tuples (dialect identity/revision, semantic mapping, operation, actor, context, and encoding). It never proves a product execution path supports the same tuple and does not claim tracker firing; inspect the selected format option and, when standardized, product tracker capabilities.",
+                  "x-adcp-validation": {
+                    "verifier_constraints": {
+                      "translation_chain_closure": "every translate_to_native entry must have an exact matching resolve_value entry for its translation_target in this same array"
+                    }
                   }
                 },
                 "mraid_versions": {
@@ -1966,6 +1976,29 @@
           "type": "boolean",
           "description": "When true, this agent can transform or resize existing canonical manifests via build_creative. The buyer supplies a creative_manifest and an advertised target_capability_id.",
           "default": false
+        },
+        "delivery_variant_resolution": {
+          "type": "object",
+          "description": "Explicit opt-in for deterministic seller/creative-agent selection from `build_creative.creative_source`. Absence means the caller must select a representation before sending a seller-bound manifest; the agent MUST NOT guess silently.",
+          "properties": {
+            "supported": {
+              "type": "boolean",
+              "const": true,
+              "description": "True means the agent accepts CreativeSource input and returns `delivery_variant_selection` or per-candidate structured rejections."
+            },
+            "strategies": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "enum": ["source_order", "highest_compatible_vast"]
+              },
+              "description": "Deterministic selection strategies the agent implements after compatibility filtering. `highest_compatible_vast` ranks only the already-intersected VAST candidate set."
+            }
+          },
+          "required": ["supported", "strategies"],
+          "additionalProperties": true
         },
         "supports_transformers": {
           "type": "boolean",

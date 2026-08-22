@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/vast-media-file-requirements.json",
+  "title": "VAST MediaFile Requirements",
+  "description": "Technical acceptance requirements for the alternative `<MediaFile>` renditions in a resolved VAST `<InLine>` linear creative. A linear creative satisfies this object when at least one of its MediaFile elements satisfies every declared field; incompatible sibling renditions do not reject the creative. Omitted fields are governed by the enclosing format declaration's `technical_requirements_complete` assertion and MUST NOT be inferred from prose or implementation defaults. When a declared constraint cannot be proven from VAST metadata or safe inspection of the referenced media bytes, compatibility is undeclared rather than assumed. Container identity MUST come from authoritative metadata or byte inspection, never only a URI filename extension.",
+  "type": "object",
+  "properties": {
+    "delivery_methods": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/vast-media-delivery-method.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Accepted values of the required `MediaFile@delivery` attribute. `progressive` identifies a directly downloadable media file; `streaming` identifies a streaming media resource."
+    },
+    "mime_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Accepted MIME types from `MediaFile@type`, compared case-insensitively after trimming optional whitespace. Parameters are not accepted in this field. Examples: `video/mp4`, `video/webm`."
+    },
+    "containers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._+-]*$"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Accepted normalized container identifiers, such as `mp4`, `webm`, or `mpeg_ts`. A receiver MUST determine the container from authoritative metadata or safe byte inspection and MUST NOT guess it only from the media URI suffix."
+    },
+    "codecs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Accepted codec identifiers for `MediaFile@codec`, using the codec syntax referenced by the applicable VAST version. A missing codec attribute does not satisfy a declared codec constraint unless safe inspection establishes the codec."
+    },
+    "min_width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum accepted `MediaFile@width` in pixels."
+    },
+    "max_width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum accepted `MediaFile@width` in pixels."
+    },
+    "min_height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum accepted `MediaFile@height` in pixels."
+    },
+    "max_height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum accepted `MediaFile@height` in pixels."
+    },
+    "min_bitrate_kbps": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum accepted MediaFile bitrate in kilobits per second. A fixed `MediaFile@bitrate` must be at least this value. For adaptive/streaming media, the declared `MediaFile@minBitrate` must be at least this value. Safe byte inspection may establish the value when metadata is absent."
+    },
+    "max_bitrate_kbps": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum accepted MediaFile bitrate in kilobits per second. A fixed `MediaFile@bitrate` must not exceed this value. For adaptive/streaming media, the declared `MediaFile@maxBitrate` must not exceed this value. Safe byte inspection may establish the value when metadata is absent."
+    },
+    "max_file_size_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum accepted MediaFile size in exact bytes. `MediaFile@fileSize`, when present, is expressed in bytes; a receiver MAY verify it against safely fetched media bytes and MUST use the verified byte count if the values disagree."
+    }
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "range_order": "When both bounds are declared, min_width MUST be <= max_width, min_height MUST be <= max_height, and min_bitrate_kbps MUST be <= max_bitrate_kbps.",
+      "adaptive_bitrate_containment": "A MediaFile advertising a minBitrate/maxBitrate interval satisfies declared bitrate bounds only when its entire interval is contained within those bounds; overlap alone is insufficient.",
+      "alternative_renditions": "For each applicable resolved InLine linear creative, at least one MediaFile MUST satisfy every declared property in this object; requirements MUST NOT be satisfied by combining properties from different MediaFile elements.",
+      "missing_metadata": "If a declared property cannot be established from VAST metadata or safe inspection, compatibility is unproven and the MediaFile does not satisfy that property."
+    }
+  },
+  "additionalProperties": true
+}

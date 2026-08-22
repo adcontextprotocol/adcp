@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/vast-version-mismatch.json",
+  "title": "VAST Version Mismatch Details",
+  "description": "Required compatibility details for VAST_VERSION_MISMATCH. Modern emitters discriminate an asset-versus-acceptance mismatch from an inspected-document mismatch. The legacy supported_versions-only arm remains accepted for older 3.x peers.",
+  "type": "object",
+  "properties": {
+    "mismatch_reason": {
+      "type": "string",
+      "enum": ["asset_outside_acceptance", "document_version_mismatch"],
+      "description": "Machine-readable modern mismatch branch."
+    },
+    "asset_vast_version": {
+      "$ref": "/schemas/enums/vast-version.json"
+    },
+    "observed_document_vast_version": {
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "null" }
+      ],
+      "description": "Raw version observed on the inspected VAST document whose root is being validated. `null` means the required version attribute was missing. This field is intentionally not limited to the governed supported-version enum so diagnostics can report future or invalid document values."
+    },
+    "document_role": {
+      "type": "string",
+      "enum": ["submitted", "wrapper", "terminal_inline"],
+      "description": "Role of the inspected document. Only the submitted document is required to equal the asset declaration; wrapper and terminal documents are checked against the applicable acceptance sets."
+    },
+    "product_vast_versions": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/vast-version.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "seller_vast_versions": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/vast-version.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "format_option_ref": {
+      "$ref": "/schemas/core/format-option-ref.json",
+      "description": "Selected option reference when the product option is addressable. Omitted for a unique id-less product option."
+    },
+    "supported_versions": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/vast-version.json" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "deprecated": true,
+      "description": "Deprecated 3.x compatibility field. For an acceptance mismatch, this is the effective product/seller intersection when known. Modern emitters use the typed sets and mismatch_reason."
+    }
+  },
+  "anyOf": [
+    {
+      "title": "Asset outside accepted version intersection",
+      "properties": { "mismatch_reason": { "const": "asset_outside_acceptance" } },
+      "required": ["mismatch_reason", "asset_vast_version", "product_vast_versions", "seller_vast_versions"]
+    },
+    {
+      "title": "Inspected document version mismatch",
+      "properties": { "mismatch_reason": { "const": "document_version_mismatch" } },
+      "required": ["mismatch_reason", "asset_vast_version", "observed_document_vast_version", "document_role"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "document_role": { "enum": ["wrapper", "terminal_inline"] }
+            },
+            "required": ["document_role"]
+          },
+          "then": {
+            "required": ["product_vast_versions", "seller_vast_versions"]
+          }
+        }
+      ]
+    },
+    {
+      "title": "Supported versions compatibility details",
+      "required": ["supported_versions"],
+      "not": { "required": ["mismatch_reason"] }
+    }
+  ],
+  "additionalProperties": true
+}

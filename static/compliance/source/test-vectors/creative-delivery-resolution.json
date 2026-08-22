@@ -1,0 +1,130 @@
+{
+  "$schema": "./creative-delivery-resolution.schema.json",
+  "vectors": [
+    {
+      "name": "paired redirect selected while inline alternative is retained",
+      "source": {
+        "creative_id": "cr_display_1",
+        "revision_id": "rev_1",
+        "name": "Display launch",
+        "variant_semantics": "one_of",
+        "delivery_variants": [
+          {
+            "variant_id": "source-inline",
+            "format_kind": "display_tag",
+            "assets": {
+              "serving_tag": {
+                "asset_type": "display_tag",
+                "delivery_type": "inline_markup",
+                "markup_type": "iframe_javascript",
+                "markup": "<iframe src=\"https://ads.acme-example.com/render\"></iframe>"
+              }
+            },
+            "source": { "system": "acme_ad_server", "source_variant": "iframe/JavaScript" }
+          },
+          {
+            "variant_id": "source-paired",
+            "format_kind": "display_tag",
+            "assets": {
+              "serving_tag": {
+                "asset_type": "display_tag",
+                "delivery_type": "paired_redirect",
+                "ad_request_url": "https://ads.acme-example.com/ad?slot=42",
+                "clickthrough_url": "https://click.acme-example.com/redirect"
+              }
+            },
+            "source": { "system": "acme_ad_server", "source_variant": "Internal Redirect" }
+          }
+        ]
+      },
+      "target": {
+        "format_kind": "display_tag",
+        "supported_delivery_variants": ["paired_redirect"]
+      },
+      "seller": {},
+      "strategy": "source_order",
+      "expected": {
+        "selected_variant_id": "source-paired",
+        "compatible_variant_ids": ["source-paired"],
+        "retained_variant_ids": ["source-inline", "source-paired"],
+        "rejections": [
+          {
+            "variant_id": "source-inline",
+            "code": "unsupported_delivery_variant",
+            "message": "inline_markup is not accepted by the selected format option"
+          }
+        ]
+      }
+    },
+    {
+      "name": "highest VAST is selected only after product and seller intersection",
+      "source": {
+        "creative_id": "cr_video_1",
+        "revision_id": "rev_1",
+        "name": "Video launch",
+        "variant_semantics": "one_of",
+        "delivery_variants": [
+          {
+            "variant_id": "source-vast-2",
+            "format_kind": "video_vast",
+            "assets": { "vast_tag": { "asset_type": "vast", "delivery_type": "url", "url": "https://video.acme-example.com/vast/2", "vast_version": "2.0" } },
+            "source": { "system": "acme_ad_server", "source_variant": "VAST 2.0 pre-fetch" }
+          },
+          {
+            "variant_id": "source-vast-3",
+            "format_kind": "video_vast",
+            "assets": { "vast_tag": { "asset_type": "vast", "delivery_type": "url", "url": "https://video.acme-example.com/vast/3", "vast_version": "3.0" } },
+            "source": { "system": "acme_ad_server", "source_variant": "VAST 3.0 pre-fetch" }
+          },
+          {
+            "variant_id": "source-vast-4",
+            "format_kind": "video_vast",
+            "assets": { "vast_tag": { "asset_type": "vast", "delivery_type": "url", "url": "https://video.acme-example.com/vast/4", "vast_version": "4.0" } },
+            "source": { "system": "acme_ad_server", "source_variant": "VAST 4.0 pre-fetch" }
+          }
+        ]
+      },
+      "target": { "format_kind": "video_vast", "vast_versions": ["3.0", "4.0"] },
+      "seller": { "vast_versions": ["3.0", "4.0", "4.1", "4.2"] },
+      "strategy": "highest_compatible_vast",
+      "expected": {
+        "selected_variant_id": "source-vast-4",
+        "compatible_variant_ids": ["source-vast-3", "source-vast-4"],
+        "retained_variant_ids": ["source-vast-2", "source-vast-3", "source-vast-4"],
+        "rejections": [
+          {
+            "variant_id": "source-vast-2",
+            "code": "vast_version_mismatch",
+            "message": "2.0 is outside the product and seller compatibility intersection"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VAST 4.3 remains selectable when both layers accept it",
+      "source": {
+        "creative_id": "cr_video_43",
+        "revision_id": "rev_1",
+        "name": "Video 4.3",
+        "variant_semantics": "one_of",
+        "delivery_variants": [
+          {
+            "variant_id": "source-vast-43",
+            "format_kind": "video_vast",
+            "assets": { "vast_tag": { "asset_type": "vast", "delivery_type": "url", "url": "https://video.acme-example.com/vast/43", "vast_version": "4.3" } },
+            "source": { "system": "creative_server", "source_variant": "VAST 4.3" }
+          }
+        ]
+      },
+      "target": { "format_kind": "video_vast", "vast_versions": ["4.3"] },
+      "seller": { "vast_versions": ["4.2", "4.3"] },
+      "strategy": "highest_compatible_vast",
+      "expected": {
+        "selected_variant_id": "source-vast-43",
+        "compatible_variant_ids": ["source-vast-43"],
+        "retained_variant_ids": ["source-vast-43"],
+        "rejections": []
+      }
+    }
+  ]
+}

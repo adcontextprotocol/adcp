@@ -27,6 +27,10 @@
       "$ref": "/schemas/core/format-option-ref.json",
       "description": "3.1+ format-option path, optional. Structured format option reference matching one of the target product's `format_options[]` declarations. Publisher-catalog-backed options match by `{ scope: \"publisher\", publisher_domain, format_option_id }`; product-local options match by `{ scope: \"product\", format_option_id }`. Required when the target product has multiple `format_options` entries sharing the same `format_kind`; optional when `format_kind` alone routes the creative to a single declaration. Product-scoped refs require an enclosing target product/package context."
     },
+    "delivery_variant_selection": {
+      "$ref": "/schemas/core/delivery-variant-selection.json",
+      "description": "Readback lineage to the CreativeSource representation selected before this seller-bound creative was synced."
+    },
     "assets": {
       "type": "object",
       "description": "Assets required by the format, keyed by asset_id or canonical asset_group_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1` like carousel `cards` or responsive_creative `headlines`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema, including reference assets such as `published_post` when a product accepts already-published post references.",
@@ -144,16 +148,6 @@
       { "required": ["capability_ref"] }
     ]
   },
-  "allOf": [
-    {
-      "if": {
-        "properties": { "format_kind": { "const": "coordinated_placements" } },
-        "required": ["format_kind"]
-      },
-      "then": { "required": ["component_assets"] },
-      "else": { "not": { "required": ["component_assets"] } }
-    }
-  ],
   "oneOf": [
     {
       "title": "v1 creative (named-format reference)",
@@ -167,6 +161,56 @@
       "description": "Creative declares the portable canonical contract it targets via `format_kind` and optional `format_option_ref`.",
       "required": ["format_kind"],
       "not": { "required": ["format_id"] }
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "format_kind": { "const": "coordinated_placements" } },
+        "required": ["format_kind"]
+      },
+      "then": { "required": ["component_assets"] },
+      "else": { "not": { "required": ["component_assets"] } }
+    },
+    {
+      "$comment": "The 3.2 canonical VAST sync path requires one exact asset version. The deprecated named-format branch remains compatible with older 3.x payloads.",
+      "if": {
+        "properties": { "format_kind": { "const": "video_vast" } },
+        "required": ["format_kind"]
+      },
+      "then": {
+        "properties": {
+          "assets": {
+            "patternProperties": {
+              ".*": {
+                "allOf": [
+                  {
+                    "if": {
+                      "type": "object",
+                      "properties": { "asset_type": { "const": "vast" } },
+                      "required": ["asset_type"]
+                    },
+                    "then": { "required": ["vast_version"] }
+                  },
+                  {
+                    "if": { "type": "array" },
+                    "then": {
+                      "items": {
+                        "if": {
+                          "type": "object",
+                          "properties": { "asset_type": { "const": "vast" } },
+                          "required": ["asset_type"]
+                        },
+                        "then": { "required": ["vast_version"] }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "additionalProperties": true

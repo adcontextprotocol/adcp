@@ -19,9 +19,21 @@
       "type": "string",
       "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$"
     },
+    "vast_versions": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/vast-version.json" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "VAST versions accepted by this product format option. The asset still declares exactly one `vast_version`; compatibility requires membership in this set and the seller-wide execution set."
+    },
     "vast_version": {
       "$ref": "/schemas/enums/vast-version.json",
-      "description": "Required VAST version."
+      "deprecated": true,
+      "description": "Deprecated one-element alias for `vast_versions`. Producers use either the singular legacy alias or the plural 3.2 field, never both."
+    },
+    "media_file_requirements": {
+      "$ref": "/schemas/core/vast-media-file-requirements.json",
+      "description": "Technical acceptance constraints for alternative VAST MediaFile renditions. Each applicable resolved InLine linear creative needs at least one MediaFile satisfying all declared constraints."
     },
     "vpaid_enabled": {
       "type": "boolean",
@@ -47,10 +59,10 @@
       "minimum": 1,
       "description": "When set, duration must equal exactly this value. Takes precedence over `duration_ms_range` when both ship."
     },
-    "min_width": { "type": "integer", "minimum": 1 },
-    "max_width": { "type": "integer", "minimum": 1 },
-    "min_height": { "type": "integer", "minimum": 1 },
-    "max_height": { "type": "integer", "minimum": 1 },
+    "min_width": { "type": "integer", "minimum": 1, "description": "Minimum placement/player width in pixels. MediaFile rendition dimensions are declared in `media_file_requirements`." },
+    "max_width": { "type": "integer", "minimum": 1, "description": "Maximum placement/player width in pixels. MediaFile rendition dimensions are declared in `media_file_requirements`." },
+    "min_height": { "type": "integer", "minimum": 1, "description": "Minimum placement/player height in pixels. MediaFile rendition dimensions are declared in `media_file_requirements`." },
+    "max_height": { "type": "integer", "minimum": 1, "description": "Maximum placement/player height in pixels. MediaFile rendition dimensions are declared in `media_file_requirements`." },
     "creative_type": {
       "type": "string",
       "enum": ["linear", "nonlinear", "either"],
@@ -124,5 +136,6 @@
     },
     "spec": "docs/creative/ctv-experiences.mdx"
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": { "required": ["vast_version", "vast_versions"] }
 }

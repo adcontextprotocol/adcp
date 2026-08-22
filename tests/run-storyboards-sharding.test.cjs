@@ -13,6 +13,7 @@ const assert = require('node:assert/strict');
 const REPO_ROOT = path.join(__dirname, '..');
 const RUNNER_FILE = path.join(REPO_ROOT, 'server', 'tests', 'manual', 'run-storyboards.ts');
 const SHARDED_RUNNER = path.join(REPO_ROOT, 'scripts', 'run-storyboards-sharded.sh');
+const STORYBOARD_WORKFLOW = path.join(REPO_ROOT, '.github', 'workflows', 'training-agent-storyboards.yml');
 
 function makeFakeRunner() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-shard-test-'));
@@ -102,4 +103,21 @@ test('sharded runner omits aggregate totals when any shard is interrupted', (t) 
   assert.equal(result.status, 1);
   assert.doesNotMatch(result.stdout, /storyboards:/);
   assert.match(result.stderr, /shard 2\/2 exited 143 without a complete totals block/);
+});
+
+test('current /sales runs isolated shard jobs behind one aggregate required check', () => {
+  const workflow = fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8');
+
+  assert.match(workflow, /exclude:\n\s+- surface: current\n\s+tenant: sales/);
+  assert.match(workflow, /sales_storyboard_shards:/);
+  assert.match(workflow, /max-parallel: 4/);
+  assert.match(workflow, /shard: \[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23\]/);
+  assert.match(workflow, /SALES_SHARD_COUNT: 24/);
+  assert.match(workflow, /--shard-index "\$\{\{ matrix\.shard \}\}"/);
+  assert.match(workflow, /sales_storyboards:\n\s+name: Storyboards \(current \/sales\)/);
+  assert.match(workflow, /needs: sales_storyboard_shards/);
+  assert.match(workflow, /SHARD_RESULT: \$\{\{ needs\.sales_storyboard_shards\.result \}\}/);
+  assert.match(workflow, /MIN_CLEAN: 120/);
+  assert.match(workflow, /MIN_PASSED: 534/);
+  assert.match(workflow, /media_buy_seller\/compact_direct_buy_lifecycle:7:0/);
 });

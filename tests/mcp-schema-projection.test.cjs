@@ -43,6 +43,14 @@ const STORYBOARD_DIR = path.join(REPO_ROOT, 'static', 'compliance', 'source');
 const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
+// Main reached 139 bytes of headroom at 384 KiB within a day of the budget
+// landing, and schema-bearing features add roughly 1-2 KiB of inlined context.
+// Keep explicit per-profile budgets while allowing headroom until the shared-
+// dictionary projection removes per-tool inlining.
+const MODEL_CONTEXT_BUDGET_KIB = {
+  'media-buy': 400,
+  creative: 400,
+};
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product
 // targeting contract. The test below still compiles both dialects and executes
@@ -1148,13 +1156,11 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
       assert.ok(fs.existsSync(modelInputPath));
       modelContextBytes += Buffer.byteLength(JSON.stringify(readJson(modelInputPath)));
     }
-    // Budget raised from 384 KiB: main reached 139 bytes of headroom within a
-    // day of the budget landing (each schema-bearing feature costs ~1-2 KiB of
-    // inlined model context). 400 KiB buys room until the shared-dictionary
-    // projection graduates and collapses per-tool inlining.
+    const modelContextBudgetKib = MODEL_CONTEXT_BUDGET_KIB[profileName];
+    assert.ok(modelContextBudgetKib, `missing model-context budget for ${profileName}`);
     assert.ok(
-      modelContextBytes < 400 * 1024,
-      `${profileName} model-context inputs exceed 400 KiB: ${modelContextBytes}`
+      modelContextBytes < modelContextBudgetKib * 1024,
+      `${profileName} model-context inputs exceed ${modelContextBudgetKib} KiB: ${modelContextBytes}`
     );
   }
 
