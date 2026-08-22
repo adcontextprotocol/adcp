@@ -57,6 +57,7 @@ Beyond the matrix, each experience carries its own conditional constraints, enfo
 - **`in_scene`** — minimum 3-second brand-exposure duration, and **no interactivity**: `vpaid_enabled` must be `false` (or absent). The all-profile SIMID prohibition below also applies.
 - **`pause`** — no duration floor. The unit ends on a viewer or device action (resume, timeout), not a fixed clock.
 - **Every `video_vast` CTV profile forbids SIMID.** VAST 4.1+ carries SIMID through `<InteractiveCreativeFile apiFramework="SIMID">` under Linear `<MediaFiles>`; `NonLinearAds` has no such element. Because all five video-backed CTV profiles require `creative_type: "nonlinear"`, `simid_supported` must be `false` or absent. Viewer activation on these surfaces uses `activation_methods`; NonLinearAds may still use their own `HTMLResource` plus `apiFramework` interactivity where the specific profile permits it.
+- **VPAID support is capability-specific on the interactive profiles.** Allowing `vpaid_enabled: true` on `pause`, `overlay`, `screensaver`, and `squeezeback` is intentional: it lets a seller explicitly advertise a NonLinear `apiFramework` integration when its CTV player actually implements one. It is not a claim that VPAID is common or recommended on CTV; sellers without that runtime support omit the flag or set it to `false`. `in_scene` remains categorically non-interactive and therefore forbids it.
 
 ### `creative_type` and the `linear_required` migration
 

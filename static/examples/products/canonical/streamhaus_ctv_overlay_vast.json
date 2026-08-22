@@ -2,7 +2,7 @@
   "$schema": "/schemas/core/product.json",
   "product_id": "streamhaus_ctv_overlay_vast",
   "name": "StreamHaus CTV Overlay — VAST NonLinear",
-  "description": "Semi-transparent overlay layered over playing content on StreamHaus's CTV app, delivered as a VAST NonLinearAds creative (10-30 second minimum-duration window). SIMID is explicitly supported and declared via simid_supported rather than inferred; the VAST tag MUST still carry a non-interactive StaticResource/MediaFile fallback for players without SIMID support. Push-notification activation ships buyer-supplied copy through the added activation_message slot (max 115 characters) and is an engagement event layered on the one rendered impression, never an additional impression.",
+  "description": "Semi-transparent overlay layered over playing content on StreamHaus's CTV app, delivered as a VAST NonLinearAds creative (10-30 second minimum-duration window). SIMID is explicitly unsupported because VAST serializes InteractiveCreativeFile only under Linear MediaFiles; this NonLinear creative uses its ordinary resource and any seller-supported NonLinear interactivity instead. Push-notification activation ships buyer-supplied copy through the added activation_message slot (max 115 characters) and is an engagement event layered on the one rendered impression, never an additional impression.",
   "publisher_properties": [
     {
       "publisher_domain": "tv.streamhaus.example",
@@ -36,7 +36,7 @@
         "ctv_ad_experience": "overlay",
         "creative_type": "nonlinear",
         "duration_ms_range": [10000, 30000],
-        "simid_supported": true,
+        "simid_supported": false,
         "activation_methods": ["push_notification"],
         "vast_version": "4.2",
         "ssl_required": true,
