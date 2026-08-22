@@ -99,10 +99,19 @@ curl --fail --get 'https://adcontextprotocol.org/api/policies/resolve' \
   --data-urlencode 'policy_id=<policy_id>' \
   --data-urlencode 'version=<version>'
 
-curl --fail --request POST \
+# State-changing HTTP methods use double-submit CSRF protection, including
+# this read-only POST. The first request returns the token and cookie to retry.
+POLICY_COOKIE_JAR=$(mktemp)
+CSRF_TOKEN=$(curl --silent --cookie-jar "$POLICY_COOKIE_JAR" \
   --header 'Content-Type: application/json' \
   --data '{"policy_ids":["<policy_id>"]}' \
+  'https://adcontextprotocol.org/api/policies/resolve/bulk' | jq --raw-output --exit-status '.token')
+curl --fail --cookie "$POLICY_COOKIE_JAR" \
+  --header 'Content-Type: application/json' \
+  --header "X-CSRF-Token: $CSRF_TOKEN" \
+  --data '{"policy_ids":["<policy_id>"]}' \
   'https://adcontextprotocol.org/api/policies/resolve/bulk'
+rm "$POLICY_COOKIE_JAR"
 
 curl --fail --get 'https://adcontextprotocol.org/api/policies/registry' \
   --data-urlencode 'domain=<governance_domain>'
