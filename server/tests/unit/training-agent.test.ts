@@ -6676,6 +6676,46 @@ describe('sync_creatives handler', () => {
     expect(creatives[0].action).toBe('created');
   });
 
+  it('returns one CREATIVE_REJECTED entry per violated registry policy', async () => {
+    const account = {
+      brand: { domain: 'policy-rejections.example' },
+      operator: 'policy-rejections.example',
+    };
+    const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_dual_policy_violation',
+        format_kind: 'display_tag',
+        assets: {
+          payload: {
+            asset_type: 'javascript',
+            content: [
+              'window.location.assign("https://redirect.example/forced");',
+              'fetch("http://collector.example/pixel");',
+            ].join('\n'),
+          },
+        },
+      }],
+    });
+
+    const creative = (result.creatives as Array<Record<string, any>>)[0];
+    expect(creative.action).toBe('failed');
+    expect(creative.errors).toHaveLength(2);
+    expect(creative.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'CREATIVE_REJECTED',
+        details: expect.objectContaining({ policy_id: 'creative_security_auto_redirect' }),
+      }),
+      expect.objectContaining({
+        code: 'CREATIVE_REJECTED',
+        details: expect.objectContaining({ policy_id: 'creative_security_https_only' }),
+      }),
+    ]));
+
+    const session = await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode));
+    expect(session.creatives.has('cr_dual_policy_violation')).toBe(false);
+  });
+
   it('preserves canonical identity through sync, list, build, and preview', async () => {
     const account = { brand: { domain: 'canonical-lifecycle.example' }, operator: 'canonical-lifecycle.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);

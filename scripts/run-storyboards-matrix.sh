@@ -290,6 +290,7 @@ REQUIRED_CLEAN_CURRENT_SIGNALS=(
 REQUIRED_CLEAN_CURRENT_CREATIVE=(
   "canonical_format_validate_input"
   "creative/billing_out_of_band"
+  "creative/policy_backed_rejections"
 )
 REQUIRED_CLEAN_CURRENT_CREATIVE_BUILDER=(
   "canonical_format_validate_input"

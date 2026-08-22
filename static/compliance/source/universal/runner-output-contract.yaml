@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.11.0"
+version: "2.12.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -50,6 +50,7 @@ authored_check_kinds:
   - field_value
   - field_value_or_absent
   - field_contains
+  - array_length
   - status_code
   - http_status
   - http_status_in
@@ -194,6 +195,7 @@ validation_result:
                               # envelope_field_absent |
                               # envelope_field_pattern | field_value |
                               # field_value_or_absent | field_contains |
+                              # array_length |
                               # status_code | http_status | http_status_in |
                               # error_code | on_401_require_header |
                               # resource_equals_agent_url | oauth_metadata_graph |
@@ -262,6 +264,8 @@ validation_result:
                               #                          value matches; object/array
                               #                          expectations are matched as
                               #                          deep subsets
+                              #   array_length         → exact integer from value, or
+                              #                          inclusive { min, max } bounds
                               #   field_present        → the path that should resolve
                               #   field_absent         → null (the field must not be present)
                               #   field_pattern        → object { pattern } where pattern is
@@ -349,6 +353,7 @@ validation_result:
                               #   field_contains       → array of values resolved at
                               #                          path; empty when the path
                               #                          produced no terminal values
+                              #   array_length         → observed array cardinality
                               #   field_present        → null (the field was missing)
                               #                          or the observed non-object
                               #                          value

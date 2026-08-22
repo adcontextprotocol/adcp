@@ -3400,6 +3400,7 @@ interface TaskError {
   message: string;
   field?: string;
   details?: unknown;
+  suggestion?: string;
   recovery?: string;
   source?: 'producer' | 'sdk';
   sdk_id?: string;
@@ -10880,6 +10881,58 @@ function creativeSessionKey(args: ToolArgs, ctx: TrainingContext): string {
   );
 }
 
+/**
+ * Deterministic runtime-policy scanner used by the policy-backed rejection
+ * compliance fixture. Production sellers may delegate these observations to a
+ * governance agent; the wire result stays one CREATIVE_REJECTED entry per
+ * violated registry policy, independent of detector identity.
+ */
+function runtimeCreativePolicyErrors(creative: {
+  assets?: Record<string, unknown>;
+  manifest?: { assets?: Record<string, unknown> };
+}): TaskError[] {
+  const assets = creative.assets ?? creative.manifest?.assets ?? {};
+  const executableBodies = Object.values(assets).flatMap(asset => {
+    if (!isRecord(asset)) return [];
+    if (asset.asset_type !== 'javascript' && asset.asset_type !== 'html') return [];
+    return typeof asset.content === 'string' ? [asset.content] : [];
+  });
+  const payload = executableBodies.join('\n');
+  if (!payload) return [];
+
+  const errors: TaskError[] = [];
+  const automaticNavigation = /\b(?:(?:window|document|globalThis)\.)?location(?:\.href)?\s*=|\b(?:(?:window|document|globalThis)\.)?location\.(?:assign|replace)\s*\(/i;
+  if (automaticNavigation.test(payload)) {
+    errors.push({
+      code: 'CREATIVE_REJECTED',
+      message: 'Creative performs navigation without user interaction.',
+      suggestion: 'Remove automatic navigation and require an explicit user action before redirecting.',
+      recovery: 'correctable',
+      details: {
+        policy_id: 'creative_security_auto_redirect',
+        policy_url: 'https://adcontextprotocol.org/api/policies/resolve?policy_id=creative_security_auto_redirect&version=1.0.0',
+        reasons: ['Executable creative content invokes a location navigation API without a user-action gate.'],
+      },
+    });
+  }
+
+  if (/\bhttp:\/\//i.test(payload)) {
+    errors.push({
+      code: 'CREATIVE_REJECTED',
+      message: 'Creative makes an insecure HTTP request from a secure serving context.',
+      suggestion: 'Move every creative dependency and network request to HTTPS.',
+      recovery: 'correctable',
+      details: {
+        policy_id: 'creative_security_https_only',
+        policy_url: 'https://adcontextprotocol.org/api/policies/resolve?policy_id=creative_security_https_only&version=1.0.0',
+        reasons: ['Executable creative content contains an HTTP network URL.'],
+      },
+    });
+  }
+
+  return errors;
+}
+
 export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCreativesRequest & ToolArgs & { dry_run?: boolean };
   const sessionKey = creativeSessionKey(req, ctx);
@@ -10933,6 +10986,16 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     }
     const identity = identityResult.identity;
     const formatId = identity.kind === 'legacy' ? identity.formatId : undefined;
+
+    const runtimePolicyErrors = runtimeCreativePolicyErrors(creativeShape);
+    if (runtimePolicyErrors.length > 0) {
+      results.push({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: runtimePolicyErrors,
+      });
+      continue;
+    }
 
     // Enforce creative_policy.provenance_required / provenance_requirements /
     // accepted_verifiers BEFORE persisting the creative. Per-creative failure

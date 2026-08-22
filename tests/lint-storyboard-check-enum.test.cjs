@@ -40,7 +40,7 @@ test('authored_check_kinds enum loads from runner-output-contract.yaml', () => {
   const kinds = loadKnownCheckKinds();
   // Spot-check a few load-bearing entries — keep this tight so the test
   // doesn't have to track every authored kind. Full enum is the contract.
-  for (const expected of ['response_schema', 'field_present', 'field_pattern', 'field_contains', 'field_greater_than', 'envelope_field_pattern', 'upstream_traffic']) {
+  for (const expected of ['response_schema', 'field_present', 'field_pattern', 'field_contains', 'array_length', 'field_greater_than', 'envelope_field_pattern', 'upstream_traffic']) {
     assert.ok(kinds.has(expected), `expected "${expected}" in authored_check_kinds`);
   }
   // Synthesized codes MUST NOT be in the authored enum.
@@ -65,7 +65,7 @@ test('field-strip notice attributes noncanonical fields to the request payload',
   const contract = yaml.load(fs.readFileSync(contractPath, 'utf8'));
   const notice = contract.notice.canonical_codes.input_schema_field_stripped;
 
-  assert.equal(contract.version, '2.11.0');
+  assert.equal(contract.version, '2.12.0');
   assert.equal(notice.severity, 'info');
   assert.equal('spec_source' in notice, false, 'the notice is task-neutral and must not cite one creative schema');
   assert.match(notice.message_template, /neither the agent's MCP inputSchema nor the canonical/);
