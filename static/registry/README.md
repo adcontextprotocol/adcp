@@ -70,6 +70,47 @@ directories grow.
    signal for governance agents — they carry more weight than the policy text
    alone.
 4. Run `npm run check:registry` locally to confirm the entry passes the bar.
+5. Publish the entry to the DB-backed resolver in the same PR, following the
+   procedure below. A checked-in JSON file alone is not live registry data.
+
+## Publishing to the live resolver
+
+Production applies registry data through versioned database migrations during
+the normal release command. Generate the migration from the checked-in JSON so
+the repository remains the source of truth:
+
+```bash
+node scripts/generate-policy-publication-migration.cjs \
+  <next_migration_number>_publish_<policy_group> \
+  <policy_id> [<policy_id> ...]
+```
+
+Fetch `origin/main` and check `server/src/db/migrations/` before choosing the
+next migration number. Commit the generated migration with the policy files;
+do not hand-edit its embedded data. The generated upsert is idempotent and only
+updates an existing authoritative entry when its version exactly matches the
+source version. It will not replace a different — including later — version.
+
+After the main deployment completes, verify each pinned policy, the bulk
+resolver, and the applicable domain listing:
+
+```bash
+curl --fail --get 'https://adcontextprotocol.org/api/policies/resolve' \
+  --data-urlencode 'policy_id=<policy_id>' \
+  --data-urlencode 'version=<version>'
+
+curl --fail --request POST \
+  --header 'Content-Type: application/json' \
+  --data '{"policy_ids":["<policy_id>"]}' \
+  'https://adcontextprotocol.org/api/policies/resolve/bulk'
+
+curl --fail --get 'https://adcontextprotocol.org/api/policies/registry' \
+  --data-urlencode 'domain=<governance_domain>'
+```
+
+Treat a policy text or metadata change as a new version: update the JSON
+`version`, generate a new migration, and deploy both together. Never edit an
+already-applied migration.
 
 ## Policy-backed interoperability codes
 
