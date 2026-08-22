@@ -155,6 +155,7 @@
                       "docs/building/by-layer/L3/index",
                       "docs/building/by-layer/L3/task-lifecycle",
                       "docs/building/by-layer/L3/async-operations",
+                      "docs/building/by-layer/L3/async-identity-and-convergence",
                       "docs/building/by-layer/L3/webhooks",
                       "docs/building/by-layer/L3/error-handling",
                       "docs/building/by-layer/L3/comply-test-controller"

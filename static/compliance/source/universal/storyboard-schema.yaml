@@ -1415,6 +1415,8 @@
 #                use `[*]` segments and passes when any resolved value matches
 #                `value` or one of `allowed_values`; object/array expectations
 #                are matched as deep subsets),
+#                "array_length" (asserts exact array cardinality with `value`,
+#                or an inclusive range with `min` / `max`),
 #                "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
 #                "oauth_metadata_graph",
@@ -1536,7 +1538,10 @@
 #             accepted (optional) when check is "field_value_or_absent";
 #             required on "field_greater_than"; accepted (optional) on
 #             "field_less_than" as a literal comparand when
-#             `context_key` is not set)
+#             `context_key` is not set; a non-negative integer exact count for
+#             "array_length" when range bounds are not used)
+# min: integer (optional inclusive lower bound for "array_length"; non-negative)
+# max: integer (optional inclusive upper bound for "array_length"; non-negative)
 # allowed_values: array (acceptable values for "field_value", "field_value_or_absent",
 #                        "field_contains", "http_status_in", "error_code", "any_of")
 # context_key: string (only meaningful for "field_less_than" /
@@ -1566,6 +1571,17 @@
 #   MUST reject the storyboard before execution begins.
 #   For fields that are required by the response schema, pair this check with a separate
 #   `check: field_present` to avoid silently accepting absent fields that are required.
+#
+# array_length check:
+#   Resolves `path` to one array and asserts its cardinality. Authors choose
+#   exactly one configuration: `value: N` for an exact count, or `min: N` /
+#   `max: N` for inclusive bounds (either bound may be omitted). Counts MUST be
+#   non-negative integers and `min` MUST NOT exceed `max`. A missing path or a
+#   non-array value fails; this check has no optional-field arm. Wildcard paths
+#   are not supported. Failure output uses the array path as `json_pointer`, the
+#   requested count or bounds as `expected`, and the observed cardinality as
+#   `actual`. For a missing/non-array path, failure output instead uses
+#   `expected: "array"` and the observed value as `actual` (null when absent).
 #
 # OAuth discovery graph — use `check: oauth_metadata_graph`:
 #   Applies only to a `protected_resource_metadata` runner task. Starting from

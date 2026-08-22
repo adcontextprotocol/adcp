@@ -6,6 +6,11 @@ description: "AdCP async operations guide: handling synchronous, asynchronous, a
 
 AdCP operations can take seconds, hours, or days. The server decides how to respond based on how long the operation will take and what's blocking it.
 
+Direct responses, polling, continuations, and webhooks can race while observing
+the same work. Implementations MUST apply the [async identity and convergence
+contract](/docs/building/by-layer/L3/async-identity-and-convergence); channel
+arrival order does not create separate operations.
+
 ## The 30-second rule
 
 Any AdCP task can return one of these statuses. The server chooses based on what it knows about the work involved:
@@ -16,6 +21,10 @@ Any AdCP task can return one of these statuses. The server chooses based on what
 | Over 30 seconds, server actively processing | `working` | Out-of-band progress signal. Connection stays open, result arrives when ready. Caller just waits |
 | Blocked on external dependency | `submitted` | Truly async — poll by `task_id`; `push_notification_config` can also deliver notifications when configured. Result may take hours or days |
 | Blocked on human input | `input-required` | Caller provides the requested input to continue |
+
+`input-required` describes a pause; it does not prove resumability. A client
+offers a resume action only when the transport supplied a verified continuation
+descriptor. It MUST NOT fabricate one from an AdCP polling `task_id`.
 
 **`working` is not async.** It's a progress signal the server sends out-of-band (via MCP status notifications or SSE) while it continues processing. The caller holds the connection and receives the result when it's ready — no polling, no webhooks. Think of it as "this is taking a moment, but I'm on it."
 
@@ -100,6 +109,9 @@ The human-in-the-loop patterns in async operations embody the [Embedded Human Ju
 ```javascript
 async function handleApprovalWorkflow(response) {
   if (response.status === 'input-required' && needsApproval(response)) {
+    const continuation = verifiedContinuationFor(response);
+    if (!continuation) return requireReconciliation(response);
+
     // Show approval UI with context
     const approval = await showApprovalUI({
       title: "Campaign Approval Required",
@@ -116,7 +128,7 @@ async function handleApprovalWorkflow(response) {
       timestamp: new Date().toISOString()
     };
 
-    return sendFollowUp(response.context_id, decision);
+    return resumeContinuation(continuation, decision);
   }
 }
 ```
@@ -182,11 +194,10 @@ async function discoverProducts(brief) {
 
   // Handle clarification loop
   while (response.status === 'input-required') {
+    const continuation = verifiedContinuationFor(response);
+    if (!continuation) throw new Error('No verified continuation');
     const moreInfo = await promptUser(response.message);
-    response = await adcp.send({
-      context_id: response.context_id,
-      additional_info: moreInfo
-    });
+    response = await resumeContinuation(continuation, moreInfo);
   }
 
   if (response.status === 'completed') {
@@ -209,15 +220,14 @@ async function createCampaign(packages, budget) {
 
   // Handle approval if needed
   if (response.status === 'input-required') {
+    const continuation = verifiedContinuationFor(response);
+    if (!continuation) throw new Error('No verified continuation');
     const approved = await getApproval(response.message);
     if (!approved) {
       throw new Error('Campaign creation not approved');
     }
 
-    response = await adcp.send({
-      context_id: response.context_id,
-      approved: true
-    });
+    response = await resumeContinuation(continuation, { approved: true });
   }
 
   // 'working' means the server is actively processing — result will arrive
@@ -331,6 +341,11 @@ async function onStartup() {
   }
 }
 ```
+
+Restart recovery also preserves continuation generations. When resuming pause
+A produces pause B, B must be durable and discoverable from the operation
+before A is consumed. See [Resumability and continuation
+generations](/docs/building/by-layer/L3/async-identity-and-convergence#resumability-and-continuation-generations).
 
 ## Best Practices
 

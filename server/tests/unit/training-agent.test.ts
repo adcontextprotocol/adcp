@@ -6676,6 +6676,87 @@ describe('sync_creatives handler', () => {
     expect(creatives[0].action).toBe('created');
   });
 
+  it('returns one CREATIVE_REJECTED entry per violated registry policy', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'policy-rejections.example' },
+      operator: 'policy-rejections.example',
+      sandbox: true,
+    };
+    const seed = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'policy-rejection-product',
+        fixture: {
+          enforced_policies: [
+            'creative_security_auto_redirect',
+            'creative_security_https_only',
+          ],
+        },
+      },
+    });
+    expect(seed.result.success).toBe(true);
+
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_dual_policy_violation',
+        format_kind: 'display_tag',
+        assets: {
+          tag_url: {
+            asset_type: 'url',
+            url_type: 'tracker_script',
+            url: 'https://adcontextprotocol.org/test-assets/acme-outdoor/policy-backed-auto-redirect-http.js',
+          },
+        },
+      }],
+    });
+
+    const creative = (result.creatives as Array<Record<string, any>>)[0];
+    expect(creative.action).toBe('failed');
+    expect(creative.errors).toHaveLength(2);
+    expect(creative.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'CREATIVE_REJECTED',
+        details: expect.objectContaining({ policy_id: 'creative_security_auto_redirect' }),
+      }),
+      expect.objectContaining({
+        code: 'CREATIVE_REJECTED',
+        details: expect.objectContaining({ policy_id: 'creative_security_https_only' }),
+      }),
+    ]));
+
+    const session = await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode));
+    expect(session.creatives.has('cr_dual_policy_violation')).toBe(false);
+  });
+
+  it('does not apply policy fixture outcomes unless the seller declares those policies', async () => {
+    const account = {
+      brand: { domain: 'policy-not-enforced.example' },
+      operator: 'policy-not-enforced.example',
+    };
+    const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_policy_not_enforced',
+        format_kind: 'display_tag',
+        assets: {
+          tag_url: {
+            asset_type: 'url',
+            url_type: 'tracker_script',
+            url: 'https://adcontextprotocol.org/test-assets/acme-outdoor/policy-backed-auto-redirect-http.js',
+          },
+        },
+      }],
+    });
+
+    const creative = (result.creatives as Array<Record<string, any>>)[0];
+    expect(creative.action).toBe('created');
+    expect(creative.errors).toBeUndefined();
+  });
+
   it('preserves canonical identity through sync, list, build, and preview', async () => {
     const account = { brand: { domain: 'canonical-lifecycle.example' }, operator: 'canonical-lifecycle.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -13183,7 +13264,10 @@ describe('get_adcp_capabilities handler', () => {
     expect((result.media_buy as Record<string, unknown>).buying_modes).toEqual(['brief', 'wholesale', 'refine']);
     expect((result.signals as Record<string, unknown>).discovery_modes).toEqual(['brief', 'wholesale']);
     expect(((result.signals as Record<string, unknown>).features as Record<string, unknown>).catalog_signals).toBe(true);
-    expect((result.webhook_signing as Record<string, unknown>).supported).toBe(true);
+    expect(result.webhook_signing).toMatchObject({
+      supported: true,
+      delivery_retry_horizon_seconds: 86400,
+    });
     expect((result.identity as Record<string, unknown>).brand_json_url).toBe(`${getAgentUrl()}/.well-known/brand.json`);
   });
 
