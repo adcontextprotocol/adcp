@@ -45,6 +45,16 @@ const VIDEO_VAST_DURATION_FLOOR_MS: Record<string, number> = {
   in_scene: 3000,
 };
 
+/** Recommended copy slots for activation methods that send buyer-authored
+ * text beyond the rendered impression. Missing slots are advisory, not a
+ * reason to reject an otherwise valid manifest.
+ */
+const ACTIVATION_COPY_SLOTS: Record<string, readonly string[]> = {
+  push_notification: ['activation_message'],
+  email: ['activation_email_subject', 'activation_email_body'],
+  text_message: ['activation_text_message'],
+};
+
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
@@ -211,15 +221,44 @@ export function imageCtvViolations(params: Record<string, unknown>): CtvViolatio
 }
 
 /**
- * Runs every applicable CTV semantic rule for a format declaration and
- * returns the combined violation list. `effectiveSlots` is the resolved
- * slots[] (params.slots override, or the canonical's default slots).
+ * Copy-bearing activation methods SHOULD pair with the canonical copy slots.
+ * The validation result keeps these observations non-blocking via warnings[].
  */
-export function ctvSemanticViolations(
-  formatKind: string,
+export function activationCopySlotWarnings(
   params: Record<string, unknown>,
   effectiveSlots: EffectiveSlot[]
 ): CtvViolation[] {
+  const methods = Array.isArray(params.activation_methods) ? params.activation_methods : [];
+  const slotIds = new Set(effectiveSlots.map(slot => slot.asset_group_id));
+  const warnings: CtvViolation[] = [];
+
+  for (const method of methods) {
+    const recommendedSlotIds = typeof method === 'string' ? ACTIVATION_COPY_SLOTS[method] : undefined;
+    if (!recommendedSlotIds) continue;
+    const missing = recommendedSlotIds.filter(id => !slotIds.has(id));
+    if (missing.length > 0) {
+      warnings.push({
+        rule: 'ctv_activation_copy_slots',
+        field: 'params.activation_methods',
+        expected: `copy slot(s) ${recommendedSlotIds.join(', ')} declared via params.slots for activation method "${method}"`,
+        predicted: missing,
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * Runs every applicable CTV semantic rule for a format declaration.
+ * `effectiveSlots` is the resolved slots[] (params.slots override, or the
+ * canonical's default slots).
+ */
+export function validateCtvSemantics(
+  formatKind: string,
+  params: Record<string, unknown>,
+  effectiveSlots: EffectiveSlot[]
+): { violations: CtvViolation[]; warnings: CtvViolation[] } {
   const violations: CtvViolation[] = [];
 
   const matrixViolation = ctvExperienceMatrixViolation(formatKind, params);
@@ -235,5 +274,8 @@ export function ctvSemanticViolations(
     violations.push(...imageCtvViolations(params));
   }
 
-  return violations;
+  return {
+    violations,
+    warnings: activationCopySlotWarnings(params, effectiveSlots),
+  };
 }

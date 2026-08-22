@@ -2311,7 +2311,7 @@
     },
     "webhook_signing": {
       "type": "object",
-      "description": "RFC 9421 webhook-signature support for outbound webhook callbacks (top-level peer of request_signing). Declares which AdCP webhook-signing profile version and algorithms this agent produces on delivery, and whether it supports the legacy HMAC-SHA256 fallback for receivers that have not yet adopted RFC 9421. See docs/building/implementation/webhooks.mdx.",
+      "description": "RFC 9421 webhook-signature and delivery-retry support for outbound webhook callbacks (top-level peer of request_signing). Declares which AdCP webhook-signing profile version and algorithms this agent produces on delivery, whether it supports the legacy HMAC-SHA256 fallback for receivers that have not yet adopted RFC 9421, and the maximum retry horizon receivers use to retain immutable delivery evidence. See docs/building/by-layer/L3/webhooks.mdx.",
       "properties": {
         "supported": {
           "type": "boolean",
@@ -2371,6 +2371,12 @@
           "deprecated": true,
           "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
           "default": false
+        },
+        "delivery_retry_horizon_seconds": {
+          "type": "integer",
+          "description": "Maximum elapsed time from the first delivery attempt during which this agent may retry the same webhook delivery. The publisher retains the immutable delivery-key-to-RFC-8785-JCS-payload binding and sufficient delivery state for at least this interval, and MUST NOT retry that key afterward. Receivers retain the matching payload binding and terminal publication proof for at least max(86400, this value) seconds in AdCP 3.x. Retries do not extend the horizon. A webhook-emitting AdCP 3.2 agent MUST populate this additive field; it remains schema-optional so existing 3.x capability documents stay valid. Minimum 86400 (24h), maximum 604800 (7d).",
+          "minimum": 86400,
+          "maximum": 604800
         }
       },
       "required": ["supported"]

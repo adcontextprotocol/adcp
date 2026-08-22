@@ -4,6 +4,7 @@
  *   TRAINING_AGENT_PORT=4444 npx tsx server/tests/manual/run-storyboards.ts
  *   TRAINING_AGENT_PORT=4444 npx tsx server/tests/manual/run-storyboards.ts --filter signal-marketplace
  *   TRAINING_AGENT_PORT=4444 npx tsx server/tests/manual/run-storyboards.ts --filter governance --verbose
+ *   TENANT_PATH=sales npx tsx server/tests/manual/run-storyboards.ts --shard-index 0 --shard-count 4
  *
  * Expects a training agent already running at `http://127.0.0.1:${PORT}/api/training-agent/mcp`.
  * Start one in a separate terminal with:
@@ -61,6 +62,32 @@ const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
 const args = process.argv.slice(2);
 const verbose = args.includes('--verbose');
 const filter = args.includes('--filter') ? args[args.indexOf('--filter') + 1] : undefined;
+
+function optionalIntegerArg(name: string): number | undefined {
+  const argIndex = args.indexOf(name);
+  if (argIndex === -1) return undefined;
+  const raw = args[argIndex + 1];
+  const value = raw === undefined ? Number.NaN : Number(raw);
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`${name} requires an integer argument`);
+  }
+  return value;
+}
+
+const shardIndex = optionalIntegerArg('--shard-index');
+const shardCount = optionalIntegerArg('--shard-count');
+if ((shardIndex === undefined) !== (shardCount === undefined)) {
+  throw new Error('--shard-index and --shard-count must be supplied together');
+}
+if (shardCount !== undefined && shardCount < 1) {
+  throw new Error('--shard-count must be at least 1');
+}
+if (shardIndex !== undefined && shardCount !== undefined && (shardIndex < 0 || shardIndex >= shardCount)) {
+  throw new Error('--shard-index must be between 0 and --shard-count - 1');
+}
+const shard = shardIndex === undefined || shardCount === undefined
+  ? undefined
+  : { index: shardIndex, count: shardCount };
 const complianceOptions = process.env.ADCP_COMPLIANCE_DIR
   ? {
       complianceDir: process.env.ADCP_COMPLIANCE_DIR,
@@ -587,7 +614,19 @@ async function main() {
   console.log(`Filter: ${filter ?? '(all storyboards)'}\n`);
 
   const everything = listAllComplianceStoryboards(complianceOptions);
-  const all = everything.filter(isApplicable);
+  const applicable = everything.filter(isApplicable);
+  // Shard only after all applicability decisions so every unsharded run and
+  // every union of shards execute the same storyboard set. The compliance
+  // index has stable ordering. Balanced contiguous ranges preserve the
+  // runner's established execution order (including schema/cache warmups)
+  // while bounding retained process memory.
+  const shardStart = shard ? Math.floor(applicable.length * shard.index / shard.count) : 0;
+  const shardEnd = shard ? Math.floor(applicable.length * (shard.index + 1) / shard.count) : applicable.length;
+  const all = applicable.slice(shardStart, shardEnd);
+  if (shard) {
+    // eslint-disable-next-line no-console
+    console.log(`Shard: ${shard.index + 1}/${shard.count} (${all.length} of ${applicable.length} applicable storyboards)\n`);
+  }
   const skippedKnownFailing = everything
     .filter(sb => KNOWN_FAILING_STORYBOARDS.has(sb.id))
     .filter(sb => !filter || sb.id.includes(filter) || (sb.category ?? '').includes(filter));

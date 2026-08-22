@@ -51,7 +51,7 @@ id: ctv_experience_validate_input
 version: "1.0.0"
 title: "CTV experience profile validate_input"
 category: schema_validation
-summary: "Validates AdCP 3.2 ctv_ad_experience matrix pairings, duration/interactivity constraint profiles, and the menu focus/video pairing via validate_input against seeded CTV products."
+summary: "Validates AdCP 3.2 ctv_ad_experience matrix pairings, duration/interactivity constraint profiles, the menu focus/video pairing, and non-blocking activation-copy warnings via validate_input against seeded CTV products."
 track: creative
 introduced_in: "3.2"
 required_tools:
@@ -79,6 +79,10 @@ narrative: |
   them: the focus/video pairing (`reject_focus_autoplay_without_video_slot`)
   and the unlisted-canonical matrix row (`reject_pause_on_html5`, where
   `html5` has no CTV allOf conditional at all).
+
+  The valid overlay product also declares `push_notification` activation
+  without an `activation_message` slot. That omission remains a pass but is
+  reported through `warnings[]` as `ctv_activation_copy_slots`.
 
 agent:
   interaction_model: creative
@@ -236,7 +240,7 @@ fixtures:
 
     - product_id: "ctv_validate_overlay_vast"
       name: "CTV Validate — Overlay NonLinear VAST"
-      description: "Seeded 10-30 second NonLinear VAST overlay used to test the overlay/video_vast matrix pairing and its duration floor."
+      description: "Seeded 10-30 second NonLinear VAST overlay used to test the overlay/video_vast matrix pairing, its duration floor, and the advisory activation-copy warning."
       publisher_properties:
         - publisher_domain: "tv.streamhaus.example"
           selection_type: "all"
@@ -249,6 +253,7 @@ fixtures:
             ctv_ad_experience: "overlay"
             creative_type: "nonlinear"
             duration_ms_range: [10000, 30000]
+            activation_methods: ["push_notification"]
             slots:
               - { asset_group_id: "vast_tag", asset_type: "vast", required: true }
       pricing_options:
@@ -557,7 +562,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -607,7 +612,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -651,7 +656,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -686,7 +691,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -722,7 +727,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -747,6 +752,10 @@ phases:
             path: "results[0].result_kind"
             value: "validated_pass"
             description: "20-second NonLinear VAST manifest satisfies the overlay/video_vast pairing declared on this product (whose own duration_ms_range [10000, 30000] already clears the 10-second floor)"
+          - check: field_value
+            path: "results[0].warnings[0].rule"
+            value: "ctv_activation_copy_slots"
+            description: "Missing push-notification copy remains non-blocking and is surfaced through warnings[]"
 
       - id: validate_squeezeback_sponsored
         title: "squeezeback + sponsored_placement"
@@ -757,7 +766,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -807,7 +816,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -849,7 +858,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -896,7 +905,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -939,7 +948,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -981,7 +990,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -1024,7 +1033,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -1067,7 +1076,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -1119,7 +1128,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2"
+          adcp_version: "3.2-beta.4"
           account:
             brand:
               domain: "acmeoutdoor.example"

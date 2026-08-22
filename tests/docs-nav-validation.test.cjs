@@ -416,6 +416,7 @@ test('temporary snapshot redirects cover every available live page', () => {
     'docs/reference/migration/asset-access',
     'docs/reference/migration/cross-role-governance-enforcement',
     'docs/protocol/language-and-localization',
+    'docs/building/by-layer/L3/async-identity-and-convergence',
     'docs/protocol/sync_agent_notification_configs',
     'docs/accounts/provisioning-walkthrough',
     'docs/media-buy/product-discovery/proposal-negotiation',
@@ -428,6 +429,7 @@ test('temporary snapshot redirects cover every available live page', () => {
     'docs/media-buy/task-reference/accept_proposal',
     'docs/media-buy/task-reference/control_media_buy',
     'docs/creative/channels/radio',
+    'docs/governance/creative/policy-backed-rejections',
     'docs/governance/campaign/tasks/report_plan_adjustment',
     'docs/brand-protocol/tasks/search_brands',
   ];

@@ -119,6 +119,7 @@
       "ctv_nonlinear_no_simid": "Every video_vast CTV experience is nonlinear and forbids simid_supported true because VAST serializes InteractiveCreativeFile only under Linear MediaFiles",
       "ctv_duration_floors": "overlay and squeezeback require duration_ms_exact or duration_ms_range minimum of at least 10000; in_scene at least 3000; pause has no floor",
       "ctv_in_scene_no_interactivity": "in_scene additionally forbids vpaid_enabled",
+      "ctv_activation_copy_slots": "push_notification activation_methods SHOULD declare an activation_message slot; text_message SHOULD declare an activation_text_message slot; email SHOULD declare activation_email_subject and activation_email_body slots. Missing copy slots emit a non-blocking validate_input warnings[] entry.",
       "creative_type_precedence": "creative_type wins over linear_required when both are declared; linear_required true with creative_type nonlinear or either is a contradiction and is rejected"
     },
     "spec": "docs/creative/ctv-experiences.mdx"

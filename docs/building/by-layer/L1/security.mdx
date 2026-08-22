@@ -1569,7 +1569,8 @@ Push-notification webhooks (POSTs to the `push_notification_config.url` a buyer 
     "supported": true,
     "profile": "adcp/webhook-signing/v1",
     "algorithms": ["ed25519", "ecdsa-p256-sha256"],
-    "legacy_hmac_fallback": false
+    "legacy_hmac_fallback": false,
+    "delivery_retry_horizon_seconds": 86400
   }
 }
 ```
@@ -1578,6 +1579,7 @@ Push-notification webhooks (POSTs to the `push_notification_config.url` a buyer 
 - `profile`: MUST be exactly `adcp/webhook-signing/v1` for this profile version. Future profile versions bump the string.
 - `algorithms`: subset of `["ed25519", "ecdsa-p256-sha256"]` — the algorithm set this seller will sign with. Matches the webhook-signing verifier allowlist (see step 4 of the [verifier checklist](#verifier-checklist-requests), reused for webhooks via the substitutions noted above). Buyers MUST reject onboarding with a user-actionable error if the advertised `algorithms` array contains any value outside this set; an out-of-set algorithm indicates a misconfigured or non-conforming seller and silent acceptance would defeat the allowlist.
 - `legacy_hmac_fallback`: `true` iff the seller supports the legacy HMAC-SHA256 scheme when the buyer populates `push_notification_config.authentication.credentials`, `accounts[].notification_configs[].authentication.credentials`, or `sync_agent_notification_configs.notification_configs[].authentication.credentials`. `false` is the recommended posture in 3.x.
+- `delivery_retry_horizon_seconds`: maximum interval from the first attempt during which the seller can retry one delivery. Required for `supported: true` in 3.2; minimum 24h, maximum 7 days. Receivers retain the immutable delivery-key binding and terminal publication proof for at least this interval.
 
 The buyer opts into the legacy HMAC-SHA256 scheme by populating `push_notification_config.authentication.credentials`, `accounts[].notification_configs[].authentication.credentials`, or `sync_agent_notification_configs.notification_configs[].authentication.credentials`; otherwise the seller signs with the 9421 webhook profile. Sellers MAY decline to support the legacy scheme — see the `legacy_hmac_fallback` flag above.
 

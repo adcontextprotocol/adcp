@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/list-products-response.json",
+  "title": "List Products Response",
+  "description": "Canonical product offers and continuation state. Every product carries product_id and name; other compact detail fields follow the request's fields selection. Legacy named-format identifiers are never returned. This response never contains proposals or proposal-lifecycle fields.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "outcome"
+  },
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "listed",
+        "unchanged"
+      ],
+      "description": "Whether this response carries a product page or confirms that the selected feed has not changed."
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/canonical-product.json"
+      }
+    },
+    "next_cursor": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Cursor for the next page. Omitted when this is the last page."
+    },
+    "feed_version": {
+      "type": "string",
+      "description": "Opaque version of the selected offer feed. For wholesale webhook consumers this is the same scope-keyed token carried as wholesale_feed_version on product.* and wholesale_feed.bulk_change notifications."
+    },
+    "pricing_version": {
+      "type": "string",
+      "description": "Opaque version of the selected pricing layer."
+    },
+    "cache_scope": {
+      "type": "string",
+      "enum": [
+        "public",
+        "account"
+      ]
+    },
+    "incomplete": {
+      "type": "array",
+      "description": "Usable partial response with explicitly missing product-list scopes.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "products",
+              "pricing",
+              "forecast",
+              "wholesale_feed"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "estimated_wait": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/duration.json"
+          }
+        },
+        "required": [
+          "scope",
+          "description"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "replayed": {
+      "type": "boolean",
+      "const": true
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "listed"
+        }
+      },
+      "required": [
+        "outcome",
+        "products",
+        "feed_version",
+        "cache_scope"
+      ]
+    },
+    {
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "unchanged"
+        }
+      },
+      "required": [
+        "outcome",
+        "feed_version",
+        "cache_scope"
+      ],
+      "not": {
+        "required": [
+          "products"
+        ]
+      }
+    }
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "proposals"
+        ]
+      },
+      {
+        "required": [
+          "refinement_applied"
+        ]
+      },
+      {
+        "required": [
+          "pagination"
+        ]
+      },
+      {
+        "required": [
+          "unchanged"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": false
+}

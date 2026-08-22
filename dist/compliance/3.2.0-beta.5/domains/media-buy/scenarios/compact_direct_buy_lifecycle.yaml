@@ -1,0 +1,364 @@
+id: media_buy_seller/compact_direct_buy_lifecycle
+version: "1.0.1"
+title: "Seller completes the compact direct-buy lifecycle"
+category: media_buy_seller
+summary: "Verifies published-offer discovery, direct purchase, revision-checked operational control, and authoritative readback through AdCP 3.2 compact tools."
+track: media_buy
+introduced_in: "3.2"
+
+requires:
+  - controller
+
+requires_capability:
+  path: compliance_testing.scenarios
+  contains: compact_direct_buy_lifecycle_probe
+
+required_tools:
+  - list_products
+  - buy_products
+  - control_media_buy
+  - get_media_buys
+  - comply_test_controller
+
+narrative: |
+  The buyer discovers a versioned published offer, purchases that exact product
+  and pricing option against both the feed and pricing versions, applies a
+  decrease-only daily budget cap with the latest MediaBuy revision, and reads
+  back the persisted state and immutable accepted-proposal identity. Every
+  business boundary uses an AdCP 3.2 compact tool. The deprecated get_products,
+  create_media_buy, and update_media_buy compatibility facades remain covered
+  by their existing storyboards and are not required here.
+
+  The advertised compact_direct_buy_lifecycle_probe makes the prepared
+  product's list, purchase, control, and readback path synchronous and
+  deterministic. The lower daily cap is an in-envelope operational mutation,
+  so it exercises optimistic concurrency without requiring a governance
+  approval or a creative assignment.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_operational_controls
+  examples:
+    - "Publisher with a versioned product catalog and direct-purchase workflow"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The seller advertises compact_direct_buy_lifecycle_probe and exposes the complete compact direct-buy lifecycle."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "compact_direct_buy_video"
+      delivery_type: "non_guaranteed"
+      channels: ["olv"]
+      format_options:
+        - format_option_id: "compact_direct_video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+      allowed_actions:
+        - action: "decrease_budget"
+          modes: ["self_serve"]
+  pricing_options:
+    - product_id: "compact_direct_buy_video"
+      pricing_option_id: "compact_direct_video_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 18
+
+phases:
+  - id: prepare_direct_buy
+    title: "Prepare deterministic compact direct-buy behavior"
+    steps:
+      - id: prepare_compact_direct_buy_product
+        title: "Prepare the seeded direct-buy product"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "compact_direct_buy_lifecycle_probe"
+          params:
+            operation: "prepare"
+            product_id: "compact_direct_buy_video"
+        validations:
+          - check: response_schema
+            description: "Controller response matches the canonical schema"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller prepares deterministic direct-buy behavior"
+          - check: field_value
+            path: "simulated.prepared"
+            value: true
+            description: "The product is prepared for direct-buy testing"
+          - check: field_value
+            path: "simulated.product_id"
+            value: "compact_direct_buy_video"
+            description: "The controller prepared the seeded product"
+
+  - id: discover_direct_offer
+    title: "Discover the versioned published offer"
+    depends_on: [prepare_direct_buy]
+    steps:
+      - id: list_compact_direct_buy_product
+        title: "List the seeded direct-buy offer"
+        task: list_products
+        schema_ref: "media-buy/list-products-request.json"
+        response_schema_ref: "media-buy/list-products-response.json"
+        doc_ref: "/media-buy/task-reference/list_products"
+        stateful: false
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#compact_direct_buy_lifecycle_list"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          criteria:
+            product_ids: ["compact_direct_buy_video"]
+          fields: ["product_id", "name", "pricing_options", "allowed_actions"]
+          max_results: 1
+        context_outputs:
+          - name: direct_product_id
+            path: "products[0].product_id"
+          - name: direct_pricing_option_id
+            path: "products[0].pricing_options[0].pricing_option_id"
+          - name: direct_feed_version
+            path: "feed_version"
+          - name: direct_pricing_version
+            path: "pricing_version"
+        validations:
+          - check: response_schema
+            description: "Response matches list-products-response.json"
+          - check: field_value
+            path: "outcome"
+            value: "listed"
+            description: "The response contains the prepared product page"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "compact_direct_buy_video"
+            description: "The requested published product is discoverable"
+          - check: field_value
+            path: "products[0].pricing_options[0].pricing_option_id"
+            value: "compact_direct_video_cpm"
+            description: "The deterministic pricing option is discoverable"
+          - check: field_present
+            path: "feed_version"
+            description: "The offer carries the feed version required by buy_products"
+          - check: field_present
+            path: "pricing_version"
+            description: "The prepared offer carries a separate pricing version required by buy_products"
+          - check: field_contains
+            path: "products[0].allowed_actions[*]"
+            value:
+              action: "decrease_budget"
+              modes: ["self_serve"]
+            description: "The product advertises a self-serve decrease-only control"
+
+  - id: purchase_direct_offer
+    title: "Purchase the exact published offer"
+    depends_on: [discover_direct_offer]
+    steps:
+      - id: buy_compact_direct_product
+        title: "Create a MediaBuy through buy_products"
+        task: buy_products
+        schema_ref: "media-buy/buy-products-request.json"
+        response_schema_ref: "media-buy/buy-products-response.json"
+        doc_ref: "/media-buy/task-reference/buy_products"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#compact_direct_buy_lifecycle_buy"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          feed_version: "$context.direct_feed_version"
+          pricing_version: "$context.direct_pricing_version"
+          purchases:
+            - product_id: "$context.direct_product_id"
+              pricing_option_id: "$context.direct_pricing_option_id"
+              budget: 1000
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+        context_outputs:
+          - name: direct_media_buy_id
+            path: "media_buy_id"
+          - name: direct_buy_revision
+            path: "revision"
+          - name: direct_buy_status
+            path: "media_buy_status"
+          - name: direct_accepted_proposal_id
+            path: "accepted_proposal.proposal_id"
+          - name: direct_accepted_terms_digest
+            path: "accepted_proposal.terms_digest"
+        validations:
+          - check: response_schema
+            description: "Response matches buy-products-response.json"
+          - check: field_value
+            path: "status"
+            value: "completed"
+            description: "The prepared direct purchase completes synchronously"
+          - check: field_present
+            path: "media_buy_id"
+            description: "The purchase creates a MediaBuy"
+          - check: field_present
+            path: "revision"
+            description: "The purchase returns the optimistic-concurrency revision"
+          - check: field_present
+            path: "media_buy_status"
+            description: "The purchase reports the current MediaBuy lifecycle state"
+          - check: field_equals_context
+            path: "accepted_proposal.commercial_terms.source_feed_version"
+            context_key: "direct_feed_version"
+            description: "The accepted snapshot binds the listed feed version"
+          - check: field_equals_context
+            path: "accepted_proposal.commercial_terms.source_pricing_version"
+            context_key: "direct_pricing_version"
+            description: "The accepted snapshot binds the listed pricing version"
+          - check: field_equals_context
+            path: "accepted_proposal.commercial_terms.purchases[0].product_id"
+            context_key: "direct_product_id"
+            description: "The accepted snapshot binds the listed product"
+          - check: field_equals_context
+            path: "accepted_proposal.commercial_terms.purchases[0].pricing_option_id"
+            context_key: "direct_pricing_option_id"
+            description: "The accepted snapshot binds the listed pricing option"
+          - check: field_contains
+            path: "available_actions[*]"
+            value:
+              task: "control_media_buy"
+              action: "decrease_budget"
+              mode: "self_serve"
+            description: "The MediaBuy routes the legal decrease-only mutation to control_media_buy"
+
+  - id: control_direct_buy
+    title: "Apply a revision-checked operational control"
+    depends_on: [purchase_direct_offer]
+    steps:
+      - id: cap_compact_direct_buy_daily_budget
+        title: "Apply a lower daily budget cap"
+        task: control_media_buy
+        schema_ref: "media-buy/control-media-buy-request.json"
+        response_schema_ref: "media-buy/control-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/control_media_buy"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#compact_direct_buy_lifecycle_control"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.direct_media_buy_id"
+          revision: "$context.direct_buy_revision"
+          daily_budget_cap: 100
+        context_outputs:
+          - name: controlled_media_buy_id
+            path: "media_buy_id"
+          - name: controlled_revision
+            path: "revision"
+          - name: controlled_media_buy_status
+            path: "media_buy_status"
+        validations:
+          - check: response_schema
+            description: "Response matches control-media-buy-response.json"
+          - check: field_value
+            path: "status"
+            value: "completed"
+            description: "The prepared operational control completes synchronously"
+          - check: field_equals_context
+            path: "media_buy_id"
+            context_key: "direct_media_buy_id"
+            description: "The control updates the purchased MediaBuy"
+          - check: field_present
+            path: "revision"
+            description: "The control returns the post-mutation revision"
+          - check: field_equals_context
+            path: "media_buy_status"
+            context_key: "direct_buy_status"
+            description: "The decrease-only control preserves the MediaBuy lifecycle state"
+
+  - id: read_controlled_buy
+    title: "Read back the persisted operational state"
+    depends_on: [control_direct_buy]
+    steps:
+      - id: read_compact_direct_buy
+        title: "Verify the controlled MediaBuy"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.controlled_media_buy_id"]
+          include_history: 2
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_equals_context
+            path: "media_buys[0].media_buy_id"
+            context_key: "direct_media_buy_id"
+            description: "Readback returns the purchased MediaBuy"
+          - check: field_equals_context
+            path: "media_buys[0].status"
+            context_key: "controlled_media_buy_status"
+            description: "Readback preserves the lifecycle state returned by the control"
+          - check: field_equals_context
+            path: "media_buys[0].revision"
+            context_key: "controlled_revision"
+            description: "Readback returns the post-control revision"
+          - check: field_equals_context
+            path: "media_buys[0].history[0].revision"
+            context_key: "controlled_revision"
+            description: "The latest history entry records the control revision"
+          - check: field_equals_context
+            path: "media_buys[0].history[1].revision"
+            context_key: "direct_buy_revision"
+            description: "The preceding history entry records the purchase revision"
+          - check: field_less_than
+            path: "media_buys[0].history[1].revision"
+            context_key: "controlled_revision"
+            description: "The purchase revision is lower than the control revision"
+          - check: field_value
+            path: "media_buys[0].daily_budget_cap"
+            value: 100
+            description: "Readback persists the decrease-only daily cap"
+          - check: field_equals_context
+            path: "media_buys[0].accepted_proposal.commercial_terms.source_feed_version"
+            context_key: "direct_feed_version"
+            description: "Readback preserves the purchased feed version"
+          - check: field_equals_context
+            path: "media_buys[0].accepted_proposal_id"
+            context_key: "direct_accepted_proposal_id"
+            description: "Readback preserves the accepted proposal identity"
+          - check: field_equals_context
+            path: "media_buys[0].accepted_proposal_terms_digest"
+            context_key: "direct_accepted_terms_digest"
+            description: "Readback preserves the accepted proposal terms digest"
+          - check: field_equals_context
+            path: "media_buys[0].accepted_proposal.proposal_id"
+            context_key: "direct_accepted_proposal_id"
+            description: "The embedded accepted snapshot preserves its proposal identity"
+          - check: field_equals_context
+            path: "media_buys[0].accepted_proposal.terms_digest"
+            context_key: "direct_accepted_terms_digest"
+            description: "The embedded accepted snapshot preserves its terms digest"
