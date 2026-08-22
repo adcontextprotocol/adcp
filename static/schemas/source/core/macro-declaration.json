@@ -20,6 +20,7 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9_-]+$",
       "minLength": 1,
+      "x-entity": "macro_declaration",
       "description": "Identifier unique within the enclosing asset, used to correlate validation results."
     },
     "token": {

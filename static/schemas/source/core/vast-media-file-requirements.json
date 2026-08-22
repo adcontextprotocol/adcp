@@ -5,6 +5,15 @@
   "description": "Technical acceptance requirements for the alternative `<MediaFile>` renditions in a resolved VAST `<InLine>` linear creative. A linear creative satisfies this object when at least one of its MediaFile elements satisfies every declared field; incompatible sibling renditions do not reject the creative. Omitted fields are governed by the enclosing format declaration's `technical_requirements_complete` assertion and MUST NOT be inferred from prose or implementation defaults. When a declared constraint cannot be proven from VAST metadata or safe inspection of the referenced media bytes, compatibility is undeclared rather than assumed. Container identity MUST come from authoritative metadata or byte inspection, never only a URI filename extension.",
   "type": "object",
   "properties": {
+    "delivery_methods": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/vast-media-delivery-method.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Accepted values of the required `MediaFile@delivery` attribute. `progressive` identifies a directly downloadable media file; `streaming` identifies a streaming media resource."
+    },
     "mime_types": {
       "type": "array",
       "items": {

@@ -32,7 +32,7 @@ This is not creative rotation or A/B testing. Every entry represents the same cr
         }
       },
       "source": {
-        "system": "cm360",
+        "system": "acme_ad_server",
         "source_variant": "iframe/JavaScript"
       }
     },
@@ -48,7 +48,7 @@ This is not creative rotation or A/B testing. Every entry represents the same cr
         }
       },
       "source": {
-        "system": "cm360",
+        "system": "acme_ad_server",
         "source_variant": "Internal Redirect"
       }
     }
@@ -96,11 +96,11 @@ Pass a source object to `build_creative` with the destination capability:
             "clickthrough_url": "https://click.acme-example.com/redirect"
           }
         },
-        "source": { "system": "cm360", "source_variant": "Internal Redirect" }
+        "source": { "system": "acme_ad_server", "source_variant": "Internal Redirect" }
       }
     ]
   },
-  "target_capability_id": "gam_internal_redirect"
+  "target_capability_id": "acme_internal_redirect_300x250"
 }
 ```
 
@@ -112,7 +112,7 @@ The output is the normal seller-bound manifest. `delivery_variant_selection` car
   "format_kind": "display_tag",
   "format_option_ref": {
     "scope": "product",
-    "format_option_id": "gam_internal_redirect"
+    "format_option_id": "acme_internal_redirect_300x250"
   },
   "delivery_variant_selection": {
     "source_creative_id": "cr_launch_mrec",
@@ -135,7 +135,8 @@ The paired redirect stays one asset. A receiver cannot combine its ad-request UR
 
 ## Resolution failure
 
-When no candidate works, return `CREATIVE_DELIVERY_VARIANT_UNRESOLVED`. `error.details` MUST conform to [`error-details/creative-delivery-variant-unresolved.json`](https://adcontextprotocol.org/schemas/v3/error-details/creative-delivery-variant-unresolved.json), with exactly one `delivery_variant_rejections` entry for every candidate. Unsupported variants remain stored in the source; failure does not delete or rewrite them.
+<!-- Unreleased 3.2 schema: use /schemas/latest until publication. -->
+When no candidate works, return `CREATIVE_DELIVERY_VARIANT_UNRESOLVED`. `error.details` MUST conform to [`error-details/creative-delivery-variant-unresolved.json`](https://adcontextprotocol.org/schemas/latest/error-details/creative-delivery-variant-unresolved.json), with exactly one `delivery_variant_rejections` entry for every candidate. Unsupported variants remain stored in the source; failure does not delete or rewrite them.
 
 ```json
 {
@@ -182,7 +183,7 @@ One VAST asset declares one exact `vast_version`; a product option and seller de
           "vast_version": "2.0"
         }
       },
-      "source": { "system": "cm360", "source_variant": "VAST 2.0 pre-fetch" }
+      "source": { "system": "acme_ad_server", "source_variant": "VAST 2.0 pre-fetch" }
     },
     {
       "variant_id": "source-vast-3",
@@ -195,7 +196,7 @@ One VAST asset declares one exact `vast_version`; a product option and seller de
           "vast_version": "3.0"
         }
       },
-      "source": { "system": "cm360", "source_variant": "VAST 3.0 pre-fetch" }
+      "source": { "system": "acme_ad_server", "source_variant": "VAST 3.0 pre-fetch" }
     },
     {
       "variant_id": "source-vast-4",
@@ -208,7 +209,7 @@ One VAST asset declares one exact `vast_version`; a product option and seller de
           "vast_version": "4.0"
         }
       },
-      "source": { "system": "cm360", "source_variant": "VAST 4.0 pre-fetch" }
+      "source": { "system": "acme_ad_server", "source_variant": "VAST 4.0 pre-fetch" }
     }
   ]
 }

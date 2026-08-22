@@ -11,7 +11,7 @@
   },
   "type": "object",
   "properties": {
-    "declaration_id": { "type": "string", "minLength": 1 },
+    "declaration_id": { "type": "string", "minLength": 1, "x-entity": "macro_declaration" },
     "asset_path": {
       "type": "string",
       "pattern": "^/",

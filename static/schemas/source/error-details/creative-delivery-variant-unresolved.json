@@ -3,6 +3,12 @@
   "$id": "/schemas/error-details/creative-delivery-variant-unresolved.json",
   "title": "Creative Delivery Variant Unresolved Details",
   "description": "Required details shape for CREATIVE_DELIVERY_VARIANT_UNRESOLVED. Carries one structured incompatibility reason for every candidate retained in the CreativeSource.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "exact_candidate_coverage": "delivery_variant_rejections MUST contain exactly one entry for every candidate variant_id in the unresolved CreativeSource: no missing, duplicate, or unknown variant_id values"
+    },
+    "spec": "docs/creative/delivery-variants.mdx#resolution-failure"
+  },
   "type": "object",
   "properties": {
     "delivery_variant_rejections": {

@@ -97,6 +97,7 @@ test('VAST assets stay singular while format and seller acceptance are plural en
 
 test('VAST technical acceptance is explicit, rendition-scoped, and byte-exact', () => {
   const requirements = {
+    delivery_methods: ['progressive'],
     mime_types: ['video/mp4'],
     containers: ['mp4'],
     codecs: ['avc1.4d401f'],
@@ -118,6 +119,8 @@ test('VAST technical acceptance is explicit, rendition-scoped, and byte-exact', 
     'the byte limit is a positive exact count');
   assert.equal(validateRequirements({ ...requirements, containers: ['MP4'] }), false,
     'container identifiers use normalized lower-case tokens');
+  assert.equal(validateRequirements({ ...requirements, delivery_methods: ['download'] }), false,
+    'delivery methods use the governed VAST progressive/streaming vocabulary');
   assert.match(validateRequirements.schema['x-adcp-validation'].verifier_constraints.range_order,
     /min_bitrate_kbps MUST be <= max_bitrate_kbps/);
   assert.match(validateRequirements.schema['x-adcp-validation'].verifier_constraints.adaptive_bitrate_containment,
@@ -146,6 +149,7 @@ test('VAST technical acceptance is explicit, rendition-scoped, and byte-exact', 
     /1,000 bytes per KB/);
 
   const mediaFileSatisfies = mediaFile =>
+    requirements.delivery_methods.includes(mediaFile.delivery_method) &&
     requirements.mime_types.some(value => value.toLowerCase() === mediaFile.mime_type.toLowerCase()) &&
     requirements.containers.includes(mediaFile.container) &&
     requirements.codecs.includes(mediaFile.codec) &&
@@ -156,11 +160,11 @@ test('VAST technical acceptance is explicit, rendition-scoped, and byte-exact', 
     mediaFile.file_size_bytes <= requirements.max_file_size_bytes;
   const alternatives = [
     {
-      mime_type: 'video/mp4', container: 'mp4', codec: 'avc1.4d401f',
+      delivery_method: 'progressive', mime_type: 'video/mp4', container: 'mp4', codec: 'avc1.4d401f',
       width: 640, height: 360, bitrate_kbps: 900, file_size_bytes: 10000000
     },
     {
-      mime_type: 'video/mp4', container: 'mp4', codec: 'avc1.4d401f',
+      delivery_method: 'progressive', mime_type: 'video/mp4', container: 'mp4', codec: 'avc1.4d401f',
       width: 1920, height: 1080, bitrate_kbps: 6000, file_size_bytes: 49000000
     }
   ];
@@ -171,8 +175,72 @@ test('VAST technical acceptance is explicit, rendition-scoped, and byte-exact', 
     { ...alternatives[1], codec: 'vp09.00.10.08' }
   ].some(mediaFileSatisfies), false,
     'requirements cannot be combined across different MediaFile elements');
+  assert.equal(mediaFileSatisfies({ ...alternatives[1], delivery_method: 'streaming' }), false,
+    'the same rendition must satisfy the declared delivery method');
   assert.equal(mediaFileSatisfies({ ...alternatives[1], codec: undefined }), false,
     'missing metadata cannot silently satisfy a declared technical constraint');
+
+  const validateManifest = ajv.getSchema('/schemas/core/creative-manifest.json');
+  const canonicalVastManifest = {
+    format_kind: 'video_vast',
+    assets: {
+      vast_tag: {
+        asset_type: 'vast',
+        delivery_type: 'url',
+        url: 'https://ads.acme-example.com/vast',
+        vast_version: '4.2'
+      }
+    }
+  };
+  assert.equal(validateManifest(canonicalVastManifest), true, JSON.stringify(validateManifest.errors));
+  const customSlotVastManifest = structuredClone(canonicalVastManifest);
+  customSlotVastManifest.assets.vast_xml = customSlotVastManifest.assets.vast_tag;
+  delete customSlotVastManifest.assets.vast_tag;
+  assert.equal(validateManifest(customSlotVastManifest), true,
+    'canonical VAST exact-version validation follows the asset type, not a default slot name');
+  const arraySlotVastManifest = structuredClone(canonicalVastManifest);
+  arraySlotVastManifest.assets.vast_pool = [arraySlotVastManifest.assets.vast_tag];
+  delete arraySlotVastManifest.assets.vast_tag;
+  assert.equal(validateManifest(arraySlotVastManifest), true,
+    'canonical VAST exact-version validation supports multi-asset slots');
+  const missingExactVersion = structuredClone(canonicalVastManifest);
+  delete missingExactVersion.assets.vast_tag.vast_version;
+  assert.equal(validateManifest(missingExactVersion), false,
+    'the canonical video_vast path requires the asset exact version');
+  const customSlotWithoutVersion = structuredClone(customSlotVastManifest);
+  delete customSlotWithoutVersion.assets.vast_xml.vast_version;
+  assert.equal(validateManifest(customSlotWithoutVersion), false,
+    'a renamed canonical VAST slot cannot bypass exact-version validation');
+  const arraySlotWithoutVersion = structuredClone(arraySlotVastManifest);
+  delete arraySlotWithoutVersion.assets.vast_pool[0].vast_version;
+  assert.equal(validateManifest(arraySlotWithoutVersion), false,
+    'each VAST asset in a multi-asset slot requires an exact version');
+  const extensionSlotWithoutVersion = structuredClone(canonicalVastManifest);
+  extensionSlotWithoutVersion.assets['VAST-TAG'] = extensionSlotWithoutVersion.assets.vast_tag;
+  delete extensionSlotWithoutVersion.assets.vast_tag;
+  delete extensionSlotWithoutVersion.assets['VAST-TAG'].vast_version;
+  assert.equal(validateManifest(extensionSlotWithoutVersion), false,
+    'extension-style slot names remain subject to canonical VAST exact-version validation');
+  assert.equal(validateManifest({
+    format_id: { agent_url: 'https://creative.acme.test', id: 'legacy-vast' },
+    assets: missingExactVersion.assets
+  }), true, 'the deprecated named-format path retains 3.x compatibility');
+
+  const validateCreativeAsset = ajv.getSchema('/schemas/core/creative-asset.json');
+  const canonicalVastCreative = {
+    creative_id: 'vast-creative-1',
+    name: 'Acme preroll',
+    ...canonicalVastManifest
+  };
+  assert.equal(validateCreativeAsset(canonicalVastCreative), true, JSON.stringify(validateCreativeAsset.errors));
+  const syncCreativeWithoutVersion = structuredClone(canonicalVastCreative);
+  delete syncCreativeWithoutVersion.assets.vast_tag.vast_version;
+  assert.equal(validateCreativeAsset(syncCreativeWithoutVersion), false,
+    'the canonical sync_creatives path requires the asset exact version');
+  assert.equal(validateCreativeAsset({
+    ...canonicalVastCreative,
+    assets: extensionSlotWithoutVersion.assets
+  }), false, 'sync_creatives cannot bypass exact-version validation through an extension slot name');
 });
 
 test('macro declarations enforce resolver ownership and exact URL encoding depth', () => {
@@ -450,9 +518,33 @@ test('creative delivery resolution vectors retain every source and select only c
 
   const uniqueVariantIds = source => new Set(source.delivery_variants.map(variant => variant.variant_id)).size ===
     source.delivery_variants.length;
+  assert.deepEqual(
+    validateSource.schema.properties.delivery_variants['x-adcp-validation'].unique_item_properties,
+    ['variant_id'],
+    'the published verifier contract declares variant identity uniqueness'
+  );
   const duplicate = structuredClone(fixture.vectors[0].source);
   duplicate.delivery_variants[1].variant_id = duplicate.delivery_variants[0].variant_id;
   assert.equal(uniqueVariantIds(duplicate), false, 'duplicate source representation IDs fail operational validation');
+
+  const exactRejectionCoverage = (source, rejections) => {
+    const candidateIds = source.delivery_variants.map(variant => variant.variant_id).toSorted();
+    const rejectionIds = rejections.map(rejection => rejection.variant_id).toSorted();
+    return new Set(rejectionIds).size === rejectionIds.length && isDeepStrictEqual(candidateIds, rejectionIds);
+  };
+  const allRejected = fixture.vectors[0].source.delivery_variants.map(variant => ({
+    variant_id: variant.variant_id,
+    code: 'other',
+    message: 'incompatible'
+  }));
+  assert.equal(exactRejectionCoverage(fixture.vectors[0].source, allRejected), true);
+  assert.equal(exactRejectionCoverage(fixture.vectors[0].source, allRejected.slice(1)), false,
+    'unresolved details cannot omit a candidate');
+  assert.equal(exactRejectionCoverage(fixture.vectors[0].source, [...allRejected, allRejected[0]]), false,
+    'unresolved details cannot duplicate a candidate');
+  const deliveryDetailsSchema = ajv.getSchema('/schemas/error-details/creative-delivery-variant-unresolved.json').schema;
+  assert.match(deliveryDetailsSchema['x-adcp-validation'].verifier_constraints.exact_candidate_coverage,
+    /no missing, duplicate, or unknown/);
 
   const validateVariant = ajv.getSchema('/schemas/core/creative-delivery-variant.json');
   const vastWithoutVersion = structuredClone(fixture.vectors[1].source.delivery_variants[0]);
@@ -671,6 +763,11 @@ test('creative delivery errors use typed detail schemas without closing the gene
   assert.equal(validateDeliveryDetails({}), false);
 
   const validateMacroDetails = ajv.getSchema('/schemas/error-details/macro-resolution-failed.json');
+  assert.equal(ajv.getSchema('/schemas/core/macro-declaration.json').schema.properties.declaration_id['x-entity'],
+    'macro_declaration');
+  assert.equal(ajv.getSchema('/schemas/core/macro-resolution-result.json').schema.properties.declaration_id['x-entity'],
+    'macro_declaration');
+  assert.ok(ajv.getSchema('/schemas/core/x-entity-types.json').schema.enum.includes('macro_declaration'));
   const macroDetails = {
     macro_resolution_results: [{
       declaration_id: 'unknown-token',
@@ -692,11 +789,45 @@ test('creative delivery errors use typed detail schemas without closing the gene
 
   const validateVastDetails = ajv.getSchema('/schemas/error-details/vast-version-mismatch.json');
   const vastDetails = {
+    mismatch_reason: 'asset_outside_acceptance',
     asset_vast_version: '4.0',
     product_vast_versions: ['4.1', '4.2'],
     seller_vast_versions: ['4.0', '4.1'],
     format_option_ref: { scope: 'product', format_option_id: 'video-preroll' }
   };
   assert.equal(validateVastDetails(vastDetails), true, JSON.stringify(validateVastDetails.errors));
-  assert.equal(validateVastDetails({ ...vastDetails, format_option_ref: undefined }), false);
+  assert.equal(validateVastDetails({ ...vastDetails, format_option_ref: undefined }), true,
+    'a unique id-less product option has no format option reference to invent');
+  assert.equal(validateVastDetails({ ...vastDetails, product_vast_versions: [] }), false,
+    'advertised product acceptance sets cannot be empty');
+  assert.equal(validateVastDetails({ ...vastDetails, seller_vast_versions: [] }), false,
+    'advertised seller acceptance sets cannot be empty');
+  assert.equal(validateVastDetails({
+    mismatch_reason: 'document_version_mismatch',
+    asset_vast_version: '4.0',
+    observed_document_vast_version: '5.0',
+    document_role: 'submitted'
+  }), true, JSON.stringify(validateVastDetails.errors));
+  assert.equal(validateVastDetails({
+    mismatch_reason: 'document_version_mismatch',
+    asset_vast_version: '4.0',
+    observed_document_vast_version: null,
+    document_role: 'submitted'
+  }), true, 'a missing VAST version attribute remains representable');
+  const wrapperMismatch = {
+    mismatch_reason: 'document_version_mismatch',
+    asset_vast_version: '4.0',
+    observed_document_vast_version: '3.0',
+    document_role: 'wrapper',
+    product_vast_versions: ['4.0', '4.1'],
+    seller_vast_versions: ['4.0', '4.2']
+  };
+  assert.equal(validateVastDetails(wrapperMismatch), true, JSON.stringify(validateVastDetails.errors));
+  assert.equal(validateVastDetails({ ...wrapperMismatch, product_vast_versions: undefined }), false,
+    'wrapper mismatch details must disclose both acceptance sets used as the comparator');
+  assert.equal(validateVastDetails({ ...wrapperMismatch, seller_vast_versions: undefined }), false,
+    'terminal and wrapper mismatch details cannot omit the seller acceptance set');
+  assert.equal(validateVastDetails({ supported_versions: ['3.0', '4.0'] }), true,
+    'deprecated 3.x details remain accepted');
+  assert.equal(validateVastDetails({ mismatch_reason: 'asset_outside_acceptance', asset_vast_version: '4.0' }), false);
 });

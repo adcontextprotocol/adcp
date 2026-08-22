@@ -4,30 +4,7 @@
   "title": "Creative Delivery Variant",
   "description": "One equivalent trafficking representation retained before seller binding. `variant_id` is stable within its CreativeSource and identifies source representation, not rotation, A/B content, build output, locale, or a seller's served execution variant.",
   "allOf": [
-    { "$ref": "/schemas/core/creative-manifest.json" },
-    {
-      "if": {
-        "properties": { "format_kind": { "const": "video_vast" } },
-        "required": ["format_kind"]
-      },
-      "then": {
-        "properties": {
-          "assets": {
-            "properties": {
-              "vast_tag": {
-                "type": "object",
-                "properties": {
-                  "asset_type": { "const": "vast" },
-                  "vast_version": { "$ref": "/schemas/enums/vast-version.json" }
-                },
-                "required": ["asset_type", "vast_version"]
-              }
-            },
-            "required": ["vast_tag"]
-          }
-        }
-      }
-    }
+    { "$ref": "/schemas/core/creative-manifest.json" }
   ],
   "type": "object",
   "properties": {
