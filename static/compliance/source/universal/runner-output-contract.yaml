@@ -265,7 +265,9 @@ validation_result:
                               #                          expectations are matched as
                               #                          deep subsets
                               #   array_length         → exact integer from value, or
-                              #                          inclusive { min, max } bounds
+                              #                          inclusive { min, max } bounds for
+                              #                          cardinality mismatches; the string
+                              #                          "array" for missing/non-array paths
                               #   field_present        → the path that should resolve
                               #   field_absent         → null (the field must not be present)
                               #   field_pattern        → object { pattern } where pattern is
@@ -353,7 +355,9 @@ validation_result:
                               #   field_contains       → array of values resolved at
                               #                          path; empty when the path
                               #                          produced no terminal values
-                              #   array_length         → observed array cardinality
+                              #   array_length         → observed array cardinality when the
+                              #                          path resolves to an array; otherwise
+                              #                          the observed value (null when absent)
                               #   field_present        → null (the field was missing)
                               #                          or the observed non-object
                               #                          value

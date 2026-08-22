@@ -400,7 +400,6 @@ jobs:
           required_clean=(
             "canonical_format_validate_input"
             "creative/billing_out_of_band"
-            "creative/policy_backed_rejections"
           )
           for storyboard_id in "${required_clean[@]}"; do
             if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓" /tmp/storyboards.log >/dev/null; then

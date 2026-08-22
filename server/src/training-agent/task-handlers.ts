@@ -4431,6 +4431,18 @@ function aggregateCreativePolicy(session: import('./types.js').SessionState): Cr
   return anyPolicy ? acc : null;
 }
 
+function aggregateEnforcedPolicies(session: import('./types.js').SessionState): Set<string> {
+  const policies = new Set<string>();
+  for (const fixture of session.complyExtensions.seededProducts.values()) {
+    const enforced = (fixture as { enforced_policies?: unknown }).enforced_policies;
+    if (!Array.isArray(enforced)) continue;
+    for (const policyId of enforced) {
+      if (typeof policyId === 'string') policies.add(policyId);
+    }
+  }
+  return policies;
+}
+
 interface CreativeManifestView {
   provenance?: Record<string, unknown>;
   assets?: Record<string, { provenance?: Record<string, unknown> }>;
@@ -10882,27 +10894,28 @@ function creativeSessionKey(args: ToolArgs, ctx: TrainingContext): string {
 }
 
 /**
- * Deterministic runtime-policy scanner used by the policy-backed rejection
- * compliance fixture. Production sellers may delegate these observations to a
- * governance agent; the wire result stays one CREATIVE_REJECTED entry per
- * violated registry policy, independent of detector identity.
+ * Deterministic emulator for the controller-seeded policy-backed rejection
+ * fixture. Production sellers fetch and scan the hosted tag (or delegate that
+ * work to a governance agent); the training agent recognizes the fixture's
+ * stable test-asset path only when the seeded product explicitly declares the
+ * corresponding policies. This must not become a general source-text scanner:
+ * raw location/http regexes misclassify click-gated navigation and inert text.
  */
 function runtimeCreativePolicyErrors(creative: {
   assets?: Record<string, unknown>;
   manifest?: { assets?: Record<string, unknown> };
-}): TaskError[] {
+}, enforcedPolicies: ReadonlySet<string>): TaskError[] {
+  const dualViolationFixtureUrl = 'https://adcontextprotocol.org/test-assets/acme-outdoor/policy-backed-auto-redirect-http.js';
   const assets = creative.assets ?? creative.manifest?.assets ?? {};
-  const executableBodies = Object.values(assets).flatMap(asset => {
+  const urls = Object.values(assets).flatMap(asset => {
     if (!isRecord(asset)) return [];
-    if (asset.asset_type !== 'javascript' && asset.asset_type !== 'html') return [];
-    return typeof asset.content === 'string' ? [asset.content] : [];
+    return typeof asset.url === 'string' ? [asset.url] : [];
   });
-  const payload = executableBodies.join('\n');
-  if (!payload) return [];
+  const isDualViolationFixture = urls.includes(dualViolationFixtureUrl);
+  if (!isDualViolationFixture) return [];
 
   const errors: TaskError[] = [];
-  const automaticNavigation = /\b(?:(?:window|document|globalThis)\.)?location(?:\.href)?\s*=|\b(?:(?:window|document|globalThis)\.)?location\.(?:assign|replace)\s*\(/i;
-  if (automaticNavigation.test(payload)) {
+  if (enforcedPolicies.has('creative_security_auto_redirect')) {
     errors.push({
       code: 'CREATIVE_REJECTED',
       message: 'Creative performs navigation without user interaction.',
@@ -10916,7 +10929,7 @@ function runtimeCreativePolicyErrors(creative: {
     });
   }
 
-  if (/\bhttp:\/\//i.test(payload)) {
+  if (enforcedPolicies.has('creative_security_https_only')) {
     errors.push({
       code: 'CREATIVE_REJECTED',
       message: 'Creative makes an insecure HTTP request from a secure serving context.',
@@ -10936,7 +10949,7 @@ function runtimeCreativePolicyErrors(creative: {
 export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCreativesRequest & ToolArgs & { dry_run?: boolean };
   const sessionKey = creativeSessionKey(req, ctx);
-  const session = await getSession(sessionKey);
+  const session = await getSession(sessionKey, controllerFixtureSessionKey(req, ctx));
   const isDryRun = req.dry_run === true;
   const accountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
@@ -10959,6 +10972,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   // Returns null when no fixture seeds policy fields — pre-existing
   // storyboards that don't exercise provenance enforcement keep working.
   const effectivePolicy = aggregateCreativePolicy(session);
+  const enforcedPolicies = aggregateEnforcedPolicies(session);
 
   const results: SyncCreativeResult[] = [];
   for (const creative of req.creatives) {
@@ -10987,7 +11001,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const identity = identityResult.identity;
     const formatId = identity.kind === 'legacy' ? identity.formatId : undefined;
 
-    const runtimePolicyErrors = runtimeCreativePolicyErrors(creativeShape);
+    const runtimePolicyErrors = runtimeCreativePolicyErrors(creativeShape, enforcedPolicies);
     if (runtimePolicyErrors.length > 0) {
       results.push({
         creative_id: creativeId,

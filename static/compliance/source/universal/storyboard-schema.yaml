@@ -1580,7 +1580,8 @@
 #   non-array value fails; this check has no optional-field arm. Wildcard paths
 #   are not supported. Failure output uses the array path as `json_pointer`, the
 #   requested count or bounds as `expected`, and the observed cardinality as
-#   `actual` (or the observed non-array value for a type failure).
+#   `actual`. For a missing/non-array path, failure output instead uses
+#   `expected: "array"` and the observed value as `actual` (null when absent).
 #
 # OAuth discovery graph — use `check: oauth_metadata_graph`:
 #   Applies only to a `protected_resource_metadata` runner task. Starting from

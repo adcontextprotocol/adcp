@@ -6677,22 +6677,38 @@ describe('sync_creatives handler', () => {
   });
 
   it('returns one CREATIVE_REJECTED entry per violated registry policy', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = {
       brand: { domain: 'policy-rejections.example' },
       operator: 'policy-rejections.example',
+      sandbox: true,
     };
-    const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+    const seed = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'policy-rejection-product',
+        fixture: {
+          enforced_policies: [
+            'creative_security_auto_redirect',
+            'creative_security_https_only',
+          ],
+        },
+      },
+    });
+    expect(seed.result.success).toBe(true);
+
+    const { result } = await simulateCallTool(server, 'sync_creatives', {
       account,
       creatives: [{
         creative_id: 'cr_dual_policy_violation',
         format_kind: 'display_tag',
         assets: {
-          payload: {
-            asset_type: 'javascript',
-            content: [
-              'window.location.assign("https://redirect.example/forced");',
-              'fetch("http://collector.example/pixel");',
-            ].join('\n'),
+          tag_url: {
+            asset_type: 'url',
+            url_type: 'tracker_script',
+            url: 'https://adcontextprotocol.org/test-assets/acme-outdoor/policy-backed-auto-redirect-http.js',
           },
         },
       }],
@@ -6714,6 +6730,31 @@ describe('sync_creatives handler', () => {
 
     const session = await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode));
     expect(session.creatives.has('cr_dual_policy_violation')).toBe(false);
+  });
+
+  it('does not apply policy fixture outcomes unless the seller declares those policies', async () => {
+    const account = {
+      brand: { domain: 'policy-not-enforced.example' },
+      operator: 'policy-not-enforced.example',
+    };
+    const { result } = await simulateCallTool(createTrainingAgentServer(DEFAULT_CTX), 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_policy_not_enforced',
+        format_kind: 'display_tag',
+        assets: {
+          tag_url: {
+            asset_type: 'url',
+            url_type: 'tracker_script',
+            url: 'https://adcontextprotocol.org/test-assets/acme-outdoor/policy-backed-auto-redirect-http.js',
+          },
+        },
+      }],
+    });
+
+    const creative = (result.creatives as Array<Record<string, any>>)[0];
+    expect(creative.action).toBe('created');
+    expect(creative.errors).toBeUndefined();
   });
 
   it('preserves canonical identity through sync, list, build, and preview', async () => {
