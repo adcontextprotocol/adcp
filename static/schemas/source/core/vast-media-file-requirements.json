@@ -76,5 +76,5 @@
       "missing_metadata": "If a declared property cannot be established from VAST metadata or safe inspection, compatibility is unproven and the MediaFile does not satisfy that property."
     }
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

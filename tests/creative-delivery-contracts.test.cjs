@@ -110,6 +110,8 @@ test('VAST technical acceptance is explicit, rendition-scoped, and byte-exact', 
   };
   const validateRequirements = ajv.getSchema('/schemas/core/vast-media-file-requirements.json');
   assert.equal(validateRequirements(requirements), true, JSON.stringify(validateRequirements.errors));
+  assert.equal(validateRequirements({ ...requirements, vendor_extension: 'future-value' }), true,
+    'technical requirement objects remain extension-carrying under DR-0009');
   assert.equal(validateRequirements({ ...requirements, mime_types: ['video/mp4; codecs=avc1'] }), false,
     'MediaFile MIME requirements are media types, not parameterized Content-Type values');
   assert.equal(validateRequirements({ ...requirements, max_file_size_bytes: 0 }), false,
