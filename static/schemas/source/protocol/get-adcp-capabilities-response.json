@@ -2374,25 +2374,12 @@
         },
         "delivery_retry_horizon_seconds": {
           "type": "integer",
-          "description": "Maximum elapsed time from the first delivery attempt during which this agent may retry the same webhook delivery. The publisher retains the immutable delivery-key-to-RFC-8785-JCS-payload binding and sufficient delivery state for at least this interval, and MUST NOT retry that key afterward. Receivers retain the matching payload binding and terminal publication proof for at least max(86400, this value) seconds in AdCP 3.x. Retries do not extend the horizon. Required when supported is true for an AdCP 3.2 capability response. Minimum 86400 (24h), maximum 604800 (7d).",
+          "description": "Maximum elapsed time from the first delivery attempt during which this agent may retry the same webhook delivery. The publisher retains the immutable delivery-key-to-RFC-8785-JCS-payload binding and sufficient delivery state for at least this interval, and MUST NOT retry that key afterward. Receivers retain the matching payload binding and terminal publication proof for at least max(86400, this value) seconds in AdCP 3.x. Retries do not extend the horizon. A webhook-emitting AdCP 3.2 agent MUST populate this additive field; it remains schema-optional so existing 3.x capability documents stay valid. Minimum 86400 (24h), maximum 604800 (7d).",
           "minimum": 86400,
           "maximum": 604800
         }
       },
-      "required": ["supported"],
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "supported": { "const": true }
-            },
-            "required": ["supported"]
-          },
-          "then": {
-            "required": ["delivery_retry_horizon_seconds"]
-          }
-        }
-      ]
+      "required": ["supported"]
     },
     "identity": {
       "type": "object",

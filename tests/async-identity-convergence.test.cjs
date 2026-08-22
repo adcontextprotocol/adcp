@@ -40,33 +40,24 @@ test('generic examples never fabricate continuation from context_id', () => {
   assert.match(webhookSchema.properties.context_id.description, /MUST NOT be used to resume/);
 });
 
-test('webhook retry horizon is bounded and required for supported 3.2 signing', () => {
+test('webhook retry horizon is bounded, additive, and normative for 3.2 emitters', () => {
   const schema = readJson('static/schemas/source/protocol/get-adcp-capabilities-response.json');
   const signing = schema.properties.webhook_signing;
   const horizon = signing.properties.delivery_retry_horizon_seconds;
 
   assert.equal(horizon.minimum, 86400);
   assert.equal(horizon.maximum, 604800);
-  assert.ok(signing.allOf.some((rule) =>
-    rule.if?.properties?.supported?.const === true &&
-    rule.then?.required?.includes('delivery_retry_horizon_seconds')));
+  assert.doesNotMatch(JSON.stringify(signing.required ?? []), /delivery_retry_horizon_seconds/);
+  assert.match(horizon.description, /3\.2 agent MUST populate/);
+  assert.match(horizon.description, /schema-optional/);
 });
 
 test('terminal task webhooks separate delivery and observation identity', () => {
   const schema = readJson('static/schemas/source/core/mcp-webhook-payload.json');
-  const terminalRule = schema.allOf.find((rule) =>
-    rule.then?.required?.includes('notification_id'));
-
-  assert.ok(terminalRule, 'terminal task webhook must require notification_id');
-  assert.deepEqual(
-    terminalRule.if.properties.status.enum,
-    ['completed', 'failed', 'canceled', 'rejected'],
-  );
-  assert.equal(
-    terminalRule.if.properties.task_type.not.const,
-    'media_buy_delivery',
-    'legacy point-in-time delivery reports retain their documented exception',
-  );
+  assert.ok(!schema.required.includes('notification_id'));
+  assert.ok(!schema.allOf.some((rule) => rule.then?.required?.includes('notification_id')));
+  assert.match(schema.properties.notification_id.description, /Optional event-layer identifier/);
+  assert.match(schema.properties.notification_id.description, /authenticated seller plus the bound task_id/);
   assert.match(schema.properties.idempotency_key.description, /503/);
   assert.match(schema.properties.idempotency_key.description, /2xx/);
   assert.match(schema.properties.idempotency_key.description, /409/);

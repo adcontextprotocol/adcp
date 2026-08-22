@@ -25,22 +25,6 @@
           }
         }
       }
-    },
-    {
-      "if": {
-        "properties": {
-          "status": {
-            "enum": ["completed", "failed", "canceled", "rejected"]
-          },
-          "task_type": {
-            "not": { "const": "media_buy_delivery" }
-          }
-        },
-        "required": ["status", "task_type"]
-      },
-      "then": {
-        "required": ["notification_id"]
-      }
     }
   ],
   "properties": {
@@ -53,7 +37,7 @@
     },
     "notification_id": {
       "type": "string",
-      "description": "Event-layer identifier for one logical notification. Stable across re-emissions of the same logical event and distinct from the per-delivery `idempotency_key`. For terminal task webhooks other than the legacy media_buy_delivery event, this identifies the one terminal observation for the bound seller task and is required; different delivery keys carrying the same notification_id are re-emissions and MUST NOT republish terminal effects. For other event families, population and repair identity remain event-shape-dependent (see notification-type.json enumDescriptions): impairment aliases impairment_id, creative and account notifications use transition identifiers, wholesale events alias event.event_id, and capability changes use a revision-event identifier. Point-in-time delivery events (scheduled, final, delayed, adjusted, window_update) omit this field and dedupe by idempotency_key plus their delivery-report identity. Charset is constrained to `[A-Za-z0-9_.:-]`.",
+      "description": "Optional event-layer identifier for one logical notification. Stable across re-emissions of the same logical event and distinct from the per-delivery `idempotency_key`. For terminal task webhooks, the authoritative terminal identity remains the authenticated seller plus the bound task_id; when notification_id is present, different delivery keys carrying the same value are re-emissions and MUST NOT republish terminal effects. For other event families, population and repair identity remain event-shape-dependent (see notification-type.json enumDescriptions): impairment aliases impairment_id, creative and account notifications use transition identifiers, wholesale events alias event.event_id, and capability changes use a revision-event identifier. Point-in-time delivery events (scheduled, final, delayed, adjusted, window_update) omit this field and dedupe by idempotency_key plus their delivery-report identity. Charset is constrained to `[A-Za-z0-9_.:-]`.",
       "minLength": 1,
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{1,255}$"

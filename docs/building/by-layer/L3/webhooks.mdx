@@ -537,17 +537,18 @@ app.post('/webhooks/adcp', async (req, res) => {
   const sender = req.verifiedSenderId; // set by 9421 verifier (keyid → agent URL) or legacy HMAC/Bearer middleware
 
   // Atomically bind this key to the authenticated canonical payload and claim
-  // publication. The claim result is one of: claimed, processing, completed,
-  // or conflict. This helper is durable across every receiver instance.
-  const claim = await db.claimWebhook({
+  // publication. The claim state is one of: claimed, processing, completed,
+  // or conflict, and a successful claim includes its owner fence. This helper
+  // is durable across every receiver instance.
+  const { state: claimState, owner: claimOwner } = await db.claimWebhook({
     sender,
     idempotencyKey: idempotency_key,
     payloadFingerprint: canonicalFingerprint(payload)
   });
 
-  if (claim === 'conflict') return res.status(409).end();
-  if (claim === 'processing') return res.status(503).end();
-  if (claim === 'completed') return res.status(200).end();
+  if (claimState === 'conflict') return res.status(409).end();
+  if (claimState === 'processing') return res.status(503).end();
+  if (claimState === 'completed') return res.status(200).end();
 
   // Converge all channels on one seller task. This operation validates the
   // task/operation/account binding, normalizes a terminal result, preserves the
@@ -563,20 +564,20 @@ app.post('/webhooks/adcp', async (req, res) => {
   });
 
   if (convergence === 'terminal_conflict') {
-    await db.rejectWebhookClaim(sender, idempotency_key, claim.owner);
+    await db.rejectWebhookClaim(sender, idempotency_key, claimOwner);
     return res.status(409).end();
   }
   if (convergence === 'publication_in_progress') {
-    await db.releaseWebhookClaim(sender, idempotency_key, claim.owner);
+    await db.releaseWebhookClaim(sender, idempotency_key, claimOwner);
     return res.status(503).end();
   }
   if (convergence === 'exact_duplicate_or_stale') {
-    await db.acknowledgeWebhook(sender, idempotency_key, claim.owner);
+    await db.acknowledgeWebhook(sender, idempotency_key, claimOwner);
     return res.status(200).end();
   }
 
   await triggerBusinessLogic(task_id, convergence.authoritativeResult);
-  await db.acknowledgeWebhook(sender, idempotency_key, claim.owner);
+  await db.acknowledgeWebhook(sender, idempotency_key, claimOwner);
   res.status(200).end();
 });
 ```

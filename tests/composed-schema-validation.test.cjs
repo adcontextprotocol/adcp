@@ -1863,14 +1863,14 @@ async function runTests() {
     'Webhook signing accepts the 24h delivery retry horizon floor'
   );
 
-  await testSchemaRejection(
+  await testSchemaValidation(
     '/schemas/protocol/get-adcp-capabilities-response.json',
     {
       ...capabilitiesBase,
       adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
       webhook_signing: { supported: true }
     },
-    'Webhook signing supported=true requires delivery_retry_horizon_seconds'
+    'Existing 3.x webhook signing remains schema-valid without the additive retry horizon'
   );
 
   await testSchemaValidation(
