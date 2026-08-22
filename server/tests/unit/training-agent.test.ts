@@ -13264,7 +13264,10 @@ describe('get_adcp_capabilities handler', () => {
     expect((result.media_buy as Record<string, unknown>).buying_modes).toEqual(['brief', 'wholesale', 'refine']);
     expect((result.signals as Record<string, unknown>).discovery_modes).toEqual(['brief', 'wholesale']);
     expect(((result.signals as Record<string, unknown>).features as Record<string, unknown>).catalog_signals).toBe(true);
-    expect((result.webhook_signing as Record<string, unknown>).supported).toBe(true);
+    expect(result.webhook_signing).toMatchObject({
+      supported: true,
+      delivery_retry_horizon_seconds: 86400,
+    });
     expect((result.identity as Record<string, unknown>).brand_json_url).toBe(`${getAgentUrl()}/.well-known/brand.json`);
   });
 

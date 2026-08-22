@@ -351,6 +351,11 @@ Async task IDs, webhook identities, and authorization remain scoped to the
 actual tool invoked. A retry under a compact tool name is not a replay of an
 earlier `get_products` task, or vice versa.
 
+Every fallback also follows the normative [async identity and convergence
+contract](../docs/building/by-layer/L3/async-identity-and-convergence.mdx).
+Direct responses, polling, continuations, and webhooks are competing
+observations of one operation; they do not create independent winners.
+
 ## Idempotency and recovery
 
 Compact proposal creation, refinement, decline, direct purchase, and proposal
