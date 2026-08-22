@@ -77,6 +77,8 @@ import type {
 import { CreativeAssetSchema, CreativeManifestSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getCanonicalBase } from './canonical-base.js';
+import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
+import { getPromotedFormatShapes } from '../services/format-shape-promotion-registry.js';
 import {
   evaluateTrainingProposal,
   proposalCapabilitiesForProfile,
@@ -113,13 +115,17 @@ type InlineCreativeInput = {
   format_kind?: string;
   format_option_ref?: Record<string, unknown>;
   assets?: Record<string, unknown>;
+  component_assets?: Record<string, Record<string, unknown>>;
   manifest?: CreativeManifest;
   weight?: number;
   placement_refs?: Array<Record<string, unknown>>;
   placement_ids?: string[];
 };
+type TrainingCanonicalFormatKind = CanonicalFormatKind
+  | 'seller_rendered_stateful_display'
+  | 'coordinated_placements';
 type InlineCreativeIdentity =
-  | { kind: 'canonical'; formatKind: CanonicalFormatKind; formatOptionRef?: Record<string, unknown> }
+  | { kind: 'canonical'; formatKind: TrainingCanonicalFormatKind; formatOptionRef?: Record<string, unknown> }
   | { kind: 'legacy'; formatId: FormatID; formatOptionRef?: Record<string, unknown> };
 type ValidatedInlineCreative = {
   creative: InlineCreativeInput;
@@ -232,6 +238,7 @@ type ValidateInputArgs = ToolArgs & {
     format_id?: FormatID;
     format_option_ref?: Record<string, unknown>;
     assets?: Record<string, unknown>;
+    component_assets?: Record<string, Record<string, unknown>>;
   };
   targets?: ValidateInputTarget[];
 };
@@ -246,6 +253,12 @@ type ValidateInputResult = {
   target: ValidateInputTarget;
   result_kind: 'validated_pass' | 'validated_fail' | 'unvalidatable_nondeterministic';
   violations?: ValidateInputViolation[];
+  /**
+   * Non-blocking observations (e.g. LEAN policy advisories) that do not
+   * affect result_kind. May be present alongside validated_pass,
+   * validated_fail, or unvalidatable_nondeterministic.
+   */
+  warnings?: ValidateInputViolation[];
 };
 type CanonicalSlot = {
   asset_group_id: string;
@@ -356,7 +369,74 @@ const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
     { asset_group_id: 'offering_ref', asset_type: 'text' },
     { asset_group_id: 'landing_page_url', asset_type: 'url' },
   ],
+  seller_rendered_stateful_display: [
+    { asset_group_id: 'state_canvases', asset_type: 'image', min: 1 },
+    { asset_group_id: 'logo', asset_type: 'image' },
+    { asset_group_id: 'imagery', asset_type: 'image', min: 0 },
+    { asset_group_id: 'headline', asset_type: 'text' },
+    { asset_group_id: 'messaging', asset_type: 'text' },
+    { asset_group_id: 'cta', asset_type: 'text' },
+    { asset_group_id: 'legal_text', asset_type: 'text' },
+    { asset_group_id: 'video_main', asset_type: 'video' },
+    // landing_page_url's required-ness depends on the declared `clickthrough`
+    // policy (see the `clickthrough_policy` semantic check), not a static flag.
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+    { asset_group_id: 'state_click_urls', asset_type: 'url', min: 0 },
+    { asset_group_id: 'layered_source', asset_type: 'zip' },
+    { asset_group_id: 'font_files', asset_type: 'zip' },
+  ],
+  coordinated_placements: [],
 };
+// Canonicals that narrow their accepted slot asset_type set beyond "union of
+// default slots' types plus trackers" (see allowedAssetTypesForCanonical).
+// Mirrors each canonical schema's own `x-adcp-validation.allowed_slot_asset_types`.
+const CANONICAL_ALLOWED_SLOT_ASSET_TYPES: Record<string, string[]> = {
+  seller_rendered_stateful_display: ['image', 'video', 'text', 'url', 'zip', 'pixel_tracker'],
+};
+// Cross-cutting asset types every canonical accepts regardless of its own
+// default slots: impression/click/viewability trackers, plus `brief` for the
+// asset_source: agent_synthesized / synthesis_nondeterministic pattern that
+// any canonical can opt into via a `creative_brief`-style slots override.
+const CANONICAL_UNIVERSALLY_ALLOWED_ASSET_TYPES = ['pixel_tracker', 'vast_tracker', 'daast_tracker', 'brief'];
+
+/**
+ * Slot asset_type widening guard. A declaration's effective slots (its own
+ * defaults, or a `params.slots` override) MUST NOT introduce an asset_type
+ * outside what the canonical allows. Canonicals with an explicit allowlist
+ * (currently only seller_rendered_stateful_display) use that list; every
+ * other canonical allows the union of its own default slots' asset_types
+ * plus the cross-cutting types above. Executable types (javascript, html,
+ * css, webhook) are therefore only accepted by canonicals whose own defaults
+ * already use them.
+ */
+function allowedAssetTypesForCanonical(kind: string): Set<string> {
+  const explicit = CANONICAL_ALLOWED_SLOT_ASSET_TYPES[kind];
+  if (explicit) return new Set(explicit);
+  const defaultTypes = (CANONICAL_FORMAT_SLOTS[kind] ?? []).map(slot => slot.asset_type);
+  return new Set([...defaultTypes, ...CANONICAL_UNIVERSALLY_ALLOWED_ASSET_TYPES]);
+}
+
+function slotAssetTypeAllowlistViolations(
+  formatKind: string,
+  declaredSlots: unknown,
+  fieldPrefix: string,
+): ValidateInputViolation[] {
+  const slots = normalizeCanonicalSlots(declaredSlots);
+  if (!slots) return [];
+  const allowed = allowedAssetTypesForCanonical(formatKind);
+  const violations: ValidateInputViolation[] = [];
+  for (const [index, slot] of slots.entries()) {
+    if (!allowed.has(slot.asset_type)) {
+      violations.push({
+        rule: 'allowed_slot_asset_types',
+        field: `${fieldPrefix}[${index}].asset_type`,
+        expected: [...allowed],
+        predicted: slot.asset_type,
+      });
+    }
+  }
+  return violations;
+}
 const BUILD_CREATIVE_FORMAT_ALIASES: Record<string, string> = {
   display_300x250_generative: 'display_300x250',
   display_728x90_generative: 'display_728x90',
@@ -496,6 +576,7 @@ function persistInlineCreatives(
           ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
         }),
       ...(manifest && { assets: manifest.assets }),
+      ...(manifest?.component_assets && { componentAssets: manifest.component_assets }),
       name: creative.name ?? existing?.name,
       status: existing?.status ?? 'approved',
       syncedAt,
@@ -1555,18 +1636,39 @@ function creativeCoversPackageFormat(
 
   const requiredOptionId = requirement.format_option_id;
   const ref = creative.formatOptionRef ?? creative.manifest?.format_option_ref;
+  let hasMatchingOptionRef = false;
   if (requiredOptionId && isRecord(ref)) {
     if (ref.format_option_id !== requiredOptionId) return false;
-    return !requirement.publisher_domain || ref.publisher_domain === requirement.publisher_domain;
+    if (requirement.publisher_domain && ref.publisher_domain !== requirement.publisher_domain) return false;
+    hasMatchingOptionRef = true;
   }
-  if (requiredOptionId && sameKindRequirementCount > 1) return false;
+  if (requiredOptionId && !hasMatchingOptionRef && sameKindRequirementCount > 1) return false;
 
-  // An explicit option reference is the strongest coverage proof. Portable
-  // manifests may omit it, so for an unambiguous kind fall back to validating
-  // the actual manifest slots against the frozen package declaration.
+  // Existing canonical formats use an explicit matching option reference as
+  // sufficient coverage proof. The product-bound 3.2 formats additionally
+  // validate their state/component contract below.
+  if (hasMatchingOptionRef
+    && requiredKind !== 'seller_rendered_stateful_display'
+    && requiredKind !== 'coordinated_placements') return true;
+
+  // Portable manifests may omit an option reference, so for an unambiguous
+  // kind fall back to validating the actual manifest slots against the frozen
+  // package declaration. Product-bound formats always take this path.
   const manifest = creative.manifest;
   if (!manifest) return !requiredOptionId && !requirement.params;
   const params = isRecord(requirement.params) ? requirement.params : {};
+  if (requiredKind === 'coordinated_placements') {
+    const components = Array.isArray(params.components) ? params.components.filter(isRecord) : [];
+    const componentAssets = isRecord(manifest.component_assets) ? manifest.component_assets : {};
+    const declaredIds = new Set(components.flatMap(component =>
+      typeof component.component_id === 'string' ? [component.component_id] : []));
+    if (Object.keys(componentAssets).some(componentId => !declaredIds.has(componentId))) return false;
+    if (components.some(component => component.required === true
+      && (typeof component.component_id !== 'string' || !isRecord(componentAssets[component.component_id])))) return false;
+    const sharedSlots = Array.isArray(params.shared_slots) ? params.shared_slots.filter(isRecord) : [];
+    if (sharedSlots.some(slot => slot.required === true
+      && (typeof slot.asset_group_id !== 'string' || manifest.assets?.[slot.asset_group_id] === undefined))) return false;
+  }
   const slots = normalizeCanonicalSlots(requirement.slots)
     ?? normalizeCanonicalSlots(params.slots)
     ?? CANONICAL_FORMAT_SLOTS[requiredKind ?? '']
@@ -2742,6 +2844,21 @@ function validatedCreativeIdentity(
 
   if (hasCanonicalIdentity) {
     const formatKind = canonicalFormatKind(creative.format_kind);
+    const usesProductBoundSchema = formatKind === 'seller_rendered_stateful_display'
+      || formatKind === 'coordinated_placements';
+    if (usesProductBoundSchema) {
+      if (creative.format_option_ref !== undefined && !isRecord(creative.format_option_ref)) {
+        return { ok: false, message: 'has an invalid canonical format_option_ref' };
+      }
+      return {
+        ok: true,
+        identity: {
+          kind: 'canonical',
+          formatKind,
+          ...(isRecord(creative.format_option_ref) && { formatOptionRef: creative.format_option_ref }),
+        },
+      };
+    }
     const parsed = CreativeAssetSchema.safeParse({
       creative_id: '__identity_validation__',
       name: 'Identity validation',
@@ -2829,6 +2946,17 @@ function normalizedCreativeManifest(
     ?? existing?.manifest?.assets
     ?? existing?.assets;
   if (!assets) return undefined;
+  const inlineComponentAssets = isRecord(creative.component_assets)
+    ? creative.component_assets as CreativeManifest['component_assets']
+    : undefined;
+  const manifestComponentAssets = isRecord(creative.manifest) && isRecord(creative.manifest.component_assets)
+    ? creative.manifest.component_assets as CreativeManifest['component_assets']
+    : undefined;
+  const componentAssets = inlineComponentAssets
+    ?? manifestComponentAssets
+    ?? (identity.kind === 'canonical' && identity.formatKind === 'coordinated_placements'
+      ? existing?.manifest?.component_assets ?? existing?.componentAssets
+      : undefined);
 
   const sourceManifest = isRecord(creative.manifest)
     ? creative.manifest
@@ -2840,6 +2968,7 @@ function normalizedCreativeManifest(
     format_kind: _staleFormatKind,
     format_option_ref: _staleFormatOptionRef,
     assets: _staleAssets,
+    component_assets: _staleComponentAssets,
     ...manifestMetadata
   } = sourceManifest ?? {};
 
@@ -2849,12 +2978,14 @@ function normalizedCreativeManifest(
       format_kind: identity.formatKind,
       ...(identity.formatOptionRef && { format_option_ref: identity.formatOptionRef }),
       assets,
+      ...(componentAssets && { component_assets: componentAssets }),
     }
     : {
       ...manifestMetadata,
       format_id: identity.formatId,
       ...(identity.formatOptionRef && { format_option_ref: identity.formatOptionRef }),
       assets,
+      ...(componentAssets && { component_assets: componentAssets }),
     };
 }
 
@@ -4080,7 +4211,7 @@ function legacyFormatRef(value: unknown): FormatID | undefined {
   };
 }
 
-function canonicalFormatKind(value: unknown): CanonicalFormatKind | undefined {
+function canonicalFormatKind(value: unknown): TrainingCanonicalFormatKind | undefined {
   switch (value) {
     case 'image':
     case 'html5':
@@ -4094,6 +4225,8 @@ function canonicalFormatKind(value: unknown): CanonicalFormatKind | undefined {
     case 'native_in_feed':
     case 'responsive_creative':
     case 'agent_placement':
+    case 'seller_rendered_stateful_display':
+    case 'coordinated_placements':
     case 'custom':
       return value;
     default:
@@ -4128,7 +4261,9 @@ function requestScopedLegacyRoutes(selector: Readonly<Record<string, unknown>>):
       }
       if (refs.length === 0) continue;
       mappedDeclarations.push({
-        format_kind: formatKind,
+        // The installed 3.1 SDK type predates the two experimental 3.2 kinds;
+        // the runtime projection intentionally carries them through.
+        format_kind: formatKind as CanonicalFormatKind,
         params: isRecord(declaration.params) ? declaration.params : {},
         format_option_id: formatOptionId,
         ...(typeof declaration.publisher_domain === 'string' && { publisher_domain: declaration.publisher_domain }),
@@ -4876,18 +5011,40 @@ type CanonicalFormatRef = { agent_url?: string; id?: string };
 type CanonicalFormatOption = {
   format_option_id?: string;
   format_kind?: string;
+  format_shape?: string;
   v1_format_ref?: CanonicalFormatRef[];
 };
 
 function collectCanonicalFormatAdvisories(products: Product[]): TaskError[] {
   const errors: TaskError[] = [];
+  const promotedFormatShapes = getPromotedFormatShapes();
 
   for (let productIndex = 0; productIndex < products.length; productIndex++) {
     const product = products[productIndex] as Product & {
       format_ids?: CanonicalFormatRef[];
       format_options?: CanonicalFormatOption[];
     };
-    if (!Array.isArray(product.format_ids) || !Array.isArray(product.format_options)) continue;
+    if (!Array.isArray(product.format_options)) continue;
+    product.format_options.forEach((option, optionIndex) => {
+      if (option.format_kind !== 'custom' || typeof option.format_shape !== 'string') return;
+      const promotion = promotedFormatShapes[option.format_shape];
+      if (!promotion) return;
+      errors.push({
+        code: 'FORMAT_SHAPE_PROMOTED',
+        message: `Product ${product.product_id} uses legacy custom format shape ${option.format_shape}; migrate to ${promotion.promoted_to}.`,
+        field: `products[${productIndex}].format_options[${optionIndex}].format_shape`,
+        recovery: 'correctable',
+        source: 'producer',
+        details: {
+          product_id: product.product_id,
+          format_shape: option.format_shape,
+          promoted_to: promotion.promoted_to,
+          promotion_release: promotion.promotion_release,
+          transition_end: promotion.transition_end,
+        },
+      });
+    });
+    if (!Array.isArray(product.format_ids)) continue;
     if (product.format_ids.length === 0 || product.format_options.length === 0) continue;
 
     const declaredRefs = new Set(
@@ -8508,7 +8665,26 @@ function schemaIssueField(path: Array<string | number>): string {
   return `manifest.${path.map(part => typeof part === 'number' ? `[${part}]` : part).join('.')}`.replace(/\.\[/g, '[');
 }
 
-function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): ValidateInputViolation[] {
+function jsonPointerPath(pointer: string): Array<string | number> {
+  if (!pointer) return [];
+  return pointer.slice(1).split('/').map(part => {
+    const decoded = part.replace(/~1/g, '/').replace(/~0/g, '~');
+    return /^\d+$/.test(decoded) ? Number(decoded) : decoded;
+  });
+}
+
+async function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): Promise<ValidateInputViolation[]> {
+  if (manifest.format_kind === 'seller_rendered_stateful_display'
+    || manifest.format_kind === 'coordinated_placements'
+    || manifest.component_assets !== undefined) {
+    const result = await validateProtocolSchema('/schemas/core/creative-manifest.json', manifest);
+    return result.errors.map(issue => ({
+      rule: 'schema',
+      field: schemaIssueField(jsonPointerPath(issue.instancePath)),
+      expected: issue.message ?? 'valid creative manifest',
+      predicted: issue.keyword,
+    }));
+  }
   const parsed = CreativeManifestSchema.safeParse(manifest);
   if (parsed.success) return [];
   return parsed.error.issues.map(issue => ({
@@ -8569,6 +8745,9 @@ function validateAssetUrls(manifest: NonNullable<ValidateInputArgs['manifest']>)
   const seen = new WeakSet<object>();
   for (const [slotId, slotValue] of Object.entries(assets)) {
     collectAssetUrlViolations(slotValue, `assets.${slotId}`, violations, seen);
+  }
+  for (const [componentId, componentAssets] of Object.entries(manifest.component_assets ?? {})) {
+    collectAssetUrlViolations(componentAssets, `component_assets.${componentId}`, violations, seen);
   }
   return violations;
 }
@@ -8639,6 +8818,1111 @@ function validateManifestSlots(
   }
 
   return violations;
+}
+
+type SrsdExpectedCanvas = {
+  width?: number;
+  widthRange?: [number, number];
+  widthMode?: string;
+  height?: number;
+  heightRange?: [number, number];
+  viewportHeightPercent?: number;
+};
+
+type SemanticCheckResult = {
+  violations: ValidateInputViolation[];
+  warnings: ValidateInputViolation[];
+};
+
+function effectiveSrsdSlots(params: Record<string, unknown>): CanonicalSlot[] {
+  return normalizeCanonicalSlots(params.slots) ?? CANONICAL_FORMAT_SLOTS.seller_rendered_stateful_display ?? [];
+}
+
+/** Whether `target` is reachable from `start` by following declared transitions. */
+function srsdTransitionGraphReaches(adjacency: Map<string, string[]>, start: string, target: string): boolean {
+  const visited = new Set<string>([start]);
+  const queue = [start];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current === target) return true;
+    for (const next of adjacency.get(current) ?? []) {
+      if (visited.has(next)) continue;
+      visited.add(next);
+      queue.push(next);
+    }
+  }
+  return false;
+}
+
+function validateSellerRenderedStatefulDisplayManifest(
+  params: Record<string, unknown>,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): SemanticCheckResult {
+  const violations: ValidateInputViolation[] = [];
+  const warnings: ValidateInputViolation[] = [];
+  const assets = manifest.assets ?? {};
+  const expected = new Map<string, SrsdExpectedCanvas>();
+  const stateIds = new Set<string>();
+  const stateAnchoring = new Map<string, string>();
+  const states = Array.isArray(params.states) ? params.states : [];
+  const supplyMode = typeof params.supply_mode === 'string' ? params.supply_mode : 'components';
+
+  for (const [stateIndex, rawState] of states.entries()) {
+    if (!isRecord(rawState)) continue;
+    const state = rawState;
+    if (typeof state.state_id !== 'string') continue;
+    if (stateIds.has(state.state_id)) {
+      violations.push({
+        rule: 'unique_state_id',
+        field: `params.states[${stateIndex}].state_id`,
+        expected: 'unique state_id',
+        predicted: state.state_id,
+      });
+    }
+    stateIds.add(state.state_id);
+    if (typeof state.anchoring === 'string') stateAnchoring.set(state.state_id, state.anchoring);
+
+    const motion = typeof state.motion === 'string' ? state.motion : 'static';
+    const hasMaxAnimation = typeof state.max_animation_s === 'number';
+    if (motion === 'animated' && !hasMaxAnimation) {
+      violations.push({
+        rule: 'motion_animation_bound',
+        field: `params.states[${stateIndex}].max_animation_s`,
+        expected: 'required when motion is animated',
+        predicted: undefined,
+      });
+    } else if (motion !== 'animated' && hasMaxAnimation) {
+      violations.push({
+        rule: 'motion_animation_bound',
+        field: `params.states[${stateIndex}].max_animation_s`,
+        expected: 'forbidden unless motion is animated',
+        predicted: state.max_animation_s,
+      });
+    }
+
+    const breakpointIds = new Set<string>();
+    const breakpoints = Array.isArray(state.breakpoints) ? state.breakpoints : [];
+    for (const [breakpointIndex, rawBreakpoint] of breakpoints.entries()) {
+      if (!isRecord(rawBreakpoint)) continue;
+      const breakpoint = rawBreakpoint;
+      if (typeof breakpoint.breakpoint_id !== 'string') continue;
+      if (breakpointIds.has(breakpoint.breakpoint_id)) {
+        violations.push({
+          rule: 'unique_breakpoint_id',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].breakpoint_id`,
+          expected: 'unique within state',
+          predicted: breakpoint.breakpoint_id,
+        });
+      }
+      breakpointIds.add(breakpoint.breakpoint_id);
+
+      const widthRange = Array.isArray(breakpoint.width_range)
+        && breakpoint.width_range.length === 2
+        && breakpoint.width_range.every(value => typeof value === 'number')
+        ? breakpoint.width_range as [number, number]
+        : undefined;
+      if (widthRange && widthRange[0] > widthRange[1]) {
+        violations.push({
+          rule: 'width_range_order',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].width_range`,
+          expected: '[minimum, maximum] with minimum <= maximum',
+          predicted: widthRange,
+        });
+      }
+      const heightRange = Array.isArray(breakpoint.height_range)
+        && breakpoint.height_range.length === 2
+        && breakpoint.height_range.every(value => typeof value === 'number')
+        ? breakpoint.height_range as [number, number]
+        : undefined;
+      if (heightRange && heightRange[0] > heightRange[1]) {
+        violations.push({
+          rule: 'height_range_order',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].height_range`,
+          expected: '[minimum, maximum] with minimum <= maximum',
+          predicted: heightRange,
+        });
+      }
+
+      const fixedWidth = typeof breakpoint.width === 'number' ? breakpoint.width : undefined;
+      const fixedHeight = typeof breakpoint.height === 'number' ? breakpoint.height : undefined;
+      if (typeof breakpoint.canvas_aspect_ratio === 'string' && fixedWidth !== undefined && fixedHeight !== undefined) {
+        const ratioParts = breakpoint.canvas_aspect_ratio.split(':').map(Number);
+        if (ratioParts.length === 2 && ratioParts.every(Number.isFinite) && ratioParts[1] !== 0) {
+          const expectedRatio = ratioParts[0] / ratioParts[1];
+          const actualRatio = fixedWidth / fixedHeight;
+          if (Math.abs(actualRatio - expectedRatio) / expectedRatio > 0.01) {
+            violations.push({
+              rule: 'aspect_consistency',
+              field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].canvas_aspect_ratio`,
+              expected: breakpoint.canvas_aspect_ratio,
+              predicted: `${fixedWidth}:${fixedHeight}`,
+            });
+          }
+        }
+      }
+
+      const isFluid = typeof breakpoint.width_mode === 'string' || typeof breakpoint.viewport_height_percent === 'number';
+      if (isFluid && supplyMode === 'rendered_canvases') {
+        violations.push({
+          rule: 'fluid_breakpoint_supply',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}]`,
+          expected: 'fixed or ranged sizing when supply_mode is rendered_canvases',
+          predicted: { width_mode: breakpoint.width_mode, viewport_height_percent: breakpoint.viewport_height_percent },
+        });
+      }
+
+      expected.set(`${state.state_id}:${breakpoint.breakpoint_id}`, {
+        ...(fixedWidth !== undefined && { width: fixedWidth }),
+        ...(widthRange && { widthRange }),
+        ...(typeof breakpoint.width_mode === 'string' && { widthMode: breakpoint.width_mode }),
+        ...(fixedHeight !== undefined && { height: fixedHeight }),
+        ...(heightRange && { heightRange }),
+        ...(typeof breakpoint.viewport_height_percent === 'number' && { viewportHeightPercent: breakpoint.viewport_height_percent }),
+      });
+    }
+
+    const slotBindings = Array.isArray(state.slot_bindings) ? state.slot_bindings : [];
+    if (slotBindings.length > 0) {
+      const effectiveSlotIds = new Set(effectiveSrsdSlots(params).map(slot => slot.asset_group_id));
+      for (const [bindingIndex, slotId] of slotBindings.entries()) {
+        if (typeof slotId !== 'string' || !effectiveSlotIds.has(slotId)) {
+          violations.push({
+            rule: 'slot_binding_resolution',
+            field: `params.states[${stateIndex}].slot_bindings[${bindingIndex}]`,
+            expected: [...effectiveSlotIds],
+            predicted: slotId,
+          });
+        }
+      }
+    }
+
+    if (state.anchoring === 'overlay' || state.anchoring === 'fullscreen_overlay') {
+      const userControls = isRecord(params.user_controls) ? params.user_controls : {};
+      const dismissible = userControls.dismissible === true;
+      const closeAffordance = state.close_affordance === true;
+      if (!dismissible && !closeAffordance) {
+        violations.push({
+          rule: 'dismissibility_floor',
+          field: `params.states[${stateIndex}]`,
+          expected: 'user_controls.dismissible true or close_affordance true',
+          predicted: { dismissible: userControls.dismissible, close_affordance: state.close_affordance },
+        });
+      }
+    }
+  }
+
+  const transitions = Array.isArray(params.transitions) ? params.transitions : [];
+  if (states.length === 1 && transitions.length > 0) {
+    violations.push({
+      rule: 'single_state_shape',
+      field: 'params.transitions',
+      expected: 'absent or empty for a single-state unit',
+      predicted: transitions.length,
+    });
+  } else if (states.length > 1 && transitions.length === 0) {
+    violations.push({
+      rule: 'single_state_shape',
+      field: 'params.transitions',
+      expected: 'present and non-empty when more than one state is declared',
+      predicted: transitions,
+    });
+  }
+
+  const initialStateId = typeof params.initial_state_id === 'string' ? params.initial_state_id : undefined;
+  if (!initialStateId || !stateIds.has(initialStateId)) {
+    violations.push({
+      rule: 'initial_state_resolution',
+      field: 'params.initial_state_id',
+      expected: [...stateIds],
+      predicted: params.initial_state_id,
+    });
+  }
+
+  const effectiveSlots = effectiveSrsdSlots(params);
+  const hasVideoMainSlot = effectiveSlots.some(slot => slot.asset_group_id === 'video_main');
+
+  const transitionIds = new Set<string>();
+  const exitCauses = new Map<string, string>();
+  const adjacency = new Map<string, string[]>();
+  const timerEdges: Array<{ from: string; to: string; delayMs?: number; field: string }> = [];
+  for (const [transitionIndex, rawTransition] of transitions.entries()) {
+    if (!isRecord(rawTransition)) continue;
+    const transitionId = typeof rawTransition.transition_id === 'string'
+      ? rawTransition.transition_id
+      : undefined;
+    if (transitionId && transitionIds.has(transitionId)) {
+      violations.push({
+        rule: 'unique_transition_id',
+        field: `params.transitions[${transitionIndex}].transition_id`,
+        expected: 'unique transition_id',
+        predicted: transitionId,
+      });
+    }
+    if (transitionId) transitionIds.add(transitionId);
+    const fromStateId = typeof rawTransition.from_state_id === 'string'
+      ? rawTransition.from_state_id
+      : undefined;
+    const toStateId = typeof rawTransition.to_state_id === 'string'
+      ? rawTransition.to_state_id
+      : undefined;
+    const trigger = typeof rawTransition.trigger === 'string' ? rawTransition.trigger : undefined;
+    const input = typeof rawTransition.input === 'string' ? rawTransition.input : undefined;
+    const transitionMode = typeof rawTransition.transition_mode === 'string' ? rawTransition.transition_mode : undefined;
+    const delayMs = typeof rawTransition.delay_ms === 'number' ? rawTransition.delay_ms : undefined;
+    const mediaEvent = typeof rawTransition.media_event === 'string' ? rawTransition.media_event : undefined;
+
+    if (trigger === 'scroll_progress') {
+      const scrollStart = typeof rawTransition.scroll_start_percent === 'number'
+        ? rawTransition.scroll_start_percent
+        : undefined;
+      const scrollEnd = typeof rawTransition.scroll_end_percent === 'number'
+        ? rawTransition.scroll_end_percent
+        : undefined;
+      if (scrollStart === undefined || scrollEnd === undefined || scrollStart >= scrollEnd) {
+        violations.push({
+          rule: 'scroll_progress_bounds',
+          field: `params.transitions[${transitionIndex}]`,
+          expected: 'scroll_start_percent < scroll_end_percent',
+          predicted: { scroll_start_percent: scrollStart, scroll_end_percent: scrollEnd },
+        });
+      }
+    }
+
+    if (transitionMode === 'scroll_linked' && trigger !== 'scroll_progress') {
+      violations.push({
+        rule: 'scroll_linked_binding',
+        field: `params.transitions[${transitionIndex}].transition_mode`,
+        expected: 'scroll_linked is valid only with trigger scroll_progress',
+        predicted: trigger,
+      });
+    }
+
+    if (rawTransition.direction !== undefined && trigger !== 'scroll_threshold') {
+      violations.push({
+        rule: 'scroll_threshold_direction',
+        field: `params.transitions[${transitionIndex}].direction`,
+        expected: 'direction is valid only on scroll_threshold transitions',
+        predicted: trigger,
+      });
+    }
+
+    // Exits from a state must be deterministic: two transitions out of the
+    // same state may not share an identical cause tuple. Distinct causes
+    // (tap vs hover, down-scroll vs up-scroll) may coexist — the seller
+    // runtime arms whichever inputs the device supports.
+    if (fromStateId && trigger) {
+      const direction = typeof rawTransition.direction === 'string' ? rawTransition.direction : 'down';
+      const causeParts: Record<string, string> = { trigger };
+      if (trigger === 'user_action') causeParts.input = input ?? '';
+      if (trigger === 'media_event') causeParts.media_event = mediaEvent ?? '';
+      if (trigger === 'scroll_threshold') causeParts.direction = direction;
+      const causeKey = `${fromStateId}|${JSON.stringify(causeParts)}`;
+      const priorTransition = exitCauses.get(causeKey);
+      if (priorTransition !== undefined) {
+        violations.push({
+          rule: 'transition_exit_determinism',
+          field: `params.transitions[${transitionIndex}]`,
+          expected: `at most one transition out of state "${fromStateId}" per cause (trigger/input/media_event/direction)`,
+          predicted: { conflicting_with: priorTransition, cause: causeParts },
+        });
+      } else {
+        exitCauses.set(causeKey, transitionId ?? `transitions[${transitionIndex}]`);
+      }
+    }
+
+    if (trigger === 'media_event') {
+      if (mediaEvent !== 'video_start' && mediaEvent !== 'video_complete') {
+        violations.push({
+          rule: 'media_event_field_required',
+          field: `params.transitions[${transitionIndex}].media_event`,
+          expected: ['video_start', 'video_complete'],
+          predicted: mediaEvent,
+        });
+      }
+      if (!hasVideoMainSlot) {
+        violations.push({
+          rule: 'media_event_video_main_slot_required',
+          field: `params.transitions[${transitionIndex}]`,
+          expected: 'a declared video_main slot',
+          predicted: effectiveSlots.map(slot => slot.asset_group_id),
+        });
+      }
+    }
+
+    if (!fromStateId || !toStateId || !stateIds.has(fromStateId) || !stateIds.has(toStateId) || fromStateId === toStateId) {
+      violations.push({
+        rule: 'transition_state_resolution',
+        field: `params.transitions[${transitionIndex}]`,
+        expected: { from_state_id: [...stateIds], to_state_id: [...stateIds], distinct: true },
+        predicted: { from_state_id: fromStateId, to_state_id: toStateId },
+      });
+      continue;
+    }
+
+    const outgoing = adjacency.get(fromStateId) ?? [];
+    outgoing.push(toStateId);
+    adjacency.set(fromStateId, outgoing);
+
+    if (trigger === 'timer' || trigger === 'in_view_timer') {
+      timerEdges.push({ from: fromStateId, to: toStateId, delayMs, field: `params.transitions[${transitionIndex}].delay_ms` });
+    }
+
+    const toAnchoring = stateAnchoring.get(toStateId);
+    const isOverlayAnchoring = toAnchoring === 'overlay' || toAnchoring === 'fullscreen_overlay';
+    if (trigger !== 'user_action' && isOverlayAnchoring) {
+      warnings.push({
+        rule: 'lean_policy_warnings',
+        field: `params.transitions[${transitionIndex}]`,
+        expected: 'user-initiated entry into overlay/fullscreen_overlay anchoring',
+        predicted: { trigger, to_state_id: toStateId, anchoring: toAnchoring },
+      });
+    }
+    if (trigger === 'user_action' && input === 'hover') {
+      warnings.push({
+        rule: 'lean_policy_warnings',
+        field: `params.transitions[${transitionIndex}].input`,
+        expected: 'non-hover input for user_action transitions (IAB New Ad Portfolio)',
+        predicted: 'hover',
+      });
+    }
+  }
+
+  if (states.length > 1 && initialStateId && stateIds.has(initialStateId)) {
+    const reachable = new Set<string>([initialStateId]);
+    const pending = [initialStateId];
+    while (pending.length > 0) {
+      const current = pending.shift()!;
+      for (const next of adjacency.get(current) ?? []) {
+        if (reachable.has(next)) continue;
+        reachable.add(next);
+        pending.push(next);
+      }
+    }
+    for (const stateId of stateIds) {
+      if (!reachable.has(stateId)) {
+        violations.push({
+          rule: 'state_reachability',
+          field: 'params.transitions',
+          expected: `path from ${initialStateId} to ${stateId}`,
+          predicted: [...reachable],
+        });
+      }
+    }
+
+    for (const edge of timerEdges) {
+      if ((edge.delayMs ?? 0) >= 1000) continue;
+      if (srsdTransitionGraphReaches(adjacency, edge.to, edge.from)) {
+        violations.push({
+          rule: 'timer_cycle_floor',
+          field: edge.field,
+          expected: 'delay_ms >= 1000 for timer/in_view_timer transitions participating in a state cycle',
+          predicted: edge.delayMs,
+        });
+      }
+    }
+  }
+
+  const hasStateCanvases = slotCount(assets, 'state_canvases') > 0;
+  const hasLayeredSource = slotCount(assets, 'layered_source') > 0;
+  if (supplyMode === 'components') {
+    if (hasStateCanvases) {
+      violations.push({
+        rule: 'supply_mode_manifest',
+        field: 'assets.state_canvases',
+        expected: 'forbidden in components supply_mode',
+        predicted: 'present',
+      });
+    }
+    if (hasLayeredSource) {
+      violations.push({
+        rule: 'supply_mode_manifest',
+        field: 'assets.layered_source',
+        expected: 'forbidden in components supply_mode',
+        predicted: 'present',
+      });
+    }
+  } else if (supplyMode === 'layered_source') {
+    if (!hasLayeredSource) {
+      violations.push({
+        rule: 'supply_mode_manifest',
+        field: 'assets.layered_source',
+        expected: 'required in layered_source supply_mode',
+        predicted: 'absent',
+      });
+    }
+    if (hasStateCanvases) {
+      violations.push({
+        rule: 'supply_mode_manifest',
+        field: 'assets.state_canvases',
+        expected: 'forbidden in layered_source supply_mode',
+        predicted: 'present',
+      });
+    }
+  } else if (supplyMode === 'rendered_canvases' && hasLayeredSource) {
+    violations.push({
+      rule: 'supply_mode_manifest',
+      field: 'assets.layered_source',
+      expected: 'forbidden in rendered_canvases supply_mode',
+      predicted: 'present',
+    });
+  }
+
+  if (supplyMode === 'rendered_canvases') {
+    const canvases = slotValues(assets, 'state_canvases');
+    const seen = new Set<string>();
+    for (const [index, rawCanvas] of canvases.entries()) {
+      if (!isRecord(rawCanvas)) continue;
+      const canvas = rawCanvas;
+      const key = `${String(canvas.state_id)}:${String(canvas.breakpoint_id)}`;
+      const target = expected.get(key);
+      if (!target) {
+        violations.push({
+          rule: 'state_canvas_extras',
+          field: `assets.state_canvases[${index}]`,
+          expected: [...expected.keys()],
+          predicted: key,
+        });
+        continue;
+      }
+      if (seen.has(key)) {
+        violations.push({
+          rule: 'state_canvas_extras',
+          field: `assets.state_canvases[${index}]`,
+          expected: 'exactly one canvas per state and breakpoint',
+          predicted: key,
+        });
+      }
+      seen.add(key);
+      if (target.width !== undefined && canvas.width !== target.width) {
+        violations.push({
+          rule: 'state_canvas_dimensions',
+          field: `assets.state_canvases[${index}].width`,
+          expected: target.width,
+          predicted: canvas.width,
+        });
+      }
+      if (target.widthRange && (
+        typeof canvas.width !== 'number'
+        || canvas.width < target.widthRange[0]
+        || canvas.width > target.widthRange[1]
+      )) {
+        violations.push({
+          rule: 'state_canvas_dimensions',
+          field: `assets.state_canvases[${index}].width`,
+          expected: target.widthRange,
+          predicted: canvas.width,
+        });
+      }
+      if (target.height !== undefined && canvas.height !== target.height) {
+        violations.push({
+          rule: 'state_canvas_dimensions',
+          field: `assets.state_canvases[${index}].height`,
+          expected: target.height,
+          predicted: canvas.height,
+        });
+      }
+      if (target.heightRange && (
+        typeof canvas.height !== 'number'
+        || canvas.height < target.heightRange[0]
+        || canvas.height > target.heightRange[1]
+      )) {
+        violations.push({
+          rule: 'state_canvas_dimensions',
+          field: `assets.state_canvases[${index}].height`,
+          expected: target.heightRange,
+          predicted: canvas.height,
+        });
+      }
+    }
+    for (const key of expected.keys()) {
+      if (!seen.has(key)) {
+        violations.push({
+          rule: 'state_canvas_coverage',
+          field: 'assets.state_canvases',
+          expected: key,
+        });
+      }
+    }
+  }
+
+  const constraints = Array.isArray(params.canvas_constraints) ? params.canvas_constraints : [];
+  for (const [constraintIndex, rawConstraint] of constraints.entries()) {
+    if (!isRecord(rawConstraint)) continue;
+    const constraint = rawConstraint;
+    const stateId = typeof constraint.state_id === 'string' ? constraint.state_id : undefined;
+    const breakpointId = typeof constraint.breakpoint_id === 'string' ? constraint.breakpoint_id : undefined;
+    const candidates = [...expected.entries()].filter(([key]) => {
+      const [candidateState, candidateBreakpoint] = key.split(':');
+      return (!stateId || candidateState === stateId) && (!breakpointId || candidateBreakpoint === breakpointId);
+    });
+    if (candidates.length === 0) {
+      violations.push({
+        rule: 'canvas_constraint_selector',
+        field: `params.canvas_constraints[${constraintIndex}]`,
+        expected: [...expected.keys()],
+        predicted: { state_id: stateId, breakpoint_id: breakpointId },
+      });
+      continue;
+    }
+    violations.push(...validateCanvasConstraintRegion(
+      constraint,
+      `params.canvas_constraints[${constraintIndex}]`,
+      candidates.map(([, canvas]) => ({
+        width: canvas.width ?? canvas.widthRange?.[0] ?? 0,
+        height: canvas.height ?? canvas.heightRange?.[0],
+      })),
+    ));
+  }
+  const durationRange = Array.isArray(params.duration_ms_range) ? params.duration_ms_range : undefined;
+  if (durationRange
+    && typeof durationRange[0] === 'number'
+    && typeof durationRange[1] === 'number'
+    && durationRange[0] > durationRange[1]) {
+    violations.push({
+      rule: 'duration_ms_range_order',
+      field: 'params.duration_ms_range',
+      expected: '[minimum, maximum] with minimum <= maximum',
+      predicted: durationRange,
+    });
+  }
+
+  const videoAssets = slotValues(assets, 'video_main');
+  if (videoAssets.length > 0) {
+    const video = videoAssets.length === 1 && isRecord(videoAssets[0]) ? videoAssets[0] : undefined;
+    const durationExact = typeof params.duration_ms_exact === 'number' ? params.duration_ms_exact : undefined;
+    const durationSatisfied = durationExact !== undefined
+      ? video?.duration_ms === durationExact
+      : (!durationRange || (
+          typeof video?.duration_ms === 'number'
+          && (typeof durationRange[0] !== 'number' || video.duration_ms >= durationRange[0])
+          && (typeof durationRange[1] !== 'number' || video.duration_ms <= durationRange[1])
+        ));
+    const ratioParts = typeof params.aspect_ratio === 'string'
+      ? params.aspect_ratio.split(':').map(Number)
+      : undefined;
+    const aspectSatisfied = !ratioParts || (
+      Number.isFinite(ratioParts[0])
+      && Number.isFinite(ratioParts[1])
+      && ratioParts[1] !== 0
+      && typeof video?.width === 'number'
+      && typeof video.height === 'number'
+      && video.height > 0
+      && Math.abs(video.width / video.height - ratioParts[0] / ratioParts[1]) < 0.01
+    );
+    const allowedContainers = Array.isArray(params.containers)
+      ? params.containers.filter((value): value is string => typeof value === 'string')
+      : [];
+    const containerSatisfied = allowedContainers.length === 0 || (
+      typeof video?.container_format === 'string'
+      && allowedContainers.includes(video.container_format)
+    );
+    if (!video || !durationSatisfied || !aspectSatisfied || !containerSatisfied) {
+      violations.push({
+        rule: 'seller_rendered_stateful_display_video_params',
+        field: 'assets.video_main',
+        expected: {
+          cardinality: 'exactly one video when supplied',
+          ...(durationExact !== undefined && { duration_ms_exact: durationExact }),
+          ...(durationExact === undefined && durationRange && { duration_ms_range: durationRange }),
+          ...(params.aspect_ratio !== undefined && { aspect_ratio: params.aspect_ratio }),
+          ...(allowedContainers.length > 0 && { containers: allowedContainers }),
+        },
+        predicted: videoAssets,
+      });
+    }
+  }
+
+  const clickthrough = typeof params.clickthrough === 'string' ? params.clickthrough : 'required';
+  const landingPageCount = slotCount(assets, 'landing_page_url');
+  const stateClickUrls = slotValues(assets, 'state_click_urls');
+  if (clickthrough === 'required' && landingPageCount === 0) {
+    violations.push({
+      rule: 'clickthrough_policy',
+      field: 'assets.landing_page_url',
+      expected: 'required when clickthrough is required',
+      predicted: 'absent',
+    });
+  }
+  if (clickthrough === 'none') {
+    if (landingPageCount > 0) {
+      violations.push({
+        rule: 'clickthrough_policy',
+        field: 'assets.landing_page_url',
+        expected: 'forbidden when clickthrough is none',
+        predicted: 'present',
+      });
+    }
+    if (stateClickUrls.length > 0) {
+      violations.push({
+        rule: 'clickthrough_policy',
+        field: 'assets.state_click_urls',
+        expected: 'forbidden when clickthrough is none',
+        predicted: 'present',
+      });
+    }
+  }
+  const seenClickStates = new Set<string>();
+  for (const [index, raw] of stateClickUrls.entries()) {
+    if (!isRecord(raw)) continue;
+    const stateId = typeof raw.state_id === 'string' ? raw.state_id : undefined;
+    if (!stateId || !stateIds.has(stateId)) {
+      violations.push({
+        rule: 'state_click_url_resolution',
+        field: `assets.state_click_urls[${index}].state_id`,
+        expected: [...stateIds],
+        predicted: stateId,
+      });
+      continue;
+    }
+    if (seenClickStates.has(stateId)) {
+      violations.push({
+        rule: 'state_click_url_resolution',
+        field: `assets.state_click_urls[${index}].state_id`,
+        expected: 'at most one entry per state',
+        predicted: stateId,
+      });
+      continue;
+    }
+    seenClickStates.add(stateId);
+  }
+
+  return { violations, warnings };
+}
+
+function validateCanvasConstraintRegion(
+  constraint: Record<string, unknown>,
+  field: string,
+  canvases: Array<{ width: number; height?: number }>,
+): ValidateInputViolation[] {
+  const region = constraint.region && typeof constraint.region === 'object' && !Array.isArray(constraint.region)
+    ? constraint.region as Record<string, unknown>
+    : undefined;
+  if (!region) return [];
+  const { x, y, width, height } = region;
+  if (![x, y, width, height].every(value => typeof value === 'number')) return [];
+  const unit = region.unit === 'percent' ? 'percent' : 'px';
+  const maxWidth = unit === 'percent' ? 100 : undefined;
+  const maxHeight = unit === 'percent' ? 100 : undefined;
+  if (maxWidth !== undefined && ((x as number) + (width as number) > maxWidth || (y as number) + (height as number) > maxHeight!)) {
+    return [{
+      rule: 'canvas_constraint_region_bounds',
+      field: `${field}.region`,
+      expected: 'percent region contained within 0..100 on both axes',
+      predicted: region,
+    }];
+  }
+  if (unit === 'px' && canvases.some(canvas =>
+    (x as number) + (width as number) > canvas.width
+    || (canvas.height !== undefined && (y as number) + (height as number) > canvas.height)
+  )) {
+    return [{
+      rule: 'canvas_constraint_region_bounds',
+      field: `${field}.region`,
+      expected: 'pixel region contained within every selected canvas',
+      predicted: region,
+    }];
+  }
+  return [];
+}
+
+type ComponentOptionResolution =
+  | { kind: 'resolved'; option: Record<string, unknown> }
+  | { kind: 'not_found' }
+  | { kind: 'invalid_scope'; scope: unknown };
+
+function resolveCoordinatedPlacementComponentOption(
+  product: Product,
+  ref: Record<string, unknown>,
+): ComponentOptionResolution {
+  if (ref.scope !== 'publisher' && ref.scope !== 'product') {
+    return { kind: 'invalid_scope', scope: ref.scope };
+  }
+  const options = (product as unknown as { format_options?: unknown[] }).format_options;
+  if (!Array.isArray(options) || typeof ref.format_option_id !== 'string') return { kind: 'not_found' };
+  const found = options.find((rawOption): rawOption is Record<string, unknown> => {
+    if (!isRecord(rawOption)) return false;
+    if (rawOption.format_option_id !== ref.format_option_id) return false;
+    if (ref.scope === 'publisher') {
+      return typeof ref.publisher_domain === 'string' && rawOption.publisher_domain === ref.publisher_domain;
+    }
+    return rawOption.publisher_domain === undefined;
+  });
+  return found ? { kind: 'resolved', option: found } : { kind: 'not_found' };
+}
+
+function canonicalSlotsForDeclaration(declaration: Record<string, unknown>): CanonicalSlot[] {
+  const kind = typeof declaration.format_kind === 'string' ? declaration.format_kind : '';
+  const declarationParams = declaration.params && typeof declaration.params === 'object' && !Array.isArray(declaration.params)
+    ? declaration.params as Record<string, unknown>
+    : {};
+  const slots = normalizeCanonicalSlots(declarationParams.slots) ?? CANONICAL_FORMAT_SLOTS[kind] ?? [];
+  const allowed = allowedAssetTypesForCanonical(kind);
+  return slots.filter(slot => allowed.has(slot.asset_type));
+}
+
+/** Lowercased placement-ref publisher domain, defaulting to the product's own publisher domain. */
+function normalizedPlacementDomain(explicit: unknown, product: Product): string {
+  const fallback = (product as unknown as { publisher_properties?: Array<{ publisher_domain?: string }> })
+    .publisher_properties?.[0]?.publisher_domain;
+  const domain = typeof explicit === 'string' && explicit.length > 0 ? explicit : (fallback ?? '');
+  return domain.toLowerCase();
+}
+
+function prefixComponentViolations(
+  componentId: string,
+  violations: ValidateInputViolation[],
+): ValidateInputViolation[] {
+  return violations.map(violation => ({
+    ...violation,
+    field: violation.field.startsWith('assets')
+      ? violation.field.replace(/^assets/, `component_assets.${componentId}`)
+      : violation.field,
+  }));
+}
+
+async function validateCoordinatedPlacementsDeclaration(
+  product: Product,
+  params: Record<string, unknown>,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): Promise<SemanticCheckResult> {
+  const violations: ValidateInputViolation[] = [];
+  const warnings: ValidateInputViolation[] = [];
+  const componentIds = new Set<string>();
+  const componentDeclarations = new Map<string, Record<string, unknown>>();
+  const requiredComponents = new Set<string>();
+  const productPlacements = Array.isArray((product as unknown as { placements?: unknown[] }).placements)
+    ? (product as unknown as { placements: unknown[] }).placements
+    : [];
+  const declaredPlacementKeys = new Set(productPlacements.flatMap(rawPlacement => {
+    if (!isRecord(rawPlacement) || typeof rawPlacement.placement_id !== 'string') return [];
+    const publisherDomain = normalizedPlacementDomain(rawPlacement.publisher_domain, product);
+    return [`${publisherDomain}:${rawPlacement.placement_id}`];
+  }));
+  const usedPlacementKeys = new Set<string>();
+  const components = Array.isArray(params.components) ? params.components : [];
+  if (components.length < 2) {
+    violations.push({
+      rule: 'coordinated_placements_components_required',
+      field: 'params.components',
+      expected: 'at least two components',
+      predicted: params.components,
+    });
+  }
+  for (const [componentIndex, rawComponent] of components.entries()) {
+    if (!rawComponent || typeof rawComponent !== 'object') continue;
+    const component = rawComponent as Record<string, unknown>;
+    if (typeof component.component_id !== 'string') continue;
+    if (componentIds.has(component.component_id)) {
+      violations.push({
+        rule: 'unique_component_id',
+        field: `params.components[${componentIndex}].component_id`,
+        expected: 'unique component_id',
+        predicted: component.component_id,
+      });
+    }
+    componentIds.add(component.component_id);
+    if (component.required === true) requiredComponents.add(component.component_id);
+    const placementRef = isRecord(component.placement_ref) ? component.placement_ref : undefined;
+    const placementId = typeof placementRef?.placement_id === 'string' ? placementRef.placement_id : undefined;
+    const publisherDomain = normalizedPlacementDomain(placementRef?.publisher_domain, product);
+    const placementKey = placementId ? `${publisherDomain}:${placementId}` : undefined;
+    if (!placementKey || !declaredPlacementKeys.has(placementKey)) {
+      violations.push({
+        rule: 'coordinated_component_placement_ref',
+        field: `params.components[${componentIndex}].placement_ref`,
+        expected: [...declaredPlacementKeys],
+        predicted: component.placement_ref,
+      });
+    } else if (usedPlacementKeys.has(placementKey)) {
+      violations.push({
+        rule: 'coordinated_component_placement_unique',
+        field: `params.components[${componentIndex}].placement_ref`,
+        expected: 'one component per declared placement',
+        predicted: component.placement_ref,
+      });
+    } else {
+      usedPlacementKeys.add(placementKey);
+    }
+    let declaration: Record<string, unknown> | undefined;
+    if (component.format_option_ref && typeof component.format_option_ref === 'object') {
+      const resolution = resolveCoordinatedPlacementComponentOption(
+        product,
+        component.format_option_ref as Record<string, unknown>,
+      );
+      if (resolution.kind === 'invalid_scope') {
+        violations.push({
+          rule: 'coordinated_component_format_option_ref_scope',
+          field: `params.components[${componentIndex}].format_option_ref.scope`,
+          expected: ['product', 'publisher'],
+          predicted: resolution.scope,
+        });
+      } else if (resolution.kind === 'not_found') {
+        violations.push({
+          rule: 'coordinated_component_format_option_ref',
+          field: `params.components[${componentIndex}].format_option_ref`,
+          expected: 'sibling format option on the same product',
+          predicted: component.format_option_ref,
+        });
+      } else {
+        declaration = resolution.option;
+        if (declaration.format_kind === 'custom' || declaration.format_kind === 'coordinated_placements') {
+          violations.push({
+            rule: 'coordinated_component_format_kind',
+            field: `params.components[${componentIndex}].format_option_ref`,
+            expected: 'non-custom, non-coordinated_placements sibling format',
+            predicted: declaration.format_kind,
+          });
+        }
+      }
+    } else if (typeof component.format_kind === 'string' && component.params && typeof component.params === 'object') {
+      declaration = { format_kind: component.format_kind, params: component.params };
+      if (component.format_kind === 'custom' || component.format_kind === 'coordinated_placements') {
+        violations.push({
+          rule: 'coordinated_component_format_kind',
+          field: `params.components[${componentIndex}].format_kind`,
+          expected: 'non-custom, non-coordinated_placements canonical format',
+          predicted: component.format_kind,
+        });
+      }
+    }
+    if (declaration && declaration.format_kind !== 'custom' && declaration.format_kind !== 'coordinated_placements') {
+      componentDeclarations.set(component.component_id, declaration);
+      const schemaResult = await validateProtocolSchema(
+        '/schemas/core/product-format-declaration.json',
+        declaration,
+      );
+      for (const issue of schemaResult.errors) {
+        violations.push({
+          rule: 'coordinated_component_params_schema',
+          field: `params.components[${componentIndex}]${issue.instancePath.replaceAll('/', '.')}`,
+          expected: issue.message ?? 'params valid for selected canonical',
+          predicted: issue.keyword,
+        });
+      }
+      const componentConstraints = Array.isArray(component.canvas_constraints) ? component.canvas_constraints : [];
+      const declarationParams = declaration.params && typeof declaration.params === 'object'
+        ? declaration.params as Record<string, unknown>
+        : {};
+      if (declarationParams.slots !== undefined) {
+        violations.push(...slotAssetTypeAllowlistViolations(
+          String(declaration.format_kind),
+          declarationParams.slots,
+          `params.components[${componentIndex}].params.slots`,
+        ));
+      }
+      const canvases: Array<{ width: number; height?: number; stateId?: string; breakpointId?: string }> = [];
+      if (typeof declarationParams.width === 'number') {
+        canvases.push({
+          width: declarationParams.width,
+          height: typeof declarationParams.height === 'number' ? declarationParams.height : undefined,
+        });
+      }
+      for (const [key, value] of Object.entries(declarationParams)) {
+        if ((key !== 'sizes' && !key.endsWith('_sizes')) || !Array.isArray(value)) continue;
+        for (const size of value) {
+          if (!isRecord(size) || typeof size.width !== 'number') continue;
+          canvases.push({
+            width: size.width,
+            height: typeof size.height === 'number' ? size.height : undefined,
+          });
+        }
+      }
+      if (declaration.format_kind === 'seller_rendered_stateful_display') {
+        for (const state of Array.isArray(declarationParams.states) ? declarationParams.states : []) {
+          if (!isRecord(state) || typeof state.state_id !== 'string') continue;
+          for (const breakpoint of Array.isArray(state.breakpoints) ? state.breakpoints : []) {
+            if (!isRecord(breakpoint)
+              || typeof breakpoint.breakpoint_id !== 'string'
+              || typeof breakpoint.width !== 'number') continue;
+            const heightRange = Array.isArray(breakpoint.height_range) ? breakpoint.height_range : [];
+            canvases.push({
+              width: breakpoint.width,
+              height: typeof breakpoint.height === 'number'
+                ? breakpoint.height
+                : (typeof heightRange[0] === 'number' ? heightRange[0] : undefined),
+              stateId: state.state_id,
+              breakpointId: breakpoint.breakpoint_id,
+            });
+          }
+        }
+      }
+      for (const [constraintIndex, rawConstraint] of componentConstraints.entries()) {
+        if (!rawConstraint || typeof rawConstraint !== 'object' || Array.isArray(rawConstraint)) continue;
+        const constraint = rawConstraint as Record<string, unknown>;
+        const hasSelector = constraint.state_id !== undefined || constraint.breakpoint_id !== undefined;
+        if (hasSelector && declaration.format_kind !== 'seller_rendered_stateful_display') {
+          violations.push({
+            rule: 'coordinated_canvas_constraint_selector',
+            field: `params.components[${componentIndex}].canvas_constraints[${constraintIndex}]`,
+            expected: 'state_id and breakpoint_id selectors only on seller_rendered_stateful_display components',
+            predicted: { state_id: constraint.state_id, breakpoint_id: constraint.breakpoint_id },
+          });
+        }
+        const selectedCanvases = declaration.format_kind === 'seller_rendered_stateful_display'
+          ? canvases.filter(canvas =>
+              (constraint.state_id === undefined || constraint.state_id === canvas.stateId)
+              && (constraint.breakpoint_id === undefined || constraint.breakpoint_id === canvas.breakpointId))
+          : canvases;
+        if (declaration.format_kind === 'seller_rendered_stateful_display' && selectedCanvases.length === 0) {
+          violations.push({
+            rule: 'coordinated_canvas_constraint_selector',
+            field: `params.components[${componentIndex}].canvas_constraints[${constraintIndex}]`,
+            expected: 'selector matching a declared state and breakpoint',
+            predicted: { state_id: constraint.state_id, breakpoint_id: constraint.breakpoint_id },
+          });
+        }
+        const region = isRecord(constraint.region) ? constraint.region : undefined;
+        if (region?.unit !== 'percent' && selectedCanvases.length === 0) {
+          violations.push({
+            rule: 'coordinated_canvas_constraint_canvas_required',
+            field: `params.components[${componentIndex}].canvas_constraints[${constraintIndex}].region`,
+            expected: 'a component declaration with finite canvas dimensions for pixel constraints',
+            predicted: declarationParams,
+          });
+        }
+        violations.push(...validateCanvasConstraintRegion(
+          constraint,
+          `params.components[${componentIndex}].canvas_constraints[${constraintIndex}]`,
+          selectedCanvases,
+        ));
+      }
+    }
+  }
+  if (requiredComponents.size === 0) {
+    violations.push({
+      rule: 'coordinated_placements_required_component',
+      field: 'params.components',
+      expected: 'at least one component with required: true',
+      predicted: components,
+    });
+  }
+  const sequenceValues = components
+    .map(rawComponent => (isRecord(rawComponent) && typeof rawComponent.sequence === 'number' ? rawComponent.sequence : undefined))
+    .filter((value): value is number => value !== undefined);
+  if (sequenceValues.length > 0) {
+    const uniqueSorted = [...new Set(sequenceValues)].sort((a, b) => a - b);
+    const contiguousFromOne = uniqueSorted.every((value, index) => value === index + 1);
+    if (!contiguousFromOne) {
+      violations.push({
+        rule: 'sequence_values',
+        field: 'params.components',
+        expected: 'sequence values starting at 1 and contiguous across the declared set',
+        predicted: sequenceValues,
+      });
+    }
+  }
+  const sharedSlots = Array.isArray(params.shared_slots) ? params.shared_slots : [];
+  const sharedSlotIds = new Set<string>();
+  const sharedByComponent = new Map<string, CanonicalSlot[]>();
+  for (const [slotIndex, rawSlot] of sharedSlots.entries()) {
+    if (!rawSlot || typeof rawSlot !== 'object') continue;
+    const slot = rawSlot as Record<string, unknown>;
+    const slotId = typeof slot.asset_group_id === 'string' ? slot.asset_group_id : undefined;
+    const slotType = typeof slot.asset_type === 'string' ? slot.asset_type : undefined;
+    if (slotId && sharedSlotIds.has(slotId)) {
+      violations.push({
+        rule: 'coordinated_shared_slot_unique',
+        field: `params.shared_slots[${slotIndex}].asset_group_id`,
+        expected: 'unique shared asset_group_id',
+        predicted: slotId,
+      });
+    }
+    if (slotId) sharedSlotIds.add(slotId);
+    const consumers = Array.isArray(slot.consumed_by) ? slot.consumed_by : [];
+    for (const [consumerIndex, consumer] of consumers.entries()) {
+      if (typeof consumer !== 'string') continue;
+      if (!componentIds.has(consumer)) {
+        violations.push({
+          rule: 'coordinated_shared_slot_consumer',
+          field: `params.shared_slots[${slotIndex}].consumed_by[${consumerIndex}]`,
+          expected: [...componentIds],
+          predicted: consumer,
+        });
+        continue;
+      }
+      if (!slotId || !slotType) continue;
+      const declaration = componentDeclarations.get(consumer);
+      const accepted = declaration
+        ? canonicalSlotsForDeclaration(declaration).find(candidate => candidate.asset_group_id === slotId)
+        : undefined;
+      if (!accepted || accepted.asset_type !== slotType) {
+        violations.push({
+          rule: 'coordinated_shared_slot_compatibility',
+          field: `params.shared_slots[${slotIndex}].consumed_by[${consumerIndex}]`,
+          expected: declaration ? canonicalSlotsForDeclaration(declaration) : [],
+          predicted: { component_id: consumer, asset_group_id: slotId, asset_type: slotType },
+        });
+        continue;
+      }
+      const list = sharedByComponent.get(consumer) ?? [];
+      list.push({ asset_group_id: slotId, asset_type: slotType });
+      sharedByComponent.set(consumer, list);
+    }
+  }
+
+  const componentAssets = manifest.component_assets ?? {};
+  for (const componentId of Object.keys(componentAssets)) {
+    if (!componentIds.has(componentId)) {
+      violations.push({
+        rule: 'coordinated_component_assets_declared',
+        field: `component_assets.${componentId}`,
+        expected: [...componentIds],
+        predicted: componentId,
+      });
+    }
+  }
+  for (const [componentId, declaration] of componentDeclarations) {
+    const supplied = componentAssets[componentId];
+    if (!supplied && requiredComponents.has(componentId)) {
+      violations.push({
+        rule: 'coordinated_component_assets_required',
+        field: `component_assets.${componentId}`,
+        expected: 'asset map for required component',
+      });
+      continue;
+    }
+    if (!supplied) continue;
+    const effectiveAssets = { ...supplied };
+    for (const sharedSlot of sharedByComponent.get(componentId) ?? []) {
+      if (Object.hasOwn(effectiveAssets, sharedSlot.asset_group_id)) {
+        violations.push({
+          rule: 'coordinated_shared_slot_duplicate_supply',
+          field: `component_assets.${componentId}.${sharedSlot.asset_group_id}`,
+          expected: 'shared asset supplied only at manifest.assets',
+          predicted: 'component-specific duplicate',
+        });
+        continue;
+      }
+      const sharedValue = manifest.assets?.[sharedSlot.asset_group_id];
+      if (sharedValue !== undefined) effectiveAssets[sharedSlot.asset_group_id] = sharedValue;
+    }
+    const componentManifest = {
+      format_kind: String(declaration.format_kind),
+      assets: effectiveAssets,
+    };
+    violations.push(...prefixComponentViolations(componentId, validateManifestSlots(
+      componentManifest,
+      canonicalSlotsForDeclaration(declaration),
+    )));
+    const declarationParams = declaration.params && typeof declaration.params === 'object'
+      ? declaration.params as Record<string, unknown>
+      : {};
+    if (declaration.format_kind !== 'seller_rendered_stateful_display'
+      && !canonicalParamsSatisfied(componentManifest as CreativeManifest, declarationParams)) {
+      violations.push({
+        rule: 'coordinated_component_params_satisfied',
+        field: `component_assets.${componentId}`,
+        expected: declarationParams,
+        predicted: effectiveAssets,
+      });
+    }
+    if (declaration.format_kind === 'seller_rendered_stateful_display') {
+      const nested = validateSellerRenderedStatefulDisplayManifest(declarationParams, componentManifest);
+      violations.push(...prefixComponentViolations(componentId, nested.violations));
+      warnings.push(...prefixComponentViolations(componentId, nested.warnings));
+    }
+  }
+  return { violations, warnings };
 }
 
 function normalizeCanonicalSlots(value: unknown): CanonicalSlot[] | undefined {
@@ -8831,7 +10115,31 @@ function validateCanonicalTarget(
       }],
     };
   }
+  if (target.id === 'coordinated_placements') {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'coordinated_placements_product_context',
+        field: 'targets',
+        expected: 'a product target whose placements and format options define the coordinated components',
+        predicted: target,
+      }],
+    };
+  }
   const violations = validateManifestSlots(manifest, CANONICAL_FORMAT_SLOTS[target.id] ?? []);
+  if (target.id === 'seller_rendered_stateful_display') {
+    for (const [index, canvas] of slotValues(manifest.assets, 'state_canvases').entries()) {
+      if (!isRecord(canvas) || typeof canvas.state_id !== 'string' || typeof canvas.breakpoint_id !== 'string') {
+        violations.push({
+          rule: 'state_canvas_binding_required',
+          field: `assets.state_canvases[${index}]`,
+          expected: 'state_id and breakpoint_id string bindings',
+          predicted: canvas,
+        });
+      }
+    }
+  }
   return violations.length > 0
     ? { target, result_kind: 'validated_fail', violations }
     : { target, result_kind: 'validated_pass' };
@@ -8872,11 +10180,11 @@ function validateCapabilityTarget(
     : { target, result_kind: 'validated_pass' };
 }
 
-function validateProductTarget(
+async function validateProductTarget(
   target: ValidateInputTarget,
   manifest: NonNullable<ValidateInputArgs['manifest']>,
   product: Product | undefined,
-): ValidateInputResult {
+): Promise<ValidateInputResult> {
   if (!product) {
     return {
       target,
@@ -8930,21 +10238,86 @@ function validateProductTarget(
   const params = declaration.params && typeof declaration.params === 'object'
     ? declaration.params as Record<string, unknown>
     : {};
-  const slots = normalizeCanonicalSlots(params.slots) ?? CANONICAL_FORMAT_SLOTS[formatKind] ?? [];
-  const violations = validateManifestSlots(manifest, slots);
+  const declaredSlots = formatKind === 'coordinated_placements' ? params.shared_slots : params.slots;
+  const rawSlots = normalizeCanonicalSlots(declaredSlots) ?? CANONICAL_FORMAT_SLOTS[formatKind] ?? [];
+  const slots = formatKind === 'coordinated_placements'
+    ? rawSlots
+    : rawSlots.filter(slot => allowedAssetTypesForCanonical(formatKind).has(slot.asset_type));
+  const declarationSchemaViolations: ValidateInputViolation[] = [];
+  if (formatKind === 'seller_rendered_stateful_display' || formatKind === 'coordinated_placements') {
+    const schemaResult = await validateProtocolSchema(
+      '/schemas/core/product-format-declaration.json',
+      declaration,
+    );
+    for (const issue of schemaResult.errors) {
+      declarationSchemaViolations.push({
+        rule: 'product_format_declaration_schema',
+        field: `products[].format_options[]${issue.instancePath.replaceAll('/', '.')}`,
+        expected: issue.message ?? 'valid product format declaration',
+        predicted: issue.keyword,
+      });
+    }
+  }
+  const allowedAssetTypeViolations = formatKind !== 'coordinated_placements'
+    ? slotAssetTypeAllowlistViolations(formatKind, params.slots, 'params.slots')
+    : [];
+  let semanticViolations: ValidateInputViolation[] = [];
+  let semanticWarnings: ValidateInputViolation[] = [];
+  if (formatKind === 'seller_rendered_stateful_display') {
+    const semanticResult = validateSellerRenderedStatefulDisplayManifest(params, manifest);
+    semanticViolations = semanticResult.violations;
+    semanticWarnings = semanticResult.warnings;
+  } else if (formatKind === 'coordinated_placements') {
+    const semanticResult = await validateCoordinatedPlacementsDeclaration(product, params, manifest);
+    semanticViolations = semanticResult.violations;
+    semanticWarnings = semanticResult.warnings;
+  }
+  const violations = [
+    ...declarationSchemaViolations,
+    ...validateManifestSlots(manifest, slots),
+    ...allowedAssetTypeViolations,
+    ...semanticViolations,
+  ];
+  const warnings = semanticWarnings;
   if (params.synthesis_nondeterministic === true) {
     const sourceViolation = nondeterministicSourceViolation(params);
     if (sourceViolation) {
-      return { target, result_kind: 'validated_fail', violations: [...violations, sourceViolation] };
+      return { target, result_kind: 'validated_fail', violations: [...violations, sourceViolation], ...(warnings.length > 0 && { warnings }) };
     }
     if (violations.length > 0) {
-      return { target, result_kind: 'validated_fail', violations };
+      return { target, result_kind: 'validated_fail', violations, ...(warnings.length > 0 && { warnings }) };
     }
-    return { target, result_kind: 'unvalidatable_nondeterministic' };
+    return { target, result_kind: 'unvalidatable_nondeterministic', ...(warnings.length > 0 && { warnings }) };
   }
   return violations.length > 0
-    ? { target, result_kind: 'validated_fail', violations }
-    : { target, result_kind: 'validated_pass' };
+    ? { target, result_kind: 'validated_fail', violations, ...(warnings.length > 0 && { warnings }) }
+    : { target, result_kind: 'validated_pass', ...(warnings.length > 0 && { warnings }) };
+}
+
+async function validateCreativeForProduct(
+  product: Product,
+  manifest: CreativeManifest,
+): Promise<ValidateInputViolation[]> {
+  if (manifest.format_kind !== 'seller_rendered_stateful_display'
+    && manifest.format_kind !== 'coordinated_placements'
+    && manifest.component_assets === undefined) return [];
+  const schemaViolations = await validateManifestSchema(manifest);
+  if (schemaViolations.length > 0) return schemaViolations;
+  const target: ValidateInputTarget = { kind: 'product', id: product.product_id };
+  const result = await validateProductTarget(target, manifest, product);
+  return result.result_kind === 'validated_fail' ? (result.violations ?? []) : [];
+}
+
+function creativeValidationErrors(
+  violations: ValidateInputViolation[],
+  fieldPrefix: string,
+): TaskError[] {
+  return violations.map(violation => ({
+    code: 'VALIDATION_ERROR',
+    message: `${fieldPrefix}: ${violation.rule} expected ${typeof violation.expected === 'string' ? violation.expected : JSON.stringify(violation.expected)}`,
+    field: `${fieldPrefix}.${violation.field}`,
+    recovery: 'correctable',
+  }));
 }
 
 export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext): Promise<object> {
@@ -9006,7 +10379,7 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
   }
 
   const schemaViolations = [
-    ...validateManifestSchema(req.manifest),
+    ...await validateManifestSchema(req.manifest),
     ...validateAssetUrls(req.manifest),
   ];
   if (schemaViolations.length > 0) {
@@ -10050,9 +11423,27 @@ async function handleCreateMediaBuyUnlocked(
         });
         continue;
       }
+      const assignedManifest = session.creatives.get(creativeId)?.manifest;
+      if (assignedManifest) {
+        const violations = await validateCreativeForProduct(product, assignedManifest);
+        errors.push(...creativeValidationErrors(violations, `packages[${i}].creative_assignments[${j}]`));
+      }
       creativeAssignments.push(creativeId);
     }
     const inlineCreatives = collectInlineCreativeIds(pkg.creatives, `packages[${i}].creatives`);
+    if (Array.isArray(pkg.creatives)) {
+      for (const [creativeIndex, creative] of pkg.creatives.entries()) {
+        const identity = validatedCreativeIdentity(creative);
+        if (!identity.ok) continue;
+        const existingCreative = creative.creative_id
+          ? session.creatives.get(creative.creative_id)
+          : undefined;
+        const manifest = normalizedCreativeManifest(creative, existingCreative, identity.identity);
+        if (!manifest) continue;
+        const violations = await validateCreativeForProduct(product, manifest);
+        errors.push(...creativeValidationErrors(violations, `packages[${i}].creatives[${creativeIndex}]`));
+      }
+    }
     creativeAssignments.push(...inlineCreatives.creativeIds);
     if (errors.length > 0) continue;
     const formatSelector = packageFormatSelectorForState(
@@ -10972,9 +12363,12 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   // Returns null when no fixture seeds policy fields — pre-existing
   // storyboards that don't exercise provenance enforcement keep working.
   const effectivePolicy = aggregateCreativePolicy(session);
+  const productValidationMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+  overlaySeededProducts(session, productValidationMap);
   const enforcedPolicies = aggregateEnforcedPolicies(session);
 
   const results: SyncCreativeResult[] = [];
+  const stagedCreativeManifests = new Map<string, CreativeManifest>();
   for (const creative of req.creatives) {
     if (!creative.creative_id) {
       return {
@@ -10990,6 +12384,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       format_kind?: string;
       format_option_ref?: Record<string, unknown>;
       assets?: Record<string, unknown>;
+      component_assets?: Record<string, Record<string, unknown>>;
       manifest?: CreativeManifest;
     };
     const identityResult = validatedCreativeIdentity(creativeShape);
@@ -11000,6 +12395,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     }
     const identity = identityResult.identity;
     const formatId = identity.kind === 'legacy' ? identity.formatId : undefined;
+    const formatKind = identity.kind === 'canonical' ? identity.formatKind : undefined;
 
     const runtimePolicyErrors = runtimeCreativePolicyErrors(creativeShape, enforcedPolicies);
     if (runtimePolicyErrors.length > 0) {
@@ -11046,9 +12442,81 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
     const existing = session.creatives.has(creativeId);
     const existingCreative = session.creatives.get(creativeId);
+    const topLevelComponentAssetsSupplied = Object.hasOwn(creativeShape, 'component_assets');
+    const nestedComponentAssetsSupplied = isRecord(creativeShape.manifest)
+      && Object.hasOwn(creativeShape.manifest, 'component_assets');
+    if ((topLevelComponentAssetsSupplied && !isRecord(creativeShape.component_assets))
+      || (nestedComponentAssetsSupplied && !isRecord(creativeShape.manifest?.component_assets))) {
+      results.push({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `creatives[${creativeId}].component_assets must be an object when supplied`,
+          field: `creatives[${creativeId}].component_assets`,
+          recovery: 'correctable',
+        }],
+      });
+      continue;
+    }
+    const candidateManifest = normalizedCreativeManifest(
+      creativeShape as InlineCreativeInput,
+      existingCreative,
+      identity,
+    );
+    const requiresProductBoundManifestValidation = formatKind === 'coordinated_placements'
+      || formatKind === 'seller_rendered_stateful_display'
+      || topLevelComponentAssetsSupplied
+      || nestedComponentAssetsSupplied;
+    if (requiresProductBoundManifestValidation && !candidateManifest) {
+      results.push({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `creatives[${creativeId}] requires a manifest with assets`,
+          field: `creatives[${creativeId}].assets`,
+          recovery: 'correctable',
+        }],
+      });
+      continue;
+    }
+    if (candidateManifest) stagedCreativeManifests.set(creativeId, candidateManifest);
+    if (candidateManifest) {
+      if (requiresProductBoundManifestValidation || candidateManifest.component_assets !== undefined) {
+        const schemaViolations = await validateManifestSchema(candidateManifest);
+        if (schemaViolations.length > 0) {
+          results.push({
+            creative_id: creativeId,
+            action: 'failed',
+            errors: creativeValidationErrors(schemaViolations, `creatives[${creativeId}]`),
+          });
+          stagedCreativeManifests.delete(creativeId);
+          continue;
+        }
+      }
+      const assignedViolations: ValidateInputViolation[] = [];
+      for (const mediaBuy of session.mediaBuys.values()) {
+        for (const pkg of mediaBuy.packages) {
+          if (!pkg.creativeAssignments.includes(creativeId)) continue;
+          const product = productValidationMap.get(pkg.productId);
+          if (!product) continue;
+          assignedViolations.push(...await validateCreativeForProduct(product, candidateManifest));
+        }
+      }
+      if (assignedViolations.length > 0) {
+        results.push({
+          creative_id: creativeId,
+          action: 'failed',
+          errors: creativeValidationErrors(assignedViolations, `creatives[${creativeId}]`),
+        });
+        stagedCreativeManifests.delete(creativeId);
+        continue;
+      }
+    }
 
     if (!isDryRun) {
-      const manifest = normalizedCreativeManifest(creativeShape, existingCreative, identity);
+      const manifest = candidateManifest;
       session.creatives.set(creativeId, {
         creativeId,
         accountId: accountId ?? existingCreative?.accountId,
@@ -11063,6 +12531,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
             ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
           }),
         ...(manifest && { assets: manifest.assets }),
+        ...(manifest?.component_assets && { componentAssets: manifest.component_assets }),
         name: creative.name,
         status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
@@ -11091,6 +12560,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   // references but skip the package mutation.
   const assignmentResults: AssignmentResult[] = [];
   if (req.assignments?.length) {
+    const assignmentProducts = productValidationMap;
     const availableCreativeIds = new Set(session.creatives.keys());
     for (const result of results) {
       if (result.action !== 'failed') availableCreativeIds.add(result.creative_id);
@@ -11113,6 +12583,21 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       if (!availableCreativeIds.has(creativeId)) {
         assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'error', message: `Creative not found: ${creativeId}` });
         continue;
+      }
+      const product = assignmentProducts.get(pkg.productId);
+      const candidateManifest = stagedCreativeManifests.get(creativeId)
+        ?? session.creatives.get(creativeId)?.manifest;
+      if (product && candidateManifest) {
+        const violations = await validateCreativeForProduct(product, candidateManifest);
+        if (violations.length > 0) {
+          assignmentResults.push({
+            creative_id: creativeId,
+            package_id: packageId,
+            status: 'error',
+            message: `Creative does not satisfy product ${product.product_id}: ${violations.map(v => v.rule).join(', ')}`,
+          });
+          continue;
+        }
       }
       if (!isDryRun && !pkg.creativeAssignments.includes(creativeId)) {
         pkg.creativeAssignmentDetails ??= pkg.creativeAssignments.map(existingId => ({ creative_id: existingId }));
@@ -11346,6 +12831,9 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
         created_date: c.syncedAt,
         updated_date: c.syncedAt,
         ...(c.manifest?.assets && (!selectedFields || selectedFields.has('assets')) && { assets: c.manifest.assets }),
+        ...(c.manifest?.component_assets
+          && (!selectedFields || selectedFields.has('component_assets'))
+          && { component_assets: c.manifest.component_assets }),
       };
       if (emitPricing && (c.formatKind || c.formatId?.id) && (!selectedFields || selectedFields.has('pricing_options'))) {
         base.pricing_options = [getCreativePricing(req.account!, c)];
@@ -11814,6 +13302,22 @@ async function handleUpdateMediaBuyUnlocked(
         undefined,
         now,
       );
+      if (product && Array.isArray(update.creatives)) {
+        for (const [creativeIndex, creative] of update.creatives.entries()) {
+          const inlineCreative = creative as unknown as InlineCreativeInput;
+          const identity = validatedCreativeIdentity(inlineCreative);
+          if (!identity.ok) continue;
+          const existingCreative = inlineCreative.creative_id
+            ? session.creatives.get(inlineCreative.creative_id)
+            : undefined;
+          const manifest = normalizedCreativeManifest(inlineCreative, existingCreative, identity.identity);
+          if (!manifest) continue;
+          const violations = await validateCreativeForProduct(product, manifest);
+          if (violations.length > 0) {
+            return { errors: creativeValidationErrors(violations, `packages[${pkgId}].creatives[${creativeIndex}]`) };
+          }
+        }
+      }
       if (assignments?.length === 0) {
         const currentStatus = deriveStatus(mb, session);
         if (['active', 'paused', 'pending_start'].includes(currentStatus)) {
@@ -11835,6 +13339,13 @@ async function handleUpdateMediaBuyUnlocked(
         }
         if (!creativeValidationSession.creatives.has(cid)) {
           return { errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative not found: ${cid}. Sync the creative via sync_creatives before assigning.`, field: `packages[${pkgId}].creative_assignments` }] };
+        }
+        const manifest = session.creatives.get(cid)?.manifest;
+        if (product && manifest) {
+          const violations = await validateCreativeForProduct(product, manifest);
+          if (violations.length > 0) {
+            return { errors: creativeValidationErrors(violations, `packages[${pkgId}].creative_assignments`) };
+          }
         }
       }
       const incomingTargeting = (update as PackageUpdateExt).targeting_overlay

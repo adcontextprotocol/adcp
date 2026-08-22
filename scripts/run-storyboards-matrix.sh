@@ -365,9 +365,15 @@ for entry in "${TENANTS[@]}"; do
 
   log=$(mktemp -t "storyboards-${tenant}.XXXXXX.log")
 
-  TENANT_PATH="${tenant}" \
-    PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \
-    npx tsx server/tests/manual/run-storyboards.ts > "${log}" 2>&1 || true
+  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; then
+    TENANT_PATH="${tenant}" \
+      PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \
+      bash scripts/run-storyboards-sharded.sh --shard-count 4 > "${log}" 2>&1 || true
+  else
+    TENANT_PATH="${tenant}" \
+      PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \
+      npx tsx server/tests/manual/run-storyboards.ts > "${log}" 2>&1 || true
+  fi
 
   clean=$(grep -oE 'storyboards: [0-9]+/[0-9]+' "${log}" | tail -1 | grep -oE '^storyboards: [0-9]+' | grep -oE '[0-9]+$' || echo "")
   passed=$(grep -oE 'steps: [0-9]+ passed' "${log}" | tail -1 | grep -oE '[0-9]+' || echo "")

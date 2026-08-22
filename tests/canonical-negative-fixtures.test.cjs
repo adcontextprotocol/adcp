@@ -9,7 +9,7 @@
  * they're meant to reject.
  *
  * Filed against PR #3307 review comment R3 (composability of top-level
- * discriminator + allOf if/then/else + 12-branch oneOf on
+ * discriminator + allOf if/then/else + canonical-kind oneOf on
  * product-format-declaration.json). Adopters and SDK authors will rely on
  * the schema's negative-side behavior; without these tests, regressions to
  * silent-pass on malformed declarations would slip through.

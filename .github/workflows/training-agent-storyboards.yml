@@ -12,6 +12,7 @@ on:
       - 'scripts/build-compliance.cjs'
       - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-matrix.sh'
+      - 'scripts/run-storyboards-sharded.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
       - 'scripts/stage-sdk-schema-bundle.sh'
       - 'static/schemas/source/**'
@@ -30,6 +31,7 @@ on:
       - 'scripts/build-compliance.cjs'
       - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-matrix.sh'
+      - 'scripts/run-storyboards-sharded.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
       - 'scripts/stage-sdk-schema-bundle.sh'
       - 'static/schemas/source/**'
@@ -46,7 +48,10 @@ jobs:
   storyboards:
     name: Storyboards (${{ matrix.surface }} /${{ matrix.tenant }})
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Current /sales is split across fresh processes to stay below hosted
+    # runner memory pressure. Allow install, overlay, and startup overhead for
+    # all four shards; the timeout is a safety ceiling, not an expected run.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -262,7 +267,11 @@ jobs:
           # dev ergonomics). CI grades pass/fail via the floor check below,
           # not the runner's exit code. `|| true` keeps the step alive past
           # the runner so the parse + regression-check stages can run.
-          npx tsx server/tests/manual/run-storyboards.ts 2>&1 | tee /tmp/storyboards.log || true
+          if [ "${{ matrix.surface }}" = "current" ] && [ "${{ matrix.tenant }}" = "sales" ]; then
+            bash scripts/run-storyboards-sharded.sh --shard-count 4
+          else
+            npx tsx server/tests/manual/run-storyboards.ts
+          fi 2>&1 | tee /tmp/storyboards.log || true
           # `grep` returning empty is not a fatal error here — we want to
           # detect that explicitly below.
           clean=$(grep -oE 'storyboards: [0-9]+/[0-9]+' /tmp/storyboards.log | tail -1 | grep -oE '^storyboards: [0-9]+' | grep -oE '[0-9]+$')

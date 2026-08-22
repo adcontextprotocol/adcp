@@ -1148,9 +1148,13 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
       assert.ok(fs.existsSync(modelInputPath));
       modelContextBytes += Buffer.byteLength(JSON.stringify(readJson(modelInputPath)));
     }
+    // Budget raised from 384 KiB: main reached 139 bytes of headroom within a
+    // day of the budget landing (each schema-bearing feature costs ~1-2 KiB of
+    // inlined model context). 400 KiB buys room until the shared-dictionary
+    // projection graduates and collapses per-tool inlining.
     assert.ok(
-      modelContextBytes < 388 * 1024,
-      `${profileName} model-context inputs exceed 388 KiB: ${modelContextBytes}`
+      modelContextBytes < 400 * 1024,
+      `${profileName} model-context inputs exceed 400 KiB: ${modelContextBytes}`
     );
   }
 

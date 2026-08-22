@@ -1,0 +1,90 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "streamhaus_buyer_rendered_takeover",
+  "name": "StreamHaus buyer-rendered homepage takeover",
+  "description": "Two-state homepage unit in `rendered_canvases` supply mode. The buyer authors both states externally against the published breakpoint matrix and ships one flat render per state × breakpoint pair; StreamHaus validates the canvas matrix mechanically and reviews for brand fit rather than producing the unit itself. Every breakpoint is fixed-dimension because fluid breakpoints cannot be targeted by this supply mode.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "streamhaus.example",
+      "selection_type": "all"
+    }
+  ],
+  "channels": ["display"],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "buyer_rendered_takeover_flat_rate",
+      "pricing_model": "flat_rate",
+      "currency": "USD",
+      "fixed_price": 25000
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 120,
+    "timezone": "America/New_York",
+    "supports_webhooks": true,
+    "available_metrics": ["impressions", "clicks", "spend", "ctr", "viewability"],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "seller_rendered_stateful_display",
+      "format_option_id": "buyer_rendered_takeover",
+      "display_name": "Homepage takeover (buyer-rendered)",
+      "canonical_formats_only": true,
+      "experimental": true,
+      "params": {
+        "experimental": true,
+        "composition_model": "deterministic",
+        "supply_mode": "rendered_canvases",
+        "initial_state_id": "frame_a",
+        "clickthrough": "required",
+        "states": [
+          {
+            "state_id": "frame_a",
+            "anchoring": "inline",
+            "close_affordance": true,
+            "breakpoints": [
+              { "breakpoint_id": "desktop", "width": 970, "height": 250 },
+              { "breakpoint_id": "mobile", "width": 320, "height": 100 }
+            ]
+          },
+          {
+            "state_id": "frame_b",
+            "anchoring": "sticky_top",
+            "close_affordance": true,
+            "breakpoints": [
+              { "breakpoint_id": "desktop", "width": 970, "height": 90 },
+              { "breakpoint_id": "mobile", "width": 320, "height": 50 }
+            ]
+          }
+        ],
+        "transitions": [
+          {
+            "transition_id": "auto_collapse",
+            "from_state_id": "frame_a",
+            "to_state_id": "frame_b",
+            "trigger": "timer",
+            "transition_mode": "animated",
+            "delay_ms": 8000,
+            "duration_ms": 300
+          },
+          {
+            "transition_id": "user_expand",
+            "from_state_id": "frame_b",
+            "to_state_id": "frame_a",
+            "trigger": "user_action",
+            "input": "expand_control",
+            "transition_mode": "animated",
+            "duration_ms": 300
+          }
+        ],
+        "user_controls": {
+          "dismissible": true,
+          "user_collapsible": true
+        }
+      }
+    }
+  ]
+}
