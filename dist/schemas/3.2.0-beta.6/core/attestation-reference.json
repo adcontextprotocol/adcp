@@ -1,0 +1,211 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/attestation-reference.json",
+  "title": "Attestation Reference",
+  "description": "Portable, reference-first presentation of an independently issued claim. It identifies the claimed issuer, claim vocabulary, subject, and either a stable credential locator or an embedded credential. A presentation is a locator and claim hint, not proof or a trust decision. The evaluator remains verifier-of-record and MUST resolve or inspect the credential only under its published attestation capabilities and local trust policy.",
+  "type": "object",
+  "properties": {
+    "issuer": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/attestation-issuer.json"
+    },
+    "claim_type": {
+      "type": "string",
+      "format": "uri",
+      "description": "Open, absolute URI identifying the claim vocabulary. The URI is an identifier and need not be dereferenceable. AdCP does not maintain an enum of approved claims."
+    },
+    "subject": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/attestation-subject.json"
+    },
+    "locator": {
+      "description": "Stable locator for resolving the credential. Credential URLs are permitted only when their canonical origin is allowlisted for the matched issuer. Issuer-scoped IDs name a resolver_id already published by the evaluator; the presentation cannot introduce a resolver URL.",
+      "discriminator": {
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "title": "AttestationCredentialUriLocator",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "credential_uri"
+            },
+            "credential_uri": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+              "description": "HTTPS URI of the credential. Before any fetch, evaluators MUST match its canonical origin to credential_origins on the accepted issuer capability and then apply the attestation fetch contract."
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+            }
+          },
+          "required": [
+            "type",
+            "credential_uri"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "AttestationIssuerCredentialIdLocator",
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "issuer_credential_id"
+            },
+            "credential_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024,
+              "description": "Stable credential identifier in the issuer's namespace. It is meaningful only together with issuer and resolver_id.",
+              "x-entity": "attestation_credential"
+            },
+            "resolver_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "description": "Identifier of a resolver already published in the matched accepted_issuers[].resolvers[] capability. A presenter cannot supply or override its URL."
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+            }
+          },
+          "required": [
+            "type",
+            "credential_id",
+            "resolver_id"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "embedded_credential": {
+      "type": "object",
+      "description": "Optional inline credential for private, authenticated, or offline delivery. It may accompany locator or be the only delivery path. Its format must be supported by the evaluator, and the evaluator MUST verify the credential exactly as it would a resolved credential.",
+      "properties": {
+        "format": {
+          "type": "string",
+          "format": "uri",
+          "description": "Open, absolute URI identifying the credential/proof format. AdCP does not impose a universal issuer payload schema."
+        },
+        "value": {
+          "description": "Credential encoded as a JSON object or a compact string, according to format.",
+          "type": [
+            "object",
+            "string"
+          ],
+          "minLength": 1
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+        }
+      },
+      "required": [
+        "format",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "content_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Optional SHA-256 digest pin for the exact credential bytes, formatted as sha256:<lowercase hex>. The credential format defines its canonical byte representation. A mismatch is invalid and MUST NOT fall back to the unpinned credential. REQUIRED when both locator and embedded_credential are present; both byte representations MUST match this digest."
+    },
+    "credential_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Optional issuer-defined credential version hint. It is advisory; the resolved credential is authoritative."
+    },
+    "validity_hint": {
+      "type": "object",
+      "description": "Optional planning-time validity hint copied from issuer metadata. Evaluators MUST use the resolved or embedded credential's signed validity and revocation state as authoritative.",
+      "properties": {
+        "not_before": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "verify_agent": {
+      "type": "object",
+      "description": "Optional presenter nomination of a verifier already published by the evaluator. This is a representation, not routing authority: agent_url MUST match an accepted_verifiers[] entry after canonicalization, and the evaluator may choose another accepted verifier or verify locally.",
+      "properties": {
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$"
+        }
+      },
+      "required": [
+        "agent_url"
+      ],
+      "additionalProperties": false
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+    }
+  },
+  "required": [
+    "issuer",
+    "claim_type",
+    "subject"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "locator"
+      ]
+    },
+    {
+      "required": [
+        "embedded_credential"
+      ]
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "locator",
+          "embedded_credential"
+        ]
+      },
+      "then": {
+        "required": [
+          "content_digest"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "issuer": {
+        "type": "origin",
+        "origin": "https://credentials.example"
+      },
+      "claim_type": "https://claims.example/audience/methodology-reviewed",
+      "subject": {
+        "type": "resource",
+        "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+        "namespace": "https://signals.meridian.example/adcp",
+        "id": "signal_urban_commuters"
+      },
+      "locator": {
+        "type": "issuer_credential_id",
+        "credential_id": "cred_01JATT7Y",
+        "resolver_id": "primary"
+      },
+      "content_digest": "sha256:5b6e8f7a4c3d2e1f00112233445566778899aabbccddeeff0011223344556677"
+    }
+  ]
+}

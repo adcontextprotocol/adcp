@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/media-buy-features.json",
+  "title": "Media Buy Features",
+  "description": "Optional media-buy protocol features. Used in capability declarations (seller declares support) and product filters (buyer requires support). If a seller declares a feature as true, they MUST honor requests using that feature.",
+  "type": "object",
+  "properties": {
+    "inline_creative_management": {
+      "type": "boolean",
+      "deprecated": true,
+      "description": "Deprecated 3.x compatibility capability for creatives provided inline in create_media_buy and update_media_buy package payloads. buy_products, accept_proposal, and control_media_buy never accept inline creatives. New integrations use the dedicated creative lifecycle. Removed in 4.0."
+    },
+    "property_list_filtering": {
+      "type": "boolean",
+      "description": "Honors property_list parameter in get_products to filter results to buyer-approved properties"
+    },
+    "catalog_management": {
+      "type": "boolean",
+      "description": "Supports sync_catalogs task for catalog feed management with platform review and approval"
+    },
+    "catalog_item_availability_updates": {
+      "type": "boolean",
+      "description": "Supports buyer-pushed item_availability_updates and item_availability_queries on sync_catalogs for immediate suppression/restoration and current-state readback in buyer-managed catalogs. Seller declarations may be true only with catalog_management: true; buyer required_features filters may request this feature alone. Requests containing availability operations are synchronous and accept at most 1,000 combined update and query entries. A successful suppress covers selection, dynamic rendering, and cached or pre-generated creatives materialized from the item. Internal lineage MUST retain resolved_account_id, catalog_id, catalog_generation, and item_id. Static creatives supplied or promoted by the buyer without catalog lineage remain outside this automatic guarantee. Suppression persists across feed refreshes and ordinary upserts until restore, expires_at, or catalog deletion. A seller that does not declare true MUST reject availability operations with UNSUPPORTED_FEATURE before lookup or mutation and MUST NOT interpret them as discovery. This does not control seller-owned wholesale inventory or let restore bypass seller controls."
+    },
+    "committed_metrics_supported": {
+      "type": "boolean",
+      "description": "Seller has per-package snapshot infrastructure for the reporting contract. When true, the seller MUST populate `package.committed_metrics` on committed `create_media_buy` responses where `confirmed_at` is non-null, MUST omit `package.committed_metrics` while `confirmed_at` is null for a provisional buy, and MUST honor append-only mid-flight metric additions via `update_media_buy`. The unified `committed_metrics` array (per the metric-accountability design) covers both standard and vendor-defined metric entries, so a single flag is load-bearing. Buyers filtering on this flag are detecting 'this seller can stamp the reporting contract,' which closes the audit gap from PR #3510 where absence of `committed_metrics` was indistinguishable between 'didn't snapshot' and 'snapshot infrastructure not implemented.'"
+    },
+    "seller_optimized_budget": {
+      "type": "boolean",
+      "description": "Supports media-buy-level shared budgets with budget_allocation.mode `seller_optimized`. Sellers declaring true MUST accept eligible explicit-package and proposal executions, enforce the aggregate budget and package constraints, apply media-buy-level pacing, and echo the allocation configuration on buy read surfaces. Product combinations may still be rejected when their currencies, optimization capabilities, pricing terms, or delivery constraints are incompatible. Sellers that do not declare this feature MUST reject any request carrying `budget_allocation.mode: 'seller_optimized'` with `UNSUPPORTED_FEATURE` before any provider mutation, and MUST NOT coerce the request to fixed allocation."
+    },
+    "bidding_policy": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/bidding-policy-capability.json"
+        }
+      ],
+      "description": "Structured support for canonical bidding by authored scope, allocation context, mode, strength, and strength-qualified multi-field combination. Presence does not imply support for both scopes, both allocation modes, or every policy shape. Sellers MUST preserve every advertised semantic exactly and reject unadvertised policies rather than translating them."
+    }
+  },
+  "additionalProperties": {
+    "type": "boolean"
+  }
+}

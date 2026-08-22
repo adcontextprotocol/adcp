@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/canonical-delivery-forecast.json",
+  "title": "Canonical Delivery Forecast",
+  "description": "Compact product forecast without legacy BrandRef or creative dependencies.",
+  "type": "object",
+  "properties": {
+    "points": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/canonical-forecast-point.json"
+      },
+      "minItems": 1
+    },
+    "forecast_range_unit": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/forecast-range-unit.json"
+    },
+    "method": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/forecast-method.json"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "demographic_system": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/demographic-system.json"
+    },
+    "demographic": {
+      "type": "string"
+    },
+    "measurement_source": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "reach_unit": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/reach-unit.json"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+    }
+  },
+  "required": [
+    "points",
+    "method",
+    "currency"
+  ],
+  "additionalProperties": false
+}

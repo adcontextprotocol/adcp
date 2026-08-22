@@ -1,0 +1,369 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/media-buy/package-request.json",
+  "title": "Package Request",
+  "description": "Package configuration for media buy creation.\n\n**Format selector contract (normative).** New 3.2 buyers author at most one canonical selector route: `format_option_refs`, or `format_kind` with optional `params`; omitting both selects all formats supported by the product. New buyers MUST NOT emit deprecated `format_ids`. During the 3.x compatibility window, receivers MUST continue to accept legacy-only `format_ids` and older requests that carry more than one selector route.\n\nReceivers process selectors in this order: (1) independently resolve each present route to canonical declarations, without applying route precedence; an unresolved `format_option_ref` or a legacy `format_id` that cannot be normalized through the canonical mapping path MUST be rejected with `UNSUPPORTED_FEATURE`; (2) when every route resolves, derive the product `format_options[]` entries selected by each route using directional product satisfaction, and require the selected option sets to match; legacy-to-canonical parameter compatibility uses the asymmetric [v2 narrows v1](/docs/creative/canonical-formats#narrows-formal-definition-normative) relation, not raw object equality; (3) reject different format shapes, selected option sets, or incompatible dimensions with `CONFLICTING_SELECTORS`; and only then (4) apply precedence: `format_option_refs`, then `format_kind` plus `params`, then `format_ids`. Equivalent legacy dual emission remains valid. A single resolved route that does not satisfy the product is rejected with `UNSUPPORTED_FEATURE`. `params` requires `format_kind`; for fixed-size image selectors, `width` and `height` MUST either both be present or both be absent.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "required": [
+          "bidding"
+        ]
+      },
+      "then": {
+        "properties": {
+          "optimization_goals": {
+            "not": {
+              "contains": {
+                "properties": {
+                  "target": {
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "cost_per",
+                          "per_ad_spend"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
+                  }
+                },
+                "required": [
+                  "target"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "format_kind": {
+            "const": "image"
+          }
+        },
+        "required": [
+          "format_kind",
+          "params"
+        ]
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "dependencies": {
+              "width": [
+                "height"
+              ],
+              "height": [
+                "width"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "capability_ids"
+        ]
+      },
+      {
+        "required": [
+          "bidding",
+          "bid_price"
+        ]
+      },
+      {
+        "required": [
+          "budget_cap_timezone"
+        ]
+      }
+    ]
+  },
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "Opaque configured product ID returned by get_products. Selecting it accepts the product's disclosed targeting_resolution, pricing, forecast assumptions, and terms. Sellers MUST echo this value on every response package object that represents this requested package.",
+      "x-entity": "product"
+    },
+    "format_ids": {
+      "type": "array",
+      "deprecated": true,
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Legacy named-format selector retained for older 3.x peers. New buyers MUST NOT emit this field. Sellers MUST normalize every entry through the canonical mapping path before product satisfaction checks; an entry that cannot be normalized is rejected with `UNSUPPORTED_FEATURE` before any equivalence check. When this field coexists with `format_option_refs` or `format_kind` plus `params`, sellers MUST compare the product option sets selected by each resolved route. Legacy parameter compatibility follows the asymmetric v2-narrows-v1 relation defined by canonical formats, not raw object equality. Different format shapes, selected option sets, or incompatible dimensions are rejected with `CONFLICTING_SELECTORS`; sellers MUST NOT silently ignore the legacy projection. Equivalent dual emission remains valid during the 3.x compatibility window. If omitted and no canonical selector is present, all formats supported by the product are active.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "format_option_refs": {
+      "type": "array",
+      "description": "Canonical 3.2 format-option selector. Each reference matches one target product `format_options[]` entry. Publisher-backed options match `{ scope: \"publisher\", publisher_domain, format_option_id }`; product-local options match `{ scope: \"product\", format_option_id }`. Sellers reject unresolved options with `UNSUPPORTED_FEATURE` and a field path to the failing entry before comparing co-present routes. New buyers MUST use this route by itself and MUST NOT dual-emit either a direct canonical selector or deprecated `format_ids`. Receivers handling older 3.x multi-route requests MUST resolve every present route, require each route to select the same product option set, and reject disagreement with `CONFLICTING_SELECTORS` before treating `format_option_refs` as authoritative.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/format-option-ref.json"
+      },
+      "minItems": 1
+    },
+    "format_kind": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/canonical-format-kind.json",
+      "description": "Canonical 3.2 direct selector. Names the canonical format shape this package targets when the buyer is not selecting a published `format_option_ref`. Pair with `params` for dimensions, duration, codecs, or other constraints. New buyers MUST NOT combine this route with `format_option_refs` or deprecated `format_ids`. Receivers handling older 3.x multi-route requests MUST equivalence-check every present route before applying precedence and reject disagreement with `CONFLICTING_SELECTORS`. Product satisfaction is directional: broad `{ format_kind: \"image\" }` does not satisfy a fixed-size product declaration."
+    },
+    "params": {
+      "type": "object",
+      "description": "Parameters for the direct canonical selector in `format_kind`. Shape follows the selected canonical's parameter vocabulary: dimensions (`width`, `height`, `sizes`), duration (`duration_ms_exact`, `duration_ms_range`), codecs, asset-source and slot narrowing, or other canonical-specific constraints. Requires `format_kind`. For fixed-size image selectors, `width` and `height` MUST co-occur; a selector containing only one dimension is schema-invalid. New buyers omit `params` when selecting by `format_option_refs` or `format_ids`; older multi-route requests are accepted only when every route selects the same product option set.",
+      "additionalProperties": true
+    },
+    "budget": {
+      "type": "number",
+      "description": "Hard lifetime spend cap for this package in the media buy's currency. Required in fixed allocation mode. Optional in seller-optimized mode; when omitted, the package is bounded by the shared total_budget and any other package constraints. In seller-optimized mode this is a ceiling, not a reserved or current allocation.",
+      "minimum": 0
+    },
+    "min_spend_target": {
+      "type": "number",
+      "description": "Soft lifetime spend target for this package in the media buy's currency. Only valid with seller-optimized budget allocation. The seller SHOULD attempt to deliver at least this amount before allocating incremental spend elsewhere, but inventory, policy, optimization targets, or other delivery constraints may prevent it. This is not a billing guarantee. Must not exceed the package budget when both are present; sellers MUST reject with `INVALID_REQUEST` when this constraint is violated.",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/pacing.json"
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "ID of the selected pricing option from the product's pricing_options array",
+      "x-entity": "product_pricing_option"
+    },
+    "bid_price": {
+      "type": "number",
+      "deprecated": true,
+      "description": "DEPRECATED in 3.2 and removed in the next major. Use bidding.bid_amount or bidding.max_bid. Legacy normalization: selected pricing_option.max_bid=true maps to bidding.max_bid; otherwise maps to bidding.bid_amount. A package MUST NOT supply both representations.",
+      "minimum": 0
+    },
+    "bidding": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/bidding-policy.json"
+        }
+      ],
+      "description": "Package-authored bidding policy. This complete block replaces, rather than field-merges with, any media-buy bidding policy for this package. `{automatic:true}` explicitly overrides a media-buy policy with provider automatic bidding; omission inherits the complete media-buy block. Monetary fields use the media-buy currency, while the selected pricing option supplies only the auction unit and MUST declare that same currency. Sellers MUST reject a new bidding block combined with legacy bid_price or legacy monetary optimization-goal targets on the same effective package with AMBIGUOUS_BIDDING_POLICY."
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Impression goal for this package",
+      "minimum": 0
+    },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional hard package daily spend ceiling in the media-buy currency. It is subordinate, not a reserved allocation; package caps need not sum to the aggregate cap. Uses the media buy's cap timezone. Requires advertised package budget-capping scope; otherwise rejected with UNSUPPORTED_FEATURE."
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "not": {
+        "const": "asap"
+      },
+      "description": "Flight start date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's start_time. Must fall within the media buy's date range."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Flight end date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's end_time. Must fall within the media buy's date range."
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
+      "default": false
+    },
+    "catalogs": {
+      "type": "array",
+      "description": "Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., one product catalog, one store catalog). This constraint is enforced at the application level — sellers MUST reject requests containing multiple catalogs of the same type with a validation_error. Makes the package catalog-driven: one budget envelope, platform optimizes across items.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/catalog.json"
+      }
+    },
+    "optimization_goals": {
+      "type": "array",
+      "description": "Optimization targets for this package. The seller optimizes delivery toward these goals in priority order. Common pattern: event goals (purchase, install) as primary targets at priority 1; metric goals (clicks, views) as secondary proxy signals at priority 2+.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/optimization-goal.json"
+      },
+      "minItems": 1
+    },
+    "targeting_overlay": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/targeting.json",
+      "description": "Optional package-specific targeting that further constrains targeting already bound to the configured product. It cannot broaden or remove configured-product targeting. Fields supplied here MUST be declared in the product's overlay_support unless they were already accepted during discovery. The one fixed-inventory restatement exception is placement_selection equal to the product's complete, explicitly enumerated mode: included placement set: that set is an inherent exact match across discovery, create, and update and does not require overlay_support.placement_selection; partial selection still requires a selectable product. Opaque property_list and collection_list references have no equivalent exception because their membership can change independently and cannot be proven equal from the product wire representation. The seller applies the intersection exactly or rejects the package; package readback echoes the complete effective targeting. A supported value with no current inventory returns PRODUCT_UNAVAILABLE rather than a silent substitute or reprice."
+    },
+    "audience_evidence_requirements": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/audience-evidence-requirements.json",
+      "description": "Buyer policy that the selected product and constructed package MUST satisfy using product audience evidence. This remains planning and suitability evidence, not a targeting instruction. Sellers MUST reject an unsatisfied required policy rather than silently drop it, and a confirmed package MUST include every evidence snapshot used to satisfy this policy in audience_evidence_selections with decision_use package_construction."
+    },
+    "audience_evidence_pins": {
+      "type": "array",
+      "description": "Exact immutable evidence snapshots selected by the buyer during discovery. The seller MUST match evidence_id, snapshot_id, version, and content_digest against one published snapshot and MUST reject catalog mutation, snapshot reuse, missing snapshots, or substitutions. Every accepted pin MUST be echoed in the confirmed package's audience_evidence_selections with decision_use package_construction.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/audience-evidence-pin.json"
+      },
+      "minItems": 1
+    },
+    "measurement_terms": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/measurement-terms.json",
+      "description": "Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with TERMS_REJECTED, or adjusts. When absent, product's measurement_terms apply."
+    },
+    "performance_standards": {
+      "type": "array",
+      "description": "Buyer's proposed performance standards for this package. Overrides product defaults. Seller accepts, rejects with TERMS_REJECTED, or adjusts. When absent, product's performance_standards apply.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/performance-standard.json"
+      },
+      "minItems": 1
+    },
+    "committed_metrics": {
+      "type": "array",
+      "description": "Buyer's proposed reporting contract for this package — the metrics the buyer wants the seller to commit to populating in delivery reports. Same negotiation pattern as `measurement_terms` and `performance_standards`: seller accepts (echoes on confirmed package with `committed_at` stamped), rejects with `TERMS_REJECTED` (with explanation of which entries were unworkable), or normalizes (echoes a different but compatible list — buyer can accept by retrying with the normalized terms). When absent, the seller decides what to commit based on the product's `available_metrics` and the buyer's `required_metrics` filter on `get_products`. Each entry uses an explicit `scope` discriminator (`standard` or `vendor`) and identifies the metric — request-side entries do NOT carry `committed_at`; that timestamp is stamped by the seller on accept. Constraints on what the buyer MAY propose: each `scope: standard` entry's `metric_id` MUST be in the product's `available_metrics`, and each `scope: vendor` entry's `(vendor, metric_id)` MUST appear in the product's `vendor_metrics` — sellers SHOULD reject with `TERMS_REJECTED` and reference the offending entry when the proposal exceeds product capability.",
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "scope"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "standard",
+                "description": "Standard metric from the closed `available-metric.json` enum."
+              },
+              "metric_id": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/available-metric.json",
+                "description": "Identifier for the standard metric. MUST be present in the product's `reporting_capabilities.available_metrics`."
+              },
+              "qualifier": {
+                "type": "object",
+                "description": "Disambiguator — same shape as on the response-side `committed_metrics`. Required when the buyer wants to pin a specific measurement path: `viewability_standard` for MRC vs GroupM viewability; `completion_source` for seller- vs vendor-attested `completion_rate`; `attribution_methodology` for how attribution was computed (deterministic_purchase, probabilistic, panel_based, modeled); `attribution_window` for the time window over which outcomes are attributed. See response-side description for full semantics.",
+                "properties": {
+                  "viewability_standard": {
+                    "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/viewability-standard.json"
+                  },
+                  "completion_source": {
+                    "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/completion-source.json"
+                  },
+                  "attribution_methodology": {
+                    "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/attribution-methodology.json"
+                  },
+                  "attribution_window": {
+                    "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/duration.json"
+                  },
+                  "lift_dimension": {
+                    "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/lift-dimension.json"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "scope",
+              "metric_id"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "vendor",
+                "description": "Vendor-defined metric, identified by the tuple `(vendor, metric_id)`."
+              },
+              "vendor": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/brand-ref.json",
+                "description": "Vendor that defines and computes this metric. The vendor's `brand.json` `agents[type='measurement']` is the canonical anchor."
+              },
+              "metric_id": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/vendor-metric-id.json",
+                "description": "Identifier for the metric within the vendor's vocabulary. MUST be present in the product's `reporting_capabilities.vendor_metrics` for the same vendor."
+              }
+            },
+            "required": [
+              "scope",
+              "vendor",
+              "metric_id"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Assign existing library creatives to this package with optional rotation, grouping, weights, and placement targeting. rotation_mode is package-scoped: omission resolves to weighted, and every assignment MUST resolve to the same effective mode. In sequential mode, sequence_position MUST be unique within each package-local group. Sellers reject conflicts with VALIDATION_ERROR before creating the package.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "package_rotation_policy": {
+            "effective_mode": "assignment.rotation_mode_or_weighted_default",
+            "mode_consistency": "all_assignments_equal",
+            "sequence_positions": "required_and_unique_per_effective_group_when_sequential",
+            "effective_group": "assignment.group_id_or_package_default",
+            "group_namespace": "package_id",
+            "on_violation": "reject_before_mutation_with_VALIDATION_ERROR"
+          }
+        },
+        "spec": "docs/reference/migration/creatives.mdx#rotation-modes-and-groups"
+      },
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/creative-assignment.json"
+      },
+      "minItems": 1
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Upload creative assets inline and assign to this package. Native localization is not accepted on this path; use sync_creatives before assigning the library creative. When the seller also advertises creative.has_creative_library: true, these creatives enter the seller's creative library and can be reused by creative_id while retained; inline-only sellers may store them as package-scoped assets. Use creative_assignments instead for existing library creatives.",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/creative-asset.json"
+          },
+          {
+            "not": {
+              "required": [
+                "localization"
+              ]
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Agency estimate or authorization number for this package. Overrides the media buy-level estimate number when different packages correspond to different agency estimates (e.g., different stations or flights within the same buy)."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/context.json",
+      "description": "Opaque package-level correlation data echoed unchanged in the package response, webhooks, and read surfaces. Buyers targeting mixed seller populations SHOULD include a per-package correlation value here, commonly context.buyer_ref, so responses from legacy sellers that do not echo product_id can still be mapped back to the requested product or line item. Do not use deprecated top-level buyer_ref for v3 correlation."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+    }
+  },
+  "required": [
+    "product_id",
+    "pricing_option_id"
+  ],
+  "dependencies": {
+    "params": [
+      "format_kind"
+    ]
+  },
+  "additionalProperties": true
+}

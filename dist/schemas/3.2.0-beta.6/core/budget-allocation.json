@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/budget-allocation.json",
+  "title": "Budget Allocation",
+  "description": "How a media buy's total budget is allocated across its packages. Fixed allocation preserves independent package budgets. Seller-optimized allocation delegates continuous cross-package allocation to the seller within the media-buy total, package caps, minimum-spend targets, flight windows, and pacing controls. When a seller-optimized media-buy BiddingPolicy carries cost_per or roas, that control binds to this allocation block's primary optimization goal rather than independently to each package goal.",
+  "x-adcp-hoist": true,
+  "discriminator": {
+    "propertyName": "mode"
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "fixed",
+          "description": "Packages have independent budgets. The seller does not automatically move budget between packages."
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "seller_optimized",
+          "description": "Packages draw from a shared media-buy budget. The seller continuously allocates spend across packages to optimize the declared goals."
+        },
+        "optimization_goals": {
+          "type": "array",
+          "description": "Goals the seller uses to allocate the shared budget across packages. These are distinct from packages[].optimization_goals, which optimize delivery within an individual package. The primary goal is the earliest array entry among goals with the lowest explicit numeric priority; goals without priority follow all explicitly prioritized goals; when all priorities are omitted, the first entry is primary. It supplies the result unit/value source for media-buy bidding.cost_per or bidding.roas. Legacy monetary target kinds are prohibited at allocation scope because canonical controls belong in media-buy bidding. Every participating product MUST support the primary cross-package goal; otherwise the seller MUST reject the request with TERMS_REJECTED or UNSUPPORTED_FEATURE and identify the incompatible package.",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/optimization-goal.json"
+              },
+              {
+                "not": {
+                  "properties": {
+                    "target": {
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "cost_per",
+                            "per_ad_spend"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "target"
+                  ]
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "mode",
+        "optimization_goals"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

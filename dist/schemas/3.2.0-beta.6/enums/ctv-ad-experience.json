@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/ctv-ad-experience.json",
+  "title": "CTV Ad Experience",
+  "description": "IAB Tech Lab CTV Ad Portfolio experience for a format option. `menu` covers smart-TV home/menu surfaces (tiles and headline banners, OpenRTB Native plcmttype 1/3); `pause`, `screensaver`, `overlay`, `squeezeback`, and `in_scene` are the on-glass experiences the portfolio signals via OpenRTB Video with VAST NonLinearAds (AdCOM plcmt 5-9). One format option declares at most one experience; sellers offering several publish sibling format options. Each canonical format permits only the experiences in its documented matrix — pairings outside the matrix fail validation. Linear CTV video is ordinary video_vast/video_hosted and declares no experience.",
+  "$comment": "Vocabulary and names follow the IAB CTV Ad Format Guidelines v2.0 and the final Signaling Implementation Guidelines. The IAB signaling table (Menu -> Native, others -> NonLinear VAST) is an OpenRTB bridge mapping documented in docs/creative/ctv-experiences.mdx; AdCP creative supply follows the per-canonical experience matrix, which also admits the asset-bundle and image contracts CTV sellers ingest in practice.",
+  "type": "string",
+  "enum": [
+    "menu",
+    "pause",
+    "screensaver",
+    "overlay",
+    "squeezeback",
+    "in_scene"
+  ]
+}

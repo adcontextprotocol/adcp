@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/mcp/2026-07-28/profiles/production/governance/report-plan-outcome-response.json",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
+  "properties": {
+    "outcome_id": {
+      "type": "string",
+      "x-entity": "governance_outcome"
+    },
+    "outcome_state": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "findings"
+      ]
+    },
+    "committed_budget": {
+      "type": "number"
+    },
+    "delivery_reconciliation_status": {
+      "type": "string",
+      "enum": [
+        "consistent",
+        "measurement_variance",
+        "disputed",
+        "unmatched",
+        "closed_unresolved"
+      ]
+    },
+    "delivery_period_state": {
+      "type": "string",
+      "enum": [
+        "open",
+        "closed"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/$defs/external:enums~1escalation-severity.json"
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "category_id",
+          "severity",
+          "explanation"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "plan_summary": {
+      "type": "object",
+      "properties": {
+        "total_committed": {
+          "type": "number"
+        },
+        "budget_remaining": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "replayed": {
+      "type": "boolean",
+      "default": false
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "outcome_id",
+    "outcome_state"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:enums/escalation-severity.json": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

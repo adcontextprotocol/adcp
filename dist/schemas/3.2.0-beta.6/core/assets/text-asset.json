@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/assets/text-asset.json",
+  "title": "Text Asset",
+  "description": "Text content asset",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "text",
+      "description": "Discriminator identifying this as a text asset. See /schemas/creative/asset-types for the registry."
+    },
+    "content": {
+      "type": "string",
+      "description": "Text content"
+    },
+    "language": {
+      "type": "string",
+      "description": "Optional language claim for this text. In a materialized creative localization variant, localized-creative-asset.json requires this value to use /schemas/core/locale-tag.json and conformance requires exact equality with the enclosing variant locale. General non-localized assets retain the legacy unconstrained string for compatibility."
+    },
+    "provenance": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+    }
+  },
+  "required": [
+    "asset_type",
+    "content"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/pricing-structure.json",
+  "title": "Pricing Structure",
+  "description": "How the payable price is determined. Fixed pricing has a seller-declared monetary unit price, auction pricing is established through a buyer bid, and contingent pricing is calculated from a measured business outcome after delivery.",
+  "type": "string",
+  "enum": [
+    "fixed",
+    "auction",
+    "contingent"
+  ],
+  "enumDescriptions": {
+    "fixed": "Seller-declared monetary unit price through fixed_price",
+    "auction": "Buyer bid against optional floor_price and price_guidance",
+    "contingent": "Price calculated from a measured business outcome after delivery"
+  }
+}
