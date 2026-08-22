@@ -1,0 +1,27 @@
+{
+  "policy_id": "creative_security_https_only",
+  "source": "registry",
+  "version": "1.0.0",
+  "name": "Creative HTTPS-only resource requirement",
+  "description": "Requires every creative network request to use HTTPS in a secure serving environment.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["security"],
+  "governance_domains": ["creative"],
+  "effective_date": "2026-08-21",
+  "source_url": "https://docs.adcontextprotocol.org/docs/governance/creative/policy-backed-rejections#initial-registry-policies",
+  "source_name": "AgenticAdvertising.org",
+  "policy": "An advertising creative served in a secure context must use HTTPS for every asset, script, frame, redirect, tracking request, and other network dependency. An HTTP URL violates this policy even when the initial creative or final destination uses HTTPS. A seller that observes an insecure request must reject the creative and identify this policy.",
+  "guidance": "Exercise interactive paths and follow redirects when inspecting requests. Buyer remediation: migrate every dependency and redirect hop to HTTPS, then rerun the evaluation.",
+  "exemplars": {
+    "pass": [{
+      "scenario": "A tag and all of its scripts, images, frames, trackers, and redirect hops use HTTPS.",
+      "explanation": "The complete dependency chain remains in a secure transport context."
+    }],
+    "fail": [{
+      "scenario": "An HTTPS tag loads one impression pixel from an HTTP endpoint.",
+      "explanation": "A single insecure network request violates the HTTPS-only requirement."
+    }]
+  }
+}

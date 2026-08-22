@@ -1,0 +1,27 @@
+{
+  "policy_id": "creative_content_baseline_safety",
+  "source": "registry",
+  "version": "1.0.0",
+  "name": "Creative baseline content-safety standard",
+  "description": "Establishes a baseline prohibition on hateful, graphic, shocking, and similarly unsafe creative content.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["brand_safety"],
+  "governance_domains": ["creative", "content_standards"],
+  "effective_date": "2026-08-21",
+  "source_url": "https://docs.adcontextprotocol.org/docs/governance/creative/policy-backed-rejections#initial-registry-policies",
+  "source_name": "AgenticAdvertising.org",
+  "policy": "An advertising creative must not contain hateful attacks against protected groups, explicit celebration or instruction of serious violence, graphic injury or gore used primarily for shock, or explicit sexual material. Sellers applying additional suitability restrictions such as profanity, suggestive themes, or regulated product categories must use a more specific registry or inline policy rather than expanding this baseline silently. A seller that detects content prohibited by this baseline must reject the creative and identify this policy.",
+  "guidance": "Evaluate the creative itself, not adjacent publisher content. Apply category-specific policies for alcohol, gambling, political, pharmaceutical, weapons, and other regulated advertising. Buyer remediation: replace the prohibited text, imagery, audio, or video rather than making a cosmetic resubmission.",
+  "exemplars": {
+    "pass": [{
+      "scenario": "A fictional outdoor-equipment advertiser shows adults hiking on a rocky trail with no graphic injury, hate-based content, or explicit material.",
+      "explanation": "The creative does not contain any content prohibited by the baseline."
+    }],
+    "fail": [{
+      "scenario": "A shock advertisement uses a graphic close-up of a severe real-world injury as its primary attention mechanism.",
+      "explanation": "Graphic injury used primarily for shock violates the baseline safety policy."
+    }]
+  }
+}

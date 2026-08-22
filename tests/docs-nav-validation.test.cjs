@@ -428,6 +428,7 @@ test('temporary snapshot redirects cover every available live page', () => {
     'docs/media-buy/task-reference/accept_proposal',
     'docs/media-buy/task-reference/control_media_buy',
     'docs/creative/channels/radio',
+    'docs/governance/creative/policy-backed-rejections',
     'docs/governance/campaign/tasks/report_plan_adjustment',
     'docs/brand-protocol/tasks/search_brands',
   ];
