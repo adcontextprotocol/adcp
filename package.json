@@ -84,7 +84,7 @@
     "test:storyboard-response-schema": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-response-schema.test.cjs",
     "test:storyboard-context-output-paths": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-context-output-paths.test.cjs",
     "test:storyboard-validations-paths": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-validations-paths.test.cjs",
-    "test:storyboard-check-enum": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-check-enum.test.cjs",
+    "test:storyboard-check-enum": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-check-enum.test.cjs tests/policy-backed-rejections-storyboard.test.cjs",
     "test:update-media-buy-affected-packages": "node --test --test-force-exit --test-timeout=30000 tests/lint-update-media-buy-affected-packages.test.cjs",
     "test:storyboard-advisory-expiry": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-advisory-expiry.test.cjs",
     "test:storyboard-raw-mode-required": "node --test --test-force-exit --test-timeout=30000 tests/lint-storyboard-raw-mode-required.test.cjs",
