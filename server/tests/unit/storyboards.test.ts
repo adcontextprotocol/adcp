@@ -167,6 +167,16 @@ describe('getTestKitForStoryboard', () => {
     const auth = kit!.auth as { api_key?: string } | undefined;
     expect(auth?.api_key).toBeTruthy();
   });
+
+  it('resolves a storyboard kit from the selected compliance target', () => {
+    const target = hostedComplianceTarget('3.1');
+    const options = hostedComplianceOptions(target);
+    const kit = getTestKitForStoryboard('media_buy_seller/canonical_formats', options);
+
+    expect(kit?.id).toBe('acme_outdoor');
+    const auth = kit!.auth as { api_key?: string } | undefined;
+    expect(auth?.api_key).toBeTruthy();
+  });
 });
 
 describe('wrapper contract', () => {

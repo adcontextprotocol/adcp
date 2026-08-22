@@ -5313,7 +5313,7 @@ export function createMemberToolHandlers(
       // `from_test_kit` steps run with the credential the storyboard was
       // authored against; the run-auth bearer substitution no-ops when the
       // kit already carries auth.
-      const declaredTestKit = getTestKitForStoryboard(storyboardId);
+      const declaredTestKit = getTestKitForStoryboard(storyboardId, runOptions);
       const result = await runStoryboard(
         resolved.resolvedUrl,
         sb,
@@ -5533,7 +5533,7 @@ export function createMemberToolHandlers(
     try {
       const authProbeTask = await inferHostedAuthProbeTask(resolved.resolvedUrl, authOption, runTarget);
       // adcp#6735 — same declared-kit pre-population as run_storyboard.
-      const declaredStepTestKit = getTestKitForStoryboard(storyboardId);
+      const declaredStepTestKit = getTestKitForStoryboard(storyboardId, runOptions);
       const result: StoryboardStepResult = await runStoryboardStep(
         resolved.resolvedUrl,
         sb,
