@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Add creative rejection conformance for the one-policy-per-error invariant. The new `creative/policy_backed_rejections` storyboard submits one payload that deterministically violates the automatic-redirect and HTTPS-only registry policies, then requires exactly two `CREATIVE_REJECTED` entries with one `details.policy_id` each. The runner contract also publishes the reusable `array_length` assertion used to grade exact error cardinality.
