@@ -1,0 +1,389 @@
+id: creative/asset_type_filtering
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Creative library asset-type filtering"
+category: creative
+summary: "Filters list_creatives by published_post and zip asset types, including OR semantics, mixed assets, empty results, and composition with format_ids."
+track: creative
+required_tools:
+  - list_creatives
+
+requires:
+  - controller
+
+narrative: |
+  A cross-platform buyer needs to find existing-published-post references without
+  downloading every creative or enumerating each publisher's local format catalog.
+  The runner seeds two published-post creatives, one direct image creative, one
+  HTML5 zip bundle, and one nested carousel-image creative, then verifies
+  exact asset-type matching and AND composition with other filter fields.
+
+  Asset matching is limited to values directly assigned to top-level assets slots.
+  The fixtures cover a mixed creative (published_post plus url), a canonical-format
+  creative, an HTML5 zip bundle, and a nested carousel image that must not match.
+  Array-valued slots and nested fields inside assets such as cards[].media are
+  outside this storyboard's matching scope.
+
+agent:
+  interaction_model: stateful_preloaded
+  capabilities:
+    - has_creative_library
+  examples:
+    - "Creative management platforms"
+    - "Sales agents with account-scoped creative libraries"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The runner seeds five creative-library rows through comply_test_controller.
+    Agents that do not implement asset_types ignore the field under the protocol's
+    forward-compatible fallback and should not claim this focused scenario.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  creatives:
+    - creative_id: "asset_filter_published_mixed"
+      name: "Published post with landing page"
+      status: "approved"
+      format_id:
+        agent_url: "https://creative.example.com"
+        id: "existing_post"
+      manifest:
+        format_id:
+          agent_url: "https://creative.example.com"
+          id: "existing_post"
+        assets:
+          published_post:
+            asset_type: "published_post"
+            post_url: "https://community.example/posts/trail-pro"
+          landing_page_url:
+            asset_type: "url"
+            url: "https://acmeoutdoor.example/trail-pro"
+    - creative_id: "asset_filter_published_canonical"
+      name: "Canonical published post"
+      status: "approved"
+      format_kind: "video_hosted"
+      format_option_ref:
+        scope: "publisher"
+        publisher_domain: "community.example"
+        format_option_id: "existing_published_post"
+      manifest:
+        format_kind: "video_hosted"
+        format_option_ref:
+          scope: "publisher"
+          publisher_domain: "community.example"
+          format_option_id: "existing_published_post"
+        assets:
+          published_post:
+            asset_type: "published_post"
+            platform: "community"
+            platform_post_id: "trail-pro-2"
+    - creative_id: "asset_filter_image"
+      name: "Image-only creative"
+      status: "approved"
+      format_id:
+        agent_url: "https://creative.example.com"
+        id: "existing_post"
+      manifest:
+        format_id:
+          agent_url: "https://creative.example.com"
+          id: "existing_post"
+        assets:
+          image:
+            asset_type: "image"
+            url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png"
+            width: 300
+            height: 250
+            mime_type: "image/png"
+    - creative_id: "asset_filter_zip_bundle"
+      name: "HTML5 bundle creative"
+      status: "approved"
+      format_id:
+        agent_url: "https://creative.example.com"
+        id: "html5_bundle"
+      manifest:
+        format_id:
+          agent_url: "https://creative.example.com"
+          id: "html5_bundle"
+        assets:
+          bundle:
+            asset_type: "zip"
+            url: "https://cdn.pinnacle-agency.example/trail-pro-html5.zip"
+            mime_type: "application/zip"
+    - creative_id: "asset_filter_nested_card_image"
+      name: "Nested carousel image"
+      status: "approved"
+      format_kind: "image_carousel"
+      manifest:
+        format_kind: "image_carousel"
+        assets:
+          cards:
+            - asset_type: "card"
+              media:
+                asset_type: "image"
+                url: "https://cdn.pinnacle-agency.example/trail-pro-card.png"
+                width: 1200
+                height: 628
+
+phases:
+  - id: filter_creative_library
+    title: "Filter the seeded creative library"
+    narrative: |
+      The buyer first requests multiple asset types to exercise OR-within-field,
+      then combines asset_types with format_ids to exercise AND-across-fields,
+      and finally requests an absent asset type to verify an empty result.
+
+    steps:
+      - id: published_post_or_audio
+        title: "Match published-post assets with OR semantics"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives#asset-type-matching"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          Return exactly the two published-post fixtures. The mixed creative matches
+          despite also carrying a url asset, the canonical creative retains its
+          format_kind identity, and the image-only, zip, and nested-card creatives are excluded.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            creative_ids:
+              - "asset_filter_published_mixed"
+              - "asset_filter_published_canonical"
+              - "asset_filter_image"
+              - "asset_filter_zip_bundle"
+              - "asset_filter_nested_card_image"
+            asset_types:
+              - "published_post"
+              - "audio"
+          context:
+            correlation_id: "creative_asset_type_filtering--or_match"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_value
+            path: "query_summary.total_matching"
+            value: 2
+            description: "OR within asset_types matches both published-post fixtures"
+          - check: field_value
+            path: "query_summary.returned"
+            value: 2
+            description: "Both matching fixtures are returned on the unpaginated request"
+          - check: field_contains
+            path: "creatives[*].creative_id"
+            value: "asset_filter_published_mixed"
+            description: "A mixed-asset creative matches when one direct asset is published_post"
+          - check: field_contains
+            path: "creatives[*].creative_id"
+            value: "asset_filter_published_canonical"
+            description: "Canonical-format published-post creative is returned"
+          - check: field_contains
+            path: "creatives[*].format_kind"
+            value: "video_hosted"
+            description: "Canonical identity is preserved without fabricating format_id"
+          - check: field_contains
+            path: "creatives[*].format_option_ref.format_option_id"
+            value: "existing_published_post"
+            description: "Canonical format option reference is preserved"
+          - check: field_contains
+            path: "creatives[*].assets.published_post.asset_type"
+            value: "published_post"
+            description: "Returned assets expose the matched published_post discriminator"
+          - check: field_contains
+            path: "creatives[*].assets.landing_page_url.asset_type"
+            value: "url"
+            description: "Mixed creative retains its non-matching companion URL asset"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_asset_type_filtering--or_match"
+            description: "Context correlation_id returned unchanged"
+
+      - id: published_post_and_format
+        title: "Compose asset_types with format_ids"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives#asset-type-matching"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          Return only asset_filter_published_mixed. The other published-post fixture
+          uses canonical identity rather than format_id, while the image fixture has
+          the requested format_id but not the requested asset type.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            creative_ids:
+              - "asset_filter_published_mixed"
+              - "asset_filter_published_canonical"
+              - "asset_filter_image"
+              - "asset_filter_zip_bundle"
+              - "asset_filter_nested_card_image"
+            asset_types:
+              - "published_post"
+            format_ids:
+              - agent_url: "https://creative.example.com"
+                id: "existing_post"
+          context:
+            correlation_id: "creative_asset_type_filtering--and_format"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_value
+            path: "query_summary.total_matching"
+            value: 1
+            description: "asset_types and format_ids compose with AND semantics"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "asset_filter_published_mixed"
+            description: "The sole creative satisfies both active filter fields"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_asset_type_filtering--and_format"
+            description: "Context correlation_id returned unchanged"
+
+      - id: zip_bundle
+        title: "Match an HTML5 zip bundle"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives#asset-type-matching"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          Return exactly the HTML5 bundle creative whose direct bundle asset uses
+          the shared AssetContentType value zip.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            creative_ids:
+              - "asset_filter_zip_bundle"
+            asset_types:
+              - "zip"
+          context:
+            correlation_id: "creative_asset_type_filtering--zip"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_value
+            path: "query_summary.total_matching"
+            value: 1
+            description: "The direct zip asset satisfies the filter"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "asset_filter_zip_bundle"
+            description: "The HTML5 bundle creative is returned"
+          - check: field_value
+            path: "creatives[0].assets.bundle.asset_type"
+            value: "zip"
+            description: "The returned asset retains the zip discriminator"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_asset_type_filtering--zip"
+            description: "Context correlation_id returned unchanged"
+
+      - id: no_audio_assets
+        title: "Return an empty result for an absent asset type"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives#asset-type-matching"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          Return an empty creatives array and zero matching rows because none of the
+          five scoped fixtures has a direct audio asset.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            creative_ids:
+              - "asset_filter_published_mixed"
+              - "asset_filter_published_canonical"
+              - "asset_filter_image"
+              - "asset_filter_zip_bundle"
+              - "asset_filter_nested_card_image"
+            asset_types:
+              - "audio"
+          context:
+            correlation_id: "creative_asset_type_filtering--empty"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_value
+            path: "query_summary.total_matching"
+            value: 0
+            description: "No scoped creative carries a direct audio asset"
+          - check: field_value
+            path: "query_summary.returned"
+            value: 0
+            description: "The empty filtered result returns zero rows"
+          - check: field_value
+            path: "creatives"
+            value: []
+            description: "An empty filtered result carries an empty creatives array"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_asset_type_filtering--empty"
+            description: "Context correlation_id returned unchanged"
+
+      - id: nested_card_image_does_not_match
+        title: "Do not recurse into nested card media"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives#asset-type-matching"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          Return no creatives. The scoped carousel carries asset_type card at its
+          top-level slot; its nested cards[].media image is outside v1 traversal.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            creative_ids:
+              - "asset_filter_nested_card_image"
+            asset_types:
+              - "image"
+          context:
+            correlation_id: "creative_asset_type_filtering--nested_excluded"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_value
+            path: "query_summary.total_matching"
+            value: 0
+            description: "Nested cards[].media does not satisfy a top-level image filter"
+          - check: field_value
+            path: "creatives"
+            value: []
+            description: "Nested-only image match is excluded"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_asset_type_filtering--nested_excluded"
+            description: "Context correlation_id returned unchanged"

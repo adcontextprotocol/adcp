@@ -109,7 +109,7 @@ Push campaign plans to the governance agent. A plan defines the authorized param
 
 Plans originate in external systems -- an agency's planning tool, a brand's budget system, an insertion order. `sync_plans` pushes them to the governance agent so it knows what to validate against.
 
-Syncing a plan that already exists (same `plan_id`) updates it. The governance agent increments the version and re-evaluates any active campaigns against the updated rules. This handles mid-flight amendments like budget increases or channel additions. Content-standards versions follow a separate pinned-at-buy rule — see [content standards versioning](/docs/governance/content-standards/index#versioning-and-mid-flight-amendments).
+Syncing a plan that already exists (same `plan_id`) updates it. The governance agent increments the version and re-evaluates any active campaigns against the updated rules. This handles mid-flight amendments like budget increases or channel additions. Content-standards configurations are separate resources, and their wire contract does not define how running media buys adopt later updates; see [updating content-standards policies](/docs/governance/content-standards/index#updating-policies).
 
 Multiple campaigns (identified by `governance_context` in [`check_governance`](/docs/governance/campaign/tasks/check_governance) and [`report_plan_outcome`](/docs/governance/campaign/tasks/report_plan_outcome)) can reference the same plan. The governance agent tracks budget across all campaigns tied to a plan.
 

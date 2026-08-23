@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog-item-availability-error.json",
+  "title": "Catalog Item Availability Error",
+  "description": "Error returned by a catalog item availability operation. REFERENCE_NOT_FOUND has a deliberately closed, invariant shape so callers cannot distinguish unknown, inaccessible, unauthorized, or stale-generation references.",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/error.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "REFERENCE_NOT_FOUND"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog-item-reference-not-found-error.json"
+      }
+    }
+  ]
+}

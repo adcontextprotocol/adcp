@@ -2,10 +2,12 @@
 title: list_products
 description: "Read seller product offers with structured discovery criteria."
 "og:title": "AdCP list_products Task"
-testable: false
+testable: true
 ---
 
 `list_products` is the side-effect-free entry point to the compact product lifecycle. Each invocation completes synchronously, while account-level wholesale feed webhooks keep long-lived buyer mirrors current without polling. It returns products only—never proposals. Buyers can purchase listed products through [`buy_products`](/docs/media-buy/task-reference/buy_products) or pass returned `product_id` values to [`request_proposals`](/docs/media-buy/task-reference/request_proposals) for seller planning.
+
+Wholesale support is optional. A seller that omits `list_products` from `media_buy.lifecycle_tools` offers no wholesale feed, with no implication about its inventory or planning capability, and no conformance scenario requires the wholesale path. The feed is deliberately the lower-resolution discovery surface: buyers who want the seller's full capability applied to their intent send a brief through [`request_proposals`](/docs/media-buy/task-reference/request_proposals). Buyers evaluating sellers SHOULD use both surfaces where advertised rather than treating feed contents — or feed absence — as a capability assessment.
 
 {/* Using latest because this schema is not yet released in any version.
     Update to the correct version alias after the next release. */}
@@ -92,6 +94,18 @@ If the selected feed and pricing layer still match, the seller can omit `product
   "cache_scope": "account"
 }
 ```
+
+## Availability forecasts are a per-read overlay
+
+For calendar-shaped guaranteed inventory (homepage takeovers, sponsorships), `list_products` can answer "which dates are open?" directly: pass `criteria.offer_filters.availability_horizon` and request `forecast` in `fields`, and each product's forecast comes back partitioned into `time`-dimensioned points carrying `availability_status`. See [Flexible Availability Windows](/docs/media-buy/product-discovery/media-products#flexible-availability-windows) for window semantics.
+
+Availability is volatile — every booking changes it — so it is never part of the versioned feed content:
+
+- `feed_version` covers the durable offer definition only. Forecast data (including availability windows) does not participate in feed-version scoping and carries its own freshness via the forecast's `generated_at` and `valid_until`.
+- A request whose `fields` includes `forecast` MUST NOT be answered with `outcome: "unchanged"` — that arm omits `products`, so it cannot carry the volatile data the buyer explicitly asked for. Sellers return a full `listed` response even when the feed token matches.
+- Wholesale feed webhooks fire on definition and pricing changes, not on booking-state changes. Broadcasting window closures to all subscribers would leak demand signals; buyers who need current availability read it on demand, and buyers who need a guarantee take an inventory hold by finalizing a proposal.
+
+In practice these are two different reads: mirror maintenance (conditional, no `forecast` in `fields`) and availability checks (`forecast` requested, never conditional). Any `availability_status` returned is a snapshot bounded by `valid_until`, never a hold — the buy itself remains the authoritative availability check and fails with [`PRODUCT_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-product-unavailable) when a window has since closed.
 
 ## Wholesale feed webhooks
 

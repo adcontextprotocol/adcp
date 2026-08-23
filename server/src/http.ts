@@ -64,7 +64,7 @@ import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternalUrl } from "./utils/perspective-url.js";
 import { decodeHtmlEntities } from "./utils/html-entities.js";
 import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
-import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter } from "./middleware/rate-limit.js";
+import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter, agentCardValidationRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
 import { sendNewsletterConfirmation } from "./notifications/email.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
@@ -133,6 +133,7 @@ import {
 } from "./conformance/index.js";
 import { createRegistryApiRouters } from "./routes/registry-api.js";
 import { getPublicJwks } from "./services/verification-token.js";
+import { isManifestReferenceReachable } from "./services/manifest-reference-verifier.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
 import { createCommunityMirrorRouter } from "./routes/community-mirrors.js";
 import { extensionForLogoContentType, getBrandAssetUrl, getLogo, isAllowedLogoContentType } from "./services/logo-cdn.js";
@@ -1610,6 +1611,11 @@ export class HTTPServer {
     'www.adcontextprotocol.org',
   ]);
 
+  private static readonly AAO_BRIDGE_ORIGINS = new Set([
+    'https://agenticadvertising.org',
+    'https://www.agenticadvertising.org',
+  ]);
+
   private static readonly BRIDGE_CHECK_TTL = 10 * 60 * 1000; // 10 minutes
   private static readonly BRIDGE_CHECK_PARAM = '_bridge_checked';
 
@@ -1624,7 +1630,11 @@ export class HTTPServer {
   private static isAllowedAdcpUrl(url: string): boolean {
     try {
       const parsed = new URL(url);
-      return HTTPServer.ADCP_HOSTNAMES.has(parsed.hostname);
+      return parsed.protocol === 'https:'
+        && parsed.port === ''
+        && parsed.username === ''
+        && parsed.password === ''
+        && HTTPServer.ADCP_HOSTNAMES.has(parsed.hostname);
     } catch {
       return false;
     }
@@ -3482,7 +3492,7 @@ export class HTTPServer {
     });
 
     // Validate agent cards only (utility endpoint)
-    this.app.post("/api/adagents/validate-cards", async (req, res) => {
+    this.app.post("/api/adagents/validate-cards", agentCardValidationRateLimiter, async (req, res) => {
       try {
         const { agent_urls } = req.body;
 
@@ -3494,9 +3504,25 @@ export class HTTPServer {
           });
         }
 
+        const MAX_AGENT_CARDS_PER_REQUEST = 10;
+        if (agent_urls.length > MAX_AGENT_CARDS_PER_REQUEST) {
+          return res.status(400).json({
+            success: false,
+            error: `At most ${MAX_AGENT_CARDS_PER_REQUEST} agent URLs may be validated per request`,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        if (agent_urls.some((url) => typeof url !== 'string' || url.length === 0 || url.length > 2048)) {
+          return res.status(400).json({
+            success: false,
+            error: 'Every agent URL must be a non-empty string of at most 2048 characters',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
         logger.info({ cardCount: agent_urls.length }, 'Validating agent cards');
 
-        const agents = agent_urls.map((url: string) => ({ url, authorized_for: 'validation' }));
+        const agents = [...new Set<string>(agent_urls)].map((url) => ({ url, authorized_for: 'validation' }));
         const agentCards = await this.adagentsManager.validateAgentCards(agents);
 
         return res.json({
@@ -4595,20 +4621,7 @@ export class HTTPServer {
           return res.status(404).json({ error: 'Reference not found' });
         }
 
-        // Try to fetch the manifest to verify it exists
-        let isValid = false;
-        try {
-          if (ref.reference_type === 'url' && ref.manifest_url) {
-            const response = await fetch(ref.manifest_url, { method: 'HEAD' });
-            isValid = response.ok;
-          } else if (ref.reference_type === 'agent' && ref.agent_url) {
-            // For agents, just check the URL is reachable
-            const response = await fetch(ref.agent_url, { method: 'HEAD' });
-            isValid = response.ok || response.status === 405; // 405 = method not allowed is OK for MCP
-          }
-        } catch {
-          isValid = false;
-        }
+        const isValid = await isManifestReferenceReachable(ref);
 
         const updated = await manifestRefsDb.updateReference(ref.id, {
           verification_status: isValid ? 'valid' : 'unreachable',
@@ -8198,16 +8211,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // POST /auth/bridge-callback - Receives session from AAO bridge via form POST
     this.app.post('/auth/bridge-callback', express.urlencoded({ extended: false }), (req, res) => {
       // CSRF protection: verify the form POST originated from AAO
-      const origin = req.get('origin') || '';
-      if (origin) {
-        try {
-          const parsed = new URL(origin);
-          if (parsed.hostname !== 'agenticadvertising.org' && !parsed.hostname.endsWith('.agenticadvertising.org')) {
-            return res.status(403).send('Invalid origin');
-          }
-        } catch {
-          return res.status(403).send('Invalid origin');
-        }
+      const origin = req.get('origin');
+      if (!origin || !HTTPServer.AAO_BRIDGE_ORIGINS.has(origin)) {
+        return res.status(403).send('Invalid origin');
       }
 
       const returnTo = req.query.return_to as string || '/';

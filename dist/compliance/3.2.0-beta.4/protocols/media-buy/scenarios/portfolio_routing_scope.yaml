@@ -1,0 +1,152 @@
+id: media_buy_seller/portfolio_routing_scope
+version: "1.1.0"
+title: "Seller declares brief-routing portfolio scope"
+category: media_buy_seller
+summary: "Advises when a media-buy seller omits its complete country or channel routing allowlist."
+track: media_buy
+introduced_in: "3.2"
+
+required_tools:
+  - get_adcp_capabilities
+  - get_products
+
+narrative: |
+  A present primary_countries or primary_channels array is exhaustive for brief
+  routing. Buyers may skip this agent when a brief does not intersect a declared
+  array. Omission means unknown scope, never global coverage. The declarations
+  are SHOULD-level during 3.2, so omission is an advisory finding rather than a
+  conformance failure. Product availability remains a get_products concern.
+  When a channel declaration is present, the gated phase also proves that a
+  synchronous product read is accepted and that every returned product channel
+  stays within the exhaustive channel allowlist. Empty product results remain
+  valid. Empty declared arrays are advisory in 3.2 rather than schema-invalid;
+  4.0 can require non-empty declarations.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - portfolio_routing
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer/router)"
+
+prerequisites:
+  description: |
+    The seller exposes get_adcp_capabilities and declares media_buy support.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Inspect seller brief-routing scope"
+    steps:
+      - id: get_capabilities
+        title: "Read portfolio routing allowlists"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return media_buy capabilities and, preferably, complete country and
+          channel routing allowlists.
+        sample_request:
+          context:
+            correlation_id: "portfolio_routing_scope--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "media_buy"
+            description: "Agent declares media_buy protocol support"
+          - check: field_present
+            path: "media_buy.portfolio.primary_countries"
+            severity: advisory
+            permanent_advisory:
+              reason: "Presence is a normative SHOULD in 3.2 and becomes a strict routing-scope requirement only in 4.0."
+            description: "Seller declares its complete brief-routing country allowlist"
+          - check: field_present
+            path: "media_buy.portfolio.primary_channels"
+            severity: advisory
+            permanent_advisory:
+              reason: "Presence is a normative SHOULD in 3.2 and becomes a strict routing-scope requirement only in 4.0."
+            description: "Seller declares its complete brief-routing channel allowlist"
+          - check: field_present
+            path: "media_buy.portfolio.primary_countries[0]"
+            severity: advisory
+            permanent_advisory:
+              reason: "Non-empty routing scope remains advisory in 3.2; 4.0 will require a non-empty declaration."
+            description: "Declared country routing scope contains at least one value"
+          - check: field_present
+            path: "media_buy.portfolio.primary_channels[0]"
+            severity: advisory
+            permanent_advisory:
+              reason: "Non-empty routing scope remains advisory in 3.2; 4.0 will require a non-empty declaration."
+            description: "Declared channel routing scope contains at least one value"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "portfolio_routing_scope--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: declared_channel_scope
+    title: "Exercise a declared channel and detect contradictory products"
+    depends_on: []
+    requires_capability:
+      path: media_buy.portfolio.primary_channels
+      present: true
+    steps:
+      - id: capture_declared_channels
+        title: "Capture the exhaustive channel allowlist"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "portfolio_routing_scope--capture_channels"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+        context_outputs:
+          - name: portfolio_channels
+            path: "media_buy.portfolio.primary_channels"
+
+      - id: query_declared_channel
+        title: "Read products under the advertised channel scope"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "portfolio_routing_scope--declared_channel"
+        expected: |
+          Return a synchronous product page, which may be empty. Every channel
+          on every returned product remains inside the exhaustive portfolio
+          declaration. An explicitly empty allowlist therefore passes only with
+          an empty/no-channel product page and is separately surfaced as advisory.
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_present
+            path: "products"
+            description: "Seller returns a synchronous success page; advisory errors remain allowed"
+          - check: all_fields_in_context_array
+            path: "products[*].channels[*]"
+            context_key: "portfolio_channels"
+            description: "Returned product channels do not contradict the exhaustive portfolio scope"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "portfolio_routing_scope--declared_channel"
+            description: "Context correlation_id returned unchanged"

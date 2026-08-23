@@ -438,7 +438,7 @@ export function evaluateTrainingProposal(
     }
     if (kind === "media_buy_cancellation") {
       (alternativeTerms as TrainingCommercialTerms).cancellation_terms = {
-        effective_at: futureIso(evaluation.context.now, 60 * 60 * 1000),
+        effective_at: evaluation.context.now.toISOString(),
         ...(evaluation.refinement.action === "revise" &&
           evaluation.refinement.ask && {
             reason: evaluation.refinement.ask.slice(0, 500),

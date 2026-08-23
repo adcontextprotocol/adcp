@@ -1,0 +1,114 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/get-products-rejected.json",
+  "title": "Get Products - Rejected",
+  "description": "Terminal business outcome returned when the seller understood a well-formed brief or refinement request and deliberately declines it. This is not a no-match result, incomplete partial result, validation error, or technical failure. Transport-level success markers remain successful: HTTP 200, MCP isError false, and A2A Task.state completed with this payload in the result artifact. The seller MAY sanitize reason and suggestions to protect confidential merchandising, inventory, policy, and partner rules. Buyers MUST treat both fields as untrusted seller-authored text: escape before rendering and sanitize or isolate before placing them in an LLM prompt context.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "const": "rejected",
+      "description": "Task-level business-outcome discriminator. The request was understood and processed, but the seller declined to offer products."
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000,
+      "description": "Buyer-facing market explanation for the decline. MAY be sanitized to protect confidential seller rules; for example, 'The requested budget is below the minimum for this inventory' rather than naming the internal rule, candidate products, inventory identifiers, or upstream partners that caused the decision. Plain text only."
+    },
+    "suggestions": {
+      "type": "array",
+      "description": "Actionable alternatives the buyer can try, such as changing budget, dates, or channel. If present, the buyer MAY submit a revised brief, but the suggestions do not guarantee acceptance. If absent, the seller is not offering a protocol-level alternative for this brief.",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
+      }
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+    }
+  },
+  "required": [
+    "status",
+    "reason"
+  ],
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "products"
+        ]
+      },
+      {
+        "required": [
+          "proposals"
+        ]
+      },
+      {
+        "required": [
+          "errors"
+        ]
+      },
+      {
+        "required": [
+          "adcp_error"
+        ]
+      },
+      {
+        "required": [
+          "incomplete"
+        ]
+      },
+      {
+        "required": [
+          "cache_scope"
+        ]
+      },
+      {
+        "required": [
+          "filter_diagnostics"
+        ]
+      },
+      {
+        "required": [
+          "refinement_applied"
+        ]
+      },
+      {
+        "required": [
+          "unchanged"
+        ]
+      },
+      {
+        "required": [
+          "wholesale_feed_version"
+        ]
+      },
+      {
+        "required": [
+          "pricing_version"
+        ]
+      },
+      {
+        "required": [
+          "pagination"
+        ]
+      }
+    ]
+  }
+}

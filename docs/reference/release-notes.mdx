@@ -11,14 +11,17 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ## Version 3.2.0
 
-**Status:** Beta cycle — minor release targeting the 3.2.0 milestone. Beta.0 is the protocol-first cut used as the canonical input for SDK work; beta.1 incorporates integration feedback and becomes SDK-backed only after SDKs ingest the exact beta.1 bundle. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
+**Status:** Beta cycle — minor release targeting the 3.2.0 milestone. Beta.0 was the protocol-first cut used as the canonical input for SDK work. Beta.4 is the current checkpoint, with exact TypeScript support in `@adcp/sdk@14.0.0-beta.5`. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
 
 ### Beta checkpoints
 
 | Release | Purpose | SDK posture |
 |---|---|---|
 | `3.2.0-beta.0` | Publish signed schemas, compliance assets, skills, and manifest for implementation feedback | SDK support follows this cut; beta.0 is not an SDK-backed certification target |
-| `3.2.0-beta.1` | Incorporate beta.0 integration corrections, then trigger an exact beta.1 SDK refresh | SDK-informed at protocol publication; SDK-backed after matching SDK support and integration evidence publish |
+| `3.2.0-beta.1` | Incorporate the first round of integration corrections | Superseded by beta.2 for new beta testing |
+| `3.2.0-beta.2` | Publish the second integration checkpoint | Superseded by beta.3 for new beta testing |
+| `3.2.0-beta.4` | Publish the current protocol checkpoint (flexible-window availability, outcome_target reverse forecasting, availability conformance) | Exact TypeScript support in `@adcp/sdk@14.0.0-beta.5`; Python and Go remain pending |
+| `3.2.0-beta.3` | Corrected protocol checkpoint, superseded by beta.4 | Superseded; remains available for pinned prerelease adopters |
 
 Each beta is immutable. The `3.2-beta` documentation selector advances to the latest beta, while pinned protocol, schema, compliance, and documentation artifacts remain available. See the [3.2 beta program](/docs/reference/3-2-beta).
 
@@ -39,8 +42,8 @@ Each beta is immutable. The `3.2-beta` documentation selector advances to the la
 | A seller or service | Advertise and echo the exact prerelease served, emit canonical status/retry shapes, and declare only capabilities actually implemented. |
 | A signing implementation | Require `content-digest` coverage for every signed request body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; isolate named-format conversion at compatibility boundaries. |
-| An SDK maintainer | Generate from the signed beta.0 tarball, publish an exact support statement, and route accepted protocol corrections into beta.1. |
-| A compliance operator | Use beta.0 as an implementation input; wait for the exact beta.1 SDK refresh and integration evidence before treating beta.1 as SDK-backed. Do not issue a 3.2 badge from beta.0. |
+| An SDK maintainer | Generate from the current signed beta.3 tarball, publish an exact support statement, and route accepted protocol corrections into a later beta. |
+| A compliance operator | Pair `@adcp/sdk@14.0.0-beta.5` with beta.4 for TypeScript testing; do not infer Python or Go support or issue a 3.2 badge from beta.4. |
 
 ### Required 3.2 migrations
 
@@ -802,7 +805,7 @@ Brand schema extensions (`border_radius`, `elevation`, `spacing`, extended color
 - **Compliance paths** — Update any references to `/compliance/{v}/domains/` → `/compliance/{v}/protocols/`.
 - **Capabilities** — Remove all boolean capability checks (`features.content_standards`, `brand.identity`, `trusted_match.supported`, etc.). Test for object presence instead. See the [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades#capabilities-model-simplification) for the full field list.
 - **Products** — Ensure all products include `reporting_capabilities`. This field is now required.
-- **Media buy status** — Replace `pending_activation` with `pending_creatives` and `pending_start`. See [lifecycle states](/docs/media-buy/media-buys#lifecycle-states).
+- **Media buy status** — Replace `pending_activation` with `pending_creatives` and `pending_start`. See the [state machine](/docs/media-buy/media-buys#state-machine).
 - **update_media_buy** — Pass `account` on all calls, matching `create_media_buy` behavior.
 - **preview_creative** — Update request builders from the oneOf union to the flat schema with `request_type` discriminant.
 - **Signals** — Include `signal_id` on all signal items in `get_signals` responses.

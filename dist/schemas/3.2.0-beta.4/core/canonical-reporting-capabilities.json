@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-reporting-capabilities.json",
+  "title": "Canonical Reporting Capabilities",
+  "description": "Compact product reporting contract. Vendor metrics use identity-only BrandKey references and do not inline brand or creative assets.",
+  "type": "object",
+  "properties": {
+    "available_reporting_frequencies": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/reporting-frequency.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "expected_delay_minutes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "timezone": {
+      "type": "string",
+      "description": "Explicit reporting-period timezone for this product. It may equal Account.timezone or differ when the upstream platform reports on a separate boundary."
+    },
+    "supports_webhooks": {
+      "type": "boolean"
+    },
+    "available_metrics": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/available-metric.json"
+      },
+      "uniqueItems": true
+    },
+    "vendor_metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "vendor": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/brand-key.json"
+          },
+          "metric_id": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/vendor-metric-id.json"
+          }
+        },
+        "required": [
+          "vendor",
+          "metric_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "supports_creative_breakdown": {
+      "type": "boolean"
+    },
+    "supports_keyword_breakdown": {
+      "type": "boolean"
+    },
+    "supports_geo_breakdown": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/geo-breakdown-support.json"
+    },
+    "supports_device_type_breakdown": {
+      "type": "boolean"
+    },
+    "supports_device_platform_breakdown": {
+      "type": "boolean"
+    },
+    "supports_audience_breakdown": {
+      "type": "boolean"
+    },
+    "supports_demographic_breakdown": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/demographic-reporting-capability.json"
+    },
+    "supports_placement_breakdown": {
+      "type": "boolean"
+    },
+    "supports_spot_breakdown": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/spot-reporting-capability.json"
+    },
+    "date_range_support": {
+      "type": "string",
+      "enum": [
+        "date_range",
+        "lifetime_only"
+      ]
+    },
+    "windowed_pull_granularities": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/reporting-frequency.json"
+      },
+      "uniqueItems": true
+    },
+    "measurement_windows": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/measurement-window.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "available_reporting_frequencies",
+    "expected_delay_minutes",
+    "timezone",
+    "supports_webhooks",
+    "available_metrics",
+    "date_range_support"
+  ],
+  "additionalProperties": false
+}

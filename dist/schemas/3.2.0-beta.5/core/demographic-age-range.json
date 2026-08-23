@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/demographic-age-range.json",
+  "title": "Demographic Age Range",
+  "description": "A canonical audience-age predicate in completed integer years. min and max are inclusive; omitting one bound means no restriction in that direction. At least one bound is required. include_unknown is always explicit because people whose age is unavailable are not members of any numeric interval. Implementations MUST reject min greater than max; JSON Schema draft-07 cannot compare sibling numeric values.",
+  "type": "object",
+  "properties": {
+    "min": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 150,
+      "description": "Inclusive minimum age in completed years. Omit for an open lower bound."
+    },
+    "max": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 150,
+      "description": "Inclusive maximum age in completed years. Omit for an open upper bound."
+    },
+    "include_unknown": {
+      "type": "boolean",
+      "description": "Whether delivery to people whose age is unavailable is part of this predicate. This field has no default and MUST be supplied."
+    }
+  },
+  "required": [
+    "include_unknown"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "min"
+      ]
+    },
+    {
+      "required": [
+        "max"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}

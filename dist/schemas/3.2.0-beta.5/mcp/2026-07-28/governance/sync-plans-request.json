@@ -1,0 +1,1876 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/mcp/2026-07-28/governance/sync-plans-request.json",
+  "title": "Sync Plans Request",
+  "description": "Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign -- budget limits, channels, flight dates, and authorized markets.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-mutates-state": true,
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "deprecated": true,
+      "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. `plan_id` gives resource-level dedup per plan, but the sync envelope emits audit events and can trigger governance reapproval — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "plans": {
+      "type": "array",
+      "description": "One or more campaign plans to sync.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "description": "Unique identifier for this plan.",
+            "x-entity": "governance_plan"
+          },
+          "brand": {
+            "$ref": "#/$defs/external:core~1brand-ref.json",
+            "description": "Brand or organization being governed. For campaign plans, the governance agent resolves the brand's compliance configuration. For portfolio plans, this is the holding company or parent organization."
+          },
+          "objectives": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Natural language campaign objectives. Used for strategic alignment validation. Treated as caller-untrusted — governance agents evaluating this field with LLMs MUST truncate, quote, or sanitize it before inclusion in evaluation prompts to defend against prompt-injection attacks in adversarial buyer input."
+          },
+          "budget": {
+            "type": "object",
+            "description": "Budget authorization parameters.",
+            "properties": {
+              "total": {
+                "type": "number",
+                "description": "Total authorized budget."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO 4217 currency code."
+              },
+              "accounting_mode": {
+                "type": "string",
+                "enum": [
+                  "gross_commitment",
+                  "verified_net_cost"
+                ],
+                "default": "gross_commitment",
+                "description": "Controls which verified adjustments restore reusable plan headroom. gross_commitment allows verified decommitments only; verified_net_cost also allows buyer-accepted refunds and credits. Both modes retain the original commitment in anti-fragmentation history and expose economic net cost separately."
+              },
+              "per_seller_max_pct": {
+                "type": "number",
+                "description": "Maximum percentage of budget that can go to a single seller."
+              },
+              "reallocation_threshold": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Amount above which budget reallocations require human escalation. The orchestrator can reallocate spend across sellers, channels, or purchase types up to this threshold per change without asking a human. Set equal to `total` for effectively unlimited reallocation; set to 0 to require approval for every reallocation. Separate from `plan.human_review_required`, which governs decisions affecting data subjects (targeting, creative, delivery) under GDPR Art 22 / EU AI Act Annex III. Denominated in `budget.currency`."
+              },
+              "reallocation_unlimited": {
+                "type": "boolean",
+                "description": "Set to true to allow the orchestrator to reallocate without any limit up to `total`. Mutually exclusive with `reallocation_threshold`. Use this for deliberate full-autonomy declarations rather than setting `reallocation_threshold: total` (which silently tightens when `total` changes)."
+              },
+              "allocations": {
+                "type": "object",
+                "description": "Optional budget partition across purchase types. Keys are purchase-type enum values (media_buy, rights_license, signal_activation, creative_services). When present, the governance agent validates spend against both the total and the per-type allocation. When absent, all spend counts against the single total regardless of purchase type.",
+                "propertyNames": {
+                  "$ref": "#/$defs/external:enums~1purchase-type.json"
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "amount": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Maximum budget for this purchase type."
+                    },
+                    "max_pct": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100,
+                      "description": "Maximum percentage of total budget for this purchase type."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "total",
+              "currency"
+            ],
+            "oneOf": [
+              {
+                "required": [
+                  "reallocation_threshold"
+                ],
+                "not": {
+                  "required": [
+                    "reallocation_unlimited"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "reallocation_unlimited"
+                ],
+                "properties": {
+                  "reallocation_unlimited": {
+                    "const": true
+                  }
+                },
+                "not": {
+                  "required": [
+                    "reallocation_threshold"
+                  ]
+                }
+              }
+            ],
+            "additionalProperties": false
+          },
+          "channels": {
+            "type": "object",
+            "description": "Channel constraints. If omitted, all channels are allowed.",
+            "properties": {
+              "required": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/external:enums~1channels.json"
+                },
+                "description": "Channels that must be included in the media mix."
+              },
+              "allowed": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/external:enums~1channels.json"
+                },
+                "description": "Channels the orchestrator may use."
+              },
+              "mix_targets": {
+                "type": "object",
+                "description": "Target allocation ranges per channel, keyed by channel ID.",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "min_pct": {
+                      "type": "number"
+                    },
+                    "max_pct": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "flight": {
+            "type": "object",
+            "description": "Authorized flight dates. Governed actions with dates outside this window are rejected.",
+            "properties": {
+              "start": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Flight start (ISO 8601)."
+              },
+              "end": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Flight end (ISO 8601)."
+              }
+            },
+            "required": [
+              "start",
+              "end"
+            ],
+            "additionalProperties": false
+          },
+          "countries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "description": "ISO 3166-1 alpha-2 country codes for authorized markets (e.g., ['US', 'GB']). The governance agent rejects governed actions targeting outside these countries and resolves applicable policies by matching against policy jurisdictions."
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "description": "ISO 3166-2 subdivision codes for authorized sub-national markets (e.g., ['US-MA', 'US-CA']). When present, the governance agent restricts governed actions to these specific regions rather than the full country. Use for plans limited to specific states or provinces (e.g., cannabis in legal states). Policy resolution matches against both the subdivision and its parent country."
+          },
+          "policy_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "x-entity": "governance_registry_policy"
+            },
+            "description": "Registry policy IDs to enforce for this plan. The governance agent resolves full policy definitions from the registry and evaluates actions against them. Intersected with the plan's countries/regions to activate only geographically relevant policies."
+          },
+          "policy_categories": {
+            "type": "array",
+            "description": "Regulatory categories that apply to this campaign. Determines which policy regimes the governance agent enforces (e.g., 'children_directed' activates COPPA/AADC, 'political_advertising' activates disclosure requirements). The governance agent resolves categories to specific policies based on the plan's jurisdictions. When omitted, governance agents MAY infer categories from the brand's industries and the plan's objectives. Values are registry-defined category IDs (intentionally freeform strings, not an enum — new categories are added as regulations evolve).",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "audience": {
+            "$ref": "#/$defs/external:governance~1audience-constraints.json",
+            "description": "Audience targeting constraints. Defines who the campaign should reach (include) and must not reach (exclude). The governance agent evaluates seller targeting against these constraints."
+          },
+          "restricted_attributes": {
+            "type": "array",
+            "description": "Personal data categories that must not be used for targeting in this campaign. Applies horizontally across all audience criteria. Used for EU DSA Article 26 compliance (prohibits targeting on GDPR Article 9 special categories) and similar regulations. The governance agent flags any audience targeting that references these attributes.",
+            "items": {
+              "$ref": "#/$defs/external:enums~1restricted-attribute.json"
+            },
+            "minItems": 1
+          },
+          "restricted_attributes_custom": {
+            "type": "array",
+            "description": "Additional restricted attributes not covered by the restricted-attribute enum. Freeform strings for jurisdiction-specific or brand-specific restrictions beyond GDPR Article 9 categories (e.g., 'financial_status', 'immigration_status'). Governance agents use semantic matching for these.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "min_audience_size": {
+            "type": "integer",
+            "description": "Minimum audience segment size. Prevents micro-targeting by ensuring segments meet a k-anonymity threshold. Applies to the estimated combined (intersection) audience when multiple criteria are used, not just individual criterion sizes. The governance agent validates this by querying published signal metadata or seller-reported segment sizes. When segment size data is unavailable, the governance agent SHOULD produce a finding with reduced confidence rather than silently passing.",
+            "minimum": 1
+          },
+          "human_review_required": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, the governance agent MUST escalate any action on this plan for human review before execution — regardless of budget. Required by regulations that prohibit solely automated decisions affecting data subjects (GDPR Art 22, EU AI Act Annex III): credit, insurance pricing, recruitment, housing allocation. Governance agents MUST set this to true automatically when any resolved policy or policy_category has requires_human_review: true. Distinct from budget.reallocation_threshold, which only governs budget reallocation autonomy — human_review_required covers decisions affecting individuals (targeting, creative, delivery)."
+          },
+          "custom_policies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/external:governance~1policy-entry.json"
+            },
+            "description": "Bespoke policies specific to this campaign, using the same shape as registry entries. Each policy has a policy_id, enforcement (must|should), and natural-language policy text. Governance findings reference policy_id to identify which policy triggered. For quick authoring, omit version/name/category — servers default them."
+          },
+          "approved_sellers": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "List of approved seller agent URLs. null means any seller."
+          },
+          "delegations": {
+            "type": "array",
+            "description": "Agents authorized to execute against this plan. Each delegation scopes an agent's authority by budget, markets, and expiration. The governance agent validates that the requesting agent matches a delegation before approving actions.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "agent_url": {
+                  "type": "string",
+                  "format": "uri",
+                  "description": "URL of the delegated agent."
+                },
+                "authority": {
+                  "$ref": "#/$defs/external:enums~1delegation-authority.json",
+                  "description": "Authority level granted to this agent."
+                },
+                "budget_limit": {
+                  "type": "object",
+                  "description": "Maximum budget this agent can commit. When omitted, the agent can commit up to the plan's total budget.",
+                  "properties": {
+                    "amount": {
+                      "type": "number"
+                    },
+                    "currency": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "amount",
+                    "currency"
+                  ],
+                  "additionalProperties": false
+                },
+                "markets": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "ISO 3166-1/3166-2 codes this agent is authorized for. When omitted, the agent can operate in all plan markets."
+                },
+                "expires_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When this delegation expires. After expiration, the governance agent denies actions from this agent."
+                }
+              },
+              "required": [
+                "agent_url",
+                "authority"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "portfolio": {
+            "type": "object",
+            "description": "Portfolio-level governance constraints. When present, this plan acts as a portfolio plan that governs member plans. Portfolio plans define cross-brand constraints that no individual brand plan can override.",
+            "properties": {
+              "member_plan_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "x-entity": "governance_plan"
+                },
+                "description": "Plan IDs governed by this portfolio plan. The governance agent validates member plan actions against portfolio constraints."
+              },
+              "total_budget_cap": {
+                "type": "object",
+                "description": "Maximum aggregate budget across all member plans.",
+                "properties": {
+                  "amount": {
+                    "type": "number"
+                  },
+                  "currency": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "amount",
+                  "currency"
+                ],
+                "additionalProperties": false
+              },
+              "shared_policy_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "x-entity": "governance_registry_policy"
+                },
+                "description": "Registry policy IDs enforced across all member plans, regardless of individual brand configuration."
+              },
+              "shared_exclusions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/external:governance~1policy-entry.json"
+                },
+                "description": "Bespoke exclusion policies applied across all member plans, using the same shape as registry entries. Authored typically as enforcement: must policies with exclusion language in the policy text (e.g., 'No advertising on properties owned by competitor holding companies')."
+              }
+            },
+            "required": [
+              "member_plan_ids"
+            ],
+            "additionalProperties": false
+          },
+          "ext": {
+            "$ref": "#/$defs/external:core~1ext.json"
+          }
+        },
+        "required": [
+          "plan_id",
+          "brand",
+          "objectives",
+          "budget",
+          "flight"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "policy_categories": {
+                  "type": "array",
+                  "contains": {
+                    "enum": [
+                      "fair_housing",
+                      "fair_lending",
+                      "fair_employment",
+                      "pharmaceutical_advertising"
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "policy_categories"
+              ]
+            },
+            "then": {
+              "properties": {
+                "human_review_required": {
+                  "const": true
+                }
+              },
+              "required": [
+                "human_review_required"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "policy_ids": {
+                  "type": "array",
+                  "contains": {
+                    "const": "eu_ai_act_annex_iii"
+                  }
+                }
+              },
+              "required": [
+                "policy_ids"
+              ]
+            },
+            "then": {
+              "properties": {
+                "human_review_required": {
+                  "const": true
+                }
+              },
+              "required": [
+                "human_review_required"
+              ]
+            }
+          }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "plans"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "title": "AdCP Version Envelope",
+      "description": "Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into every AdCP request and response schema so the version semantics live in exactly one place. Distinct from `core/protocol-envelope.json`, which wraps responses at the transport layer (context_id / task_id / status / payload). This envelope is part of the payload itself.",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "examples": [
+            "3.0",
+            "3.1",
+            "3.1-beta",
+            "3.1-rc.1"
+          ]
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/brand-ref.json": {
+      "title": "Brand Reference",
+      "description": "Reference to a brand by domain and optional brand_id. The domain hosts /.well-known/brand.json or is registered in the brand registry. For single-brand domains, brand_id can be omitted. For house-of-brands domains, brand_id identifies the specific brand. For creative production, brand.json is the canonical source of master brand identity (logo, palette, fonts, voice, and visual guidelines), subject only to the supported per-call fields in brand_kit_override. Catalogs supply product or item payload; catalog item asset groups, including property- or franchise-level logos, are item identity and do not override these master brand fields.",
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json",
+          "description": "Brand identifier within the house portfolio. Optional for single-brand domains."
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit for a global/default identity. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account identity and is not delivery targeting."
+        },
+        "industries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Inline override for the brand's industries. Useful when the caller cannot modify the brand's canonical brand.json but needs to declare industries for governance (e.g., Annex III vertical detection). brand.json remains the canonical source; when omitted here, governance agents SHOULD resolve from brand.json."
+        },
+        "data_subject_contestation": {
+          "type": "object",
+          "description": "Inline override for the brand's contestation contact point. Useful when the operator does not control brand.json but needs to discharge Art 22(3) for this plan. brand.json is canonical; when omitted, governance agents resolve brand → house → missing.",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "email"
+              ]
+            }
+          ],
+          "additionalProperties": false
+        },
+        "brand_kit_override": {
+          "type": "object",
+          "description": "Inline override for brand-kit fields normally resolved from `/.well-known/brand.json` on `domain` (logo, colors, voice, tagline). Use when brand.json is missing, stale, or inappropriate for this specific call — e.g., a campaign-scoped tagline, a co-branded creative, a freshly-rebranded color palette the brand.json hasn't shipped yet. Same inline-override pattern as `industries` and `data_subject_contestation` above: brand.json is canonical, the override is per-call. Adopters needing to override fields outside this subset (`voice_attributes`, `prohibited_terms`, etc.) MUST publish a different brand.json and reference it via a different `domain` — the inline override is intentionally narrow to a small high-traffic subset.\n\n**Merge semantics (normative).** The merge is **field-level**, not whole-object replacement. Each field within `brand_kit_override` (`logo`, `colors`, `voice`, `tagline`) is evaluated independently — when a field is present on the override the override value applies; when a field is absent the brand.json value applies (or is absent if brand.json doesn't carry one either). For composite fields (`colors.primary`, `colors.secondary`, `colors.accent`), the merge is one level deeper: each color slot is evaluated independently — a producer can override `colors.primary` while still inheriting `colors.secondary` from brand.json. SDKs MUST NOT treat a present `brand_kit_override.colors` as wiping the brand.json `colors` block entirely; only the per-slot fields present in the override take precedence. Without this rule, a partial-override semantics would diverge across SDKs and produce inconsistent rendering for the same payload.",
+          "properties": {
+            "logo": {
+              "$ref": "#/$defs/external:core~1assets~1image-asset.json",
+              "description": "Override logo asset."
+            },
+            "colors": {
+              "type": "object",
+              "description": "Override brand colors (hex strings).",
+              "properties": {
+                "primary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "secondary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "accent": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                }
+              },
+              "additionalProperties": true
+            },
+            "voice": {
+              "type": "string",
+              "description": "Override brand-voice description for surface-composed text/audio output."
+            },
+            "tagline": {
+              "type": "string",
+              "description": "Override tagline."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "domain": "nova-brands.com",
+          "brand_id": "spark"
+        },
+        {
+          "domain": "nova-brands.com",
+          "brand_id": "glow"
+        },
+        {
+          "domain": "acme-corp.com"
+        },
+        {
+          "domain": "nova-athletics.example",
+          "countries": [
+            "NL"
+          ]
+        }
+      ]
+    },
+    "external:core/brand-id.json": {
+      "title": "Brand ID",
+      "description": "Identifier for a brand within a house portfolio. Must be lowercase alphanumeric with underscores only. The house chooses this identifier.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand",
+      "examples": [
+        "tide",
+        "cheerios",
+        "air_jordan",
+        "nike",
+        "pampers"
+      ]
+    },
+    "external:core/assets/image-asset.json": {
+      "title": "Image Asset",
+      "description": "Image asset with URL and dimensions",
+      "type": "object",
+      "properties": {
+        "asset_type": {
+          "type": "string",
+          "const": "image",
+          "description": "Discriminator identifying this as an image asset. See /schemas/creative/asset-types for the registry."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the image asset"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Width in pixels"
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Height in pixels"
+        },
+        "file_size_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Image file size in bytes. Required by agents that advertise a max_file_size_kb constraint."
+        },
+        "pixel_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Intrinsic pixels per logical render pixel (for example `2` for a 600×500 image intended to render at 300×250). Optional because a validator can infer the ratio when the target format declares logical dimensions. When supplied, it MUST agree with both `width / logical_width` and `height / logical_height`; it is never a substitute for the intrinsic `width` and `height` fields."
+        },
+        "format": {
+          "type": "string",
+          "description": "Image file format (jpg, png, gif, webp, etc.)"
+        },
+        "alt_text": {
+          "type": "string",
+          "description": "Alternative text for accessibility",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "#/$defs/external:core~1provenance.json",
+          "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+        }
+      },
+      "required": [
+        "asset_type",
+        "url",
+        "width",
+        "height"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/provenance.json": {
+      "title": "Provenance",
+      "description": "Declares how content was produced, whether AI was involved, and what disclosure obligations apply. Attaches to creative manifests, individual assets, or content-standards artifacts. When present at multiple levels, the most specific provenance object replaces the inherited one entirely (no field-level merging). Provenance is a claim by the declaring party — receiving parties should verify claims independently via their own detection tools.",
+      "type": "object",
+      "properties": {
+        "digital_source_type": {
+          "$ref": "#/$defs/external:enums~1digital-source-type.json",
+          "description": "IPTC-aligned classification of AI involvement in producing this content"
+        },
+        "synthetic_depiction": {
+          "type": "boolean",
+          "description": "Assessed declaration of whether the content synthetically depicts a real or fictional person performing or appearing in a way that was generated or materially manipulated rather than captured as depicted. `true` covers both a fully synthetic performer and material manipulation of a real performer; `false` is an assessed declaration that the content does not contain such a depiction. Absence means the content has not been assessed for synthetic depiction. This field does not claim consent, legality, or independent verification, and receivers MUST NOT derive it solely from `digital_source_type`."
+        },
+        "ai_tool": {
+          "type": "object",
+          "description": "AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI metadata fields and C2PA claim_generator.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name of the AI tool or model (e.g., 'DALL-E 3', 'Stable Diffusion XL', 'Gemini')"
+            },
+            "version": {
+              "type": "string",
+              "description": "Version identifier for the AI tool or model (e.g., '25.1', '0125', '2.1'). For generative models, use the model version rather than the API version."
+            },
+            "provider": {
+              "type": "string",
+              "description": "Organization that provides the AI tool (e.g., 'OpenAI', 'Stability AI', 'Google')"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "human_oversight": {
+          "type": "string",
+          "description": "Level of human involvement in the AI-assisted creation process. Independent of `disclosure.required` — the protocol does not derive disclosure obligations from oversight level. Some regulations include carve-outs for human-edited or human-directed AI output, but those carve-outs have factual prerequisites the schema cannot evaluate. Asserting `edited` or `directed` does not by itself justify `disclosure.required: false`.",
+          "enum": [
+            "none",
+            "prompt_only",
+            "selected",
+            "edited",
+            "directed"
+          ],
+          "enumDescriptions": {
+            "none": "Fully automated with no human involvement in generation",
+            "prompt_only": "Human provided the prompt or instructions but did not review outputs",
+            "selected": "Human selected from multiple AI-generated candidates",
+            "edited": "Human edited or refined AI-generated output",
+            "directed": "Human directed the creative process with AI as an assistive tool"
+          }
+        },
+        "declared_by": {
+          "type": "object",
+          "description": "Party declaring this provenance. Identifies who attached the provenance claim, enabling receiving parties to assess trust.",
+          "properties": {
+            "agent_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL of the agent or service that declared this provenance"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "creator",
+                "advertiser",
+                "agency",
+                "platform",
+                "tool"
+              ],
+              "description": "Role of the declaring party in the supply chain",
+              "enumDescriptions": {
+                "creator": "The party that created or generated the content",
+                "advertiser": "The brand or advertiser that owns the content",
+                "agency": "Agency acting on behalf of the advertiser",
+                "platform": "Ad platform or publisher that processed the content",
+                "tool": "Automated tool or service that attached provenance metadata"
+              }
+            }
+          },
+          "required": [
+            "role"
+          ]
+        },
+        "declared_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this provenance claim was made (ISO 8601). Distinct from created_time, which records when the content itself was produced. A provenance claim may be attached well after content creation, for example when retroactively declaring AI involvement for regulatory compliance."
+        },
+        "created_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this content was created or generated (ISO 8601)"
+        },
+        "c2pa": {
+          "type": "object",
+          "description": "C2PA sidecar manifest reference. Links to a detached cryptographic provenance manifest for this content. Note: file-level C2PA bindings break when ad servers transcode, resize, or re-encode assets. For pipelines with intermediaries, consider embedded_provenance as the primary provenance mechanism.",
+          "properties": {
+            "manifest_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL to the C2PA manifest store for this content"
+            }
+          },
+          "required": [
+            "manifest_url"
+          ]
+        },
+        "embedded_provenance": {
+          "type": "array",
+          "description": "Provenance metadata embedded within the content stream. Each entry declares one embedding layer: structured provenance data carried inside the content itself, as distinct from sidecar references (c2pa.manifest_url). Embedded provenance survives operations that break sidecar and file-level bindings: ad-server transcoding, CMS ingestion, copy-paste, reformatting, and CDN re-encoding. For ad-tech pipelines where content passes through multiple intermediaries, embedded provenance is the reliable path for provenance that persists from declaration through delivery. This is a declaration by the embedding party. The receiving party (the seller) is the verifier-of-record: it confirms the claim by calling a governance agent it trusts (typically one published in `creative_policy.accepted_verifiers`).",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "$ref": "#/$defs/external:enums~1embedded-provenance-method.json",
+                "description": "How provenance data is carried within the content"
+              },
+              "standard": {
+                "type": "string",
+                "description": "Standard the embedding conforms to, if any (e.g., 'c2pa' for C2PA Section A.7 text manifest embedding)"
+              },
+              "provider": {
+                "type": "string",
+                "description": "Organization that performed the embedding (e.g., 'Encypher', 'Digimarc'). Display label and audit context — not a wire identifier."
+              },
+              "verify_agent": {
+                "type": "object",
+                "description": "Buyer's representation that this embedding can be verified by a governance agent on the seller's `creative_policy.accepted_verifiers` list. The `agent_url` MUST match (canonicalized) one of the seller's published `accepted_verifiers[].agent_url` entries; sellers reject `sync_creatives` submissions whose `verify_agent.agent_url` is off-list with `PROVENANCE_VERIFIER_NOT_ACCEPTED`. This is buyer-supplied evidence, not buyer-driven routing — the seller is the verifier-of-record and the seller controls which agent it actually calls (the seller MAY use a different on-list agent if it determines this is more appropriate; the seller does not call buyer-asserted endpoints outside its allowlist). MAY be omitted for self-verifiable embeddings (e.g., a C2PA text manifest with a public key the seller already trusts).",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "URL of the governance agent the buyer represents was used to embed/verify this layer. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
+                  },
+                  "feature_id": {
+                    "type": "string",
+                    "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `encypher.markers_present_v2`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the provenance data was embedded (ISO 8601)"
+              }
+            },
+            "required": [
+              "method",
+              "provider"
+            ]
+          }
+        },
+        "watermarks": {
+          "type": "array",
+          "description": "Content watermarks applied to this asset. Each entry declares one watermarking layer: a content modification that encodes an identifier or fingerprint within the asset. Watermarks differ from embedded provenance: a watermark encodes an identifier (who generated it, who owns it), while embedded provenance carries or references a structured provenance record (the full chain of custody). A single asset may carry both. Aligns with C2PA action taxonomy: c2pa.watermarked.bound (watermark linked to a C2PA manifest) and c2pa.watermarked.unbound (watermark independent of any manifest). This is a declaration by the watermarking party. The receiving party (the seller) is the verifier-of-record: it confirms the claim by calling a governance agent it trusts (typically one published in `creative_policy.accepted_verifiers`).",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "media_type": {
+                "$ref": "#/$defs/external:enums~1watermark-media-type.json",
+                "description": "Media category of the watermarked content"
+              },
+              "provider": {
+                "type": "string",
+                "description": "Organization that applied the watermark (e.g., 'Imatag', 'Steg.AI', 'Encypher'). Display label and audit context — not a wire identifier."
+              },
+              "verify_agent": {
+                "type": "object",
+                "description": "Buyer's representation that this watermark can be detected by a governance agent on the seller's `creative_policy.accepted_verifiers` list. The `agent_url` MUST match (canonicalized) one of the seller's published `accepted_verifiers[].agent_url` entries; sellers reject `sync_creatives` submissions whose `verify_agent.agent_url` is off-list with `PROVENANCE_VERIFIER_NOT_ACCEPTED`. This is buyer-supplied evidence, not buyer-driven routing — the seller is the verifier-of-record and the seller controls which agent it actually calls (the seller MAY use a different on-list agent if it determines this is more appropriate; the seller does not call buyer-asserted endpoints outside its allowlist).",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "URL of the governance agent the buyer represents was used to apply/detect this watermark. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
+                  },
+                  "feature_id": {
+                    "type": "string",
+                    "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `imatag.watermark_detected`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "c2pa_action": {
+                "$ref": "#/$defs/external:enums~1c2pa-watermark-action.json",
+                "description": "C2PA action classification for this watermark"
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the watermark was applied (ISO 8601)"
+              }
+            },
+            "required": [
+              "media_type",
+              "provider"
+            ]
+          }
+        },
+        "disclosure": {
+          "type": "object",
+          "description": "Regulatory disclosure requirements for this content. Indicates whether AI disclosure is required and under which jurisdictions.",
+          "properties": {
+            "required": {
+              "type": "boolean",
+              "description": "The declaring party's claim that AI disclosure is required for this content under applicable regulations. This is a declared signal carried through the supply chain — useful as a routing and audit input — not a regulatory determination made by the protocol. Receiving parties remain responsible for their own jurisdictional analysis and should not treat `required: false` as compliance cover."
+            },
+            "jurisdictions": {
+              "type": "array",
+              "description": "Jurisdictions where disclosure obligations apply",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "country": {
+                    "type": "string",
+                    "description": "ISO 3166-1 alpha-2 country code (e.g., 'US', 'DE', 'CN')"
+                  },
+                  "region": {
+                    "type": "string",
+                    "description": "Sub-national region code (e.g., 'CA' for California, 'BY' for Bavaria)"
+                  },
+                  "regulation": {
+                    "type": "string",
+                    "description": "Regulation identifier (e.g., 'eu_ai_act_article_50', 'ca_sb_942', 'cn_deep_synthesis')"
+                  },
+                  "label_text": {
+                    "type": "string",
+                    "description": "Required disclosure label text for this jurisdiction, in the local language"
+                  },
+                  "render_guidance": {
+                    "type": "object",
+                    "description": "How the disclosure should be rendered for this jurisdiction. Expresses the declaring party's intent for persistence and position based on regulatory requirements. Publishers control actual rendering but governance agents can audit whether guidance was followed.",
+                    "minProperties": 1,
+                    "properties": {
+                      "persistence": {
+                        "$ref": "#/$defs/external:enums~1disclosure-persistence.json",
+                        "description": "How long the disclosure must persist during content playback or display"
+                      },
+                      "min_duration_ms": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Minimum display duration in milliseconds for initial persistence. Recommended when persistence is initial — without it, the duration is at the publisher's discretion. At serve time the publisher reads this from provenance since the brief is not available."
+                      },
+                      "positions": {
+                        "type": "array",
+                        "description": "Preferred disclosure positions in priority order. The first position a format supports should be used.",
+                        "items": {
+                          "$ref": "#/$defs/external:enums~1disclosure-position.json"
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      },
+                      "ext": {
+                        "$ref": "#/$defs/external:core~1ext.json"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "country",
+                  "regulation"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "required"
+          ]
+        },
+        "verification": {
+          "type": "array",
+          "description": "Third-party verification or detection results for this content. Multiple services may independently evaluate the same content. Provenance is a claim — verification results attached by the declaring party are supplementary. The enforcing party (e.g., seller/publisher) should run its own verification via get_creative_features or calibrate_content.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "verified_by": {
+                "type": "string",
+                "description": "Name of the verification service (e.g., 'DoubleVerify', 'Hive Moderation', 'Reality Defender')"
+              },
+              "verified_time": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the verification was performed (ISO 8601)"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "authentic",
+                  "ai_generated",
+                  "ai_modified",
+                  "inconclusive"
+                ],
+                "description": "Verification outcome"
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Confidence score of the verification result (0.0 to 1.0)"
+              },
+              "details_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to the full verification report"
+              }
+            },
+            "required": [
+              "verified_by",
+              "result"
+            ]
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      }
+    },
+    "external:enums/digital-source-type.json": {
+      "title": "Digital Source Type",
+      "description": "Classification of AI involvement in content creation, aligned with IPTC digitalsourcetype vocabulary. Used in provenance metadata to declare how a creative asset, artifact, or individual asset was produced.",
+      "type": "string",
+      "enum": [
+        "digital_capture",
+        "digital_creation",
+        "trained_algorithmic_media",
+        "composite_with_trained_algorithmic_media",
+        "algorithmic_media",
+        "composite_capture",
+        "composite_synthetic",
+        "human_edits",
+        "data_driven_media"
+      ],
+      "enumDescriptions": {
+        "digital_capture": "Captured by a digital device (camera, scanner, screen recording) with no AI involvement",
+        "digital_creation": "Created by a human using digital tools (Photoshop, Illustrator, After Effects) without AI generation",
+        "trained_algorithmic_media": "Generated entirely by a trained AI model (DALL-E, Midjourney, Stable Diffusion, Sora)",
+        "composite_with_trained_algorithmic_media": "Human-created content combined with AI-generated elements (e.g., photo with AI background)",
+        "algorithmic_media": "Produced by deterministic algorithms without machine learning (procedural generation, rule-based systems)",
+        "composite_capture": "Multiple digital captures composited together without AI",
+        "composite_synthetic": "Composite of multiple elements where at least one is AI-generated (e.g., stock photo composited with AI-generated background)",
+        "human_edits": "Content augmented, corrected, or enhanced by humans using non-generative tools",
+        "data_driven_media": "Assembled from structured data feeds (DCO templates, product catalogs, weather-triggered variants)"
+      }
+    },
+    "external:enums/embedded-provenance-method.json": {
+      "title": "Embedded Provenance Method",
+      "description": "How provenance data is carried within the content stream. Distinguishes between format-level manifest embedding (where the manifest travels inside the file container) and provenance markers (where invisible markers in the content itself encode or reference a provenance record). Both survive operations that strip sidecar metadata, but provenance markers additionally survive content-level transformations such as copy-paste, reformatting, and CMS re-encoding.",
+      "type": "string",
+      "enum": [
+        "manifest_wrapper",
+        "provenance_markers"
+      ],
+      "enumDescriptions": {
+        "manifest_wrapper": "A provenance manifest embedded in the file container per format-specific rules (e.g., JUMBF box in JPEG, C2PATextManifestWrapper in plaintext per C2PA Section A.7). The manifest travels with the file but is tied to the file's byte structure.",
+        "provenance_markers": "Invisible markers embedded within the content stream that encode or reference a provenance record. Designed to survive reformatting, copy-paste, CMS ingestion, and ad-server transcoding that breaks file-level bindings."
+      }
+    },
+    "external:enums/watermark-media-type.json": {
+      "title": "Watermark Media Type",
+      "description": "Media category of a content watermark. Identifies what kind of content the watermark is applied to, which determines the detection and verification methods required.",
+      "type": "string",
+      "enum": [
+        "audio",
+        "image",
+        "video",
+        "text"
+      ],
+      "enumDescriptions": {
+        "audio": "Watermark applied to audio content (e.g., spread-spectrum, echo hiding)",
+        "image": "Watermark applied to image content (e.g., spatial domain, frequency domain)",
+        "video": "Watermark applied to video content (e.g., per-frame image watermarking, temporal watermarking)",
+        "text": "Watermark applied to text content (e.g., synonym substitution, structural modification)"
+      }
+    },
+    "external:enums/c2pa-watermark-action.json": {
+      "title": "C2PA Watermark Action",
+      "description": "C2PA action classification for a content watermark. Distinguishes watermarks that are cryptographically linked to a C2PA manifest (bound) from watermarks that exist independently (unbound). Aligns with the c2pa.watermarked.* action family in the C2PA action taxonomy.",
+      "type": "string",
+      "enum": [
+        "c2pa.watermarked.bound",
+        "c2pa.watermarked.unbound"
+      ],
+      "enumDescriptions": {
+        "c2pa.watermarked.bound": "Watermark linked to a C2PA manifest for this asset. The watermark and manifest are mutually reinforcing: the manifest references the watermark, and the watermark can be used to locate the manifest.",
+        "c2pa.watermarked.unbound": "Watermark independent of any C2PA manifest. Applied before any provenance signing event (e.g., by the AI generator at creation time) or in pipelines where no manifest is present."
+      }
+    },
+    "external:enums/disclosure-persistence.json": {
+      "title": "Disclosure Persistence",
+      "description": "How long a disclosure must persist during content playback or display. Different jurisdictions and regulations require different persistence behaviors for AI-generated content labels. When multiple sources specify persistence for the same jurisdiction (e.g., brief and provenance), the most restrictive mode applies: continuous > initial > flexible.",
+      "type": "string",
+      "enum": [
+        "continuous",
+        "initial",
+        "flexible"
+      ],
+      "enumDescriptions": {
+        "continuous": "Disclosure must remain visible or audible throughout the entire content display duration. For video and audio, this means the full playback duration. For static formats (display, DOOH), this means the full display slot. For DOOH specifically, 'content duration' means the ad's display slot within the rotation, not the screen's full rotation cycle.",
+        "initial": "Disclosure must appear at the start of content for a minimum duration before it may be removed. Pair with min_duration_ms in render_guidance or creative brief to specify the required duration.",
+        "flexible": "Disclosure presence is sufficient; placement timing and duration are at the publisher's discretion"
+      }
+    },
+    "external:enums/disclosure-position.json": {
+      "title": "Disclosure Position",
+      "description": "Where a required disclosure should appear within a creative. Used by creative briefs to specify disclosure placement and by formats to declare which positions they can render.",
+      "type": "string",
+      "enum": [
+        "prominent",
+        "footer",
+        "audio",
+        "subtitle",
+        "overlay",
+        "end_card",
+        "pre_roll",
+        "companion"
+      ]
+    },
+    "external:core/ext.json": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:enums/purchase-type.json": {
+      "title": "Purchase Type",
+      "description": "The type of financial commitment being governed.",
+      "type": "string",
+      "enum": [
+        "media_buy",
+        "rights_license",
+        "signal_activation",
+        "creative_services"
+      ]
+    },
+    "external:enums/channels.json": {
+      "title": "Media Channel",
+      "description": "Standardized advertising media channels describing how buyers allocate budget. Channels are planning abstractions, not technical substrates. See the Media Channel Taxonomy specification for detailed definitions.",
+      "type": "string",
+      "enum": [
+        "display",
+        "olv",
+        "social",
+        "search",
+        "ctv",
+        "linear_tv",
+        "radio",
+        "streaming_audio",
+        "podcast",
+        "dooh",
+        "ooh",
+        "print",
+        "cinema",
+        "email",
+        "gaming",
+        "retail_media",
+        "influencer",
+        "affiliate",
+        "product_placement",
+        "sponsored_intelligence"
+      ],
+      "enumDescriptions": {
+        "display": "Digital display advertising (banners, native, rich media) across web and app",
+        "olv": "Online video advertising outside CTV (pre-roll, outstream, in-app video)",
+        "social": "Social media platforms (Facebook, Instagram, TikTok, LinkedIn, etc.)",
+        "search": "Search engine advertising and search networks",
+        "ctv": "Connected TV and streaming on television screens",
+        "linear_tv": "Traditional broadcast and cable television",
+        "radio": "Traditional AM/FM radio broadcast",
+        "streaming_audio": "Digital audio streaming services (Spotify, Pandora, etc.)",
+        "podcast": "Podcast advertising (host-read or dynamically inserted)",
+        "dooh": "Digital out-of-home screens in public spaces",
+        "ooh": "Classic out-of-home (physical billboards, transit, etc.)",
+        "print": "Newspapers, magazines, and other print publications",
+        "cinema": "Movie theater advertising",
+        "email": "Email advertising and sponsored newsletter content",
+        "gaming": "In-game advertising across platforms",
+        "retail_media": "Retail media networks and commerce marketplaces (Amazon, Walmart, Instacart)",
+        "influencer": "Creator and influencer marketing partnerships",
+        "affiliate": "Affiliate networks, comparison sites, and performance-based partnerships",
+        "product_placement": "Product placement, branded content, and sponsorship integrations",
+        "sponsored_intelligence": "Sponsored Intelligence — advertising within AI assistants, AI search, and generative AI experiences via the reversed data flow"
+      }
+    },
+    "external:governance/audience-constraints.json": {
+      "title": "Audience Constraints",
+      "description": "Buyer-defined audience targeting constraints for a campaign plan. Specifies who the campaign should and should not reach. The governance agent evaluates seller targeting against these constraints during check_governance.",
+      "type": "object",
+      "properties": {
+        "include": {
+          "type": "array",
+          "description": "Desired audience criteria. The seller's targeting should align with these. Each criterion is evaluated independently — the combined targeting should satisfy at least one inclusion criterion.",
+          "items": {
+            "$ref": "#/$defs/external:core~1audience-selector.json"
+          },
+          "minItems": 1
+        },
+        "exclude": {
+          "type": "array",
+          "description": "Excluded audience criteria. The seller's targeting must not overlap with these. Exclusions take precedence over inclusions. Used for protected groups, vulnerable communities, regulatory restrictions, or brand safety.",
+          "items": {
+            "$ref": "#/$defs/external:core~1audience-selector.json"
+          },
+          "minItems": 1
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "external:core/audience-selector.json": {
+      "title": "Audience Selector",
+      "description": "Selects an audience by signal reference or natural language description. Uses 'type' as the primary discriminator (signal vs description). Signal selectors additionally use 'value_type' to determine the targeting expression format (matching signal-targeting.json variants).",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Signal-based selector for binary signals — user either matches or doesn't. The governance agent can resolve published signal definitions for structural validation.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "signal",
+              "description": "Discriminator for signal-based selectors"
+            },
+            "signal_ref": {
+              "$ref": "#/$defs/external:core~1signal-ref.json",
+              "description": "The signal to target. New selectors SHOULD use signal_ref."
+            },
+            "signal_id": {
+              "$ref": "#/$defs/external:core~1signal-id.json",
+              "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
+              "deprecated": true
+            },
+            "value_type": {
+              "type": "string",
+              "const": "binary",
+              "description": "Discriminator for binary signals"
+            },
+            "value": {
+              "type": "boolean",
+              "description": "Whether to include (true) or exclude (false) users matching this signal"
+            }
+          },
+          "required": [
+            "type",
+            "value_type",
+            "value"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "signal_ref"
+              ]
+            },
+            {
+              "required": [
+                "signal_id"
+              ]
+            }
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "Signal-based selector for categorical signals — target users with specific values.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "signal",
+              "description": "Discriminator for signal-based selectors"
+            },
+            "signal_ref": {
+              "$ref": "#/$defs/external:core~1signal-ref.json",
+              "description": "The signal to target. New selectors SHOULD use signal_ref."
+            },
+            "signal_id": {
+              "$ref": "#/$defs/external:core~1signal-id.json",
+              "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
+              "deprecated": true
+            },
+            "value_type": {
+              "type": "string",
+              "const": "categorical",
+              "description": "Discriminator for categorical signals"
+            },
+            "values": {
+              "type": "array",
+              "description": "Values to target. Users with any of these values will be included.",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "type",
+            "value_type",
+            "values"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "signal_ref"
+              ]
+            },
+            {
+              "required": [
+                "signal_id"
+              ]
+            }
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "Signal-based selector for numeric signals — target users within a value range.",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "signal",
+              "description": "Discriminator for signal-based selectors"
+            },
+            "signal_ref": {
+              "$ref": "#/$defs/external:core~1signal-ref.json",
+              "description": "The signal to target. New selectors SHOULD use signal_ref."
+            },
+            "signal_id": {
+              "$ref": "#/$defs/external:core~1signal-id.json",
+              "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
+              "deprecated": true
+            },
+            "value_type": {
+              "type": "string",
+              "const": "numeric",
+              "description": "Discriminator for numeric signals"
+            },
+            "min_value": {
+              "type": "number",
+              "description": "Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both are provided."
+            },
+            "max_value": {
+              "type": "number",
+              "description": "Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both are provided."
+            }
+          },
+          "required": [
+            "type",
+            "value_type"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "signal_ref"
+              ]
+            },
+            {
+              "required": [
+                "signal_id"
+              ]
+            }
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "Description-based selector — natural language audience description. Used when the caller doesn't have a specific signal reference (e.g., buyer setting plan-level goals, or seller using proprietary segments without public catalog entries).",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "description",
+              "description": "Discriminator for description-based selectors"
+            },
+            "description": {
+              "type": "string",
+              "description": "Natural language description of the audience (e.g., 'likely EV buyers', 'high net worth individuals', 'vulnerable communities')",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "category": {
+              "type": "string",
+              "description": "Optional grouping hint for the governance agent (e.g., 'demographic', 'behavioral', 'contextual', 'financial')"
+            }
+          },
+          "required": [
+            "type",
+            "description"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/signal-ref.json": {
+      "title": "Signal Ref",
+      "description": "Reference to a named signal definition. Uses scope as discriminator: 'data_provider' for a signal resolved through published adagents.json signals[], 'signal_source' for a source-native signal resolved through the issuing signal source, or 'product' for a product-local signal option. Scope is the resolution path, not provenance; authoritative enrichment lives on the seller, signal source, or data-provider signal definition, not on this reference.",
+      "x-entity": "signal",
+      "discriminator": {
+        "propertyName": "scope"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Product-scoped signal. The signal_id is meaningful only within the selected product/package context and MUST match a Product.included_signals[].signal_ref.signal_id or Product.signal_targeting_options[].signal_ref.signal_id for that product, depending on whether the signal is descriptive or selectable.",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "product",
+              "description": "Discriminator indicating the signal resolves through the selected product's included_signals or signal_targeting_options."
+            },
+            "signal_id": {
+              "type": "string",
+              "description": "Product-local signal identifier. For local signals exposed on both get_signals and get_products, this MUST match get_signals.signals[].signal_ref.signal_id for the same signal.",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            }
+          },
+          "required": [
+            "scope",
+            "signal_id"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "data_provider_domain"
+                ]
+              },
+              {
+                "required": [
+                  "signal_source_url"
+                ]
+              },
+              {
+                "required": [
+                  "agent_url"
+                ]
+              },
+              {
+                "required": [
+                  "source"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "Data-provider-scoped signal. The signal_id resolves through the data provider's published adagents.json signals[] and can be authorization-verified there.",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "data_provider",
+              "description": "Discriminator indicating the signal resolves through a data provider's published adagents.json signals[]."
+            },
+            "data_provider_domain": {
+              "type": "string",
+              "description": "Domain that publishes the signal definition in its adagents.json signals[].",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            },
+            "signal_id": {
+              "type": "string",
+              "description": "Signal identifier within the data provider's published adagents.json signals[].",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            }
+          },
+          "required": [
+            "scope",
+            "data_provider_domain",
+            "signal_id"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "agent_url"
+                ]
+              },
+              {
+                "required": [
+                  "signal_source_url"
+                ]
+              },
+              {
+                "required": [
+                  "source"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "Signal-source-scoped signal. Use this for source-native signals that are not published in upstream adagents.json signals[]. The buyer trusts the issuing signal source for this identity; use scope 'data_provider' instead when the signal is published in adagents.json signals[], even if the publisher is also the seller or signal source.",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "signal_source",
+              "description": "Discriminator indicating the signal resolves through the issuing signal source."
+            },
+            "signal_source_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL of the signal source that issues this source-native signal."
+            },
+            "signal_id": {
+              "type": "string",
+              "description": "Signal identifier within the issuing signal source's signal set.",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            }
+          },
+          "required": [
+            "scope",
+            "signal_source_url",
+            "signal_id"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "data_provider_domain"
+                ]
+              },
+              {
+                "required": [
+                  "agent_url"
+                ]
+              },
+              {
+                "required": [
+                  "source"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/signal-id.json": {
+      "title": "Signal ID",
+      "description": "DEPRECATED. Use SignalRef for new discovery, activation, and media-buy signal identity surfaces. Legacy universal signal identifier used by older Signals Protocol clients. Uses 'source' as discriminator: 'catalog' for signals from a data provider's published catalog (verifiable), or 'agent' for signals native to a signal source identified by agent_url.",
+      "deprecated": true,
+      "x-entity": "signal",
+      "discriminator": {
+        "propertyName": "source"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Data-provider signal - references a signal from a data provider's published adagents.json signals[]. Buyers can verify authorization by checking the data provider's adagents.json.",
+          "properties": {
+            "source": {
+              "type": "string",
+              "const": "catalog",
+              "description": "Discriminator indicating this signal is from a data provider's published adagents.json signals[]"
+            },
+            "data_provider_domain": {
+              "type": "string",
+              "description": "Domain of the data provider that owns this signal (e.g., 'pinnacle-data.example'). The signal definition is published at this domain's /.well-known/adagents.json",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$",
+              "description": "Signal identifier within the data provider's catalog (e.g., 'likely_ev_buyers', 'income_100k_plus')"
+            }
+          },
+          "required": [
+            "source",
+            "data_provider_domain",
+            "id"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "Agent signal - references a signal native to a signal source identified by agent_url. Not externally verifiable through an upstream catalog; buyer trusts the issuing signal source's claim about the signal.",
+          "properties": {
+            "source": {
+              "type": "string",
+              "const": "agent",
+              "description": "Discriminator indicating this signal is native to the signal source identified by agent_url, not from a data provider's published signal definitions."
+            },
+            "agent_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL of the signal source that provides this signal (e.g., 'https://signals.example/.well-known/adcp/signals')"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$",
+              "description": "Signal identifier within the agent's signal set (e.g., 'custom_auto_intenders')"
+            }
+          },
+          "required": [
+            "source",
+            "agent_url",
+            "id"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:enums/restricted-attribute.json": {
+      "title": "Restricted Attribute",
+      "description": "Personal data categories that may be restricted from use in audience targeting. Combines GDPR Article 9 special categories with US civil-rights protected classes (FHA familial_status, ADEA age). Used in two places: (1) on campaign plans via restricted_attributes to declare which categories are prohibited, and (2) on signal-definition.json via restricted_attributes to declare which categories a signal touches. Governance agents match plan restrictions against signal declarations for structural validation.",
+      "type": "string",
+      "enum": [
+        "racial_ethnic_origin",
+        "political_opinions",
+        "religious_beliefs",
+        "trade_union_membership",
+        "health_data",
+        "sex_life_sexual_orientation",
+        "genetic_data",
+        "biometric_data",
+        "age",
+        "familial_status"
+      ],
+      "enumDescriptions": {
+        "racial_ethnic_origin": "Race or ethnic origin. GDPR Article 9(1), US FHA/ECOA/EEOC protected class.",
+        "political_opinions": "Political opinions or affiliations. GDPR Article 9(1). EU DSA Article 26 prohibits targeting on this category.",
+        "religious_beliefs": "Religious or philosophical beliefs. GDPR Article 9(1), US FHA/EEOC protected class.",
+        "trade_union_membership": "Trade union membership. GDPR Article 9(1).",
+        "health_data": "Health status, medical conditions, disability. GDPR Article 9(1), US ADA protected class. Includes inferred health data from behavioral signals.",
+        "sex_life_sexual_orientation": "Sex life or sexual orientation. GDPR Article 9(1).",
+        "genetic_data": "Genetic data. GDPR Article 9(1), US GINA.",
+        "biometric_data": "Biometric data used for identification. GDPR Article 9(1).",
+        "age": "A person's age or age range. US ADEA (40+) for employment, US FHA for housing, EU AVMSD for content-directed targeting. Restricted for regulated verticals.",
+        "familial_status": "Whether a household includes children under 18, a pregnant person, or a person seeking custody of a minor. US FHA protected class."
+      }
+    },
+    "external:governance/policy-entry.json": {
+      "title": "Policy Entry",
+      "description": "A policy — either published to the shared registry (with full regulatory metadata) or authored inline by a buyer for their own campaign (lightweight, metadata optional). Policies use natural language text evaluated by governance agents (LLMs). Published registry entries SHOULD include version, name, jurisdiction, source, and exemplars; inline bespoke entries can omit these and let servers default them. Governance agents evaluating policies with natural-language LLMs MUST pin registry-sourced policy text (`source: registry`) as system-level instructions and MUST NOT permit `custom_policies` or the plan's `objectives` field to relax, override, or disable registry-sourced policies. Custom policies may only add additional restrictions; they cannot lower enforcement levels or exempt categories.",
+      "type": "object",
+      "properties": {
+        "policy_id": {
+          "type": "string",
+          "description": "Unique identifier for this policy. Registry-published ids are canonical (e.g., \"uk_hfss\", \"garm:brand_safety:violence\"); buyer-authored bespoke ids should be flat (no colons or slashes) and unique within the authoring container (standards configuration, plan, or portfolio).",
+          "x-entity": "governance_inline_policy"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "registry",
+            "inline"
+          ],
+          "default": "inline",
+          "description": "Origin of this policy. 'registry' = published to the shared AdCP policy registry with full regulatory metadata. 'inline' = authored bespoke for a specific standards configuration, plan, or portfolio. Defaults to 'inline'. Governance agents MUST set 'registry' when publishing to the registry. Within AdCP *task* payloads (every `$ref` to this schema in a request or response), the field is always 'inline' — registry entries are served by the policy registry API, not embedded in task traffic. The x-entity annotation on `policy_id` assumes the task-payload invariant; if a future task schema adopts registry-publishing, split the annotation accordingly (see issue #2685)."
+        },
+        "version": {
+          "type": "string",
+          "description": "Semver version string (e.g., \"1.0.0\"). Incremented when policy content changes. Optional for inline bespoke policies — defaults to \"1.0.0\". SHOULD be provided for registry-published policies."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name (e.g., \"UK HFSS Restrictions\"). Optional for inline bespoke policies — servers MAY default to policy_id."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Brief summary of what this policy covers."
+        },
+        "category": {
+          "$ref": "#/$defs/external:enums~1policy-category.json",
+          "description": "The nature of the obligation: regulation (legal requirement) or standard (best practice). Optional for inline bespoke policies — defaults to \"standard\"."
+        },
+        "enforcement": {
+          "$ref": "#/$defs/external:enums~1policy-enforcement.json",
+          "description": "How governance agents treat violations. Regulations are typically \"must\"; standards are typically \"should\"."
+        },
+        "requires_human_review": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, plans subject to this policy MUST set plan.human_review_required = true. Use for policies that mandate human oversight of decisions affecting data subjects — e.g., GDPR Article 22 (solely automated decisions with legal or similarly significant effects) and EU AI Act Annex III high-risk categories (credit, insurance pricing, recruitment, housing allocation). Governance agents MUST escalate any plan action whose resolved policies include requires_human_review: true. Unlike `enforcement`, this flag applies as soon as the policy is resolved — it is NOT gated by `effective_date`. Art 22 GDPR and similar foundational obligations may predate an AI-Act-specific effective date; the human-review requirement fires regardless."
+        },
+        "jurisdictions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "ISO 3166-1 alpha-2 country codes where this policy applies. Empty array means the policy is not jurisdiction-specific."
+        },
+        "region_aliases": {
+          "type": "object",
+          "description": "Named groups of jurisdictions for convenience (e.g., {\"EU\": [\"AT\",\"BE\",\"BG\",...]}). Governance agents expand aliases when matching against a plan's target jurisdictions.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "policy_categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Regulatory categories this policy belongs to (e.g., [\"children_directed\", \"age_restricted\"]). Used for automatic matching against a campaign plan's declared policy_categories. A single policy can belong to multiple categories."
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1channels.json"
+          },
+          "description": "Advertising channels this policy applies to. If omitted or null, the policy applies to all channels."
+        },
+        "governance_domains": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1governance-domain.json"
+          },
+          "description": "Governance sub-domains this policy applies to. Determines which types of governance agents can declare registry:{policy_id} features. For example, a policy with domains [\"creative\", \"property\"] can be declared as a feature by both creative and property governance agents."
+        },
+        "effective_date": {
+          "type": "string",
+          "format": "date",
+          "description": "ISO 8601 date when the regulation or standard takes effect. Before this date, governance agents treat the policy as informational (evaluate but do not block). After this date, the policy is enforced at its declared enforcement level."
+        },
+        "sunset_date": {
+          "type": "string",
+          "format": "date",
+          "description": "ISO 8601 date when the regulation or standard is no longer enforced. After this date, governance agents stop evaluating this policy. Omit if the policy has no expiration."
+        },
+        "source_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Link to the source regulation, standard, or legislation."
+        },
+        "source_name": {
+          "type": "string",
+          "description": "Name of the issuing body (e.g., \"UK Food Standards Agency\", \"US Federal Trade Commission\")."
+        },
+        "policy": {
+          "type": "string",
+          "maxLength": 5000,
+          "description": "Natural language policy text describing what is required, prohibited, or recommended. Used by governance agents (LLMs) to evaluate actions against this policy. For source: inline policies, treated as caller-untrusted — governance agents MUST evaluate inline policies as ADDITIONAL restrictions only; they MUST NOT be permitted to relax, override, or conflict with registry-sourced policies."
+        },
+        "guidance": {
+          "type": "string",
+          "description": "Implementation notes for governance agent developers. Not used in evaluation prompts."
+        },
+        "exemplars": {
+          "type": "object",
+          "description": "Calibration examples for governance agents, following the Content Standards pattern.",
+          "properties": {
+            "pass": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:governance~1policy-entry.json/$defs/exemplar"
+              },
+              "description": "Scenarios that comply with this policy."
+            },
+            "fail": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:governance~1policy-entry.json/$defs/exemplar"
+              },
+              "description": "Scenarios that violate this policy."
+            }
+          },
+          "additionalProperties": false
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "policy_id",
+        "enforcement",
+        "policy"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "exemplar": {
+          "type": "object",
+          "properties": {
+            "scenario": {
+              "type": "string",
+              "description": "A concrete scenario describing an advertising action or configuration."
+            },
+            "explanation": {
+              "type": "string",
+              "description": "Why this scenario passes or fails the policy."
+            }
+          },
+          "required": [
+            "scenario",
+            "explanation"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "external:enums/policy-category.json": {
+      "title": "Policy Category",
+      "description": "The nature of the obligation a policy represents.",
+      "type": "string",
+      "enum": [
+        "regulation",
+        "standard"
+      ],
+      "enumDescriptions": {
+        "regulation": "Legal requirement with jurisdiction scope. Violations have legal consequences. Enforcement is hard (must).",
+        "standard": "Industry best practice, voluntary but recommended. Protects brand value and campaign effectiveness. Enforcement is soft (should)."
+      }
+    },
+    "external:enums/policy-enforcement.json": {
+      "title": "Policy Enforcement Level",
+      "description": "How governance agents treat violations of a policy. Uses RFC 2119 keywords.",
+      "type": "string",
+      "enum": [
+        "must",
+        "should",
+        "may"
+      ],
+      "enumDescriptions": {
+        "must": "Legal requirement. Governance agents reject actions that violate this policy.",
+        "should": "Best practice. Governance agents warn on violations but do not block.",
+        "may": "Recommendation. Governance agents log for informational purposes only."
+      }
+    },
+    "external:enums/governance-domain.json": {
+      "title": "Governance Domain",
+      "description": "Governance sub-domains that a registry policy applies to. Used to indicate which types of governance agents can evaluate this policy.",
+      "type": "string",
+      "enum": [
+        "campaign",
+        "property",
+        "creative",
+        "content_standards"
+      ]
+    },
+    "external:enums/delegation-authority.json": {
+      "title": "Delegation Authority",
+      "description": "Authority level granted to a delegated agent operating against a campaign plan.",
+      "type": "string",
+      "enum": [
+        "full",
+        "execute_only",
+        "propose_only"
+      ],
+      "enumDescriptions": {
+        "full": "Can execute any action within the delegation's budget and market constraints.",
+        "execute_only": "Can execute pre-approved actions but cannot initiate new campaigns or reallocate budget.",
+        "propose_only": "Can propose actions for governance review but cannot execute without explicit approval."
+      }
+    },
+    "external:core/context.json": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

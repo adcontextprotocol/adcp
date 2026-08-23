@@ -123,6 +123,14 @@
             },
             "additionalProperties": true
           },
+          "component_assets": {
+            "type": "object",
+            "description": "Preserved component-addressed asset maps for `coordinated_placements`, keyed by coordinated component ID.",
+            "patternProperties": {
+              "^[a-z][a-z0-9_]*$": { "$ref": "/schemas/core/creative-assets.json" }
+            },
+            "additionalProperties": false
+          },
           "localization": {
             "$ref": "/schemas/core/creative-localization-readback.json",
             "description": "Authoritative exact materialized locale-variant state. Present for localized creatives when complete. The enclosing creative status is the single review lifecycle for all variants.",

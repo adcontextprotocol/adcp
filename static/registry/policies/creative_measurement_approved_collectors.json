@@ -1,0 +1,27 @@
+{
+  "policy_id": "creative_measurement_approved_collectors",
+  "source": "registry",
+  "version": "1.0.0",
+  "name": "Creative approved-collector requirement",
+  "description": "Restricts creative data collection to the enforcing seller's published accepted collector set.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["measurement_privacy"],
+  "governance_domains": ["creative"],
+  "effective_date": "2026-08-21",
+  "source_url": "https://docs.adcontextprotocol.org/docs/governance/creative/policy-backed-rejections#initial-registry-policies",
+  "source_name": "AgenticAdvertising.org",
+  "policy": "Every third-party data collector, cookie setter, tracking pixel, measurement script, and equivalent endpoint used by an advertising creative must appear in the enforcing seller's published accepted collector set for the selected product. The seller or its governance agent must publish the applicable set and, on failure, identify the unaccepted collector in its detailed report or rejection reason. A creative that invokes an unaccepted collector must be rejected with this policy.",
+  "guidance": "Classify endpoints by the entity that receives data, including redirects and nested dependencies. Buyer remediation: remove the collector, replace it with an accepted provider, or use the seller's approval process before resubmitting.",
+  "exemplars": {
+    "pass": [{
+      "scenario": "A creative sends measurement events only to collectors listed in the seller's accepted set for the selected product.",
+      "explanation": "Every observed collector is accepted under the applicable seller policy."
+    }],
+    "fail": [{
+      "scenario": "A measurement script loads a nested tracking pixel operated by a provider absent from the seller's published accepted set.",
+      "explanation": "The creative invokes an unaccepted collector, even though it appears through a nested dependency."
+    }]
+  }
+}

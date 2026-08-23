@@ -3,7 +3,13 @@
   "$id": "/schemas/formats/canonical/video_hosted.json",
   "title": "Canonical Format: Hosted Video",
   "description": "Direct video file (mp4/webm/mov) hosted by the buyer. Slot: `video_main` (video asset, file or hosted URL), optional `headline`, `brand_name`, `cta`, `companion_banner`, `landing_page_url`. Tracking model: IAB Open Measurement SDK + external impression/click/quartile pixels via universal_macros. Orientation is a parameter (vertical 9:16 / horizontal 16:9 / square 1:1); slot shape includes optional `brand_name` (typical for vertical short-form) and optional `companion_banner` (typical for horizontal instream). Distinct from `video_vast` (VAST tag, inherent VAST event tracking) — receivers fire impression and click pixels at delivery time.",
-  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "allOf": [
+    { "$ref": "/schemas/formats/canonical/_base.json" },
+    {
+      "if": { "required": ["ctv_ad_experience"] },
+      "then": { "properties": { "ctv_ad_experience": { "const": "screensaver" } } }
+    }
+  ],
   "properties": {
     "slots": {
       "default": [
@@ -102,7 +108,17 @@
       "enum": ["accepted", "rejected"],
       "default": "accepted",
       "description": "Whether the product accepts buyer-uploaded video. When `rejected`, the buyer cannot ship a video asset directly — they must use build_creative, sync_creatives with brief inputs, or sync_creatives with an accepted reference asset so the seller produces or resolves the video."
+    },
+    "ctv_ad_experience": {
+      "$ref": "/schemas/enums/ctv-ad-experience.json",
+      "description": "CTV experience this option serves. On `video_hosted` only `screensaver` is valid (ambient looping video the platform plays on idle). Other experiences route per the matrix in docs/creative/ctv-experiences.mdx; linear CTV video declares no experience."
     }
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "ctv_experience_matrix": "ctv_ad_experience on video_hosted must be screensaver"
+    },
+    "spec": "docs/creative/ctv-experiences.mdx"
   },
   "additionalProperties": true
 }

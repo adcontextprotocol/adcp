@@ -17,6 +17,46 @@ Supports three execution shapes:
 - **Seller-optimized packages**: Provide `packages`, `total_budget`, and `budget_allocation.mode: "seller_optimized"` so the seller allocates a shared budget across packages
 - **Proposal execution**: Provide `proposal_id` and `total_budget`; the committed proposal determines whether allocation is fixed or seller-optimized
 
+## Compatibility transaction boundary
+
+The compatibility facade is one atomic mutation, including package trafficking
+that appears inline. Before creating a MediaBuy, package, library creative, or
+assignment, the seller MUST validate the complete request. An invalid inline
+creative or `creative_assignments` entry—including an invalid creative ID,
+format, locale, placement route, or package relationship—fails the entire
+`create_media_buy` request. The seller returns the terminal error shape and
+MUST NOT leave a MediaBuy or any other mutation from that request behind.
+
+This pre-commit validation boundary is separate from creative review. A
+structurally and operationally valid creative may enter `processing` or
+`pending_review` after the buy is created. A later content-policy, brand-safety,
+or accessibility rejection changes the creative or package-approval state; it
+does not roll back the confirmed MediaBuy. Before activation, a buy with no
+approved creative coverage remains `pending_creatives` until the buyer corrects
+or replaces the asset. A rejection affecting an active buy follows the normal
+creative-impairment and serving rules rather than reversing creation.
+
+The compact lifecycle deliberately has a different boundary. [`buy_products`](/docs/media-buy/task-reference/buy_products) or
+[`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) commits first and returns the seller-assigned package IDs;
+[`sync_creatives`](/docs/creative/task-reference/sync_creatives) then uploads and assigns library creatives. That sequence is a
+saga, not one atomic transaction. A later sync or assignment failure leaves the
+MediaBuy committed. `dry_run` can validate a library upload, but it cannot fully
+validate package-specific assignment against package IDs that do not exist yet.
+Setting `paused: true` where supported reduces activation risk, and a later
+cancellation may compensate for a trafficking failure, but neither action is a
+rollback.
+
+Use this facade when all-or-none purchase and trafficking is required, or when
+the seller supports only inline creative management. Compact purchase has no
+inline-only creative continuation. It also has no lossless direct-purchase
+equivalent for `artifact_webhook`, per-package initial `paused`, inline catalog
+bodies or filters, or a buyer-authored exact `committed_metrics` set. Catalogs
+must be synchronized before compact purchase and can remain on the account when
+the purchase fails; direct compact purchase lets the seller derive reporting
+commitments, while an exact negotiated set must already be present in an
+accepted proposal. Callers MUST treat these as explicit compatibility risks,
+not silently drop or approximate them.
+
 **Response Time**: Instant to days (returns `completed`, `working` < 120s, or `submitted` for hours/days)
 
 **Request Schema**: [`/schemas/v3/media-buy/create-media-buy-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/create-media-buy-request.json)
@@ -164,6 +204,7 @@ npx @adcp/sdk@latest \
 | `idempotency_key` | string | No | Unique key for safe retries. If a request with the same key and account has already been processed, the seller returns the existing media buy. MUST be unique per (seller, request) pair. Min 16 chars. |
 | `context` | object | No | Opaque correlation data echoed unchanged in the response. Use for internal tracking, trace IDs, or other caller-specific identifiers. |
 | `reporting_webhook` | ReportingWebhook | No | Automated reporting delivery configuration |
+| `artifact_webhook` | object | No | Content-artifact delivery configuration established with the buy. This compatibility field has no compact purchase or later control equivalent; adapters MUST NOT silently discard it. |
 
 \* Either `packages` OR (`proposal_id` + `total_budget`) must be provided.
 
@@ -184,10 +225,10 @@ An unexpired `committed` proposal carries an inventory hold and cannot be reject
 |-----------|------|----------|-------------|
 | `product_id` | string | Yes | Opaque product ID from `get_products`. Non-custom wholesale IDs are stable for the same logical offer within seller and declared cache scope; custom IDs are stable only in their issuing discovery/refinement lineage. Selecting it accepts any `targeting_resolution` disclosed on that product. Sellers MUST echo it on every response package object representing the request. |
 | `pricing_option_id` | string | Yes | Pricing option ID from product's `pricing_options` array |
-| `format_option_refs` | FormatOptionRef[] | No | Canonical 3.2 selector into the product's `format_options[]`: publisher-scoped or product-scoped. |
-| `format_kind` | CanonicalFormatKind | No | Direct canonical selector. Pair with enough `params` to satisfy the product declaration. |
-| `format_ids` | FormatID[] | Deprecated | Named-format compatibility selector accepted only from older 3.x peers. New buyers do not dual-emit it. |
-| `params` | object | No | Parameters for the direct canonical selector in `format_kind`. Follows the selected canonical's parameter vocabulary. Requires `format_kind`; `params` alone is schema-invalid. A broad selector such as `{format_kind: "image"}` does not satisfy a product whose `format_options[]` fixes `params.width` and `params.height`; sellers reject under-specified direct selectors with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) or an equivalent format-selector error. |
+| `format_option_refs` | FormatOptionRef[] | No | Canonical 3.2 selector into the product's `format_options[]`: publisher-scoped or product-scoped. New buyers use it as their only selector route. |
+| `format_kind` | CanonicalFormatKind | No | Direct canonical selector. Pair with enough `params` to satisfy the product declaration and omit `format_option_refs`. |
+| `format_ids` | FormatID[] | Deprecated | Named-format compatibility selector accepted from older 3.x peers. New buyers MUST NOT emit it. Receivers normalize it and equivalence-check it against every co-present canonical route. |
+| `params` | object | No | Parameters for the direct canonical selector in `format_kind`. Follows the selected canonical's parameter vocabulary. Requires `format_kind`; `params` alone is schema-invalid. For fixed-size image selectors, `width` and `height` must co-occur. A broad selector such as `{format_kind: "image"}` does not satisfy a product whose `format_options[]` fixes both dimensions; sellers reject under-specified direct selectors with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). |
 | `budget` | number | Conditional | Hard lifetime package spend cap in the media-buy currency. Required in fixed mode. Optional in seller-optimized mode; it remains a ceiling, not a current or reserved allocation. |
 | `min_spend_target` | number | No | Soft lifetime package spend target in the media-buy currency for seller-optimized allocation. The seller should attempt to reach it, but it is not a billing or delivery guarantee. |
 | `impressions` | number | No | Impression goal for this package |
@@ -202,7 +243,13 @@ An unexpired `committed` proposal carries an inventory hold and cannot be reject
 | `audience_evidence_pins` | AudienceEvidencePin[] | No | Exact discovery snapshots the buyer requires, each pinned by `evidence_id`, `snapshot_id`, `version`, and `content_digest`. Sellers reject missing, substituted, or mutated snapshots. Every accepted pin is returned in the confirmed package's `audience_evidence_selections` and retained on package readback. |
 | `start_time` | string | No | ISO 8601 date-time for this package's flight start. When omitted, inherits the media buy's `start_time`. Must fall within the media buy's date range. Does not support `"asap"`. |
 | `end_time` | string | No | ISO 8601 date-time for this package's flight end. When omitted, inherits the media buy's `end_time`. Must fall within the media buy's date range. |
-| `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting |
+| `creative_assignments` | CreativeAssignment[] | No | Assign existing library creatives with optional weights and placement targeting. Every reference and route is validated as part of the atomic create; one invalid entry fails the whole request. |
+| `creatives` | CreativeAsset[] | No | Upload new creative assets inline and assign. Requires `media_buy.features.inline_creative_management: true`; when the seller also advertises `creative.has_creative_library: true`, `creative_id` must not already exist in the library. Pre-commit validation failure blocks the entire create; later review rejection does not roll it back. |
+| `catalogs` | Catalog[] | No | Catalog bodies, references, or filtered selections promoted by this package. Compact purchase accepts previously synchronized catalog IDs only, so translating an inline body requires a separate, non-atomic [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs) mutation. |
+| `context` | object | No | Opaque correlation data echoed unchanged in the package response, webhooks, and read surfaces. Use to map seller-assigned `package_id` back to your internal line items, campaign structure, or tracking state. Buyers targeting mixed seller populations SHOULD include a per-package correlation value here, commonly `context.buyer_ref`, for legacy sellers that do not echo `product_id`. |
+| `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with [`TERMS_REJECTED`](/docs/building/verification/compliance-catalog#error-code-terms-rejected), or adjusts. When omitted, product's `measurement_terms` apply. |
+| `performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed performance standards (viewability, IVT, completion rate, brand safety, attention score). Overrides product defaults. Seller accepts, rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `performance_standards` apply. |
+| `committed_metrics` | object[] | No | Buyer's proposed reporting contract — metrics the buyer wants the seller to commit to populating in delivery reports. Same negotiation pattern as `measurement_terms`/`performance_standards`: each entry tags `scope: "standard"` (with `metric_id` from the closed enum) or `scope: "vendor"` (with `vendor` BrandRef + vendor's `metric_id`). Request-side entries do NOT carry `committed_at` — that timestamp is stamped by the seller on accept. Seller accepts (echoes on response with `committed_at`), rejects with `TERMS_REJECTED`, or normalizes (echoes a different but compatible list). When omitted, the seller decides what to commit based on the product's `available_metrics` plus any `required_metrics` filter the buyer passed at discovery. |
 
 For `targeting_overlay.geo_places` and `geo_places_exclude`, create-time values
 must be within the selected Product's corresponding `overlay_support` tuple.
@@ -213,11 +260,6 @@ ID—or an unsupported explicit catalog version—returns [`INVALID_REQUEST`](/d
 inventory returns `PRODUCT_UNAVAILABLE`, without silent substitution or
 repricing. An accepted create confirms the selected terms for the complete
 effective targeting.
-| `creatives` | CreativeAsset[] | No | Upload new creative assets inline and assign. Requires `media_buy.features.inline_creative_management: true`; when the seller also advertises `creative.has_creative_library: true`, `creative_id` must not already exist in the library. |
-| `context` | object | No | Opaque correlation data echoed unchanged in the package response, webhooks, and read surfaces. Use to map seller-assigned `package_id` back to your internal line items, campaign structure, or tracking state. Buyers targeting mixed seller populations SHOULD include a per-package correlation value here, commonly `context.buyer_ref`, for legacy sellers that do not echo `product_id`. |
-| `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with [`TERMS_REJECTED`](/docs/building/verification/compliance-catalog#error-code-terms-rejected), or adjusts. When omitted, product's `measurement_terms` apply. |
-| `performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed performance standards (viewability, IVT, completion rate, brand safety, attention score). Overrides product defaults. Seller accepts, rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `performance_standards` apply. |
-| `committed_metrics` | object[] | No | Buyer's proposed reporting contract — metrics the buyer wants the seller to commit to populating in delivery reports. Same negotiation pattern as `measurement_terms`/`performance_standards`: each entry tags `scope: "standard"` (with `metric_id` from the closed enum) or `scope: "vendor"` (with `vendor` BrandRef + vendor's `metric_id`). Request-side entries do NOT carry `committed_at` — that timestamp is stamped by the seller on accept. Seller accepts (echoes on response with `committed_at`), rejects with `TERMS_REJECTED`, or normalizes (echoes a different but compatible list). When omitted, the seller decides what to commit based on the product's `available_metrics` plus any `required_metrics` filter the buyer passed at discovery. |
 
 ### BiddingPolicy Object
 
@@ -1088,6 +1130,7 @@ Common errors and resolutions:
 | [`PRODUCT_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-product-expired) | Configured product passed `expires_at` and remains recognizable to the seller | Re-run [`get_products`](/docs/media-buy/task-reference/get_products) and select a current configuration |
 | [`PRODUCT_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-product-unavailable) | The product or a supported targeting selection has no current inventory | Re-run [`get_products`](/docs/media-buy/task-reference/get_products) with the concrete targeting values or choose another product; the seller does not silently substitute values or reprice |
 | [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | Canonical or legacy compatibility selector does not resolve or satisfy the product's closed accepted set | Re-author against the product's `format_options[]`, include required canonical parameters, or select a published `format_option_id`. |
+| [`CONFLICTING_SELECTORS`](/docs/building/verification/compliance-catalog#error-code-conflicting-selectors) | Co-present, resolvable package format selector routes select different product format contracts | Emit one canonical selector route, or correct the required legacy projection so it selects the same contract under the canonical v2-narrows-v1 comparison. |
 | [`BUDGET_TOO_LOW`](/docs/building/verification/compliance-catalog#error-code-budget-too-low) | Budget below product minimum | Increase budget or choose different product |
 | [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) | Targeting constraints or a submitted `creative_id` violate seller/product business rules | Follow `error.field` and `error.message`; broaden targeting criteria or use a different package-scoped `creative_id` as indicated |
 | [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) | Brand/product violates policy | Review publisher's content policies |
@@ -1118,7 +1161,28 @@ Each package SHOULD specify the formats it will use via `format_option_refs[]` o
 - Validate that the product supports the requested formats
 - Track which assets are missing
 
-Selector precedence is deterministic: `format_option_refs[]` wins when present; otherwise direct `format_kind`/`params` is used; otherwise the package defaults to all product options. Deprecated `format_ids[]` is interpreted only on the negotiated legacy compatibility path and must normalize to the same canonical contract.
+New 3.2 buyers author one canonical route: `format_option_refs[]`, or direct
+`format_kind` with optional `params`. They MUST NOT combine those routes and
+MUST NOT newly emit deprecated `format_ids[]`. Omitting all selectors defaults
+to all product options; legacy-only `format_ids[]` remains valid throughout the
+3.x compatibility window.
+
+Receivers also accept multi-route requests from older 3.x peers, but precedence
+is applied only after resolution and equivalence checking. The seller first
+resolves every present route independently through the canonical mapping path.
+An unresolved option reference or unprojectable legacy ID returns
+[`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature)
+before equivalence is evaluated. Once all routes resolve, the seller derives
+the product `format_options[]` entries selected by each route using directional
+product satisfaction and requires those sets to match. Legacy parameter
+compatibility follows the asymmetric [v2 narrows v1](/docs/creative/canonical-formats#narrows-formal-definition-normative)
+relation rather than raw object equality. Equivalent routes use
+`format_option_refs[]` as authoritative, then direct `format_kind`/`params`,
+then `format_ids[]`. Any disagreement is rejected with
+[`CONFLICTING_SELECTORS`](/docs/building/verification/compliance-catalog#error-code-conflicting-selectors);
+a canonical selector never silently hides a conflicting legacy projection. For
+fixed-size images, width and height travel together and both dimensions must
+match in any permitted dual projection.
 
 Before purchase, buyers SHOULD also inspect the selected declaration's optional
 `locale_policy.accepted_language_ranges`. These seller ranges use RFC 4647
@@ -1727,7 +1791,7 @@ For complete async handling patterns, see [Async Operations](/docs/building/by-l
 - Pending states (`working`, `submitted`) are normal, not errors
 - Orchestrators MUST handle pending states as part of normal workflow
 - **Inline creatives**: The `creatives` array creates or supplies package creatives inline. If the seller advertises `creative.has_creative_library: true`, inline creatives enter the library; use [`sync_creatives`](/docs/creative/task-reference/sync_creatives) to update existing library creatives and `creative_assignments` to assign existing library creatives. If the seller advertises `inline_creative_management: true` without a creative library, use `packages[].creatives` on `create_media_buy` and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy); do not call `sync_creatives`.
-- **Inline creative lifecycle**: Library-backed inline creatives enter the library with the same lifecycle as `sync_creatives` uploads. Inline-only sellers may keep the creative package-scoped and do not advertise later reuse by `creative_id`. Creative review is independent of the buy outcome; sellers MUST NOT skip review solely because the buy did not activate. Retention of unassigned library creatives is seller-defined in 3.0. See [Inline creatives on the package](/docs/creative/creative-libraries#path-2-inline-creatives-on-the-package).
+- **Inline validation and review**: Library-backed inline creatives enter the library with the same review lifecycle as `sync_creatives` uploads, while inline-only sellers may keep them package-scoped. Invalid request-time creative or assignment input fails the whole atomic create. Once valid input is committed, later policy review is independent: rejection does not undo the buy, and sellers MUST NOT skip review solely because the buy did not activate. Retention of unassigned library creatives is seller-defined in 3.0. See [Inline creatives on the package](/docs/creative/creative-libraries#path-2-inline-creatives-on-the-package).
 
 ## Content Standards
 
