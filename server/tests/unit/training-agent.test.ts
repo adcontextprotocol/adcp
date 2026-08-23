@@ -17144,6 +17144,76 @@ describe('proposal lifecycle', () => {
     }
   });
 
+  it('returns a correctable error when configured-product capacity would truncate discovery', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const productIds = [
+      'targeting_capacity_training_product_a',
+      'targeting_capacity_training_product_b',
+    ];
+    for (const productId of productIds) {
+      const seeded = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            channels: ['display'],
+            delivery_type: 'non_guaranteed',
+            overlay_support: { geo_countries: { max_values_per_package: 2 } },
+          },
+        },
+      });
+      expect(seeded.result.success).toBe(true);
+    }
+
+    const first = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: [productIds[0]],
+        targeting_overlay: { geo_countries: ['US'] },
+      },
+    });
+    expect(first.isError, JSON.stringify(first.result)).toBeFalsy();
+    expect(first.result.products).toHaveLength(1);
+
+    let configuredIdsBeforeOverflow: string[] = [];
+    await runWithSessionContext(async () => {
+      const session = await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode));
+      const template = [...session.configuredProducts.values()][0]!;
+      expect(template).toBeDefined();
+      for (let index = session.configuredProducts.size; index < 127; index += 1) {
+        const configuredId = `configured_capacity_fixture_${index}`;
+        session.configuredProducts.set(configuredId, {
+          ...structuredClone(template),
+          product_id: configuredId,
+        });
+        session.configuredProductTargeting.set(configuredId, { geo_countries: ['US'] });
+      }
+      configuredIdsBeforeOverflow = [...session.configuredProducts.keys()].sort();
+      await flushDirtySessions();
+    });
+
+    const capped = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: productIds,
+        targeting_overlay: { geo_countries: ['CA'] },
+      },
+    });
+    expect(capped.isError).toBe(true);
+    expect(capped.result).toMatchObject({
+      code: 'LIMIT_EXCEEDED',
+      field: 'targeting_overlay',
+      recovery: 'correctable',
+      details: { limit: 128, dropped_products: 1 },
+    });
+    await runWithSessionContext(async () => {
+      const session = await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode));
+      expect([...session.configuredProducts.keys()].sort()).toEqual(configuredIdsBeforeOverflow);
+    });
+  });
+
   it('keeps criteria refinements gated to typed negotiation profiles', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {

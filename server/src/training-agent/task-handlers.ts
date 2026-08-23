@@ -6160,7 +6160,7 @@ function applyDiscoveryTargeting(
   lineageKey: string,
   sourceProductIds: Map<string, string>,
   reusedConfiguredProductIds: Set<string>,
-): Product[] {
+): { products: Product[]; capacityDrops: number } {
   const request = req as unknown as Record<string, unknown>;
   const targetingOverlay = isRecord(request.targeting_overlay)
     ? request.targeting_overlay
@@ -6175,7 +6175,7 @@ function applyDiscoveryTargeting(
       return overlaySupportContains(support, requiredOverlaySupport);
     });
   }
-  if (!targetingOverlay) return targeted;
+  if (!targetingOverlay) return { products: targeted, capacityDrops: 0 };
   pruneConfiguredProducts(session);
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const identityInput = Object.fromEntries(Object.entries(request).filter(([field]) => ![
@@ -6186,12 +6186,21 @@ function applyDiscoveryTargeting(
   ].includes(field)));
   const requestIdentity = canonicalize(identityInput);
   const validityPeriod = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
-  return targeted.flatMap(product => {
+  const plannedProducts = targeted.map(product => {
     const configuredId = `configured_${createHash('sha256')
       .update(`${lineageKey}\0${requestIdentity}\0${validityPeriod}\0${product.product_id}`)
       .digest('hex')
       .slice(0, 24)}`;
-    const existing = session.configuredProducts.get(configuredId);
+    return { product, configuredId, existing: session.configuredProducts.get(configuredId) };
+  });
+  const additionalProducts = plannedProducts.filter(({ existing }) => existing === undefined).length;
+  const capacityDrops = Math.max(
+    0,
+    session.configuredProducts.size + additionalProducts - MAX_CONFIGURED_PRODUCTS_PER_SESSION,
+  );
+  if (capacityDrops > 0) return { products: [], capacityDrops };
+
+  const configuredProducts = plannedProducts.map(({ product, configuredId, existing }) => {
     if (existing && (!existing.expires_at || new Date(existing.expires_at) >= new Date())) {
       sourceProductIds.set(configuredId, product.product_id);
       reusedConfiguredProductIds.add(configuredId);
@@ -6201,7 +6210,6 @@ function applyDiscoveryTargeting(
       session.configuredProducts.delete(configuredId);
       session.configuredProductTargeting.delete(configuredId);
     }
-    if (session.configuredProducts.size >= MAX_CONFIGURED_PRODUCTS_PER_SESSION) return [];
     const configured = {
       ...structuredClone(product),
       product_id: configuredId,
@@ -6211,8 +6219,9 @@ function applyDiscoveryTargeting(
     session.configuredProducts.set(configuredId, configured);
     session.configuredProductTargeting.set(configuredId, structuredClone(targetingOverlay));
     sourceProductIds.set(configuredId, product.product_id);
-    return [configured];
+    return configured;
   });
+  return { products: configuredProducts, capacityDrops };
 }
 
 function bindConfiguredTargetingToProposal(proposal: Proposal, session: SessionState): Proposal {
@@ -7772,7 +7781,7 @@ async function handleGetProductsUnlocked(
   }
   const discoverySourceProductIds = new Map<string, string>();
   const reusedConfiguredProductIds = new Set<string>();
-  products = applyDiscoveryTargeting(
+  const discoveryTargeting = applyDiscoveryTargeting(
     products,
     req,
     session,
@@ -7780,6 +7789,21 @@ async function handleGetProductsUnlocked(
     discoverySourceProductIds,
     reusedConfiguredProductIds,
   );
+  if (discoveryTargeting.capacityDrops > 0) {
+    return {
+      errors: [{
+        code: 'LIMIT_EXCEEDED',
+        message: `Configured-product session limit reached (max ${MAX_CONFIGURED_PRODUCTS_PER_SESSION}); ${discoveryTargeting.capacityDrops} matching product(s) could not be configured. Start a new session or retry after prior offers expire.`,
+        field: 'targeting_overlay',
+        recovery: 'correctable',
+        details: {
+          limit: MAX_CONFIGURED_PRODUCTS_PER_SESSION,
+          dropped_products: discoveryTargeting.capacityDrops,
+        },
+      }] as TaskError[],
+    };
+  }
+  products = discoveryTargeting.products;
   registryProducts = [...new Map(
     [...registryProducts, ...products].map(product => [product.product_id, product]),
   ).values()];
