@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "tracker-execution-contracts.schema.json",
+  "title": "Tracker execution contract vectors",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "vectors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "contract": { "$ref": "/schemas/core/tracker-execution-contract.json" },
+          "tracker": {
+            "oneOf": [
+              { "$ref": "/schemas/core/assets/pixel-tracker-asset.json" },
+              { "$ref": "/schemas/core/assets/vast-tracker-asset.json" },
+              { "$ref": "/schemas/core/assets/daast-tracker-asset.json" }
+            ]
+          },
+          "execution_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["matched", "rejected", "undeclared"]
+              },
+              "selector_id": { "type": "string", "minLength": 1 },
+              "rejection_code": { "type": "string", "const": "tracker_contract_mismatch" }
+            },
+            "required": ["status"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["name", "contract", "tracker", "expected"],
+        "additionalProperties": false
+      }
+    },
+    "package_snapshot": {
+      "$ref": "/schemas/core/package-format-snapshot.json"
+    }
+  },
+  "required": ["vectors", "package_snapshot"],
+  "additionalProperties": false
+}

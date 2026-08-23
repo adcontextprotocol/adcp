@@ -1,0 +1,162 @@
+{
+  "$schema": "./tracker-execution-contracts.schema.json",
+  "vectors": [
+    {
+      "name": "pixel asset default method normalizes to img",
+      "contract": {
+        "complete": true,
+        "honored": [
+          {
+            "selector_id": "display-impression",
+            "asset_type": "pixel_tracker",
+            "event": "impression",
+            "method": "img",
+            "execution_actor": "seller",
+            "firing_paths": ["client"]
+          }
+        ]
+      },
+      "tracker": {
+        "asset_type": "pixel_tracker",
+        "event": "impression",
+        "url": "https://measure.example/imp"
+      },
+      "expected": {
+        "status": "matched",
+        "selector_id": "display-impression"
+      }
+    },
+    {
+      "name": "VAST target default and exact version match",
+      "contract": {
+        "complete": true,
+        "honored": [
+          {
+            "selector_id": "vast-progress",
+            "asset_type": "vast_tracker",
+            "vast_versions": ["4.2", "4.3"],
+            "vast_event": "progress",
+            "target": "linear",
+            "offset": "25%",
+            "execution_actor": "request_executor",
+            "firing_paths": ["client", "server"]
+          }
+        ]
+      },
+      "tracker": {
+        "asset_type": "vast_tracker",
+        "vast_event": "progress",
+        "offset": "25%",
+        "url": "https://measure.example/vast-progress"
+      },
+      "execution_version": "4.3",
+      "expected": {
+        "status": "matched",
+        "selector_id": "vast-progress"
+      }
+    },
+    {
+      "name": "exact VAST execution version outside selector is rejected by a complete contract",
+      "contract": {
+        "complete": true,
+        "honored": [
+          {
+            "selector_id": "vast-start-43",
+            "asset_type": "vast_tracker",
+            "vast_versions": ["4.3"],
+            "vast_event": "start",
+            "target": "linear",
+            "execution_actor": "request_executor",
+            "firing_paths": ["client"]
+          }
+        ]
+      },
+      "tracker": {
+        "asset_type": "vast_tracker",
+        "vast_event": "start",
+        "target": "linear",
+        "url": "https://measure.example/vast-start"
+      },
+      "execution_version": "4.2",
+      "expected": {
+        "status": "rejected",
+        "rejection_code": "tracker_contract_mismatch"
+      }
+    },
+    {
+      "name": "an unlisted tracker remains undeclared under an incomplete contract",
+      "contract": {
+        "complete": false,
+        "honored": []
+      },
+      "tracker": {
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "url": "https://measure.example/click"
+      },
+      "expected": {
+        "status": "undeclared"
+      }
+    },
+    {
+      "name": "DAAST companion creativeView matches the exact 1.1 selector",
+      "contract": {
+        "complete": true,
+        "honored": [
+          {
+            "selector_id": "daast-companion-view",
+            "asset_type": "daast_tracker",
+            "daast_versions": ["1.1"],
+            "daast_event": "creativeView",
+            "target": "companion",
+            "execution_actor": "request_executor",
+            "firing_paths": ["client"]
+          }
+        ]
+      },
+      "tracker": {
+        "asset_type": "daast_tracker",
+        "daast_event": "creativeView",
+        "target": "companion",
+        "url": "https://measure.example/daast-companion"
+      },
+      "execution_version": "1.1",
+      "expected": {
+        "status": "matched",
+        "selector_id": "daast-companion-view"
+      }
+    }
+  ],
+  "package_snapshot": {
+    "product_id": "prod-acme-video",
+    "format_option_id": "acme-vast-preroll",
+    "format_kind": "video_vast",
+    "params": {
+      "vast_versions": ["4.2", "4.3"]
+    },
+    "tracker_execution_contract": {
+      "complete": true,
+      "honored": [
+        {
+          "selector_id": "vast-start",
+          "asset_type": "vast_tracker",
+          "vast_versions": ["4.2", "4.3"],
+          "vast_event": "start",
+          "target": "linear",
+          "execution_actor": "request_executor",
+          "firing_paths": ["client"]
+        }
+      ]
+    },
+    "execution_vast_version": "4.3",
+    "placement_refs": [
+      {
+        "publisher_domain": "publisher.example",
+        "placement_id": "preroll"
+      }
+    ],
+    "tracker_execution_contract_digest": "sha256:e916445d0d6619903d2a151388efa1dc8f260b0111d4437f94c1b53108708e29",
+    "product_snapshot_digest": "sha256:b6678bfbf02a83527626f10031009b7446125db78a164e982834172cd7c92ef3"
+  }
+}

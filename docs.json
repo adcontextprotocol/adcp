@@ -367,7 +367,8 @@
                       "docs/creative/formats",
                       "docs/creative/asset-types",
                       "docs/creative/template-format-ids",
-                      "docs/creative/universal-macros"
+                      "docs/creative/universal-macros",
+                      "docs/creative/tracker-execution-contracts"
                     ]
                   },
                   {

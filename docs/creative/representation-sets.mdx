@@ -85,14 +85,17 @@ Resolution follows this order:
 2. Filter candidates by canonical `format_kind` and the selected `format_option_ref`.
 3. Apply the option's asset shape and delivery-mechanism constraints.
 4. For VAST, intersect product and seller version sets.
-5. Evaluate every declared macro against product and seller macro capabilities.
-6. Select exactly one compatible representation.
+5. Normalize tracker defaults, bind one exact VAST/DAAST execution version, and match every first-class tracker against the destination's [tracker execution contract](/docs/creative/tracker-execution-contracts).
+6. Evaluate every declared macro against product and seller macro capabilities as a separate check.
+7. Select exactly one compatible representation.
 
 The buyer may perform these checks locally from seller discovery and submit the selected ordinary manifest. On the wire, `build_creative` representation resolution is intentionally narrower: only the destination sales agent may advertise `creative.representation_resolution.supported: true` and accept a set. A standalone creative agent does not own the product or seller execution ceilings and cannot claim seller compatibility. Silent guessing is never allowed.
 
 The request carries `representation_destination.product_id` plus the exact effective product `format_option`. The destination seller verifies that declaration against its current product, every named placement/publisher narrowing, and its current seller-wide execution ceilings. When `placement_refs` is omitted, the output must satisfy the common effective contract for every placement where it may deliver. `target_capability_id` selects the seller's creative-operation route; it is not a substitute for the inventory contract.
 
 Resolution requires explicit compatibility inputs. In particular, every `video_vast` source representation has an exact asset `vast_version`, while the selected product option and seller advertise non-empty plural `vast_versions`. An absent set is unproven and cannot be treated as accepting every version on this opt-in resolution path.
+
+When a first-class `vast_tracker` or `daast_tracker` has no sibling exact-version delivery document, `representation_destination` carries `execution_vast_version` or `execution_daast_version`. The value must belong to the destination acceptance set and is echoed in `representation_selection`. It joins the selected representation and output digest in the execution-review identity, so changing it requires re-resolution and ordinary re-review. Package assignment must preserve the same exact version.
 
 Pass a representation set to the destination seller's `build_creative` route with the product contract and an advertised strategy:
 
@@ -212,11 +215,18 @@ When no candidate works, return `CREATIVE_REPRESENTATION_UNRESOLVED`. `error.det
         "representation_id": "source-vast-4",
         "code": "macro_unsupported",
         "message": "A required player-owned macro is not supported on this execution path"
+      },
+      {
+        "representation_id": "source-vast-trackers",
+        "code": "tracker_contract_mismatch",
+        "message": "The complete destination contract does not honor this normalized tracker selector"
       }
     ]
   }
 }
 ```
+
+`tracker_contract_mismatch` and `macro_unsupported` are deliberately distinct. A seller reports the former with the manifest asset path, normalized selector identity, and destination option reference. Library-only `sync_creatives` can preserve a selected output and validate its structure, but package assignment must revalidate the trackers against the immutable package snapshot before spend.
 
 ## VAST representations
 
