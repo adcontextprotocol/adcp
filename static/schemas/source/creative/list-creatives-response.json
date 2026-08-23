@@ -82,6 +82,20 @@
               "spec": "docs/creative/task-reference/list_creatives.mdx#per-creative-fields"
             }
           },
+          "representation_selection": {
+            "$ref": "/schemas/core/representation-selection.json",
+            "description": "Exact source-set and selected-output lineage retained when the current stored creative was resolved from a CreativeRepresentationSet.",
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "representation_lineage_readback": {
+                  "required_when_current_creative_was_resolved_from_representation_set": true,
+                  "must_equal": "last_accepted_current_representation_selection",
+                  "historical_selection_not_substituted": true
+                }
+              },
+              "spec": "docs/creative/representation-sets.mdx#sync-review-and-readback"
+            }
+          },
           "account": {
             "$ref": "/schemas/core/account.json",
             "description": "Account that owns this creative"

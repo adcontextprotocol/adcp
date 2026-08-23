@@ -1982,28 +1982,32 @@
           "description": "When true, this agent can transform or resize existing canonical manifests via build_creative. The buyer supplies a creative_manifest and an advertised target_capability_id.",
           "default": false
         },
-        "delivery_variant_resolution": {
+        "representation_resolution": {
           "type": "object",
-          "description": "Explicit opt-in for deterministic seller/creative-agent selection from `build_creative.creative_source`. Absence means the caller must select a representation before sending a seller-bound manifest; the agent MUST NOT guess silently.",
+          "description": "Explicit opt-in for deterministic seller-bound selection from `build_creative.creative_representation_set`. Only the destination sales agent may advertise and exercise this capability because resolution requires its current product, placement/publisher narrowings, and seller-wide execution ceilings. A standalone creative agent may help a buyer select locally but MUST NOT advertise this capability or claim seller deliverability. Absence means the caller selects a representation before sending a seller-bound manifest; the agent MUST NOT guess silently.",
           "properties": {
             "supported": {
               "type": "boolean",
               "const": true,
-              "description": "True means the agent accepts CreativeSource input and returns `delivery_variant_selection` or per-candidate structured rejections."
+              "description": "True means the agent accepts CreativeRepresentationSet input and returns `representation_selection` or per-candidate structured rejections."
             },
             "strategies": {
               "type": "array",
               "minItems": 1,
               "uniqueItems": true,
-              "items": {
-                "type": "string",
-                "enum": ["source_order", "highest_compatible_vast"]
-              },
-              "description": "Deterministic selection strategies the agent implements after compatibility filtering. `highest_compatible_vast` ranks only the already-intersected VAST candidate set."
+              "items": { "$ref": "/schemas/enums/representation-selection-strategy.json" },
+              "description": "Deterministic selection strategies the seller implements after compatibility filtering. `representation_order` selects the first compatible source entry. `highest_compatible_vast` selects the highest exact VAST version from the already-intersected candidate set, with equal-version ties resolved by source array order."
             }
           },
           "required": ["supported", "strategies"],
-          "additionalProperties": true
+          "additionalProperties": true,
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "advertiser_role": "only a destination sales agent with media_buy product authority may advertise this capability",
+              "request_strategy": "representation_selection_strategy MUST be one of the advertised strategies",
+              "destination_authority": "the seller MUST resolve representation_destination against its own current product and execution capabilities"
+            }
+          }
         },
         "supports_transformers": {
           "type": "boolean",

@@ -62,9 +62,9 @@ Use min/max width and height for a genuinely responsive envelope. Exact-size, mu
 
 `html5` describes a buyer-supplied zip bundle that the seller hosts. `display_tag` describes a third-party-served representation. Keep them separate because validation, hosting, security, and measurement differ. Inline third-party markup is never an `html5` bundle.
 
-Display tags have three delivery variants:
+Display tags have three delivery types:
 
-| Variant | Asset contract |
+| Delivery type | Asset contract |
 |---|---|
 | `tag_url` | One `url` asset with `url_type: "ad_request"`, or a `display_tag` asset with `delivery_type: "tag_url"` |
 | `inline_markup` | One `display_tag` asset with byte-preserved markup and its markup type |
@@ -81,7 +81,7 @@ The existing `tag_url` slot remains the backward-compatible default. A seller ac
   "params": {
     "width": 300,
     "height": 250,
-    "supported_delivery_variants": ["inline_markup"],
+    "supported_delivery_types": ["inline_markup"],
     "slots": [
       { "asset_group_id": "serving_tag", "asset_type": "display_tag", "required": true }
     ]
@@ -118,7 +118,7 @@ A two-URL internal redirect is represented portably as `paired_redirect`; the ca
   "params": {
     "width": 300,
     "height": 250,
-    "supported_delivery_variants": ["paired_redirect"],
+    "supported_delivery_types": ["paired_redirect"],
     "slots": [
       { "asset_group_id": "serving_tag", "asset_type": "display_tag", "required": true }
     ]
@@ -148,4 +148,4 @@ Both fields are required by schema. A half-present pair is invalid. Do not split
 
 Buyers discover seller acceptance from `Product.format_options[]`. Creative agents that can build or validate these contracts advertise matching `creative.supported_formats[]` entries.
 
-See [Creative delivery variants](/docs/creative/delivery-variants), [Canonical formats](/docs/creative/canonical-formats), [Creative manifests](/docs/creative/creative-manifests), and [Universal macros](/docs/creative/universal-macros).
+See [Creative representation sets](/docs/creative/representation-sets), [Canonical formats](/docs/creative/canonical-formats), [Creative manifests](/docs/creative/creative-manifests), and [Universal macros](/docs/creative/universal-macros).

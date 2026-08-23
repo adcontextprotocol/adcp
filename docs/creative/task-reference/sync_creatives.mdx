@@ -226,6 +226,35 @@ With `dry_run: true`, the seller evaluates existing revision conflicts and may
 echo the simulated revision, but it does not reserve an ID, change bindings or
 tombstones, select a current revision, or alter review state.
 
+When an item carries `representation_selection`, its `creative_id` and
+`revision_id` must equal the selection lineage. The seller binds revision
+identity to `representation_selection.revision_content_digest`, which commits
+to the complete [`CreativeRepresentationSet`](/docs/creative/representation-sets),
+not to the selected manifest bytes alone. The actor that emitted the selection
+must first verify the digest against the complete set. A downstream seller that
+receives only the selected output can enforce stable digest reuse, but cannot
+claim it independently inspected representations it never received.
+
+The seller separately verifies `selected_output_digest` with the same manifest
+projection used by [`build_creative`](/docs/creative/task-reference/build_creative): remove top-level `$schema`,
+`representation_selection`, `creative_id`, `revision_id`, `name`, `tags`,
+`status`, `weight`, `placement_refs`, `placement_ids`, `inputs`, and
+then include every other field. It tracks
+`(selected_representation_id, selected_output_digest)` as the execution review
+fingerprint. A changed selection or changed derived output is an
+`updated` creative and follows ordinary re-review even when the source-set
+`revision_id` and digest remain unchanged. [`list_creatives`](/docs/creative/task-reference/list_creatives) returns the exact
+current selection lineage while that execution remains current.
+
+A sync item carrying `representation_selection` MUST omit `localization`,
+including `null`, in this version, and the stored creative must not already
+have localization that ordinary omission would preserve. Remove an existing
+topology first with a separate accepted sync carrying `localization: null` and
+no `representation_selection`, then submit the selected output. Localization
+replaces materialized serving assets and cannot be treated as digest-neutral library metadata. A future
+localized representation-set contract must define locale topology inside the
+pre-binding revision and selected-output projections explicitly.
+
 Revision support does not add staged activation or revision history. A newly
 accepted content revision follows the ordinary creative update and review
 lifecycle, and prior approval does not transfer to changed content. The

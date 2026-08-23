@@ -1,0 +1,295 @@
+---
+title: Creative representation sets
+description: "Keep equivalent trafficking representations in one immutable creative revision, resolve one against a destination, and retain revision lineage."
+"og:title": "AdCP — Creative Representation Sets"
+---
+
+A logical creative can arrive before its destination is known. It may carry several equivalent trafficking representations—for example, inline display markup plus an Internal Redirect pair, or VAST 2.0, 3.0, and 4.0 URLs. Preserve those alternatives in one `CreativeRepresentationSet` revision, then resolve exactly one into an ordinary seller-bound creative manifest.
+
+This is not creative rotation or A/B testing. Every entry represents the same creative content through a different delivery contract.
+
+| Identity | Meaning |
+|---|---|
+| `creative_id` | Durable logical creative |
+| `revision_id` | Complete immutable buyer-authored content state |
+| `representation_id` | One equivalent trafficking form inside that revision |
+| `build_variant_id` | One generated or transformed candidate, which may contain different creative content |
+| `locale_variant_id` | One buyer-authored localized asset set |
+| served `variant_id` | One agent-assigned immutable execution observed in delivery reporting |
+
+Selection chooses a `representation_id`. It never chooses or creates one of the variant identities.
+
+## Representation-set object
+
+The set always means “choose exactly one compatible representation.” Arrays inside a manifest asset slot still mean repeatable cardinality; they do not mean representation alternatives.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/creative-representation-set.json",
+  "creative_id": "cr_launch_mrec",
+  "revision_id": "rev_2026_08_22_1",
+  "revision_content_digest": "sha256:dfab7f7290bba72f6826ee10186f7618d6b53b3037290f72b094294bceaf6835",
+  "name": "Launch medium rectangle",
+  "representations": [
+    {
+      "representation_id": "source-inline",
+      "format_kind": "display_tag",
+      "assets": {
+        "serving_tag": {
+          "asset_type": "display_tag",
+          "delivery_type": "inline_markup",
+          "markup_type": "iframe_javascript",
+          "markup": "<iframe src=\"https://ads.acme-example.com/render\"></iframe>"
+        }
+      },
+      "source": {
+        "system": "acme_ad_server",
+        "source_representation": "iframe/JavaScript"
+      }
+    },
+    {
+      "representation_id": "source-paired",
+      "format_kind": "display_tag",
+      "assets": {
+        "serving_tag": {
+          "asset_type": "display_tag",
+          "delivery_type": "paired_redirect",
+          "ad_request_url": "https://ads.acme-example.com/ad?slot=42",
+          "clickthrough_url": "https://click.acme-example.com/redirect"
+        }
+      },
+      "source": {
+        "system": "acme_ad_server",
+        "source_representation": "Internal Redirect"
+      }
+    }
+  ]
+}
+```
+
+`creative_id` identifies the durable creative. `revision_id` identifies this complete immutable buyer input state, and each `representation_id` is stable and unique within that revision. Ingestion stores every valid entry without invoking URLs, executing markup, resolving macros, or discarding an unsupported representation.
+
+## Revision identity
+
+The complete representation set is the revision preimage. Producers remove exactly the top-level `$schema`, `creative_id`, `revision_id`, `revision_content_digest`, and `name` properties, serialize everything else with RFC 8785 JCS, and place the lowercase-hex SHA-256 in `revision_content_digest`. `$schema` is transport/schema-location metadata, not creative content. Other unknown fields and representation array order are significant. Producers and resolvers reject duplicate JSON member names, and resolvers recompute the digest before selection.
+
+Changing any representation, its source metadata, the set-level provenance, representation order, or another unknown revision-bearing field requires a new `revision_id` and digest. Renaming the set does not. Selecting, transcoding, macro-binding, or serving one representation does not mint a new revision.
+
+This extends the ordinary [`sync_creatives` revision contract](/docs/creative/task-reference/sync_creatives#creative-revisions): the complete set—not the selected manifest—is bound to `(creative_id, revision_id)`. Reusing that identity with a different digest or canonical content fails with `CREATIVE_REVISION_CONTENT_MISMATCH`. The selected manifest carries the verified digest so a downstream seller can retain the complete-set binding even when it receives only the derived output.
+
+## Seller-bound resolution
+
+Resolution follows this order:
+
+1. Discover the destination's product format option and seller-wide execution capabilities.
+2. Filter candidates by canonical `format_kind` and the selected `format_option_ref`.
+3. Apply the option's asset shape and delivery-mechanism constraints.
+4. For VAST, intersect product and seller version sets.
+5. Evaluate every declared macro against product and seller macro capabilities.
+6. Select exactly one compatible representation.
+
+The buyer may perform these checks locally from seller discovery and submit the selected ordinary manifest. On the wire, `build_creative` representation resolution is intentionally narrower: only the destination sales agent may advertise `creative.representation_resolution.supported: true` and accept a set. A standalone creative agent does not own the product or seller execution ceilings and cannot claim seller compatibility. Silent guessing is never allowed.
+
+The request carries `representation_destination.product_id` plus the exact effective product `format_option`. The destination seller verifies that declaration against its current product, every named placement/publisher narrowing, and its current seller-wide execution ceilings. When `placement_refs` is omitted, the output must satisfy the common effective contract for every placement where it may deliver. `target_capability_id` selects the seller's creative-operation route; it is not a substitute for the inventory contract.
+
+Resolution requires explicit compatibility inputs. In particular, every `video_vast` source representation has an exact asset `vast_version`, while the selected product option and seller advertise non-empty plural `vast_versions`. An absent set is unproven and cannot be treated as accepting every version on this opt-in resolution path.
+
+Pass a representation set to the destination seller's `build_creative` route with the product contract and an advertised strategy:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/media-buy/build-creative-request.json",
+  "idempotency_key": "resolve-cr-launch-mrec-rev-1",
+  "creative_representation_set": {
+    "creative_id": "cr_launch_mrec",
+    "revision_id": "rev_2026_08_22_1",
+    "revision_content_digest": "sha256:13358fdf61931ccab0567451eb1a5968786a50d31cee8c384e332b39c3d444d4",
+    "name": "Launch medium rectangle",
+    "representations": [
+      {
+        "representation_id": "source-paired",
+        "format_kind": "display_tag",
+        "assets": {
+          "serving_tag": {
+            "asset_type": "display_tag",
+            "delivery_type": "paired_redirect",
+            "ad_request_url": "https://ads.acme-example.com/ad?slot=42",
+            "clickthrough_url": "https://click.acme-example.com/redirect"
+          }
+        },
+        "source": { "system": "acme_ad_server", "source_representation": "Internal Redirect" }
+      }
+    ]
+  },
+  "representation_destination": {
+    "product_id": "prod_launch_display",
+    "format_option": {
+      "format_option_id": "acme_internal_redirect_300x250",
+      "format_kind": "display_tag",
+      "params": {
+        "supported_delivery_types": ["paired_redirect"]
+      }
+    }
+  },
+  "representation_selection_strategy": "representation_order",
+  "target_capability_id": "display_tag_resolution"
+}
+```
+
+This is a deterministic, single-output mode. It cannot be combined with generation or transformation instructions, transformers, refinement, evaluators, catalog sampling, creative/variant fan-out, brand-generation context, or media-buy/package tag-generation context. `macro_values` is the one permitted operation that may change the derived manifest: selection happens first, then declared build-time macro binding runs without changing the retained source set. Preview fields may request a sidecar render of that selected output, but preview inputs or context never authorize mutation of the manifest or its digest. A pure resolution response never carries `build_variant_id`.
+
+The output is the normal seller-bound manifest. `representation_selection` carries complete-revision lineage through `sync_creatives` and readback:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/creative-manifest.json",
+  "format_kind": "display_tag",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "acme_internal_redirect_300x250"
+  },
+  "representation_selection": {
+    "creative_id": "cr_launch_mrec",
+    "revision_id": "rev_2026_08_22_1",
+    "revision_content_digest": "sha256:13358fdf61931ccab0567451eb1a5968786a50d31cee8c384e332b39c3d444d4",
+    "selected_representation_id": "source-paired",
+    "strategy": "representation_order",
+    "selected_output_digest": "sha256:02735eb8341dc1c2c25b63d20a0a675577407f7500084a67a6ad71ac1bd0e4c3",
+    "resolved_by": "seller"
+  },
+  "assets": {
+    "serving_tag": {
+      "asset_type": "display_tag",
+      "delivery_type": "paired_redirect",
+      "ad_request_url": "https://ads.acme-example.com/ad?slot=42",
+      "clickthrough_url": "https://click.acme-example.com/redirect"
+    }
+  }
+}
+```
+
+The paired redirect stays one asset. A receiver cannot combine its ad-request URL with another row's click-through URL or update either half independently.
+
+`selected_output_digest` is SHA-256 over RFC 8785 JCS of a shared manifest projection. From either the returned `CreativeManifest` or its later `CreativeAsset` sync wrapper, remove exactly top-level `$schema`, `representation_selection`, `creative_id`, `revision_id`, `name`, `tags`, `status`, `weight`, `placement_refs`, `placement_ids`, and `inputs`; include every other field, including unknown delivery fields. The identical projection makes ordinary library wrapping and metadata-only edits digest-neutral while fingerprinting the selected seller-bound output separately from the source revision. A changed selection, macro binding, translation, or transcode may keep the same buyer `revision_id`, but it changes this output fingerprint.
+
+## Sync, review, and readback
+
+On `sync_creatives`, the seller enforces two different invariants:
+
+1. `(creative_id, revision_id, revision_content_digest)` binds immutable buyer source content—the complete representation set, never only the selected entry.
+2. `(selected_representation_id, selected_output_digest)` binds the current seller-bound execution submitted for review.
+
+Changing the source set requires a new buyer `revision_id`. Changing only the selected execution does not mint a buyer revision, but it is an `updated` creative and follows the ordinary re-review lifecycle; approval never transfers silently to different execution bytes. `list_creatives` returns the exact current `representation_selection` while that selected execution remains current. A downstream seller that receives only the selected manifest can verify its output digest and retain the asserted source-set digest, but cannot claim it independently inspected hidden source representations.
+
+This version does not combine `representation_selection` with the sync-only
+`localization` mutation. A selected sync item MUST omit `localization`, including
+`null`, and the stored creative MUST NOT already have localization that omission
+would preserve. To migrate an existing localized creative, first submit a
+separate ordinary sync with `localization: null` and no `representation_selection`;
+only after that removal is accepted may the selected output be synced. Locale
+topology and materialized locale assets need their own explicit
+pre-binding projection; treating them as library metadata would allow served
+bytes to change without changing either review fingerprint.
+
+## Resolution failure
+
+<!-- Unreleased 3.2 schema: use /schemas/latest until publication. -->
+When no candidate works, return `CREATIVE_REPRESENTATION_UNRESOLVED`. `error.details` MUST conform to [`error-details/creative-representation-unresolved.json`](https://adcontextprotocol.org/schemas/latest/error-details/creative-representation-unresolved.json), with exactly one `representation_rejections` entry for every candidate. Unsupported representations remain in the immutable set; failure does not delete or rewrite them.
+
+```json
+{
+  "code": "CREATIVE_REPRESENTATION_UNRESOLVED",
+  "message": "No representation is compatible with the selected format option",
+  "recovery": "correctable",
+  "details": {
+    "representation_rejections": [
+      {
+        "representation_id": "source-vast-2",
+        "code": "vast_version_mismatch",
+        "message": "VAST 2.0 is outside the product and seller compatibility intersection"
+      },
+      {
+        "representation_id": "source-vast-4",
+        "code": "macro_unsupported",
+        "message": "A required player-owned macro is not supported on this execution path"
+      }
+    ]
+  }
+}
+```
+
+## VAST representations
+
+One VAST asset declares one exact `vast_version`; a product option and seller declare accepted sets.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/creative-representation-set.json",
+  "creative_id": "cr_launch_video",
+  "revision_id": "rev_7",
+  "revision_content_digest": "sha256:67d087e0a6e84185fc9b28d5854b1f9d90958ac902a3d569422af3ba69951154",
+  "name": "Launch pre-roll",
+  "representations": [
+    {
+      "representation_id": "source-vast-2",
+      "format_kind": "video_vast",
+      "assets": {
+        "vast_tag": {
+          "asset_type": "vast",
+          "delivery_type": "url",
+          "url": "https://video.acme-example.com/vast/2",
+          "vast_version": "2.0"
+        }
+      },
+      "source": { "system": "acme_ad_server", "source_representation": "VAST 2.0 pre-fetch" }
+    },
+    {
+      "representation_id": "source-vast-3",
+      "format_kind": "video_vast",
+      "assets": {
+        "vast_tag": {
+          "asset_type": "vast",
+          "delivery_type": "url",
+          "url": "https://video.acme-example.com/vast/3",
+          "vast_version": "3.0"
+        }
+      },
+      "source": { "system": "acme_ad_server", "source_representation": "VAST 3.0 pre-fetch" }
+    },
+    {
+      "representation_id": "source-vast-4",
+      "format_kind": "video_vast",
+      "assets": {
+        "vast_tag": {
+          "asset_type": "vast",
+          "delivery_type": "url",
+          "url": "https://video.acme-example.com/vast/4",
+          "vast_version": "4.0"
+        }
+      },
+      "source": { "system": "acme_ad_server", "source_representation": "VAST 4.0 pre-fetch" }
+    }
+  ]
+}
+```
+
+If the seller-wide ceiling is `['3.0', '4.0', '4.1', '4.2']` but the selected product accepts only `['3.0', '4.0']`, the compatible candidates are VAST 3.0 and 4.0. `highest_compatible_vast` chooses 4.0 only after that intersection is computed; if multiple compatible candidates declare the same highest exact version, the first in representation array order wins. That strategy is valid only for a `video_vast` destination; using it for another format returns `INVALID_REQUEST` and never silently falls back. `representation_order` always chooses the first compatible entry. Resolution must never relabel the VAST 3.0 asset as 4.0.
+
+## Representation namespaces
+
+`CreativeRepresentationSet.representations[].representation_id` identifies an equivalent trafficking representation within one creative revision. It is distinct from:
+
+- `revision_id`, the complete immutable buyer input state;
+- `build_variant_id`, a generated or transformed output leaf;
+- `locale_variant_id`, a buyer-authored localized asset set;
+- assignment weight or rotation groups; and
+- served `variant_id`, an agent-assigned immutable execution returned by `get_creative_delivery`.
+
+Do not reuse values across these namespaces as a shortcut. Preserve the explicit `representation_selection` join instead.
+
+## Related
+
+- [Display ads](/docs/creative/channels/display)
+- [Video ads](/docs/creative/channels/video)
+- [Universal macros](/docs/creative/universal-macros)
+- [Creative manifests](/docs/creative/creative-manifests)

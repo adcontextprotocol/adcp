@@ -152,7 +152,7 @@ Creative agents MUST validate manifests against format requirements before accep
 ### Native creative localization
 
 Native localization is a library/trafficking capability, distinct from
-`build_creative` fan-out and from served delivery variants. An agent supports
+`build_creative` fan-out and from served execution variants. An agent supports
 it only when `get_adcp_capabilities.creative.localization` is present. This is
 a coarse structural capability: it advertises materialized locale variants,
 RFC 4647 Lookup, and an optional target-variant ceiling, not universal support
@@ -427,11 +427,28 @@ fingerprint binding or tombstone, change the current revision, or change review
 state.
 
 For ordinary `sync_creatives` items, the effective-state projection above is
-the complete revision preimage. A composed protocol container that carries a
-set of equivalent delivery representations must define its own deterministic
-projection over the complete set; comparing only one selected representation
-is not sufficient to establish revision identity. The representation-set work
-uses this extension point rather than minting a revision per representation.
+the complete revision preimage. A [`CreativeRepresentationSet`](/docs/creative/representation-sets)
+defines its own deterministic projection over the complete ordered set and
+carries its verified `revision_content_digest` into the selected manifest.
+Comparing only one selected representation is never sufficient to establish
+revision identity. Representation selection does not mint a buyer revision,
+build variant, or served variant.
+
+On a later sync, an item's `creative_id` and `revision_id` must match its
+`representation_selection` lineage. The seller uses the carried complete-set
+digest as the revision fingerprint instead of hashing only the derived selected
+manifest. The actor that emitted the selection must have verified the digest
+against the complete set. A downstream seller receiving only the selected
+output can enforce stable digest reuse but cannot claim independent inspection
+of representations it never received. Separately, the seller verifies and
+retains `(selected_representation_id, selected_output_digest)` as the current
+execution review fingerprint. The output digest uses the same delivery-manifest
+projection before and after library wrapping, excluding library/sync metadata
+such as creative/revision IDs, name, tags, status, weight, placement routing,
+and preview inputs. Sync-time `localization` is forbidden on a selected item in
+this version because it changes served assets and requires an explicit future
+projection. Changing either fingerprint component is an ordinary creative
+update that requires review without minting a new buyer revision.
 
 ### Universal macros
 
@@ -601,7 +618,7 @@ Transform, generate, or retrieve creative manifests. Supports three modes:
 - Creative agents SHOULD honor `item_limit` when present, using the lesser of `item_limit` and the format's `max_items`
 - Creative agents MAY use AI/LLM processing for generation tasks
 - When `creative_id` is provided, creative agents MUST resolve the creative from their library
-- When `macro_values` is provided and occurrence declarations are present, creative agents bind only verified-universal `resolve_value` occurrences performed_by `creative_agent` and advertised by the selected `creative.supported_formats[]` route, after delivery-variant selection, using the declaration's exact encoding. They MUST NOT use a concrete value to bypass `translate_to_native` or its target-resolution capability. Without declarations, the 3.x legacy universal-macro translation behavior applies.
+- When `macro_values` is provided and occurrence declarations are present, creative agents bind only verified-universal `resolve_value` occurrences performed_by `creative_agent` and advertised by the selected `creative.supported_formats[]` route, after representation selection, using the declaration's exact encoding. They MUST NOT use a concrete value to bypass `translate_to_native` or its target-resolution capability. Without declarations, the 3.x legacy universal-macro translation behavior applies.
 - Creative agents MUST ignore unrecognized macro keys in `macro_values` — unknown macros are not an error
 - Creative agents SHOULD assign globally unique `creative_id` values; when they cannot guarantee uniqueness, `concept_id` is REQUIRED on `build_creative` requests to disambiguate
 - `build_creative` supports async responses (`status: "working"` with `context_id` polling) for generation and transformation tasks that take significant time. Library retrieval is typically synchronous.

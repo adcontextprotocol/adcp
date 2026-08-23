@@ -92,6 +92,16 @@
                     "exclusion_scope": "top_level_creative_item_only",
                     "evaluated_before": "seller_transcoding_or_normalization"
                   },
+                  "representation_set_projection": {
+                    "when": "creative item carries representation_selection",
+                    "identity_match": "item creative_id and revision_id MUST equal representation_selection creative_id and revision_id",
+                    "source_revision_binding": "use representation_selection.revision_content_digest as the complete representation-set fingerprint; MUST NOT fingerprint only the selected manifest as the source revision",
+                    "selected_output_verification": "recompute representation_selection.selected_output_digest with the shared manifest projection: remove exactly top-level $schema, representation_selection, creative_id, revision_id, name, tags, status, weight, placement_refs, placement_ids, and inputs; include every other field, including unknown delivery fields",
+                    "execution_review_binding": "track selected_representation_id plus selected_output_digest separately from the source revision fingerprint",
+                    "execution_change": "a different selected_representation_id or selected_output_digest is an updated execution and follows ordinary re-review without minting a new buyer revision_id",
+                    "resolver_obligation": "the actor that emitted representation_selection MUST have verified the digest against the complete CreativeRepresentationSet",
+                    "downstream_obligation": "retain and compare the complete-set digest for revision reuse; receiving only a selected manifest does not independently prove hidden source-set bytes"
+                  },
                   "same_revision_same_content": "unchanged_unless_metadata_changed",
                   "same_revision_different_content": "CREATIVE_REVISION_CONTENT_MISMATCH",
                   "first_revision_on_unversioned_creative": {
@@ -119,6 +129,20 @@
                 }
               },
               "spec": "docs/creative/task-reference/sync_creatives.mdx#creative-revisions"
+            }
+          },
+          {
+            "$comment": "Representation-set selection and sync-time localization use different revision projections and cannot be mixed in this version.",
+            "if": { "required": ["representation_selection"] },
+            "then": {
+              "not": { "required": ["localization"] },
+              "x-adcp-validation": {
+                "verifier_constraints": {
+                  "prior_stored_localization": "must_be_absent",
+                  "on_existing_localization": "reject_before_mutation_and_require_a_separate_prior_sync_with_localization_null_and_without_representation_selection"
+                },
+                "spec": "docs/creative/representation-sets.mdx#sync-review-and-readback"
+              }
             }
           }
         ],

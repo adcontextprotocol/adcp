@@ -18,9 +18,9 @@
       "$ref": "/schemas/core/format-option-ref.json",
       "description": "3.1+ format-option path, optional. Structured format option reference matching one of the target product's `format_options[]` declarations. Publisher-catalog-backed options match by `{ scope: \"publisher\", publisher_domain, format_option_id }`; product-local options match by `{ scope: \"product\", format_option_id }`. Required when the target product carries multiple `format_options` entries sharing the same `format_kind`; optional when `format_kind` alone routes the manifest to a single declaration. Product-scoped refs require an enclosing target product/package context."
     },
-    "delivery_variant_selection": {
-      "$ref": "/schemas/core/delivery-variant-selection.json",
-      "description": "Present when this seller-bound manifest was selected from a pre-binding CreativeSource. Preserves logical creative, revision, and source-representation lineage through sync and reporting."
+    "representation_selection": {
+      "$ref": "/schemas/core/representation-selection.json",
+      "description": "Present when this seller-bound manifest was selected from a CreativeRepresentationSet. Preserves creative, complete revision digest, and selected representation lineage through sync and reporting."
     },
     "assets": {
       "type": "object",
@@ -77,16 +77,6 @@
   "required": [
     "assets"
   ],
-  "allOf": [
-    {
-      "if": {
-        "properties": { "format_kind": { "const": "coordinated_placements" } },
-        "required": ["format_kind"]
-      },
-      "then": { "required": ["component_assets"] },
-      "else": { "not": { "required": ["component_assets"] } }
-    }
-  ],
   "not": {
     "anyOf": [
       { "required": ["capability_id"] },
@@ -109,6 +99,14 @@
     }
   ],
   "allOf": [
+    {
+      "if": {
+        "properties": { "format_kind": { "const": "coordinated_placements" } },
+        "required": ["format_kind"]
+      },
+      "then": { "required": ["component_assets"] },
+      "else": { "not": { "required": ["component_assets"] } }
+    },
     {
       "$comment": "The 3.2 canonical VAST path requires one exact asset version. The deprecated named-format branch remains compatible with older 3.x payloads.",
       "if": {

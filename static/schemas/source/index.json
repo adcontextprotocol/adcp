@@ -386,6 +386,26 @@
           "$ref": "/schemas/core/creative-manifest.json",
           "description": "Complete specification of a creative with all assets needed for rendering"
         },
+        "creative-representation-set": {
+          "$ref": "/schemas/core/creative-representation-set.json",
+          "description": "Complete immutable creative revision containing equivalent pre-binding trafficking representations"
+        },
+        "creative-representation": {
+          "$ref": "/schemas/core/creative-representation.json",
+          "description": "One canonical pre-binding trafficking representation within a representation set"
+        },
+        "representation-destination": {
+          "$ref": "/schemas/core/representation-destination.json",
+          "description": "Seller-owned product and format context for deterministic representation resolution"
+        },
+        "representation-selection": {
+          "$ref": "/schemas/core/representation-selection.json",
+          "description": "Source-revision, selected-representation, strategy, and derived-output lineage"
+        },
+        "representation-rejection": {
+          "$ref": "/schemas/core/representation-rejection.json",
+          "description": "Structured incompatibility reason for one rejected representation"
+        },
         "performance-feedback": {
           "$ref": "/schemas/core/performance-feedback.json",
           "description": "Stored processing record for performance feedback"
@@ -1148,6 +1168,10 @@
         "vast-version": {
           "$ref": "/schemas/enums/vast-version.json",
           "description": "Supported VAST specification versions (2.0, 3.0, 4.0, 4.1, 4.2, 4.3)"
+        },
+        "representation-selection-strategy": {
+          "$ref": "/schemas/enums/representation-selection-strategy.json",
+          "description": "Deterministic strategy for selecting one compatible creative representation"
         },
         "vast-tracking-event": {
           "$ref": "/schemas/enums/vast-tracking-event.json",

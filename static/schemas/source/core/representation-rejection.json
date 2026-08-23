@@ -1,17 +1,17 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/delivery-variant-rejection.json",
-  "title": "Delivery Variant Rejection",
-  "description": "Structured incompatibility reason for one candidate in a failed CreativeSource resolution.",
+  "$id": "/schemas/core/representation-rejection.json",
+  "title": "Representation Rejection",
+  "description": "Structured incompatibility reason for one candidate in a failed CreativeRepresentationSet resolution.",
   "type": "object",
   "properties": {
-    "variant_id": { "type": "string", "minLength": 1, "x-entity": "creative_delivery_variant" },
+    "representation_id": { "type": "string", "minLength": 1, "x-entity": "creative_representation" },
     "code": {
       "type": "string",
       "enum": [
         "incompatible_format_kind",
         "format_option_mismatch",
-        "unsupported_delivery_variant",
+        "unsupported_delivery_type",
         "vast_version_mismatch",
         "macro_unsupported",
         "asset_requirement_failed",
@@ -21,6 +21,6 @@
     "message": { "type": "string", "minLength": 1 },
     "details": { "type": "object", "additionalProperties": true }
   },
-  "required": ["variant_id", "code", "message"],
+  "required": ["representation_id", "code", "message"],
   "additionalProperties": true
 }

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/build-creative-request.json",
   "title": "Build Creative Request",
-  "description": "Request to transform, generate, resolve, refine, or retrieve a creative manifest. Supports five modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) deterministic selection from a pre-binding CreativeSource, (4) refinement of a prior produced variant via refine_from_build_variant_id, and (5) retrieval from a creative library by creative_id. Produces target manifest(s) through canonical capabilities advertised in `get_adcp_capabilities.creative.supported_formats[]`. CreativeSource input additionally requires `creative.delivery_variant_resolution.supported: true`. In 3.2, provide `target_capability_id` for one output or `target_capability_ids` for multiple outputs. Legacy named-format selectors remain accepted during the 3.x compatibility window but are deprecated.",
+  "description": "Request to transform, generate, resolve, refine, or retrieve a creative manifest. Supports five modes: (1) generation from a brief or seed assets, (2) transformation of an existing manifest, (3) deterministic seller-bound selection from a pre-binding CreativeRepresentationSet, (4) refinement of a prior produced variant via refine_from_build_variant_id, and (5) retrieval from a creative library by creative_id. Produces target manifest(s) through canonical capabilities advertised in `get_adcp_capabilities.creative.supported_formats[]`. CreativeRepresentationSet input is a non-generative, single-output mode available only on the destination sales agent and additionally requires `creative.representation_resolution.supported: true`. In 3.2, provide `target_capability_id` for one output or `target_capability_ids` for multiple outputs. Legacy named-format selectors remain accepted during the 3.x compatibility window but are deprecated.",
   "x-tool-summary": "Generate, transform, refine, retrieve, or adapt creative manifests for advertised creative capabilities.",
   "type": "object",
   "allOf": [
@@ -73,13 +73,81 @@
       "not": { "required": ["refine_from_build_variant_id", "max_creatives"] }
     },
     {
-      "$comment": "A pre-binding CreativeSource is a complete source input and cannot be mixed with a manifest, library creative, or refinement handle.",
+      "$comment": "A CreativeRepresentationSet is one complete revision input and cannot be mixed with a manifest, library creative, or refinement handle.",
       "not": {
         "anyOf": [
-          { "required": ["creative_source", "creative_manifest"] },
-          { "required": ["creative_source", "creative_id"] },
-          { "required": ["creative_source", "refine_from_build_variant_id"] }
+          { "required": ["creative_representation_set", "creative_manifest"] },
+          { "required": ["creative_representation_set", "creative_id"] },
+          { "required": ["creative_representation_set", "refine_from_build_variant_id"] }
         ]
+      }
+    },
+    {
+      "$comment": "Representation-set resolution is a seller-bound, deterministic, single-output selection mode. It cannot generate, transform, refine, evaluate, sample, or fan out content.",
+      "if": { "required": ["creative_representation_set"] },
+      "then": {
+        "required": ["representation_destination", "representation_selection_strategy", "target_capability_id"],
+        "properties": {
+          "mode": { "const": "execute" }
+        },
+        "not": {
+          "anyOf": [
+            { "required": ["message"] },
+            { "required": ["creative_manifest"] },
+            { "required": ["creative_id"] },
+            { "required": ["transformer_id"] },
+            { "required": ["config"] },
+            { "required": ["refine_from_build_variant_id"] },
+            { "required": ["max_creatives"] },
+            { "required": ["signal_conditions"] },
+            { "required": ["max_variants"] },
+            { "required": ["variant_axis"] },
+            { "required": ["selection_strategy"] },
+            { "required": ["item_limit"] },
+            { "required": ["evaluator"] },
+            { "required": ["quality"] },
+            { "required": ["concept_id"] },
+            { "required": ["keep_mode"] },
+            { "required": ["max_spend"] },
+            { "required": ["brand"] },
+            { "required": ["media_buy_id"] },
+            { "required": ["package_id"] },
+            { "required": ["target_capability_ids"] },
+            { "required": ["target_format_id"] },
+            { "required": ["target_format_ids"] }
+          ]
+        }
+      }
+    },
+    {
+      "$comment": "Destination and representation strategy have no meaning outside representation-set resolution.",
+      "if": {
+        "anyOf": [
+          { "required": ["representation_destination"] },
+          { "required": ["representation_selection_strategy"] }
+        ]
+      },
+      "then": { "required": ["creative_representation_set"] }
+    },
+    {
+      "$comment": "highest_compatible_vast is defined only for VAST destinations; callers use representation_order for other format kinds.",
+      "if": {
+        "properties": { "representation_selection_strategy": { "const": "highest_compatible_vast" } },
+        "required": ["representation_selection_strategy"]
+      },
+      "then": {
+        "properties": {
+          "representation_destination": {
+            "properties": {
+              "format_option": {
+                "properties": { "format_kind": { "const": "video_vast" } },
+                "required": ["format_kind"]
+              }
+            },
+            "required": ["format_option"]
+          }
+        },
+        "required": ["representation_destination"]
       }
     }
   ],
@@ -106,9 +174,17 @@
       "$ref": "/schemas/core/creative-manifest.json",
       "description": "Creative manifest to transform or generate from. On the canonical 3.2 path it carries `format_kind`, optional `format_option_ref`, and the required input assets. For transformation (for example resizing or reformatting), this is the complete creative to adapt. When creative_id is provided, the agent resolves the creative from its library and this field is ignored."
     },
-    "creative_source": {
-      "$ref": "/schemas/core/creative-source.json",
-      "description": "Pre-binding logical creative with explicitly `one_of` equivalent delivery representations. The selected target capability supplies the binding format option. The resolver retains every input variant, selects exactly one compatible representation, and returns a manifest carrying `delivery_variant_selection`. If macro_values is present, variant selection happens first and binding affects only the derived selected output; the retained source bytes and declarations never change. When none is compatible, the request fails with `CREATIVE_DELIVERY_VARIANT_UNRESOLVED` and one `delivery_variant_rejections` entry per candidate."
+    "creative_representation_set": {
+      "$ref": "/schemas/core/creative-representation-set.json",
+      "description": "Complete creative revision containing equivalent trafficking representations, of which exactly one is selected for this seller-bound output. This mode is accepted only by the destination sales agent and requires representation_destination plus representation_selection_strategy. The target capability selects the seller's build route; representation_destination supplies the binding inventory contract. The resolver verifies revision_content_digest against the complete set, retains every representation unchanged, selects exactly one compatible representation, and returns a manifest carrying representation_selection. If macro_values is present, selection happens first and binding affects only the derived output; the retained representation set and its revision binding never change. When none is compatible, the request fails with CREATIVE_REPRESENTATION_UNRESOLVED and one representation_rejections entry per candidate."
+    },
+    "representation_destination": {
+      "$ref": "/schemas/core/representation-destination.json",
+      "description": "Seller-owned product and effective format context for representation resolution. Required only with creative_representation_set and meaningful only when this endpoint is the destination sales agent."
+    },
+    "representation_selection_strategy": {
+      "$ref": "/schemas/enums/representation-selection-strategy.json",
+      "description": "Deterministic strategy to apply after compatibility filtering. Required with creative_representation_set and MUST be advertised by creative.representation_resolution.strategies."
     },
     "creative_id": {
       "type": "string",
@@ -327,7 +403,7 @@
     },
     "macro_values": {
       "type": "object",
-      "description": "Raw concrete values offered for build-time binding, keyed by AdCP universal semantic (for example CLICK_URL or CACHEBUSTER). With declarations, a value binds only a verified-universal `resolve_value` occurrence performed_by `creative_agent`, using that declaration's exact context and encoding; callers MUST NOT pre-encode it. The selected `creative.supported_formats[]` route's macro_resolution_capabilities is the binding build/preview capability set; seller-wide and product sets apply only on the sales execution path. Values never short-circuit `translate_to_native`: translation emits its target declaration and the complete target capability chain remains required. For creative_source, selection happens before binding and the retained source remains byte-identical. Without declarations, the 3.x legacy path remains: creative agents may translate recognized AdCP tokens using the existing `translateUniversalMacros` contract, preserve omitted placeholders for the sales agent, and ignore unknown keys. Existing unmapped/frozen-consent diagnostics remain required.",
+      "description": "Raw concrete values offered for build-time binding, keyed by AdCP universal semantic (for example CLICK_URL or CACHEBUSTER). With declarations, a value binds only a verified-universal `resolve_value` occurrence performed_by `creative_agent`, using that declaration's exact context and encoding; callers MUST NOT pre-encode it. The selected `creative.supported_formats[]` route's macro_resolution_capabilities is the binding build/preview capability set; seller-wide and product sets apply only on the sales execution path. Values never short-circuit `translate_to_native`: translation emits its target declaration and the complete target capability chain remains required. For creative_representation_set, selection happens before binding and the complete representation set remains byte-identical. Without declarations, the 3.x legacy path remains: creative agents may translate recognized AdCP tokens using the existing `translateUniversalMacros` contract, preserve omitted placeholders for the sales agent, and ignore unknown keys. Existing unmapped/frozen-consent diagnostics remain required.",
       "additionalProperties": {
         "type": "string"
       }

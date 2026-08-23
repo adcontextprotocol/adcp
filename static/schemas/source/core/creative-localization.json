@@ -45,7 +45,7 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 255,
-          "description": "Buyer-assigned stable identity for the source locale variant. This is a separate namespace from build_variant_id and served delivery variant_id.",
+          "description": "Buyer-assigned stable identity for the source locale variant. This is a separate namespace from build_variant_id and the served execution variant_id.",
           "x-entity": "creative_locale_variant"
         },
         "locale": {

@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const path = require('node:path');
 const test = require('node:test');
 const { isDeepStrictEqual } = require('node:util');
@@ -8,8 +9,8 @@ const addFormats = require('ajv-formats').default;
 
 const ROOT = path.resolve(__dirname, '..');
 const SCHEMAS = path.join(ROOT, 'static/schemas/source');
-const VECTORS = path.join(ROOT, 'static/compliance/source/test-vectors/creative-delivery-resolution.json');
-const VECTOR_SCHEMA = path.join(ROOT, 'static/compliance/source/test-vectors/creative-delivery-resolution.schema.json');
+const VECTORS = path.join(ROOT, 'static/compliance/source/test-vectors/creative-representation-resolution.json');
+const VECTOR_SCHEMA = path.join(ROOT, 'static/compliance/source/test-vectors/creative-representation-resolution.schema.json');
 const MACRO_VECTORS = path.join(ROOT, 'static/compliance/source/test-vectors/macro-processing.json');
 const MACRO_VECTOR_SCHEMA = path.join(ROOT, 'static/compliance/source/test-vectors/macro-processing.schema.json');
 
@@ -37,7 +38,7 @@ function makeAjv() {
 
 const ajv = makeAjv();
 
-test('display tag delivery variants are discriminated and paired redirects are atomic', () => {
+test('display tag delivery types are discriminated and paired redirects are atomic', () => {
   const validate = ajv.getSchema('/schemas/core/assets/display-tag-asset.json');
   assert.ok(validate);
 
@@ -89,10 +90,13 @@ test('VAST assets stay singular while format and seller acceptance are plural en
   assert.equal(vastSchema.items.$ref, '/schemas/enums/vast-version.json');
   assert.deepEqual(ajv.getSchema('/schemas/enums/vast-version.json').schema.enum.slice(-2), ['4.2', '4.3']);
 
-  const resolution = capabilities.properties.creative.properties.delivery_variant_resolution;
+  const resolution = capabilities.properties.creative.properties.representation_resolution;
   assert.equal(resolution.properties.supported.const, true);
-  assert.deepEqual(resolution.properties.strategies.items.enum, ['source_order', 'highest_compatible_vast']);
-  assert.match(resolution.description, /MUST NOT guess silently/);
+  assert.equal(resolution.properties.strategies.items.$ref,
+    '/schemas/enums/representation-selection-strategy.json');
+  assert.deepEqual(ajv.getSchema('/schemas/enums/representation-selection-strategy.json').schema.enum,
+    ['representation_order', 'highest_compatible_vast']);
+  assert.match(resolution.description, /standalone creative agent/i);
 });
 
 test('VAST technical acceptance is explicit, rendition-scoped, and byte-exact', () => {
@@ -474,32 +478,38 @@ test('all URL-delivered creative assets preserve registered percent-token dialec
   }
 });
 
-test('creative delivery resolution vectors retain every source and select only compatible candidates', () => {
+test('creative representation resolution vectors retain the complete revision and select only compatible candidates', async () => {
+  const canonicalize = (await import('canonicalize')).default;
   const fixture = JSON.parse(fs.readFileSync(VECTORS, 'utf8'));
   const validateFixture = ajv.compile(JSON.parse(fs.readFileSync(VECTOR_SCHEMA, 'utf8')));
-  const validateSource = ajv.getSchema('/schemas/core/creative-source.json');
+  const validateSource = ajv.getSchema('/schemas/core/creative-representation-set.json');
   assert.equal(validateFixture(fixture), true, JSON.stringify(validateFixture.errors));
 
   for (const vector of fixture.vectors) {
-    assert.equal(validateSource(vector.source), true, `${vector.name}: ${JSON.stringify(validateSource.errors)}`);
+    assert.equal(validateSource(vector.representation_set), true, `${vector.name}: ${JSON.stringify(validateSource.errors)}`);
+    const digestInput = structuredClone(vector.representation_set);
+    for (const key of ['$schema', 'creative_id', 'revision_id', 'revision_content_digest', 'name']) delete digestInput[key];
+    const actualDigest = `sha256:${crypto.createHash('sha256').update(canonicalize(digestInput)).digest('hex')}`;
+    assert.equal(actualDigest, vector.representation_set.revision_content_digest,
+      `${vector.name}: revision digest binds the complete representation set`);
     const compatible = [];
     const rejections = [];
 
-    for (const variant of vector.source.delivery_variants) {
+    for (const variant of vector.representation_set.representations) {
       if (variant.format_kind !== vector.target.format_kind) {
-        rejections.push({ variant_id: variant.variant_id, code: 'incompatible_format_kind' });
+        rejections.push({ representation_id: variant.representation_id, code: 'incompatible_format_kind' });
         continue;
       }
       const firstAsset = Object.values(variant.assets)[0];
       if (variant.format_kind === 'display_tag' &&
-          !vector.target.supported_delivery_variants.includes(firstAsset.delivery_type)) {
-        rejections.push({ variant_id: variant.variant_id, code: 'unsupported_delivery_variant' });
+          !vector.target.supported_delivery_types.includes(firstAsset.delivery_type)) {
+        rejections.push({ representation_id: variant.representation_id, code: 'unsupported_delivery_type' });
         continue;
       }
       if (variant.format_kind === 'video_vast') {
         const version = firstAsset.vast_version;
         if (!vector.target.vast_versions.includes(version) || !vector.seller.vast_versions.includes(version)) {
-          rejections.push({ variant_id: variant.variant_id, code: 'vast_version_mismatch' });
+          rejections.push({ representation_id: variant.representation_id, code: 'vast_version_mismatch' });
           continue;
         }
       }
@@ -507,59 +517,249 @@ test('creative delivery resolution vectors retain every source and select only c
     }
 
     const selected = vector.strategy === 'highest_compatible_vast'
-      ? compatible.toSorted((a, b) => Number(Object.values(b.assets)[0].vast_version) - Number(Object.values(a.assets)[0].vast_version))[0]
+      ? compatible.reduce((best, candidate) => {
+          if (!best) return candidate;
+          const bestVersion = Number(Object.values(best.assets)[0].vast_version);
+          const candidateVersion = Number(Object.values(candidate.assets)[0].vast_version);
+          return candidateVersion > bestVersion ? candidate : best;
+        }, undefined)
       : compatible[0];
 
-    assert.deepEqual(compatible.map(v => v.variant_id), vector.expected.compatible_variant_ids, vector.name);
-    assert.equal(selected?.variant_id ?? null, vector.expected.selected_variant_id, vector.name);
-    assert.deepEqual(vector.source.delivery_variants.map(v => v.variant_id), vector.expected.retained_variant_ids, vector.name);
-    assert.deepEqual(rejections, vector.expected.rejections.map(({ variant_id, code }) => ({ variant_id, code })), vector.name);
+    assert.deepEqual(compatible.map(v => v.representation_id), vector.expected.compatible_representation_ids, vector.name);
+    assert.equal(selected?.representation_id ?? null, vector.expected.selected_representation_id, vector.name);
+    assert.deepEqual(vector.representation_set.representations.map(v => v.representation_id), vector.expected.retained_representation_ids, vector.name);
+    assert.deepEqual(rejections, vector.expected.rejections.map(({ representation_id, code }) => ({ representation_id, code })), vector.name);
   }
 
-  const uniqueVariantIds = source => new Set(source.delivery_variants.map(variant => variant.variant_id)).size ===
-    source.delivery_variants.length;
+  const uniqueVariantIds = source => new Set(source.representations.map(variant => variant.representation_id)).size ===
+    source.representations.length;
   assert.deepEqual(
-    validateSource.schema.properties.delivery_variants['x-adcp-validation'].unique_item_properties,
-    ['variant_id'],
+    validateSource.schema.properties.representations['x-adcp-validation'].unique_item_properties,
+    ['representation_id'],
     'the published verifier contract declares variant identity uniqueness'
   );
-  const duplicate = structuredClone(fixture.vectors[0].source);
-  duplicate.delivery_variants[1].variant_id = duplicate.delivery_variants[0].variant_id;
+  const duplicate = structuredClone(fixture.vectors[0].representation_set);
+  duplicate.representations[1].representation_id = duplicate.representations[0].representation_id;
   assert.equal(uniqueVariantIds(duplicate), false, 'duplicate source representation IDs fail operational validation');
 
   const exactRejectionCoverage = (source, rejections) => {
-    const candidateIds = source.delivery_variants.map(variant => variant.variant_id).toSorted();
-    const rejectionIds = rejections.map(rejection => rejection.variant_id).toSorted();
+    const candidateIds = source.representations.map(variant => variant.representation_id).toSorted();
+    const rejectionIds = rejections.map(rejection => rejection.representation_id).toSorted();
     return new Set(rejectionIds).size === rejectionIds.length && isDeepStrictEqual(candidateIds, rejectionIds);
   };
-  const allRejected = fixture.vectors[0].source.delivery_variants.map(variant => ({
-    variant_id: variant.variant_id,
+  const allRejected = fixture.vectors[0].representation_set.representations.map(variant => ({
+    representation_id: variant.representation_id,
     code: 'other',
     message: 'incompatible'
   }));
-  assert.equal(exactRejectionCoverage(fixture.vectors[0].source, allRejected), true);
-  assert.equal(exactRejectionCoverage(fixture.vectors[0].source, allRejected.slice(1)), false,
+  assert.equal(exactRejectionCoverage(fixture.vectors[0].representation_set, allRejected), true);
+  assert.equal(exactRejectionCoverage(fixture.vectors[0].representation_set, allRejected.slice(1)), false,
     'unresolved details cannot omit a candidate');
-  assert.equal(exactRejectionCoverage(fixture.vectors[0].source, [...allRejected, allRejected[0]]), false,
+  assert.equal(exactRejectionCoverage(fixture.vectors[0].representation_set, [...allRejected, allRejected[0]]), false,
     'unresolved details cannot duplicate a candidate');
-  const deliveryDetailsSchema = ajv.getSchema('/schemas/error-details/creative-delivery-variant-unresolved.json').schema;
+  const deliveryDetailsSchema = ajv.getSchema('/schemas/error-details/creative-representation-unresolved.json').schema;
   assert.match(deliveryDetailsSchema['x-adcp-validation'].verifier_constraints.exact_candidate_coverage,
     /no missing, duplicate, or unknown/);
 
-  const validateVariant = ajv.getSchema('/schemas/core/creative-delivery-variant.json');
-  const vastWithoutVersion = structuredClone(fixture.vectors[1].source.delivery_variants[0]);
+  const validateVariant = ajv.getSchema('/schemas/core/creative-representation.json');
+  const vastWithoutVersion = structuredClone(fixture.vectors[1].representation_set.representations[0]);
   delete vastWithoutVersion.assets.vast_tag.vast_version;
   assert.equal(validateVariant(vastWithoutVersion), false, 'late-bound VAST variants require exact asset versions');
+  const deprecatedNamedFormat = structuredClone(fixture.vectors[0].representation_set.representations[0]);
+  delete deprecatedNamedFormat.format_kind;
+  deprecatedNamedFormat.format_id = { agent_url: 'https://creative.adcontextprotocol.org', id: 'display_300x250' };
+  assert.equal(validateVariant(deprecatedNamedFormat), false,
+    'pre-binding representations require canonical format_kind and reject deprecated format_id');
+  const preboundOption = structuredClone(fixture.vectors[0].representation_set.representations[0]);
+  preboundOption.format_option_ref = { scope: 'product', format_option_id: 'paired_redirect_300x250' };
+  assert.equal(validateVariant(preboundOption), false,
+    'source representations cannot be pre-bound to one destination format option');
+  const nestedSelection = structuredClone(fixture.vectors[0].representation_set.representations[0]);
+  nestedSelection.representation_selection = {
+    creative_id: 'nested', revision_id: 'rev_nested', revision_content_digest: `sha256:${'0'.repeat(64)}`,
+    selected_representation_id: 'nested', strategy: 'representation_order',
+    selected_output_digest: `sha256:${'1'.repeat(64)}`, resolved_by: 'buyer'
+  };
+  assert.equal(validateVariant(nestedSelection), false,
+    'source representations cannot recursively carry prior selection lineage');
+
+  const validateSelection = ajv.getSchema('/schemas/core/representation-selection.json');
+  const selectedSet = fixture.vectors[0].representation_set;
+  const selectedRepresentation = selectedSet.representations.find(rep =>
+    rep.representation_id === fixture.vectors[0].expected.selected_representation_id);
+  const selectedOutputProjection = value => {
+    const projected = structuredClone(value);
+    for (const key of [
+      '$schema', 'representation_selection', 'creative_id', 'revision_id', 'name', 'tags',
+      'status', 'weight', 'placement_refs', 'placement_ids', 'inputs'
+    ]) delete projected[key];
+    return projected;
+  };
+  const selectedOutputDigestFor = value =>
+    `sha256:${crypto.createHash('sha256').update(canonicalize(selectedOutputProjection(value))).digest('hex')}`;
+  const derivedManifest = {
+    format_kind: selectedRepresentation.format_kind,
+    format_option_ref: { scope: 'product', format_option_id: 'paired_redirect_300x250' },
+    assets: selectedRepresentation.assets
+  };
+  const selectedOutputDigest = selectedOutputDigestFor(derivedManifest);
+  const selection = {
+    creative_id: selectedSet.creative_id,
+    revision_id: selectedSet.revision_id,
+    revision_content_digest: selectedSet.revision_content_digest,
+    selected_representation_id: fixture.vectors[0].expected.selected_representation_id,
+    strategy: 'representation_order',
+    selected_output_digest: selectedOutputDigest,
+    resolved_by: 'seller'
+  };
+  assert.equal(validateSelection(selection), true, JSON.stringify(validateSelection.errors));
+  const selectionWithoutDigest = { ...selection };
+  delete selectionWithoutDigest.revision_content_digest;
+  assert.equal(validateSelection(selectionWithoutDigest), false,
+    'selected output always retains its complete-set revision binding');
+  assert.equal(validateSelection.schema.properties.revision_id.$ref,
+    '/schemas/core/creative-revision-id.json');
+  assert.equal(validateSelection.schema.properties.selected_representation_id['x-entity'],
+    'creative_representation');
+  assert.equal(validateSelection.schema.properties.strategy.$ref,
+    '/schemas/enums/representation-selection-strategy.json');
+
+  const syncSchema = ajv.getSchema('/schemas/creative/sync-creatives-request.json').schema;
+  const revisionRules = syncSchema.properties.creatives.items.allOf[1]['x-adcp-validation']
+    .verifier_constraints.revision_identity;
+  assert.match(revisionRules.representation_set_projection.source_revision_binding, /complete representation-set fingerprint/);
+  assert.match(revisionRules.representation_set_projection.source_revision_binding, /MUST NOT fingerprint only the selected manifest/);
+  assert.match(revisionRules.representation_set_projection.execution_change, /ordinary re-review/);
 
   const validateBuild = ajv.getSchema('/schemas/media-buy/build-creative-request.json');
   const resolutionRequest = {
     idempotency_key: 'resolve-source-0001',
-    creative_source: fixture.vectors[0].source,
+    creative_representation_set: fixture.vectors[0].representation_set,
+    representation_destination: {
+      product_id: 'prod_display_1',
+      format_option: {
+        format_option_id: 'paired_redirect_300x250',
+        format_kind: 'display_tag',
+        params: { supported_delivery_types: ['paired_redirect'] }
+      }
+    },
+    representation_selection_strategy: 'representation_order',
     target_capability_id: 'paired_redirect_300x250'
   };
   assert.equal(validateBuild(resolutionRequest), true, JSON.stringify(validateBuild.errors));
   assert.equal(validateBuild({ ...resolutionRequest, macro_values: { CACHEBUSTER: '123' } }), true,
-    'selection precedes binding and retained source declarations remain unchanged');
+    'selection precedes binding and the complete representation set remains unchanged');
+  for (const forbidden of [
+    { message: 'make it punchier' },
+    { max_variants: 2 },
+    { transformer_id: 'transformer_1' },
+    { target_capability_ids: ['paired_redirect_300x250'] },
+    { brand: { domain: 'nova.example' } },
+    { media_buy_id: 'buy_1' },
+    { package_id: 'pkg_1' }
+  ]) {
+    assert.equal(validateBuild({ ...resolutionRequest, ...forbidden }), false,
+      `pure representation resolution rejects ${Object.keys(forbidden)[0]}`);
+  }
+  const missingDestination = { ...resolutionRequest };
+  delete missingDestination.representation_destination;
+  assert.equal(validateBuild(missingDestination), false,
+    'seller-bound resolution requires an explicit product format context');
+  const missingStrategy = { ...resolutionRequest };
+  delete missingStrategy.representation_selection_strategy;
+  assert.equal(validateBuild(missingStrategy), false,
+    'representation strategy is explicit and replayable');
+  assert.equal(validateBuild({ ...resolutionRequest, representation_selection_strategy: 'highest_compatible_vast' }), false,
+    'highest-compatible VAST strategy is invalid for a non-VAST destination');
+
+  derivedManifest.representation_selection = selection;
+  const validateBuildResponse = ajv.getSchema('/schemas/media-buy/build-creative-response.json');
+  assert.equal(validateBuildResponse({ status: 'completed', creative_manifest: derivedManifest }), true,
+    JSON.stringify(validateBuildResponse.errors));
+  const responseRules = validateBuildResponse.schema['x-adcp-validation']
+    .verifier_constraints.representation_resolution_response;
+  assert.match(responseRules.lineage_required, /representation_selection MUST be present/);
+  assert.match(responseRules.build_variant_id, /MUST be absent/);
+  assert.match(responseRules.resolver_actor, /MUST equal seller/);
+  assert.equal(derivedManifest.representation_selection.resolved_by, 'seller');
+  const hasSellerResolutionActor = response =>
+    response.creative_manifest?.representation_selection?.resolved_by === 'seller';
+  assert.equal(hasSellerResolutionActor({ creative_manifest: derivedManifest }), true);
+  assert.equal(hasSellerResolutionActor({
+    creative_manifest: {
+      ...derivedManifest,
+      representation_selection: { ...selection, resolved_by: 'buyer' }
+    }
+  }), false, 'seller-bound build response cannot attribute resolution to the buyer');
+  assert.equal(selection.selected_output_digest, selectedOutputDigest,
+    'selected-output digest binds the exact returned manifest projection');
+
+  const syncCreative = {
+    creative_id: selectedSet.creative_id,
+    revision_id: selectedSet.revision_id,
+    name: 'Library display launch',
+    tags: ['launch'],
+    status: 'pending_review',
+    weight: 100,
+    placement_refs: [{ publisher_domain: 'streamhaus.example', placement_id: 'homepage_mrec' }],
+    ...derivedManifest
+  };
+  const validateCreativeAsset = ajv.getSchema('/schemas/core/creative-asset.json');
+  assert.equal(validateCreativeAsset(syncCreative), true, JSON.stringify(validateCreativeAsset.errors));
+  const validateSyncCreative = ajv.compile(syncSchema.properties.creatives.items);
+  assert.equal(validateSyncCreative(syncCreative), true, JSON.stringify(validateSyncCreative.errors));
+  assert.equal(validateSyncCreative({ ...syncCreative, localization: null }), false,
+    'representation-selected sync items cannot remove localization outside the bound projections');
+  assert.equal(validateSyncCreative({
+    ...syncCreative,
+    localization: {
+      variants: [{
+        locale_variant_id: 'loc_en', locale: 'en', role: 'source', assets: syncCreative.assets
+      }],
+      default_locale_variant_id: 'loc_en'
+    }
+  }), false, 'representation-selected sync items cannot add materialized locale assets outside the bound projections');
+  const selectionSyncRules = syncSchema.properties.creatives.items.allOf
+    .find(branch => branch.if?.required?.includes('representation_selection'))
+    .then['x-adcp-validation'].verifier_constraints;
+  assert.equal(selectionSyncRules.prior_stored_localization, 'must_be_absent');
+  assert.match(selectionSyncRules.on_existing_localization, /reject_before_mutation/);
+  const canApplyRepresentationSelection = priorCreative => priorCreative.localization === undefined;
+  assert.equal(canApplyRepresentationSelection({ ...syncCreative }), true);
+  assert.equal(canApplyRepresentationSelection({
+    ...syncCreative,
+    localization: {
+      variants: [{
+        locale_variant_id: 'loc_en', locale: 'en', role: 'source', assets: syncCreative.assets
+      }],
+      default_locale_variant_id: 'loc_en'
+    }
+  }), false, 'stored localization must be removed in a prior accepted sync before selection lineage can be applied');
+  assert.equal(selectedOutputDigestFor(syncCreative), selectedOutputDigest,
+    'build manifest and legal sync wrapper use one selected-output projection');
+  const metadataOnlyUpdate = {
+    ...syncCreative,
+    name: 'Renamed library creative',
+    tags: ['renamed'],
+    weight: 25,
+    placement_refs: [{ publisher_domain: 'streamhaus.example', placement_id: 'article_mrec' }]
+  };
+  assert.equal(selectedOutputDigestFor(metadataOnlyUpdate), selectedOutputDigest,
+    'library metadata and routing changes do not alter selected-output identity');
+  const changedExecution = structuredClone(syncCreative);
+  changedExecution.assets.serving_tag.clickthrough_url = 'https://click.acme-example.com/changed';
+  assert.notEqual(selectedOutputDigestFor(changedExecution), selectedOutputDigest,
+    'changed delivery bytes alter selected-output identity and trigger review');
+
+  const registry = JSON.parse(fs.readFileSync(path.join(SCHEMAS, 'index.json'), 'utf8'));
+  for (const publicSchema of [
+    'creative-representation-set', 'creative-representation', 'representation-destination',
+    'representation-selection', 'representation-rejection'
+  ]) {
+    assert.ok(registry.schemas.core.schemas[publicSchema], `${publicSchema} is discoverable in the schema registry`);
+  }
+  assert.ok(registry.schemas.enums.schemas['representation-selection-strategy'],
+    'representation selection strategy is discoverable in the schema registry');
 });
 
 test('macro processing vectors preserve bytes and match exact owner/context/encoding contracts', () => {
@@ -749,11 +949,11 @@ test('creative delivery errors use typed detail schemas without closing the gene
     'error.details stays a pure extension point selected by error code');
 
   const validateDeliveryDetails = ajv.getSchema(
-    '/schemas/error-details/creative-delivery-variant-unresolved.json'
+    '/schemas/error-details/creative-representation-unresolved.json'
   );
   const deliveryDetails = {
-    delivery_variant_rejections: [{
-      variant_id: 'source-vast-2',
+    representation_rejections: [{
+      representation_id: 'source-vast-2',
       code: 'vast_version_mismatch',
       message: 'VAST 2.0 is outside the compatibility intersection'
     }]

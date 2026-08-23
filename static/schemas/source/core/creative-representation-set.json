@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-representation-set.json",
+  "title": "Creative Representation Set",
+  "description": "A complete buyer-authored revision containing one or more equivalent trafficking representations before seller binding. Exactly one compatible representation is selected for each seller-bound manifest. Representations are not rotation, A/B content, build variants, locale variants, or served variants.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "revision_identity": {
+        "scope": ["creative_id", "revision_id"],
+        "complete_preimage": "the complete CreativeRepresentationSet, never only the selected representation",
+        "canonical_content": "RFC 8785 JCS after removing exactly the top-level $schema, creative_id, revision_id, revision_content_digest, and name properties",
+        "unknown_fields": "included",
+        "array_order": "significant",
+        "duplicate_json_members": "reject before canonicalization",
+        "digest": "revision_content_digest MUST equal lowercase-hex SHA-256 of the canonical content",
+        "immutability": "reusing creative_id plus revision_id with a different digest or canonical content MUST fail with CREATIVE_REVISION_CONTENT_MISMATCH"
+      }
+    },
+    "spec": "docs/creative/representation-sets.mdx#revision-identity"
+  },
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "creative",
+      "description": "Stable logical creative identifier across all representations and later seller-bound manifests."
+    },
+    "revision_id": {
+      "$ref": "/schemas/core/creative-revision-id.json",
+      "description": "Buyer-assigned immutable revision identity for this complete representation set. Changing any revision-bearing part of the set requires a new revision_id; selection does not."
+    },
+    "revision_content_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 of the RFC 8785 JCS canonical revision content defined by this schema. The producer computes it over the complete representation set after removing exactly the top-level $schema, creative_id, revision_id, revision_content_digest, and name properties. `$schema` is transport/schema-location metadata and never mints creative content identity. Resolvers MUST recompute and reject a mismatch; selection readback carries the verified digest so downstream sellers bind the revision to the complete source set rather than only the selected manifest."
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "representations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "/schemas/core/creative-representation.json" },
+      "x-adcp-validation": {
+        "unique_item_properties": ["representation_id"]
+      },
+      "description": "Complete ordered set of equivalent representations. `representation_id` values MUST be unique within this array. Unsupported entries remain byte-for-byte unchanged; neither filtering nor selection changes this revision's canonical content."
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Default provenance for every retained representation and for the selected seller-bound output unless a representation supplies a narrower provenance object."
+    }
+  },
+  "required": ["creative_id", "revision_id", "revision_content_digest", "name", "representations"],
+  "additionalProperties": true
+}

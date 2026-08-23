@@ -84,7 +84,7 @@ asset.vast_version
 
 For example, a seller may advertise a platform ceiling through VAST 4.2 while one product accepts only VAST 3.0 and 4.0. The product set wins for that product. Never relabel an asset to a newer version merely because the destination supports it.
 
-For ordinary legacy VAST submission, an omitted seller or product version set retains 3.x compatibility and document validation follows the peer's negotiated behavior. Late-bound `CreativeSource` resolution is stricter: every VAST candidate declares `vast_version`, and both the selected product option and seller must advertise non-empty plural sets. Absence means compatibility is unproven, not “all versions.” During migration, producers emit either deprecated singular `vast_version` for older consumers or plural `vast_versions` for 3.2 consumers; the two fields are mutually exclusive so they cannot contradict one another.
+For ordinary legacy VAST submission, an omitted seller or product version set retains 3.x compatibility and document validation follows the peer's negotiated behavior. Late-bound `CreativeRepresentationSet` resolution is stricter: every VAST candidate declares `vast_version`, and both the selected product option and seller must advertise non-empty plural sets. Absence means compatibility is unproven, not “all versions.” During migration, producers emit either deprecated singular `vast_version` for older consumers or plural `vast_versions` for 3.2 consumers; the two fields are mutually exclusive so they cannot contradict one another.
 
 ### MediaFile technical acceptance
 
@@ -142,4 +142,4 @@ AdCP defines three validation levels for `vast` assets. Sellers declare the leve
 
 Vertical short video is still `video_hosted`; use width/height or aspect-ratio parameters and, for an exact publisher contract, `{publisher_domain, format_option_id}`. Equal canonical kind alone is not proof that a generic video builder satisfies a publisher's duration, codec, slot, or composition constraints.
 
-See [Creative delivery variants](/docs/creative/delivery-variants), [CTV](/docs/creative/channels/ctv), [Canonical formats](/docs/creative/canonical-formats), and [Creative manifests](/docs/creative/creative-manifests).
+See [Creative representation sets](/docs/creative/representation-sets), [CTV](/docs/creative/channels/ctv), [Canonical formats](/docs/creative/canonical-formats), and [Creative manifests](/docs/creative/creative-manifests).

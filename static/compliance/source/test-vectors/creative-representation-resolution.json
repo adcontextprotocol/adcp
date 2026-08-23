@@ -1,0 +1,187 @@
+{
+  "$schema": "./creative-representation-resolution.schema.json",
+  "vectors": [
+    {
+      "name": "paired redirect selected while inline alternative is retained",
+      "representation_set": {
+        "creative_id": "cr_display_1",
+        "revision_id": "rev_1",
+        "revision_content_digest": "sha256:dfab7f7290bba72f6826ee10186f7618d6b53b3037290f72b094294bceaf6835",
+        "name": "Display launch",
+        "representations": [
+          {
+            "representation_id": "source-inline",
+            "format_kind": "display_tag",
+            "assets": {
+              "serving_tag": {
+                "asset_type": "display_tag",
+                "delivery_type": "inline_markup",
+                "markup_type": "iframe_javascript",
+                "markup": "<iframe src=\"https://ads.acme-example.com/render\"></iframe>"
+              }
+            },
+            "source": { "system": "acme_ad_server", "source_representation": "iframe/JavaScript" }
+          },
+          {
+            "representation_id": "source-paired",
+            "format_kind": "display_tag",
+            "assets": {
+              "serving_tag": {
+                "asset_type": "display_tag",
+                "delivery_type": "paired_redirect",
+                "ad_request_url": "https://ads.acme-example.com/ad?slot=42",
+                "clickthrough_url": "https://click.acme-example.com/redirect"
+              }
+            },
+            "source": { "system": "acme_ad_server", "source_representation": "Internal Redirect" }
+          }
+        ]
+      },
+      "target": {
+        "format_kind": "display_tag",
+        "supported_delivery_types": ["paired_redirect"]
+      },
+      "seller": {},
+      "strategy": "representation_order",
+      "expected": {
+        "selected_representation_id": "source-paired",
+        "compatible_representation_ids": ["source-paired"],
+        "retained_representation_ids": ["source-inline", "source-paired"],
+        "rejections": [
+          {
+            "representation_id": "source-inline",
+            "code": "unsupported_delivery_type",
+            "message": "inline_markup is not accepted by the selected format option"
+          }
+        ]
+      }
+    },
+    {
+      "name": "highest VAST is selected only after product and seller intersection",
+      "representation_set": {
+        "creative_id": "cr_video_1",
+        "revision_id": "rev_1",
+        "revision_content_digest": "sha256:67d087e0a6e84185fc9b28d5854b1f9d90958ac902a3d569422af3ba69951154",
+        "name": "Video launch",
+        "representations": [
+          {
+            "representation_id": "source-vast-2",
+            "format_kind": "video_vast",
+            "assets": { "vast_tag": { "asset_type": "vast", "delivery_type": "url", "url": "https://video.acme-example.com/vast/2", "vast_version": "2.0" } },
+            "source": { "system": "acme_ad_server", "source_representation": "VAST 2.0 pre-fetch" }
+          },
+          {
+            "representation_id": "source-vast-3",
+            "format_kind": "video_vast",
+            "assets": { "vast_tag": { "asset_type": "vast", "delivery_type": "url", "url": "https://video.acme-example.com/vast/3", "vast_version": "3.0" } },
+            "source": { "system": "acme_ad_server", "source_representation": "VAST 3.0 pre-fetch" }
+          },
+          {
+            "representation_id": "source-vast-4",
+            "format_kind": "video_vast",
+            "assets": { "vast_tag": { "asset_type": "vast", "delivery_type": "url", "url": "https://video.acme-example.com/vast/4", "vast_version": "4.0" } },
+            "source": { "system": "acme_ad_server", "source_representation": "VAST 4.0 pre-fetch" }
+          }
+        ]
+      },
+      "target": { "format_kind": "video_vast", "vast_versions": ["3.0", "4.0"] },
+      "seller": { "vast_versions": ["3.0", "4.0", "4.1", "4.2"] },
+      "strategy": "highest_compatible_vast",
+      "expected": {
+        "selected_representation_id": "source-vast-4",
+        "compatible_representation_ids": ["source-vast-3", "source-vast-4"],
+        "retained_representation_ids": ["source-vast-2", "source-vast-3", "source-vast-4"],
+        "rejections": [
+          {
+            "representation_id": "source-vast-2",
+            "code": "vast_version_mismatch",
+            "message": "2.0 is outside the product and seller compatibility intersection"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VAST 4.3 remains selectable when both layers accept it",
+      "representation_set": {
+        "creative_id": "cr_video_43",
+        "revision_id": "rev_1",
+        "revision_content_digest": "sha256:50b8b0eaac4f52d300cb991650742e9349b72aba9edc936386143646dc15fc8d",
+        "name": "Video 4.3",
+        "representations": [
+          {
+            "representation_id": "source-vast-43",
+            "format_kind": "video_vast",
+            "assets": { "vast_tag": { "asset_type": "vast", "delivery_type": "url", "url": "https://video.acme-example.com/vast/43", "vast_version": "4.3" } },
+            "source": { "system": "creative_server", "source_representation": "VAST 4.3" }
+          }
+        ]
+      },
+      "target": { "format_kind": "video_vast", "vast_versions": ["4.3"] },
+      "seller": { "vast_versions": ["4.2", "4.3"] },
+      "strategy": "highest_compatible_vast",
+      "expected": {
+        "selected_representation_id": "source-vast-43",
+        "compatible_representation_ids": ["source-vast-43"],
+        "retained_representation_ids": ["source-vast-43"],
+        "rejections": []
+      }
+    },
+    {
+      "name": "equal highest VAST versions use representation order as the tie break",
+      "representation_set": {
+        "creative_id": "cr_video_tie",
+        "revision_id": "rev_1",
+        "revision_content_digest": "sha256:2301a2ad0efbafb7c7ad3123afb8f23627f57e0c2a81cb2f46fe5cd56d774f86",
+        "name": "Video tie break",
+        "representations": [
+          {
+            "representation_id": "source-vast-4-primary",
+            "format_kind": "video_vast",
+            "assets": {
+              "vast_tag": {
+                "asset_type": "vast",
+                "delivery_type": "url",
+                "url": "https://video.acme-example.com/vast/4-primary",
+                "vast_version": "4.0"
+              }
+            },
+            "source": {
+              "system": "acme_ad_server",
+              "source_representation": "Primary VAST 4.0"
+            }
+          },
+          {
+            "representation_id": "source-vast-4-secondary",
+            "format_kind": "video_vast",
+            "assets": {
+              "vast_tag": {
+                "asset_type": "vast",
+                "delivery_type": "url",
+                "url": "https://video.acme-example.com/vast/4-secondary",
+                "vast_version": "4.0"
+              }
+            },
+            "source": {
+              "system": "acme_ad_server",
+              "source_representation": "Secondary VAST 4.0"
+            }
+          }
+        ]
+      },
+      "target": {
+        "format_kind": "video_vast",
+        "vast_versions": ["4.0"]
+      },
+      "seller": {
+        "vast_versions": ["4.0", "4.1", "4.2"]
+      },
+      "strategy": "highest_compatible_vast",
+      "expected": {
+        "selected_representation_id": "source-vast-4-primary",
+        "compatible_representation_ids": ["source-vast-4-primary", "source-vast-4-secondary"],
+        "retained_representation_ids": ["source-vast-4-primary", "source-vast-4-secondary"],
+        "rejections": []
+      }
+    }
+  ]
+}

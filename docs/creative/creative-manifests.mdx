@@ -125,7 +125,7 @@ Store reusable manifests with `sync_creatives` on agents that advertise `creativ
 
 Approval state is seller-specific. A valid manifest can still enter review, be rejected for policy, or require replacement independently at each destination.
 
-When a manifest was resolved from a pre-binding source with equivalent trafficking representations, it carries `delivery_variant_selection`. That object preserves the source creative ID, revision, and selected source `variant_id`; it is not a rotation or served-variant instruction. See [Creative delivery variants](/docs/creative/delivery-variants).
+When a manifest was resolved from a set of equivalent trafficking representations, it carries `representation_selection`. That object preserves the durable `creative_id`, complete source `revision_id` plus digest, selected `representation_id`, applied deterministic strategy, and derived-output digest used for review. It is not a rotation or served-variant instruction. See [Creative representation sets](/docs/creative/representation-sets).
 
 ## Deprecated compatibility branch
 
@@ -135,6 +135,6 @@ Older 3.x peers may still send a manifest with a compound named `format_id`. A 3
 
 - [Canonical formats](/docs/creative/canonical-formats)
 - [Asset types](/docs/creative/asset-types)
-- [Creative delivery variants](/docs/creative/delivery-variants)
+- [Creative representation sets](/docs/creative/representation-sets)
 - [`build_creative`](/docs/creative/task-reference/build_creative)
 - [`sync_creatives`](/docs/creative/task-reference/sync_creatives)

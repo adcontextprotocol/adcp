@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "creative-delivery-resolution.schema.json",
-  "title": "Creative delivery resolution vectors",
+  "$id": "creative-representation-resolution.schema.json",
+  "title": "Creative representation resolution vectors",
   "type": "object",
   "properties": {
     "vectors": {
@@ -11,12 +11,12 @@
         "type": "object",
         "properties": {
           "name": { "type": "string", "minLength": 1 },
-          "source": { "$ref": "/schemas/core/creative-source.json" },
+          "representation_set": { "$ref": "/schemas/core/creative-representation-set.json" },
           "target": {
             "type": "object",
             "properties": {
               "format_kind": { "type": "string" },
-              "supported_delivery_variants": {
+              "supported_delivery_types": {
                 "type": "array",
                 "items": { "type": "string" }
               },
@@ -38,22 +38,22 @@
             },
             "additionalProperties": true
           },
-          "strategy": { "type": "string", "enum": ["source_order", "highest_compatible_vast"] },
+          "strategy": { "type": "string", "enum": ["representation_order", "highest_compatible_vast"] },
           "expected": {
             "type": "object",
             "properties": {
-              "selected_variant_id": { "type": ["string", "null"] },
-              "compatible_variant_ids": { "type": "array", "items": { "type": "string" } },
-              "retained_variant_ids": { "type": "array", "items": { "type": "string" } },
+              "selected_representation_id": { "type": ["string", "null"] },
+              "compatible_representation_ids": { "type": "array", "items": { "type": "string" } },
+              "retained_representation_ids": { "type": "array", "items": { "type": "string" } },
               "rejections": {
                 "type": "array",
-                "items": { "$ref": "/schemas/core/delivery-variant-rejection.json" }
+                "items": { "$ref": "/schemas/core/representation-rejection.json" }
               }
             },
-            "required": ["selected_variant_id", "compatible_variant_ids", "retained_variant_ids", "rejections"]
+            "required": ["selected_representation_id", "compatible_representation_ids", "retained_representation_ids", "rejections"]
           }
         },
-        "required": ["name", "source", "target", "seller", "strategy", "expected"]
+        "required": ["name", "representation_set", "target", "seller", "strategy", "expected"]
       }
     }
   },

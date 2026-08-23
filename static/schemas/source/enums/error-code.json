@@ -116,7 +116,7 @@
     "VAST_PARSE_FAILED",
     "VAST_VERSION_MISMATCH",
     "VAST_WRAPPER_DEPTH_EXCEEDED",
-    "CREATIVE_DELIVERY_VARIANT_UNRESOLVED",
+    "CREATIVE_REPRESENTATION_UNRESOLVED",
     "MACRO_RESOLUTION_FAILED"
   ],
   "enumDescriptions": {
@@ -231,7 +231,7 @@
     "VAST_PARSE_FAILED": "A submitted `vast` asset failed document-level validation: the inline `content` (or the document fetched from `url`) is not well-formed XML, has no `<VAST>` root element, contains no `<Ad>` element, or an `<InLine>` linear creative carries no `<MediaFile>`. Returned by sellers that declare `creative_specs.vast_validation` of `document` or `wrapper`; sellers at the default `structural` level do not inspect the VAST document and MUST NOT return this code. Distinct from `VALIDATION_ERROR` (manifest-level format validation): the manifest was structurally valid, the VAST document inside it was not. Sellers SHOULD set `error.field` to the offending asset path and SHOULD populate `error.details.reason` with one of `not_xml`, `no_vast_root`, `no_ad`, `no_media_file`. Unresolved ad-server macros in URLs (`[MACRO]`, `${MACRO}`, `{UNIVERSAL_MACRO}`) are opaque tokens, not parse failures. Recovery: correctable (fix the VAST document and resubmit).",
     "VAST_VERSION_MISMATCH": "A submitted `vast` asset is version-incompatible when its exact `vast_version` is absent from the intersection of the selected product format option's `params.vast_versions` and the seller's `execution.creative_specs.vast_versions`, or when an inspected document violates its applicable VAST version rule. Modern `error.details` MUST conform to `error-details/vast-version-mismatch.json`: acceptance failures carry `mismatch_reason: asset_outside_acceptance`, `asset_vast_version`, `product_vast_versions`, and `seller_vast_versions`, plus `format_option_ref` only when the selected option is addressable; inspected-document failures carry `mismatch_reason: document_version_mismatch`, `asset_vast_version`, `observed_document_vast_version`, and `document_role`. Only the submitted document is compared for equality with the asset declaration; wrapper and terminal documents are checked against the acceptance intersection. The deprecated `supported_versions` field remains accepted for older 3.x peers. Distinct from `VERSION_UNSUPPORTED`, which concerns AdCP protocol negotiation. Recovery: correctable (select a source VAST representation in the compatibility intersection or correct the offending document; never relabel the asset).",
     "VAST_WRAPPER_DEPTH_EXCEEDED": "Resolving a `vast` asset's wrapper chain failed: the chain exceeded the format's declared `max_wrapper_depth`, revisited a `VASTAdTagURI` already seen in the chain (a loop), or a hop did not resolve within the seller's per-hop timeout. Returned by sellers that declare `creative_specs.vast_validation: \"wrapper\"`. Sellers SHOULD set `error.field` to the offending asset path and SHOULD populate `error.details.reason` with one of `depth`, `loop`, `timeout`, plus `error.details.depth` with the depth reached. Recovery: correctable (flatten the chain, reduce redirects below the format's `max_wrapper_depth`, or fix the failing hop).",
-    "CREATIVE_DELIVERY_VARIANT_UNRESOLVED": "No representation in a pre-binding CreativeSource is compatible with the selected target capability or product format option. The resolver MUST retain all source variants and MUST include one `error.details.delivery_variant_rejections[]` entry per candidate, conforming to `error-details/creative-delivery-variant-unresolved.json`; silent seller guessing is forbidden. Recovery: correctable (choose a compatible product/format option, add a compatible source representation, or fix the rejected asset contract).",
+    "CREATIVE_REPRESENTATION_UNRESOLVED": "No representation in a CreativeRepresentationSet is compatible with the selected target capability or product format option. The resolver MUST retain the complete representation set and MUST include one `error.details.representation_rejections[]` entry per candidate, conforming to `error-details/creative-representation-unresolved.json`; silent seller guessing is forbidden. Recovery: correctable (choose a compatible product/format option, add a compatible representation under a new revision, or fix the rejected asset contract).",
     "MACRO_RESOLUTION_FAILED": "One or more declared creative macro tokens cannot be resolved or safely preserved under the selected product and seller capability intersection. Sellers MUST include per-token `error.details.macro_resolution_results`, conforming to `error-details/macro-resolution-failed.json`; unknown or ambiguous tokens remain byte-preserved and MUST NOT receive guessed values. Recovery: correctable (route to a compatible execution path, correct the verified declaration, or assign the proper downstream resolver)."
   },
   "enumMetadata": {
@@ -680,9 +680,9 @@
       "recovery": "correctable",
       "suggestion": "inspect error.details.reason (depth, loop, timeout); flatten the wrapper chain, reduce redirects below the format's max_wrapper_depth, or fix the failing hop"
     },
-    "CREATIVE_DELIVERY_VARIANT_UNRESOLVED": {
+    "CREATIVE_REPRESENTATION_UNRESOLVED": {
       "recovery": "correctable",
-      "suggestion": "inspect every error.details.delivery_variant_rejections entry, then choose a compatible format option or supply a compatible representation"
+      "suggestion": "inspect every error.details.representation_rejections entry, then choose a compatible format option or supply a compatible representation"
     },
     "MACRO_RESOLUTION_FAILED": {
       "recovery": "correctable",

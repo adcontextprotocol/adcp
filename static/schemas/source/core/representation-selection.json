@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/representation-selection.json",
+  "title": "Representation Selection",
+  "description": "Readback lineage from a seller-bound manifest or CreativeAsset to the exact CreativeRepresentationSet revision and representation selected for it. This is selection lineage, not served-variant identity.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "source_set": {
+        "creative_id": "must equal the source CreativeRepresentationSet creative_id",
+        "revision_id": "must equal the source CreativeRepresentationSet revision_id",
+        "revision_content_digest": "must equal the verified digest of the complete source CreativeRepresentationSet",
+        "selected_representation_id": "must identify exactly one member of the complete source representations array",
+        "strategy": "must equal the capability-advertised strategy requested for this resolution"
+      },
+      "derived_output": {
+        "source_revision_unchanged": "selection, macro binding, translation, and transcoding MUST NOT change the source revision binding",
+        "canonical_content": "RFC 8785 JCS of the manifest projection after removing exactly top-level $schema, representation_selection, creative_id, revision_id, name, tags, status, weight, placement_refs, placement_ids, and inputs properties; every other field, including unknown delivery fields, is included",
+        "shared_projection": "apply the same exclusion list to the returned CreativeManifest and to its later CreativeAsset sync wrapper so library metadata never changes the digest",
+        "selected_output_digest": "must equal lowercase-hex SHA-256 of derived-output canonical content before receiving-seller normalization",
+        "review_identity": "the receiving seller tracks selected_representation_id plus selected_output_digest separately from the source revision; changing either is an updated execution that follows ordinary re-review without minting a buyer revision"
+      }
+    },
+    "spec": "docs/creative/representation-sets.mdx#deterministic-resolution"
+  },
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "creative"
+    },
+    "revision_id": { "$ref": "/schemas/core/creative-revision-id.json" },
+    "revision_content_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Verified digest from the complete source representation set. A downstream seller uses this value, not the selected manifest bytes alone, to enforce immutable revision reuse."
+    },
+    "selected_representation_id": { "type": "string", "minLength": 1, "x-entity": "creative_representation" },
+    "strategy": {
+      "$ref": "/schemas/enums/representation-selection-strategy.json",
+      "description": "Deterministic strategy applied after compatibility filtering."
+    },
+    "selected_output_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Digest of the derived seller-bound manifest projection, computed with RFC 8785 JCS after removing exactly top-level `$schema`, `representation_selection`, `creative_id`, `revision_id`, `name`, `tags`, `status`, `weight`, `placement_refs`, `placement_ids`, and `inputs`. Every other field, including unknown delivery fields, is included. The identical exclusion list applies to the returned CreativeManifest and its later CreativeAsset sync wrapper. A selected sync item cannot carry localization in this version. This is the review/execution fingerprint for the projection, distinct from revision_content_digest, which binds the complete source set."
+    },
+    "resolved_by": {
+      "type": "string",
+      "enum": ["buyer", "seller"],
+      "description": "Who performed deterministic compatibility resolution. A buyer may resolve locally from seller discovery. Seller resolution is valid only on the destination sales agent when it advertised representation_resolution; an independent creative agent cannot claim seller-bound compatibility."
+    }
+  },
+  "required": ["creative_id", "revision_id", "revision_content_digest", "selected_representation_id", "strategy", "selected_output_digest", "resolved_by"],
+  "additionalProperties": false
+}

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/formats/canonical/display_tag.json",
   "title": "Canonical Format: Display Tag",
-  "description": "Third-party-served display creative delivered as one of three explicit representations: a single ad-request URL, byte-preserved inline markup, or an atomic paired redirect (`ad_request_url` plus `clickthrough_url`). The backward-compatible default slot remains `tag_url` (`url_type: ad_request`). Format options accepting inline or paired delivery override `slots` with a `display_tag` asset and declare `supported_delivery_variants`. Tracking is opaque to the seller except for declared macro resolution. Distinct from `image` and seller-hosted `html5` zip bundles.",
+  "description": "Third-party-served display creative delivered as one of three explicit representations: a single ad-request URL, byte-preserved inline markup, or an atomic paired redirect (`ad_request_url` plus `clickthrough_url`). The backward-compatible default slot remains `tag_url` (`url_type: ad_request`). Format options accepting inline or paired delivery override `slots` with a `display_tag` asset and declare `supported_delivery_types`. Tracking is opaque to the seller except for declared macro resolution. Distinct from `image` and seller-hosted `html5` zip bundles.",
   "allOf": [
     {
       "$ref": "/schemas/formats/canonical/_base.json"
@@ -256,9 +256,9 @@
           "1x1_redirect"
         ]
       },
-      "description": "Deprecated ambiguous mechanism list. Use `supported_delivery_variants`; markup subtype lives on the `display_tag` asset."
+      "description": "Deprecated ambiguous mechanism list. Use `supported_delivery_types`; markup subtype lives on the `display_tag` asset."
     },
-    "supported_delivery_variants": {
+    "supported_delivery_types": {
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
@@ -266,7 +266,7 @@
         "type": "string",
         "enum": ["tag_url", "inline_markup", "paired_redirect"]
       },
-      "description": "Closed set of delivery representations this format option can traffic. `paired_redirect` means one atomic ad-request/click-through pair (Internal Redirect semantics), never independently matchable URL slots."
+      "description": "Closed set of delivery types this format option can traffic. `paired_redirect` means one atomic ad-request/click-through pair (Internal Redirect semantics), never independently matchable URL slots."
     },
     "ssl_required": {
       "type": "boolean",
