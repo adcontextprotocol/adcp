@@ -171,46 +171,6 @@
       },
       "then": { "required": ["component_assets"] },
       "else": { "not": { "required": ["component_assets"] } }
-    },
-    {
-      "$comment": "The 3.2 canonical VAST sync path requires one exact asset version. The deprecated named-format branch remains compatible with older 3.x payloads.",
-      "if": {
-        "properties": { "format_kind": { "const": "video_vast" } },
-        "required": ["format_kind"]
-      },
-      "then": {
-        "properties": {
-          "assets": {
-            "patternProperties": {
-              ".*": {
-                "allOf": [
-                  {
-                    "if": {
-                      "type": "object",
-                      "properties": { "asset_type": { "const": "vast" } },
-                      "required": ["asset_type"]
-                    },
-                    "then": { "required": ["vast_version"] }
-                  },
-                  {
-                    "if": { "type": "array" },
-                    "then": {
-                      "items": {
-                        "if": {
-                          "type": "object",
-                          "properties": { "asset_type": { "const": "vast" } },
-                          "required": ["asset_type"]
-                        },
-                        "then": { "required": ["vast_version"] }
-                      }
-                    }
-                  }
-                ]
-              }
-            }
-          }
-        }
-      }
     }
   ],
   "additionalProperties": true

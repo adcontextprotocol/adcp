@@ -209,22 +209,22 @@ test('VAST technical acceptance is explicit, rendition-scoped, and byte-exact', 
     'canonical VAST exact-version validation supports multi-asset slots');
   const missingExactVersion = structuredClone(canonicalVastManifest);
   delete missingExactVersion.assets.vast_tag.vast_version;
-  assert.equal(validateManifest(missingExactVersion), false,
-    'the canonical video_vast path requires the asset exact version');
+  assert.equal(validateManifest(missingExactVersion), true,
+    'ordinary canonical VAST manifests retain additive 3.x compatibility when version is omitted');
   const customSlotWithoutVersion = structuredClone(customSlotVastManifest);
   delete customSlotWithoutVersion.assets.vast_xml.vast_version;
-  assert.equal(validateManifest(customSlotWithoutVersion), false,
-    'a renamed canonical VAST slot cannot bypass exact-version validation');
+  assert.equal(validateManifest(customSlotWithoutVersion), true,
+    'ordinary custom-slot VAST manifests retain additive compatibility');
   const arraySlotWithoutVersion = structuredClone(arraySlotVastManifest);
   delete arraySlotWithoutVersion.assets.vast_pool[0].vast_version;
-  assert.equal(validateManifest(arraySlotWithoutVersion), false,
-    'each VAST asset in a multi-asset slot requires an exact version');
+  assert.equal(validateManifest(arraySlotWithoutVersion), true,
+    'ordinary multi-asset VAST manifests retain additive compatibility');
   const extensionSlotWithoutVersion = structuredClone(canonicalVastManifest);
   extensionSlotWithoutVersion.assets['VAST-TAG'] = extensionSlotWithoutVersion.assets.vast_tag;
   delete extensionSlotWithoutVersion.assets.vast_tag;
   delete extensionSlotWithoutVersion.assets['VAST-TAG'].vast_version;
-  assert.equal(validateManifest(extensionSlotWithoutVersion), false,
-    'extension-style slot names remain subject to canonical VAST exact-version validation');
+  assert.equal(validateManifest(extensionSlotWithoutVersion), true,
+    'ordinary extension-slot VAST manifests retain additive compatibility');
   assert.equal(validateManifest({
     format_id: { agent_url: 'https://creative.acme.test', id: 'legacy-vast' },
     assets: missingExactVersion.assets
@@ -239,12 +239,12 @@ test('VAST technical acceptance is explicit, rendition-scoped, and byte-exact', 
   assert.equal(validateCreativeAsset(canonicalVastCreative), true, JSON.stringify(validateCreativeAsset.errors));
   const syncCreativeWithoutVersion = structuredClone(canonicalVastCreative);
   delete syncCreativeWithoutVersion.assets.vast_tag.vast_version;
-  assert.equal(validateCreativeAsset(syncCreativeWithoutVersion), false,
-    'the canonical sync_creatives path requires the asset exact version');
+  assert.equal(validateCreativeAsset(syncCreativeWithoutVersion), true,
+    'ordinary sync_creatives VAST payloads retain additive 3.x compatibility');
   assert.equal(validateCreativeAsset({
     ...canonicalVastCreative,
     assets: extensionSlotWithoutVersion.assets
-  }), false, 'sync_creatives cannot bypass exact-version validation through an extension slot name');
+  }), true, 'ordinary extension-slot sync payloads retain additive compatibility');
 });
 
 test('macro declarations enforce resolver ownership and exact URL encoding depth', () => {

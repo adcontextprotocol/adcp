@@ -14,6 +14,46 @@
           { "required": ["representation_selection"] }
         ]
       }
+    },
+    {
+      "$comment": "The opt-in late-bound VAST representation path requires one exact asset version. Ordinary legacy/canonical CreativeManifest and CreativeAsset payloads retain additive 3.x compatibility.",
+      "if": {
+        "properties": { "format_kind": { "const": "video_vast" } },
+        "required": ["format_kind"]
+      },
+      "then": {
+        "properties": {
+          "assets": {
+            "patternProperties": {
+              ".*": {
+                "allOf": [
+                  {
+                    "if": {
+                      "type": "object",
+                      "properties": { "asset_type": { "const": "vast" } },
+                      "required": ["asset_type"]
+                    },
+                    "then": { "required": ["vast_version"] }
+                  },
+                  {
+                    "if": { "type": "array" },
+                    "then": {
+                      "items": {
+                        "if": {
+                          "type": "object",
+                          "properties": { "asset_type": { "const": "vast" } },
+                          "required": ["asset_type"]
+                        },
+                        "then": { "required": ["vast_version"] }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "type": "object",
