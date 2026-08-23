@@ -302,11 +302,13 @@ export interface ComplyDeliveryAccumulator {
   deferredVendorMetrics?: Array<{
     vendor: { domain: string; brand_id?: string };
     metric_id: string;
+    qualifier?: Record<string, unknown>;
   }>;
   /** Package-scoped measurement deferrals, keyed by package_id. */
   deferredVendorMetricsByPackage?: Record<string, Array<{
     vendor: { domain: string; brand_id?: string };
     metric_id: string;
+    qualifier?: Record<string, unknown>;
   }>>;
   /** Per-call snapshots with a UTC delivery date for deterministic range tests. */
   datedSimulations?: ComplyDatedDeliverySimulation[];

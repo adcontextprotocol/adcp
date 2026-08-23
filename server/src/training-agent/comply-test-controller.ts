@@ -297,18 +297,21 @@ function deliverySimulationSnapshot(
 type VendorMetricIdentity = {
   vendor: { domain: string; brand_id?: string };
   metric_id: string;
+  qualifier?: Record<string, unknown>;
 };
 
 function normalizeVendorMetricIdentity(value: unknown): VendorMetricIdentity | null {
   if (!isRecord(value) || !isRecord(value.vendor)) return null;
   if (typeof value.vendor.domain !== 'string' || value.vendor.domain.length === 0) return null;
   if (typeof value.metric_id !== 'string' || value.metric_id.length === 0) return null;
+  if (value.qualifier !== undefined && !isRecord(value.qualifier)) return null;
   return {
     vendor: {
       domain: value.vendor.domain,
       ...(typeof value.vendor.brand_id === 'string' && { brand_id: value.vendor.brand_id }),
     },
     metric_id: value.metric_id,
+    ...(value.qualifier !== undefined && { qualifier: structuredClone(value.qualifier) }),
   };
 }
 

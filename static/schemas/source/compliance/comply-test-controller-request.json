@@ -1050,6 +1050,10 @@
               },
               "metric_id": {
                 "$ref": "/schemas/core/vendor-metric-id.json"
+              },
+              "qualifier": {
+                "$ref": "/schemas/core/committed-metric.json#/oneOf/1/properties/qualifier",
+                "description": "Qualifier for the exact committed vendor-metric row whose measurement is deferred."
               }
             },
             "required": ["vendor", "metric_id"],
@@ -1069,6 +1073,10 @@
                 },
                 "metric_id": {
                   "$ref": "/schemas/core/vendor-metric-id.json"
+                },
+                "qualifier": {
+                  "$ref": "/schemas/core/committed-metric.json#/oneOf/1/properties/qualifier",
+                  "description": "Qualifier for the exact committed vendor-metric row whose measurement is deferred."
                 }
               },
               "required": ["vendor", "metric_id"],
