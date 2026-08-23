@@ -102,7 +102,10 @@
                 "revision_homogeneous_rows": {
                   "row_key": ["variant_id"],
                   "row_key_unique": true,
-                  "variant_id_scope": "agent_unique_and_unambiguous_for_variant_preview_when_supported",
+                  "variant_id_scope": {
+                    "default": "unique_within_agent_and_creative",
+                    "when_creative_supports_revisions": "agent_unique_immutable_and_unambiguous_for_variant_preview_when_supported"
+                  },
                   "native_identifier_reuse": "map_each_distinct_revision_locale_or_rendered_execution_to_a_distinct_adcp_variant_id",
                   "metrics_must_not_cross_revision_boundary": true,
                   "metrics_must_not_cross_locale_boundary": true,

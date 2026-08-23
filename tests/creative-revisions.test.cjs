@@ -179,7 +179,13 @@ test('revision identity reads back through library, webhook, and delivery schema
     .properties.variants['x-adcp-validation'].verifier_constraints.revision_homogeneous_rows;
   assert.deepEqual(rows.row_key, ['variant_id']);
   assert.equal(rows.row_key_unique, true);
-  assert.equal(rows.variant_id_scope, 'agent_unique_and_unambiguous_for_variant_preview_when_supported');
+  assert.equal(rows.variant_id_scope.default, 'unique_within_agent_and_creative');
+  assert.equal(rows.variant_id_scope.when_creative_supports_revisions,
+    'agent_unique_immutable_and_unambiguous_for_variant_preview_when_supported');
+  const variantIdentity = schema('core/creative-variant.json').allOf[1].properties.variant_id['x-adcp-validation']
+    .verifier_constraints;
+  assert.equal(variantIdentity.default_scope, 'unique_within_agent_and_creative');
+  assert.match(variantIdentity.when_creative_supports_revisions, /agent_unique/);
   assert.equal(rows.metrics_must_not_cross_revision_boundary, true);
   assert.equal(rows.metrics_must_not_cross_locale_boundary, true);
 });

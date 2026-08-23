@@ -186,8 +186,8 @@ All modes use a single flat object with `request_type` as the discriminant.
 | `item_limit` | integer | No | Maximum catalog items to render per preview variant. Used in single mode. |
 | `template_id` | string | No | Specific template ID for custom format rendering. Used in single mode. |
 | `requests` | array | Batch | Array of 1-50 preview requests. Each item supplies either a canonical `creative_manifest` or library `creative_id`, and may also carry `target_capability_id`, inputs, quality, output format, item limit, and template ID. |
-| `variant_id` | string | Variant | Agent-assigned, agent-unique AdCP served-execution identifier from [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery). |
-| `creative_id` | string | Conditional | Creative-library identifier. Use instead of `creative_manifest` to preview a stored canonical creative; in batch mode it is set per item. It may also provide creative context in variant mode. |
+| `variant_id` | string | Variant | Agent-assigned AdCP served-execution identifier from [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery). It is agent-unique for agents advertising `creative.supports_revisions`; callers SHOULD also send `creative_id` for legacy agents whose IDs are scoped to agent + creative. |
+| `creative_id` | string | Conditional | Creative-library identifier. Use instead of `creative_manifest` to preview a stored canonical creative; in batch mode it is set per item. In variant mode it disambiguates the legacy agent + creative identifier scope. |
 | `allow_async` | boolean | No | Opt in to a `status: "submitted"` response for slow rendering. Defaults to `false`; agents MUST stay synchronous or return a terminal error when absent or false. |
 | `push_notification_config` | object | No | Optional terminal completion/failure webhook when `allow_async` is true and the agent returns `submitted`. The task remains pollable without it; this field alone never causes async execution. |
 

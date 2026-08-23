@@ -147,6 +147,10 @@ Implementations that acknowledge a creative on the synchronous success branch bu
 | `validation_mode` | string     | No       | Validation strictness: `"strict"` (default) or `"lenient"`                                                                                                               |
 | `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot be combined with `creative_ids`. Cannot delete creatives assigned to active, non-paused packages. |
 
+Every `creatives[]` item in one request MUST have a unique `creative_id`.
+Duplicate IDs make response correlation and write ordering ambiguous, so the
+seller rejects the request rather than applying last-write-wins behavior.
+
 ### Creative object
 
 | Field               | Type                | Required    | Description                                                        |

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-variant.json",
   "title": "Creative Variant",
-  "description": "A revision- and locale-homogeneous execution-variant breakdown row with delivery metrics. For catalog-driven packages, each catalog item rendered as a distinct ad execution is a variant — the variant's manifest includes the catalog reference with the specific item rendered. For asset group optimization, represents one combination of assets the platform selected. For generative creative, represents a platform-generated variant. For standard creatives, maps 1:1 with the creative within one source revision and locale. A distinct source revision, locale, or rendered execution receives a distinct agent-unique AdCP variant_id, which is an unambiguous lookup key when the agent supports variant preview.",
+  "description": "A revision- and locale-homogeneous execution-variant breakdown row with delivery metrics. For catalog-driven packages, each catalog item rendered as a distinct ad execution is a variant — the variant's manifest includes the catalog reference with the specific item rendered. For asset group optimization, represents one combination of assets the platform selected. For generative creative, represents a platform-generated variant. For standard creatives, maps 1:1 with the creative within one source revision and locale. Existing agents retain the published scope in which variant_id is unique within the agent and creative. An agent advertising creative.supports_revisions additionally mints a distinct agent-unique AdCP variant_id for every source revision, locale, or rendered execution so historical attribution and variant preview remain unambiguous.",
   "x-adcp-validation": {
     "verifier_constraints": {
       "localized_parent": {
@@ -23,8 +23,15 @@
       "properties": {
         "variant_id": {
           "type": "string",
-          "description": "Agent-assigned identifier that uniquely and immutably identifies this served execution on the agent. It MUST NOT be reused for another source revision, locale, or rendered manifest. An adapter whose native platform reuses an identifier maps each distinct execution to a distinct AdCP variant_id and may retain the native identifier in ext. When the agent supports variant preview, this ID is its unambiguous lookup key.",
-          "x-entity": "served_variant"
+          "description": "Agent-assigned served-execution identifier. The legacy contract scopes uniqueness to the agent and creative. When the agent advertises creative.supports_revisions, the identifier is agent-unique and MUST NOT be reused for another creative, source revision, locale, or rendered manifest. A revision-capable adapter whose native platform reuses an identifier maps each distinct execution to a distinct AdCP variant_id and may retain the native identifier in ext. When that agent supports variant preview, this ID is its unambiguous lookup key.",
+          "x-entity": "served_variant",
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "default_scope": "unique_within_agent_and_creative",
+              "when_creative_supports_revisions": "agent_unique_immutable_and_not_reused_across_creative_revision_locale_or_rendered_manifest"
+            },
+            "spec": "docs/creative/task-reference/get_creative_delivery.mdx#revision-attribution"
+          }
         },
         "revision_id": {
           "$ref": "/schemas/core/creative-revision-id.json",
