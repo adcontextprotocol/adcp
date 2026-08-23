@@ -90,6 +90,10 @@ if (storyboardId === 'hang') {
     totals: { clean: 1 },
   })}`);
   process.exit(0);
+} else if (storyboardId === 'node_options') {
+  console.log(`NODE_OPTIONS=${process.env.NODE_OPTIONS ?? ''}`);
+  console.log(`ADCP_STORYBOARD_RESULT ${JSON.stringify(result)}`);
+  process.exit(0);
 } else {
   console.log(`  ${storyboardId.padEnd(40)} ✓ 1P / 0S / 0N/A`);
   console.log(`ADCP_STORYBOARD_RESULT ${JSON.stringify(result)}`);

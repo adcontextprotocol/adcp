@@ -19,6 +19,7 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_RSS_LIMIT_MB = 4_096;
 const DEFAULT_RSS_POLL_MS = 250;
 const DEFAULT_OUTPUT_LIMIT_MB = 16;
+const DEFAULT_CHILD_MAX_OLD_SPACE_MB = 2_048;
 const MAX_CHILD_LINE_BYTES = 1024 * 1024;
 const STORYBOARD_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,255}$/;
 let activeChildPid;
@@ -101,10 +102,23 @@ function parseArgs(argv) {
     rssLimitBytes: rssLimitMb * 1024 * 1024,
     rssPollMs,
     outputLimitBytes: outputLimitMb * 1024 * 1024,
+    childMaxOldSpaceMb: requiredPositiveInteger(
+      process.env.STORYBOARD_CHILD_MAX_OLD_SPACE_MB ?? DEFAULT_CHILD_MAX_OLD_SPACE_MB,
+      'STORYBOARD_CHILD_MAX_OLD_SPACE_MB',
+    ),
     telemetryFile: optionValue(argv, '--telemetry-file', process.env.STORYBOARD_TELEMETRY_FILE),
     resultsFile: optionValue(argv, '--results-file', process.env.STORYBOARD_RESULTS_FILE),
     passthrough,
   };
+}
+
+function childEnvironment(maxOldSpaceMb) {
+  const environment = { ...process.env };
+  const nodeOptions = environment.NODE_OPTIONS ?? '';
+  if (!/(?:^|\s)--max[-_]old[-_]space[-_]size(?:=|\s|$)/.test(nodeOptions)) {
+    environment.NODE_OPTIONS = `${nodeOptions} --max-old-space-size=${maxOldSpaceMb}`.trim();
+  }
+  return environment;
 }
 
 function terminateActiveChild(signal) {
@@ -196,7 +210,9 @@ async function runManagedChild({
   const startedAt = Date.now();
   const child = spawn(invocation.command, invocation.args, {
     cwd: process.cwd(),
-    env: process.env,
+    // Keep large schema-validation storyboards below the outer RSS guard by
+    // asking V8 to collect earlier. Explicit caller limits remain authoritative.
+    env: childEnvironment(config.childMaxOldSpaceMb),
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
