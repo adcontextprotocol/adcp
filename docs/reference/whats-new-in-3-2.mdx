@@ -8,10 +8,10 @@ description: "Adopter overview of AdCP 3.2: compact media buying, targeting-awar
 # What's new in AdCP 3.2
 
 <Warning>
-**3.2 is in beta.** The protocol beta.0 artifacts and
-`@adcp/sdk@14.0.0-beta.0` now support the same exact checkpoint. Python and Go
-3.2 packages are still pending. Beta.1 will incorporate integration feedback
-and require a fresh SDK support statement against its exact bundle. See the
+**3.2 is in beta.** The protocol beta.4 artifacts and
+`@adcp/sdk@14.0.0-beta.5` now support the same exact checkpoint. Python and Go
+3.2 packages are still pending. Later betas require a fresh SDK support
+statement against their exact bundle. See the
 [3.2 beta program](/docs/reference/3-2-beta) before testing.
 </Warning>
 
@@ -57,7 +57,9 @@ match the request.
 
 The 3.2 surface includes portable demographics, country-aware subdivisions,
 named places, browser families, property exclusions, audience evidence, and
-exact package readback. See [Targeting-aware product discovery](/docs/reference/migration/targeting-aware-discovery).
+exact package readback. Products can also disclose per-package cardinality for
+country inclusion, country exclusion, and proximity targeting before a buyer
+creates or updates a package. See [Targeting-aware product discovery](/docs/reference/migration/targeting-aware-discovery).
 
 ### Commercial terms and controls are explicit
 

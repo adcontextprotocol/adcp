@@ -17,7 +17,7 @@ import { AgentClient } from '@adcp/sdk';
 import { runStoryboard } from '@adcp/sdk/testing';
 import type { StoryboardResult, StoryboardRunOptions } from '@adcp/sdk/testing';
 import { conformanceSessions } from './session-store.js';
-import { getStoryboard } from '../services/storyboards.js';
+import { getStoryboard, getTestKitForStoryboard } from '../services/storyboards.js';
 import { createLogger } from '../logger.js';
 import { hostedComplianceTarget, withHostedStoryboardRunOptions } from '../services/hosted-compliance-version.js';
 
@@ -99,7 +99,13 @@ export async function runStoryboardViaConformanceSocket(
   // `getOrCreateClient` but isn't on the public type. Cast through the
   // narrow runOptions shape rather than `as any` so unrelated typos still
   // get caught.
+  // adcp#6735 — pre-populate the storyboard-declared test kit so
+  // `from_test_kit` steps run with the credential the storyboard was
+  // authored against (the bearer substitution in `withHostedAuthTestKit`
+  // no-ops when the kit already carries auth).
+  const declaredTestKit = getTestKitForStoryboard(storyboardId);
   const runOptions = withHostedStoryboardRunOptions({
+    ...(declaredTestKit && { test_kit: declaredTestKit }),
     _client: agentClient,
     test_session_id: testSessionId,
     timeout_ms: options.timeoutMs ?? 60_000,

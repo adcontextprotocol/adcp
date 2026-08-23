@@ -1,0 +1,119 @@
+---
+title: list_products
+description: "Read seller product offers with structured discovery criteria."
+"og:title": "AdCP list_products Task"
+testable: true
+---
+
+`list_products` is the side-effect-free entry point to the compact product lifecycle. Each invocation completes synchronously, while account-level wholesale feed webhooks keep long-lived buyer mirrors current without polling. It returns products only—never proposals. Buyers can purchase listed products through [`buy_products`](/dist/docs/3.0.26/media-buy/task-reference/buy_products) or pass returned `product_id` values to [`request_proposals`](/dist/docs/3.0.26/media-buy/task-reference/request_proposals) for seller planning.
+
+{/* Using latest because this schema is not yet released in any version.
+    Update to the correct version alias after the next release. */}
+**Request schema:** [`/schemas/3.2.0-beta.0/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.0/media-buy/list-products-request.json)
+
+```json
+{
+  "brand": { "domain": "acmeoutdoor.example" },
+  "criteria": {
+    "offer_filters": {
+      "channels": ["olv"],
+      "pricing_currencies": ["USD"]
+    },
+    "targeting_overlay": {
+      "geo_countries": ["US"]
+    },
+    "required_overlay_support": {
+      "geo_metros": { "systems": ["nielsen_dma"] }
+    }
+  },
+  "max_results": 25
+}
+```
+
+`brand` is an identity-only key. Sellers resolve its canonical manifest from the domain; callers do not send logos, colors, or governance overrides in this request. Catalog ingestion belongs to [`sync_catalogs`](/dist/docs/3.0.26/media-buy/task-reference/sync_catalogs); discovery accepts only a compact catalog selection under `criteria.catalog`.
+
+`offer_filters` select commercial offers. `targeting_overlay` instead constrains the inventory or impressions that may deliver, so every returned price and forecast must account for the effective overlay. `required_overlay_support` asks for targeting dimensions the buyer can select independently on packages later; it does not request one product per metro or guarantee availability for every future value.
+
+When a product can honor the overlay exactly, it does not echo the request. A product that proposes a different executable overlay returns sparse `targeting_resolution.modifications`; selecting that configured product accepts those disclosed changes.
+
+## Response
+
+Every response has an explicit `outcome`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `outcome` | string | `listed` when the response contains a product page; `unchanged` when a conditional request matches the current feed. |
+| `products` | Product[] | Product offers for this page. Required for `listed`, even when the array is empty; omitted for `unchanged`. |
+| `next_cursor` | string | Cursor for the next page. Omitted on the final page. Pass it as `cursor` in the next request. |
+| `feed_version` | string | Opaque version of the selected offer feed. Pass it as `if_feed_version` on a later request to avoid downloading an unchanged feed. |
+| `pricing_version` | string | Opaque version of the selected pricing layer. Pass it as `if_pricing_version` together with `if_feed_version` when checking both versions. |
+| `cache_scope` | string | Whether the version applies to the seller's `public` feed or an `account`-specific overlay. |
+| `incomplete` | object[] | Optional details about portions of the response the seller could not complete. |
+
+A product page can include continuation and cache state:
+
+```json
+{
+  "outcome": "listed",
+  "products": [],
+  "next_cursor": "page_2",
+  "feed_version": "feed_2026_08_10_1",
+  "pricing_version": "pricing_42",
+  "cache_scope": "account"
+}
+```
+
+To check whether the same selection has changed, repeat the request with `if_feed_version`. Include `if_pricing_version` only when `if_feed_version` is also present:
+
+```json
+{
+  "brand": { "domain": "acmeoutdoor.example" },
+  "criteria": {
+    "offer_filters": {
+      "channels": ["olv"],
+      "pricing_currencies": ["USD"]
+    },
+    "targeting_overlay": {
+      "geo_countries": ["US"]
+    }
+  },
+  "if_feed_version": "feed_2026_08_10_1",
+  "if_pricing_version": "pricing_42"
+}
+```
+
+If the selected feed and pricing layer still match, the seller can omit `products`:
+
+```json
+{
+  "outcome": "unchanged",
+  "feed_version": "feed_2026_08_10_1",
+  "pricing_version": "pricing_42",
+  "cache_scope": "account"
+}
+```
+
+## Availability forecasts are a per-read overlay
+
+For calendar-shaped guaranteed inventory (homepage takeovers, sponsorships), `list_products` can answer "which dates are open?" directly: pass `criteria.offer_filters.availability_horizon` and request `forecast` in `fields`, and each product's forecast comes back partitioned into `time`-dimensioned points carrying `availability_status`. See [Flexible Availability Windows](/dist/docs/3.0.26/media-buy/product-discovery/media-products#flexible-availability-windows) for window semantics.
+
+Availability is volatile — every booking changes it — so it is never part of the versioned feed content:
+
+- `feed_version` covers the durable offer definition only. Forecast data (including availability windows) does not participate in feed-version scoping and carries its own freshness via the forecast's `generated_at` and `valid_until`.
+- A request whose `fields` includes `forecast` MUST NOT be answered with `outcome: "unchanged"` — that arm omits `products`, so it cannot carry the volatile data the buyer explicitly asked for. Sellers return a full `listed` response even when the feed token matches.
+- Wholesale feed webhooks fire on definition and pricing changes, not on booking-state changes. Broadcasting window closures to all subscribers would leak demand signals; buyers who need current availability read it on demand, and buyers who need a guarantee take an inventory hold by finalizing a proposal.
+
+In practice these are two different reads: mirror maintenance (conditional, no `forecast` in `fields`) and availability checks (`forecast` requested, never conditional). Any `availability_status` returned is a snapshot bounded by `valid_until`, never a hold — the buy itself remains the authoritative availability check and fails with [`PRODUCT_UNAVAILABLE`](/dist/docs/3.0.26/building/verification/compliance-catalog#error-code-product-unavailable) when a window has since closed.
+
+## Wholesale feed webhooks
+
+Buyers maintaining a wholesale product mirror register `product.*` and `wholesale_feed.bulk_change` subscribers through `sync_accounts.accounts[].notification_configs[]`. Registration is account-level and durable; `push_notification_config` on an individual `list_products` request does not create that subscription.
+
+The normal mirror flow is:
+
+1. Call `list_products` to bootstrap the mirror and store `feed_version` plus `cache_scope`.
+2. Register the durable account subscriber through [`sync_accounts`](/dist/docs/3.0.26/accounts/tasks/sync_accounts).
+3. Apply the webhook's `canonical_product` or `canonical_pricing_options` replacement payload directly.
+4. On a gap, call `list_products` with the mirror's last successfully applied `feed_version`. On an uncertain or bulk-change repair, omit the conditional token and replace the mirror from a complete read.
+
+The webhook version describes post-change state; it is not the conditional token for a stale mirror. Conditional reads are a repair path, not a requirement to poll while webhooks are healthy.

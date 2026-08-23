@@ -8,10 +8,10 @@ description: "Role-based migration checklist for adopting the AdCP 3.2 beta whil
 # Migrating from 3.1 to 3.2
 
 <Warning>
-**3.2 is in beta.** Beta.0 publishes canonical protocol artifacts before the
-SDK wave. Beta.1 incorporates SDK feedback, then becomes the first exact-version
-SDK-backed checkpoint after SDKs ingest beta.1. Keep production traffic pinned
-to `"3.1"` while validating 3.2 in staging.
+**3.2 is in beta.** Beta.4 is the current protocol checkpoint, with exact
+TypeScript support in `@adcp/sdk@14.0.0-beta.5`. Python and Go support remain
+pending. Keep production traffic pinned to `"3.1"` while validating 3.2 in
+staging.
 </Warning>
 
 3.2 is a minor release over 3.1. Existing integrations do not need to adopt the
@@ -27,22 +27,22 @@ For prerelease artifacts and SDK timing, use the [3.2 beta program](/docs/refere
 | Step | Who | Action |
 |---|---|---|
 | 1 | Everyone | Keep production on `"3.1"`; choose an exact 3.2 beta artifact for staging. |
-| 2 | SDK and codegen maintainers | Generate from the signed `3.2.0-beta.0` protocol tarball, not `main` or `/schemas/latest/`. |
+| 2 | SDK and codegen maintainers | Generate from the signed `3.2.0-beta.3` protocol tarball, not `main` or `/schemas/latest/`. |
 | 3 | Sellers and agents | Advertise the exact prerelease in `adcp.supported_versions` and echo the release actually served. |
 | 4 | Buyers | Send `adcp_version: "3.2-beta.N"` only after exact capability discovery; never silently move between beta pins. |
 | 5 | Media-buy implementations | Move create/update success handling completely to `media_buy_status`. |
 | 6 | Signing implementations | Require `content-digest` coverage and migrate request `Signature` and `Content-Digest` binary values to RFC 8941 padded Base64. |
 | 7 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
-| 8 | Compliance operators | Use beta.0 for protocol implementation feedback; wait until the exact beta.1 SDK refresh and integration evidence are published before treating beta.1 as SDK-backed. |
+| 8 | Compliance operators | Pair `@adcp/sdk@14.0.0-beta.5` with exact beta.4 for TypeScript testing; require an equally explicit support statement for every other SDK. |
 
 ## Required to claim 3.2 behavior
 
 ### Serve and echo the exact release
 
-During beta, prerelease matching is exact. A seller serving beta.0 advertises
-`"3.2-beta.0"`; beta.1 advertises `"3.2-beta.1"`. Do not advertise stable
-`"3.2"` before GA and do not treat a major-only declaration as evidence of
-3.2 support.
+During beta, prerelease matching is exact. A seller serving beta.4 advertises
+`"3.2-beta.4"`. Do not advertise stable `"3.2"` before GA, silently negotiate
+between beta ordinals, or treat a major-only declaration as evidence of 3.2
+support.
 
 The 3.2 compliance posture makes missing `supported_versions` or a missing
 response echo a blocking failure for a 3.2 claim, even though the fields remain

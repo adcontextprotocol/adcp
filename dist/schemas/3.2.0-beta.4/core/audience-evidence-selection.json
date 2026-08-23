@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/audience-evidence-selection.json",
+  "title": "Audience Evidence Selection",
+  "description": "Decision readback for the exact immutable audience-evidence snapshot used in product recommendation, required eligibility, or package construction. Sellers MUST return this readback when evidence requirements affect inclusion or ranking even if get_products.fields omitted audience_evidence_selections. A constructed package MUST return a matching selection for every buyer audience_evidence_pin and for every evidence item used to satisfy package audience_evidence_requirements. Sellers MUST retain the full snapshot and evaluations for at least as long as the package remains available through media-buy read surfaces. AdCP 3.2 introduces no buyer-controlled snapshot URL: buyers cache product evidence, sellers retain the source record, and this digest-pinned readback detects catalog mutation. Full evidence may be embedded but is not required on every product or package.",
+  "type": "object",
+  "properties": {
+    "evidence_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "audience_evidence"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "audience_evidence_snapshot"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "content_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "decision_use": {
+      "type": "string",
+      "enum": [
+        "recommendation",
+        "eligibility",
+        "package_construction"
+      ],
+      "description": "How this evidence affected the seller's decision. This is not targeting execution."
+    },
+    "evidence": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/audience-evidence.json",
+      "description": "Optional inline immutable snapshot. Its identity, version, and digest MUST equal the surrounding fields."
+    },
+    "attestation_evaluations": {
+      "type": "array",
+      "description": "Exact reference/evaluation pairs used in the decision. The reference MUST be one of the selected evidence snapshot's attestation_refs, evaluation.reference_digest MUST equal the digest of that same reference, reference.subject.content_digest and evaluation.action_binding.action_digest MUST equal this selection's content_digest, evaluation.action_binding.action_id MUST equal snapshot_id, and action_type MUST be https://adcontextprotocol.org/actions/audience-evidence-evaluation.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "reference": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/attestation-reference.json"
+          },
+          "evaluation": {
+            "allOf": [
+              {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/attestation-evaluation.json"
+              },
+              {
+                "properties": {
+                  "action_binding": {
+                    "type": "object",
+                    "properties": {
+                      "action_type": {
+                        "const": "https://adcontextprotocol.org/actions/audience-evidence-evaluation"
+                      },
+                      "action_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024,
+                        "$comment": "x-entity deliberately omitted because the surrounding selection requires this value to equal snapshot_id."
+                      },
+                      "action_digest": {
+                        "type": "string",
+                        "pattern": "^sha256:[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "action_type",
+                      "action_id",
+                      "action_digest"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "action_binding"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "reference",
+          "evaluation"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 10
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "snapshot_id",
+    "version",
+    "content_digest",
+    "decision_use"
+  ],
+  "additionalProperties": false
+}

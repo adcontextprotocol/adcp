@@ -20,7 +20,7 @@ export const TALENT_ROLES = ['host', 'guest', 'creator', 'cast', 'narrator', 'pr
 export type TalentRole = typeof TALENT_ROLES[number];
 
 /** First wire release that carries the get_products business-rejection arm. */
-export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.0' as const;
+export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 
 export const PROPOSAL_NEGOTIATION_PROFILES = [
   'ask-only',
@@ -32,11 +32,16 @@ export type ProposalNegotiationProfile = (typeof PROPOSAL_NEGOTIATION_PROFILES)[
 
 export function supportsGetProductsRejected(servedVersion: string | undefined): boolean {
   if (!servedVersion) return false;
-  const match = servedVersion.match(/^(\d+)\.(\d+)(?:-|$)/);
+  const match = servedVersion.match(/^(\d+)\.(\d+)(?:-(beta|rc)(?:\.(\d+))?)?$/);
   if (!match) return false;
   const major = Number.parseInt(match[1], 10);
   const minor = Number.parseInt(match[2], 10);
-  return major > 3 || (major === 3 && minor >= 2);
+  if (major > 3 || (major === 3 && minor > 2)) return true;
+  if (major !== 3 || minor !== 2) return false;
+  const qualifier = match[3];
+  if (!qualifier || qualifier === 'rc') return true;
+  const prerelease = Number.parseInt(match[4] ?? '0', 10);
+  return qualifier === 'beta' && prerelease >= 2;
 }
 
 /** AccountReference from SDK — identifies an account on create_media_buy */
@@ -66,6 +71,8 @@ export interface TrainingContext {
    * context. Used to authorize principal-bound sandbox fixture projection
    * after the SDK removes the envelope account from domain-level arguments. */
   resolvedAccount?: AccountRef;
+  /** Trusted account identifier produced by the SDK account resolver. */
+  resolvedAccountId?: string;
   /** Frozen 3.0 creative-library session scope. Legacy requests historically
    * shared creative state by brand even when the SDK retained a natural
    * account envelope on some creative operations. */
@@ -81,6 +88,10 @@ export interface TrainingContext {
    * The public `/sales/mcp` endpoint remains ask-only; beta-gated profile
    * routes set one of the other values without trusting buyer input. */
   proposalNegotiationProfile?: ProposalNegotiationProfile;
+  /** Framework-derived mutation namespace; never sourced from buyer input. */
+  callerMutationScope?: Readonly<{ tenant_id: string; principal_id: string; account_id?: string }>;
+  /** Framework-derived proposal namespace; never sourced from buyer input. */
+  proposalRefinementScope?: Readonly<{ tenant_id: string; principal_id: string; account_id?: string }>;
   /** Local storyboard-runner compatibility shims. Never set in deployed routes. */
   storyboardCompat?: { version: '3.0' };
   /** Whether creative usage is billed through AdCP. Defaults to true for legacy/shared routes. */
@@ -198,6 +209,8 @@ export interface PricingTemplate {
   };
   /** For CPA: the event type that triggers billing */
   eventType?: EventType;
+  /** For CPA: the event name when eventType is custom */
+  customEventName?: string;
   /** For CPP: demographic targeting parameters */
   cppParameters?: { demographic: string };
   /** For CPV: view threshold parameters */
@@ -303,6 +316,17 @@ export interface SeededMeasurementCatalog {
   metrics: Array<{ metric_id: string; [key: string]: unknown }>;
 }
 
+/** Seller-internal booking calendar seeded via comply_test_controller.seed_product's
+ * fixture.availability. Drives windowed forecast partitioning for
+ * offer_filters.availability_horizon (get_products/list_products/request_proposals)
+ * and buy-time PRODUCT_UNAVAILABLE validation in create_media_buy. Kept out of
+ * seededProducts so the calendar never round-trips through the Product response
+ * shape — it is not a product field. */
+export interface SeededProductAvailability {
+  min_bookable_days: number;
+  booked_windows: Array<{ start_time: string; end_time: string }>;
+}
+
 export interface ComplyExtensions {
   accountStatuses: Map<string, string>;
   siSessions: Map<string, { status: string; terminationReason?: string }>;
@@ -312,6 +336,9 @@ export interface ComplyExtensions {
    * on the static catalog so storyboards can reference fixture IDs without
    * polluting the shared catalog. Merged into get_products output. */
   seededProducts: Map<string, Record<string, unknown>>;
+  /** Booking calendars seeded via seed_product's fixture.availability, keyed by product_id.
+   * See SeededProductAvailability. */
+  seededProductAvailability: Map<string, SeededProductAvailability>;
   /** Pricing options seeded via seed_pricing_option, keyed by `<product_id>:<pricing_option_id>`. */
   seededPricingOptions: Map<string, Record<string, unknown>>;
   /** Creative formats seeded via comply_test_controller.seed_creative_format.
@@ -361,6 +388,9 @@ export interface ComplyExtensions {
 }
 
 export interface SessionState {
+  /** Caller-scoped agent-level capability-change subscribers. Values retain
+   * write-only credentials; read responses redact them. */
+  agentNotificationConfigs: Map<string, Record<string, unknown>>;
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
   signalActivations: Map<string, SignalActivationState>;
@@ -394,7 +424,10 @@ export interface SessionState {
   proposalRefinementRecords: Map<string, {
     proposal: CanonicalProposal;
     version: number;
+    /** Trusted SDK-resolved account that originated this proposal. */
+    ownerAccountId?: string;
     activeHold?: { proposal_id: string; expires_at: string };
+    declined?: { declined_at: string; reason?: string; detail?: string };
     accepted?: { accepted_at: string; media_buy_id: string; media_buy_revision: number };
   }>;
   usageRecords: UsageRecord[];
@@ -417,8 +450,8 @@ export interface SessionState {
    * single-request case with the InMemoryStateStore. */
   complyExtensions: ComplyExtensions;
   lastGetProductsContext?: {
-    /** Products are deterministic from the catalog — not persisted across requests.
-     * After a cross-machine rehydration, this is undefined and callers must re-derive. */
+    /** Immutable snapshots for products referenced by persisted proposals.
+     * Ordinary catalog discovery is re-derived instead of persisted. */
     products?: Product[];
     proposals?: Proposal[];
   };
@@ -462,6 +495,7 @@ export interface AccountRef {
   operator?: string;
   operator_unit?: OperatorUnit;
   currency?: string;
+  timezone?: string;
   sandbox?: boolean;
 }
 
@@ -486,6 +520,7 @@ export interface MediaBuyHistoryEntry {
 }
 
 export interface MediaBuyAvailableActionState {
+  task?: 'control_media_buy' | 'refine_proposals' | 'sync_creatives';
   action: string;
   mode: 'self_serve' | 'conditional_self_serve' | 'requires_approval';
   sla?: {
@@ -508,18 +543,34 @@ export interface MediaBuyProductAllowedActionState {
 
 export interface MediaBuyState {
   mediaBuyId: string;
+  /** Human-readable trafficking label; not identity or commercial terms. */
+  name?: string;
   accountRef: AccountRef;
   brandRef?: BrandRef;
   status: string;
   currency: string;
   /** Seller-authoritative hard lifetime cap; falls back to package sum for legacy fixtures. */
   totalBudget?: number;
+  /** Immutable compact proposal snapshot currently governing this buy. */
+  acceptedProposal?: CanonicalProposal;
+  /** Hard aggregate daily spend ceiling shared by all packages. */
+  dailyBudgetCap?: number;
+  /** Buyer-selected IANA timezone for aggregate and package cap days. */
+  budgetCapTimezone?: string;
   budgetAllocation?: Record<string, unknown>;
   aggregatePacing?: string;
   aggregateBidding?: Record<string, unknown>;
+  invoiceRecipient?: Record<string, unknown>;
+  reportingWebhook?: Record<string, unknown>;
   packages: PackageState[];
   productAllowedActions?: MediaBuyProductAllowedActionState[];
   availableActions?: MediaBuyAvailableActionState[];
+  /** Stable execution identities assigned by purchase position. */
+  purchaseBindings?: Array<{
+    purchase_index: number;
+    product_id: string;
+    package_id: string;
+  }>;
   startTime: string;
   endTime: string;
   revision: number;
@@ -560,10 +611,25 @@ export interface Impairment {
 export interface PackageState {
   packageId: string;
   productId: string;
+  /** Last concrete allocation used for deterministic delivery simulation. */
   budget: number;
+  /** A seller-optimized update removed this package's hard cap while the
+   * media-buy total remains the authoritative spend ceiling. */
+  budgetCapRemoved?: boolean;
+  dailyBudgetCap?: number;
+  minSpendTarget?: number;
   pricingOptionId: string;
   bidPrice?: number;
   impressions?: number;
+  pacing?: string;
+  bidding?: Record<string, unknown>;
+  catalogIds?: string[];
+  measurementTerms?: Record<string, unknown>;
+  performanceStandards?: Array<Record<string, unknown>>;
+  audienceEvidenceRequirements?: Record<string, unknown>;
+  audienceEvidencePins?: Array<Record<string, unknown>>;
+  agencyEstimateNumber?: string;
+  ext?: Record<string, unknown>;
   paused: boolean;
   canceled?: boolean;
   canceledAt?: string;
@@ -583,6 +649,9 @@ export interface PackageState {
    * catalog changes; formats_pending is derived from it at read time. */
   formatsToProvide?: Array<Record<string, unknown>>;
   creativeAssignments: string[];
+  /** Complete legacy trafficking rows retained for lossless create/update
+   * readback. Delivery simulation still indexes the creative IDs separately. */
+  creativeAssignmentDetails?: Array<Record<string, unknown>>;
   targeting?: PackageTargeting;
   context?: Record<string, unknown>;
   legacyOmitProductId?: boolean;
@@ -613,6 +682,7 @@ export interface PackageTargeting {
   collection_list_exclude?: ListReference;
   audience_include?: string[];
   audience_exclude?: string[];
+  [key: string]: unknown;
 }
 
 /** A single asset slot inside a creative manifest (e.g., headline, hero_image). */
@@ -632,6 +702,7 @@ export interface CreativeManifest {
   format_kind?: string;
   format_option_ref?: Record<string, unknown>;
   assets: Record<string, ManifestAsset | ManifestAsset[]>;
+  component_assets?: Record<string, Record<string, ManifestAsset | ManifestAsset[]>>;
 }
 
 export interface CreativeState {
@@ -643,6 +714,7 @@ export interface CreativeState {
   formatKind?: string;
   formatOptionRef?: Record<string, unknown>;
   assets?: Record<string, ManifestAsset | ManifestAsset[]>;
+  componentAssets?: Record<string, Record<string, ManifestAsset | ManifestAsset[]>>;
   name?: string;
   status: string;
   syncedAt: string;
@@ -796,6 +868,9 @@ export interface GovernanceCheckState {
   tool?: string;
   /** JCS/SHA-256 binding of the task payload authorized by the intent. */
   authorizedPayloadHash?: string;
+  /** Canonical proposal snapshot inspected for an accept_proposal intent. */
+  authorizedProposalId?: string;
+  authorizedProposalTermsDigest?: string;
   purchaseType?: string;
   /** Budget approved from the governance agent's own evaluated input. */
   authorizedBudget?: number;

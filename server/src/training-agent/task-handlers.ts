@@ -42,7 +42,7 @@ import {
 import { mergeSeedProductLegacy as mergeSeedProduct } from '@adcp/sdk/testing';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
-import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type SessionState } from './types.js';
+import { supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -77,6 +77,9 @@ import type {
 import { CreativeAssetSchema, CreativeManifestSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getCanonicalBase } from './canonical-base.js';
+import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
+import { getPromotedFormatShapes } from '../services/format-shape-promotion-registry.js';
+import { validateCtvSemantics } from './ctv-experience-matrix.js';
 import {
   evaluateTrainingProposal,
   proposalCapabilitiesForProfile,
@@ -113,10 +116,17 @@ type InlineCreativeInput = {
   format_kind?: string;
   format_option_ref?: Record<string, unknown>;
   assets?: Record<string, unknown>;
+  component_assets?: Record<string, Record<string, unknown>>;
   manifest?: CreativeManifest;
+  weight?: number;
+  placement_refs?: Array<Record<string, unknown>>;
+  placement_ids?: string[];
 };
+type TrainingCanonicalFormatKind = CanonicalFormatKind
+  | 'seller_rendered_stateful_display'
+  | 'coordinated_placements';
 type InlineCreativeIdentity =
-  | { kind: 'canonical'; formatKind: CanonicalFormatKind; formatOptionRef?: Record<string, unknown> }
+  | { kind: 'canonical'; formatKind: TrainingCanonicalFormatKind; formatOptionRef?: Record<string, unknown> }
   | { kind: 'legacy'; formatId: FormatID; formatOptionRef?: Record<string, unknown> };
 type ValidatedInlineCreative = {
   creative: InlineCreativeInput;
@@ -145,6 +155,55 @@ type GetProductsReadDirectives = {
   staleDirective?: { tool: string; upstreamName?: string; createdAt: string };
 };
 type PricingOption = Product['pricing_options'][number];
+type CompactProductPurchase = ProposalPurchase & {
+  budget?: number;
+  format_option_refs?: unknown[];
+  catalog_ids?: string[];
+  impressions?: number;
+  daily_budget_cap?: number;
+  min_spend_target?: number;
+  pacing?: string;
+  bidding?: Record<string, unknown>;
+  targeting_overlay?: PackageTargeting;
+  optimization_goals?: Array<Record<string, unknown>>;
+  audience_evidence_requirements?: Record<string, unknown>;
+  audience_evidence_pins?: Array<Record<string, unknown>>;
+  agency_estimate_number?: string;
+  measurement_terms?: Record<string, unknown>;
+  performance_standards?: Array<Record<string, unknown>>;
+  context?: Record<string, unknown>;
+  ext?: Record<string, unknown>;
+};
+type BuyProductsRequest = ToolArgs & {
+  feed_version: string;
+  pricing_version?: string;
+  purchases: CompactProductPurchase[];
+  total_budget?: { amount: number; currency: string };
+  daily_budget_cap?: number;
+  budget_cap_timezone?: string;
+  budget_allocation?: Record<string, unknown>;
+  pacing?: string;
+  bidding?: Record<string, unknown>;
+  start_time: string;
+  end_time: string;
+  purchase_order_ref?: string;
+  agency_estimate_number?: string;
+  advertiser_industry?: string;
+};
+type AcceptProposalRequest = ToolArgs & {
+  proposal_id: string;
+  proposal_terms_digest: string;
+  total_budget?: { amount: number; currency: string };
+};
+type ControlMediaBuyRequest = ToolArgs & {
+  media_buy_id: string;
+  revision: number;
+  name?: string;
+  paused?: boolean;
+  canceled?: true;
+  cancellation_reason?: string;
+  packages?: Array<Record<string, unknown>>;
+};
 type PricingStructure = 'fixed' | 'auction' | 'contingent';
 type PricingOptionView = {
   pricing_option_id?: string;
@@ -180,6 +239,7 @@ type ValidateInputArgs = ToolArgs & {
     format_id?: FormatID;
     format_option_ref?: Record<string, unknown>;
     assets?: Record<string, unknown>;
+    component_assets?: Record<string, Record<string, unknown>>;
   };
   targets?: ValidateInputTarget[];
 };
@@ -194,6 +254,12 @@ type ValidateInputResult = {
   target: ValidateInputTarget;
   result_kind: 'validated_pass' | 'validated_fail' | 'unvalidatable_nondeterministic';
   violations?: ValidateInputViolation[];
+  /**
+   * Non-blocking observations (e.g. LEAN policy advisories) that do not
+   * affect result_kind. May be present alongside validated_pass,
+   * validated_fail, or unvalidatable_nondeterministic.
+   */
+  warnings?: ValidateInputViolation[];
 };
 type CanonicalSlot = {
   asset_group_id: string;
@@ -285,6 +351,7 @@ const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
     { asset_group_id: 'display_url', asset_type: 'text' },
     { asset_group_id: 'rating', asset_type: 'text' },
     { asset_group_id: 'price', asset_type: 'text' },
+    { asset_group_id: 'video', asset_type: 'vast' },
     { asset_group_id: 'impression_tracker', asset_type: 'pixel_tracker' },
     { asset_group_id: 'viewability_tracker', asset_type: 'pixel_tracker' },
     { asset_group_id: 'click_tracker', asset_type: 'pixel_tracker' },
@@ -304,7 +371,82 @@ const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
     { asset_group_id: 'offering_ref', asset_type: 'text' },
     { asset_group_id: 'landing_page_url', asset_type: 'url' },
   ],
+  seller_rendered_stateful_display: [
+    { asset_group_id: 'state_canvases', asset_type: 'image', min: 1 },
+    { asset_group_id: 'logo', asset_type: 'image' },
+    { asset_group_id: 'imagery', asset_type: 'image', min: 0 },
+    { asset_group_id: 'headline', asset_type: 'text' },
+    { asset_group_id: 'messaging', asset_type: 'text' },
+    { asset_group_id: 'cta', asset_type: 'text' },
+    { asset_group_id: 'legal_text', asset_type: 'text' },
+    { asset_group_id: 'video_main', asset_type: 'video' },
+    // landing_page_url's required-ness depends on the declared `clickthrough`
+    // policy (see the `clickthrough_policy` semantic check), not a static flag.
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+    { asset_group_id: 'state_click_urls', asset_type: 'url', min: 0 },
+    { asset_group_id: 'layered_source', asset_type: 'zip' },
+    { asset_group_id: 'font_files', asset_type: 'zip' },
+  ],
+  coordinated_placements: [],
 };
+// Canonicals that narrow their accepted slot asset_type set beyond "union of
+// default slots' types plus trackers" (see allowedAssetTypesForCanonical).
+// Mirrors each canonical schema's own `x-adcp-validation.allowed_slot_asset_types`.
+const CANONICAL_ALLOWED_SLOT_ASSET_TYPES: Record<string, string[]> = {
+  seller_rendered_stateful_display: ['image', 'video', 'text', 'url', 'zip', 'pixel_tracker'],
+};
+// Canonical-specific additive slot types that are valid for declared
+// refinements without belonging in the canonical's default slot set.
+const CANONICAL_ADDITIONAL_SLOT_ASSET_TYPES: Record<string, string[]> = {
+  // Copy-bearing CTV activations add character-limited text slots such as
+  // activation_message; they are not part of every VAST manifest by default.
+  video_vast: ['text'],
+};
+// Cross-cutting asset types every canonical accepts regardless of its own
+// default slots: impression/click/viewability trackers, plus `brief` for the
+// asset_source: agent_synthesized / synthesis_nondeterministic pattern that
+// any canonical can opt into via a `creative_brief`-style slots override.
+const CANONICAL_UNIVERSALLY_ALLOWED_ASSET_TYPES = ['pixel_tracker', 'vast_tracker', 'daast_tracker', 'brief'];
+
+/**
+ * Slot asset_type widening guard. A declaration's effective slots (its own
+ * defaults, or a `params.slots` override) MUST NOT introduce an asset_type
+ * outside what the canonical allows. Canonicals with an explicit allowlist
+ * (currently only seller_rendered_stateful_display) use that list; every
+ * other canonical allows the union of its own default slots' asset_types
+ * plus the cross-cutting types above. Executable types (javascript, html,
+ * css, webhook) are therefore only accepted by canonicals whose own defaults
+ * already use them.
+ */
+function allowedAssetTypesForCanonical(kind: string): Set<string> {
+  const explicit = CANONICAL_ALLOWED_SLOT_ASSET_TYPES[kind];
+  if (explicit) return new Set(explicit);
+  const defaultTypes = (CANONICAL_FORMAT_SLOTS[kind] ?? []).map(slot => slot.asset_type);
+  const additionalTypes = CANONICAL_ADDITIONAL_SLOT_ASSET_TYPES[kind] ?? [];
+  return new Set([...defaultTypes, ...additionalTypes, ...CANONICAL_UNIVERSALLY_ALLOWED_ASSET_TYPES]);
+}
+
+function slotAssetTypeAllowlistViolations(
+  formatKind: string,
+  declaredSlots: unknown,
+  fieldPrefix: string,
+): ValidateInputViolation[] {
+  const slots = normalizeCanonicalSlots(declaredSlots);
+  if (!slots) return [];
+  const allowed = allowedAssetTypesForCanonical(formatKind);
+  const violations: ValidateInputViolation[] = [];
+  for (const [index, slot] of slots.entries()) {
+    if (!allowed.has(slot.asset_type)) {
+      violations.push({
+        rule: 'allowed_slot_asset_types',
+        field: `${fieldPrefix}[${index}].asset_type`,
+        expected: [...allowed],
+        predicted: slot.asset_type,
+      });
+    }
+  }
+  return violations;
+}
 const BUILD_CREATIVE_FORMAT_ALIASES: Record<string, string> = {
   display_300x250_generative: 'display_300x250',
   display_728x90_generative: 'display_728x90',
@@ -341,6 +483,11 @@ interface PackageInput {
   budget: number;
   bid_price?: number;
   impressions?: number;
+  daily_budget_cap?: number;
+  min_spend_target?: number;
+  pacing?: string;
+  bidding?: Record<string, unknown>;
+  catalog_ids?: string[];
   paused?: boolean;
   start_time?: string;
   end_time?: string;
@@ -350,9 +497,23 @@ interface PackageInput {
   params?: Record<string, unknown>;
   targeting?: PackageTargeting;
   targeting_overlay?: PackageTargeting;
-  creative_assignments?: Array<{ creative_id?: string }>;
+  creative_assignments?: Array<{
+    creative_id?: string;
+    rotation_mode?: string;
+    group_id?: string;
+    sequence_position?: number;
+    placement_refs?: Array<Record<string, unknown>>;
+    placement_ids?: string[];
+    [key: string]: unknown;
+  }>;
   creatives?: InlineCreativeInput[];
   context?: Record<string, unknown>;
+  measurement_terms?: Record<string, unknown>;
+  performance_standards?: Array<Record<string, unknown>>;
+  audience_evidence_requirements?: Record<string, unknown>;
+  audience_evidence_pins?: Array<Record<string, unknown>>;
+  agency_estimate_number?: string;
+  ext?: Record<string, unknown>;
   committed_metrics?: Array<{
     scope: 'standard' | 'vendor';
     metric_id: string;
@@ -425,6 +586,7 @@ function persistInlineCreatives(
           ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
         }),
       ...(manifest && { assets: manifest.assets }),
+      ...(manifest?.component_assets && { componentAssets: manifest.component_assets }),
       name: creative.name ?? existing?.name,
       status: existing?.status ?? 'approved',
       syncedAt,
@@ -443,6 +605,26 @@ type CanonicalPackageFormat = Record<string, unknown> & {
   params?: Record<string, unknown>;
   v1_format_ref?: FormatID[];
 };
+
+type LegacyCreativeAssignmentRow = {
+  creative_id?: string;
+  rotation_mode?: string;
+  group_id?: string;
+  sequence_position?: number;
+  placement_refs?: Array<Record<string, unknown>>;
+  placement_ids?: string[];
+  [key: string]: unknown;
+};
+
+function inlineCreativeAssignmentRows(creatives: InlineCreativeInput[] | undefined): LegacyCreativeAssignmentRow[] {
+  if (!Array.isArray(creatives)) return [];
+  return creatives.map(creative => ({
+    creative_id: creative.creative_id,
+    ...(creative.weight !== undefined && { weight: creative.weight }),
+    ...(creative.placement_refs !== undefined && { placement_refs: structuredClone(creative.placement_refs) }),
+    ...(creative.placement_ids !== undefined && { placement_ids: [...creative.placement_ids] }),
+  }));
+}
 
 type IndexedLegacyDeclaration = {
   declaration: CanonicalPackageFormat;
@@ -1457,26 +1639,197 @@ function creativeCoversPackageFormat(
   }
   if (!requiredKind || creativeKind !== requiredKind) return false;
 
+  // This training seller does not materialize localized variants in its
+  // CreativeState. It must therefore fail closed rather than claim that an
+  // assignment satisfies a locale-constrained product or placement option.
+  if (isRecord(requirement.locale_policy)) return false;
+
   const requiredOptionId = requirement.format_option_id;
   const ref = creative.formatOptionRef ?? creative.manifest?.format_option_ref;
+  let hasMatchingOptionRef = false;
   if (requiredOptionId && isRecord(ref)) {
     if (ref.format_option_id !== requiredOptionId) return false;
-    return !requirement.publisher_domain || ref.publisher_domain === requirement.publisher_domain;
+    if (requirement.publisher_domain && ref.publisher_domain !== requirement.publisher_domain) return false;
+    hasMatchingOptionRef = true;
   }
-  if (requiredOptionId && sameKindRequirementCount > 1) return false;
+  if (requiredOptionId && !hasMatchingOptionRef && sameKindRequirementCount > 1) return false;
 
-  // An explicit option reference is the strongest coverage proof. Portable
-  // manifests may omit it, so for an unambiguous kind fall back to validating
-  // the actual manifest slots against the frozen package declaration.
+  // Existing canonical formats use an explicit matching option reference as
+  // sufficient coverage proof. The product-bound 3.2 formats additionally
+  // validate their state/component contract below.
+  if (hasMatchingOptionRef
+    && requiredKind !== 'seller_rendered_stateful_display'
+    && requiredKind !== 'coordinated_placements') return true;
+
+  // Portable manifests may omit an option reference, so for an unambiguous
+  // kind fall back to validating the actual manifest slots against the frozen
+  // package declaration. Product-bound formats always take this path.
   const manifest = creative.manifest;
   if (!manifest) return !requiredOptionId && !requirement.params;
   const params = isRecord(requirement.params) ? requirement.params : {};
+  if (requiredKind === 'coordinated_placements') {
+    const components = Array.isArray(params.components) ? params.components.filter(isRecord) : [];
+    const componentAssets = isRecord(manifest.component_assets) ? manifest.component_assets : {};
+    const declaredIds = new Set(components.flatMap(component =>
+      typeof component.component_id === 'string' ? [component.component_id] : []));
+    if (Object.keys(componentAssets).some(componentId => !declaredIds.has(componentId))) return false;
+    if (components.some(component => component.required === true
+      && (typeof component.component_id !== 'string' || !isRecord(componentAssets[component.component_id])))) return false;
+    const sharedSlots = Array.isArray(params.shared_slots) ? params.shared_slots.filter(isRecord) : [];
+    if (sharedSlots.some(slot => slot.required === true
+      && (typeof slot.asset_group_id !== 'string' || manifest.assets?.[slot.asset_group_id] === undefined))) return false;
+  }
   const slots = normalizeCanonicalSlots(requirement.slots)
     ?? normalizeCanonicalSlots(params.slots)
     ?? CANONICAL_FORMAT_SLOTS[requiredKind ?? '']
     ?? [];
   return validateManifestSlots(manifest, slots).length === 0
     && canonicalParamsSatisfied(manifest, params);
+}
+
+function creativeCanTargetFormat(
+  creative: CreativeState | undefined,
+  requirement: CanonicalPackageFormat,
+  sameKindRequirementCount: number,
+): boolean {
+  if (!creative || isRecord(requirement.locale_policy)) return false;
+  const legacyRefs = Array.isArray(requirement.v1_format_ref) ? requirement.v1_format_ref : [];
+  if (creative.formatId && legacyRefs.some(ref => ref?.id === creative.formatId?.id
+    && (!ref.agent_url || !creative.formatId?.agent_url || ref.agent_url === creative.formatId.agent_url))) {
+    return true;
+  }
+  const creativeKind = creative.formatKind ?? creative.manifest?.format_kind;
+  if (typeof requirement.format_kind === 'string' && creativeKind !== requirement.format_kind) return false;
+  const ref = creative.formatOptionRef ?? creative.manifest?.format_option_ref;
+  if (isRecord(ref) && typeof requirement.format_option_id === 'string') {
+    return ref.format_option_id === requirement.format_option_id
+      && (!requirement.publisher_domain || ref.publisher_domain === requirement.publisher_domain);
+  }
+  if (typeof requirement.format_option_id === 'string' && sameKindRequirementCount > 1) return false;
+  return typeof creativeKind === 'string';
+}
+
+function validateCreateAssignmentSemantics(
+  assignments: LegacyCreativeAssignmentRow[],
+  product: Record<string, unknown>,
+  targeting: PackageTargeting | undefined,
+  session: SessionState,
+  fieldPrefix: string,
+  packageRequirements: CanonicalPackageFormat[] = [],
+): TaskError[] {
+  const errors: TaskError[] = [];
+  const effectiveModes = new Set(assignments.map(assignment => assignment.rotation_mode ?? 'weighted'));
+  if (effectiveModes.size > 1) {
+    errors.push({
+      code: 'VALIDATION_ERROR',
+      message: `${fieldPrefix}: every assignment must resolve to the same rotation_mode`,
+      field: fieldPrefix,
+    });
+  }
+  const sequentialPositions = new Set<string>();
+  for (let index = 0; index < assignments.length; index++) {
+    const assignment = assignments[index]!;
+    if ((assignment.rotation_mode ?? 'weighted') === 'sequential') {
+      const key = `${assignment.group_id ?? '__default__'}:${assignment.sequence_position ?? ''}`;
+      if (sequentialPositions.has(key)) {
+        errors.push({
+          code: 'VALIDATION_ERROR',
+          message: `${fieldPrefix}[${index}]: sequence_position must be unique within its assignment group`,
+          field: `${fieldPrefix}[${index}].sequence_position`,
+        });
+      }
+      sequentialPositions.add(key);
+    }
+  }
+
+  const placements = Array.isArray(product.placements)
+    ? product.placements.filter(isRecord)
+    : [];
+  const placementKey = (placement: Record<string, unknown>): string | undefined =>
+    typeof placement.placement_id === 'string'
+      ? `${typeof placement.publisher_domain === 'string' ? placement.publisher_domain : ''}:${placement.placement_id}`
+      : undefined;
+  const productPlacements = new Map(
+    placements.flatMap(placement => {
+      const key = placementKey(placement);
+      return key ? [[key, placement] as const] : [];
+    }),
+  );
+  const selected = isRecord(targeting?.placement_selection)
+    && targeting.placement_selection.mode === 'selected'
+    && Array.isArray(targeting.placement_selection.placement_refs)
+    ? new Set(targeting.placement_selection.placement_refs.filter(isRecord).flatMap(ref => {
+      const key = placementKey(ref);
+      return key ? [key] : [];
+    }))
+    : undefined;
+
+  for (let index = 0; index < assignments.length; index++) {
+    const assignment = assignments[index]!;
+    const creative = typeof assignment.creative_id === 'string'
+      ? session.creatives.get(assignment.creative_id)
+      : undefined;
+    const routedPlacements: Record<string, unknown>[] = [];
+    const hasExplicitRoute = (Array.isArray(assignment.placement_refs) && assignment.placement_refs.length > 0)
+      || (Array.isArray(assignment.placement_ids) && assignment.placement_ids.length > 0);
+    if (Array.isArray(assignment.placement_refs) && assignment.placement_refs.length > 0) {
+      for (let refIndex = 0; refIndex < assignment.placement_refs.length; refIndex++) {
+        const ref = assignment.placement_refs[refIndex]!;
+        const key = placementKey(ref);
+        const placement = key ? productPlacements.get(key) : undefined;
+        if (!placement || (selected && !selected.has(key!))) {
+          errors.push({
+            code: 'VALIDATION_ERROR',
+            message: `${fieldPrefix}[${index}].placement_refs[${refIndex}] is not within the package's purchased product placements`,
+            field: `${fieldPrefix}[${index}].placement_refs[${refIndex}]`,
+          });
+          continue;
+        }
+        routedPlacements.push(placement);
+      }
+    } else if (Array.isArray(assignment.placement_ids)) {
+      for (let refIndex = 0; refIndex < assignment.placement_ids.length; refIndex++) {
+        const placementId = assignment.placement_ids[refIndex];
+        const matches = placements.filter(placement => placement.placement_id === placementId);
+        const placement = matches.length === 1 ? matches[0] : undefined;
+        const key = placement ? placementKey(placement) : undefined;
+        if (!placement || (selected && !selected.has(key!))) {
+          errors.push({
+            code: 'VALIDATION_ERROR',
+            message: `${fieldPrefix}[${index}].placement_ids[${refIndex}] is unknown, ambiguous, or outside the purchased placement set`,
+            field: `${fieldPrefix}[${index}].placement_ids[${refIndex}]`,
+          });
+          continue;
+        }
+        routedPlacements.push(placement);
+      }
+    }
+
+    const requirementSets = routedPlacements.length > 0
+      ? routedPlacements.map(placement => {
+        const placementRequirements = Array.isArray(placement.format_options)
+          ? placement.format_options.filter(isRecord) as CanonicalPackageFormat[]
+          : [];
+        return placementRequirements.length > 0 ? placementRequirements : packageRequirements;
+      })
+      : hasExplicitRoute
+        ? []
+        : [packageRequirements];
+    for (const requirements of requirementSets) {
+      if (requirements.length > 0 && !requirements.some(requirement => creativeCanTargetFormat(
+        creative,
+        requirement,
+        requirements.filter(other => other.format_kind === requirement.format_kind).length,
+      ))) {
+        errors.push({
+          code: 'VALIDATION_ERROR',
+          message: `${fieldPrefix}[${index}] creative does not satisfy any applicable package format or locale contract`,
+          field: `${fieldPrefix}[${index}]`,
+        });
+      }
+    }
+  }
+  return errors;
 }
 
 function formatsPendingForPackage(pkg: PackageState, session: SessionState): CanonicalPackageFormat[] {
@@ -1781,7 +2134,7 @@ function applyFixedPriceFilter(product: Product, fixedPrice: boolean): Product |
   const requested: PricingStructure = fixedPrice ? 'fixed' : 'auction';
   const pricing_options = product.pricing_options.filter(po => pricingStructureForOption(po) === requested);
   if (pricing_options.length === 0) return null;
-  return { ...product, pricing_options };
+  return { ...product, pricing_options: pricing_options as Product['pricing_options'] };
 }
 
 export function applyFixedPriceFilterToProducts(products: Product[], fixedPrice: boolean): Product[] {
@@ -1793,7 +2146,7 @@ export function applyFixedPriceFilterToProducts(products: Product[], fixedPrice:
 function applyPricingStructuresFilter(product: Product, structures: Set<PricingStructure>): Product | null {
   const pricing_options = product.pricing_options.filter(option => structures.has(pricingStructureForOption(option)));
   if (pricing_options.length === 0) return null;
-  return { ...product, pricing_options };
+  return { ...product, pricing_options: pricing_options as Product['pricing_options'] };
 }
 
 export function applyPricingStructuresFilterToProducts(products: Product[], structures: PricingStructure[]): Product[] {
@@ -1816,7 +2169,7 @@ function applyPricingCurrenciesFilter(product: Product, currencies: Set<string>)
   });
   if (pricingOptions.length === 0) return null;
   if (!mandatoryProductSignalChargesSatisfied(product, currencies)) return null;
-  return { ...product, pricing_options: pricingOptions };
+  return { ...product, pricing_options: pricingOptions as Product['pricing_options'] };
 }
 
 function applyPricingCurrenciesFilterToProducts(products: Product[], currencies: string[]): Product[] {
@@ -2075,7 +2428,7 @@ function concreteCpmPricing(
   }
 
   return {
-    product: { ...product, pricing_options: pricingOptions },
+    product: { ...product, pricing_options: pricingOptions as Product['pricing_options'] },
     pricingOption: effectiveOption,
     pricingOptionId,
     fixedPrice,
@@ -2183,6 +2536,7 @@ import {
   handleReportPlanOutcome,
   handleReportPlanAdjustment,
   handleGetPlanAuditLogs,
+  governanceProposalCommitment,
 } from './governance-handlers.js';
 import {
   BRAND_TOOLS,
@@ -2264,8 +2618,9 @@ import {
 import { maybeEmitCompletionWebhook } from './webhooks.js';
 import { selectSigningCapability } from './request-signing.js';
 import {
-  getTrainingTaskStore,
+  getScopedTrainingTaskStore,
   resetTrainingTaskStore,
+  trainingTaskScope,
   type TrainingTaskStore,
 } from './mcp-task-store.js';
 import {
@@ -2274,9 +2629,9 @@ import {
 } from './source-schema.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', GET_PRODUCTS_REJECTED_ADCP_VERSION] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.4'] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
-const CURRENT_ADCP_VERSION = '3.1-rc.15';
+const CURRENT_ADCP_VERSION = '3.2-beta.4';
 const MAX_PACKAGES_PER_BUY = 50;
 
 interface ParsedAdcpReleaseVersion {
@@ -2321,6 +2676,16 @@ function compareAdcpReleaseVersions(left: ParsedAdcpReleaseVersion, right: Parse
   if (!left.prerelease) return 1;
   if (!right.prerelease) return -1;
   return compareAdcpPrerelease(left.prerelease, right.prerelease);
+}
+
+function supportsLifecycleSplitCompatibility(version: string | undefined): boolean {
+  if (version === undefined) return true;
+  const parsed = parseAdcpReleaseVersion(version);
+  return parsed !== undefined && (parsed.major > 3 || (parsed.major === 3 && parsed.minor >= 2));
+}
+
+function lifecycleSplitVersionForContext(ctx: TrainingContext): string | undefined {
+  return isThreeZeroStoryboardCompat(ctx) ? '3.0' : ctx.servedAdcpVersion;
 }
 
 function compareAdcpPrerelease(left: string, right: string): number {
@@ -2463,7 +2828,7 @@ export function resolveServedAdcpVersionForTool(toolName: string, args: Record<s
   ) {
     return resolveServedAdcpVersion({
       ...args,
-      adcp_version: splitProductTool ? GET_PRODUCTS_REJECTED_ADCP_VERSION : CURRENT_ADCP_VERSION,
+      adcp_version: CURRENT_ADCP_VERSION,
     });
   }
   return resolveServedAdcpVersion(args);
@@ -2489,6 +2854,21 @@ function validatedCreativeIdentity(
 
   if (hasCanonicalIdentity) {
     const formatKind = canonicalFormatKind(creative.format_kind);
+    const usesProductBoundSchema = formatKind === 'seller_rendered_stateful_display'
+      || formatKind === 'coordinated_placements';
+    if (usesProductBoundSchema) {
+      if (creative.format_option_ref !== undefined && !isRecord(creative.format_option_ref)) {
+        return { ok: false, message: 'has an invalid canonical format_option_ref' };
+      }
+      return {
+        ok: true,
+        identity: {
+          kind: 'canonical',
+          formatKind,
+          ...(isRecord(creative.format_option_ref) && { formatOptionRef: creative.format_option_ref }),
+        },
+      };
+    }
     const parsed = CreativeAssetSchema.safeParse({
       creative_id: '__identity_validation__',
       name: 'Identity validation',
@@ -2576,6 +2956,17 @@ function normalizedCreativeManifest(
     ?? existing?.manifest?.assets
     ?? existing?.assets;
   if (!assets) return undefined;
+  const inlineComponentAssets = isRecord(creative.component_assets)
+    ? creative.component_assets as CreativeManifest['component_assets']
+    : undefined;
+  const manifestComponentAssets = isRecord(creative.manifest) && isRecord(creative.manifest.component_assets)
+    ? creative.manifest.component_assets as CreativeManifest['component_assets']
+    : undefined;
+  const componentAssets = inlineComponentAssets
+    ?? manifestComponentAssets
+    ?? (identity.kind === 'canonical' && identity.formatKind === 'coordinated_placements'
+      ? existing?.manifest?.component_assets ?? existing?.componentAssets
+      : undefined);
 
   const sourceManifest = isRecord(creative.manifest)
     ? creative.manifest
@@ -2587,6 +2978,7 @@ function normalizedCreativeManifest(
     format_kind: _staleFormatKind,
     format_option_ref: _staleFormatOptionRef,
     assets: _staleAssets,
+    component_assets: _staleComponentAssets,
     ...manifestMetadata
   } = sourceManifest ?? {};
 
@@ -2596,12 +2988,14 @@ function normalizedCreativeManifest(
       format_kind: identity.formatKind,
       ...(identity.formatOptionRef && { format_option_ref: identity.formatOptionRef }),
       assets,
+      ...(componentAssets && { component_assets: componentAssets }),
     }
     : {
       ...manifestMetadata,
       format_id: identity.formatId,
       ...(identity.formatOptionRef && { format_option_ref: identity.formatOptionRef }),
       assets,
+      ...(componentAssets && { component_assets: componentAssets }),
     };
 }
 
@@ -2677,9 +3071,9 @@ function installTaskProtocolVersionNegotiation(server: Server): void {
  * survive across Fly.io instances. In tests (no database), falls back
  * to InMemoryTaskStore.
  *
- * Note: no session isolation — any session can see/cancel tasks from
- * another. This is intentional for the training agent where all sessions
- * are sandboxed. Production servers should scope tasks by sessionId.
+ * Client access is scoped by tenant and trusted principal. The raw store is
+ * shared only so durable task recovery works across stateless MCP requests and
+ * Fly.io instances; client-facing facades inject and enforce that scope.
  */
 const inMemoryTaskIdsByNaturalKey = new Map<string, string>();
 const IDEMPOTENT_TASK_MAX_GENERATIONS = 64;
@@ -3029,12 +3423,12 @@ function projectedPackageBudgetTotal(mb: MediaBuyState, req: UpdateMediaBuyArgs)
     if (!packageId || !currentBudgets.has(packageId)) continue;
     if ((update as PackageUpdateExt).canceled === true) {
       currentBudgets.set(packageId, 0);
-    } else if (update.budget !== undefined) {
+    } else if (typeof update.budget === 'number') {
       currentBudgets.set(packageId, update.budget);
     }
   }
   const nextExisting = [...currentBudgets.values()].reduce((sum, budget) => sum + budget, 0);
-  const added = (req.new_packages ?? []).reduce((sum, pkg) => sum + pkg.budget, 0);
+  const added = (req.new_packages ?? []).reduce((sum, pkg) => sum + (pkg.budget ?? 0), 0);
   return nextExisting + added;
 }
 
@@ -3072,6 +3466,8 @@ function proportionalFixedPackageBudgets(
 
 interface MediaBuyAggregateUpdate {
   total_budget?: { amount: number; currency: string };
+  daily_budget_cap?: number | null;
+  budget_cap_timezone?: string | null;
   budget_allocation?: Record<string, unknown>;
   pacing?: string;
   bidding?: Record<string, unknown> | null;
@@ -3145,6 +3541,7 @@ interface TaskError {
   message: string;
   field?: string;
   details?: unknown;
+  suggestion?: string;
   recovery?: string;
   source?: 'producer' | 'sdk';
   sdk_id?: string;
@@ -3344,26 +3741,42 @@ export function deriveStatus(mb: MediaBuyState, session?: SessionState): string 
 }
 
 /** Map lifecycle status to valid buyer actions. */
-function validActionsForStatus(status: string): string[] {
+function validActionsForStatus(status: string, servedAdcpVersion?: string): string[] {
+  const updateName = supportsLifecycleSplitCompatibility(servedAdcpVersion) ? ['update_name'] : [];
   switch (status) {
     case 'pending_creatives':
     case 'pending_start':
-      return ['pause', 'cancel', 'sync_creatives'];
+      return ['pause', 'cancel', ...updateName, 'sync_creatives'];
     case 'active':
-      return ['pause', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
+      return ['pause', 'cancel', ...updateName, 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
     case 'paused':
-      return ['resume', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
+      return ['resume', 'cancel', ...updateName, 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
     default:
       return [];
   }
 }
 
-function availableActionsForStatus(status: string, explicit?: MediaBuyAvailableActionState[]): MediaBuyAvailableActionState[] {
-  if (explicit !== undefined) return explicit;
-  return validActionsForStatus(status).map(action => ({
+function availableActionsForStatus(status: string, explicit?: MediaBuyAvailableActionState[], servedAdcpVersion?: string): MediaBuyAvailableActionState[] {
+  const actions = explicit ?? validActionsForStatus(status, servedAdcpVersion).map(action => ({
     action,
     mode: 'self_serve' as const,
   }));
+  return actions.flatMap(action => canonicalMediaBuyActionNames(action.action).map(canonicalAction => ({
+    ...action,
+    task: canonicalTaskForMediaBuyAction(canonicalAction),
+    action: canonicalAction,
+  })));
+}
+
+/** Translate deprecated coarse 3.x availability labels into SDK 14 actions. */
+function canonicalMediaBuyActionNames(action: string): string[] {
+  switch (action) {
+    case 'update_budget': return ['increase_budget', 'decrease_budget'];
+    case 'update_dates': return ['update_flight_dates'];
+    case 'update_packages': return ['remove_packages'];
+    case 'sync_creatives': return ['update_creative_assignments'];
+    default: return [action];
+  }
 }
 
 const NON_TERMINAL_MEDIA_BUY_STATUSES = new Set(['pending_creatives', 'pending_start', 'active', 'paused']);
@@ -3372,8 +3785,8 @@ function hasLatentMediaBuyPause(mb: MediaBuyState, status: string): boolean {
   return mb.status === 'paused' && status !== 'paused' && NON_TERMINAL_MEDIA_BUY_STATUSES.has(status);
 }
 
-function validActionsForMediaBuy(mb: MediaBuyState, status: string): string[] {
-  const actions = validActionsForStatus(status);
+function validActionsForMediaBuy(mb: MediaBuyState, status: string, servedAdcpVersion?: string): string[] {
+  const actions = validActionsForStatus(status, servedAdcpVersion);
   if (!hasLatentMediaBuyPause(mb, status) || actions.includes('resume')) return actions;
   return ['resume', ...actions];
 }
@@ -3445,36 +3858,83 @@ function deriveAvailableActionsFromProductAllowedActions(
   if (!allowedActions) return undefined;
   return allowedActions
     .filter(action => allowedActionAppliesToStatus(action, status))
-    .map(action => ({
-      action: action.action,
+    .flatMap(action => canonicalMediaBuyActionNames(action.action).map(canonicalAction => ({
+      task: canonicalTaskForMediaBuyAction(canonicalAction),
+      action: canonicalAction,
       mode: action.modes[0],
       ...(action.sla && { sla: action.sla }),
       ...(action.terms_ref && { terms_ref: action.terms_ref }),
-    }));
+    })));
 }
 
-function availableActionsForMediaBuy(mb: MediaBuyState, status: string): MediaBuyAvailableActionState[] {
+function availableActionsForMediaBuy(mb: MediaBuyState, status: string, servedAdcpVersion?: string): MediaBuyAvailableActionState[] {
   const productDerived = deriveAvailableActionsFromProductAllowedActions(mb.productAllowedActions, status);
   const actions = productDerived !== undefined
     ? productDerived
-    : availableActionsForStatus(status, mb.availableActions);
-  if (!hasLatentMediaBuyPause(mb, status) || actions.some(action => action.action === 'resume')) return actions;
-  return [{ action: 'resume', mode: 'self_serve' }, ...actions];
+    : availableActionsForStatus(status, mb.availableActions, servedAdcpVersion);
+  const canonical = actions
+    .filter(action => action.action !== 'update_name' || supportsLifecycleSplitCompatibility(servedAdcpVersion))
+    .map(action => ({
+      ...action,
+      task: action.task ?? canonicalTaskForMediaBuyAction(action.action),
+    }));
+  if (!hasLatentMediaBuyPause(mb, status) || canonical.some(action => action.action === 'resume')) return canonical;
+  return [{ task: 'control_media_buy', action: 'resume', mode: 'self_serve' }, ...canonical];
+}
+
+function compactAvailableActions(
+  mediaBuy: MediaBuyState,
+  status: string,
+  servedAdcpVersion?: string,
+): Array<MediaBuyAvailableActionState & { task: 'control_media_buy' }> {
+  const compactControlActions = new Set([
+    'pause', 'resume', 'cancel', 'update_name', 'increase_budget', 'decrease_budget',
+    'reallocate_budget', 'update_budget_allocation', 'update_targeting',
+    'update_pacing', 'update_bidding', 'update_frequency_caps',
+    'update_catalog_assignments', 'update_keywords', 'update_optimization_goals',
+    'update_impression_goal', 'update_spend_target', 'update_reporting_webhook',
+    'remove_packages',
+  ]);
+  return availableActionsForMediaBuy(mediaBuy, status, servedAdcpVersion)
+    .filter(action => compactControlActions.has(action.action))
+    .map(action => ({
+      ...action,
+      task: 'control_media_buy' as const,
+    }));
+}
+
+function canonicalTaskForMediaBuyAction(action: string): MediaBuyAvailableActionState['task'] {
+  if (['extend_flight', 'shorten_flight', 'update_flight_dates', 'add_packages'].includes(action)) {
+    return 'refine_proposals';
+  }
+  if (['replace_creative', 'update_creative_assignments', 'remove_creative'].includes(action)) {
+    return 'sync_creatives';
+  }
+  return 'control_media_buy';
 }
 
 type AttemptedMediaBuyAction =
   | 'pause'
   | 'resume'
   | 'cancel'
+  | 'update_name'
   | 'extend_flight'
   | 'shorten_flight'
   | 'update_flight_dates'
   | 'increase_budget'
   | 'decrease_budget'
   | 'reallocate_budget'
+  | 'update_budget_allocation'
   | 'update_targeting'
   | 'update_pacing'
+  | 'update_bidding'
   | 'update_frequency_caps'
+  | 'update_catalog_assignments'
+  | 'update_keywords'
+  | 'update_optimization_goals'
+  | 'update_impression_goal'
+  | 'update_spend_target'
+  | 'update_reporting_webhook'
   | 'replace_creative'
   | 'update_creative_assignments'
   | 'add_packages'
@@ -3495,9 +3955,43 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): At
     actions.push({ action, ...(packageId && { packageId }) });
   };
 
+  // Legacy update_media_buy defines cancellation as dominant. Sibling
+  // mutations are ignored, so they must not influence action authorization.
+  if (req.canceled === true) {
+    addAction('cancel');
+    return actions;
+  }
   if (req.paused === true) addAction('pause');
   if (req.paused === false) addAction('resume');
-  if (req.canceled === true) addAction('cancel');
+  if (typeof req.name === 'string' && req.name !== mb.name) addAction('update_name');
+
+  const aggregateControl = req as unknown as Record<string, unknown>;
+  const requestedTotal = isRecord(aggregateControl.total_budget)
+    && typeof aggregateControl.total_budget.amount === 'number'
+    ? aggregateControl.total_budget.amount
+    : undefined;
+  const currentTotal = mb.totalBudget
+    ?? mb.packages.reduce((sum, pkg) => sum + pkg.budget, 0);
+  if (requestedTotal !== undefined) {
+    if (requestedTotal > currentTotal) addAction('increase_budget');
+    if (requestedTotal < currentTotal) addAction('decrease_budget');
+  }
+  if (Object.hasOwn(aggregateControl, 'budget_allocation')) addAction('update_budget_allocation');
+  if (Object.hasOwn(aggregateControl, 'daily_budget_cap')) {
+    const requestedCap = aggregateControl.daily_budget_cap;
+    if (requestedCap === null) addAction('increase_budget');
+    if (typeof requestedCap === 'number') {
+      if (mb.dailyBudgetCap === undefined || requestedCap < mb.dailyBudgetCap) addAction('decrease_budget');
+      if (mb.dailyBudgetCap !== undefined && requestedCap > mb.dailyBudgetCap) addAction('increase_budget');
+    }
+  }
+  if (Object.hasOwn(aggregateControl, 'budget_cap_timezone')) addAction('update_pacing');
+  if (Object.hasOwn(aggregateControl, 'pacing')) addAction('update_pacing');
+  if (Object.hasOwn(aggregateControl, 'bidding')) addAction('update_bidding');
+  if (
+    Object.hasOwn(aggregateControl, 'reporting_webhook')
+    || Object.hasOwn(aggregateControl, 'push_notification_config')
+  ) addAction('update_reporting_webhook');
 
   const currentStart = new Date(mb.startTime).getTime();
   const currentEnd = new Date(mb.endTime).getTime();
@@ -3525,12 +4019,21 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): At
       const pkgId = update.package_id || '';
       const pkg = mb.packages.find(p => p.packageId === pkgId);
       if (!pkg) continue;
+      // Package cancellation likewise dominates fields in the same package
+      // update object. Other package updates in the request remain atomic.
+      if (update.canceled === true) {
+        addAction('remove_packages', pkgId);
+        continue;
+      }
       totalBefore += pkg.budget;
-      totalAfter += update.budget ?? pkg.budget;
-      if (update.budget !== undefined) {
+      totalAfter += typeof update.budget === 'number' ? update.budget : pkg.budget;
+      if (typeof update.budget === 'number') {
         sawBudget = true;
         if (update.budget > pkg.budget) addAction('increase_budget', pkgId);
         if (update.budget < pkg.budget) addAction('decrease_budget', pkgId);
+      }
+      if ((update as unknown as Record<string, unknown>).budget === null) {
+        addAction('increase_budget', pkgId);
       }
       if (update.start_time) addAction('update_flight_dates', pkgId);
       if (update.end_time) {
@@ -3541,8 +4044,26 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): At
           if (nextPackageEnd < currentPackageEnd) addAction('shorten_flight', pkgId);
         }
       }
-      if (update.targeting_overlay || update.targeting || update.keyword_targets_add || update.keyword_targets_remove || update.negative_keywords_add || update.negative_keywords_remove) addAction('update_targeting', pkgId);
-      if (update.pacing) addAction('update_pacing', pkgId);
+      if (update.targeting_overlay || update.targeting) addAction('update_targeting', pkgId);
+      if (update.keyword_targets_add || update.keyword_targets_remove || update.negative_keywords_add || update.negative_keywords_remove) addAction('update_keywords', pkgId);
+      if (Object.hasOwn(update, 'pacing')) addAction('update_pacing', pkgId);
+      if (Object.hasOwn(update, 'bidding')) addAction('update_bidding', pkgId);
+      if (Object.hasOwn(update, 'catalog_ids')) addAction('update_catalog_assignments', pkgId);
+      if (Object.hasOwn(update, 'optimization_goals')) addAction('update_optimization_goals', pkgId);
+      if (Object.hasOwn(update, 'impressions')) addAction('update_impression_goal', pkgId);
+      if (Object.hasOwn(update, 'daily_budget_cap')) {
+        if (update.daily_budget_cap === null) addAction('increase_budget', pkgId);
+        if (typeof update.daily_budget_cap === 'number') {
+          if (pkg.dailyBudgetCap === undefined || update.daily_budget_cap < pkg.dailyBudgetCap) {
+            addAction('decrease_budget', pkgId);
+          }
+          if (pkg.dailyBudgetCap !== undefined && update.daily_budget_cap > pkg.dailyBudgetCap) {
+            addAction('increase_budget', pkgId);
+          }
+        }
+      }
+      if (Object.hasOwn(update, 'min_spend_target')) addAction('update_spend_target', pkgId);
+      if (Object.hasOwn(update, 'paused')) addAction(update.paused ? 'pause' : 'resume', pkgId);
       if (
         update.targeting_overlay
         && typeof update.targeting_overlay === 'object'
@@ -3550,7 +4071,6 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): At
       ) addAction('update_frequency_caps', pkgId);
       if (update.creative_assignments) addAction('update_creative_assignments', pkgId);
       if (update.creatives) addAction('replace_creative', pkgId);
-      if (update.canceled === true) addAction('remove_packages', pkgId);
     }
     if (sawBudget && totalAfter === totalBefore && seenHasAction(seen, 'increase_budget') && seenHasAction(seen, 'decrease_budget')) {
       addAction('reallocate_budget');
@@ -3566,6 +4086,26 @@ function seenHasAction(seen: Set<string>, action: AttemptedMediaBuyAction): bool
     if (key.endsWith(`:${action}`)) return true;
   }
   return false;
+}
+
+function legacyUpdateChangesCommercialEnvelope(req: UpdateMediaBuyArgs): boolean {
+  const root = req as unknown as Record<string, unknown>;
+  if ([
+    'start_time',
+    'end_time',
+    'total_budget',
+    'daily_budget_cap',
+    'budget_cap_timezone',
+    'budget_allocation',
+    'pacing',
+    'bidding',
+    'invoice_recipient',
+    'purchase_order_ref',
+    'agency_estimate_number',
+  ].some(field => Object.hasOwn(root, field))) return true;
+  if (req.new_packages?.length) return true;
+  return Boolean(req.packages?.some(update => Object.keys(update as unknown as Record<string, unknown>)
+    .some(field => !['package_id', 'paused', 'creative_assignments', 'creatives'].includes(field))));
 }
 
 function actionNotAllowedError(
@@ -3681,7 +4221,7 @@ function legacyFormatRef(value: unknown): FormatID | undefined {
   };
 }
 
-function canonicalFormatKind(value: unknown): CanonicalFormatKind | undefined {
+function canonicalFormatKind(value: unknown): TrainingCanonicalFormatKind | undefined {
   switch (value) {
     case 'image':
     case 'html5':
@@ -3695,6 +4235,8 @@ function canonicalFormatKind(value: unknown): CanonicalFormatKind | undefined {
     case 'native_in_feed':
     case 'responsive_creative':
     case 'agent_placement':
+    case 'seller_rendered_stateful_display':
+    case 'coordinated_placements':
     case 'custom':
       return value;
     default:
@@ -3729,7 +4271,9 @@ function requestScopedLegacyRoutes(selector: Readonly<Record<string, unknown>>):
       }
       if (refs.length === 0) continue;
       mappedDeclarations.push({
-        format_kind: formatKind,
+        // The installed 3.1 SDK type predates the two experimental 3.2 kinds;
+        // the runtime projection intentionally carries them through.
+        format_kind: formatKind as CanonicalFormatKind,
         params: isRecord(declaration.params) ? declaration.params : {},
         format_option_id: formatOptionId,
         ...(typeof declaration.publisher_domain === 'string' && { publisher_domain: declaration.publisher_domain }),
@@ -4032,6 +4576,18 @@ function aggregateCreativePolicy(session: import('./types.js').SessionState): Cr
   return anyPolicy ? acc : null;
 }
 
+function aggregateEnforcedPolicies(session: import('./types.js').SessionState): Set<string> {
+  const policies = new Set<string>();
+  for (const fixture of session.complyExtensions.seededProducts.values()) {
+    const enforced = (fixture as { enforced_policies?: unknown }).enforced_policies;
+    if (!Array.isArray(enforced)) continue;
+    for (const policyId of enforced) {
+      if (typeof policyId === 'string') policies.add(policyId);
+    }
+  }
+  return policies;
+}
+
 interface CreativeManifestView {
   provenance?: Record<string, unknown>;
   assets?: Record<string, { provenance?: Record<string, unknown> }>;
@@ -4309,7 +4865,7 @@ function overlayNegotiatedPricingOptions(
     } else {
       pricingOptions.push(option);
     }
-    productMap.set(productId, { ...product, pricing_options: pricingOptions });
+    productMap.set(productId, { ...product, pricing_options: pricingOptions as Product['pricing_options'] });
   }
 }
 
@@ -4322,22 +4878,183 @@ function seededProductIds(session: import('./types.js').SessionState): Set<strin
   return ids;
 }
 
+const AVAILABILITY_DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Second-precision RFC3339 UTC, e.g. "2099-09-01T00:00:00Z". */
+function toUtcSecondsIso(ms: number): string {
+  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+/**
+ * Partition [horizon.start_time, horizon.end_time) into maximal half-open,
+ * chronologically-ordered, non-overlapping windows of constant
+ * availability_status, per the forecast-dimension-time.json contract.
+ *
+ * A window is "unavailable" when it overlaps any seeded booked_window, OR
+ * when it is an open gap shorter than min_bookable_days (whole days).
+ * Adjacent windows sharing a status are coalesced into one window, so a
+ * booked span immediately followed by a too-short gap emits as a single
+ * unavailable window.
+ *
+ * Returns undefined when the horizon itself is malformed (non-positive
+ * duration) — callers leave the product's existing forecast untouched in
+ * that case rather than emitting an empty points[] (forecast-point.json
+ * requires minItems: 1).
+ */
+function computeAvailabilityForecastPoints(
+  horizon: { start_time: string; end_time: string },
+  availability: SeededProductAvailability,
+): Array<Record<string, unknown>> | undefined {
+  const horizonStart = Date.parse(horizon.start_time);
+  const horizonEnd = Date.parse(horizon.end_time);
+  if (!Number.isFinite(horizonStart) || !Number.isFinite(horizonEnd) || horizonEnd <= horizonStart) {
+    return undefined;
+  }
+
+  // Union booked windows, clipped to the horizon.
+  const clippedBooked = availability.booked_windows
+    .map(window => ({
+      start: Math.max(Date.parse(window.start_time), horizonStart),
+      end: Math.min(Date.parse(window.end_time), horizonEnd),
+    }))
+    .filter(window => Number.isFinite(window.start) && Number.isFinite(window.end) && window.end > window.start)
+    .sort((a, b) => a.start - b.start);
+  const bookedUnion: Array<{ start: number; end: number }> = [];
+  for (const window of clippedBooked) {
+    const last = bookedUnion[bookedUnion.length - 1];
+    if (last && window.start <= last.end) {
+      last.end = Math.max(last.end, window.end);
+    } else {
+      bookedUnion.push({ ...window });
+    }
+  }
+
+  // Partition the horizon into booked segments and the gaps between them,
+  // classifying each gap by the min-bookable-days eligibility rule.
+  type Segment = { start: number; end: number; status: 'available' | 'unavailable' };
+  const segments: Segment[] = [];
+  let cursor = horizonStart;
+  const classifyGap = (start: number, end: number): Segment => {
+    const gapDays = Math.floor((end - start) / AVAILABILITY_DAY_MS);
+    return { start, end, status: gapDays < availability.min_bookable_days ? 'unavailable' : 'available' };
+  };
+  for (const booked of bookedUnion) {
+    if (booked.start > cursor) segments.push(classifyGap(cursor, booked.start));
+    segments.push({ start: booked.start, end: booked.end, status: 'unavailable' });
+    cursor = booked.end;
+  }
+  if (cursor < horizonEnd) segments.push(classifyGap(cursor, horizonEnd));
+
+  // Coalesce adjacent same-status windows (MUST per forecast-dimension-time.json).
+  const coalesced: Segment[] = [];
+  for (const segment of segments) {
+    const last = coalesced[coalesced.length - 1];
+    if (last && last.status === segment.status && last.end === segment.start) {
+      last.end = segment.end;
+    } else {
+      coalesced.push({ ...segment });
+    }
+  }
+
+  return coalesced.map(segment => {
+    const days = Math.floor((segment.end - segment.start) / AVAILABILITY_DAY_MS);
+    return {
+      dimensions: [{
+        kind: 'time',
+        start_time: toUtcSecondsIso(segment.start),
+        end_time: toUtcSecondsIso(segment.end),
+      }],
+      availability_status: segment.status,
+      metrics: segment.status === 'available'
+        ? { impressions: { mid: days * 1000 }, spend: { mid: days * 250 } }
+        : {},
+    };
+  });
+}
+
+/**
+ * Replace the forecast on each returned product that has a seeded booking
+ * calendar (comply_test_controller.seed_product's fixture.availability) with
+ * a windowed availability forecast scoped to offer_filters.availability_horizon.
+ * Products without seeded availability keep their existing (catalog-baked)
+ * forecast untouched. Not a filter — every product stays in the result set
+ * regardless of how much of the horizon it can cover.
+ */
+function applyAvailabilityHorizonForecasts(
+  products: Product[],
+  horizon: unknown,
+  session: import('./types.js').SessionState,
+): Product[] {
+  if (
+    !isRecord(horizon)
+    || typeof horizon.start_time !== 'string'
+    || typeof horizon.end_time !== 'string'
+  ) {
+    return products;
+  }
+  const { seededProductAvailability } = session.complyExtensions;
+  if (seededProductAvailability.size === 0) return products;
+  const horizonRange = { start_time: horizon.start_time, end_time: horizon.end_time };
+  const now = Date.now();
+  const generatedAt = toUtcSecondsIso(now);
+  const validUntil = toUtcSecondsIso(now + 5 * 60 * 1000);
+  return products.map(product => {
+    const availability = seededProductAvailability.get(product.product_id);
+    if (!availability) return product;
+    const points = computeAvailabilityForecastPoints(horizonRange, availability);
+    if (!points) return product;
+    return {
+      ...product,
+      forecast: {
+        points,
+        forecast_range_unit: 'availability',
+        method: 'modeled',
+        currency: 'USD',
+        generated_at: generatedAt,
+        valid_until: validUntil,
+      } as unknown as Product['forecast'],
+    };
+  });
+}
+
 type CanonicalFormatRef = { agent_url?: string; id?: string };
 type CanonicalFormatOption = {
   format_option_id?: string;
   format_kind?: string;
+  format_shape?: string;
   v1_format_ref?: CanonicalFormatRef[];
 };
 
 function collectCanonicalFormatAdvisories(products: Product[]): TaskError[] {
   const errors: TaskError[] = [];
+  const promotedFormatShapes = getPromotedFormatShapes();
 
   for (let productIndex = 0; productIndex < products.length; productIndex++) {
     const product = products[productIndex] as Product & {
       format_ids?: CanonicalFormatRef[];
       format_options?: CanonicalFormatOption[];
     };
-    if (!Array.isArray(product.format_ids) || !Array.isArray(product.format_options)) continue;
+    if (!Array.isArray(product.format_options)) continue;
+    product.format_options.forEach((option, optionIndex) => {
+      if (option.format_kind !== 'custom' || typeof option.format_shape !== 'string') return;
+      const promotion = promotedFormatShapes[option.format_shape];
+      if (!promotion) return;
+      errors.push({
+        code: 'FORMAT_SHAPE_PROMOTED',
+        message: `Product ${product.product_id} uses legacy custom format shape ${option.format_shape}; migrate to ${promotion.promoted_to}.`,
+        field: `products[${productIndex}].format_options[${optionIndex}].format_shape`,
+        recovery: 'correctable',
+        source: 'producer',
+        details: {
+          product_id: product.product_id,
+          format_shape: option.format_shape,
+          promoted_to: promotion.promoted_to,
+          promotion_release: promotion.promotion_release,
+          transition_end: promotion.transition_end,
+        },
+      });
+    });
+    if (!Array.isArray(product.format_ids)) continue;
     if (product.format_ids.length === 0 || product.format_options.length === 0) continue;
 
     const declaredRefs = new Set(
@@ -4703,12 +5420,22 @@ function signalMatchesRef(
 
 // ── Tool definitions ──────────────────────────────────────────────
 
-const PRODUCT_DISCOVERY_TOOLS = new Set([
-  'get_products',
+const PRODUCT_DISCOVERY_LIFECYCLE_TOOLS = [
   'list_products',
   'request_proposals',
   'refine_proposals',
   'decline_proposals',
+] as const;
+type ProductDiscoveryLifecycleTool = (typeof PRODUCT_DISCOVERY_LIFECYCLE_TOOLS)[number];
+const PRODUCT_DISCOVERY_TOOLS = new Set([
+  'get_products',
+  ...PRODUCT_DISCOVERY_LIFECYCLE_TOOLS,
+]);
+const COMPACT_MEDIA_BUY_TOOLS = new Set([
+  ...PRODUCT_DISCOVERY_LIFECYCLE_TOOLS,
+  'buy_products',
+  'accept_proposal',
+  'control_media_buy',
 ]);
 
 function isProductDiscoveryTool(toolName: string): boolean {
@@ -4730,6 +5457,9 @@ function productDiscoverySourceSchemaName(toolName: string): string | undefined 
     case 'request_proposals': return 'request-proposals-request';
     case 'refine_proposals': return 'refine-proposals-request';
     case 'decline_proposals': return 'decline-proposals-request';
+    case 'buy_products': return 'buy-products-request';
+    case 'accept_proposal': return 'accept-proposal-request';
+    case 'control_media_buy': return 'control-media-buy-request';
     default: return undefined;
   }
 }
@@ -4901,6 +5631,9 @@ function canonicalPricingSnapshot(raw: unknown, pricingOptionId: string): Record
   snapshot.pricing_option_id = pricingOptionId;
   if (typeof snapshot.pricing_model !== 'string') snapshot.pricing_model = 'cpm';
   if (typeof snapshot.currency !== 'string') snapshot.currency = 'USD';
+  if (snapshot.event_type === 'custom' && typeof snapshot.custom_event_name !== 'string') {
+    snapshot.custom_event_name = 'conversion';
+  }
   // A selected fixed price supersedes an auction floor in the canonical
   // snapshot; the schema intentionally forbids carrying both.
   if (typeof source.fixed_price === 'number') snapshot.fixed_price = source.fixed_price;
@@ -4944,7 +5677,7 @@ function buildCanonicalCommercialTerms(
       start_time: startTime,
       end_time: endTime,
       ...(typeof recommendedBudget === 'number' && {
-        budget: recommendedBudget * allocation.allocation_percentage / 100,
+        budget: recommendedBudget * (allocation.allocation_percentage ?? 0) / 100,
       }),
       ...(isRecord((product as unknown as Record<string, unknown> | undefined)?.measurement_terms)
         && { measurement_terms: structuredClone((product as unknown as Record<string, unknown>).measurement_terms) }),
@@ -4990,6 +5723,54 @@ function compactCanonicalProduct(product: Record<string, unknown>): Record<strin
   };
 }
 
+const COMPACT_PRODUCT_FIELDS = new Set([
+  'product_id', 'name', 'description', 'publisher_properties', 'channels',
+  'format_options', 'delivery_type', 'pricing_options', 'reporting_capabilities',
+  'placements', 'forecast', 'expires_at', 'brief_relevance', 'catalog_match',
+  'allowed_actions', 'catalog_types', 'signal_targeting_allowed',
+  'signal_targeting_rules', 'max_optimization_goals', 'measurement_terms',
+  'performance_standards', 'audience_evidence', 'audience_evidence_selections',
+  'demographic_targeting', 'exclusivity', 'audio_distribution_types',
+  'video_placement_types', 'social_placement_surfaces',
+  'sponsored_placement_types', 'ext',
+]);
+
+const COMPACT_FORMAT_OPTION_FIELDS = new Set([
+  'format_option_id', 'format_kind', 'display_name', 'publisher_domain',
+  'applies_to_channels', 'params', 'format_schema', 'format_shape',
+  'locale_policy', 'seller_preference', 'canonical_formats_only',
+  'experimental', 'sample_render_url',
+]);
+
+function pickCompactFields(source: Record<string, unknown>, fields: ReadonlySet<string>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(source)
+    .filter(([field, value]) => fields.has(field) && value !== undefined)
+    .map(([field, value]) => [field, structuredClone(value)]));
+}
+
+/** Project the additive 3.x get_products representation into the closed
+ * canonical offer shape used by list_products. */
+function compactLifecycleProduct(
+  product: Record<string, unknown>,
+  requestedFields?: ReadonlySet<string>,
+): Record<string, unknown> {
+  const selectedFields = requestedFields
+    ? new Set(['product_id', 'name', ...requestedFields])
+    : COMPACT_PRODUCT_FIELDS;
+  const projected = pickCompactFields(product, selectedFields);
+  if (selectedFields.has('format_options') && Array.isArray(product.format_options)) {
+    projected.format_options = product.format_options
+      .filter(isRecord)
+      .map(option => pickCompactFields(option, COMPACT_FORMAT_OPTION_FIELDS));
+  }
+  if (selectedFields.has('pricing_options') && Array.isArray(product.pricing_options)) {
+    projected.pricing_options = product.pricing_options
+      .filter(isRecord)
+      .map(option => canonicalPricingSnapshot(option, String(option.pricing_option_id ?? '')));
+  }
+  return projected;
+}
+
 function outwardProposal(proposal: Record<string, unknown>, products: Map<string, Product>): Record<string, unknown> {
   const brand = {
     domain: typeof proposal.__brand_domain === 'string' ? proposal.__brand_domain : 'advertiser.example',
@@ -5018,6 +5799,99 @@ function outwardProposal(proposal: Record<string, unknown>, products: Map<string
       ? proposal.__canonical_terms_digest
       : proposalTermsDigest(terms),
     ...(isRecord(proposal.insertion_order) && { insertion_order: proposal.insertion_order }),
+    // Reverse-forecast planning (criteria.outcome_target): these are only
+    // populated when the source request_proposals call carried outcome_target
+    // (see computeOutcomeTargetPlan). Absent otherwise — outcome_target
+    // support must never change the shape of an unrelated proposal.
+    ...(isRecord(proposal.__outcome_target_guidance) && {
+      total_budget_guidance: structuredClone(proposal.__outcome_target_guidance),
+    }),
+    ...(isRecord(proposal.__outcome_target_forecast) && {
+      forecast: structuredClone(proposal.__outcome_target_forecast),
+    }),
+  };
+}
+
+// ── Reverse-forecast planning (criteria.outcome_target) ─────────────────────
+//
+// Deterministic reference model, not a market claim. A buyer states a
+// desired metric or event volume; the seller solves for the budget that
+// plans to deliver it. OUTCOME_TARGET_METRIC_RESPONSE_RATE models 1 click
+// per 1,000 impressions; OUTCOME_TARGET_EVENT_RESPONSE_RATE models 1
+// conversion event per 5,000 impressions (an added funnel step beyond a
+// click). Both are training-fixture constants, not real delivery estimates.
+const OUTCOME_TARGET_METRIC_RESPONSE_RATE = 0.001;
+const OUTCOME_TARGET_EVENT_RESPONSE_RATE = 0.0002;
+const OUTCOME_TARGET_DEFAULT_CPM = 10;
+const OUTCOME_TARGET_FORECAST_RATIOS = [0.5, 1, 1.5] as const;
+
+/** The metrics{} key a goal's forecast points carry: the metric name for a
+ * metric goal, or the event type (custom_event_name when custom) for an
+ * event goal — the same key the buyer will later use on optimization_goals. */
+function outcomeTargetGoalKey(goal: Record<string, unknown>): string {
+  if (goal.kind === 'event') {
+    return goal.event_type === 'custom' ? String(goal.custom_event_name) : String(goal.event_type);
+  }
+  return String(goal.metric);
+}
+
+/** A 'spend' metric goal restates the budget the seller is solving for —
+ * there is no plan to construct. Per outcome-target.json, declaring sellers
+ * MAY reject such a goal with INVALID_REQUEST. */
+function outcomeTargetIsUnplannable(goal: Record<string, unknown>): boolean {
+  return goal.kind === 'metric' && goal.metric === 'spend';
+}
+
+function outcomeTargetForecastRangeUnit(goal: Record<string, unknown>): string {
+  if (goal.kind === 'event') return 'conversions';
+  return goal.metric === 'clicks' ? 'clicks' : 'spend';
+}
+
+/** Solve a deterministic budget and delivery curve for one proposal against
+ * a request_proposals criteria.outcome_target goal. CPM comes from the
+ * proposal's first allocation's first pricing option (fixed_price, else
+ * floor_price, else a $10 reference CPM) so every goal has a defined
+ * answer even against auction-only or unpriced fixtures. */
+function computeOutcomeTargetPlan(
+  goal: Record<string, unknown>,
+  volume: number,
+  proposal: Proposal,
+  productsById: Map<string, Product>,
+): { totalBudgetGuidance: Record<string, unknown>; forecast: Record<string, unknown> } {
+  const goalKey = outcomeTargetGoalKey(goal);
+  const responseRate = goal.kind === 'event'
+    ? OUTCOME_TARGET_EVENT_RESPONSE_RATE
+    : OUTCOME_TARGET_METRIC_RESPONSE_RATE;
+  const impressions = volume / responseRate;
+  const firstAllocation = proposal.allocations[0];
+  const product = firstAllocation ? productsById.get(firstAllocation.product_id) : undefined;
+  const firstPricing = product?.pricing_options?.[0] as PricingOptionView | undefined;
+  const cpm = typeof firstPricing?.fixed_price === 'number'
+    ? firstPricing.fixed_price
+    : typeof firstPricing?.floor_price === 'number'
+      ? firstPricing.floor_price
+      : OUTCOME_TARGET_DEFAULT_CPM;
+  const budget = Math.round((impressions / 1000) * cpm);
+  const now = Date.now();
+  const points = OUTCOME_TARGET_FORECAST_RATIOS.map(ratio => ({
+    budget: Math.round(ratio * budget),
+    metrics: { [goalKey]: { mid: Math.round(ratio * volume) } },
+  }));
+  return {
+    totalBudgetGuidance: {
+      min: Math.round(0.8 * budget),
+      recommended: budget,
+      max: Math.round(1.25 * budget),
+      currency: 'USD',
+    },
+    forecast: {
+      points,
+      forecast_range_unit: outcomeTargetForecastRangeUnit(goal),
+      method: 'modeled',
+      currency: 'USD',
+      generated_at: toUtcSecondsIso(now),
+      valid_until: toUtcSecondsIso(now + 5 * 60 * 1000),
+    },
   };
 }
 
@@ -5079,9 +5953,12 @@ export function projectProductDiscoveryResult(
       };
     }
     const pagination = isRecord(result.pagination) ? result.pagination : undefined;
+    const requestedFields = Array.isArray(originalArgs.fields)
+      ? new Set(originalArgs.fields.filter((field): field is string => typeof field === 'string'))
+      : undefined;
     return {
       outcome: 'listed',
-      products,
+      products: products.map(product => compactLifecycleProduct(product, requestedFields)),
       ...(pagination && typeof pagination.cursor === 'string' && { next_cursor: pagination.cursor }),
       ...(typeof result.wholesale_feed_version === 'string' && { feed_version: result.wholesale_feed_version }),
       ...(typeof result.pricing_version === 'string' && { pricing_version: result.pricing_version }),
@@ -5092,6 +5969,16 @@ export function projectProductDiscoveryResult(
 
   if (toolName === 'request_proposals') {
     const outwardProposals = proposals.map(proposal => outwardProposal(proposal, proposalProducts));
+    if (outwardProposals.length === 0 && products.length > 0) {
+      // Native sellers cannot emit the SDK-only products_available projection,
+      // and proposed requires a genuine seller-authored proposal. Fail closed
+      // with a valid native outcome instead of returning a schema-invalid
+      // empty proposal set.
+      return {
+        outcome: 'rejected',
+        reason: 'No viable seller-authored proposal was produced.',
+      };
+    }
     const supportingProducts = supportingProductsForProposals(outwardProposals, products).map(compactCanonicalProduct);
     return {
       outcome: 'proposed',
@@ -5202,14 +6089,30 @@ export function projectProductDiscoveryResult(
   return result;
 }
 
-/** Compact proposal operations address proposals by opaque ID under the
- * authenticated principal. They deliberately do not repeat account or brand
- * on every lifecycle call. The legacy facade retains its account-derived
- * session partition for 3.x compatibility. */
+/** Compact proposal operations are partitioned by authenticated principal and
+ * the SDK-restored account reference. */
 function productDiscoverySessionKey(args: ToolArgs, ctx: TrainingContext): string {
   const compactLifecycle = (args as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
   if (compactLifecycle) {
-    return sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal ?? 'anonymous');
+    // refine_proposals and decline_proposals intentionally omit account from
+    // their wire schemas: proposal identity plus the authenticated caller is
+    // the lookup key. Keep all compact proposal snapshots in the same
+    // principal-owned SDK proposal scope, while recording the originating
+    // account on each snapshot for accept_proposal authorization.
+    const trustedAccountId = ctx.proposalRefinementScope?.account_id ?? 'public_sandbox';
+    const trustedPrincipal = ctx.proposalRefinementScope?.principal_id
+      ?? (ctx.authenticatedAgentUrl ? `agent:${ctx.authenticatedAgentUrl}` : ctx.principal);
+    if (trustedAccountId && trustedPrincipal) {
+      const key = sessionKeyFromArgs(
+        { account: { account_id: trustedAccountId } },
+        ctx.mode,
+        ctx.userId,
+        ctx.moduleId,
+        trustedPrincipal,
+      );
+      return key;
+    }
+    return sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal ?? 'anonymous');
   }
   return getProductsSessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
 }
@@ -5283,6 +6186,12 @@ export function validateProductDiscoveryAliasInput(
     return { message: `idempotency_key is required for ${toolName}`, field: 'idempotency_key' };
   }
   if (toolName === 'list_products') {
+    if (
+      args.max_results !== undefined
+      && (!Number.isInteger(args.max_results) || (args.max_results as number) < 1 || (args.max_results as number) > 100)
+    ) {
+      return { message: 'max_results must be an integer between 1 and 100', field: 'max_results' };
+    }
     if (args.if_pricing_version !== undefined && args.if_feed_version === undefined) {
       return { message: 'if_pricing_version requires if_feed_version', field: 'if_feed_version' };
     }
@@ -5454,6 +6363,9 @@ const LIST_PRODUCTS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('list-product
 const REQUEST_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('request-proposals-request');
 const REFINE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('refine-proposals-request');
 const DECLINE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('decline-proposals-request');
+const BUY_PRODUCTS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('buy-products-request');
+const ACCEPT_PROPOSAL_INPUT_SCHEMA = loadProductDiscoveryInputSchema('accept-proposal-request');
+const CONTROL_MEDIA_BUY_INPUT_SCHEMA = loadProductDiscoveryInputSchema('control-media-buy-request');
 const CREATE_MEDIA_BUY_OPPORTUNITY_INPUT_SCHEMA = {
   type: 'object',
   description: 'Planning-cycle closure for proposal execution. Omit status to infer accepted closure, or send closed with accepted_with_seller.',
@@ -5548,6 +6460,27 @@ const TOOLS = [
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: DECLINE_PROPOSALS_INPUT_SCHEMA,
+  },
+  {
+    name: 'buy_products',
+    description: 'Buy exact published product offers against the feed and pricing versions returned by list_products.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: BUY_PRODUCTS_INPUT_SCHEMA,
+  },
+  {
+    name: 'accept_proposal',
+    description: 'Accept one committed immutable proposal and create or amend its MediaBuy atomically.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: ACCEPT_PROPOSAL_INPUT_SCHEMA,
+  },
+  {
+    name: 'control_media_buy',
+    description: 'Apply operational controls within an accepted MediaBuy commercial envelope using optimistic concurrency.',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: CONTROL_MEDIA_BUY_INPUT_SCHEMA,
   },
   {
     name: 'list_creative_formats',
@@ -5990,10 +6923,7 @@ const TOOLS = [
  */
 export function productDiscoveryAliasToolDefinitions(): Array<(typeof TOOLS)[number]> {
   return structuredClone(TOOLS.filter(tool => (
-    tool.name === 'list_products'
-    || tool.name === 'request_proposals'
-    || tool.name === 'refine_proposals'
-    || tool.name === 'decline_proposals'
+    COMPACT_MEDIA_BUY_TOOLS.has(tool.name)
   )));
 }
 
@@ -6031,7 +6961,7 @@ export function visibleTrainingToolNamesForContext(ctx: TrainingContext): string
 
 function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: string): boolean {
   if (toolName === 'validate_input') return !servedAdcpVersion.startsWith('3.0');
-  if (isProductDiscoveryTool(toolName) && toolName !== 'get_products') {
+  if (COMPACT_MEDIA_BUY_TOOLS.has(toolName)) {
     return supportsGetProductsRejected(servedAdcpVersion);
   }
   return true;
@@ -6096,14 +7026,23 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
         controllerFixtureSessionKey(req, ctx),
       );
       const directivePrincipal = ctx.principal ?? 'anonymous';
-      const rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
-        ? session.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+      let directiveSession = session;
+      let rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
+        ? directiveSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
         : undefined;
+      if (!rejection && ctx.principal?.startsWith('static:')) {
+        directiveSession = await getSession(
+          sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal),
+        );
+        rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
+          ? directiveSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+          : undefined;
+      }
       const staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
         ? session.complyExtensions.forcedUpstreamUnavailable
         : undefined;
       if (rejection) {
-        session.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
+        directiveSession.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
       }
       if (staleDirective) {
         session.complyExtensions.forcedUpstreamUnavailable = undefined;
@@ -6136,7 +7075,7 @@ async function handleGetProductsUnlocked(
 ): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
-  const brief = (req as Record<string, unknown>).brief;
+  const brief = (req as unknown as Record<string, unknown>).brief;
   if (brief !== undefined && typeof brief !== 'string') {
     return {
       errors: [{
@@ -6212,7 +7151,14 @@ async function handleGetProductsUnlocked(
     };
   }
 
-  if (wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
+  // list_products's conditional-read shortcut (if_feed_version) answers
+  // "has the catalog changed" — it cannot answer "what's bookable right now."
+  // A caller requesting fields: ["forecast"] wants a live, horizon-scoped
+  // forecast on every call, so the cached-unchanged short-circuit never
+  // applies to that request shape, matching or not.
+  const forecastFieldRequested = Array.isArray((req as unknown as Record<string, unknown>).fields)
+    && ((req as unknown as Record<string, unknown>).fields as unknown[]).includes('forecast');
+  if (!forecastFieldRequested && wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
     return {
       status: 'completed' as const,
       unchanged: true,
@@ -6222,6 +7168,8 @@ async function handleGetProductsUnlocked(
   }
 
   let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
+  const compactLifecycleRequest = buyingMode === 'refine'
+    && (req as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
 
   // Overlay seeded products from comply_test_controller fixtures so
   // storyboard-seeded fields (e.g. creative_policy.provenance_requirements,
@@ -6231,6 +7179,17 @@ async function handleGetProductsUnlocked(
   // to repeat boilerplate. Catalog products are not touched.
   const productMap = new Map(products.map(p => [p.product_id, p]));
   overlaySeededProducts(session, productMap);
+  // Compact refine_proposals calls intentionally omit account context. Carry
+  // forward the immutable product snapshots that supported the preceding
+  // request_proposals response so an exact seeded selection remains
+  // executable even when its controller fixture is no longer addressable.
+  if (compactLifecycleRequest) {
+    for (const product of session.lastGetProductsContext?.products ?? []) {
+      if (!productMap.has(product.product_id)) {
+        productMap.set(product.product_id, structuredClone(product));
+      }
+    }
+  }
   if (buyingMode !== 'wholesale') overlayNegotiatedPricingOptions(session, productMap);
   products = Array.from(productMap.values());
   const registryProducts = products;
@@ -6300,6 +7259,14 @@ async function handleGetProductsUnlocked(
       });
     }
   }
+  // Flexible-window availability discovery (offer_filters.availability_horizon)
+  // is not an eligibility filter — products stay in the result set even when
+  // the seller can only cover part of the horizon — so it is read here but
+  // applied later (after brief/refine narrow the final product set) rather
+  // than folded into the filter block above.
+  const availabilityHorizon = isRecord(req.filters)
+    ? (req.filters as Record<string, unknown>).availability_horizon
+    : undefined;
   const filteredProducts = products;
 
   // Brief mode: channel-aware keyword matching
@@ -6377,8 +7344,7 @@ async function handleGetProductsUnlocked(
 
   const immutableRefine = buyingMode === 'refine'
     && (req as unknown as Record<string, unknown>).__immutable_refine === true;
-  const compactLifecycle = buyingMode === 'refine'
-    && (req as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
+  const compactLifecycle = compactLifecycleRequest;
   const declineProposals = buyingMode === 'refine'
     && (req as unknown as Record<string, unknown>).__decline_proposals === true;
   const compactFinalizeSourceIds = new Set(
@@ -6468,8 +7434,19 @@ async function handleGetProductsUnlocked(
           }] as TaskError[],
         };
       }
+      const proposalInternal = proposal as unknown as Record<string, unknown>;
+      if (compactLifecycle && !declineProposals && proposalInternal.__declined === true) {
+        return {
+          errors: [{
+            code: 'INVALID_STATE',
+            message: `Proposal was declined and cannot be refined: ${op.proposal_id}`,
+            field: `refine[${opIndex}].proposal_id`,
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
       if (op.action === 'decline') {
-        const internal = proposal as unknown as Record<string, unknown>;
+        const internal = proposalInternal;
         if (internal.__executed === true) everyDeclineApplicable = false;
         if (
           typeof declineOpportunity?.opportunity_id === 'string'
@@ -6776,6 +7753,7 @@ async function handleGetProductsUnlocked(
                 ? {}
                 : {
                     __declined: true,
+                    __declined_at: new Date().toISOString(),
                     ...(typeof op.reason === 'string' && { __decline_reason: op.reason }),
                     ...(typeof op.detail === 'string' && { __decline_detail: op.detail }),
                   }
@@ -6880,7 +7858,7 @@ async function handleGetProductsUnlocked(
   ];
 
   const productsById = new Map(products.map(p => [p.product_id, p]));
-  let proposals = sourceProposals
+  let proposals: Proposal[] = sourceProposals
     .map(proposal => refinedProposalOverrides.get(proposal.proposal_id) ?? proposal)
     .filter(proposal =>
       proposal.allocations.every(a => productIds.has(a.product_id)) &&
@@ -6903,20 +7881,98 @@ async function handleGetProductsUnlocked(
           return selectedPricing
             ? { ...alloc, pricing_option_id: selectedPricing.pricing_option_id }
             : alloc;
-        }),
+        }) as Proposal['allocations'],
       };
-    });
+    }) as Proposal[];
   const requireProposals = buyingMode === 'brief'
     && (req as unknown as Record<string, unknown>).__require_proposals === true;
+  // criteria.outcome_target expands to a top-level field by
+  // expandProductDiscoveryCriteria; only request_proposals sets
+  // __require_proposals, so this is scoped to that tool.
+  const outcomeTarget = requireProposals && isRecord((req as unknown as Record<string, unknown>).outcome_target)
+    ? (req as unknown as Record<string, unknown>).outcome_target as Record<string, unknown>
+    : undefined;
+  const outcomeTargetGoal = outcomeTarget && isRecord(outcomeTarget.goal) ? outcomeTarget.goal : undefined;
+  if (outcomeTargetGoal && outcomeTargetIsUnplannable(outcomeTargetGoal)) {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: "The seller cannot plan against a 'spend' goal because it restates the budget being solved for.",
+        field: 'criteria.outcome_target.goal',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
   if (requireProposals) {
     const exactProductIds = Array.isArray((req as unknown as Record<string, unknown>).product_ids)
       ? new Set(((req as unknown as Record<string, unknown>).product_ids as unknown[])
           .filter((id): id is string => typeof id === 'string'))
       : undefined;
+    if (
+      proposals.length === 0
+      && exactProductIds?.size
+      && [...exactProductIds].every(productId => session.complyExtensions.seededProducts.has(productId))
+    ) {
+      const requestedProducts = [...exactProductIds]
+        .map(productId => productsById.get(productId))
+        .filter((product): product is Product => product !== undefined);
+      if (requestedProducts.length === exactProductIds.size) {
+        const allocationPercentage = 100 / requestedProducts.length;
+        const firstPricing = requestedProducts[0].pricing_options[0];
+        proposals = [{
+          proposal_id: `prepared_${createHash('sha256').update([...exactProductIds].join('\0')).digest('hex').slice(0, 16)}`,
+          name: 'Prepared compact product proposal',
+          description: 'Deterministic proposal generated from prepared sandbox fixtures.',
+          brief_alignment: 'Uses the exact products selected by the compact lifecycle request.',
+          total_budget_guidance: {
+            min: 1_000,
+            recommended: 1_000,
+            currency: firstPricing.currency ?? 'USD',
+          },
+          allocations: requestedProducts.map(product => ({
+            product_id: product.product_id,
+            allocation_percentage: allocationPercentage,
+            rationale: 'Selected explicitly by the compact lifecycle request.',
+            pricing_option_id: product.pricing_options[0].pricing_option_id,
+          })) as Proposal['allocations'],
+        } as Proposal];
+      }
+    }
     if (exactProductIds) {
       proposals = proposals.filter(proposal => proposal.allocations.every(allocation => (
         exactProductIds.has(allocation.product_id)
       )));
+      // Exact product selection asks the seller to quote those published
+      // offers. Seeded/conformance products have no pre-authored proposal
+      // catalog row, so construct one indicative plan before assigning the
+      // caller-scoped immutable proposal ID below.
+      if (proposals.length === 0) {
+        const selectedProducts = products.filter(product => exactProductIds.has(product.product_id));
+        if (selectedProducts.length === exactProductIds.size && selectedProducts.length > 0) {
+          const allocationPercentage = 100 / selectedProducts.length;
+          proposals = [{
+            proposal_id: 'selected_product_plan',
+            name: selectedProducts.length === 1
+              ? `Proposal for ${selectedProducts[0]!.name}`
+              : 'Proposal for selected products',
+            description: 'Indicative plan constructed from the buyer-selected published offers.',
+            brief_alignment: typeof brief === 'string' ? brief : 'Matches the selected published offers.',
+            total_budget_guidance: {
+              min: 1,
+              recommended: 1000,
+              currency: selectedProducts[0]!.pricing_options[0]?.currency ?? 'USD',
+            },
+            allocations: selectedProducts.map(product => ({
+              product_id: product.product_id,
+              allocation_percentage: allocationPercentage,
+              rationale: 'Buyer-selected published offer',
+              ...(product.pricing_options[0] && {
+                pricing_option_id: product.pricing_options[0].pricing_option_id,
+              }),
+            })) as Proposal['allocations'],
+          } as Proposal];
+        }
+      }
     }
     const key = typeof (req as unknown as Record<string, unknown>).idempotency_key === 'string'
       ? (req as unknown as Record<string, unknown>).idempotency_key as string
@@ -6953,6 +8009,9 @@ async function handleGetProductsUnlocked(
         .digest('hex')
         .slice(0, 24);
       const proposalId = `proposal_request_${digest}`;
+      const outcomeTargetPlan = outcomeTargetGoal && typeof outcomeTarget?.volume === 'number'
+        ? computeOutcomeTargetPlan(outcomeTargetGoal, outcomeTarget.volume, proposal, productsById)
+        : undefined;
       const snapshot = {
         ...proposal,
         proposal_id: proposalId,
@@ -6964,6 +8023,10 @@ async function handleGetProductsUnlocked(
         ...(proposalAccountScope && { __account_scope: proposalAccountScope }),
         ...(typeof requestOpportunity?.opportunity_id === 'string'
           && { __opportunity_id: requestOpportunity.opportunity_id }),
+        ...(outcomeTargetPlan && {
+          __outcome_target_guidance: outcomeTargetPlan.totalBudgetGuidance,
+          __outcome_target_forecast: outcomeTargetPlan.forecast,
+        }),
       } as unknown as Proposal;
       return existingById.get(proposalId)
         ?? withCanonicalProposalEnvelope(
@@ -7076,6 +8139,7 @@ async function handleGetProductsUnlocked(
       return [successor];
     });
   }
+  products = applyAvailabilityHorizonForecasts(products, availabilityHorizon, session);
   const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
   const staleDirective = readDirectives
     ? readDirectives.staleDirective
@@ -7132,19 +8196,50 @@ async function handleGetProductsUnlocked(
   for (const proposal of retainedCommittedProposals.values()) {
     if (!persistedProposalIds.has(proposal.proposal_id)) persistedProposals.push(proposal);
   }
-  if (usesTypedProposalNegotiation(ctx)) {
+  if (requireProposals || compactLifecycle || usesTypedProposalNegotiation(ctx)) {
     const canonicalProducts = new Map(
       registryProducts.map(product => [product.product_id, product]),
     );
     for (const proposal of persistedProposals) {
-      if (session.proposalRefinementRecords.has(proposal.proposal_id)) continue;
-      session.proposalRefinementRecords.set(proposal.proposal_id, {
-        proposal: outwardProposal(
-          proposal as unknown as Record<string, unknown>,
-          canonicalProducts,
-        ) as unknown as CanonicalProposal,
-        version: 1,
-      });
+      const internal = proposal as unknown as Record<string, unknown>;
+      const existing = session.proposalRefinementRecords.get(proposal.proposal_id);
+      if (!existing) {
+        const sourceRecord = typeof internal.__source_proposal_id === 'string'
+          ? session.proposalRefinementRecords.get(internal.__source_proposal_id)
+          : undefined;
+        const ownerAccountId = ctx.resolvedAccountId ?? sourceRecord?.ownerAccountId;
+        session.proposalRefinementRecords.set(proposal.proposal_id, {
+          proposal: outwardProposal(
+            internal,
+            canonicalProducts,
+          ) as unknown as CanonicalProposal,
+          version: 1,
+          ...(ownerAccountId && { ownerAccountId }),
+          ...(internal.__declined === true && {
+            declined: {
+              declined_at: typeof internal.__declined_at === 'string'
+                ? internal.__declined_at
+                : new Date().toISOString(),
+              ...(typeof internal.__decline_reason === 'string' && { reason: internal.__decline_reason }),
+              ...(typeof internal.__decline_detail === 'string' && { detail: internal.__decline_detail }),
+            },
+          }),
+        });
+        continue;
+      }
+      if (internal.__declined === true && !existing.declined && !existing.accepted) {
+        session.proposalRefinementRecords.set(proposal.proposal_id, {
+          ...existing,
+          version: existing.version + 1,
+          declined: {
+            declined_at: typeof internal.__declined_at === 'string'
+              ? internal.__declined_at
+              : new Date().toISOString(),
+            ...(typeof internal.__decline_reason === 'string' && { reason: internal.__decline_reason }),
+            ...(typeof internal.__decline_detail === 'string' && { detail: internal.__decline_detail }),
+          },
+        });
+      }
     }
   }
   // Only refine requests establish durable context for later refinements.
@@ -7580,7 +8675,26 @@ function schemaIssueField(path: Array<string | number>): string {
   return `manifest.${path.map(part => typeof part === 'number' ? `[${part}]` : part).join('.')}`.replace(/\.\[/g, '[');
 }
 
-function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): ValidateInputViolation[] {
+function jsonPointerPath(pointer: string): Array<string | number> {
+  if (!pointer) return [];
+  return pointer.slice(1).split('/').map(part => {
+    const decoded = part.replace(/~1/g, '/').replace(/~0/g, '~');
+    return /^\d+$/.test(decoded) ? Number(decoded) : decoded;
+  });
+}
+
+async function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): Promise<ValidateInputViolation[]> {
+  if (manifest.format_kind === 'seller_rendered_stateful_display'
+    || manifest.format_kind === 'coordinated_placements'
+    || manifest.component_assets !== undefined) {
+    const result = await validateProtocolSchema('/schemas/core/creative-manifest.json', manifest);
+    return result.errors.map(issue => ({
+      rule: 'schema',
+      field: schemaIssueField(jsonPointerPath(issue.instancePath)),
+      expected: issue.message ?? 'valid creative manifest',
+      predicted: issue.keyword,
+    }));
+  }
   const parsed = CreativeManifestSchema.safeParse(manifest);
   if (parsed.success) return [];
   return parsed.error.issues.map(issue => ({
@@ -7641,6 +8755,9 @@ function validateAssetUrls(manifest: NonNullable<ValidateInputArgs['manifest']>)
   const seen = new WeakSet<object>();
   for (const [slotId, slotValue] of Object.entries(assets)) {
     collectAssetUrlViolations(slotValue, `assets.${slotId}`, violations, seen);
+  }
+  for (const [componentId, componentAssets] of Object.entries(manifest.component_assets ?? {})) {
+    collectAssetUrlViolations(componentAssets, `component_assets.${componentId}`, violations, seen);
   }
   return violations;
 }
@@ -7711,6 +8828,1111 @@ function validateManifestSlots(
   }
 
   return violations;
+}
+
+type SrsdExpectedCanvas = {
+  width?: number;
+  widthRange?: [number, number];
+  widthMode?: string;
+  height?: number;
+  heightRange?: [number, number];
+  viewportHeightPercent?: number;
+};
+
+type SemanticCheckResult = {
+  violations: ValidateInputViolation[];
+  warnings: ValidateInputViolation[];
+};
+
+function effectiveSrsdSlots(params: Record<string, unknown>): CanonicalSlot[] {
+  return normalizeCanonicalSlots(params.slots) ?? CANONICAL_FORMAT_SLOTS.seller_rendered_stateful_display ?? [];
+}
+
+/** Whether `target` is reachable from `start` by following declared transitions. */
+function srsdTransitionGraphReaches(adjacency: Map<string, string[]>, start: string, target: string): boolean {
+  const visited = new Set<string>([start]);
+  const queue = [start];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current === target) return true;
+    for (const next of adjacency.get(current) ?? []) {
+      if (visited.has(next)) continue;
+      visited.add(next);
+      queue.push(next);
+    }
+  }
+  return false;
+}
+
+function validateSellerRenderedStatefulDisplayManifest(
+  params: Record<string, unknown>,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): SemanticCheckResult {
+  const violations: ValidateInputViolation[] = [];
+  const warnings: ValidateInputViolation[] = [];
+  const assets = manifest.assets ?? {};
+  const expected = new Map<string, SrsdExpectedCanvas>();
+  const stateIds = new Set<string>();
+  const stateAnchoring = new Map<string, string>();
+  const states = Array.isArray(params.states) ? params.states : [];
+  const supplyMode = typeof params.supply_mode === 'string' ? params.supply_mode : 'components';
+
+  for (const [stateIndex, rawState] of states.entries()) {
+    if (!isRecord(rawState)) continue;
+    const state = rawState;
+    if (typeof state.state_id !== 'string') continue;
+    if (stateIds.has(state.state_id)) {
+      violations.push({
+        rule: 'unique_state_id',
+        field: `params.states[${stateIndex}].state_id`,
+        expected: 'unique state_id',
+        predicted: state.state_id,
+      });
+    }
+    stateIds.add(state.state_id);
+    if (typeof state.anchoring === 'string') stateAnchoring.set(state.state_id, state.anchoring);
+
+    const motion = typeof state.motion === 'string' ? state.motion : 'static';
+    const hasMaxAnimation = typeof state.max_animation_s === 'number';
+    if (motion === 'animated' && !hasMaxAnimation) {
+      violations.push({
+        rule: 'motion_animation_bound',
+        field: `params.states[${stateIndex}].max_animation_s`,
+        expected: 'required when motion is animated',
+        predicted: undefined,
+      });
+    } else if (motion !== 'animated' && hasMaxAnimation) {
+      violations.push({
+        rule: 'motion_animation_bound',
+        field: `params.states[${stateIndex}].max_animation_s`,
+        expected: 'forbidden unless motion is animated',
+        predicted: state.max_animation_s,
+      });
+    }
+
+    const breakpointIds = new Set<string>();
+    const breakpoints = Array.isArray(state.breakpoints) ? state.breakpoints : [];
+    for (const [breakpointIndex, rawBreakpoint] of breakpoints.entries()) {
+      if (!isRecord(rawBreakpoint)) continue;
+      const breakpoint = rawBreakpoint;
+      if (typeof breakpoint.breakpoint_id !== 'string') continue;
+      if (breakpointIds.has(breakpoint.breakpoint_id)) {
+        violations.push({
+          rule: 'unique_breakpoint_id',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].breakpoint_id`,
+          expected: 'unique within state',
+          predicted: breakpoint.breakpoint_id,
+        });
+      }
+      breakpointIds.add(breakpoint.breakpoint_id);
+
+      const widthRange = Array.isArray(breakpoint.width_range)
+        && breakpoint.width_range.length === 2
+        && breakpoint.width_range.every(value => typeof value === 'number')
+        ? breakpoint.width_range as [number, number]
+        : undefined;
+      if (widthRange && widthRange[0] > widthRange[1]) {
+        violations.push({
+          rule: 'width_range_order',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].width_range`,
+          expected: '[minimum, maximum] with minimum <= maximum',
+          predicted: widthRange,
+        });
+      }
+      const heightRange = Array.isArray(breakpoint.height_range)
+        && breakpoint.height_range.length === 2
+        && breakpoint.height_range.every(value => typeof value === 'number')
+        ? breakpoint.height_range as [number, number]
+        : undefined;
+      if (heightRange && heightRange[0] > heightRange[1]) {
+        violations.push({
+          rule: 'height_range_order',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].height_range`,
+          expected: '[minimum, maximum] with minimum <= maximum',
+          predicted: heightRange,
+        });
+      }
+
+      const fixedWidth = typeof breakpoint.width === 'number' ? breakpoint.width : undefined;
+      const fixedHeight = typeof breakpoint.height === 'number' ? breakpoint.height : undefined;
+      if (typeof breakpoint.canvas_aspect_ratio === 'string' && fixedWidth !== undefined && fixedHeight !== undefined) {
+        const ratioParts = breakpoint.canvas_aspect_ratio.split(':').map(Number);
+        if (ratioParts.length === 2 && ratioParts.every(Number.isFinite) && ratioParts[1] !== 0) {
+          const expectedRatio = ratioParts[0] / ratioParts[1];
+          const actualRatio = fixedWidth / fixedHeight;
+          if (Math.abs(actualRatio - expectedRatio) / expectedRatio > 0.01) {
+            violations.push({
+              rule: 'aspect_consistency',
+              field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].canvas_aspect_ratio`,
+              expected: breakpoint.canvas_aspect_ratio,
+              predicted: `${fixedWidth}:${fixedHeight}`,
+            });
+          }
+        }
+      }
+
+      const isFluid = typeof breakpoint.width_mode === 'string' || typeof breakpoint.viewport_height_percent === 'number';
+      if (isFluid && supplyMode === 'rendered_canvases') {
+        violations.push({
+          rule: 'fluid_breakpoint_supply',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}]`,
+          expected: 'fixed or ranged sizing when supply_mode is rendered_canvases',
+          predicted: { width_mode: breakpoint.width_mode, viewport_height_percent: breakpoint.viewport_height_percent },
+        });
+      }
+
+      expected.set(`${state.state_id}:${breakpoint.breakpoint_id}`, {
+        ...(fixedWidth !== undefined && { width: fixedWidth }),
+        ...(widthRange && { widthRange }),
+        ...(typeof breakpoint.width_mode === 'string' && { widthMode: breakpoint.width_mode }),
+        ...(fixedHeight !== undefined && { height: fixedHeight }),
+        ...(heightRange && { heightRange }),
+        ...(typeof breakpoint.viewport_height_percent === 'number' && { viewportHeightPercent: breakpoint.viewport_height_percent }),
+      });
+    }
+
+    const slotBindings = Array.isArray(state.slot_bindings) ? state.slot_bindings : [];
+    if (slotBindings.length > 0) {
+      const effectiveSlotIds = new Set(effectiveSrsdSlots(params).map(slot => slot.asset_group_id));
+      for (const [bindingIndex, slotId] of slotBindings.entries()) {
+        if (typeof slotId !== 'string' || !effectiveSlotIds.has(slotId)) {
+          violations.push({
+            rule: 'slot_binding_resolution',
+            field: `params.states[${stateIndex}].slot_bindings[${bindingIndex}]`,
+            expected: [...effectiveSlotIds],
+            predicted: slotId,
+          });
+        }
+      }
+    }
+
+    if (state.anchoring === 'overlay' || state.anchoring === 'fullscreen_overlay') {
+      const userControls = isRecord(params.user_controls) ? params.user_controls : {};
+      const dismissible = userControls.dismissible === true;
+      const closeAffordance = state.close_affordance === true;
+      if (!dismissible && !closeAffordance) {
+        violations.push({
+          rule: 'dismissibility_floor',
+          field: `params.states[${stateIndex}]`,
+          expected: 'user_controls.dismissible true or close_affordance true',
+          predicted: { dismissible: userControls.dismissible, close_affordance: state.close_affordance },
+        });
+      }
+    }
+  }
+
+  const transitions = Array.isArray(params.transitions) ? params.transitions : [];
+  if (states.length === 1 && transitions.length > 0) {
+    violations.push({
+      rule: 'single_state_shape',
+      field: 'params.transitions',
+      expected: 'absent or empty for a single-state unit',
+      predicted: transitions.length,
+    });
+  } else if (states.length > 1 && transitions.length === 0) {
+    violations.push({
+      rule: 'single_state_shape',
+      field: 'params.transitions',
+      expected: 'present and non-empty when more than one state is declared',
+      predicted: transitions,
+    });
+  }
+
+  const initialStateId = typeof params.initial_state_id === 'string' ? params.initial_state_id : undefined;
+  if (!initialStateId || !stateIds.has(initialStateId)) {
+    violations.push({
+      rule: 'initial_state_resolution',
+      field: 'params.initial_state_id',
+      expected: [...stateIds],
+      predicted: params.initial_state_id,
+    });
+  }
+
+  const effectiveSlots = effectiveSrsdSlots(params);
+  const hasVideoMainSlot = effectiveSlots.some(slot => slot.asset_group_id === 'video_main');
+
+  const transitionIds = new Set<string>();
+  const exitCauses = new Map<string, string>();
+  const adjacency = new Map<string, string[]>();
+  const timerEdges: Array<{ from: string; to: string; delayMs?: number; field: string }> = [];
+  for (const [transitionIndex, rawTransition] of transitions.entries()) {
+    if (!isRecord(rawTransition)) continue;
+    const transitionId = typeof rawTransition.transition_id === 'string'
+      ? rawTransition.transition_id
+      : undefined;
+    if (transitionId && transitionIds.has(transitionId)) {
+      violations.push({
+        rule: 'unique_transition_id',
+        field: `params.transitions[${transitionIndex}].transition_id`,
+        expected: 'unique transition_id',
+        predicted: transitionId,
+      });
+    }
+    if (transitionId) transitionIds.add(transitionId);
+    const fromStateId = typeof rawTransition.from_state_id === 'string'
+      ? rawTransition.from_state_id
+      : undefined;
+    const toStateId = typeof rawTransition.to_state_id === 'string'
+      ? rawTransition.to_state_id
+      : undefined;
+    const trigger = typeof rawTransition.trigger === 'string' ? rawTransition.trigger : undefined;
+    const input = typeof rawTransition.input === 'string' ? rawTransition.input : undefined;
+    const transitionMode = typeof rawTransition.transition_mode === 'string' ? rawTransition.transition_mode : undefined;
+    const delayMs = typeof rawTransition.delay_ms === 'number' ? rawTransition.delay_ms : undefined;
+    const mediaEvent = typeof rawTransition.media_event === 'string' ? rawTransition.media_event : undefined;
+
+    if (trigger === 'scroll_progress') {
+      const scrollStart = typeof rawTransition.scroll_start_percent === 'number'
+        ? rawTransition.scroll_start_percent
+        : undefined;
+      const scrollEnd = typeof rawTransition.scroll_end_percent === 'number'
+        ? rawTransition.scroll_end_percent
+        : undefined;
+      if (scrollStart === undefined || scrollEnd === undefined || scrollStart >= scrollEnd) {
+        violations.push({
+          rule: 'scroll_progress_bounds',
+          field: `params.transitions[${transitionIndex}]`,
+          expected: 'scroll_start_percent < scroll_end_percent',
+          predicted: { scroll_start_percent: scrollStart, scroll_end_percent: scrollEnd },
+        });
+      }
+    }
+
+    if (transitionMode === 'scroll_linked' && trigger !== 'scroll_progress') {
+      violations.push({
+        rule: 'scroll_linked_binding',
+        field: `params.transitions[${transitionIndex}].transition_mode`,
+        expected: 'scroll_linked is valid only with trigger scroll_progress',
+        predicted: trigger,
+      });
+    }
+
+    if (rawTransition.direction !== undefined && trigger !== 'scroll_threshold') {
+      violations.push({
+        rule: 'scroll_threshold_direction',
+        field: `params.transitions[${transitionIndex}].direction`,
+        expected: 'direction is valid only on scroll_threshold transitions',
+        predicted: trigger,
+      });
+    }
+
+    // Exits from a state must be deterministic: two transitions out of the
+    // same state may not share an identical cause tuple. Distinct causes
+    // (tap vs hover, down-scroll vs up-scroll) may coexist — the seller
+    // runtime arms whichever inputs the device supports.
+    if (fromStateId && trigger) {
+      const direction = typeof rawTransition.direction === 'string' ? rawTransition.direction : 'down';
+      const causeParts: Record<string, string> = { trigger };
+      if (trigger === 'user_action') causeParts.input = input ?? '';
+      if (trigger === 'media_event') causeParts.media_event = mediaEvent ?? '';
+      if (trigger === 'scroll_threshold') causeParts.direction = direction;
+      const causeKey = `${fromStateId}|${JSON.stringify(causeParts)}`;
+      const priorTransition = exitCauses.get(causeKey);
+      if (priorTransition !== undefined) {
+        violations.push({
+          rule: 'transition_exit_determinism',
+          field: `params.transitions[${transitionIndex}]`,
+          expected: `at most one transition out of state "${fromStateId}" per cause (trigger/input/media_event/direction)`,
+          predicted: { conflicting_with: priorTransition, cause: causeParts },
+        });
+      } else {
+        exitCauses.set(causeKey, transitionId ?? `transitions[${transitionIndex}]`);
+      }
+    }
+
+    if (trigger === 'media_event') {
+      if (mediaEvent !== 'video_start' && mediaEvent !== 'video_complete') {
+        violations.push({
+          rule: 'media_event_field_required',
+          field: `params.transitions[${transitionIndex}].media_event`,
+          expected: ['video_start', 'video_complete'],
+          predicted: mediaEvent,
+        });
+      }
+      if (!hasVideoMainSlot) {
+        violations.push({
+          rule: 'media_event_video_main_slot_required',
+          field: `params.transitions[${transitionIndex}]`,
+          expected: 'a declared video_main slot',
+          predicted: effectiveSlots.map(slot => slot.asset_group_id),
+        });
+      }
+    }
+
+    if (!fromStateId || !toStateId || !stateIds.has(fromStateId) || !stateIds.has(toStateId) || fromStateId === toStateId) {
+      violations.push({
+        rule: 'transition_state_resolution',
+        field: `params.transitions[${transitionIndex}]`,
+        expected: { from_state_id: [...stateIds], to_state_id: [...stateIds], distinct: true },
+        predicted: { from_state_id: fromStateId, to_state_id: toStateId },
+      });
+      continue;
+    }
+
+    const outgoing = adjacency.get(fromStateId) ?? [];
+    outgoing.push(toStateId);
+    adjacency.set(fromStateId, outgoing);
+
+    if (trigger === 'timer' || trigger === 'in_view_timer') {
+      timerEdges.push({ from: fromStateId, to: toStateId, delayMs, field: `params.transitions[${transitionIndex}].delay_ms` });
+    }
+
+    const toAnchoring = stateAnchoring.get(toStateId);
+    const isOverlayAnchoring = toAnchoring === 'overlay' || toAnchoring === 'fullscreen_overlay';
+    if (trigger !== 'user_action' && isOverlayAnchoring) {
+      warnings.push({
+        rule: 'lean_policy_warnings',
+        field: `params.transitions[${transitionIndex}]`,
+        expected: 'user-initiated entry into overlay/fullscreen_overlay anchoring',
+        predicted: { trigger, to_state_id: toStateId, anchoring: toAnchoring },
+      });
+    }
+    if (trigger === 'user_action' && input === 'hover') {
+      warnings.push({
+        rule: 'lean_policy_warnings',
+        field: `params.transitions[${transitionIndex}].input`,
+        expected: 'non-hover input for user_action transitions (IAB New Ad Portfolio)',
+        predicted: 'hover',
+      });
+    }
+  }
+
+  if (states.length > 1 && initialStateId && stateIds.has(initialStateId)) {
+    const reachable = new Set<string>([initialStateId]);
+    const pending = [initialStateId];
+    while (pending.length > 0) {
+      const current = pending.shift()!;
+      for (const next of adjacency.get(current) ?? []) {
+        if (reachable.has(next)) continue;
+        reachable.add(next);
+        pending.push(next);
+      }
+    }
+    for (const stateId of stateIds) {
+      if (!reachable.has(stateId)) {
+        violations.push({
+          rule: 'state_reachability',
+          field: 'params.transitions',
+          expected: `path from ${initialStateId} to ${stateId}`,
+          predicted: [...reachable],
+        });
+      }
+    }
+
+    for (const edge of timerEdges) {
+      if ((edge.delayMs ?? 0) >= 1000) continue;
+      if (srsdTransitionGraphReaches(adjacency, edge.to, edge.from)) {
+        violations.push({
+          rule: 'timer_cycle_floor',
+          field: edge.field,
+          expected: 'delay_ms >= 1000 for timer/in_view_timer transitions participating in a state cycle',
+          predicted: edge.delayMs,
+        });
+      }
+    }
+  }
+
+  const hasStateCanvases = slotCount(assets, 'state_canvases') > 0;
+  const hasLayeredSource = slotCount(assets, 'layered_source') > 0;
+  if (supplyMode === 'components') {
+    if (hasStateCanvases) {
+      violations.push({
+        rule: 'supply_mode_manifest',
+        field: 'assets.state_canvases',
+        expected: 'forbidden in components supply_mode',
+        predicted: 'present',
+      });
+    }
+    if (hasLayeredSource) {
+      violations.push({
+        rule: 'supply_mode_manifest',
+        field: 'assets.layered_source',
+        expected: 'forbidden in components supply_mode',
+        predicted: 'present',
+      });
+    }
+  } else if (supplyMode === 'layered_source') {
+    if (!hasLayeredSource) {
+      violations.push({
+        rule: 'supply_mode_manifest',
+        field: 'assets.layered_source',
+        expected: 'required in layered_source supply_mode',
+        predicted: 'absent',
+      });
+    }
+    if (hasStateCanvases) {
+      violations.push({
+        rule: 'supply_mode_manifest',
+        field: 'assets.state_canvases',
+        expected: 'forbidden in layered_source supply_mode',
+        predicted: 'present',
+      });
+    }
+  } else if (supplyMode === 'rendered_canvases' && hasLayeredSource) {
+    violations.push({
+      rule: 'supply_mode_manifest',
+      field: 'assets.layered_source',
+      expected: 'forbidden in rendered_canvases supply_mode',
+      predicted: 'present',
+    });
+  }
+
+  if (supplyMode === 'rendered_canvases') {
+    const canvases = slotValues(assets, 'state_canvases');
+    const seen = new Set<string>();
+    for (const [index, rawCanvas] of canvases.entries()) {
+      if (!isRecord(rawCanvas)) continue;
+      const canvas = rawCanvas;
+      const key = `${String(canvas.state_id)}:${String(canvas.breakpoint_id)}`;
+      const target = expected.get(key);
+      if (!target) {
+        violations.push({
+          rule: 'state_canvas_extras',
+          field: `assets.state_canvases[${index}]`,
+          expected: [...expected.keys()],
+          predicted: key,
+        });
+        continue;
+      }
+      if (seen.has(key)) {
+        violations.push({
+          rule: 'state_canvas_extras',
+          field: `assets.state_canvases[${index}]`,
+          expected: 'exactly one canvas per state and breakpoint',
+          predicted: key,
+        });
+      }
+      seen.add(key);
+      if (target.width !== undefined && canvas.width !== target.width) {
+        violations.push({
+          rule: 'state_canvas_dimensions',
+          field: `assets.state_canvases[${index}].width`,
+          expected: target.width,
+          predicted: canvas.width,
+        });
+      }
+      if (target.widthRange && (
+        typeof canvas.width !== 'number'
+        || canvas.width < target.widthRange[0]
+        || canvas.width > target.widthRange[1]
+      )) {
+        violations.push({
+          rule: 'state_canvas_dimensions',
+          field: `assets.state_canvases[${index}].width`,
+          expected: target.widthRange,
+          predicted: canvas.width,
+        });
+      }
+      if (target.height !== undefined && canvas.height !== target.height) {
+        violations.push({
+          rule: 'state_canvas_dimensions',
+          field: `assets.state_canvases[${index}].height`,
+          expected: target.height,
+          predicted: canvas.height,
+        });
+      }
+      if (target.heightRange && (
+        typeof canvas.height !== 'number'
+        || canvas.height < target.heightRange[0]
+        || canvas.height > target.heightRange[1]
+      )) {
+        violations.push({
+          rule: 'state_canvas_dimensions',
+          field: `assets.state_canvases[${index}].height`,
+          expected: target.heightRange,
+          predicted: canvas.height,
+        });
+      }
+    }
+    for (const key of expected.keys()) {
+      if (!seen.has(key)) {
+        violations.push({
+          rule: 'state_canvas_coverage',
+          field: 'assets.state_canvases',
+          expected: key,
+        });
+      }
+    }
+  }
+
+  const constraints = Array.isArray(params.canvas_constraints) ? params.canvas_constraints : [];
+  for (const [constraintIndex, rawConstraint] of constraints.entries()) {
+    if (!isRecord(rawConstraint)) continue;
+    const constraint = rawConstraint;
+    const stateId = typeof constraint.state_id === 'string' ? constraint.state_id : undefined;
+    const breakpointId = typeof constraint.breakpoint_id === 'string' ? constraint.breakpoint_id : undefined;
+    const candidates = [...expected.entries()].filter(([key]) => {
+      const [candidateState, candidateBreakpoint] = key.split(':');
+      return (!stateId || candidateState === stateId) && (!breakpointId || candidateBreakpoint === breakpointId);
+    });
+    if (candidates.length === 0) {
+      violations.push({
+        rule: 'canvas_constraint_selector',
+        field: `params.canvas_constraints[${constraintIndex}]`,
+        expected: [...expected.keys()],
+        predicted: { state_id: stateId, breakpoint_id: breakpointId },
+      });
+      continue;
+    }
+    violations.push(...validateCanvasConstraintRegion(
+      constraint,
+      `params.canvas_constraints[${constraintIndex}]`,
+      candidates.map(([, canvas]) => ({
+        width: canvas.width ?? canvas.widthRange?.[0] ?? 0,
+        height: canvas.height ?? canvas.heightRange?.[0],
+      })),
+    ));
+  }
+  const durationRange = Array.isArray(params.duration_ms_range) ? params.duration_ms_range : undefined;
+  if (durationRange
+    && typeof durationRange[0] === 'number'
+    && typeof durationRange[1] === 'number'
+    && durationRange[0] > durationRange[1]) {
+    violations.push({
+      rule: 'duration_ms_range_order',
+      field: 'params.duration_ms_range',
+      expected: '[minimum, maximum] with minimum <= maximum',
+      predicted: durationRange,
+    });
+  }
+
+  const videoAssets = slotValues(assets, 'video_main');
+  if (videoAssets.length > 0) {
+    const video = videoAssets.length === 1 && isRecord(videoAssets[0]) ? videoAssets[0] : undefined;
+    const durationExact = typeof params.duration_ms_exact === 'number' ? params.duration_ms_exact : undefined;
+    const durationSatisfied = durationExact !== undefined
+      ? video?.duration_ms === durationExact
+      : (!durationRange || (
+          typeof video?.duration_ms === 'number'
+          && (typeof durationRange[0] !== 'number' || video.duration_ms >= durationRange[0])
+          && (typeof durationRange[1] !== 'number' || video.duration_ms <= durationRange[1])
+        ));
+    const ratioParts = typeof params.aspect_ratio === 'string'
+      ? params.aspect_ratio.split(':').map(Number)
+      : undefined;
+    const aspectSatisfied = !ratioParts || (
+      Number.isFinite(ratioParts[0])
+      && Number.isFinite(ratioParts[1])
+      && ratioParts[1] !== 0
+      && typeof video?.width === 'number'
+      && typeof video.height === 'number'
+      && video.height > 0
+      && Math.abs(video.width / video.height - ratioParts[0] / ratioParts[1]) < 0.01
+    );
+    const allowedContainers = Array.isArray(params.containers)
+      ? params.containers.filter((value): value is string => typeof value === 'string')
+      : [];
+    const containerSatisfied = allowedContainers.length === 0 || (
+      typeof video?.container_format === 'string'
+      && allowedContainers.includes(video.container_format)
+    );
+    if (!video || !durationSatisfied || !aspectSatisfied || !containerSatisfied) {
+      violations.push({
+        rule: 'seller_rendered_stateful_display_video_params',
+        field: 'assets.video_main',
+        expected: {
+          cardinality: 'exactly one video when supplied',
+          ...(durationExact !== undefined && { duration_ms_exact: durationExact }),
+          ...(durationExact === undefined && durationRange && { duration_ms_range: durationRange }),
+          ...(params.aspect_ratio !== undefined && { aspect_ratio: params.aspect_ratio }),
+          ...(allowedContainers.length > 0 && { containers: allowedContainers }),
+        },
+        predicted: videoAssets,
+      });
+    }
+  }
+
+  const clickthrough = typeof params.clickthrough === 'string' ? params.clickthrough : 'required';
+  const landingPageCount = slotCount(assets, 'landing_page_url');
+  const stateClickUrls = slotValues(assets, 'state_click_urls');
+  if (clickthrough === 'required' && landingPageCount === 0) {
+    violations.push({
+      rule: 'clickthrough_policy',
+      field: 'assets.landing_page_url',
+      expected: 'required when clickthrough is required',
+      predicted: 'absent',
+    });
+  }
+  if (clickthrough === 'none') {
+    if (landingPageCount > 0) {
+      violations.push({
+        rule: 'clickthrough_policy',
+        field: 'assets.landing_page_url',
+        expected: 'forbidden when clickthrough is none',
+        predicted: 'present',
+      });
+    }
+    if (stateClickUrls.length > 0) {
+      violations.push({
+        rule: 'clickthrough_policy',
+        field: 'assets.state_click_urls',
+        expected: 'forbidden when clickthrough is none',
+        predicted: 'present',
+      });
+    }
+  }
+  const seenClickStates = new Set<string>();
+  for (const [index, raw] of stateClickUrls.entries()) {
+    if (!isRecord(raw)) continue;
+    const stateId = typeof raw.state_id === 'string' ? raw.state_id : undefined;
+    if (!stateId || !stateIds.has(stateId)) {
+      violations.push({
+        rule: 'state_click_url_resolution',
+        field: `assets.state_click_urls[${index}].state_id`,
+        expected: [...stateIds],
+        predicted: stateId,
+      });
+      continue;
+    }
+    if (seenClickStates.has(stateId)) {
+      violations.push({
+        rule: 'state_click_url_resolution',
+        field: `assets.state_click_urls[${index}].state_id`,
+        expected: 'at most one entry per state',
+        predicted: stateId,
+      });
+      continue;
+    }
+    seenClickStates.add(stateId);
+  }
+
+  return { violations, warnings };
+}
+
+function validateCanvasConstraintRegion(
+  constraint: Record<string, unknown>,
+  field: string,
+  canvases: Array<{ width: number; height?: number }>,
+): ValidateInputViolation[] {
+  const region = constraint.region && typeof constraint.region === 'object' && !Array.isArray(constraint.region)
+    ? constraint.region as Record<string, unknown>
+    : undefined;
+  if (!region) return [];
+  const { x, y, width, height } = region;
+  if (![x, y, width, height].every(value => typeof value === 'number')) return [];
+  const unit = region.unit === 'percent' ? 'percent' : 'px';
+  const maxWidth = unit === 'percent' ? 100 : undefined;
+  const maxHeight = unit === 'percent' ? 100 : undefined;
+  if (maxWidth !== undefined && ((x as number) + (width as number) > maxWidth || (y as number) + (height as number) > maxHeight!)) {
+    return [{
+      rule: 'canvas_constraint_region_bounds',
+      field: `${field}.region`,
+      expected: 'percent region contained within 0..100 on both axes',
+      predicted: region,
+    }];
+  }
+  if (unit === 'px' && canvases.some(canvas =>
+    (x as number) + (width as number) > canvas.width
+    || (canvas.height !== undefined && (y as number) + (height as number) > canvas.height)
+  )) {
+    return [{
+      rule: 'canvas_constraint_region_bounds',
+      field: `${field}.region`,
+      expected: 'pixel region contained within every selected canvas',
+      predicted: region,
+    }];
+  }
+  return [];
+}
+
+type ComponentOptionResolution =
+  | { kind: 'resolved'; option: Record<string, unknown> }
+  | { kind: 'not_found' }
+  | { kind: 'invalid_scope'; scope: unknown };
+
+function resolveCoordinatedPlacementComponentOption(
+  product: Product,
+  ref: Record<string, unknown>,
+): ComponentOptionResolution {
+  if (ref.scope !== 'publisher' && ref.scope !== 'product') {
+    return { kind: 'invalid_scope', scope: ref.scope };
+  }
+  const options = (product as unknown as { format_options?: unknown[] }).format_options;
+  if (!Array.isArray(options) || typeof ref.format_option_id !== 'string') return { kind: 'not_found' };
+  const found = options.find((rawOption): rawOption is Record<string, unknown> => {
+    if (!isRecord(rawOption)) return false;
+    if (rawOption.format_option_id !== ref.format_option_id) return false;
+    if (ref.scope === 'publisher') {
+      return typeof ref.publisher_domain === 'string' && rawOption.publisher_domain === ref.publisher_domain;
+    }
+    return rawOption.publisher_domain === undefined;
+  });
+  return found ? { kind: 'resolved', option: found } : { kind: 'not_found' };
+}
+
+function canonicalSlotsForDeclaration(declaration: Record<string, unknown>): CanonicalSlot[] {
+  const kind = typeof declaration.format_kind === 'string' ? declaration.format_kind : '';
+  const declarationParams = declaration.params && typeof declaration.params === 'object' && !Array.isArray(declaration.params)
+    ? declaration.params as Record<string, unknown>
+    : {};
+  const slots = normalizeCanonicalSlots(declarationParams.slots) ?? CANONICAL_FORMAT_SLOTS[kind] ?? [];
+  const allowed = allowedAssetTypesForCanonical(kind);
+  return slots.filter(slot => allowed.has(slot.asset_type));
+}
+
+/** Lowercased placement-ref publisher domain, defaulting to the product's own publisher domain. */
+function normalizedPlacementDomain(explicit: unknown, product: Product): string {
+  const fallback = (product as unknown as { publisher_properties?: Array<{ publisher_domain?: string }> })
+    .publisher_properties?.[0]?.publisher_domain;
+  const domain = typeof explicit === 'string' && explicit.length > 0 ? explicit : (fallback ?? '');
+  return domain.toLowerCase();
+}
+
+function prefixComponentViolations(
+  componentId: string,
+  violations: ValidateInputViolation[],
+): ValidateInputViolation[] {
+  return violations.map(violation => ({
+    ...violation,
+    field: violation.field.startsWith('assets')
+      ? violation.field.replace(/^assets/, `component_assets.${componentId}`)
+      : violation.field,
+  }));
+}
+
+async function validateCoordinatedPlacementsDeclaration(
+  product: Product,
+  params: Record<string, unknown>,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): Promise<SemanticCheckResult> {
+  const violations: ValidateInputViolation[] = [];
+  const warnings: ValidateInputViolation[] = [];
+  const componentIds = new Set<string>();
+  const componentDeclarations = new Map<string, Record<string, unknown>>();
+  const requiredComponents = new Set<string>();
+  const productPlacements = Array.isArray((product as unknown as { placements?: unknown[] }).placements)
+    ? (product as unknown as { placements: unknown[] }).placements
+    : [];
+  const declaredPlacementKeys = new Set(productPlacements.flatMap(rawPlacement => {
+    if (!isRecord(rawPlacement) || typeof rawPlacement.placement_id !== 'string') return [];
+    const publisherDomain = normalizedPlacementDomain(rawPlacement.publisher_domain, product);
+    return [`${publisherDomain}:${rawPlacement.placement_id}`];
+  }));
+  const usedPlacementKeys = new Set<string>();
+  const components = Array.isArray(params.components) ? params.components : [];
+  if (components.length < 2) {
+    violations.push({
+      rule: 'coordinated_placements_components_required',
+      field: 'params.components',
+      expected: 'at least two components',
+      predicted: params.components,
+    });
+  }
+  for (const [componentIndex, rawComponent] of components.entries()) {
+    if (!rawComponent || typeof rawComponent !== 'object') continue;
+    const component = rawComponent as Record<string, unknown>;
+    if (typeof component.component_id !== 'string') continue;
+    if (componentIds.has(component.component_id)) {
+      violations.push({
+        rule: 'unique_component_id',
+        field: `params.components[${componentIndex}].component_id`,
+        expected: 'unique component_id',
+        predicted: component.component_id,
+      });
+    }
+    componentIds.add(component.component_id);
+    if (component.required === true) requiredComponents.add(component.component_id);
+    const placementRef = isRecord(component.placement_ref) ? component.placement_ref : undefined;
+    const placementId = typeof placementRef?.placement_id === 'string' ? placementRef.placement_id : undefined;
+    const publisherDomain = normalizedPlacementDomain(placementRef?.publisher_domain, product);
+    const placementKey = placementId ? `${publisherDomain}:${placementId}` : undefined;
+    if (!placementKey || !declaredPlacementKeys.has(placementKey)) {
+      violations.push({
+        rule: 'coordinated_component_placement_ref',
+        field: `params.components[${componentIndex}].placement_ref`,
+        expected: [...declaredPlacementKeys],
+        predicted: component.placement_ref,
+      });
+    } else if (usedPlacementKeys.has(placementKey)) {
+      violations.push({
+        rule: 'coordinated_component_placement_unique',
+        field: `params.components[${componentIndex}].placement_ref`,
+        expected: 'one component per declared placement',
+        predicted: component.placement_ref,
+      });
+    } else {
+      usedPlacementKeys.add(placementKey);
+    }
+    let declaration: Record<string, unknown> | undefined;
+    if (component.format_option_ref && typeof component.format_option_ref === 'object') {
+      const resolution = resolveCoordinatedPlacementComponentOption(
+        product,
+        component.format_option_ref as Record<string, unknown>,
+      );
+      if (resolution.kind === 'invalid_scope') {
+        violations.push({
+          rule: 'coordinated_component_format_option_ref_scope',
+          field: `params.components[${componentIndex}].format_option_ref.scope`,
+          expected: ['product', 'publisher'],
+          predicted: resolution.scope,
+        });
+      } else if (resolution.kind === 'not_found') {
+        violations.push({
+          rule: 'coordinated_component_format_option_ref',
+          field: `params.components[${componentIndex}].format_option_ref`,
+          expected: 'sibling format option on the same product',
+          predicted: component.format_option_ref,
+        });
+      } else {
+        declaration = resolution.option;
+        if (declaration.format_kind === 'custom' || declaration.format_kind === 'coordinated_placements') {
+          violations.push({
+            rule: 'coordinated_component_format_kind',
+            field: `params.components[${componentIndex}].format_option_ref`,
+            expected: 'non-custom, non-coordinated_placements sibling format',
+            predicted: declaration.format_kind,
+          });
+        }
+      }
+    } else if (typeof component.format_kind === 'string' && component.params && typeof component.params === 'object') {
+      declaration = { format_kind: component.format_kind, params: component.params };
+      if (component.format_kind === 'custom' || component.format_kind === 'coordinated_placements') {
+        violations.push({
+          rule: 'coordinated_component_format_kind',
+          field: `params.components[${componentIndex}].format_kind`,
+          expected: 'non-custom, non-coordinated_placements canonical format',
+          predicted: component.format_kind,
+        });
+      }
+    }
+    if (declaration && declaration.format_kind !== 'custom' && declaration.format_kind !== 'coordinated_placements') {
+      componentDeclarations.set(component.component_id, declaration);
+      const schemaResult = await validateProtocolSchema(
+        '/schemas/core/product-format-declaration.json',
+        declaration,
+      );
+      for (const issue of schemaResult.errors) {
+        violations.push({
+          rule: 'coordinated_component_params_schema',
+          field: `params.components[${componentIndex}]${issue.instancePath.replaceAll('/', '.')}`,
+          expected: issue.message ?? 'params valid for selected canonical',
+          predicted: issue.keyword,
+        });
+      }
+      const componentConstraints = Array.isArray(component.canvas_constraints) ? component.canvas_constraints : [];
+      const declarationParams = declaration.params && typeof declaration.params === 'object'
+        ? declaration.params as Record<string, unknown>
+        : {};
+      if (declarationParams.slots !== undefined) {
+        violations.push(...slotAssetTypeAllowlistViolations(
+          String(declaration.format_kind),
+          declarationParams.slots,
+          `params.components[${componentIndex}].params.slots`,
+        ));
+      }
+      const canvases: Array<{ width: number; height?: number; stateId?: string; breakpointId?: string }> = [];
+      if (typeof declarationParams.width === 'number') {
+        canvases.push({
+          width: declarationParams.width,
+          height: typeof declarationParams.height === 'number' ? declarationParams.height : undefined,
+        });
+      }
+      for (const [key, value] of Object.entries(declarationParams)) {
+        if ((key !== 'sizes' && !key.endsWith('_sizes')) || !Array.isArray(value)) continue;
+        for (const size of value) {
+          if (!isRecord(size) || typeof size.width !== 'number') continue;
+          canvases.push({
+            width: size.width,
+            height: typeof size.height === 'number' ? size.height : undefined,
+          });
+        }
+      }
+      if (declaration.format_kind === 'seller_rendered_stateful_display') {
+        for (const state of Array.isArray(declarationParams.states) ? declarationParams.states : []) {
+          if (!isRecord(state) || typeof state.state_id !== 'string') continue;
+          for (const breakpoint of Array.isArray(state.breakpoints) ? state.breakpoints : []) {
+            if (!isRecord(breakpoint)
+              || typeof breakpoint.breakpoint_id !== 'string'
+              || typeof breakpoint.width !== 'number') continue;
+            const heightRange = Array.isArray(breakpoint.height_range) ? breakpoint.height_range : [];
+            canvases.push({
+              width: breakpoint.width,
+              height: typeof breakpoint.height === 'number'
+                ? breakpoint.height
+                : (typeof heightRange[0] === 'number' ? heightRange[0] : undefined),
+              stateId: state.state_id,
+              breakpointId: breakpoint.breakpoint_id,
+            });
+          }
+        }
+      }
+      for (const [constraintIndex, rawConstraint] of componentConstraints.entries()) {
+        if (!rawConstraint || typeof rawConstraint !== 'object' || Array.isArray(rawConstraint)) continue;
+        const constraint = rawConstraint as Record<string, unknown>;
+        const hasSelector = constraint.state_id !== undefined || constraint.breakpoint_id !== undefined;
+        if (hasSelector && declaration.format_kind !== 'seller_rendered_stateful_display') {
+          violations.push({
+            rule: 'coordinated_canvas_constraint_selector',
+            field: `params.components[${componentIndex}].canvas_constraints[${constraintIndex}]`,
+            expected: 'state_id and breakpoint_id selectors only on seller_rendered_stateful_display components',
+            predicted: { state_id: constraint.state_id, breakpoint_id: constraint.breakpoint_id },
+          });
+        }
+        const selectedCanvases = declaration.format_kind === 'seller_rendered_stateful_display'
+          ? canvases.filter(canvas =>
+              (constraint.state_id === undefined || constraint.state_id === canvas.stateId)
+              && (constraint.breakpoint_id === undefined || constraint.breakpoint_id === canvas.breakpointId))
+          : canvases;
+        if (declaration.format_kind === 'seller_rendered_stateful_display' && selectedCanvases.length === 0) {
+          violations.push({
+            rule: 'coordinated_canvas_constraint_selector',
+            field: `params.components[${componentIndex}].canvas_constraints[${constraintIndex}]`,
+            expected: 'selector matching a declared state and breakpoint',
+            predicted: { state_id: constraint.state_id, breakpoint_id: constraint.breakpoint_id },
+          });
+        }
+        const region = isRecord(constraint.region) ? constraint.region : undefined;
+        if (region?.unit !== 'percent' && selectedCanvases.length === 0) {
+          violations.push({
+            rule: 'coordinated_canvas_constraint_canvas_required',
+            field: `params.components[${componentIndex}].canvas_constraints[${constraintIndex}].region`,
+            expected: 'a component declaration with finite canvas dimensions for pixel constraints',
+            predicted: declarationParams,
+          });
+        }
+        violations.push(...validateCanvasConstraintRegion(
+          constraint,
+          `params.components[${componentIndex}].canvas_constraints[${constraintIndex}]`,
+          selectedCanvases,
+        ));
+      }
+    }
+  }
+  if (requiredComponents.size === 0) {
+    violations.push({
+      rule: 'coordinated_placements_required_component',
+      field: 'params.components',
+      expected: 'at least one component with required: true',
+      predicted: components,
+    });
+  }
+  const sequenceValues = components
+    .map(rawComponent => (isRecord(rawComponent) && typeof rawComponent.sequence === 'number' ? rawComponent.sequence : undefined))
+    .filter((value): value is number => value !== undefined);
+  if (sequenceValues.length > 0) {
+    const uniqueSorted = [...new Set(sequenceValues)].sort((a, b) => a - b);
+    const contiguousFromOne = uniqueSorted.every((value, index) => value === index + 1);
+    if (!contiguousFromOne) {
+      violations.push({
+        rule: 'sequence_values',
+        field: 'params.components',
+        expected: 'sequence values starting at 1 and contiguous across the declared set',
+        predicted: sequenceValues,
+      });
+    }
+  }
+  const sharedSlots = Array.isArray(params.shared_slots) ? params.shared_slots : [];
+  const sharedSlotIds = new Set<string>();
+  const sharedByComponent = new Map<string, CanonicalSlot[]>();
+  for (const [slotIndex, rawSlot] of sharedSlots.entries()) {
+    if (!rawSlot || typeof rawSlot !== 'object') continue;
+    const slot = rawSlot as Record<string, unknown>;
+    const slotId = typeof slot.asset_group_id === 'string' ? slot.asset_group_id : undefined;
+    const slotType = typeof slot.asset_type === 'string' ? slot.asset_type : undefined;
+    if (slotId && sharedSlotIds.has(slotId)) {
+      violations.push({
+        rule: 'coordinated_shared_slot_unique',
+        field: `params.shared_slots[${slotIndex}].asset_group_id`,
+        expected: 'unique shared asset_group_id',
+        predicted: slotId,
+      });
+    }
+    if (slotId) sharedSlotIds.add(slotId);
+    const consumers = Array.isArray(slot.consumed_by) ? slot.consumed_by : [];
+    for (const [consumerIndex, consumer] of consumers.entries()) {
+      if (typeof consumer !== 'string') continue;
+      if (!componentIds.has(consumer)) {
+        violations.push({
+          rule: 'coordinated_shared_slot_consumer',
+          field: `params.shared_slots[${slotIndex}].consumed_by[${consumerIndex}]`,
+          expected: [...componentIds],
+          predicted: consumer,
+        });
+        continue;
+      }
+      if (!slotId || !slotType) continue;
+      const declaration = componentDeclarations.get(consumer);
+      const accepted = declaration
+        ? canonicalSlotsForDeclaration(declaration).find(candidate => candidate.asset_group_id === slotId)
+        : undefined;
+      if (!accepted || accepted.asset_type !== slotType) {
+        violations.push({
+          rule: 'coordinated_shared_slot_compatibility',
+          field: `params.shared_slots[${slotIndex}].consumed_by[${consumerIndex}]`,
+          expected: declaration ? canonicalSlotsForDeclaration(declaration) : [],
+          predicted: { component_id: consumer, asset_group_id: slotId, asset_type: slotType },
+        });
+        continue;
+      }
+      const list = sharedByComponent.get(consumer) ?? [];
+      list.push({ asset_group_id: slotId, asset_type: slotType });
+      sharedByComponent.set(consumer, list);
+    }
+  }
+
+  const componentAssets = manifest.component_assets ?? {};
+  for (const componentId of Object.keys(componentAssets)) {
+    if (!componentIds.has(componentId)) {
+      violations.push({
+        rule: 'coordinated_component_assets_declared',
+        field: `component_assets.${componentId}`,
+        expected: [...componentIds],
+        predicted: componentId,
+      });
+    }
+  }
+  for (const [componentId, declaration] of componentDeclarations) {
+    const supplied = componentAssets[componentId];
+    if (!supplied && requiredComponents.has(componentId)) {
+      violations.push({
+        rule: 'coordinated_component_assets_required',
+        field: `component_assets.${componentId}`,
+        expected: 'asset map for required component',
+      });
+      continue;
+    }
+    if (!supplied) continue;
+    const effectiveAssets = { ...supplied };
+    for (const sharedSlot of sharedByComponent.get(componentId) ?? []) {
+      if (Object.hasOwn(effectiveAssets, sharedSlot.asset_group_id)) {
+        violations.push({
+          rule: 'coordinated_shared_slot_duplicate_supply',
+          field: `component_assets.${componentId}.${sharedSlot.asset_group_id}`,
+          expected: 'shared asset supplied only at manifest.assets',
+          predicted: 'component-specific duplicate',
+        });
+        continue;
+      }
+      const sharedValue = manifest.assets?.[sharedSlot.asset_group_id];
+      if (sharedValue !== undefined) effectiveAssets[sharedSlot.asset_group_id] = sharedValue;
+    }
+    const componentManifest = {
+      format_kind: String(declaration.format_kind),
+      assets: effectiveAssets,
+    };
+    violations.push(...prefixComponentViolations(componentId, validateManifestSlots(
+      componentManifest,
+      canonicalSlotsForDeclaration(declaration),
+    )));
+    const declarationParams = declaration.params && typeof declaration.params === 'object'
+      ? declaration.params as Record<string, unknown>
+      : {};
+    if (declaration.format_kind !== 'seller_rendered_stateful_display'
+      && !canonicalParamsSatisfied(componentManifest as CreativeManifest, declarationParams)) {
+      violations.push({
+        rule: 'coordinated_component_params_satisfied',
+        field: `component_assets.${componentId}`,
+        expected: declarationParams,
+        predicted: effectiveAssets,
+      });
+    }
+    if (declaration.format_kind === 'seller_rendered_stateful_display') {
+      const nested = validateSellerRenderedStatefulDisplayManifest(declarationParams, componentManifest);
+      violations.push(...prefixComponentViolations(componentId, nested.violations));
+      warnings.push(...prefixComponentViolations(componentId, nested.warnings));
+    }
+  }
+  return { violations, warnings };
 }
 
 function normalizeCanonicalSlots(value: unknown): CanonicalSlot[] | undefined {
@@ -7903,7 +10125,31 @@ function validateCanonicalTarget(
       }],
     };
   }
+  if (target.id === 'coordinated_placements') {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'coordinated_placements_product_context',
+        field: 'targets',
+        expected: 'a product target whose placements and format options define the coordinated components',
+        predicted: target,
+      }],
+    };
+  }
   const violations = validateManifestSlots(manifest, CANONICAL_FORMAT_SLOTS[target.id] ?? []);
+  if (target.id === 'seller_rendered_stateful_display') {
+    for (const [index, canvas] of slotValues(manifest.assets, 'state_canvases').entries()) {
+      if (!isRecord(canvas) || typeof canvas.state_id !== 'string' || typeof canvas.breakpoint_id !== 'string') {
+        violations.push({
+          rule: 'state_canvas_binding_required',
+          field: `assets.state_canvases[${index}]`,
+          expected: 'state_id and breakpoint_id string bindings',
+          predicted: canvas,
+        });
+      }
+    }
+  }
   return violations.length > 0
     ? { target, result_kind: 'validated_fail', violations }
     : { target, result_kind: 'validated_pass' };
@@ -7944,11 +10190,11 @@ function validateCapabilityTarget(
     : { target, result_kind: 'validated_pass' };
 }
 
-function validateProductTarget(
+async function validateProductTarget(
   target: ValidateInputTarget,
   manifest: NonNullable<ValidateInputArgs['manifest']>,
   product: Product | undefined,
-): ValidateInputResult {
+): Promise<ValidateInputResult> {
   if (!product) {
     return {
       target,
@@ -8002,21 +10248,89 @@ function validateProductTarget(
   const params = declaration.params && typeof declaration.params === 'object'
     ? declaration.params as Record<string, unknown>
     : {};
-  const slots = normalizeCanonicalSlots(params.slots) ?? CANONICAL_FORMAT_SLOTS[formatKind] ?? [];
-  const violations = validateManifestSlots(manifest, slots);
+  const declaredSlots = formatKind === 'coordinated_placements' ? params.shared_slots : params.slots;
+  const rawSlots = normalizeCanonicalSlots(declaredSlots) ?? CANONICAL_FORMAT_SLOTS[formatKind] ?? [];
+  const slots = formatKind === 'coordinated_placements'
+    ? rawSlots
+    : rawSlots.filter(slot => allowedAssetTypesForCanonical(formatKind).has(slot.asset_type));
+  const declarationSchemaViolations: ValidateInputViolation[] = [];
+  if (formatKind === 'seller_rendered_stateful_display' || formatKind === 'coordinated_placements') {
+    const schemaResult = await validateProtocolSchema(
+      '/schemas/core/product-format-declaration.json',
+      declaration,
+    );
+    for (const issue of schemaResult.errors) {
+      declarationSchemaViolations.push({
+        rule: 'product_format_declaration_schema',
+        field: `products[].format_options[]${issue.instancePath.replaceAll('/', '.')}`,
+        expected: issue.message ?? 'valid product format declaration',
+        predicted: issue.keyword,
+      });
+    }
+  }
+  const allowedAssetTypeViolations = formatKind !== 'coordinated_placements'
+    ? slotAssetTypeAllowlistViolations(formatKind, params.slots, 'params.slots')
+    : [];
+  let semanticViolations: ValidateInputViolation[] = [];
+  let semanticWarnings: ValidateInputViolation[] = [];
+  if (formatKind === 'seller_rendered_stateful_display') {
+    const semanticResult = validateSellerRenderedStatefulDisplayManifest(params, manifest);
+    semanticViolations = semanticResult.violations;
+    semanticWarnings = semanticResult.warnings;
+  } else if (formatKind === 'coordinated_placements') {
+    const semanticResult = await validateCoordinatedPlacementsDeclaration(product, params, manifest);
+    semanticViolations = semanticResult.violations;
+    semanticWarnings = semanticResult.warnings;
+  }
+  const ctvSemanticResult = validateCtvSemantics(formatKind, params, slots);
+  semanticViolations.push(...ctvSemanticResult.violations);
+  semanticWarnings.push(...ctvSemanticResult.warnings);
+  const violations = [
+    ...declarationSchemaViolations,
+    ...validateManifestSlots(manifest, slots),
+    ...allowedAssetTypeViolations,
+    ...semanticViolations,
+  ];
+  const warnings = semanticWarnings;
   if (params.synthesis_nondeterministic === true) {
     const sourceViolation = nondeterministicSourceViolation(params);
     if (sourceViolation) {
-      return { target, result_kind: 'validated_fail', violations: [...violations, sourceViolation] };
+      return { target, result_kind: 'validated_fail', violations: [...violations, sourceViolation], ...(warnings.length > 0 && { warnings }) };
     }
     if (violations.length > 0) {
-      return { target, result_kind: 'validated_fail', violations };
+      return { target, result_kind: 'validated_fail', violations, ...(warnings.length > 0 && { warnings }) };
     }
-    return { target, result_kind: 'unvalidatable_nondeterministic' };
+    return { target, result_kind: 'unvalidatable_nondeterministic', ...(warnings.length > 0 && { warnings }) };
   }
   return violations.length > 0
-    ? { target, result_kind: 'validated_fail', violations }
-    : { target, result_kind: 'validated_pass' };
+    ? { target, result_kind: 'validated_fail', violations, ...(warnings.length > 0 && { warnings }) }
+    : { target, result_kind: 'validated_pass', ...(warnings.length > 0 && { warnings }) };
+}
+
+async function validateCreativeForProduct(
+  product: Product,
+  manifest: CreativeManifest,
+): Promise<ValidateInputViolation[]> {
+  if (manifest.format_kind !== 'seller_rendered_stateful_display'
+    && manifest.format_kind !== 'coordinated_placements'
+    && manifest.component_assets === undefined) return [];
+  const schemaViolations = await validateManifestSchema(manifest);
+  if (schemaViolations.length > 0) return schemaViolations;
+  const target: ValidateInputTarget = { kind: 'product', id: product.product_id };
+  const result = await validateProductTarget(target, manifest, product);
+  return result.result_kind === 'validated_fail' ? (result.violations ?? []) : [];
+}
+
+function creativeValidationErrors(
+  violations: ValidateInputViolation[],
+  fieldPrefix: string,
+): TaskError[] {
+  return violations.map(violation => ({
+    code: 'VALIDATION_ERROR',
+    message: `${fieldPrefix}: ${violation.rule} expected ${typeof violation.expected === 'string' ? violation.expected : JSON.stringify(violation.expected)}`,
+    field: `${fieldPrefix}.${violation.field}`,
+    recovery: 'correctable',
+  }));
 }
 
 export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext): Promise<object> {
@@ -8078,7 +10392,7 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
   }
 
   const schemaViolations = [
-    ...validateManifestSchema(req.manifest),
+    ...await validateManifestSchema(req.manifest),
     ...validateAssetUrls(req.manifest),
   ];
   if (schemaViolations.length > 0) {
@@ -8121,21 +10435,48 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
   return { status: 'completed', results };
 }
 
-export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext) {
+interface TrustedGovernedExecution {
+  task: 'buy_products' | 'accept_proposal' | 'control_media_buy';
+  commitment: { amount: number; currency: string };
+}
+
+interface MediaBuyExecutionOptions {
+  governance?: TrustedGovernedExecution;
+}
+
+export async function handleCreateMediaBuy(
+  args: ToolArgs,
+  ctx: TrainingContext,
+  options: MediaBuyExecutionOptions = {},
+) {
   const proposalId = (args as unknown as Record<string, unknown>).proposal_id;
-  if (typeof proposalId !== 'string') return handleCreateMediaBuyUnlocked(args, ctx);
+  if (typeof proposalId !== 'string') return handleCreateMediaBuyUnlocked(args, ctx, options);
 
   // Proposal execution, legacy get_products finalization, and decline all
   // transition the same principal-owned snapshot. Serialize them on the
   // compact lifecycle session and persist before releasing so different
   // idempotency keys cannot both execute one proposal.
-  const sessionScope = sessionKeyFromArgs(
-    {},
-    ctx.mode,
-    ctx.userId,
-    ctx.moduleId,
-    ctx.principal ?? 'anonymous',
-  );
+  const compactSessionScope = productDiscoverySessionKey({
+    ...(args as unknown as Record<string, unknown>),
+    __compact_proposal_lifecycle: true,
+  } as ToolArgs, ctx);
+  let compactProposalExecution = (args as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
+  if (!compactProposalExecution) {
+    const compactSession = await getSession(compactSessionScope);
+    compactProposalExecution = compactSession.proposalRefinementRecords.has(proposalId)
+      || Boolean(compactSession.lastGetProductsContext?.proposals?.some(
+        proposal => proposal.proposal_id === proposalId,
+      ));
+  }
+  const sessionScope = compactProposalExecution
+    ? compactSessionScope
+    : sessionKeyFromArgs(
+        args,
+        ctx.mode,
+        ctx.userId,
+        ctx.moduleId,
+        ctx.principal ?? 'anonymous',
+      );
   const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
   const principal = 'get-products-session-mutex';
   const key = `get-products-session:${sessionHash}`;
@@ -8160,7 +10501,24 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
   try {
     evictSessionFromRequestCache(sessionScope);
-    const result = await handleCreateMediaBuyUnlocked(args, ctx);
+    const result = await handleCreateMediaBuyUnlocked(args, ctx, options);
+    const resultRecord = result as Record<string, unknown>;
+    if (
+      compactProposalExecution
+      && !Array.isArray(resultRecord.errors)
+      && typeof resultRecord.media_buy_id === 'string'
+    ) {
+      const proposalSession = await getSession(compactSessionScope);
+      const acceptedRecord = proposalSession.proposalRefinementRecords.get(proposalId);
+      const mediaBuySession = await getSession(
+        sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId),
+        controllerFixtureSessionKey(args, ctx),
+      );
+      const mediaBuy = mediaBuySession.mediaBuys.get(resultRecord.media_buy_id);
+      if (acceptedRecord?.accepted && mediaBuy) {
+        mediaBuy.acceptedProposal = canonicalProposalFromRecord(acceptedRecord);
+      }
+    }
     await flushDirtySessions();
     return result;
   } finally {
@@ -8168,7 +10526,11 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   }
 }
 
-async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext) {
+async function handleCreateMediaBuyUnlocked(
+  args: ToolArgs,
+  ctx: TrainingContext,
+  options: MediaBuyExecutionOptions,
+) {
   const req = args as unknown as CreateMediaBuyRequest & ToolArgs & { paused?: boolean };
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const session = await getSession(
@@ -8261,11 +10623,11 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
     const commitmentError = await governedCommitmentError(
       govCtx,
       ctx.authenticatedAgentUrl,
-      'create_media_buy',
+      options.governance?.task ?? 'create_media_buy',
       `${getCanonicalBase()}/sales`,
       governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
-      buyBudget ?? 0,
-      mediaBuyCurrency,
+      options.governance?.commitment.amount ?? buyBudget ?? 0,
+      options.governance?.commitment.currency ?? mediaBuyCurrency,
     );
     if (commitmentError) return { errors: [commitmentError] };
   } else if (session.governancePlans.size > 0 || governanceAgents.length > 0) {
@@ -8561,9 +10923,10 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
       // Resolve that principal-owned proposal here, then verify its internal
       // account/brand binding against the billed account without exposing
       // whether a cross-account proposal exists.
-      const proposalSession = await getSession(
-        sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal ?? 'anonymous'),
-      );
+      const proposalSession = await getSession(productDiscoverySessionKey({
+        ...(req as unknown as Record<string, unknown>),
+        __compact_proposal_lifecycle: true,
+      } as ToolArgs, ctx));
       const candidate = proposalSession.lastGetProductsContext?.proposals?.find(
         p => p.proposal_id === req.proposal_id,
       );
@@ -8575,7 +10938,7 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
     if (proposal) {
       const internal = proposal as unknown as Record<string, unknown>;
       const accountRef = req.account as unknown as { account_id?: string };
-      const requestBrand = req.brand as unknown as { domain?: string; brand_id?: string; countries?: string[] };
+      const requestBrand = (req.brand ?? req.account?.brand) as unknown as { domain?: string; brand_id?: string; countries?: string[] };
       const boundAccountId = internal.__account_id;
       const boundBrandDomain = internal.__brand_domain;
       const boundBrandId = internal.__brand_id;
@@ -8614,6 +10977,20 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
       || typeof internalProposal.__brand_id === 'string'
       || Array.isArray(internalProposal.__brand_countries)
       || typeof internalProposal.__account_id === 'string';
+    const suppliedTermsDigest = (req as unknown as { proposal_terms_digest?: unknown }).proposal_terms_digest;
+    if (typeof suppliedTermsDigest === 'string') {
+      const expectedTermsDigest = outwardProposal(internalProposal, productMap).terms_digest;
+      if (suppliedTermsDigest !== expectedTermsDigest) {
+        return {
+          errors: [{
+            code: 'INVALID_REQUEST',
+            message: 'proposal_terms_digest does not match the committed proposal snapshot.',
+            field: 'proposal_terms_digest',
+            recovery: 'correctable',
+          }] as TaskError[],
+        };
+      }
+    }
     if (internalProposal.__declined === true) {
       return {
         errors: [{
@@ -8691,26 +11068,35 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
         errors: [{ code: 'INVALID_REQUEST', message: 'total_budget.amount is required when using proposal_id' }] as TaskError[],
       };
     }
-    // Expand proposal allocations into packages
-    (req as { packages?: unknown[] }).packages = proposal.allocations.map((alloc, i) => {
-      const product = productMap.get(alloc.product_id);
-      const pricingOptionId = alloc.pricing_option_id || product?.pricing_options[0]?.pricing_option_id || '';
-      const pricing = product?.pricing_options.find(po => po.pricing_option_id === pricingOptionId);
+    const committedTerms = isRecord(internalProposal.__canonical_commercial_terms)
+      ? internalProposal.__canonical_commercial_terms
+      : undefined;
+    const committedPurchases = Array.isArray(committedTerms?.purchases)
+      ? committedTerms.purchases as unknown as CompactProductPurchase[]
+      : undefined;
+    // Compact 3.2 proposals commit complete per-purchase terms. Preserve that
+    // immutable envelope in operational package state; legacy proposals still
+    // expand their percentage allocations as before.
+    (req as { packages?: unknown[] }).packages = compactProposal && committedPurchases?.length
+      ? legacyPackagesFromPurchases(committedPurchases, totalBudget, productMap)
+      : proposal.allocations.map(alloc => {
+          const product = productMap.get(alloc.product_id);
+          const pricingOptionId = alloc.pricing_option_id || product?.pricing_options[0]?.pricing_option_id || '';
+          const pricing = product?.pricing_options.find(po => po.pricing_option_id === pricingOptionId);
 
-      // Auction pricing needs a bid_price — use price_guidance p50 or floor_price
-      let bidPrice: number | undefined;
-      if (pricing && pricingStructureForOption(pricing) === 'auction') {
-        const po = pricing as unknown as PricingOptionView;
-        bidPrice = po.price_guidance?.p50 ?? po.floor_price;
-      }
+          let bidPrice: number | undefined;
+          if (pricing && pricingStructureForOption(pricing) === 'auction') {
+            const po = pricing as unknown as PricingOptionView;
+            bidPrice = po.price_guidance?.p50 ?? po.floor_price;
+          }
 
-      return {
-        product_id: alloc.product_id,
-        pricing_option_id: pricingOptionId,
-        budget: Math.round(totalBudget * alloc.allocation_percentage / 100),
-        ...(bidPrice !== undefined && { bid_price: bidPrice }),
-      };
-    });
+          return {
+            product_id: alloc.product_id,
+            pricing_option_id: pricingOptionId,
+            budget: Math.round(totalBudget * (alloc.allocation_percentage ?? 0) / 100),
+            ...(bidPrice !== undefined && { bid_price: bidPrice }),
+          };
+        });
     if (compactProposal) {
       executedCompactProposal = proposal;
       if (!executedCompactProposalSession && session.proposalRefinementRecords.has(proposal.proposal_id)) {
@@ -8759,6 +11145,38 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
   const createdPackages: PackageState[] = [];
   const inlineCreativesToPersist: ValidatedInlineCreative[] = [];
   const productFormatOptionIndexes: ProductFormatOptionIndexCache = new WeakMap();
+  const requestInlineCreativeIds = new Set<string>();
+  const enforceLifecycleSplit = supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx));
+  for (let i = 0; i < req.packages.length; i++) {
+    const pkg = req.packages[i] as unknown as PackageInput;
+    const inline = collectInlineCreativeIds(pkg.creatives, `packages[${i}].creatives`);
+    errors.push(...inline.errors);
+    inlineCreativesToPersist.push(...inline.validatedCreatives);
+    for (const creativeId of inline.creativeIds) {
+      if (enforceLifecycleSplit && requestInlineCreativeIds.has(creativeId)) {
+        errors.push({
+          code: 'VALIDATION_ERROR',
+          message: `Inline creative ${creativeId} is declared more than once in this create request.`,
+          field: `packages[${i}].creatives`,
+        });
+      } else if (enforceLifecycleSplit && session.creatives.has(creativeId)) {
+        errors.push({
+          code: 'CREATIVE_ALREADY_EXISTS',
+          message: `Inline creative ${creativeId} already exists in the account library; reference it through creative_assignments instead of overwriting it during create.`,
+          field: `packages[${i}].creatives`,
+        });
+      }
+      requestInlineCreativeIds.add(creativeId);
+    }
+  }
+  const creativeValidationSession = structuredClone(session);
+  persistInlineCreatives(
+    creativeValidationSession,
+    inlineCreativesToPersist,
+    req.account as AccountRef | undefined,
+    resolveAccountIdForRef(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId), ctx.principal, req.account),
+    confirmedAt,
+  );
   for (let i = 0; i < req.packages.length; i++) {
     const pkg = req.packages[i] as unknown as PackageInput;
     const pkgLabel = `Package ${i}`;
@@ -8924,6 +11342,41 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
       errors.push({ code: 'INVALID_REQUEST', message: `${pkgLabel}: Invalid end_time: "${endTime}". Use ISO 8601 format.` });
     }
 
+    // Buy-time booking-calendar enforcement (comply_test_controller.seed_product's
+    // fixture.availability): reject synchronously — before any async/submitted
+    // arm — when the flight overlaps a booked window or is shorter than the
+    // product's min_bookable_days. Mirrors the discovery-time windowed forecast
+    // (applyAvailabilityHorizonForecasts) so a buyer can't slip a flight through
+    // create_media_buy that get_products/list_products already marked
+    // "unavailable". "asap" starts have no fixed flight to check.
+    const seededAvailability = session.complyExtensions.seededProductAvailability.get(pkg.product_id);
+    if (seededAvailability && startTime !== 'asap') {
+      const flightStart = Date.parse(startTime);
+      const flightEnd = Date.parse(endTime);
+      if (Number.isFinite(flightStart) && Number.isFinite(flightEnd) && flightEnd > flightStart) {
+        const flightDays = Math.floor((flightEnd - flightStart) / AVAILABILITY_DAY_MS);
+        const overlapsBooked = seededAvailability.booked_windows.some(window => {
+          const bookedStart = Date.parse(window.start_time);
+          const bookedEnd = Date.parse(window.end_time);
+          return flightStart < bookedEnd && bookedStart < flightEnd;
+        });
+        const tooShort = flightDays < seededAvailability.min_bookable_days;
+        if (overlapsBooked || tooShort) {
+          return {
+            errors: [{
+              code: 'PRODUCT_UNAVAILABLE',
+              message: `${pkgLabel}: Product "${pkg.product_id}" is not bookable for ${startTime} to ${endTime}`
+                + (overlapsBooked
+                  ? ' — the flight overlaps a booked window.'
+                  : ` — the flight is shorter than the ${seededAvailability.min_bookable_days}-day minimum bookable duration.`),
+              field: `packages[${i}]`,
+              recovery: 'correctable',
+            }] as TaskError[],
+            ...(isRecord(req.context) && { context: req.context }),
+          };
+        }
+      }
+    }
 
     // Don't build package state if there are any validation errors (atomic create).
     // Spec field is `targeting_overlay`; `targeting` is an alias we accept for
@@ -8933,6 +11386,20 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
     const targetingResult = validateTargeting(incomingTargeting, `packages[${i}].targeting_overlay`);
     if (targetingResult.errors.length) {
       errors.push(...targetingResult.errors);
+    }
+    const requestedAssignmentRows = [
+      ...(Array.isArray(pkg.creative_assignments) ? pkg.creative_assignments : []),
+      ...inlineCreativeAssignmentRows(pkg.creatives),
+    ];
+    if (enforceLifecycleSplit && requestedAssignmentRows.length > 0) {
+      errors.push(...validateCreateAssignmentSemantics(
+        requestedAssignmentRows,
+        product as unknown as Record<string, unknown>,
+        targetingResult.targeting,
+        creativeValidationSession,
+        `packages[${i}].creative_assignments`,
+        formatSnapshot.formats ?? [],
+      ));
     }
 
     if (errors.length > 0) continue;
@@ -8961,15 +11428,37 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
         });
         continue;
       }
+      if (enforceLifecycleSplit && !session.creatives.has(creativeId) && !requestInlineCreativeIds.has(creativeId)) {
+        errors.push({
+          code: 'CREATIVE_NOT_FOUND',
+          message: `${pkgLabel}: Creative not found: ${creativeId}. Sync it first or include its inline body in this create request.`,
+          field: `packages[${i}].creative_assignments[${j}].creative_id`,
+        });
+        continue;
+      }
+      const assignedManifest = session.creatives.get(creativeId)?.manifest;
+      if (assignedManifest) {
+        const violations = await validateCreativeForProduct(product, assignedManifest);
+        errors.push(...creativeValidationErrors(violations, `packages[${i}].creative_assignments[${j}]`));
+      }
       creativeAssignments.push(creativeId);
     }
     const inlineCreatives = collectInlineCreativeIds(pkg.creatives, `packages[${i}].creatives`);
-    errors.push(...inlineCreatives.errors);
+    if (Array.isArray(pkg.creatives)) {
+      for (const [creativeIndex, creative] of pkg.creatives.entries()) {
+        const identity = validatedCreativeIdentity(creative);
+        if (!identity.ok) continue;
+        const existingCreative = creative.creative_id
+          ? session.creatives.get(creative.creative_id)
+          : undefined;
+        const manifest = normalizedCreativeManifest(creative, existingCreative, identity.identity);
+        if (!manifest) continue;
+        const violations = await validateCreativeForProduct(product, manifest);
+        errors.push(...creativeValidationErrors(violations, `packages[${i}].creatives[${creativeIndex}]`));
+      }
+    }
     creativeAssignments.push(...inlineCreatives.creativeIds);
     if (errors.length > 0) continue;
-    if (Array.isArray(pkg.creatives)) {
-      inlineCreativesToPersist.push(...inlineCreatives.validatedCreatives);
-    }
     const formatSelector = packageFormatSelectorForState(
       pkg,
       formatSnapshot.formats,
@@ -8977,13 +11466,18 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
       formatSnapshot.selectedLegacyFormatIds,
     );
 
-    createdPackages.push({
+    const candidatePackage: PackageState = {
       packageId: `pkg-${i}`,
       productId: pkg.product_id,
       budget: pkg.budget,
       pricingOptionId: pkg.pricing_option_id,
       bidPrice: storedBidPrice,
       impressions: pkg.impressions,
+      ...(pkg.daily_budget_cap !== undefined && { dailyBudgetCap: pkg.daily_budget_cap }),
+      ...(pkg.min_spend_target !== undefined && { minSpendTarget: pkg.min_spend_target }),
+      ...(pkg.pacing !== undefined && { pacing: pkg.pacing }),
+      ...(pkg.bidding !== undefined && { bidding: structuredClone(pkg.bidding) }),
+      ...(pkg.catalog_ids !== undefined && { catalogIds: [...pkg.catalog_ids] }),
       paused: pkg.paused || false,
       startTime: resolvedStart,
       endTime,
@@ -8993,11 +11487,19 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
         formatsToProvide: formatSnapshot.formats,
       }),
       creativeAssignments,
+      creativeAssignmentDetails: requestedAssignmentRows.map(assignment => structuredClone(assignment)),
       targeting: targetingResult.targeting,
       ...(isRecord(pkg.context) && { context: pkg.context }),
+      ...(isRecord(pkg.measurement_terms) && { measurementTerms: structuredClone(pkg.measurement_terms) }),
+      ...(Array.isArray(pkg.performance_standards) && { performanceStandards: structuredClone(pkg.performance_standards) }),
+      ...(isRecord(pkg.audience_evidence_requirements) && { audienceEvidenceRequirements: structuredClone(pkg.audience_evidence_requirements) }),
+      ...(Array.isArray(pkg.audience_evidence_pins) && { audienceEvidencePins: structuredClone(pkg.audience_evidence_pins) }),
+      ...(typeof pkg.agency_estimate_number === 'string' && { agencyEstimateNumber: pkg.agency_estimate_number }),
+      ...(isRecord(pkg.ext) && { ext: structuredClone(pkg.ext) }),
       ...(optimizationGoals && optimizationGoals.length > 0 && { optimizationGoals }),
       ...(committedMetrics && committedMetrics.length > 0 && { committedMetrics }),
-    });
+    };
+    createdPackages.push(candidatePackage);
   }
 
   if (errors.length > 0) {
@@ -9029,12 +11531,19 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
 
   const mediaBuy: MediaBuyState = {
     mediaBuyId,
+    ...(typeof req.name === 'string' && { name: req.name }),
     accountRef: persistedAccountRef,
     brandRef: req.brand,
     status: req.paused === true ? 'paused' : 'active',
     currency: mediaBuyCurrency,
     totalBudget: req.total_budget?.amount
       ?? createdPackages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0),
+    ...((req as unknown as { daily_budget_cap?: number }).daily_budget_cap !== undefined && {
+      dailyBudgetCap: (req as unknown as { daily_budget_cap: number }).daily_budget_cap,
+    }),
+    ...((req as unknown as { budget_cap_timezone?: string }).budget_cap_timezone && {
+      budgetCapTimezone: (req as unknown as { budget_cap_timezone: string }).budget_cap_timezone,
+    }),
     ...((req as unknown as { budget_allocation?: Record<string, unknown> }).budget_allocation
       ? { budgetAllocation: structuredClone((req as unknown as { budget_allocation: Record<string, unknown> }).budget_allocation) }
       : {}),
@@ -9044,6 +11553,10 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
     ...((req as unknown as { bidding?: Record<string, unknown> }).bidding
       ? { aggregateBidding: structuredClone((req as unknown as { bidding: Record<string, unknown> }).bidding) }
       : {}),
+    ...(isRecord((req as unknown as Record<string, unknown>).invoice_recipient)
+      && { invoiceRecipient: structuredClone((req as unknown as Record<string, unknown>).invoice_recipient as Record<string, unknown>) }),
+    ...(isRecord((req as unknown as Record<string, unknown>).reporting_webhook)
+      && { reportingWebhook: structuredClone((req as unknown as Record<string, unknown>).reporting_webhook as Record<string, unknown>) }),
     packages: createdPackages,
     ...(productAllowedActions && { productAllowedActions }),
     startTime: resolvedStart,
@@ -9121,6 +11634,8 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
   // against the per-task response schema.
   return {
     media_buy_id: mediaBuyId,
+    ...(mediaBuy.name && { name: mediaBuy.name }),
+    ...(mediaBuy.invoiceRecipient && { invoice_recipient: structuredClone(mediaBuy.invoiceRecipient) }),
     ...(req.proposal_id && { proposal_id: req.proposal_id }),
     ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
     media_buy_status: status,
@@ -9128,11 +11643,13 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
     confirmed_at: mediaBuy.confirmedAt,
     currency: mediaBuy.currency,
     total_budget: mediaBuy.totalBudget,
+    ...(mediaBuy.dailyBudgetCap !== undefined && { daily_budget_cap: mediaBuy.dailyBudgetCap }),
+    ...(mediaBuy.budgetCapTimezone && { budget_cap_timezone: mediaBuy.budgetCapTimezone }),
     ...(mediaBuy.budgetAllocation && { budget_allocation: mediaBuy.budgetAllocation }),
     ...(mediaBuy.aggregatePacing && { pacing: mediaBuy.aggregatePacing }),
     ...(mediaBuy.aggregateBidding && { bidding: mediaBuy.aggregateBidding }),
-    valid_actions: validActionsForMediaBuy(mediaBuy, status),
-    available_actions: availableActionsForMediaBuy(mediaBuy, status),
+    valid_actions: validActionsForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
+    available_actions: availableActionsForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
       product_id: pkg.productId,
@@ -9148,15 +11665,22 @@ async function handleCreateMediaBuyUnlocked(args: ToolArgs, ctx: TrainingContext
       ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.context && { context: pkg.context }),
       ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
-      creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
+      creative_assignments: pkg.creativeAssignmentDetails
+        ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     })),
     ...(isRecord(req.context) && { context: req.context }),
   };
 }
 
 export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
-  const req = args as unknown as GetMediaBuysArgs;
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const req = {
+    ...(args as unknown as GetMediaBuysArgs),
+    ...(args.account === undefined && ctx.resolvedAccount !== undefined
+      ? { account: ctx.resolvedAccount }
+      : {}),
+  } as GetMediaBuysArgs;
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(sessionKey);
   const filterIds = req.media_buy_ids;
 
   let buys = Array.from(session.mediaBuys.values());
@@ -9228,18 +11752,29 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
       const openImpairments = mb.impairments ?? [];
       const buy = {
         media_buy_id: mb.mediaBuyId,
+        ...(mb.name && { name: mb.name }),
+        ...(mb.acceptedProposal && {
+          accepted_proposal_id: mb.acceptedProposal.proposal_id,
+          accepted_proposal_terms_digest: mb.acceptedProposal.terms_digest,
+          accepted_proposal: structuredClone(mb.acceptedProposal),
+        }),
         status,
         revision: mb.revision,
         confirmed_at: mb.confirmedAt,
         created_at: mb.createdAt,
         updated_at: mb.updatedAt,
-        valid_actions: validActionsForMediaBuy(mb, status),
-        available_actions: availableActionsForMediaBuy(mb, status),
+        valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+        available_actions: mb.acceptedProposal
+          ? compactAvailableActions(mb, status, lifecycleSplitVersionForContext(ctx))
+          : availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
         currency: mb.currency,
         total_budget: totalBudget,
+        ...(mb.dailyBudgetCap !== undefined && { daily_budget_cap: mb.dailyBudgetCap }),
+        ...(mb.budgetCapTimezone && { budget_cap_timezone: mb.budgetCapTimezone }),
         ...(mb.budgetAllocation && { budget_allocation: mb.budgetAllocation }),
         ...(mb.aggregatePacing && { pacing: mb.aggregatePacing }),
         ...(mb.aggregateBidding && { bidding: mb.aggregateBidding }),
+        ...(mb.invoiceRecipient && { invoice_recipient: structuredClone(mb.invoiceRecipient) }),
         start_time: mb.startTime,
         end_time: mb.endTime,
         health: (openImpairments.length > 0 ? 'impaired' : 'ok') as 'ok' | 'impaired',
@@ -9267,10 +11802,15 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
           const pkgData = {
             package_id: pkg.packageId,
             ...(pkg.legacyOmitProductId ? {} : { product_id: pkg.productId }),
-            budget: pkg.budget,
+            ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
+            ...(pkg.dailyBudgetCap !== undefined && { daily_budget_cap: pkg.dailyBudgetCap }),
+            ...(pkg.minSpendTarget !== undefined && { min_spend_target: pkg.minSpendTarget }),
             pricing_option_id: pkg.pricingOptionId,
             ...(pkg.bidPrice !== undefined && { bid_price: pkg.bidPrice }),
             ...(pkg.impressions !== undefined && { impressions: pkg.impressions }),
+            ...(pkg.pacing !== undefined && { pacing: pkg.pacing }),
+            ...(pkg.bidding !== undefined && { bidding: pkg.bidding }),
+            ...(pkg.catalogIds !== undefined && { catalog_ids: pkg.catalogIds }),
             paused: pkg.paused,
             start_time: pkg.startTime,
             end_time: pkg.endTime,
@@ -9282,6 +11822,13 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             })),
             ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
             ...(pkg.context && { context: pkg.context }),
+            ...(pkg.measurementTerms && { measurement_terms: pkg.measurementTerms }),
+            ...(pkg.performanceStandards && { performance_standards: pkg.performanceStandards }),
+            ...(pkg.audienceEvidenceRequirements && { audience_evidence_requirements: pkg.audienceEvidenceRequirements }),
+            ...(pkg.audienceEvidencePins && { audience_evidence_pins: pkg.audienceEvidencePins }),
+            ...(pkg.agencyEstimateNumber && { agency_estimate_number: pkg.agencyEstimateNumber }),
+            ...(pkg.ext && { ext: pkg.ext }),
+            ...(pkg.optimizationGoals && { optimization_goals: pkg.optimizationGoals }),
             ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
             ...(pkg.canceledAt && {
               cancellation: {
@@ -9750,10 +12297,63 @@ function creativeSessionKey(args: ToolArgs, ctx: TrainingContext): string {
   );
 }
 
+/**
+ * Deterministic emulator for the controller-seeded policy-backed rejection
+ * fixture. Production sellers fetch and scan the hosted tag (or delegate that
+ * work to a governance agent); the training agent recognizes the fixture's
+ * stable test-asset path only when the seeded product explicitly declares the
+ * corresponding policies. This must not become a general source-text scanner:
+ * raw location/http regexes misclassify click-gated navigation and inert text.
+ */
+function runtimeCreativePolicyErrors(creative: {
+  assets?: Record<string, unknown>;
+  manifest?: { assets?: Record<string, unknown> };
+}, enforcedPolicies: ReadonlySet<string>): TaskError[] {
+  const dualViolationFixtureUrl = 'https://adcontextprotocol.org/test-assets/acme-outdoor/policy-backed-auto-redirect-http.js';
+  const assets = creative.assets ?? creative.manifest?.assets ?? {};
+  const urls = Object.values(assets).flatMap(asset => {
+    if (!isRecord(asset)) return [];
+    return typeof asset.url === 'string' ? [asset.url] : [];
+  });
+  const isDualViolationFixture = urls.includes(dualViolationFixtureUrl);
+  if (!isDualViolationFixture) return [];
+
+  const errors: TaskError[] = [];
+  if (enforcedPolicies.has('creative_security_auto_redirect')) {
+    errors.push({
+      code: 'CREATIVE_REJECTED',
+      message: 'Creative performs navigation without user interaction.',
+      suggestion: 'Remove automatic navigation and require an explicit user action before redirecting.',
+      recovery: 'correctable',
+      details: {
+        policy_id: 'creative_security_auto_redirect',
+        policy_url: 'https://adcontextprotocol.org/api/policies/resolve?policy_id=creative_security_auto_redirect&version=1.0.0',
+        reasons: ['Executable creative content invokes a location navigation API without a user-action gate.'],
+      },
+    });
+  }
+
+  if (enforcedPolicies.has('creative_security_https_only')) {
+    errors.push({
+      code: 'CREATIVE_REJECTED',
+      message: 'Creative makes an insecure HTTP request from a secure serving context.',
+      suggestion: 'Move every creative dependency and network request to HTTPS.',
+      recovery: 'correctable',
+      details: {
+        policy_id: 'creative_security_https_only',
+        policy_url: 'https://adcontextprotocol.org/api/policies/resolve?policy_id=creative_security_https_only&version=1.0.0',
+        reasons: ['Executable creative content contains an HTTP network URL.'],
+      },
+    });
+  }
+
+  return errors;
+}
+
 export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCreativesRequest & ToolArgs & { dry_run?: boolean };
   const sessionKey = creativeSessionKey(req, ctx);
-  const session = await getSession(sessionKey);
+  const session = await getSession(sessionKey, controllerFixtureSessionKey(req, ctx));
   const isDryRun = req.dry_run === true;
   const accountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
@@ -9776,8 +12376,12 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   // Returns null when no fixture seeds policy fields — pre-existing
   // storyboards that don't exercise provenance enforcement keep working.
   const effectivePolicy = aggregateCreativePolicy(session);
+  const productValidationMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+  overlaySeededProducts(session, productValidationMap);
+  const enforcedPolicies = aggregateEnforcedPolicies(session);
 
   const results: SyncCreativeResult[] = [];
+  const stagedCreativeManifests = new Map<string, CreativeManifest>();
   for (const creative of req.creatives) {
     if (!creative.creative_id) {
       return {
@@ -9793,6 +12397,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       format_kind?: string;
       format_option_ref?: Record<string, unknown>;
       assets?: Record<string, unknown>;
+      component_assets?: Record<string, Record<string, unknown>>;
       manifest?: CreativeManifest;
     };
     const identityResult = validatedCreativeIdentity(creativeShape);
@@ -9803,6 +12408,17 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     }
     const identity = identityResult.identity;
     const formatId = identity.kind === 'legacy' ? identity.formatId : undefined;
+    const formatKind = identity.kind === 'canonical' ? identity.formatKind : undefined;
+
+    const runtimePolicyErrors = runtimeCreativePolicyErrors(creativeShape, enforcedPolicies);
+    if (runtimePolicyErrors.length > 0) {
+      results.push({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: runtimePolicyErrors,
+      });
+      continue;
+    }
 
     // Enforce creative_policy.provenance_required / provenance_requirements /
     // accepted_verifiers BEFORE persisting the creative. Per-creative failure
@@ -9839,9 +12455,81 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
     const existing = session.creatives.has(creativeId);
     const existingCreative = session.creatives.get(creativeId);
+    const topLevelComponentAssetsSupplied = Object.hasOwn(creativeShape, 'component_assets');
+    const nestedComponentAssetsSupplied = isRecord(creativeShape.manifest)
+      && Object.hasOwn(creativeShape.manifest, 'component_assets');
+    if ((topLevelComponentAssetsSupplied && !isRecord(creativeShape.component_assets))
+      || (nestedComponentAssetsSupplied && !isRecord(creativeShape.manifest?.component_assets))) {
+      results.push({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `creatives[${creativeId}].component_assets must be an object when supplied`,
+          field: `creatives[${creativeId}].component_assets`,
+          recovery: 'correctable',
+        }],
+      });
+      continue;
+    }
+    const candidateManifest = normalizedCreativeManifest(
+      creativeShape as InlineCreativeInput,
+      existingCreative,
+      identity,
+    );
+    const requiresProductBoundManifestValidation = formatKind === 'coordinated_placements'
+      || formatKind === 'seller_rendered_stateful_display'
+      || topLevelComponentAssetsSupplied
+      || nestedComponentAssetsSupplied;
+    if (requiresProductBoundManifestValidation && !candidateManifest) {
+      results.push({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `creatives[${creativeId}] requires a manifest with assets`,
+          field: `creatives[${creativeId}].assets`,
+          recovery: 'correctable',
+        }],
+      });
+      continue;
+    }
+    if (candidateManifest) stagedCreativeManifests.set(creativeId, candidateManifest);
+    if (candidateManifest) {
+      if (requiresProductBoundManifestValidation || candidateManifest.component_assets !== undefined) {
+        const schemaViolations = await validateManifestSchema(candidateManifest);
+        if (schemaViolations.length > 0) {
+          results.push({
+            creative_id: creativeId,
+            action: 'failed',
+            errors: creativeValidationErrors(schemaViolations, `creatives[${creativeId}]`),
+          });
+          stagedCreativeManifests.delete(creativeId);
+          continue;
+        }
+      }
+      const assignedViolations: ValidateInputViolation[] = [];
+      for (const mediaBuy of session.mediaBuys.values()) {
+        for (const pkg of mediaBuy.packages) {
+          if (!pkg.creativeAssignments.includes(creativeId)) continue;
+          const product = productValidationMap.get(pkg.productId);
+          if (!product) continue;
+          assignedViolations.push(...await validateCreativeForProduct(product, candidateManifest));
+        }
+      }
+      if (assignedViolations.length > 0) {
+        results.push({
+          creative_id: creativeId,
+          action: 'failed',
+          errors: creativeValidationErrors(assignedViolations, `creatives[${creativeId}]`),
+        });
+        stagedCreativeManifests.delete(creativeId);
+        continue;
+      }
+    }
 
     if (!isDryRun) {
-      const manifest = normalizedCreativeManifest(creativeShape, existingCreative, identity);
+      const manifest = candidateManifest;
       session.creatives.set(creativeId, {
         creativeId,
         accountId: accountId ?? existingCreative?.accountId,
@@ -9856,6 +12544,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
             ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
           }),
         ...(manifest && { assets: manifest.assets }),
+        ...(manifest?.component_assets && { componentAssets: manifest.component_assets }),
         name: creative.name,
         status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
@@ -9884,6 +12573,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   // references but skip the package mutation.
   const assignmentResults: AssignmentResult[] = [];
   if (req.assignments?.length) {
+    const assignmentProducts = productValidationMap;
     const availableCreativeIds = new Set(session.creatives.keys());
     for (const result of results) {
       if (result.action !== 'failed') availableCreativeIds.add(result.creative_id);
@@ -9907,8 +12597,25 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'error', message: `Creative not found: ${creativeId}` });
         continue;
       }
+      const product = assignmentProducts.get(pkg.productId);
+      const candidateManifest = stagedCreativeManifests.get(creativeId)
+        ?? session.creatives.get(creativeId)?.manifest;
+      if (product && candidateManifest) {
+        const violations = await validateCreativeForProduct(product, candidateManifest);
+        if (violations.length > 0) {
+          assignmentResults.push({
+            creative_id: creativeId,
+            package_id: packageId,
+            status: 'error',
+            message: `Creative does not satisfy product ${product.product_id}: ${violations.map(v => v.rule).join(', ')}`,
+          });
+          continue;
+        }
+      }
       if (!isDryRun && !pkg.creativeAssignments.includes(creativeId)) {
+        pkg.creativeAssignmentDetails ??= pkg.creativeAssignments.map(existingId => ({ creative_id: existingId }));
         pkg.creativeAssignments.push(creativeId);
+        pkg.creativeAssignmentDetails.push({ creative_id: creativeId });
       }
       assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'assigned' });
     }
@@ -10137,6 +12844,9 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
         created_date: c.syncedAt,
         updated_date: c.syncedAt,
         ...(c.manifest?.assets && (!selectedFields || selectedFields.has('assets')) && { assets: c.manifest.assets }),
+        ...(c.manifest?.component_assets
+          && (!selectedFields || selectedFields.has('component_assets'))
+          && { component_assets: c.manifest.component_assets }),
       };
       if (emitPricing && (c.formatKind || c.formatId?.id) && (!selectedFields || selectedFields.has('pricing_options'))) {
         base.pricing_options = [getCreativePricing(req.account!, c)];
@@ -10202,14 +12912,77 @@ function getCreativePricing(account: { account_id?: string }, creative: import('
   };
 }
 
-export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
+interface MediaBuyMutationMutexClaim {
+  principal: string;
+  key: string;
+  claimToken: string;
+  sessionScope: string;
+}
+
+async function acquireMediaBuyMutationMutex(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): Promise<MediaBuyMutationMutexClaim | undefined> {
+  const sessionScope = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
+  const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
+  const principal = 'media-buy-mutation-mutex';
+  const key = `media-buy-session:${sessionHash}`;
+  const store = getIdempotencyStore();
+  let claim = await store.check({ principal, key, payload: { session: sessionHash } });
+  const deadline = Date.now() + 2_000;
+  let backoffMs = 5;
+  while (claim.kind !== 'miss' && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, backoffMs));
+    claim = await store.check({ principal, key, payload: { session: sessionHash } });
+    backoffMs = Math.min(backoffMs * 2, 100);
+  }
+  if (claim.kind !== 'miss') return undefined;
+  return { principal, key, claimToken: claim.claimToken, sessionScope };
+}
+
+async function releaseMediaBuyMutationMutex(claim: MediaBuyMutationMutexClaim): Promise<void> {
+  await getIdempotencyStore().release(claim);
+}
+
+function mediaBuyMutationConflict(): Record<string, unknown> {
+  return {
+    errors: [{
+      code: 'CONFLICT',
+      message: 'Another request is already updating a MediaBuy in this account. Retry after a short delay.',
+      recovery: 'transient',
+    }] as TaskError[],
+  };
+}
+
+export async function handleUpdateMediaBuy(
+  args: ToolArgs,
+  ctx: TrainingContext,
+  options: { acceptedProposalExecution?: boolean; operationalControlExecution?: boolean; governance?: TrustedGovernedExecution } = {},
+): Promise<Record<string, unknown>> {
+  const mutex = await acquireMediaBuyMutationMutex(args, ctx);
+  if (!mutex) return mediaBuyMutationConflict();
+  try {
+    evictSessionFromRequestCache(mutex.sessionScope);
+    const result = await handleUpdateMediaBuyUnlocked(args, ctx, options);
+    await flushDirtySessions();
+    return result;
+  } finally {
+    await releaseMediaBuyMutationMutex(mutex);
+  }
+}
+
+async function handleUpdateMediaBuyUnlocked(
+  args: ToolArgs,
+  ctx: TrainingContext,
+  options: { acceptedProposalExecution?: boolean; operationalControlExecution?: boolean; governance?: TrustedGovernedExecution } = {},
+): Promise<Record<string, unknown>> {
   const req = args as unknown as UpdateMediaBuyArgs;
   const session = await getSession(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(req as unknown as ToolArgs, ctx),
   );
   const mediaBuyId = req.media_buy_id || '';
-  const mb = session.mediaBuys.get(mediaBuyId);
+  let mb = session.mediaBuys.get(mediaBuyId);
 
   if (!mb) {
     return { errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }] };
@@ -10230,8 +13003,98 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
   overlaySeededProducts(session, productMap);
 
-  const actionRejection = rejectUnavailableAction(mb, req, currentStatus, productMap);
+  const actionRejection = options.acceptedProposalExecution
+    ? undefined
+    : rejectUnavailableAction(mb, req, currentStatus, productMap);
   if (actionRejection) return actionRejection;
+
+  // Revision check for optimistic concurrency
+  const reqRevision = req.revision;
+  if (reqRevision !== undefined && reqRevision !== mb.revision) {
+    return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mb.revision}, got ${reqRevision}` }] };
+  }
+
+  // Established update_media_buy made root cancellation dominant over every
+  // sibling mutation. Authorize only the cancel action, then commit it before
+  // validating fields that the protocol says are ignored.
+  if (req.canceled === true) {
+    const cancelRejection = options.acceptedProposalExecution
+      ? undefined
+      : rejectUnavailableAction(mb, req, currentStatus, productMap);
+    if (cancelRejection) return cancelRejection;
+
+    const now = new Date().toISOString();
+    const ignoredFields = Object.entries(req as unknown as Record<string, unknown>)
+      .filter(([field, value]) => value !== undefined && !new Set([
+        'account',
+        'adcp_version',
+        'adcp_major_version',
+        'media_buy_id',
+        'revision',
+        'idempotency_key',
+        'governance_context',
+        'context',
+        'ext',
+        'canceled',
+        'cancellation_reason',
+      ]).has(field))
+      .map(([field]) => field);
+    const warnings: Array<Record<string, unknown>> = ignoredFields.length > 0
+      ? [{
+          code: 'fields_ignored_due_to_precedence',
+          message: 'Root media-buy cancellation took precedence over other requested mutations.',
+          affected_resource: { resource_type: 'media_buy', media_buy_id: mb.mediaBuyId },
+          details: { ignored_fields: ignoredFields },
+        }]
+      : [];
+
+    mb = structuredClone(mb);
+    mb.revision += 1;
+    mb.canceledAt = now;
+    mb.canceledBy = 'buyer';
+    mb.cancellationReason = req.cancellation_reason;
+    for (const pkg of mb.packages) {
+      pkg.creativeAssignments = [];
+      pkg.creativeAssignmentDetails = [];
+    }
+    mb.history.push({
+      revision: mb.revision,
+      timestamp: now,
+      actor: 'buyer',
+      action: 'canceled',
+      summary: req.cancellation_reason || 'Media buy canceled by buyer',
+    });
+    mb.updatedAt = now;
+    session.mediaBuys.set(mediaBuyId, mb);
+
+    const status = deriveStatus(mb, session);
+    return {
+      media_buy_id: mb.mediaBuyId,
+      ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
+      status,
+      media_buy_status: status,
+      revision: mb.revision,
+      valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+      available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+      cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
+      ...(warnings.length > 0 && { warnings }),
+      ...(req.context !== undefined && { context: req.context }),
+    };
+  }
+
+  if (
+    !options.acceptedProposalExecution
+    && Object.hasOwn(req as unknown as Record<string, unknown>, 'invoice_recipient')
+  ) {
+    return {
+      errors: [{
+        code: 'UNSUPPORTED_FEATURE',
+        message: 'This seller cannot atomically re-authorize invoice_recipient on an existing media buy.',
+        field: 'invoice_recipient',
+        recovery: 'terminal',
+      }] as TaskError[],
+    };
+  }
 
   const pausedValue = req.paused;
   if (pausedValue === true && !NON_TERMINAL_MEDIA_BUY_STATUSES.has(currentStatus)) {
@@ -10247,23 +13110,30 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     };
   }
 
-  // Revision check for optimistic concurrency
-  const reqRevision = req.revision;
-  if (reqRevision !== undefined && reqRevision !== mb.revision) {
-    return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mb.revision}, got ${reqRevision}` }] };
-  }
+  const validationReq = req.packages
+    ? {
+        ...req,
+        packages: (req.packages as PackageUpdateExt[]).map(update => update.canceled === true
+          ? {
+              package_id: update.package_id,
+              canceled: true,
+              ...(update.cancellation_reason !== undefined && { cancellation_reason: update.cancellation_reason }),
+            }
+          : update),
+      } as UpdateMediaBuyArgs
+    : req;
 
   // Compute the monetary delta from the seller's authoritative pre-update
   // revision, then enforce the buyer intent's signed ceiling before mutating
   // any state. The buyer's post-update totals are never trusted as the delta.
   const submittedBudgets = [
-    ...(req.packages ?? []).flatMap(update => update.budget === undefined ? [] : [update.budget]),
-    ...(req.new_packages ?? []).map(pkg => pkg.budget),
+    ...(validationReq.packages ?? []).flatMap(update => typeof update.budget === 'number' ? [update.budget] : []),
+    ...(validationReq.new_packages ?? []).flatMap(pkg => typeof pkg.budget === 'number' ? [pkg.budget] : []),
   ];
   if (submittedBudgets.some(budget => !Number.isFinite(budget) || budget < 0)) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: 'Package budgets must be finite, non-negative numbers.' }] };
   }
-  const aggregateUpdate = aggregateMediaBuyUpdate(req);
+  const aggregateUpdate = aggregateMediaBuyUpdate(validationReq);
   if (aggregateUpdate.total_budget && (
     !Number.isFinite(aggregateUpdate.total_budget.amount)
     || aggregateUpdate.total_budget.amount < 0
@@ -10278,7 +13148,18 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   }
   const resultingAllocation = aggregateUpdate.budget_allocation ?? mb.budgetAllocation;
   const sellerOptimized = resultingAllocation?.mode === 'seller_optimized';
-  const fixedRedistribution = aggregateUpdate.total_budget && !sellerOptimized && req.packages === undefined && req.new_packages === undefined
+  if (
+    !sellerOptimized
+    && (validationReq.packages ?? []).some(update => update.budget === null)
+  ) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'A null package budget is valid only in seller-optimized allocation mode.',
+      }],
+    };
+  }
+  const fixedRedistribution = aggregateUpdate.total_budget && !sellerOptimized && validationReq.packages === undefined && validationReq.new_packages === undefined
     ? proportionalFixedPackageBudgets(mb, aggregateUpdate.total_budget.amount)
     : undefined;
   if (fixedRedistribution?.error) {
@@ -10287,8 +13168,8 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   if (
     aggregateUpdate.total_budget
     && !sellerOptimized
-    && (req.packages !== undefined || req.new_packages !== undefined)
-    && aggregateUpdate.total_budget.amount !== projectedPackageBudgetTotal(mb, req)
+    && (validationReq.packages !== undefined || validationReq.new_packages !== undefined)
+    && aggregateUpdate.total_budget.amount !== projectedPackageBudgetTotal(mb, validationReq)
   ) {
     return {
       errors: [{
@@ -10297,7 +13178,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       }],
     };
   }
-  const updateDelta = positiveMediaBuyUpdateDelta(mb, req);
+  const updateDelta = positiveMediaBuyUpdateDelta(mb, validationReq);
   if (!Number.isFinite(updateDelta)) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: 'Package budgets must be finite numbers.' }] };
   }
@@ -10305,7 +13186,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   const updateGovernanceContext = typeof rawGovernanceContext === 'string' && rawGovernanceContext
     ? rawGovernanceContext
     : undefined;
-  const requiresGovernance = mediaBuyUpdateRequiresGovernance(mb, req, updateDelta);
+  const requiresGovernance = mediaBuyUpdateRequiresGovernance(mb, validationReq, updateDelta);
   const updateGovernanceAgents = resolveGovernanceAgentsForAccount(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     ctx.principal,
@@ -10315,11 +13196,11 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     const commitmentError = await governedCommitmentError(
       updateGovernanceContext,
       ctx.authenticatedAgentUrl,
-      'update_media_buy',
+      options.governance?.task ?? 'update_media_buy',
       `${getCanonicalBase()}/sales`,
-      governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
-      updateDelta,
-      mb.currency,
+      governedRequestPayload(ctx, validationReq as unknown as Record<string, unknown>),
+      options.governance?.commitment.amount ?? updateDelta,
+      options.governance?.commitment.currency ?? mb.currency,
     );
     if (commitmentError) return { errors: [commitmentError] };
   } else if (requiresGovernance && (session.governancePlans.size > 0 || updateGovernanceAgents.length > 0)) {
@@ -10334,33 +13215,28 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   const now = new Date().toISOString();
   const affectedPackageIds = new Set<string>();
 
-  // Increment revision once before mutations
+  // Apply the update to a detached working copy. Failed validation after this
+  // point returns without replacing the authoritative map entry, so revisions
+  // and partial package changes remain atomic.
+  mb = structuredClone(mb);
   mb.revision += 1;
+  const warnings: Array<Record<string, unknown>> = [];
+  const stagedInlineCreatives: ValidatedInlineCreative[] = [];
+  const creativeValidationSession = structuredClone(session);
+  const requestInlineCreativeIds = new Set<string>();
 
-  // Media buy cancellation
-  const isCanceled = req.canceled === true;
-  if (isCanceled) {
-    const reason = req.cancellation_reason;
-    mb.canceledAt = now;
-    mb.canceledBy = 'buyer';
-    mb.cancellationReason = reason;
-    mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'canceled', summary: reason || 'Media buy canceled by buyer' });
-    mb.updatedAt = now;
-
-    const status = deriveStatus(mb, session);
-    // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
-    // body `status: MediaBuyStatus` removed in 3.2 (#4906).
-    return {
-      media_buy_id: mb.mediaBuyId,
-      ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
-      status,
-      media_buy_status: status,
+  if (typeof req.name === 'string' && req.name !== mb.name) {
+    const priorName = mb.name;
+    mb.name = req.name;
+    mb.history.push({
       revision: mb.revision,
-      valid_actions: validActionsForMediaBuy(mb, status),
-      available_actions: availableActionsForMediaBuy(mb, status),
-      cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
-      ...(req.context !== undefined && { context: req.context }),
-    };
+      timestamp: now,
+      actor: 'buyer',
+      action: 'name_updated',
+      summary: priorName
+        ? `Media buy name changed from ${priorName} to ${req.name}`
+        : `Media buy name set to ${req.name}`,
+    });
   }
 
   // Pause/resume at media buy level
@@ -10373,6 +13249,15 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   }
 
   // Update end_time with validation
+  if (req.start_time) {
+    if (isNaN(new Date(req.start_time).getTime())) {
+      return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid start_time: "${req.start_time}". Use ISO 8601 format.` }] };
+    }
+    const oldStart = mb.startTime;
+    mb.startTime = req.start_time;
+    mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'start_time_updated', summary: `Start time changed from ${oldStart} to ${req.start_time}` });
+  }
+
   if (req.end_time) {
     if (isNaN(new Date(req.end_time).getTime())) {
       return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid end_time: "${req.end_time}". Use ISO 8601 format.` }] };
@@ -10383,22 +13268,70 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   }
 
   // Update packages
-  const warnings: string[] = [];
   if (req.packages?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
 
-    // Pre-validate all creative_assignments across every package before
-    // mutating anything, so a bad creative_id in pkg[N] doesn't leave
-    // pkg[0..N-1] with partially-applied assignments.
+    // Validate every package's complete post-update trafficking state before
+    // mutating the detached buy. This catches targeting routes orphaned by a
+    // sibling change as well as invalid replacement or inline assignments.
     for (const update of req.packages as PackageUpdateExt[]) {
-      const assignments = (update as PackageUpdate & { creative_assignments?: Array<{ creative_id: string }> }).creative_assignments;
+      if (update.canceled === true) continue;
+      const pkgId = update.package_id || '';
+      const pkg = mb.packages.find(candidate => candidate.packageId === pkgId);
+      if (!pkg) {
+        return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Package not found: ${pkgId}. Known packages: ${[...knownPkgIds].join(', ')}` }] };
+      }
+      const assignments = (update as PackageUpdate & { creative_assignments?: LegacyCreativeAssignmentRow[] }).creative_assignments;
+      const traffickingChanged = update.creatives !== undefined
+        || assignments !== undefined
+        || update.targeting_overlay !== undefined
+        || update.targeting !== undefined;
+      if (!traffickingChanged) continue;
+      const enforceLifecycleSplit = supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx));
+      const product = enforceLifecycleSplit ? productMap.get(pkg.productId) : undefined;
+      if (enforceLifecycleSplit && !product) {
+        return { errors: [{ code: 'PRODUCT_NOT_FOUND', message: `Product not found for package ${pkgId}: ${pkg.productId}` }] };
+      }
       const inlineCreatives = collectInlineCreativeIds(update.creatives, `packages[${update.package_id || '?'}].creatives`);
       if (inlineCreatives.errors.length) {
         return { errors: inlineCreatives.errors };
       }
-      if (assignments === undefined) continue;
-      const pkgId = update.package_id || '';
-      if (assignments.length === 0) {
+      for (const inline of inlineCreatives.validatedCreatives) {
+        if (requestInlineCreativeIds.has(inline.creativeId)) {
+          return {
+            errors: [{
+              code: 'VALIDATION_ERROR',
+              message: `Inline creative ${inline.creativeId} is declared more than once in this update request.`,
+              field: `packages[${pkgId}].creatives`,
+            }] as TaskError[],
+          };
+        }
+        requestInlineCreativeIds.add(inline.creativeId);
+      }
+      persistInlineCreatives(
+        creativeValidationSession,
+        inlineCreatives.validatedCreatives,
+        mb.accountRef,
+        undefined,
+        now,
+      );
+      if (product && Array.isArray(update.creatives)) {
+        for (const [creativeIndex, creative] of update.creatives.entries()) {
+          const inlineCreative = creative as unknown as InlineCreativeInput;
+          const identity = validatedCreativeIdentity(inlineCreative);
+          if (!identity.ok) continue;
+          const existingCreative = inlineCreative.creative_id
+            ? session.creatives.get(inlineCreative.creative_id)
+            : undefined;
+          const manifest = normalizedCreativeManifest(inlineCreative, existingCreative, identity.identity);
+          if (!manifest) continue;
+          const violations = await validateCreativeForProduct(product, manifest);
+          if (violations.length > 0) {
+            return { errors: creativeValidationErrors(violations, `packages[${pkgId}].creatives[${creativeIndex}]`) };
+          }
+        }
+      }
+      if (assignments?.length === 0) {
         const currentStatus = deriveStatus(mb, session);
         if (['active', 'paused', 'pending_start'].includes(currentStatus)) {
           return {
@@ -10406,14 +13339,43 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
           };
         }
       }
-      for (const assignment of assignments) {
+      const candidateRows = update.creatives !== undefined
+        ? inlineCreativeAssignmentRows(update.creatives)
+        : assignments !== undefined
+          ? assignments.map(assignment => structuredClone(assignment))
+          : (pkg.creativeAssignmentDetails
+            ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })));
+      for (const assignment of candidateRows) {
         const cid = assignment.creative_id;
-        if (!cid) {
+        if (typeof cid !== 'string' || cid.length === 0) {
           return { errors: [{ code: 'VALIDATION_ERROR', message: `creative_assignments[].creative_id is required for package ${pkgId}`, field: `packages[${pkgId}].creative_assignments` }] };
         }
-        if (!session.creatives.has(cid)) {
+        if (!creativeValidationSession.creatives.has(cid)) {
           return { errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative not found: ${cid}. Sync the creative via sync_creatives before assigning.`, field: `packages[${pkgId}].creative_assignments` }] };
         }
+        const manifest = session.creatives.get(cid)?.manifest;
+        if (product && manifest) {
+          const violations = await validateCreativeForProduct(product, manifest);
+          if (violations.length > 0) {
+            return { errors: creativeValidationErrors(violations, `packages[${pkgId}].creative_assignments`) };
+          }
+        }
+      }
+      const incomingTargeting = (update as PackageUpdateExt).targeting_overlay
+        ?? (update as PackageUpdateExt).targeting
+        ?? pkg.targeting;
+      const targetingResult = validateTargeting(incomingTargeting, `packages[${pkgId}].targeting_overlay`);
+      if (targetingResult.errors.length) return { errors: targetingResult.errors };
+      if (enforceLifecycleSplit) {
+        const assignmentErrors = validateCreateAssignmentSemantics(
+          candidateRows,
+          product as unknown as Record<string, unknown>,
+          targetingResult.targeting,
+          creativeValidationSession,
+          `packages[${pkgId}].creative_assignments`,
+          (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
+        );
+        if (assignmentErrors.length) return { errors: assignmentErrors };
       }
     }
 
@@ -10426,10 +13388,31 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
 
       // Package cancellation
       if ((update as PackageUpdateExt).canceled === true) {
+        const ignoredFields = Object.entries(update as unknown as Record<string, unknown>)
+          .filter(([field, value]) => value !== undefined && !new Set([
+            'package_id',
+            'canceled',
+            'cancellation_reason',
+          ]).has(field))
+          .map(([field]) => field);
+        if (ignoredFields.length > 0) {
+          warnings.push({
+            code: 'fields_ignored_due_to_precedence',
+            message: `Package cancellation took precedence over sibling mutations for ${pkgId}.`,
+            affected_resource: {
+              resource_type: 'package',
+              media_buy_id: mb.mediaBuyId,
+              package_id: pkgId,
+            },
+            details: { ignored_fields: ignoredFields.map(field => `packages[${pkgId}].${field}`) },
+          });
+        }
         pkg.canceled = true;
         pkg.canceledAt = now;
         pkg.canceledBy = 'buyer';
         pkg.cancellationReason = (update as PackageUpdateExt).cancellation_reason;
+        pkg.creativeAssignments = [];
+        pkg.creativeAssignmentDetails = [];
         affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_canceled', summary: `Package ${pkgId} canceled`, packageId: pkgId });
         continue;
@@ -10443,19 +13426,131 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action, summary: `Package ${pkgId} ${update.paused ? 'paused' : 'resumed'}`, packageId: pkgId });
       }
 
-      if (update.budget !== undefined) {
+      if (typeof update.budget === 'number') {
         if (update.budget < 0) {
           return { errors: [{ code: 'VALIDATION_ERROR', message: `Negative budget rejected for package ${pkgId}. Budget must be non-negative.` }] };
         }
         const oldBudget = pkg.budget;
         pkg.budget = update.budget;
+        delete pkg.budgetCapRemoved;
         affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'budget_updated', summary: `Package ${pkgId} budget changed from ${oldBudget} to ${update.budget}`, packageId: pkgId });
+      } else if ((update as unknown as Record<string, unknown>).budget === null) {
+        const oldBudget = pkg.budget;
+        pkg.budgetCapRemoved = true;
+        affectedPackageIds.add(pkgId);
+        mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'budget_updated', summary: `Package ${pkgId} budget cap removed from ${oldBudget}`, packageId: pkgId });
+      }
+
+      const compactControl = update as unknown as Record<string, unknown>;
+      if (typeof compactControl.start_time === 'string') {
+        if (isNaN(new Date(compactControl.start_time).getTime())) {
+          return { errors: [{ code: 'VALIDATION_ERROR', message: `Invalid start_time for package ${pkgId}: "${compactControl.start_time}".` }] };
+        }
+        pkg.startTime = compactControl.start_time;
+        affectedPackageIds.add(pkgId);
+      }
+      if (Object.hasOwn(compactControl, 'daily_budget_cap')) {
+        if (compactControl.daily_budget_cap === null) delete pkg.dailyBudgetCap;
+        else if (typeof compactControl.daily_budget_cap === 'number') pkg.dailyBudgetCap = compactControl.daily_budget_cap;
+        affectedPackageIds.add(pkgId);
+      }
+      if (Object.hasOwn(compactControl, 'min_spend_target')) {
+        if (compactControl.min_spend_target === null) delete pkg.minSpendTarget;
+        else if (typeof compactControl.min_spend_target === 'number') pkg.minSpendTarget = compactControl.min_spend_target;
+        affectedPackageIds.add(pkgId);
+      }
+      if (typeof compactControl.impressions === 'number') {
+        pkg.impressions = compactControl.impressions;
+        affectedPackageIds.add(pkgId);
+      }
+      if (typeof compactControl.pacing === 'string') {
+        pkg.pacing = compactControl.pacing;
+        affectedPackageIds.add(pkgId);
+      }
+      if (Object.hasOwn(compactControl, 'bidding')) {
+        if (compactControl.bidding === null) delete pkg.bidding;
+        else if (isRecord(compactControl.bidding)) pkg.bidding = structuredClone(compactControl.bidding);
+        affectedPackageIds.add(pkgId);
+      }
+      if (Array.isArray(compactControl.catalog_ids)) {
+        pkg.catalogIds = compactControl.catalog_ids.filter((id): id is string => typeof id === 'string');
+        affectedPackageIds.add(pkgId);
+      }
+      if (Array.isArray(compactControl.optimization_goals)) {
+        pkg.optimizationGoals = compactControl.optimization_goals.filter(isRecord).map(goal => structuredClone(goal));
+        affectedPackageIds.add(pkgId);
+      }
+      if (Object.hasOwn(compactControl, 'measurement_terms')) {
+        if (compactControl.measurement_terms === null) delete pkg.measurementTerms;
+        else if (isRecord(compactControl.measurement_terms)) pkg.measurementTerms = structuredClone(compactControl.measurement_terms);
+        affectedPackageIds.add(pkgId);
+      }
+      if (Object.hasOwn(compactControl, 'performance_standards')) {
+        if (compactControl.performance_standards === null) delete pkg.performanceStandards;
+        else if (Array.isArray(compactControl.performance_standards)) {
+          pkg.performanceStandards = compactControl.performance_standards.filter(isRecord).map(value => structuredClone(value));
+        }
+        affectedPackageIds.add(pkgId);
+      }
+      if (Object.hasOwn(compactControl, 'audience_evidence_requirements')) {
+        if (compactControl.audience_evidence_requirements === null) delete pkg.audienceEvidenceRequirements;
+        else if (isRecord(compactControl.audience_evidence_requirements)) {
+          pkg.audienceEvidenceRequirements = structuredClone(compactControl.audience_evidence_requirements);
+        }
+        affectedPackageIds.add(pkgId);
+      }
+      if (Object.hasOwn(compactControl, 'audience_evidence_pins')) {
+        if (compactControl.audience_evidence_pins === null) delete pkg.audienceEvidencePins;
+        else if (Array.isArray(compactControl.audience_evidence_pins)) {
+          pkg.audienceEvidencePins = compactControl.audience_evidence_pins.filter(isRecord).map(value => structuredClone(value));
+        }
+        affectedPackageIds.add(pkgId);
+      }
+      if (Object.hasOwn(compactControl, 'agency_estimate_number')) {
+        if (compactControl.agency_estimate_number === null) delete pkg.agencyEstimateNumber;
+        else if (typeof compactControl.agency_estimate_number === 'string') pkg.agencyEstimateNumber = compactControl.agency_estimate_number;
+        affectedPackageIds.add(pkgId);
+      }
+      if (Object.hasOwn(compactControl, 'context')) {
+        if (compactControl.context === null) delete pkg.context;
+        else if (isRecord(compactControl.context)) pkg.context = structuredClone(compactControl.context);
+        affectedPackageIds.add(pkgId);
+      }
+      if (Object.hasOwn(compactControl, 'ext')) {
+        if (compactControl.ext === null) delete pkg.ext;
+        else if (isRecord(compactControl.ext)) pkg.ext = structuredClone(compactControl.ext);
+        affectedPackageIds.add(pkgId);
+      }
+
+      const keywordDeltaFields = [
+        ['keyword_targets_add', 'keyword_targets', true],
+        ['keyword_targets_remove', 'keyword_targets', false],
+        ['negative_keywords_add', 'negative_keywords', true],
+        ['negative_keywords_remove', 'negative_keywords', false],
+      ] as const;
+      for (const [wireField, stateField, add] of keywordDeltaFields) {
+        const delta = compactControl[wireField];
+        if (!Array.isArray(delta)) continue;
+        const targeting = (pkg.targeting ??= {});
+        const current = Array.isArray(targeting[stateField])
+          ? (targeting[stateField] as unknown[]).filter(isRecord)
+          : [];
+        const keys = new Set(delta.filter(isRecord).map(entry => canonicalize(entry)));
+        targeting[stateField] = add
+          ? [...current, ...delta.filter(isRecord).filter(entry => !new Set(current.map(value => canonicalize(value))).has(canonicalize(entry)))]
+          : current.filter(entry => !keys.has(canonicalize(entry)));
+        affectedPackageIds.add(pkgId);
       }
 
       if (update.end_time) {
         if (isNaN(new Date(update.end_time).getTime())) {
-          warnings.push(`Invalid end_time for package ${pkgId}: "${update.end_time}". Skipped.`);
+          return { errors: [{
+            code: 'VALIDATION_ERROR',
+            message: `Invalid end_time for package ${pkgId}: "${update.end_time}".`,
+            field: `packages[${pkgId}].end_time`,
+            recovery: 'correctable',
+          }] };
         } else {
           pkg.endTime = update.end_time;
           affectedPackageIds.add(pkgId);
@@ -10482,24 +13577,21 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       // Replacement semantics: the provided array replaces pkg.creativeAssignments
       // entirely. Empty arrays are rejected in the pre-pass for active/paused/pending_start buys;
       // validity of creative_ids was also checked in the pre-pass.
-      const creativeAssignments = (update as PackageUpdate & { creative_assignments?: Array<{ creative_id: string }> }).creative_assignments;
+      const creativeAssignments = (update as PackageUpdate & { creative_assignments?: Array<{ creative_id: string; [key: string]: unknown }> }).creative_assignments;
       if (creativeAssignments !== undefined) {
         const creativeIds = creativeAssignments.map(a => a.creative_id);
         pkg.creativeAssignments = creativeIds;
+        pkg.creativeAssignmentDetails = structuredClone(creativeAssignments);
         affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
       if (update.creatives !== undefined) {
         const inlineCreatives = collectInlineCreativeIds(update.creatives, `packages[${pkgId}].creatives`);
         const creativeIds = inlineCreatives.creativeIds;
-        persistInlineCreatives(
-          session,
-          inlineCreatives.validatedCreatives,
-          req.account as AccountRef | undefined,
-          resolveAccountIdForRef(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId), ctx.principal, req.account),
-          now,
-        );
+        stagedInlineCreatives.push(...inlineCreatives.validatedCreatives);
         pkg.creativeAssignments = creativeIds;
+        pkg.creativeAssignmentDetails = inlineCreativeAssignmentRows(update.creatives)
+          .map(row => structuredClone(row));
         affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'inline_creatives_updated', summary: `Package ${pkgId} inline creatives replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
@@ -10531,6 +13623,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   const newPackages = req.new_packages;
   if (newPackages?.length) {
     const productFormatOptionIndexes: ProductFormatOptionIndexCache = new WeakMap();
+    const enforceLifecycleSplit = supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx));
     if (mb.packages.length + newPackages.length > MAX_PACKAGES_PER_BUY) {
       return {
         errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
@@ -10565,6 +13658,57 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       if (targetingResult.errors.length) {
         return { errors: targetingResult.errors };
       }
+      const inlineCreatives = collectInlineCreativeIds(npkg.creatives, `new_packages[${i}].creatives`);
+      if (inlineCreatives.errors.length) return { errors: inlineCreatives.errors };
+      for (const inline of inlineCreatives.validatedCreatives) {
+        if (enforceLifecycleSplit && requestInlineCreativeIds.has(inline.creativeId)) {
+          return {
+            errors: [{
+              code: 'VALIDATION_ERROR',
+              message: `Inline creative ${inline.creativeId} is declared more than once in this update request.`,
+              field: `new_packages[${i}].creatives`,
+            }] as TaskError[],
+          };
+        }
+        requestInlineCreativeIds.add(inline.creativeId);
+      }
+      persistInlineCreatives(
+        creativeValidationSession,
+        inlineCreatives.validatedCreatives,
+        mb.accountRef,
+        undefined,
+        now,
+      );
+      const assignmentRows = [
+        ...(Array.isArray(npkg.creative_assignments)
+          ? npkg.creative_assignments.map(assignment =>
+            structuredClone(assignment) as unknown as LegacyCreativeAssignmentRow
+          )
+          : []),
+        ...inlineCreativeAssignmentRows(npkg.creatives),
+      ];
+      for (const assignment of assignmentRows) {
+        if (enforceLifecycleSplit && (typeof assignment.creative_id !== 'string' || !creativeValidationSession.creatives.has(assignment.creative_id))) {
+          return {
+            errors: [{
+              code: 'CREATIVE_NOT_FOUND',
+              message: `New package ${i}: assigned creative was not found in the account library or inline payload.`,
+              field: `new_packages[${i}].creative_assignments`,
+            }] as TaskError[],
+          };
+        }
+      }
+      if (enforceLifecycleSplit) {
+        const assignmentErrors = validateCreateAssignmentSemantics(
+          assignmentRows,
+          product as unknown as Record<string, unknown>,
+          targetingResult.targeting,
+          creativeValidationSession,
+          `new_packages[${i}].creative_assignments`,
+          formatSnapshot.formats ?? [],
+        );
+        if (assignmentErrors.length) return { errors: assignmentErrors };
+      }
       const newPkg: PackageState = {
         packageId: pkgId,
         productId,
@@ -10572,6 +13716,23 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         pricingOptionId: npkg.pricing_option_id,
         bidPrice: npkg.bid_price,
         impressions: npkg.impressions,
+        dailyBudgetCap: npkg.daily_budget_cap,
+        minSpendTarget: npkg.min_spend_target,
+        pacing: npkg.pacing,
+        bidding: npkg.bidding ? structuredClone(npkg.bidding) : undefined,
+        catalogIds: npkg.catalog_ids ? [...npkg.catalog_ids] : undefined,
+        measurementTerms: npkg.measurement_terms ? structuredClone(npkg.measurement_terms) : undefined,
+        performanceStandards: npkg.performance_standards?.map(
+          value => structuredClone(value) as unknown as Record<string, unknown>,
+        ),
+        audienceEvidenceRequirements: npkg.audience_evidence_requirements
+          ? structuredClone(npkg.audience_evidence_requirements)
+          : undefined,
+        audienceEvidencePins: npkg.audience_evidence_pins?.map(
+          value => structuredClone(value) as unknown as Record<string, unknown>,
+        ),
+        agencyEstimateNumber: npkg.agency_estimate_number,
+        ext: npkg.ext ? structuredClone(npkg.ext) : undefined,
         paused: npkg.paused || false,
         startTime: npkg.start_time || mb.startTime,
         endTime: npkg.end_time || mb.endTime,
@@ -10580,9 +13741,12 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         ...(!isThreeZeroStoryboardCompat(ctx) && formatSnapshot.formats?.length && {
           formatsToProvide: formatSnapshot.formats,
         }),
-        creativeAssignments: [],
+        creativeAssignments: assignmentRows.flatMap(row => typeof row.creative_id === 'string' ? [row.creative_id] : []),
+        creativeAssignmentDetails: assignmentRows.map(row => structuredClone(row)),
         targeting: targetingResult.targeting,
+        context: npkg.context ? structuredClone(npkg.context) : undefined,
       };
+      stagedInlineCreatives.push(...inlineCreatives.validatedCreatives);
       mb.packages.push(newPkg);
       affectedPackageIds.add(pkgId);
       mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_added', summary: `New package ${pkgId} added (product: ${productId})`, packageId: pkgId });
@@ -10606,6 +13770,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         if (nextBudget === undefined) continue;
         const oldBudget = pkg.budget;
         pkg.budget = nextBudget;
+        delete pkg.budgetCapRemoved;
         affectedPackageIds.add(pkg.packageId);
         mb.history.push({
           revision: mb.revision,
@@ -10627,6 +13792,14 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       0,
     );
   }
+  if (aggregateUpdate.daily_budget_cap === null) delete mb.dailyBudgetCap;
+  else if (aggregateUpdate.daily_budget_cap !== undefined) {
+    mb.dailyBudgetCap = aggregateUpdate.daily_budget_cap;
+  }
+  if (aggregateUpdate.budget_cap_timezone === null) delete mb.budgetCapTimezone;
+  else if (aggregateUpdate.budget_cap_timezone !== undefined) {
+    mb.budgetCapTimezone = aggregateUpdate.budget_cap_timezone;
+  }
   if (aggregateUpdate.budget_allocation !== undefined) {
     mb.budgetAllocation = structuredClone(aggregateUpdate.budget_allocation);
   }
@@ -10635,14 +13808,117 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   else if (aggregateUpdate.bidding !== undefined) {
     mb.aggregateBidding = structuredClone(aggregateUpdate.bidding);
   }
+  const reportingWebhook = (req as unknown as Record<string, unknown>).reporting_webhook;
+  if (isRecord(reportingWebhook)) mb.reportingWebhook = structuredClone(reportingWebhook);
+  const invoiceRecipient = (req as unknown as Record<string, unknown>).invoice_recipient;
+  if (isRecord(invoiceRecipient)) mb.invoiceRecipient = structuredClone(invoiceRecipient);
+
+  // Every successful revision is observable through get_media_buys history.
+  // Aggregate-only controls (for example daily_budget_cap) do not pass through
+  // a package branch, so give them the same append-only audit semantics.
+  if (!mb.history.some(entry => entry.revision === mb.revision)) {
+    const budgetUpdated = aggregateUpdate.total_budget !== undefined
+      || aggregateUpdate.daily_budget_cap !== undefined
+      || aggregateUpdate.budget_cap_timezone !== undefined
+      || aggregateUpdate.budget_allocation !== undefined;
+    mb.history.push({
+      revision: mb.revision,
+      timestamp: now,
+      actor: 'buyer',
+      action: budgetUpdated ? 'updated_budget' : 'updated_packages',
+      summary: budgetUpdated
+        ? 'Media buy budget controls updated'
+        : 'Media buy operational controls updated',
+    });
+  }
 
   mb.updatedAt = now;
+
+  // Inline creative bodies update the account-scoped creative library. A
+  // creative may be shared by packages omitted from this request, so validate
+  // every surviving reference against the staged replacement before commit.
+  if (stagedInlineCreatives.length > 0 && supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx))) {
+    const stagedCreativeIds = new Set(stagedInlineCreatives.map(({ creativeId }) => creativeId));
+    for (const pkg of mb.packages) {
+      if (pkg.canceled || !pkg.creativeAssignments.some(creativeId => stagedCreativeIds.has(creativeId))) continue;
+      const product = productMap.get(pkg.productId);
+      if (!product) {
+        return { errors: [{ code: 'PRODUCT_NOT_FOUND', message: `Product not found for package ${pkg.packageId}: ${pkg.productId}` }] };
+      }
+      const assignmentRows = pkg.creativeAssignmentDetails
+        ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId }));
+      const assignmentErrors = validateCreateAssignmentSemantics(
+        assignmentRows,
+        product as unknown as Record<string, unknown>,
+        pkg.targeting,
+        creativeValidationSession,
+        `packages[${pkg.packageId}].creative_assignments`,
+        (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
+      );
+      if (assignmentErrors.length) return { errors: assignmentErrors };
+    }
+  }
+
+  if (
+    !options.acceptedProposalExecution
+    && !options.operationalControlExecution
+    && mb.acceptedProposal
+    && legacyUpdateChangesCommercialEnvelope(req)
+  ) {
+    const priorAccepted = mb.acceptedProposal;
+    let currentTerms: CanonicalProposal;
+    try {
+      currentTerms = proposalForCurrentMediaBuy(priorAccepted, mb);
+    } catch (error) {
+      return {
+        errors: [{
+          code: 'REQUOTE_REQUIRED',
+          message: error instanceof Error ? error.message : 'The update cannot be represented as an accepted proposal successor.',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+    const acceptedSuccessor = {
+      ...currentTerms,
+      proposal_id: `proposal_legacy_update_${mb.mediaBuyId}_${mb.revision}`,
+      proposal_kind: 'media_buy_update',
+      parent_proposal_id: priorAccepted.proposal_id,
+      media_buy_id: mb.mediaBuyId,
+      base_media_buy_revision: mb.revision - 1,
+      proposal_status: 'accepted',
+      accepted_at: now,
+      name: 'Accepted legacy media-buy update',
+    } as CanonicalProposal;
+    mb.acceptedProposal = structuredClone(acceptedSuccessor);
+    session.proposalRefinementRecords.set(acceptedSuccessor.proposal_id, {
+      proposal: structuredClone(acceptedSuccessor),
+      version: 1,
+      ...(ctx.resolvedAccountId && { ownerAccountId: ctx.resolvedAccountId }),
+      accepted: {
+        accepted_at: now,
+        media_buy_id: mb.mediaBuyId,
+        media_buy_revision: mb.revision,
+      },
+    });
+  }
+
+  // Inline creative bodies share the legacy update transaction. Persist them
+  // only after every package/new-package check has succeeded.
+  if (stagedInlineCreatives.length > 0) {
+    persistInlineCreatives(
+      session,
+      stagedInlineCreatives,
+      req.account as AccountRef | undefined,
+      resolveAccountIdForRef(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId), ctx.principal, req.account),
+      now,
+    );
+  }
 
   const status = deriveStatus(mb, session);
   const updatedPackages = mb.packages.map(pkg => ({
     package_id: pkg.packageId,
     product_id: pkg.productId,
-    budget: pkg.budget,
+    ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
     pricing_option_id: pkg.pricingOptionId,
     paused: pkg.paused,
     start_time: pkg.startTime,
@@ -10652,7 +13928,8 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
     ...(pkg.context && { context: pkg.context }),
     ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
-    creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
+    creative_assignments: pkg.creativeAssignmentDetails
+      ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     ...(pkg.canceledAt && {
       cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
     }),
@@ -10662,15 +13939,23 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // body `status: MediaBuyStatus` removed in 3.2 (#4906).
   const result = {
     media_buy_id: mb.mediaBuyId,
+    ...(mb.name && { name: mb.name }),
+    ...(mb.invoiceRecipient && { invoice_recipient: structuredClone(mb.invoiceRecipient) }),
     ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
     status,
     media_buy_status: status,
     revision: mb.revision,
-    valid_actions: validActionsForMediaBuy(mb, status),
-    available_actions: availableActionsForMediaBuy(mb, status),
+    valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+    available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
     ...((aggregateUpdate.total_budget !== undefined || packageBudgetChanged) && {
       currency: mb.currency,
       total_budget: mb.totalBudget,
+    }),
+    ...(aggregateUpdate.daily_budget_cap !== undefined && {
+      daily_budget_cap: mb.dailyBudgetCap ?? null,
+    }),
+    ...(aggregateUpdate.budget_cap_timezone !== undefined && {
+      budget_cap_timezone: mb.budgetCapTimezone ?? null,
     }),
     ...(aggregateUpdate.budget_allocation !== undefined && mb.budgetAllocation
       ? { budget_allocation: mb.budgetAllocation }
@@ -10689,6 +13974,7 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
     ...(warnings.length > 0 && { warnings }),
     ...(req.context !== undefined && { context: req.context }),
   };
+  session.mediaBuys.set(mediaBuyId, mb);
   return result;
 }
 
@@ -10743,7 +14029,13 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     ...(!isThreeZeroStoryboardCompat(ctx) ? ['query_provenance_audit_observations'] : []),
   ];
   const governanceEnforcementTasks = ctx.tenantId === 'sales'
-    ? [{ task: 'create_media_buy', modes: ['signed_context'] }]
+    ? supportsGetProductsRejected(servedAdcpVersion)
+      ? [
+          { task: 'buy_products', modes: ['signed_context'] },
+          { task: 'accept_proposal', modes: ['signed_context'] },
+          { task: 'control_media_buy', modes: ['signed_context'] },
+        ]
+      : [{ task: 'create_media_buy', modes: ['signed_context'] }]
     : ctx.tenantId === 'signals'
       ? [{ task: 'activate_signal', modes: ['signed_context'] }]
       : ctx.tenantId === 'brand'
@@ -10795,6 +14087,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         profile: 'adcp/webhook-signing/v1',
         algorithms: ['ed25519'],
         legacy_hmac_fallback: true,
+        delivery_retry_horizon_seconds: 86400,
       },
       identity: {
         brand_json_url: `${getAgentUrl()}/.well-known/brand.json`,
@@ -10803,10 +14096,20 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     media_buy: {
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
       ...(supportsGetProductsRejected(servedAdcpVersion) && {
-        lifecycle_tools: [...PRODUCT_DISCOVERY_TOOLS],
+        lifecycle_tools: [...PRODUCT_DISCOVERY_LIFECYCLE_TOOLS],
         proposal_refinement: proposalCapabilitiesForProfile(ctx.proposalNegotiationProfile),
       }),
       supports_proposals: true,
+      // Flexible-window availability discovery: parses
+      // offer_filters.availability_horizon and answers with time-dimensioned
+      // forecast points carrying availability_status. See
+      // applyAvailabilityHorizonForecasts / handleGetProductsUnlocked.
+      availability_horizon: true,
+      // Reverse-forecast planning: parses criteria.outcome_target and
+      // answers with total_budget_guidance plus a forecast whose points
+      // carry the goal's metric/event key in metrics. See
+      // computeOutcomeTargetPlan / handleGetProductsUnlocked.
+      outcome_target: true,
       performance_feedback: {
         reports_application_status: true,
       },
@@ -12783,7 +16086,6 @@ function canonicalProposalFromRecord(record: TrainingProposalRecord): CanonicalP
     proposal_status: 'accepted',
     accepted_at: record.accepted.accepted_at,
     media_buy_id: record.accepted.media_buy_id,
-    base_media_buy_revision: record.accepted.media_buy_revision,
   };
 }
 
@@ -12867,19 +16169,130 @@ function proposalProductsForResults(results: readonly object[]): Array<{ product
     .map(product => ({ product_id: product.product_id, name: product.name }));
 }
 
+function proposalForCurrentMediaBuy(
+  source: CanonicalProposal,
+  mediaBuy: MediaBuyState,
+): CanonicalProposal {
+  // The accepted proposal is an immutable audit snapshot, while self-serve
+  // controls legitimately move operational state within that envelope. A new
+  // amendment must fork the live state or it can silently restore stale terms.
+  const latestAccepted = mediaBuy.acceptedProposal ?? source;
+  const commercialTerms = structuredClone(latestAccepted.commercial_terms) as unknown as Record<string, unknown>;
+  const sourcePurchases = new Map<string, CompactProductPurchase[]>();
+  for (const purchase of latestAccepted.commercial_terms.purchases as CompactProductPurchase[]) {
+    const key = productPricingKey(purchase.product_id, purchase.pricing_option_id);
+    const queue = sourcePurchases.get(key) ?? [];
+    queue.push(purchase);
+    sourcePurchases.set(key, queue);
+  }
+
+  commercialTerms.purchases = mediaBuy.packages
+    .filter(pkg => !pkg.canceled)
+    .map(pkg => {
+      const key = productPricingKey(pkg.productId, pkg.pricingOptionId);
+      const quoted = sourcePurchases.get(key)?.shift();
+      if (!quoted) {
+        throw new Error(`The live media buy package ${pkg.packageId} has no accepted proposal purchase snapshot.`);
+      }
+      const purchase = structuredClone(quoted) as unknown as Record<string, unknown>;
+      for (const field of [
+        'budget',
+        'impressions',
+        'start_time',
+        'end_time',
+        'daily_budget_cap',
+        'min_spend_target',
+        'pacing',
+        'bidding',
+        'catalog_ids',
+        'targeting_overlay',
+        'optimization_goals',
+        'measurement_terms',
+        'performance_standards',
+        'audience_evidence_requirements',
+        'audience_evidence_pins',
+        'agency_estimate_number',
+        'context',
+        'ext',
+      ]) delete purchase[field];
+      return {
+        ...purchase,
+        ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
+        start_time: pkg.startTime,
+        end_time: pkg.endTime,
+        ...(pkg.impressions !== undefined && { impressions: pkg.impressions }),
+        ...(pkg.dailyBudgetCap !== undefined && { daily_budget_cap: pkg.dailyBudgetCap }),
+        ...(pkg.minSpendTarget !== undefined && { min_spend_target: pkg.minSpendTarget }),
+        ...(pkg.pacing !== undefined && { pacing: pkg.pacing }),
+        ...(pkg.bidding !== undefined && { bidding: structuredClone(pkg.bidding) }),
+        ...(pkg.catalogIds !== undefined && { catalog_ids: [...pkg.catalogIds] }),
+        ...(pkg.targeting !== undefined && { targeting_overlay: targetingForWire(pkg.targeting) }),
+        ...(pkg.optimizationGoals !== undefined && { optimization_goals: structuredClone(pkg.optimizationGoals) }),
+        ...(pkg.measurementTerms !== undefined && { measurement_terms: structuredClone(pkg.measurementTerms) }),
+        ...(pkg.performanceStandards !== undefined && { performance_standards: structuredClone(pkg.performanceStandards) }),
+        ...(pkg.audienceEvidenceRequirements !== undefined && {
+          audience_evidence_requirements: structuredClone(pkg.audienceEvidenceRequirements),
+        }),
+        ...(pkg.audienceEvidencePins !== undefined && { audience_evidence_pins: structuredClone(pkg.audienceEvidencePins) }),
+        ...(pkg.agencyEstimateNumber !== undefined && { agency_estimate_number: pkg.agencyEstimateNumber }),
+        ...(pkg.context !== undefined && { context: structuredClone(pkg.context) }),
+        ...(pkg.ext !== undefined && { ext: structuredClone(pkg.ext) }),
+      };
+    });
+  commercialTerms.start_time = mediaBuy.startTime;
+  commercialTerms.end_time = mediaBuy.endTime;
+  for (const field of [
+    'total_budget',
+    'daily_budget_cap',
+    'budget_cap_timezone',
+    'budget_allocation',
+    'pacing',
+    'bidding',
+    'invoice_recipient',
+  ]) delete commercialTerms[field];
+  if (mediaBuy.totalBudget !== undefined) {
+    commercialTerms.total_budget = { amount: mediaBuy.totalBudget, currency: mediaBuy.currency };
+  }
+  if (mediaBuy.dailyBudgetCap !== undefined) commercialTerms.daily_budget_cap = mediaBuy.dailyBudgetCap;
+  if (mediaBuy.budgetCapTimezone !== undefined) commercialTerms.budget_cap_timezone = mediaBuy.budgetCapTimezone;
+  if (mediaBuy.budgetAllocation !== undefined) commercialTerms.budget_allocation = structuredClone(mediaBuy.budgetAllocation);
+  if (mediaBuy.aggregatePacing !== undefined) commercialTerms.pacing = mediaBuy.aggregatePacing;
+  if (mediaBuy.aggregateBidding !== undefined) commercialTerms.bidding = structuredClone(mediaBuy.aggregateBidding);
+  if (mediaBuy.invoiceRecipient !== undefined) commercialTerms.invoice_recipient = structuredClone(mediaBuy.invoiceRecipient);
+
+  return {
+    ...source,
+    base_media_buy_revision: mediaBuy.revision,
+    commercial_terms: commercialTerms as unknown as CanonicalProposal['commercial_terms'],
+    terms_digest: proposalTermsDigest(commercialTerms),
+  };
+}
+
 function proposalStoreForSession(
   session: SessionState,
   now: Date,
+  currentMediaBuys: ReadonlyMap<string, MediaBuyState> = new Map(),
 ): ProposalRefinementStore<CanonicalProposal> {
   return {
     get(_scope: Readonly<ProposalRefinementScope>, proposalId: string) {
       const record = session.proposalRefinementRecords.get(proposalId);
-      if (!record) return null;
+      if (!record || record.declined) return null;
       const activeHold = record.activeHold && Date.parse(record.activeHold.expires_at) > now.getTime()
         ? structuredClone(record.activeHold)
         : undefined;
+      const proposal = canonicalProposalFromRecord(record);
+      const currentMediaBuy = record.accepted
+        ? currentMediaBuys.get(record.accepted.media_buy_id)
+        : undefined;
       return {
-        proposal: canonicalProposalFromRecord(record),
+        // Accepted wire snapshots preserve their historical base (and a new
+        // buy has none). The refinement engine instead needs the latest
+        // trusted accepted revision when it forks the next lifecycle change.
+        proposal: currentMediaBuy
+          ? proposalForCurrentMediaBuy(proposal, currentMediaBuy)
+          : record.accepted
+            ? { ...proposal, base_media_buy_revision: record.accepted.media_buy_revision }
+            : proposal,
         version: String(record.version),
         ...(activeHold && { active_hold: activeHold }),
       };
@@ -12926,9 +16339,11 @@ function proposalStoreForSession(
             const internal = internalProposalFromCanonical(proposal, sourceInternal);
             nextInternal.push(internal);
             internalById.set(proposal.proposal_id, internal);
+            const sourceRecord = sourceId ? nextRecords.get(sourceId) : undefined;
             nextRecords.set(proposal.proposal_id, {
               proposal: structuredClone(proposal),
               version: 1,
+              ...(sourceRecord?.ownerAccountId && { ownerAccountId: sourceRecord.ownerAccountId }),
             });
           }
           for (const expected of expectedSources) {
@@ -12963,7 +16378,10 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
   if (!profile || profile === 'ask-only') {
     return { errors: [{ code: 'UNSUPPORTED_FEATURE', message: 'Typed proposal negotiation is not enabled.' }] };
   }
-  const sessionScope = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal ?? 'anonymous');
+  const sessionScope = productDiscoverySessionKey({
+    ...(args as unknown as Record<string, unknown>),
+    __compact_proposal_lifecycle: true,
+  } as ToolArgs, ctx);
   const sessionHash = createHash('sha256').update(sessionScope).digest('hex');
   const lockPrincipal = 'get-products-session-mutex';
   const lockKey = `get-products-session:${sessionHash}`;
@@ -12985,6 +16403,17 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
   try {
     evictSessionFromRequestCache(sessionScope);
     const session = await getSession(sessionScope);
+    const mediaBuyArgs = {
+      account: ctx.resolvedAccount ?? (
+        ctx.requestInput?.account && typeof ctx.requestInput.account === 'object'
+          ? ctx.requestInput.account as ToolArgs['account']
+          : args.account
+      ),
+    } as ToolArgs;
+    const mediaBuySession = await getSession(
+      sessionKeyFromArgs(mediaBuyArgs, ctx.mode, ctx.userId, ctx.moduleId),
+      controllerFixtureSessionKey(mediaBuyArgs, ctx),
+    );
     const now = new Date();
     const activeHoldCount = Array.from(session.proposalRefinementRecords.values())
       .filter(record => record.activeHold && Date.parse(record.activeHold.expires_at) > now.getTime())
@@ -13001,8 +16430,8 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
       TrainingProposalPolicyContext
     >({
       capabilities: proposalCapabilitiesForProfile(profile),
-      store: proposalStoreForSession(session, now),
-      scope: (): ProposalRefinementScope => ({
+      store: proposalStoreForSession(session, now, mediaBuySession.mediaBuys),
+      scope: (): ProposalRefinementScope => ctx.proposalRefinementScope ?? ({
         tenant_id: ctx.tenantId ?? 'sales',
         principal_id: ctx.principal ?? 'anonymous',
       }),
@@ -13050,12 +16479,1012 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
   }
 }
 
+/**
+ * Execute one compact product-discovery operation inside the SDK 14 platform
+ * boundary. The SDK has already validated the wire request and owns request
+ * idempotency, so this deliberately bypasses the legacy MCP wrapper while
+ * retaining the training agent's shared catalog and proposal state machine.
+ */
+export async function executeProductDiscoveryPlatformTool(
+  toolName: ProductDiscoveryLifecycleTool,
+  args: Record<string, unknown>,
+  ctx: TrainingContext,
+): Promise<Record<string, unknown>> {
+  const sourceSchemaName = productDiscoverySourceSchemaName(toolName);
+  const sourceArgs = { ...args };
+  if (isRecord(sourceArgs.account) && isRecord(sourceArgs.account.brand)) {
+    delete sourceArgs.brand;
+  }
+  if (isRecord(sourceArgs.account)) delete sourceArgs.account_id;
+  if (toolName === 'refine_proposals' || toolName === 'decline_proposals') {
+    delete sourceArgs.account;
+    delete sourceArgs.account_id;
+    delete sourceArgs.brand;
+  }
+  const validationError = sourceSchemaName
+    ? validateProductDiscoverySourceInput(sourceSchemaName, sourceArgs)
+    : undefined;
+  if (validationError) {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: validationError.message,
+        ...(validationError.field && { field: validationError.field }),
+        recovery: 'correctable',
+      }],
+    };
+  }
+  const typedRefinement = toolName === 'refine_proposals' && usesTypedProposalNegotiation(ctx);
+  const handler = typedRefinement
+    ? handleTypedProposalRefinement
+    : handleGetProducts;
+  const normalized = typedRefinement
+    ? (() => {
+        const {
+          account: _account,
+          account_id: _accountId,
+          brand: _brand,
+          ...proposalArgs
+        } = args;
+        return proposalArgs;
+      })()
+    : normalizeProductDiscoveryArgs(toolName, args);
+  const result = await Promise.resolve(handler(normalized as ToolArgs, {
+    ...ctx,
+    servedAdcpVersion: ctx.servedAdcpVersion ?? CURRENT_ADCP_VERSION,
+  }));
+  await flushDirtySessions();
+  if (typedRefinement) return result as Record<string, unknown>;
+  return projectProductDiscoveryResult(toolName, result as Record<string, unknown>, args);
+}
+
+function legacyPackagesFromPurchases(
+  purchases: readonly CompactProductPurchase[],
+  totalBudget: number | undefined,
+  productMap?: ReadonlyMap<string, Product>,
+): Array<Record<string, unknown>> {
+  const catalog = productMap ?? new Map(getCatalog().map(entry => [entry.product.product_id, entry.product]));
+  const fallbackBudget = totalBudget === undefined ? 0 : totalBudget / Math.max(1, purchases.length);
+  return purchases.map(purchase => {
+    const product = catalog.get(purchase.product_id);
+    const pricing = product?.pricing_options.find(
+      option => option.pricing_option_id === purchase.pricing_option_id,
+    );
+    const pricingView = pricing as unknown as PricingOptionView | undefined;
+    const bidding = purchase.bidding as Record<string, unknown> | undefined;
+    const bidPrice = typeof bidding?.bid_amount === 'number'
+      ? bidding.bid_amount
+      : typeof bidding?.max_bid === 'number'
+        ? bidding.max_bid
+        : pricingView?.price_guidance?.p50 ?? pricingView?.floor_price;
+    return {
+      product_id: purchase.product_id,
+      pricing_option_id: purchase.pricing_option_id,
+      budget: purchase.budget ?? fallbackBudget,
+      ...(bidPrice !== undefined && pricing && pricingStructureForOption(pricing) === 'auction'
+        ? { bid_price: bidPrice }
+        : {}),
+      ...(purchase.impressions !== undefined && { impressions: purchase.impressions }),
+      ...(purchase.start_time !== undefined && { start_time: purchase.start_time }),
+      ...(purchase.end_time !== undefined && { end_time: purchase.end_time }),
+      ...(purchase.format_option_refs !== undefined && { format_option_refs: purchase.format_option_refs }),
+      ...(purchase.catalog_ids !== undefined && { catalog_ids: purchase.catalog_ids }),
+      ...(purchase.daily_budget_cap !== undefined && { daily_budget_cap: purchase.daily_budget_cap }),
+      ...(purchase.min_spend_target !== undefined && { min_spend_target: purchase.min_spend_target }),
+      ...(purchase.pacing !== undefined && { pacing: purchase.pacing }),
+      ...(purchase.bidding !== undefined && { bidding: purchase.bidding }),
+      ...(purchase.targeting_overlay !== undefined && { targeting_overlay: purchase.targeting_overlay }),
+      ...(purchase.optimization_goals !== undefined && { optimization_goals: purchase.optimization_goals }),
+      ...(purchase.audience_evidence_requirements !== undefined && { audience_evidence_requirements: purchase.audience_evidence_requirements }),
+      ...(purchase.audience_evidence_pins !== undefined && { audience_evidence_pins: purchase.audience_evidence_pins }),
+      ...(purchase.agency_estimate_number !== undefined && { agency_estimate_number: purchase.agency_estimate_number }),
+      ...(purchase.measurement_terms !== undefined && { measurement_terms: purchase.measurement_terms }),
+      ...(purchase.performance_standards !== undefined && { performance_standards: purchase.performance_standards }),
+      ...(purchase.context !== undefined && { context: purchase.context }),
+      ...(purchase.ext !== undefined && { ext: purchase.ext }),
+    };
+  });
+}
+
+function purchaseBindings(
+  purchases: readonly CompactProductPurchase[],
+  response: Record<string, unknown>,
+): Array<{ purchase_index: number; product_id: string; package_id: string }> {
+  const packages = Array.isArray(response.packages) ? response.packages.filter(isRecord) : [];
+  if (
+    packages.length !== purchases.length
+    || packages.some(pkg => typeof pkg.package_id !== 'string' || pkg.package_id.length === 0)
+  ) {
+    throw new Error('Media-buy creation did not return one canonical package_id for every purchase.');
+  }
+  return purchases.map((purchase, index) => ({
+    purchase_index: index,
+    product_id: purchase.product_id,
+    package_id: packages[index]!.package_id as string,
+  }));
+}
+
+/** Native SDK 14 direct-purchase adapter backed by the shared MediaBuy state engine. */
+export async function handleBuyProducts(
+  args: BuyProductsRequest & ToolArgs,
+  ctx: TrainingContext,
+): Promise<Record<string, unknown>> {
+  const session = await getSession(
+    sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId),
+    controllerFixtureSessionKey(args, ctx),
+  );
+  const feed = productWholesaleFeedMeta(args, session);
+  if (args.feed_version !== feed.wholesale_feed_version) {
+    return { errors: [{
+      code: 'INVALID_REQUEST',
+      message: `feed_version must equal ${feed.wholesale_feed_version}.`,
+      field: 'feed_version',
+      recovery: 'correctable',
+      details: { current_feed_version: feed.wholesale_feed_version },
+    }] };
+  }
+  if (args.pricing_version !== feed.pricing_version) {
+    return { errors: [{
+      code: 'INVALID_REQUEST',
+      message: `pricing_version must equal ${feed.pricing_version}.`,
+      field: 'pricing_version',
+      recovery: 'correctable',
+      details: { current_pricing_version: feed.pricing_version },
+    }] };
+  }
+
+  const catalog = new Map(getCatalog().map(entry => [entry.product.product_id, entry.product]));
+  overlaySeededProducts(session, catalog);
+  const purchaseStartedAt = new Date().toISOString();
+  const canonicalPurchases: CompactProductPurchase[] = [];
+  for (let index = 0; index < args.purchases.length; index++) {
+    const purchase = args.purchases[index]!;
+    const product = catalog.get(purchase.product_id);
+    const pricing = product?.pricing_options.find(
+      option => option.pricing_option_id === purchase.pricing_option_id,
+    );
+    if (!product || !pricing) {
+      return {
+        errors: [{
+          code: !product ? 'PRODUCT_NOT_FOUND' : 'INVALID_PRICING_OPTION',
+          message: !product
+            ? `Product not found: ${purchase.product_id}`
+            : `Pricing option not found: ${purchase.pricing_option_id}`,
+          field: `purchases[${index}].${!product ? 'product_id' : 'pricing_option_id'}`,
+          ...(!product ? {} : {
+            details: {
+              rejected_value: purchase.pricing_option_id,
+              accepted_values: product.pricing_options.map(option => option.pricing_option_id),
+            },
+          }),
+        }],
+      };
+    }
+    const canonicalPricing = canonicalPricingSnapshot(pricing, purchase.pricing_option_id);
+    if (
+      purchase.pricing !== undefined
+      && canonicalize(purchase.pricing) !== canonicalize(canonicalPricing)
+    ) {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'Supplied pricing must exactly match the selected published pricing option.',
+          field: `purchases[${index}].pricing`,
+          recovery: 'correctable',
+        }],
+      };
+    }
+    const productTerms = product as unknown as Record<string, unknown>;
+    for (const field of ['measurement_terms', 'performance_standards'] as const) {
+      const supplied = purchase[field];
+      const published = productTerms[field];
+      if (supplied !== undefined && canonicalize(supplied) !== canonicalize(published)) {
+        return {
+          errors: [{
+            code: 'INVALID_REQUEST',
+            message: `${field} must exactly match the selected published product offer.`,
+            field: `purchases[${index}].${field}`,
+            recovery: 'correctable',
+          }],
+        };
+      }
+    }
+    const purchaseStartTime = purchase.start_time ?? args.start_time;
+    canonicalPurchases.push({
+      ...structuredClone(purchase),
+      pricing: canonicalPricing as unknown as CompactProductPurchase['pricing'],
+      start_time: purchaseStartTime === 'asap' ? purchaseStartedAt : purchaseStartTime,
+      end_time: purchase.end_time ?? args.end_time,
+      ...(purchase.measurement_terms === undefined
+        && isRecord(productTerms.measurement_terms)
+        && { measurement_terms: structuredClone(productTerms.measurement_terms) }),
+      ...(purchase.performance_standards === undefined
+        && Array.isArray(productTerms.performance_standards)
+        && { performance_standards: structuredClone(productTerms.performance_standards).filter(isRecord) }),
+    });
+  }
+
+  const createResult = await handleCreateMediaBuy({
+    ...(args as unknown as Record<string, unknown>),
+    packages: legacyPackagesFromPurchases(canonicalPurchases, args.total_budget?.amount, catalog),
+  } as ToolArgs, ctx, {
+    governance: {
+      task: 'buy_products',
+      commitment: {
+        amount: args.total_budget?.amount
+          ?? canonicalPurchases.reduce((sum, purchase) => sum + (purchase.budget ?? 0), 0),
+        currency: resolveAccountCurrencyForRef(
+          sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId),
+          ctx.principal,
+          ctx.resolvedAccount ?? args.account,
+        ) ?? args.total_budget?.currency ?? 'USD',
+      },
+    },
+  }) as Record<string, unknown>;
+  if (Array.isArray(createResult.errors) && createResult.errors.length > 0) {
+    // Legacy create_media_buy's error shape is bare { errors, ...context } —
+    // its own response schema has its own convention (see e.g. the
+    // inventory_list_no_match storyboard) and is intentionally left
+    // untouched. Re-emit that same bare shape here (not status: "failed"):
+    // the v6 SalesPlatform wrapper (v6-sales-platform.ts) recognizes this
+    // exact { errors, ...context } shape as the SDK's "error arm" and
+    // synthesizes status/adcp_error/isError correctly on the wire. Adding
+    // status here would make the wrapper miss that recognition and fall
+    // back to a single-adcp_error envelope that fails buy-products-response.json.
+    return {
+      errors: createResult.errors,
+      ...(isRecord(createResult.context) && { context: createResult.context }),
+    };
+  }
+
+  const mediaBuyId = String(createResult.media_buy_id);
+  const acceptedAt = new Date().toISOString();
+  const accountBrand = isRecord(args.account) && isRecord(args.account.brand)
+    ? args.account.brand
+    : undefined;
+  const brand = args.brand ?? accountBrand ?? { domain: 'advertiser.example' };
+  const commercialTerms = {
+    source_feed_version: args.feed_version,
+    ...(args.pricing_version !== undefined && { source_pricing_version: args.pricing_version }),
+    brand,
+    ...(args.advertiser_industry !== undefined && { advertiser_industry: args.advertiser_industry }),
+    purchases: canonicalPurchases,
+    start_time: args.start_time === 'asap' ? purchaseStartedAt : args.start_time,
+    end_time: args.end_time,
+    ...(args.total_budget !== undefined && { total_budget: args.total_budget }),
+    ...(args.daily_budget_cap !== undefined && { daily_budget_cap: args.daily_budget_cap }),
+    ...(args.budget_cap_timezone !== undefined && { budget_cap_timezone: args.budget_cap_timezone }),
+    ...(args.budget_allocation !== undefined && { budget_allocation: args.budget_allocation }),
+    ...(args.pacing !== undefined && { pacing: args.pacing }),
+    ...(args.bidding !== undefined && { bidding: args.bidding }),
+    ...(args.purchase_order_ref !== undefined && { purchase_order_ref: args.purchase_order_ref }),
+    ...(args.agency_estimate_number !== undefined && { agency_estimate_number: args.agency_estimate_number }),
+  } as Record<string, unknown>;
+  const acceptedProposal = {
+    proposal_id: `proposal_direct_${randomUUID().slice(0, 12)}`,
+    proposal_kind: 'new_media_buy',
+    proposal_status: 'accepted',
+    accepted_at: acceptedAt,
+    media_buy_id: mediaBuyId,
+    name: 'Direct product purchase',
+    commercial_terms: commercialTerms,
+    terms_digest: proposalTermsDigest(commercialTerms),
+  } as unknown as CanonicalProposal;
+  const mediaBuy = session.mediaBuys.get(mediaBuyId);
+  if (mediaBuy) mediaBuy.acceptedProposal = structuredClone(acceptedProposal);
+  const proposalSession = await getSession(productDiscoverySessionKey({
+    ...(args as unknown as Record<string, unknown>),
+    __compact_proposal_lifecycle: true,
+  } as ToolArgs, ctx));
+  proposalSession.proposalRefinementRecords.set(acceptedProposal.proposal_id, {
+    proposal: structuredClone(acceptedProposal),
+    version: 1,
+    ...(ctx.resolvedAccountId && { ownerAccountId: ctx.resolvedAccountId }),
+    accepted: {
+      accepted_at: acceptedAt,
+      media_buy_id: mediaBuyId,
+      media_buy_revision: Number(createResult.revision),
+    },
+  });
+  const directInternalProposal = {
+    proposal_id: acceptedProposal.proposal_id,
+    name: acceptedProposal.name,
+    allocations: canonicalPurchases.map((purchase, index) => ({
+      product_id: purchase.product_id,
+      pricing_option_id: purchase.pricing_option_id,
+      allocation_percentage: 100 / canonicalPurchases.length,
+      rationale: `Direct purchase ${index + 1}`,
+    })) as Proposal['allocations'],
+    proposal_status: 'accepted',
+    __executed: true,
+    __accepted_at: acceptedAt,
+    __media_buy_id: mediaBuyId,
+    __media_buy_revision: createResult.revision,
+    __canonical_commercial_terms: commercialTerms,
+    __canonical_terms_digest: acceptedProposal.terms_digest,
+  } as unknown as Proposal;
+  proposalSession.lastGetProductsContext = {
+    ...(proposalSession.lastGetProductsContext ?? {}),
+    proposals: [
+      ...(proposalSession.lastGetProductsContext?.proposals ?? []),
+      directInternalProposal,
+    ],
+  };
+  return {
+    status: 'completed',
+    media_buy_id: mediaBuyId,
+    revision: createResult.revision,
+    ...(createResult.media_buy_status !== undefined && { media_buy_status: createResult.media_buy_status }),
+    ...(createResult.confirmed_at !== undefined && { confirmed_at: createResult.confirmed_at }),
+    accepted_proposal: acceptedProposal,
+    purchase_bindings: purchaseBindings(args.purchases, createResult),
+    available_actions: Array.isArray(createResult.available_actions) ? createResult.available_actions : [],
+  };
+}
+
+function proposalAcceptanceSnapshot(
+  record: TrainingProposalRecord | undefined,
+  args: AcceptProposalRequest,
+  ctx: TrainingContext,
+): { proposal: CanonicalProposal } | { response: Record<string, unknown> } {
+  const callerAccountIds = new Set([
+    ctx.resolvedAccountId,
+    ctx.proposalRefinementScope?.account_id ?? 'public_sandbox',
+    ctx.callerMutationScope?.account_id,
+  ].filter((value): value is string => typeof value === 'string'));
+  if (!record || (record.ownerAccountId && !callerAccountIds.has(record.ownerAccountId))) {
+    return { response: { errors: [{ code: 'PROPOSAL_NOT_FOUND', message: `Proposal not found: ${args.proposal_id}`, field: 'proposal_id' }] } };
+  }
+  if (record.declined) {
+    return { response: { errors: [{ code: 'INVALID_STATE', message: `Proposal ${args.proposal_id} was declined and cannot be accepted.`, field: 'proposal_id' }] } };
+  }
+  const proposal = canonicalProposalFromRecord(record);
+  if (record.accepted) {
+    return { response: { errors: [{ code: 'INVALID_STATE', message: `Proposal ${args.proposal_id} was already accepted.`, field: 'proposal_id' }] } };
+  }
+  if (proposal.proposal_status !== 'committed') {
+    return { response: { errors: [{ code: 'PROPOSAL_NOT_COMMITTED', message: `Proposal ${args.proposal_id} is not committed.`, field: 'proposal_id' }] } };
+  }
+  if (proposal.expires_at && Date.parse(proposal.expires_at) <= Date.now()) {
+    return { response: { errors: [{ code: 'PROPOSAL_EXPIRED', message: `Proposal ${args.proposal_id} expired at ${proposal.expires_at}.`, field: 'proposal_id' }] } };
+  }
+  if (proposal.terms_digest !== args.proposal_terms_digest) {
+    return { response: { errors: [{ code: 'INVALID_REQUEST', message: 'proposal_terms_digest does not match the committed proposal snapshot.', field: 'proposal_terms_digest' }] } };
+  }
+  return { proposal };
+}
+
+function compactPackagePatch(purchase: CompactProductPurchase, packageId: string): Record<string, unknown> {
+  return {
+    package_id: packageId,
+    ...(purchase.budget !== undefined && { budget: purchase.budget }),
+    ...(purchase.impressions !== undefined && { impressions: purchase.impressions }),
+    ...(purchase.start_time !== undefined && { start_time: purchase.start_time }),
+    ...(purchase.end_time !== undefined && { end_time: purchase.end_time }),
+    ...(purchase.daily_budget_cap !== undefined && { daily_budget_cap: purchase.daily_budget_cap }),
+    ...(purchase.min_spend_target !== undefined && { min_spend_target: purchase.min_spend_target }),
+    ...(purchase.pacing !== undefined && { pacing: purchase.pacing }),
+    ...(purchase.bidding !== undefined && { bidding: purchase.bidding }),
+    ...(purchase.catalog_ids !== undefined && { catalog_ids: purchase.catalog_ids }),
+    ...(purchase.targeting_overlay !== undefined && { targeting_overlay: purchase.targeting_overlay }),
+    ...(purchase.optimization_goals !== undefined && { optimization_goals: purchase.optimization_goals }),
+    ...(purchase.measurement_terms !== undefined && { measurement_terms: purchase.measurement_terms }),
+    ...(purchase.performance_standards !== undefined && { performance_standards: purchase.performance_standards }),
+    ...(purchase.audience_evidence_requirements !== undefined && { audience_evidence_requirements: purchase.audience_evidence_requirements }),
+    ...(purchase.audience_evidence_pins !== undefined && { audience_evidence_pins: purchase.audience_evidence_pins }),
+    ...(purchase.agency_estimate_number !== undefined && { agency_estimate_number: purchase.agency_estimate_number }),
+    ...(purchase.context !== undefined && { context: purchase.context }),
+    ...(purchase.ext !== undefined && { ext: purchase.ext }),
+  };
+}
+
+function productPricingKey(productId: string, pricingOptionId: string): string {
+  return `${productId}\u0000${pricingOptionId}`;
+}
+
+async function acceptExistingMediaBuyProposal(
+  args: AcceptProposalRequest & ToolArgs,
+  ctx: TrainingContext,
+  proposalSessionKey: string,
+): Promise<Record<string, unknown>> {
+  const sessionHash = createHash('sha256').update(proposalSessionKey).digest('hex');
+  const principal = 'get-products-session-mutex';
+  const key = `get-products-session:${sessionHash}`;
+  const store = getIdempotencyStore();
+  let claim = await store.check({ principal, key, payload: { session: sessionHash } });
+  const deadline = Date.now() + 2_000;
+  let backoffMs = 5;
+  while (claim.kind !== 'miss' && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, backoffMs));
+    claim = await store.check({ principal, key, payload: { session: sessionHash } });
+    backoffMs = Math.min(backoffMs * 2, 100);
+  }
+  if (claim.kind !== 'miss') {
+    return { errors: [{ code: 'CONFLICT', message: 'Another proposal lifecycle request is already updating this session. Retry after a short delay.', recovery: 'transient' }] };
+  }
+
+  let mediaBuyMutex: MediaBuyMutationMutexClaim | undefined;
+  try {
+    const mediaBuySessionKey = sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId);
+    mediaBuyMutex = await acquireMediaBuyMutationMutex(args, ctx);
+    if (!mediaBuyMutex) return mediaBuyMutationConflict();
+    evictSessionFromRequestCache(proposalSessionKey);
+    evictSessionFromRequestCache(mediaBuySessionKey);
+    const proposalSession = await getSession(proposalSessionKey);
+    const validation = proposalAcceptanceSnapshot(
+      proposalSession.proposalRefinementRecords.get(args.proposal_id),
+      args,
+      ctx,
+    );
+    if ('response' in validation) return validation.response;
+    const proposal = validation.proposal;
+    const record = proposalSession.proposalRefinementRecords.get(args.proposal_id)!;
+    const mediaBuyId = proposal.media_buy_id;
+    const mediaBuySession = await getSession(
+      mediaBuySessionKey,
+      controllerFixtureSessionKey(args, ctx),
+    );
+    const mediaBuy = mediaBuyId ? mediaBuySession.mediaBuys.get(mediaBuyId) : undefined;
+    if (!mediaBuyId || !mediaBuy) {
+      return { errors: [{ code: 'PROPOSAL_NOT_FOUND', message: `Proposal not found: ${args.proposal_id}`, field: 'proposal_id' }] };
+    }
+    if (proposal.base_media_buy_revision === undefined) {
+      return { errors: [{ code: 'INVALID_STATE', message: 'The proposal is missing base_media_buy_revision.', field: 'proposal_id' }] };
+    }
+
+    const terms = proposal.commercial_terms;
+    const compactTerms = terms as unknown as Record<string, unknown>;
+    const compactPurchases = terms.purchases as unknown as CompactProductPurchase[];
+    const cancellationTerms = isRecord(compactTerms.cancellation_terms) ? compactTerms.cancellation_terms : undefined;
+    const bindingIds = new Map<number, string>();
+    const priorPackageIds = new Set(mediaBuy.packages.map(pkg => pkg.packageId));
+    const newPurchaseIndexes: number[] = [];
+    let operationalPatch: Record<string, unknown>;
+    if (proposal.proposal_kind === 'media_buy_cancellation') {
+      const packageQueues = new Map<string, PackageState[]>();
+      for (const pkg of mediaBuy.packages.filter(candidate => !candidate.canceled)) {
+        const matchKey = productPricingKey(pkg.productId, pkg.pricingOptionId);
+        const queue = packageQueues.get(matchKey) ?? [];
+        queue.push(pkg);
+        packageQueues.set(matchKey, queue);
+      }
+      for (const [index, purchase] of compactPurchases.entries()) {
+        const existing = packageQueues.get(
+          productPricingKey(purchase.product_id, purchase.pricing_option_id),
+        )?.shift();
+        if (!existing) {
+          return { errors: [{
+            code: 'INVALID_STATE',
+            message: 'The cancellation proposal no longer matches the media buy package set.',
+            field: `accepted_proposal.commercial_terms.purchases[${index}]`,
+          }] };
+        }
+        bindingIds.set(index, existing.packageId);
+      }
+      operationalPatch = {
+        canceled: true,
+        cancellation_reason: cancellationTerms?.reason ?? 'Negotiated cancellation accepted',
+      };
+    } else {
+      const packageQueues = new Map<string, PackageState[]>();
+      for (const pkg of mediaBuy.packages.filter(candidate => !candidate.canceled)) {
+        const matchKey = productPricingKey(pkg.productId, pkg.pricingOptionId);
+        const queue = packageQueues.get(matchKey) ?? [];
+        queue.push(pkg);
+        packageQueues.set(matchKey, queue);
+      }
+      const matchedPackageIds = new Set<string>();
+      const packageUpdates: Record<string, unknown>[] = [];
+      const productMap = new Map(getCatalog().map(entry => [entry.product.product_id, entry.product]));
+      overlaySeededProducts(mediaBuySession, productMap);
+      const packageViews = legacyPackagesFromPurchases(compactPurchases, (args.total_budget ?? terms.total_budget)?.amount, productMap);
+      const newPackages: Record<string, unknown>[] = [];
+      compactPurchases.forEach((purchase, index) => {
+        const existing = packageQueues.get(productPricingKey(purchase.product_id, purchase.pricing_option_id))?.shift();
+        if (existing) {
+          matchedPackageIds.add(existing.packageId);
+          bindingIds.set(index, existing.packageId);
+          packageUpdates.push(compactPackagePatch(purchase, existing.packageId));
+        } else {
+          newPurchaseIndexes.push(index);
+          newPackages.push(packageViews[index]!);
+        }
+      });
+      for (const pkg of mediaBuy.packages.filter(candidate => !candidate.canceled && !matchedPackageIds.has(candidate.packageId))) {
+        packageUpdates.push({
+          package_id: pkg.packageId,
+          canceled: true,
+          cancellation_reason: 'Removed by accepted proposal amendment',
+        });
+      }
+      const totalBudget = args.total_budget ?? terms.total_budget;
+      operationalPatch = {
+        ...(totalBudget && { total_budget: totalBudget }),
+        ...(terms.start_time !== undefined && { start_time: terms.start_time }),
+        ...(terms.end_time !== undefined && { end_time: terms.end_time }),
+        ...(compactTerms.daily_budget_cap !== undefined && { daily_budget_cap: compactTerms.daily_budget_cap }),
+        ...(compactTerms.budget_cap_timezone !== undefined && { budget_cap_timezone: compactTerms.budget_cap_timezone }),
+        ...(compactTerms.budget_allocation !== undefined && { budget_allocation: compactTerms.budget_allocation }),
+        ...(compactTerms.pacing !== undefined && { pacing: compactTerms.pacing }),
+        ...(compactTerms.bidding !== undefined && { bidding: compactTerms.bidding }),
+        ...(compactTerms.invoice_recipient !== undefined && { invoice_recipient: compactTerms.invoice_recipient }),
+        packages: packageUpdates,
+        ...(newPackages.length > 0 && { new_packages: newPackages }),
+      };
+    }
+
+    const proposalCommitment = governanceProposalCommitment(
+      proposal as unknown as Parameters<typeof governanceProposalCommitment>[0],
+    );
+    const acceptedCommitment = proposal.proposal_kind === 'media_buy_cancellation'
+      ? {
+          amount: proposalCommitment.amount ?? 0,
+          currency: proposalCommitment.currency ?? mediaBuy.currency,
+        }
+      : {
+          amount: positiveMediaBuyUpdateDelta(
+            mediaBuy,
+            operationalPatch as unknown as UpdateMediaBuyArgs,
+          ),
+          currency: mediaBuy.currency,
+        };
+    const updateResult = await handleUpdateMediaBuyUnlocked({
+      ...(args as unknown as Record<string, unknown>),
+      ...operationalPatch,
+      media_buy_id: mediaBuyId,
+      revision: proposal.base_media_buy_revision,
+    } as ToolArgs, ctx, {
+      acceptedProposalExecution: true,
+      governance: {
+        task: 'accept_proposal',
+        commitment: acceptedCommitment,
+      },
+    });
+    if (Array.isArray(updateResult.errors) && updateResult.errors.length > 0) return updateResult;
+
+    const updatedMediaBuy = mediaBuySession.mediaBuys.get(mediaBuyId)!;
+    const addedPackages = updatedMediaBuy.packages.filter(pkg => !priorPackageIds.has(pkg.packageId));
+    if (addedPackages.length !== newPurchaseIndexes.length) {
+      throw new Error('Accepted amendment did not persist one canonical package for every added purchase.');
+    }
+    newPurchaseIndexes.forEach((purchaseIndex, index) => {
+      bindingIds.set(purchaseIndex, addedPackages[index]!.packageId);
+    });
+    const acceptedAt = new Date().toISOString();
+    const acceptedProposal = {
+      ...structuredClone(proposal),
+      proposal_status: 'accepted',
+      accepted_at: acceptedAt,
+      media_buy_id: mediaBuyId,
+    } as CanonicalProposal;
+    proposalSession.proposalRefinementRecords.set(args.proposal_id, {
+      ...record,
+      version: record.version + 1,
+      proposal: structuredClone(acceptedProposal),
+      accepted: {
+        accepted_at: acceptedAt,
+        media_buy_id: mediaBuyId,
+        media_buy_revision: Number(updateResult.revision),
+      },
+    });
+    for (const [proposalId, source] of proposalSession.proposalRefinementRecords) {
+      if (source.activeHold?.proposal_id !== args.proposal_id) continue;
+      proposalSession.proposalRefinementRecords.set(proposalId, {
+        ...source,
+        version: source.version + 1,
+        activeHold: undefined,
+      });
+    }
+    if (proposalSession.lastGetProductsContext?.proposals) {
+      proposalSession.lastGetProductsContext = {
+        ...proposalSession.lastGetProductsContext,
+        proposals: proposalSession.lastGetProductsContext.proposals.map(candidate => (
+          candidate.proposal_id === args.proposal_id
+            ? {
+                ...candidate,
+                __executed: true,
+                __accepted_at: acceptedAt,
+                __media_buy_id: mediaBuyId,
+                __media_buy_revision: Number(updateResult.revision),
+              } as unknown as Proposal
+            : candidate
+        )),
+      };
+    }
+    updatedMediaBuy.acceptedProposal = structuredClone(acceptedProposal);
+    await flushDirtySessions();
+    return {
+      status: 'completed',
+      media_buy_id: mediaBuyId,
+      revision: updateResult.revision,
+      ...(updateResult.media_buy_status !== undefined && { media_buy_status: updateResult.media_buy_status }),
+      accepted_proposal: acceptedProposal,
+      purchase_bindings: compactPurchases.map((purchase, index) => ({
+        purchase_index: index,
+        product_id: purchase.product_id,
+        package_id: bindingIds.get(index),
+      })),
+      available_actions: availableActionsForMediaBuy(
+        updatedMediaBuy,
+        String(updateResult.media_buy_status ?? updatedMediaBuy.status),
+      ),
+    };
+  } finally {
+    try {
+      if (mediaBuyMutex) await releaseMediaBuyMutationMutex(mediaBuyMutex);
+    } finally {
+      await store.release({ principal, key, claimToken: claim.claimToken });
+    }
+  }
+}
+
+/** Native SDK 14 committed-proposal acceptance adapter. */
+export async function handleAcceptProposal(
+  args: AcceptProposalRequest & ToolArgs,
+  ctx: TrainingContext,
+): Promise<Record<string, unknown>> {
+  const proposalSessionKey = productDiscoverySessionKey({
+    ...(args as unknown as Record<string, unknown>),
+    __compact_proposal_lifecycle: true,
+  } as ToolArgs, ctx);
+  const proposalSession = await getSession(proposalSessionKey);
+  const validation = proposalAcceptanceSnapshot(
+    proposalSession.proposalRefinementRecords.get(args.proposal_id),
+    args,
+    ctx,
+  );
+  if ('response' in validation) return validation.response;
+  const proposal = validation.proposal;
+  if (proposal.proposal_kind !== 'new_media_buy') {
+    return acceptExistingMediaBuyProposal(args, ctx, proposalSessionKey);
+  }
+
+  const terms = proposal.commercial_terms;
+  const totalBudget = args.total_budget ?? terms.total_budget;
+  if (!totalBudget) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'total_budget is required when the proposal does not commit a fixed total.', field: 'total_budget' }] };
+  }
+  const createResult = await handleCreateMediaBuy({
+    ...(args as unknown as Record<string, unknown>),
+    __compact_proposal_lifecycle: true,
+    total_budget: totalBudget,
+    start_time: terms.start_time,
+    end_time: terms.end_time,
+    ...((terms as unknown as Record<string, unknown>).daily_budget_cap !== undefined && {
+      daily_budget_cap: (terms as unknown as Record<string, unknown>).daily_budget_cap,
+    }),
+    ...((terms as unknown as Record<string, unknown>).budget_cap_timezone !== undefined && {
+      budget_cap_timezone: (terms as unknown as Record<string, unknown>).budget_cap_timezone,
+    }),
+    ...((terms as unknown as Record<string, unknown>).budget_allocation !== undefined && {
+      budget_allocation: (terms as unknown as Record<string, unknown>).budget_allocation,
+    }),
+    ...((terms as unknown as Record<string, unknown>).pacing !== undefined && {
+      pacing: (terms as unknown as Record<string, unknown>).pacing,
+    }),
+    ...((terms as unknown as Record<string, unknown>).bidding !== undefined && {
+      bidding: (terms as unknown as Record<string, unknown>).bidding,
+    }),
+    ...((terms as unknown as Record<string, unknown>).purchase_order_ref !== undefined && {
+      purchase_order_ref: (terms as unknown as Record<string, unknown>).purchase_order_ref,
+    }),
+    ...((terms as unknown as Record<string, unknown>).agency_estimate_number !== undefined && {
+      agency_estimate_number: (terms as unknown as Record<string, unknown>).agency_estimate_number,
+    }),
+    proposal_id: args.proposal_id,
+  } as ToolArgs, ctx, {
+    governance: {
+      task: 'accept_proposal',
+      commitment: { amount: totalBudget.amount, currency: totalBudget.currency },
+    },
+  }) as Record<string, unknown>;
+  if (Array.isArray(createResult.errors) && createResult.errors.length > 0) return createResult;
+  const acceptedProposalSession = await getSession(proposalSessionKey);
+  const acceptedRecord = acceptedProposalSession.proposalRefinementRecords.get(args.proposal_id);
+  const acceptedProposal = acceptedRecord
+    ? canonicalProposalFromRecord(acceptedRecord)
+    : { ...proposal, proposal_status: 'accepted', media_buy_id: createResult.media_buy_id };
+  let availableActions = Array.isArray(createResult.available_actions) ? createResult.available_actions : [];
+  const mediaBuySession = await getSession(
+    sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId),
+    controllerFixtureSessionKey(args, ctx),
+  );
+  const mediaBuy = mediaBuySession.mediaBuys.get(String(createResult.media_buy_id));
+  if (mediaBuy) {
+    const proposalProducts = new Map(
+      (proposalSession.lastGetProductsContext?.products ?? []).map(product => [product.product_id, product]),
+    );
+    const proposalAllowedActions = deriveProductAllowedActionsForPackages(mediaBuy.packages, proposalProducts);
+    if (proposalAllowedActions) {
+      mediaBuy.productAllowedActions = proposalAllowedActions;
+      availableActions = availableActionsForMediaBuy(
+        mediaBuy,
+        String(createResult.media_buy_status ?? mediaBuy.status),
+      );
+    }
+  }
+  return {
+    status: 'completed',
+    media_buy_id: createResult.media_buy_id,
+    revision: createResult.revision,
+    ...(createResult.media_buy_status !== undefined && { media_buy_status: createResult.media_buy_status }),
+    ...(createResult.confirmed_at !== undefined && { confirmed_at: createResult.confirmed_at }),
+    accepted_proposal: acceptedProposal,
+    purchase_bindings: purchaseBindings(terms.purchases, createResult),
+    available_actions: availableActions,
+  };
+}
+
+/** Native SDK 14 operational-control adapter. */
+export async function handleControlMediaBuy(
+  args: ControlMediaBuyRequest & ToolArgs,
+  ctx: TrainingContext,
+): Promise<Record<string, unknown>> {
+  const mutex = await acquireMediaBuyMutationMutex(args, ctx);
+  if (!mutex) return mediaBuyMutationConflict();
+  try {
+    evictSessionFromRequestCache(mutex.sessionScope);
+    const result = await handleControlMediaBuyUnlocked(args, ctx);
+    await flushDirtySessions();
+    return result;
+  } finally {
+    await releaseMediaBuyMutationMutex(mutex);
+  }
+}
+
+async function handleControlMediaBuyUnlocked(
+  args: ControlMediaBuyRequest & ToolArgs,
+  ctx: TrainingContext,
+): Promise<Record<string, unknown>> {
+  if (Array.isArray(args.packages)) {
+    const seenPackageIds = new Set<string>();
+    for (const [index, rawPackage] of args.packages.entries()) {
+      const pkg = rawPackage as unknown as Record<string, unknown>;
+      const packageId = typeof pkg.package_id === 'string' ? pkg.package_id : '';
+      if (seenPackageIds.has(packageId)) {
+        return { errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'packages must contain unique package_id values.',
+          field: `packages[${index}].package_id`,
+          recovery: 'correctable',
+        }] };
+      }
+      seenPackageIds.add(packageId);
+      for (const [addField, removeField] of [
+        ['keyword_targets_add', 'keyword_targets_remove'],
+        ['negative_keywords_add', 'negative_keywords_remove'],
+      ] as const) {
+        const additions = Array.isArray(pkg[addField]) ? pkg[addField] as unknown[] : [];
+        const removals = new Set(
+          (Array.isArray(pkg[removeField]) ? pkg[removeField] as unknown[] : []).map(value => canonicalize(value)),
+        );
+        if (additions.some(value => removals.has(canonicalize(value)))) {
+          return { errors: [{
+            code: 'INVALID_REQUEST',
+            message: `${addField} and ${removeField} must be disjoint.`,
+            field: `packages[${index}].${addField}`,
+            recovery: 'correctable',
+          }] };
+        }
+      }
+    }
+  }
+  const session = await getSession(
+    sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId),
+    controllerFixtureSessionKey(args, ctx),
+  );
+  const mediaBuy = session.mediaBuys.get(args.media_buy_id);
+  if (mediaBuy?.acceptedProposal && args.revision === mediaBuy.revision) {
+    const acceptedTerms = mediaBuy.acceptedProposal.commercial_terms as unknown as Record<string, unknown>;
+    const acceptedTotal = (isRecord(acceptedTerms.total_budget)
+      && typeof acceptedTerms.total_budget.amount === 'number'
+      ? acceptedTerms.total_budget.amount
+      : undefined) ?? mediaBuy.totalBudget;
+    const requestedTotal = isRecord((args as unknown as Record<string, unknown>).total_budget)
+      && typeof ((args as unknown as Record<string, unknown>).total_budget as Record<string, unknown>).amount === 'number'
+      ? ((args as unknown as Record<string, unknown>).total_budget as Record<string, unknown>).amount as number
+      : undefined;
+    if (acceptedTotal !== undefined && requestedTotal !== undefined && requestedTotal > acceptedTotal) {
+      return { errors: [{
+        code: 'REQUOTE_REQUIRED',
+        message: 'The requested total budget exceeds the accepted proposal envelope.',
+        field: 'total_budget.amount',
+        recovery: 'correctable',
+        details: { envelope_field: 'total_budget.amount', accepted_maximum: acceptedTotal },
+      }] };
+    }
+
+    const requestedPackages = Array.isArray(args.packages) ? args.packages : [];
+    const requote = (envelopeField: string, message: string): Record<string, unknown> => ({
+      errors: [{
+        code: 'REQUOTE_REQUIRED',
+        message,
+        field: envelopeField,
+        recovery: 'correctable',
+        details: { envelope_field: envelopeField },
+      }],
+    });
+    const aggregateControl = args as unknown as Record<string, unknown>;
+    for (const field of ['budget_allocation', 'pacing', 'bidding', 'start_time', 'end_time'] as const) {
+      if (aggregateControl[field] === undefined) continue;
+      if (
+        acceptedTerms[field] !== undefined
+        && canonicalize(aggregateControl[field]) !== canonicalize(acceptedTerms[field])
+      ) {
+        return requote(field, `The requested ${field} changes the accepted proposal envelope.`);
+      }
+    }
+    if (typeof aggregateControl.daily_budget_cap === 'number') {
+      const acceptedCap = typeof acceptedTerms.daily_budget_cap === 'number'
+        ? acceptedTerms.daily_budget_cap
+        : undefined;
+      if (acceptedCap !== undefined && aggregateControl.daily_budget_cap > acceptedCap) {
+        return requote('daily_budget_cap', 'The requested daily budget cap exceeds the accepted proposal envelope.');
+      }
+    }
+
+    const acceptedPurchases = Array.isArray(acceptedTerms.purchases)
+      ? acceptedTerms.purchases.filter(isRecord)
+      : [];
+    const acceptedQueues = new Map<string, Array<Record<string, unknown>>>();
+    for (const purchase of acceptedPurchases) {
+      if (typeof purchase.product_id !== 'string' || typeof purchase.pricing_option_id !== 'string') continue;
+      const matchKey = productPricingKey(purchase.product_id, purchase.pricing_option_id);
+      const queue = acceptedQueues.get(matchKey) ?? [];
+      queue.push(purchase);
+      acceptedQueues.set(matchKey, queue);
+    }
+    const acceptedByPackageId = new Map<string, Record<string, unknown>>();
+    for (const pkg of mediaBuy.packages.filter(candidate => !candidate.canceled)) {
+      const purchase = acceptedQueues.get(productPricingKey(pkg.productId, pkg.pricingOptionId))?.shift();
+      if (purchase) acceptedByPackageId.set(pkg.packageId, purchase);
+    }
+    for (const [index, pkg] of requestedPackages.entries()) {
+      const packageId = typeof pkg.package_id === 'string' ? pkg.package_id : '';
+      const acceptedPurchase = acceptedByPackageId.get(packageId);
+      if (!acceptedPurchase) continue;
+      for (const field of [
+        'targeting_overlay',
+        'catalog_ids',
+        'optimization_goals',
+        'bidding',
+        'pacing',
+        'start_time',
+        'end_time',
+        'measurement_terms',
+        'performance_standards',
+        'audience_evidence_requirements',
+        'audience_evidence_pins',
+      ] as const) {
+        if (pkg[field] === undefined) continue;
+        if (
+          acceptedPurchase[field] !== undefined
+          && canonicalize(pkg[field]) !== canonicalize(acceptedPurchase[field])
+        ) {
+          const envelopeField = `packages[${index}].${field}`;
+          return requote(envelopeField, `The requested ${field} changes the accepted purchase envelope.`);
+        }
+      }
+      for (const field of ['impressions', 'daily_budget_cap', 'min_spend_target'] as const) {
+        if (typeof pkg[field] !== 'number') continue;
+        const acceptedMaximum = typeof acceptedPurchase[field] === 'number'
+          ? acceptedPurchase[field] as number
+          : undefined;
+        if (acceptedMaximum !== undefined && pkg[field] > acceptedMaximum) {
+          const envelopeField = `packages[${index}].${field}`;
+          return requote(envelopeField, `The requested ${field} exceeds the accepted purchase envelope.`);
+        }
+      }
+      for (const field of [
+        'keyword_targets_add',
+        'keyword_targets_remove',
+        'negative_keywords_add',
+        'negative_keywords_remove',
+      ] as const) {
+        if (
+          acceptedPurchase.targeting_overlay === undefined
+          || !Array.isArray(pkg[field])
+          || pkg[field].length === 0
+        ) continue;
+        const envelopeField = `packages[${index}].${field}`;
+        return requote(envelopeField, 'Keyword targeting changes require a refined proposal.');
+      }
+    }
+    if (requestedPackages.some(pkg => typeof pkg.budget === 'number' || pkg.canceled === true)) {
+      const projectedBudgets = new Map(
+        mediaBuy.packages
+          .filter(pkg => !pkg.canceled)
+          .map(pkg => [pkg.packageId, pkg.budget]),
+      );
+      for (const pkg of requestedPackages) {
+        const packageId = typeof pkg.package_id === 'string' ? pkg.package_id : '';
+        if (pkg.canceled === true) projectedBudgets.delete(packageId);
+        else if (typeof pkg.budget === 'number' && projectedBudgets.has(packageId)) {
+          projectedBudgets.set(packageId, pkg.budget);
+        }
+      }
+      const projectedTotal = [...projectedBudgets.values()].reduce((sum, budget) => sum + budget, 0);
+      if (acceptedTotal !== undefined && projectedTotal > acceptedTotal) {
+        const changedIndex = requestedPackages.findIndex(pkg => typeof pkg.budget === 'number');
+        const envelopeField = changedIndex >= 0 ? `packages[${changedIndex}].budget` : 'packages';
+        return { errors: [{
+          code: 'REQUOTE_REQUIRED',
+          message: 'The requested package budgets exceed the accepted proposal envelope.',
+          field: envelopeField,
+          recovery: 'correctable',
+          details: { envelope_field: envelopeField, accepted_maximum: acceptedTotal },
+        }] };
+      }
+
+      const acceptedByProductPricing = new Map<string, number>();
+      for (const purchase of acceptedPurchases) {
+        if (
+          typeof purchase.product_id !== 'string'
+          || typeof purchase.pricing_option_id !== 'string'
+          || typeof purchase.budget !== 'number'
+        ) continue;
+        const matchKey = productPricingKey(purchase.product_id, purchase.pricing_option_id);
+        acceptedByProductPricing.set(matchKey, (acceptedByProductPricing.get(matchKey) ?? 0) + purchase.budget);
+      }
+      for (const [matchKey, acceptedBudget] of acceptedByProductPricing) {
+        const projectedBudget = mediaBuy.packages
+          .filter(pkg => !pkg.canceled && productPricingKey(pkg.productId, pkg.pricingOptionId) === matchKey)
+          .reduce((sum, pkg) => sum + (projectedBudgets.get(pkg.packageId) ?? 0), 0);
+        if (projectedBudget <= acceptedBudget) continue;
+        const changedIndex = requestedPackages.findIndex(pkg => {
+          const state = mediaBuy.packages.find(candidate => candidate.packageId === pkg.package_id);
+          return state
+            ? productPricingKey(state.productId, state.pricingOptionId) === matchKey
+            : false;
+        });
+        const envelopeField = changedIndex >= 0 ? `packages[${changedIndex}].budget` : 'packages';
+        return { errors: [{
+          code: 'REQUOTE_REQUIRED',
+          message: 'The requested package budget exceeds its accepted purchase allocation.',
+          field: envelopeField,
+          recovery: 'correctable',
+          details: { envelope_field: envelopeField, accepted_maximum: acceptedBudget },
+        }] };
+      }
+    }
+  }
+  const updateResult = await handleUpdateMediaBuyUnlocked(args as unknown as ToolArgs, ctx, {
+    operationalControlExecution: true,
+    ...(mediaBuy && {
+      governance: {
+        task: 'control_media_buy' as const,
+        commitment: {
+          amount: positiveMediaBuyUpdateDelta(mediaBuy, args as unknown as UpdateMediaBuyArgs),
+          currency: mediaBuy.currency,
+        },
+      },
+    }),
+  });
+  if (Array.isArray(updateResult.errors) && updateResult.errors.length > 0) return updateResult;
+  const affectedPackages = Array.isArray(updateResult.affected_packages)
+    ? updateResult.affected_packages.filter(isRecord)
+    : [];
+  return {
+    status: 'completed',
+    media_buy_id: updateResult.media_buy_id,
+    revision: updateResult.revision,
+    ...(updateResult.media_buy_status !== undefined && { media_buy_status: updateResult.media_buy_status }),
+    affected_package_ids: affectedPackages
+      .map(pkg => pkg.package_id)
+      .filter((id): id is string => typeof id === 'string'),
+    ...(Array.isArray(updateResult.available_actions) && { available_actions: updateResult.available_actions }),
+  };
+}
+
 const HANDLER_MAP: Record<string, ToolHandler> = {
   get_products: handleGetProducts,
   list_products: handleGetProducts,
   request_proposals: handleGetProducts,
   refine_proposals: handleGetProducts,
   decline_proposals: handleGetProducts,
+  buy_products: (args, ctx) => handleBuyProducts(args as BuyProductsRequest, ctx),
+  accept_proposal: (args, ctx) => handleAcceptProposal(args as AcceptProposalRequest, ctx),
+  control_media_buy: (args, ctx) => handleControlMediaBuy(args as ControlMediaBuyRequest, ctx),
   list_creative_formats: handleListCreativeFormats,
   validate_input: handleValidateInput,
   create_media_buy: handleCreateMediaBuy,
@@ -13469,7 +17898,10 @@ async function executeTrainingAgentToolInContext(
  * Create a per-request MCP Server with training agent tools.
  */
 export function createTrainingAgentServer(ctx: TrainingContext): Server {
-  const taskStore = getTrainingTaskStore();
+  const taskStore = getScopedTrainingTaskStore(trainingTaskScope(
+    ctx.tenantId ?? 'legacy',
+    ctx.principal ?? 'anonymous',
+  ));
   const server = new Server(
     { name: 'adcp-training-agent', version: '1.0.0' },
     {

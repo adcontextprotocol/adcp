@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/sync-creatives-request.json",
   "title": "Sync Creatives Request",
-  "description": "Request parameters for syncing creative assets with upsert semantics - supports bulk operations, scoped updates, and assignment management",
+  "description": "Request parameters for syncing creative assets with upsert semantics. Provide at least one of creatives, assignments, or assignment_operations. assignments and assignment_operations are mutually exclusive; delete_missing: true requires creatives; assignment_operations requires validation_mode: strict.",
   "x-tool-summary": "List or synchronize creative assets, scoped updates, and media-buy assignments.",
   "type": "object",
   "allOf": [

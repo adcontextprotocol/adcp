@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string"
+    },
+    "adcp_major_version": {
+      "type": "integer"
+    },
+    "protocols": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "media_buy",
+          "signals",
+          "governance",
+          "sponsored_intelligence",
+          "creative"
+        ]
+      }
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string"
+        },
+        "adcp_major_version": {
+          "type": "integer"
+        }
+      }
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

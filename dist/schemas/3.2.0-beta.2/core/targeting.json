@@ -1,0 +1,633 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/targeting.json",
+  "title": "Targeting Overlay",
+  "description": "Concrete delivery constraints used during product discovery and media-buy execution. Targeting includes both audience eligibility and purchased-inventory selection: geography, demographics, placements, properties, collections, device compatibility, language, keywords, and other explicit controls. Sellers resolve requested outcomes against inherent product scope or selectable execution. A fresh create/update request MUST be applied exactly or rejected; get_products may instead return a request-scoped configured product with sparse, buyer-reviewable targeting_resolution modifications.",
+  "x-adcp-validation": {
+    "disjoint_place_fields": {
+      "include": "geo_places",
+      "exclude": "geo_places_exclude",
+      "identity": [
+        "country",
+        "system",
+        "place_type",
+        "value"
+      ]
+    },
+    "description": "JSON Schema draft-07 cannot compare values across sibling arrays. Conformance tooling MUST reject any place identity present in both geo_places and geo_places_exclude. Catalog version is deliberately not part of place identity: a stable ID cannot be both included and excluded by assigning different versions."
+  },
+  "type": "object",
+  "properties": {
+    "geo_countries": {
+      "type": "array",
+      "description": "Restrict delivery to specific countries. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE').",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "geo_countries_exclude": {
+      "type": "array",
+      "description": "Exclude specific countries from delivery. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE').",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "geo_regions": {
+      "type": "array",
+      "description": "Restrict delivery to exact canonical ISO 3166-2 subdivisions (states, provinces, regions, departments, or other subdivision categories). Unknown identifiers are invalid. At create or update, sellers MUST reject unsupported identifiers and MUST NOT silently widen, drop, or partially apply the list. During get_products, a seller may instead return a sparse, buyer-reviewable targeting_resolution modification for a valid but unsupported requested outcome. Exact internal translation preserves accepted identifiers in package readback.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+      },
+      "minItems": 1
+    },
+    "geo_regions_exclude": {
+      "type": "array",
+      "description": "Exclude exact canonical ISO 3166-2 subdivisions. Support is independent from geo_regions inclusion support. Unknown identifiers and values also present in geo_regions are invalid. At create or update, sellers MUST reject unsupported identifiers and partial application; during get_products, a seller may instead return a sparse, buyer-reviewable targeting_resolution modification for a valid but unsupported requested outcome.",
+      "x-adcp-validation": {
+        "disjoint_with": "geo_regions",
+        "spec": "docs/media-buy/advanced-topics/targeting.mdx#geo_regions_exclude"
+      },
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+      },
+      "minItems": 1
+    },
+    "geo_metros": {
+      "type": "array",
+      "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/metro-system.json",
+            "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')"
+          },
+          "values": {
+            "type": "array",
+            "description": "Metro codes within the system (e.g., ['501', '602'] for Nielsen DMAs)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "system",
+          "values"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "geo_metros_exclude": {
+      "type": "array",
+      "description": "Exclude specific metro areas from delivery. Each entry specifies the classification system and excluded values. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/metro-system.json",
+            "description": "Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')"
+          },
+          "values": {
+            "type": "array",
+            "description": "Metro codes to exclude within the system (e.g., ['501', '602'] for Nielsen DMAs)",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "system",
+          "values"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "geo_postal_areas": {
+      "type": "array",
+      "description": "Restrict delivery to specific postal areas. Prefer the native country + postal system form. The deprecated legacy country-fused postal-system tokens remain accepted for compatibility. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/postal-area.json"
+      },
+      "minItems": 1
+    },
+    "geo_postal_areas_exclude": {
+      "type": "array",
+      "description": "Exclude specific postal areas from delivery. Prefer the native country + postal system form. The deprecated legacy country-fused postal-system tokens remain accepted for compatibility. Seller must declare supported systems in get_adcp_capabilities.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/postal-area.json"
+      },
+      "minItems": 1
+    },
+    "geo_places": {
+      "type": "array",
+      "description": "Restrict delivery to catalog-backed named places. Values MUST be stable identifiers in the declared system, not display names. Sellers must declare supported systems, countries, and place types in get_adcp_capabilities and reject unsupported entries rather than silently dropping them.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/geo-place-area.json",
+        "x-adcp-schema-uri": "/schemas/core/geo-place-area.json"
+      },
+      "minItems": 1
+    },
+    "geo_places_exclude": {
+      "type": "array",
+      "description": "Exclude catalog-backed named places. Uses the same identifier-based shape as geo_places. Sellers MUST reject overlap with geo_places for the same country, system, place_type, and value.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/geo-place-area.json",
+        "x-adcp-schema-uri": "/schemas/core/geo-place-area.json"
+      },
+      "minItems": 1
+    },
+    "daypart_targets": {
+      "type": "array",
+      "description": "Restrict delivery to specific time windows. Each entry specifies days of week and an hour range.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/daypart-target.json"
+      },
+      "minItems": 1
+    },
+    "axe_include_segment": {
+      "type": "string",
+      "description": "Deprecated: Use TMP provider fields instead. AXE segment ID to include for targeting.",
+      "deprecated": true
+    },
+    "axe_exclude_segment": {
+      "type": "string",
+      "description": "Deprecated: Use TMP provider fields instead. AXE segment ID to exclude from targeting.",
+      "deprecated": true
+    },
+    "audience_include": {
+      "type": "array",
+      "description": "Restrict delivery to members of these first-party CRM audiences. Only users present in the uploaded lists are eligible. References audience_id values from sync_audiences on the same seller account — audience IDs are not portable across sellers. Not for lookalike expansion — express that intent in the campaign brief. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "audience_exclude": {
+      "type": "array",
+      "description": "Suppress delivery to members of these first-party CRM audiences. Matched users are excluded regardless of other targeting. References audience_id values from sync_audiences on the same seller account — audience IDs are not portable across sellers. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "signal_targeting_groups": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/package-signal-targeting-groups.json",
+      "description": "Basic Boolean grouping for seller-offered signals. v1 supports a required top-level operator 'all' and child groups with operator 'any' for include groups or 'none' for exclusion groups. Example semantics: group 1 any(A, B) plus group 2 none(C, D) means (A OR B) AND NOT (C OR D). Signal entries reference named signal definitions with signal_ref scope 'product' for product-local signal options or scope 'data_provider' for external signals published in adagents.json signals[]. For simple include-only targeting, send one child group with operator 'any'. Sellers SHOULD reject entries that are not available for the product through inline signal_targeting_options or get_signals, are not active for the account, or exceed the product's signal_targeting_allowed/signal_targeting_rules/product terms. Signal targeting limits are product-scoped, not declared in get_adcp_capabilities, because products may be backed by different ad servers. Sellers MUST echo applied signal_targeting_groups on the resulting package state, including fixed/default selections. Sellers MAY return REQUOTE_REQUIRED when a targeting mutation changes commercial terms."
+    },
+    "signal_targeting": {
+      "type": "array",
+      "description": "DEPRECATED. Use signal_targeting_groups for package-level signal targeting. Legacy flat signal_targeting remains accepted during the SignalRef migration window but cannot express grouped include/exclude composition or product-scoped pricing.",
+      "deprecated": true,
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/signal-targeting.json"
+      },
+      "minItems": 1
+    },
+    "demographics": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/demographic-targeting-intent.json",
+      "description": "Canonical demographic audience targeting intent with optional constraints on how age may be determined. This is distinct from age_restriction: demographics selects an audience, while age_restriction expresses a legal eligibility or verification floor. Fresh create/update targeting MUST compile exactly or be rejected. During get_products, a seller may offer a different configured predicate only through sparse targeting_resolution modifications on a distinguishable product_id; selecting that product accepts the alternative. Sellers never silently broaden, narrow, default, drop, or substitute the basis."
+    },
+    "frequency_cap": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/frequency-cap.json"
+    },
+    "property_list": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/property-list-ref.json",
+      "description": "Reference to a property list for targeting specific properties within this product. The package runs on the intersection of the product's publisher_properties and this list. Sellers SHOULD return a validation error if the product has property_targeting_allowed: false."
+    },
+    "property_list_exclude": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/property-list-ref.json",
+      "description": "Reference to a property list whose properties must not carry the buyer's ads. Matched properties are removed from delivery. Use for brand-safety do-not-run lists (apps, sites). Exclude wins on overlap with property_list, and applies regardless of the product's property_targeting_allowed flag. Seller must declare support in get_adcp_capabilities."
+    },
+    "collection_list": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/collection-list-ref.json",
+      "description": "Reference to a collection list for including specific collections (programs, shows) within this product. The package runs on the intersection of matched collections and this list. Use for inclusion-based collection targeting. Seller must declare support in get_adcp_capabilities."
+    },
+    "collection_list_exclude": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/collection-list-ref.json",
+      "description": "Reference to a collection list for excluding specific collections (programs, shows) from this product. Matched collections must not carry the buyer's ads. Use for brand safety do-not-air lists. Seller must declare support in get_adcp_capabilities."
+    },
+    "placement_selection": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/placement-selection.json",
+      "description": "Purchased placement selection within the product. This constrains package inventory; it is distinct from creative_assignments[].placement_refs, which only route individual creatives within the purchased set. On create, mode selected supplies the complete selected set and mode default uses the product default. On update, the surrounding targeting_overlay replacement semantics apply."
+    },
+    "age_restriction": {
+      "type": "object",
+      "description": "Age restriction for compliance. Use for legal requirements (alcohol, gambling), not audience targeting.",
+      "properties": {
+        "min": {
+          "type": "integer",
+          "minimum": 13,
+          "maximum": 99,
+          "description": "Minimum age required"
+        },
+        "verification_required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether verified age (not inferred) is required for compliance"
+        },
+        "accepted_methods": {
+          "type": "array",
+          "description": "Accepted verification methods. If omitted, any method the platform supports is acceptable.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/age-verification-method.json"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "min"
+      ],
+      "additionalProperties": false
+    },
+    "device_platform": {
+      "type": "array",
+      "description": "Restrict to specific platforms. Use for technical compatibility (app only works on iOS). Values from Sec-CH-UA-Platform standard, extended for CTV.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/device-platform.json"
+      },
+      "minItems": 1
+    },
+    "device_platform_exclude": {
+      "type": "array",
+      "description": "Exclude specific operating-system platforms from delivery. When a platform appears in both device_platform and device_platform_exclude, exclusion wins. Sellers MUST reject a request they cannot enforce rather than silently dropping the exclusion.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/device-platform.json"
+      },
+      "minItems": 1
+    },
+    "device_type": {
+      "type": "array",
+      "description": "Restrict to specific device form factors. Use for campaigns targeting hardware categories rather than operating systems (e.g., mobile-only promotions, CTV campaigns).",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/device-type.json"
+      },
+      "minItems": 1
+    },
+    "device_type_exclude": {
+      "type": "array",
+      "description": "Exclude specific device form factors from delivery (e.g., exclude CTV for app-install campaigns).",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/device-type.json"
+      },
+      "minItems": 1
+    },
+    "browser": {
+      "type": "array",
+      "description": "Restrict delivery to specific canonical browser families in the impression delivery and rendering environment, not the post-click landing-page browser. Values MUST NOT be inferred solely from operating system, device, web/mobile-web inventory, or placement. Values in this array use OR semantics. When browser is supplied, families not listed are ineligible: other includes a seller-recognized family that is not explicitly enumerated, while unknown includes a browser the seller cannot classify into a recognized family. When the same family appears in browser and browser_exclude, exclusion wins. Browser and device constraints intersect; a seller that cannot enforce the exact combination MUST exclude or explicitly reconfigure the product during discovery and MUST reject it at create or update rather than silently widening delivery. Browser versions and seller-native IDs are intentionally unsupported.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/browser-family.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "browser_exclude": {
+      "type": "array",
+      "description": "Exclude specific canonical browser families from delivery. other excludes seller-recognized families that are not explicitly enumerated; unknown excludes browsers the seller cannot classify into a recognized family. When the same family appears in browser and browser_exclude, exclusion wins. Sellers MUST reject a request they cannot enforce rather than silently dropping the exclusion.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/browser-family.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "store_catchments": {
+      "type": "array",
+      "description": "Target users within store catchment areas from a synced store catalog. Each entry references a store-type catalog and optionally narrows to specific stores or catchment zones.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "catalog_id": {
+            "type": "string",
+            "description": "Synced store-type catalog ID from sync_catalogs."
+          },
+          "store_ids": {
+            "type": "array",
+            "description": "Filter to specific stores within the catalog. Omit to target all stores.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "catchment_ids": {
+            "type": "array",
+            "description": "Catchment zone IDs to target (e.g., 'walk', 'drive'). Omit to target all catchment zones.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "catalog_id"
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "geo_proximity": {
+      "type": "array",
+      "description": "Target users within travel time, distance, or a custom boundary around arbitrary geographic points. Multiple entries use OR semantics — a user within range of any listed point is eligible. For campaigns targeting 10+ locations, consider using store_catchments with a location catalog instead. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90,
+            "description": "Latitude in decimal degrees (WGS 84). Required for travel_time and radius methods."
+          },
+          "lng": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180,
+            "description": "Longitude in decimal degrees (WGS 84). Required for travel_time and radius methods."
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label for this entry (e.g., 'Düsseldorf', 'Heathrow Airport', 'Primary trade area')."
+          },
+          "travel_time": {
+            "type": "object",
+            "description": "Travel time limit for isochrone calculation. The platform resolves this to a geographic boundary based on actual transportation networks.",
+            "properties": {
+              "value": {
+                "type": "number",
+                "minimum": 1,
+                "description": "Travel time limit."
+              },
+              "unit": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/travel-time-unit.json"
+              }
+            },
+            "required": [
+              "value",
+              "unit"
+            ],
+            "additionalProperties": false
+          },
+          "transport_mode": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/transport-mode.json",
+            "description": "Transportation mode for isochrone calculation. Required when travel_time is provided."
+          },
+          "radius": {
+            "type": "object",
+            "description": "Simple radius from the point. The platform draws a circle of this distance around the coordinates.",
+            "properties": {
+              "value": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Radius distance."
+              },
+              "unit": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/distance-unit.json",
+                "description": "Distance unit."
+              }
+            },
+            "required": [
+              "value",
+              "unit"
+            ],
+            "additionalProperties": false
+          },
+          "geometry": {
+            "type": "object",
+            "description": "Pre-computed GeoJSON geometry defining the proximity boundary. Use when the buyer has already calculated isochrones (via TravelTime, Mapbox, etc.) or has custom boundaries. When geometry is provided, lat/lng are not required.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Polygon",
+                  "MultiPolygon"
+                ],
+                "description": "GeoJSON geometry type."
+              },
+              "coordinates": {
+                "type": "array",
+                "description": "GeoJSON coordinates array. For Polygon: array of linear rings. For MultiPolygon: array of polygons."
+              }
+            },
+            "required": [
+              "type",
+              "coordinates"
+            ],
+            "additionalProperties": false
+          },
+          "ext": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "lat",
+              "lng",
+              "travel_time",
+              "transport_mode"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "radius"
+                  ]
+                },
+                {
+                  "required": [
+                    "geometry"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "required": [
+              "lat",
+              "lng",
+              "radius"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "travel_time"
+                  ]
+                },
+                {
+                  "required": [
+                    "geometry"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "required": [
+              "geometry"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "travel_time"
+                  ]
+                },
+                {
+                  "required": [
+                    "radius"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "language": {
+      "type": "array",
+      "description": "Restrict to users with specific language preferences using canonical BCP 47 language ranges. Each buyer range is evaluated against a user's language-preference tag with RFC 4647 section 3.3.1 Basic Filtering: 'fr' matches 'fr', 'fr-CA', and 'fr-FR', while 'fr-CA' matches 'fr-CA' and more-specific descendants but not 'fr' or 'fr-FR'. Values use OR logic.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/locale-tag.json"
+      },
+      "minItems": 1
+    },
+    "keyword_targets": {
+      "type": "array",
+      "description": "Keyword targeting for search and retail media platforms. Restricts delivery to queries matching the specified keywords. Each keyword is identified by the tuple (keyword, match_type) — the same keyword string with different match types are distinct targets. Sellers SHOULD reject duplicate (keyword, match_type) pairs within a single request. Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to target"
+          },
+          "match_type": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/match-type.json"
+          },
+          "bid_price": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Per-keyword bid price, denominated in the same currency as the package's pricing option. Overrides the package-level bid_price for this keyword. Inherits the max_bid interpretation from the pricing option: when max_bid is true, this is the keyword's bid ceiling; when false, this is the exact bid. If omitted, the package bid_price applies."
+          }
+        },
+        "required": [
+          "keyword",
+          "match_type"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "negative_keywords": {
+      "type": "array",
+      "description": "Keywords to exclude from delivery. Queries matching these keywords will not trigger the ad. Each negative keyword is identified by the tuple (keyword, match_type). Seller must declare support in get_adcp_capabilities.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The keyword to exclude"
+          },
+          "match_type": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/match-type.json"
+          }
+        },
+        "required": [
+          "keyword",
+          "match_type"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    }
+  },
+  "allOf": [
+    {
+      "description": "Unknown-age delivery cannot satisfy a minimum-age eligibility policy. When demographic audience targeting and age_restriction are both present, include_unknown must be false.",
+      "if": {
+        "required": [
+          "demographics",
+          "age_restriction"
+        ]
+      },
+      "then": {
+        "properties": {
+          "demographics": {
+            "properties": {
+              "age": {
+                "properties": {
+                  "include_unknown": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "description": "A legal verification requirement always narrows demographic targeting. When the buyer supplies accepted_bases and age_restriction requires verification, verified must be accepted; otherwise the constraints have an empty intersection and the request is invalid.",
+      "if": {
+        "properties": {
+          "age_restriction": {
+            "properties": {
+              "verification_required": {
+                "const": true
+              }
+            },
+            "required": [
+              "verification_required"
+            ]
+          },
+          "demographics": {
+            "properties": {
+              "age": {
+                "required": [
+                  "accepted_bases"
+                ]
+              }
+            },
+            "required": [
+              "age"
+            ]
+          }
+        },
+        "required": [
+          "demographics",
+          "age_restriction"
+        ]
+      },
+      "then": {
+        "properties": {
+          "demographics": {
+            "properties": {
+              "age": {
+                "properties": {
+                  "accepted_bases": {
+                    "contains": {
+                      "const": "verified"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

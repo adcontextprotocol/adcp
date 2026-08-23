@@ -153,6 +153,13 @@ returns, a continuation MUST carry a new `messageId` and the existing A2A
 profile: exactly one authoritative `{ skill, input }` DataPart, with a complete
 schema-valid task request. The continued Task keeps the same A2A Task ID.
 
+Those native A2A identifiers are the verified continuation descriptor for this
+profile. An AdCP `task_id` returned by the task payload is a separate polling
+handle and MUST NOT be substituted for a missing A2A `taskId` or `contextId`.
+Nested continuations and cross-channel terminal races follow the [async
+identity and convergence
+contract](/docs/building/by-layer/L3/async-identity-and-convergence).
+
 ## Response mapping
 
 When the AdCP handler returns a schema-valid task response, the A2A invocation is complete. A non-streaming A2A `SendMessage` response MUST select its `task` branch. That Task has `status.state` `TASK_STATE_COMPLETED`, and its artifact contains the direct AdCP response in a DataPart:

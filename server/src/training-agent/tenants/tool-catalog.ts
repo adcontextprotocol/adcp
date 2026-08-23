@@ -38,6 +38,9 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   request_proposals: ['sales'],
   refine_proposals: ['sales'],
   decline_proposals: ['sales'],
+  buy_products: ['sales'],
+  accept_proposal: ['sales'],
+  control_media_buy: ['sales'],
   create_media_buy: ['sales'],
   update_media_buy: ['sales'],
   get_media_buys: ['sales'],
@@ -51,6 +54,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   // creative (sales, creative, creative-builder) — the SDK auto-advertises
   // it. Catalog mirrors that advertisement so the drift test stays green.
   list_creative_formats: ['sales', 'creative', 'creative-builder'],
+  sync_agent_notification_configs: ['sales'],
 
   // creative — exposed on multiple tenants
   // list_creatives / get_creative_delivery are sales-side / ad-server-side
@@ -143,8 +147,15 @@ export function toolsForTenant(
         || tool === 'request_proposals'
         || tool === 'refine_proposals'
         || tool === 'decline_proposals'
+        || tool === 'buy_products'
+        || tool === 'accept_proposal'
+        || tool === 'control_media_buy'
       ) return false;
       if (tool === 'validate_input' || tool === 'list_transformers') return false;
+      if (
+        tenantId === 'sales'
+        && ['sync_agent_notification_configs', 'build_creative', 'preview_creative'].includes(tool)
+      ) return false;
       if (tool === 'sync_governance' && tenantId !== 'signals') return false;
       return true;
     })

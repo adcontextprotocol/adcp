@@ -1,0 +1,27 @@
+{
+  "policy_id": "creative_security_malicious_code",
+  "source": "registry",
+  "version": "1.0.0",
+  "name": "Creative payload malicious-code prohibition",
+  "description": "Prohibits malware, exploit behavior, and unauthorized computing in an advertising payload.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["security", "brand_safety"],
+  "governance_domains": ["creative"],
+  "effective_date": "2026-08-21",
+  "source_url": "https://docs.adcontextprotocol.org/docs/governance/creative/policy-backed-rejections#initial-registry-policies",
+  "source_name": "AgenticAdvertising.org",
+  "policy": "An advertising creative and every resource it loads must not contain, install, retrieve, or execute malicious code. Prohibited behavior includes exploiting a device or browser vulnerability, installing malware, gaining unauthorized access, evading security controls, or using the device for unauthorized computation such as cryptocurrency mining. A seller that detects this behavior must reject the creative and identify this policy.",
+  "guidance": "Evaluate the executable payload and its dependency chain, not merely the advertiser category. Buyer remediation: replace the compromised or malicious asset, audit its production and hosting supply chain, and resubmit only after a clean evaluation.",
+  "exemplars": {
+    "pass": [{
+      "scenario": "A display tag loads declared animation and measurement scripts that render the ad and make no attempt to exploit the browser or perform undeclared computation.",
+      "explanation": "Normal rendering and measurement behavior is not malicious code."
+    }],
+    "fail": [{
+      "scenario": "A display tag probes for a browser vulnerability and, when present, downloads an executable that runs a cryptocurrency miner.",
+      "explanation": "The payload attempts exploitation and unauthorized computation."
+    }]
+  }
+}

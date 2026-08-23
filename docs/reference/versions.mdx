@@ -13,7 +13,7 @@ description: "Every published AdCP version, its status, and its end-of-life date
 
 | Status | Versions | Wire pin | What it means |
 |---|---|---|---|
-| **Beta** | 3.2 (current prerelease: `beta.0`; beta.1 converges protocol and SDKs) | `"3.2-beta.0"` | Development and staging only. Follow the [3.2 beta program](/docs/reference/3-2-beta). |
+| **Beta** | 3.2 (current prerelease: `beta.4`) | `"3.2-beta.4"` | Development and staging only. TypeScript SDK support is available in `@adcp/sdk@14.0.0-beta.5`; follow the [3.2 beta program](/docs/reference/3-2-beta). |
 | **Active** | 3.1 (current stable: 3.1.15) | `"3.1"` | Current production minor release. See [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1) for the feature set. |
 | **Maintained** | 3.0 (current stable: 3.0.24) | `"3.0"` | Supported previous minor for existing production integrations. Receives compatibility and security patches. |
 | **End of life** | 2.0.0, 2.1.0, 2.5.0–2.5.3 | — | No patches. Migrate to 3.0. See [v2 sunset](/docs/reference/v2-sunset). |
@@ -45,7 +45,11 @@ Supported patches don't change the wire contract. Upgrading within 3.0.x is alwa
 
 | Version | Released | Notes |
 |---|---|---|
-| **3.2.0-beta.0** | 2026-08-17 | Protocol-first beta input for SDK work. Use the exact `"3.2-beta.0"` wire pin only when both peers explicitly advertise it. |
+| **3.2.0-beta.4** | 2026-08-20 | Current prerelease. `@adcp/sdk@14.0.0-beta.5` embeds this exact checkpoint. Use `"3.2-beta.4"` only when both peers explicitly advertise it. Adds flexible-window availability discovery and the outcome_target reverse-forecast input. |
+| 3.2.0-beta.3 | 2026-08-19 | Integration checkpoint, superseded by beta.4 for new beta testing. |
+| 3.2.0-beta.2 | 2026-08-19 | Integration checkpoint, superseded by beta.3 for new beta testing. |
+| 3.2.0-beta.1 | 2026-08-19 | Integration-correction checkpoint, superseded by beta.2 for new beta testing. |
+| 3.2.0-beta.0 | 2026-08-17 | Protocol-first beta input for SDK work. Remains available for pinned prerelease adopters. |
 | 3.1.0-rc.1 through 3.1.0-rc.15 | 2026-05-29 to 2026-06-16 | Superseded by 3.1.0 GA. These artifacts remain available for pinned prerelease adopters and release forensics. |
 | 3.0.0-beta.1 through rc.2 | 2026-01-26 to 2026-03-15 | Superseded. |
 | 3.0.0-rc.3 | 2026-04-01 | Superseded by GA. See [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades) if you adopted rc.3. |
@@ -85,8 +89,8 @@ Targeted for early 2027. 3.x is mid-cycle — see the [planned releases table](/
 | If you are… | Use |
 |---|---|
 | Building a new production integration today | **3.1**. Pin `"3.1"` on the wire. |
-| Implementing or testing 3.2 before SDK support | After publication, use **3.2 beta.0** artifacts with raw-wire or code-generation workflows. Follow the [beta program](/docs/reference/3-2-beta). |
-| Running an SDK-backed 3.2 integration test | Use only the exact beta named by the SDK support matrix. Beta.1 is SDK-backed only after its post-publication SDK refresh completes. |
+| Implementing or testing 3.2 without an SDK | Use the signed **3.2 beta.3** artifacts with raw-wire or code-generation workflows. Follow the [beta program](/docs/reference/3-2-beta). |
+| Running an SDK-backed 3.2 integration test | Use `@adcp/sdk@14.0.0-beta.5` with exact wire pin `"3.2-beta.4"`, or another SDK only after its support matrix row names an exact checkpoint. |
 | Running an existing 3.0 integration | Stay on **3.0** while you migrate, or move to **3.1** when your SDK and validation are ready. |
 | Running a 2.5.x integration | Upgrade now — out of support. Start with the [migration guide](/docs/reference/migration). |
 | Running a 2.0 or 2.1 integration | Upgrade now — out of support. |
@@ -99,6 +103,6 @@ Targeted for early 2027. 3.x is mid-cycle — see the [planned releases table](/
 - **[What's new in v3](/docs/reference/whats-new-in-v3)** — feature-by-feature summary of what 3.0 adds
 - **[What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1)** — final 3.1 feature set and adopter actions
 - **[What's new in AdCP 3.2](/docs/reference/whats-new-in-3-2)** — beta feature set and adopter actions
-- **[3.2 beta program](/docs/reference/3-2-beta)** — beta.0 artifacts, SDK handoff, and beta.1 gates
+- **[3.2 beta program](/docs/reference/3-2-beta)** — current artifacts, exact SDK pairing, and beta testing gates
 - **[Release Notes](/docs/reference/release-notes)** — curated narrative for each version
 - **[Changelog](/docs/reference/changelog)** — full technical change history

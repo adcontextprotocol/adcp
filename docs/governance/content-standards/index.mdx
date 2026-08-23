@@ -187,7 +187,35 @@ The threshold answers the key buyer question: "If I accept your local model, how
 
 ## Policies
 
-Content Standards uses **addressable policies** — an array of policy entries, each with a policy_id, enforcement, and natural-language policy text. Same shape as registry-published policies, so bespoke buyer rules and shared registry policies are interchangeable. Validation findings reference `policy_id` to identify which policy triggered:
+Content Standards uses **addressable policies** — an array of policy entries, each with a `policy_id`, enforcement level, and natural-language policy text. Policies embedded in AdCP task payloads are inline; registry-published policies use the same policy-entry shape but are served through the policy registry. Validation findings reference `policy_id` to identify which policy triggered:
+
+### Policy fields
+
+| Field | Required | Description |
+|---|---|---|
+| `policy_id` | Yes | Unique policy identifier. Registry IDs are canonical; buyer-authored IDs are unique within their containing standards configuration, plan, or portfolio. |
+| `enforcement` | Yes | Violation handling: `must` rejects, `should` warns without blocking, and `may` records informational results. |
+| `policy` | Yes | Natural-language requirement, prohibition, or recommendation evaluated by the governance agent. |
+| `source` | No | Policy origin: `registry` or `inline` (the default). Policies embedded in task payloads are inline. |
+| `version` | No | Semantic version of the policy text; inline policies default to `1.0.0`. |
+| `name` | No | Human-readable policy name. |
+| `description` | No | Brief summary of the policy, up to 500 characters. |
+| `category` | No | Whether the obligation is a `regulation` or a `standard`. |
+| `requires_human_review` | No | Whether plans resolved against the policy require human review. Defaults to `false`. |
+| `jurisdictions` | No | ISO 3166-1 alpha-2 country codes where the policy applies. |
+| `region_aliases` | No | Named jurisdiction groups used when matching the policy to a plan. |
+| `policy_categories` | No | One or more regulatory or suitability categories used for automatic matching. |
+| `channels` | No | Advertising channels to which the policy applies; omission means all channels. |
+| `governance_domains` | No | Governance agent domains that can evaluate the policy. |
+| `effective_date` | No | ISO 8601 date when enforcement begins; before this date findings are informational. |
+| `sunset_date` | No | ISO 8601 date after which the policy is no longer evaluated. |
+| `source_url` | No | Link to the source regulation, standard, or legislation. |
+| `source_name` | No | Name of the issuing body. |
+| `guidance` | No | Implementation notes for governance-agent developers; not included in evaluation prompts. |
+| `exemplars` | No | Structured `pass` and `fail` scenarios used to calibrate policy interpretation. |
+| `ext` | No | Vendor-namespaced extension data for partner-specific metadata. |
+
+Policy entries are closed objects: fields outside this table fail schema validation rather than being silently ignored. Put partner-specific, buyer-visible metadata under a vendor key in `ext` (for example, `ext.acme`) instead of adding sibling fields or encoding structured metadata inside the natural-language `policy` value.
 
 ```json
 {
@@ -221,17 +249,11 @@ The policy prompt enables AI-powered verification agents to understand context a
 
 See [Artifacts](./artifacts) for details on artifact structure and secured asset access.
 
-## Versioning and mid-flight amendments
+## Updating policies
 
-Content standards carry a `version` field and MAY be amended while campaigns are running. `update_content_standards` creates a new version for audit purposes rather than mutating the previous one.
+[`update_content_standards`](./tasks/update_content_standards) updates the supplied scope, registry policy references, bespoke policies, or calibration exemplars for an existing `standards_id`. A supplied `policies` array replaces the existing bespoke policies. Keep each `policy_id` stable across updates so findings and audit records continue to identify the same rule. Use the optional policy-level `version` when consumers need to distinguish revisions of that rule's text.
 
-AdCP 3.0 default: **pinned at buy time.** Unless otherwise declared, a media buy references the version of the standards that was in effect when its `create_media_buy` was approved, and subsequent amendments do **not** retroactively apply to in-flight delivery on that buy. This is the conservative default because it prevents a mid-campaign amendment from silently re-characterizing already-approved delivery.
-
-Governance agents MAY mark an individual policy as continuously re-evaluated by declaring `evaluation_mode: continuous` on the policy entry (default is `pinned`). Use `continuous` for policies that must track regulatory changes without re-approval — emerging regulatory disclosures, new legal prohibitions, accessibility requirements. Use the default `pinned` for brand-voice, taxonomy, and commercial preferences where stability across a flight is the desired behavior.
-
-When a policy is `continuous`, a finding generated against a newer version **MUST** carry both the evaluation-time version and the pinned-at-buy version on the finding, so downstream audit can reconstruct which version applied. The governance agent **MUST** emit the finding to the buying agent via the media buy's `push_notification_config` when one is configured, and the finding **MUST** be retrievable through the buy's standard status surface regardless. Delivery-adjustment decisions remain with the buyer. When a policy is `pinned`, the pinned version applies for the life of the buy; the governance agent **MAY** still surface advisory findings based on later versions but **MUST NOT** mark them as enforcement failures against the pinned buy.
-
-AdCP 3.0 does not define a mid-flight re-pin mechanism. A buyer that wants to adopt a newer standards version across all pinned policies replaces the buy — cancel the existing buy via [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) and issue a new [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) whose governance block references the current version. This is a heavyweight path: a new approval is required, pacing history resets, and in-flight delivery may have makegood implications. It is deliberately the only 3.0 mechanism; `standards_version` on `update_media_buy` and partial re-pin are out of scope for 3.0.
+The current wire schemas do not define configuration-level version semantics, a policy-level `evaluation_mode`, or media-buy behavior for pinning and adopting later standards revisions. Policy entries accept `version` for revisions of that rule's text, but their closed schema rejects `evaluation_mode`. Unknown configuration or media-buy controls have no interoperable AdCP meaning even where a containing schema permits additional properties. Deployments that require partner-specific revision or mid-flight adoption controls can exchange them under the vendor-namespaced `ext` object, but those controls are outside the interoperable AdCP contract.
 
 ## Scoped Standards
 

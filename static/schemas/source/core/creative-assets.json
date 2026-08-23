@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-assets.json",
+  "title": "Creative Assets",
+  "description": "Map of canonical asset-group or legacy asset identifiers to supplied creative assets. Values are either a single discriminated asset or a non-empty repeatable asset array.",
+  "type": "object",
+  "patternProperties": {
+    "^[a-z0-9_]+$": {
+      "anyOf": [
+        { "$ref": "/schemas/core/assets/asset-union.json" },
+        {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/assets/asset-union.json" },
+          "minItems": 1
+        }
+      ]
+    }
+  },
+  "additionalProperties": true
+}

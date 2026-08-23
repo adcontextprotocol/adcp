@@ -68,6 +68,59 @@ describe('Training Agent legacy /mcp back-compat alias', () => {
     expect(res.headers['link']).toContain('successor-version');
   });
 
+  it('isolates stateless MCP task receipts by authenticated principal', async () => {
+    const firstBearer = 'Bearer demo-task-owner-v1';
+    const secondBearer = 'Bearer demo-task-other-v1';
+    const created = await request(app)
+      .post('/api/training-agent/mcp')
+      .set('Authorization', firstBearer)
+      .set('Content-Type', 'application/json')
+      .set('Accept', 'application/json, text/event-stream')
+      .send({
+        jsonrpc: '2.0',
+        id: 20,
+        method: 'tools/call',
+        params: {
+          name: 'get_products',
+          task: { ttl: 60_000 },
+          arguments: {
+            adcp_version: '3.1-rc.15',
+            idempotency_key: `principal-task-${randomUUID()}`,
+            account: { brand: { domain: 'task-owner.example' }, operator: 'task-owner.example' },
+            buying_mode: 'wholesale',
+          },
+        },
+      });
+    expect(created.status).toBe(200);
+    const taskId = created.body.result?.task?.taskId as string | undefined;
+    expect(taskId).toEqual(expect.any(String));
+
+    const ownList = await request(app)
+      .post('/api/training-agent/mcp')
+      .set('Authorization', firstBearer)
+      .set('Content-Type', 'application/json')
+      .set('Accept', 'application/json, text/event-stream')
+      .send({ jsonrpc: '2.0', id: 21, method: 'tasks/list', params: {} });
+    expect(ownList.body.result?.tasks?.map((task: { taskId: string }) => task.taskId)).toContain(taskId);
+
+    const otherList = await request(app)
+      .post('/api/training-agent/mcp')
+      .set('Authorization', secondBearer)
+      .set('Content-Type', 'application/json')
+      .set('Accept', 'application/json, text/event-stream')
+      .send({ jsonrpc: '2.0', id: 22, method: 'tasks/list', params: {} });
+    expect(otherList.body.result?.tasks?.map((task: { taskId: string }) => task.taskId) ?? [])
+      .not.toContain(taskId);
+
+    const otherGet = await request(app)
+      .post('/api/training-agent/mcp')
+      .set('Authorization', secondBearer)
+      .set('Content-Type', 'application/json')
+      .set('Accept', 'application/json, text/event-stream')
+      .send({ jsonrpc: '2.0', id: 23, method: 'tasks/get', params: { taskId } });
+    expect(otherGet.body.error).toBeDefined();
+  });
+
   it('ignores malformed request-signing headers on the public legacy sandbox', async () => {
     const res = await request(app)
       .post('/api/training-agent/mcp')
@@ -150,8 +203,8 @@ describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)'
     const tools = (res.body.result?.tools ?? []) as Array<{ name: string }>;
     const names = new Set(tools.map(t => t.name));
     // Sales tenant carries the media-buy tools.
-    expect(names.has('get_products')).toBe(true);
-    expect(names.has('create_media_buy')).toBe(true);
+    expect(names.has('list_products')).toBe(true);
+    expect(names.has('buy_products')).toBe(true);
   });
 
   it('routes /signals/mcp to the signals tenant', async () => {
@@ -191,7 +244,7 @@ describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)'
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'governance')?.specialisms).toContain('content-standards');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'si')?.specialisms).toContain('sponsored-intelligence');
     // Tools surface so a developer can pick the right URL without trial.
-    expect(body._training_agent_tenants.find(t => t.tenant_id === 'sales')?.tools).toContain('get_products');
+    expect(body._training_agent_tenants.find(t => t.tenant_id === 'sales')?.tools).toContain('list_products');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'signals')?.tools).toContain('get_signals');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'creative-builder')?.tools).toContain('build_creative');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'creative-builder')?.tools).not.toContain('get_products');

@@ -818,6 +818,18 @@
           "uniqueItems": true,
           "default": ["brief"]
         },
+        "measurement_terms_acceptance": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this seller can accept the default measurement_terms it advertises on a product. A value of true means the seller can return a product carrying measurement_terms for a measurement-specific brief and accept those terms unchanged on a package for that product. This opts the seller into conformance scenarios that discover and replay the product's own terms. False or absent means acceptance is outside the seller's advertised scope, but the seller must still reject unsupported terms with TERMS_REJECTED rather than being graded on an acceptance path it did not claim.",
+          "x-added-in": "3.2.0"
+        },
+        "availability_horizon": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this seller supports flexible-window availability discovery: parsing offer_filters.availability_horizon and answering with time-dimensioned forecast points that carry availability_status. Sellers declaring true MUST apply the full window contract — half-open non-overlapping windows that partition the requested horizon (or signal gaps via incomplete[]), with availability_status computed from all booking eligibility constraints, not only competing holds. false or absent means flexible-window support is unknown: buyers SHOULD use exact start_date/end_date filtering, and sellers MAY ignore the field or reject it. Conformance storyboards gate flexible-window checks on this declaration.",
+          "x-added-in": "3.2.0"
+        },
         "lifecycle_tools": {
           "type": "array",
           "description": "Compact product and MediaBuy lifecycle operation names this seller supports. Added in AdCP 3.2 as task-specific contracts that form the 4.0 lifecycle foundation. Sellers may advertise any supported subset while retaining the deprecated get_products/create_media_buy/update_media_buy facades throughout 3.x. Each stateful split task has its own idempotency identity; callers MUST retry with the same tool name.",
@@ -898,6 +910,12 @@
           "type": "boolean",
           "description": "Conformance declaration that this seller supports proposals through either the compact request/refine/finalize lifecycle or the legacy get_products facade. accept_proposal, or the create_media_buy compatibility facade, consumes a finalized committed proposal_id before expires_at.",
           "default": false
+        },
+        "outcome_target": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether this seller supports reverse-forecast planning: parsing criteria.outcome_target (a compact goal — a forecastable-metric delivery metric or an event-type conversion event — plus a desired volume) and solving for budget, answering with total_budget_guidance on proposals and forecasts whose points carry the goal's key in metrics. false or absent means support is unknown: buyers SHOULD express outcome goals in brief prose instead, and sellers reject a structured outcome_target with UNSUPPORTED_FEATURE rather than silently ignoring it.",
+          "x-added-in": "3.2.0"
         },
         "governance_aware": {
           "type": "boolean",
@@ -2293,7 +2311,7 @@
     },
     "webhook_signing": {
       "type": "object",
-      "description": "RFC 9421 webhook-signature support for outbound webhook callbacks (top-level peer of request_signing). Declares which AdCP webhook-signing profile version and algorithms this agent produces on delivery, and whether it supports the legacy HMAC-SHA256 fallback for receivers that have not yet adopted RFC 9421. See docs/building/implementation/webhooks.mdx.",
+      "description": "RFC 9421 webhook-signature and delivery-retry support for outbound webhook callbacks (top-level peer of request_signing). Declares which AdCP webhook-signing profile version and algorithms this agent produces on delivery, whether it supports the legacy HMAC-SHA256 fallback for receivers that have not yet adopted RFC 9421, and the maximum retry horizon receivers use to retain immutable delivery evidence. See docs/building/by-layer/L3/webhooks.mdx.",
       "properties": {
         "supported": {
           "type": "boolean",
@@ -2353,6 +2371,12 @@
           "deprecated": true,
           "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
           "default": false
+        },
+        "delivery_retry_horizon_seconds": {
+          "type": "integer",
+          "description": "Maximum elapsed time from the first delivery attempt during which this agent may retry the same webhook delivery. The publisher retains the immutable delivery-key-to-RFC-8785-JCS-payload binding and sufficient delivery state for at least this interval, and MUST NOT retry that key afterward. Receivers retain the matching payload binding and terminal publication proof for at least max(86400, this value) seconds in AdCP 3.x. Retries do not extend the horizon. A webhook-emitting AdCP 3.2 agent MUST populate this additive field; it remains schema-optional so existing 3.x capability documents stay valid. Minimum 86400 (24h), maximum 604800 (7d).",
+          "minimum": 86400,
+          "maximum": 604800
         }
       },
       "required": ["supported"]

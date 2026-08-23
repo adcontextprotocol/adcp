@@ -2,8 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/control-media-buy-request.json",
   "title": "Control Media Buy Request",
-  "description": "Apply operational delivery controls inside the MediaBuy's accepted proposal envelope. Sellers return REQUOTE_REQUIRED when budget, targeting, or another control would change the commercial envelope; the buyer then forks the accepted proposal through refine_proposals. Creative mutation, new products/packages, flight changes, pricing changes, and billing-term changes are not accepted here.",
-  "x-tool-summary": "Pause, resume, cancel, or adjust delivery controls without changing accepted commercial terms.",
+  "description": "Apply operational delivery controls or non-commercial metadata changes inside the MediaBuy's accepted proposal envelope. Provide at least one control field. cancellation_reason requires canceled: true; cancellation is mutually exclusive with every other control. Sellers return REQUOTE_REQUIRED when budget, targeting, or another control would change the commercial envelope; the buyer then forks the accepted proposal through refine_proposals. Creative mutation, new products/packages, flight changes, pricing changes, and billing-term changes are not accepted here.",
+  "x-tool-summary": "Rename, pause, resume, cancel, or adjust delivery controls without changing accepted commercial terms.",
   "type": "object",
   "x-mutates-state": true,
   "x-governed-commitment": {
@@ -40,6 +40,13 @@
       "type": "integer",
       "minimum": 1,
       "description": "Required optimistic-concurrency revision from the latest MediaBuy snapshot."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "\\S",
+      "description": "Replace the human-readable MediaBuy name as revision-checked operational metadata. This display label is not an identifier, financial reference, or change to the accepted commercial terms."
     },
     "paused": {
       "type": "boolean"
@@ -117,6 +124,7 @@
   },
   "required": ["idempotency_key", "account", "media_buy_id", "revision"],
   "anyOf": [
+    { "required": ["name"] },
     { "required": ["paused"] },
     { "required": ["canceled"] },
     { "required": ["total_budget"] },
@@ -138,6 +146,7 @@
       "then": {
         "not": {
           "anyOf": [
+            { "required": ["name"] },
             { "required": ["paused"] },
             { "required": ["total_budget"] },
             { "required": ["daily_budget_cap"] },

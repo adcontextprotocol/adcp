@@ -35,6 +35,21 @@
       "exclusiveMinimum": 0,
       "description": "Intrinsic pixels per logical render pixel (for example `2` for a 600×500 image intended to render at 300×250). Optional because a validator can infer the ratio when the target format declares logical dimensions. When supplied, it MUST agree with both `width / logical_width` and `height / logical_height`; it is never a substitute for the intrinsic `width` and `height` fields."
     },
+    "state_id": {
+      "type": "string",
+      "description": "Binding used only when this image populates a `seller_rendered_stateful_display` `state_canvases` slot. It MUST match one declared `states[].state_id` (semantic validators resolve it). Omit for ordinary image slots."
+    },
+    "breakpoint_id": {
+      "type": "string",
+      "description": "Binding used only when this image populates a `seller_rendered_stateful_display` `state_canvases` slot. It MUST match one breakpoint declared on the selected state (semantic validators resolve it). Omit for ordinary image slots."
+    },
+    "focal_point": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0, "maximum": 1 },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "Normalized `[x, y]` coordinates (0–1 from top-left) of the image's visual anchor. Seller-side renderers crop toward the focal point when deriving renditions across breakpoints and aspect ratios; absent, cropping falls back to center-weighted defaults."
+    },
     "format": {
       "type": "string",
       "description": "Image file format (jpg, png, gif, webp, etc.)"
