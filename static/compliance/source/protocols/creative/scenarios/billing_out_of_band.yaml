@@ -6,7 +6,6 @@ summary: "Verifies that a creative agent declaring bills_through_adcp: false rej
 track: creative
 introduced_in: "3.1"
 required_tools:
-  - get_adcp_capabilities
   - report_usage
 
 narrative: |
