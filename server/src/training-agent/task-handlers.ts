@@ -2629,10 +2629,11 @@ import {
 } from './source-schema.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.4'] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.5'] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
-const CURRENT_ADCP_VERSION = '3.2-beta.4';
+const CURRENT_ADCP_VERSION = '3.2-beta.5';
 const MAX_PACKAGES_PER_BUY = 50;
+const MAX_CONFIGURED_PRODUCTS_PER_SESSION = 128;
 
 interface ParsedAdcpReleaseVersion {
   raw: string;
@@ -4848,6 +4849,17 @@ function overlaySeededProducts(
   }
 }
 
+/** Keep request-scoped targeting configurations resolvable throughout their
+ * advertised lifetime and in the downstream lifecycle that accepted them. */
+function overlayConfiguredProducts(
+  session: SessionState,
+  productMap: Map<string, Product>,
+): void {
+  for (const [productId, product] of session.configuredProducts) {
+    productMap.set(productId, structuredClone(product));
+  }
+}
+
 /** Overlay proposal-specific pricing created by successful refine asks. */
 function overlayNegotiatedPricingOptions(
   session: import('./types.js').SessionState,
@@ -4984,6 +4996,8 @@ function applyAvailabilityHorizonForecasts(
   products: Product[],
   horizon: unknown,
   session: import('./types.js').SessionState,
+  sourceProductIds?: ReadonlyMap<string, string>,
+  immutableConfiguredProductIds?: ReadonlySet<string>,
 ): Product[] {
   if (
     !isRecord(horizon)
@@ -4999,7 +5013,10 @@ function applyAvailabilityHorizonForecasts(
   const generatedAt = toUtcSecondsIso(now);
   const validUntil = toUtcSecondsIso(now + 5 * 60 * 1000);
   return products.map(product => {
-    const availability = seededProductAvailability.get(product.product_id);
+    if (immutableConfiguredProductIds?.has(product.product_id)) return product;
+    const availability = seededProductAvailability.get(
+      sourceProductIds?.get(product.product_id) ?? product.product_id,
+    );
     if (!availability) return product;
     const points = computeAvailabilityForecastPoints(horizonRange, availability);
     if (!points) return product;
@@ -5732,7 +5749,8 @@ const COMPACT_PRODUCT_FIELDS = new Set([
   'performance_standards', 'audience_evidence', 'audience_evidence_selections',
   'demographic_targeting', 'exclusivity', 'audio_distribution_types',
   'video_placement_types', 'social_placement_surfaces',
-  'sponsored_placement_types', 'ext',
+  'sponsored_placement_types', 'is_custom', 'overlay_support',
+  'targeting_resolution', 'ext',
 ]);
 
 const COMPACT_FORMAT_OPTION_FIELDS = new Set([
@@ -5753,9 +5771,10 @@ function pickCompactFields(source: Record<string, unknown>, fields: ReadonlySet<
 function compactLifecycleProduct(
   product: Record<string, unknown>,
   requestedFields?: ReadonlySet<string>,
+  requiredFields: ReadonlySet<string> = new Set(),
 ): Record<string, unknown> {
   const selectedFields = requestedFields
-    ? new Set(['product_id', 'name', ...requestedFields])
+    ? new Set(['product_id', 'name', ...requestedFields, ...requiredFields])
     : COMPACT_PRODUCT_FIELDS;
   const projected = pickCompactFields(product, selectedFields);
   if (selectedFields.has('format_options') && Array.isArray(product.format_options)) {
@@ -5769,6 +5788,459 @@ function compactLifecycleProduct(
       .map(option => canonicalPricingSnapshot(option, String(option.pricing_option_id ?? '')));
   }
   return projected;
+}
+
+/** Match a buyer's future targeting requirement against a Product's binding
+ * overlay support. `true` means unrestricted protocol-valid support; arrays
+ * use subset semantics; nested objects use recursive containment. Seller-only
+ * limits and provenance fields are ignored because the buyer did not request
+ * them. */
+function overlaySupportContains(support: unknown, requirement: unknown): boolean {
+  if (support === true) return true;
+  if (requirement === true) return support === true || isRecord(support);
+  if (Array.isArray(requirement)) {
+    return Array.isArray(support)
+      && requirement.every(value => support.some(candidate => canonicalize(candidate) === canonicalize(value)));
+  }
+  if (!isRecord(requirement) || !isRecord(support)) return Object.is(support, requirement);
+  if (support.all_values === true && Array.isArray(requirement.values)) return true;
+  return Object.entries(requirement).every(([field, requiredValue]) => {
+    if (field === 'ext') return true;
+    return support[field] !== undefined
+      && overlaySupportContains(support[field], requiredValue);
+  });
+}
+
+function concreteTargetingSupported(field: string, support: unknown, value: unknown): boolean {
+  if (support === true) return true;
+  if (!isRecord(support)) return false;
+  if (field === 'placement_selection') {
+    if (!isRecord(value) || value.mode === 'default') return isRecord(value);
+    if (value.mode !== 'selected' || !Array.isArray(value.placement_refs)) return false;
+    return typeof support.max_values_per_package !== 'number'
+      || value.placement_refs.length <= support.max_values_per_package;
+  }
+  if (Array.isArray(value)) {
+    const valueCount = value.reduce((count, entry) => (
+      count + (isRecord(entry) && Array.isArray(entry.values) ? entry.values.length : 1)
+    ), 0);
+    if (typeof support.max_values_per_package === 'number'
+      && valueCount > support.max_values_per_package) return false;
+    if (field === 'geo_regions' || field === 'geo_regions_exclude') {
+      const countries = support.countries;
+      if (!isRecord(countries)) return false;
+      return value.every(region => {
+        if (typeof region !== 'string') return false;
+        const countrySupport = countries[region.slice(0, 2)];
+        if (countrySupport === true) return true;
+        if (!isRecord(countrySupport)) return false;
+        return countrySupport.all_values === true
+          || (Array.isArray(countrySupport.values) && countrySupport.values.includes(region));
+      });
+    }
+    if (field === 'geo_metros' || field === 'geo_metros_exclude') {
+      const systems = support.systems;
+      return Array.isArray(systems) && value.every(entry => (
+        isRecord(entry) && typeof entry.system === 'string' && systems.includes(entry.system)
+      ));
+    }
+    if (field === 'geo_places' || field === 'geo_places_exclude') {
+      const systems = support.systems;
+      if (!isRecord(systems)) return false;
+      return value.every(entry => {
+        if (!isRecord(entry)
+          || typeof entry.system !== 'string'
+          || typeof entry.country !== 'string'
+          || typeof entry.place_type !== 'string') return false;
+        const catalogSupport = systems[entry.system];
+        if (!isRecord(catalogSupport) || !isRecord(catalogSupport.countries)) return false;
+        const supportedTypes = catalogSupport.countries[entry.country];
+        if (!Array.isArray(supportedTypes) || !supportedTypes.includes(entry.place_type)) return false;
+        return entry.system_version === undefined
+          || (Array.isArray(catalogSupport.system_versions)
+            && catalogSupport.system_versions.includes(entry.system_version));
+      });
+    }
+    if (field === 'geo_postal_areas' || field === 'geo_postal_areas_exclude') {
+      return value.every(entry => {
+        if (!isRecord(entry) || typeof entry.system !== 'string') return false;
+        if (typeof entry.country === 'string') {
+          const countrySystems = support[entry.country];
+          return Array.isArray(countrySystems) && countrySystems.includes(entry.system);
+        }
+        return support[entry.system] === true;
+      });
+    }
+    if (field === 'keyword_targets' || field === 'negative_keywords') {
+      const supportedMatchTypes = support.supported_match_types;
+      return Array.isArray(supportedMatchTypes) && value.every(entry => (
+        isRecord(entry)
+        && typeof entry.match_type === 'string'
+        && supportedMatchTypes.includes(entry.match_type)
+      ));
+    }
+    if (field === 'geo_proximity') {
+      const supportedTransportModes = support.transport_modes;
+      return value.every(entry => {
+        if (!isRecord(entry)) return false;
+        if (entry.radius !== undefined) return support.radius === true;
+        if (entry.geometry !== undefined) return support.geometry === true;
+        if (entry.travel_time !== undefined) {
+          return support.travel_time === true
+            && typeof entry.transport_mode === 'string'
+            && (!Array.isArray(supportedTransportModes)
+              || supportedTransportModes.includes(entry.transport_mode));
+        }
+        return false;
+      });
+    }
+    const allowlist = Array.isArray(support.families)
+      ? support.families
+      : Array.isArray(support.values)
+        ? support.values
+        : undefined;
+    return !allowlist || value.every(candidate => (
+      allowlist.some(allowed => canonicalize(allowed) === canonicalize(candidate))
+    ));
+  }
+  return true;
+}
+
+const EXCLUSION_TARGETING_FIELDS = new Set([
+  'geo_countries_exclude',
+  'geo_regions_exclude',
+  'geo_metros_exclude',
+  'geo_places_exclude',
+  'geo_postal_areas_exclude',
+  'audience_exclude',
+  'property_list_exclude',
+  'collection_list_exclude',
+  'device_platform_exclude',
+  'device_type_exclude',
+  'browser_exclude',
+  'negative_keywords',
+]);
+
+/** Treat grouped targeting entries such as metro `{ system, values }` as a
+ * set of individual values. That lets a buyer narrow an include group or
+ * widen an exclusion group without requiring an artificial object split. */
+function targetingArrayAtoms(values: unknown[]): string[] {
+  return values.flatMap(value => {
+    if (!isRecord(value) || !Array.isArray(value.values)) return [canonicalize(value)];
+    const identity = Object.fromEntries(Object.entries(value).filter(([field]) => field !== 'values'));
+    return value.values.map(member => canonicalize({ ...identity, value: member }));
+  });
+}
+
+function durationSeconds(value: unknown): number | undefined {
+  if (!isRecord(value) || typeof value.interval !== 'number' || typeof value.unit !== 'string') {
+    return undefined;
+  }
+  const multipliers: Record<string, number> = {
+    seconds: 1,
+    minutes: 60,
+    hours: 60 * 60,
+    days: 24 * 60 * 60,
+  };
+  return multipliers[value.unit] === undefined
+    ? undefined
+    : value.interval * multipliers[value.unit];
+}
+
+function frequencyWindowStrength(value: unknown): number | undefined {
+  if (isRecord(value) && value.unit === 'campaign' && value.interval === 1) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return durationSeconds(value);
+}
+
+function intersectFrequencyCap(
+  bound: Record<string, unknown>,
+  requested: Record<string, unknown>,
+  path: string,
+  allowAdditions: boolean,
+): { value?: unknown; errorPath?: string } {
+  const value = structuredClone(bound);
+  const hasBoundImpressionCap = bound.max_impressions !== undefined;
+  const hasRequestedImpressionCap = requested.max_impressions !== undefined
+    || requested.per !== undefined
+    || requested.window !== undefined;
+  if (!hasBoundImpressionCap && hasRequestedImpressionCap) {
+    if (!allowAdditions
+      || typeof requested.max_impressions !== 'number'
+      || requested.per === undefined
+      || frequencyWindowStrength(requested.window) === undefined) {
+      return { errorPath: `${path}.max_impressions` };
+    }
+    value.max_impressions = requested.max_impressions;
+    value.per = structuredClone(requested.per);
+    value.window = structuredClone(requested.window);
+  } else if (hasBoundImpressionCap) {
+    const boundMax = bound.max_impressions;
+    const requestedMax = requested.max_impressions ?? boundMax;
+    const boundPer = bound.per;
+    const requestedPer = requested.per ?? boundPer;
+    const boundWindow = bound.window;
+    const requestedWindow = requested.window ?? boundWindow;
+    const boundStrength = frequencyWindowStrength(boundWindow);
+    const requestedStrength = frequencyWindowStrength(requestedWindow);
+    if (typeof boundMax !== 'number'
+      || typeof requestedMax !== 'number'
+      || requestedMax > boundMax
+      || canonicalize(requestedPer) !== canonicalize(boundPer)
+      || boundStrength === undefined
+      || requestedStrength === undefined
+      || requestedStrength < boundStrength) {
+      return { errorPath: `${path}.max_impressions` };
+    }
+    value.max_impressions = requestedMax;
+    value.per = structuredClone(requestedPer);
+    value.window = structuredClone(requestedWindow);
+  }
+  for (const [field, requestedValue] of Object.entries(requested)) {
+    const boundValue = bound[field];
+    if (boundValue === undefined) {
+      if (!allowAdditions) return { errorPath: `${path}.${field}` };
+      value[field] = structuredClone(requestedValue);
+      continue;
+    }
+    if (field === 'max_impressions' || field === 'per' || field === 'window') continue;
+    if (field === 'suppress_minutes'
+      && typeof boundValue === 'number'
+      && typeof requestedValue === 'number'
+      && requestedValue >= boundValue) {
+      value[field] = requestedValue;
+      continue;
+    }
+    if (field === 'suppress') {
+      const boundSeconds = durationSeconds(boundValue);
+      const requestedSeconds = durationSeconds(requestedValue);
+      if (boundSeconds !== undefined && requestedSeconds !== undefined && requestedSeconds >= boundSeconds) {
+        value[field] = structuredClone(requestedValue);
+        continue;
+      }
+    }
+    if (canonicalize(boundValue) !== canonicalize(requestedValue)) {
+      return { errorPath: `${path}.${field}` };
+    }
+  }
+  return { value };
+}
+
+function intersectBoundTargeting(
+  bound: unknown,
+  requested: unknown,
+  path: string,
+  allowAdditions = false,
+  arrayMode: 'subset' | 'superset' = 'subset',
+): { value?: unknown; errorPath?: string } {
+  if (Array.isArray(bound) && Array.isArray(requested)) {
+    const boundAtoms = targetingArrayAtoms(bound);
+    const requestedAtoms = targetingArrayAtoms(requested);
+    const requiredAtoms = arrayMode === 'subset' ? requestedAtoms : boundAtoms;
+    const containingAtoms = arrayMode === 'subset' ? boundAtoms : requestedAtoms;
+    const narrows = requiredAtoms.every(candidate => containingAtoms.includes(candidate));
+    return narrows
+      ? { value: structuredClone(requested) }
+      : { errorPath: path };
+  }
+  if (isRecord(bound) && isRecord(requested)) {
+    if (path.endsWith('.frequency_cap')) {
+      return intersectFrequencyCap(bound, requested, path, allowAdditions);
+    }
+    const value = structuredClone(bound);
+    for (const [field, requestedValue] of Object.entries(requested)) {
+      if (bound[field] === undefined) {
+        if (!allowAdditions) return { errorPath: `${path}.${field}` };
+        value[field] = structuredClone(requestedValue);
+        continue;
+      }
+      const intersection = intersectBoundTargeting(
+        bound[field],
+        requestedValue,
+        `${path}.${field}`,
+        allowAdditions,
+        arrayMode,
+      );
+      if (intersection.errorPath) return intersection;
+      value[field] = intersection.value;
+    }
+    return { value };
+  }
+  if (typeof bound === 'number' && typeof requested === 'number') {
+    const field = path.split('.').at(-1);
+    if ((field === 'min' && requested >= bound) || (field === 'max' && requested <= bound)) {
+      return { value: requested };
+    }
+  }
+  return canonicalize(bound) === canonicalize(requested)
+    ? { value: structuredClone(bound) }
+    : { errorPath: path };
+}
+
+function resolveConfiguredPurchaseTargeting(
+  bound: Record<string, unknown> | undefined,
+  requested: Record<string, unknown> | undefined,
+  support: unknown,
+  path: string,
+): { targeting?: Record<string, unknown>; errorPath?: string } {
+  if (!bound && requested) {
+    const supportRecord = isRecord(support) ? support : {};
+    for (const [field, requestedValue] of Object.entries(requested)) {
+      if (!concreteTargetingSupported(field, supportRecord[field], requestedValue)) {
+        return { errorPath: `${path}.${field}` };
+      }
+    }
+    return { targeting: structuredClone(requested) };
+  }
+  if (!bound) return {};
+  if (!requested) return { targeting: structuredClone(bound) };
+  const resolved = structuredClone(bound);
+  const supportRecord = isRecord(support) ? support : {};
+  for (const [field, requestedValue] of Object.entries(requested)) {
+    if (bound[field] !== undefined) {
+      const supportAllowsAdditions = concreteTargetingSupported(
+        field,
+        supportRecord[field],
+        requestedValue,
+      );
+      const intersection = intersectBoundTargeting(
+        bound[field],
+        requestedValue,
+        `${path}.${field}`,
+        supportAllowsAdditions,
+        EXCLUSION_TARGETING_FIELDS.has(field) ? 'superset' : 'subset',
+      );
+      if (intersection.errorPath) return { errorPath: intersection.errorPath };
+      resolved[field] = intersection.value;
+      continue;
+    }
+    if (!concreteTargetingSupported(field, supportRecord[field], requestedValue)) {
+      return { errorPath: `${path}.${field}` };
+    }
+    resolved[field] = structuredClone(requestedValue);
+  }
+  return { targeting: resolved };
+}
+
+function pruneConfiguredProducts(session: SessionState): void {
+  const now = Date.now();
+  for (const [productId, product] of session.configuredProducts) {
+    const expiry = typeof product.expires_at === 'string' ? Date.parse(product.expires_at) : NaN;
+    const referencedByMediaBuy = [...session.mediaBuys.values()].some(mediaBuy => (
+      mediaBuy.packages.some(pkg => pkg.productId === productId)
+    ));
+    const referencedByDiscovery = session.lastGetProductsContext?.products?.some(
+      candidate => candidate.product_id === productId,
+    ) || session.lastGetProductsContext?.proposals?.some(proposal => (
+      proposal.allocations.some(allocation => allocation.product_id === productId)
+    ));
+    const referencedByNegotiation = [...session.proposalRefinementRecords.values()].some(record => (
+      record.proposal.commercial_terms.purchases.some(purchase => purchase.product_id === productId)
+    ));
+    if (Number.isFinite(expiry)
+      && expiry < now
+      && !referencedByMediaBuy
+      && !referencedByDiscovery
+      && !referencedByNegotiation) {
+      session.configuredProducts.delete(productId);
+      session.configuredProductTargeting.delete(productId);
+    }
+  }
+}
+
+/** Execute the 3.2 discovery targeting contract for the deterministic training
+ * catalog. Future-selection requirements are strict capability filters.
+ * Concrete targeting produces a distinct, time-bound configured offer whose
+ * pricing and forecast are the snapshots the learner can carry into purchase. */
+function applyDiscoveryTargeting(
+  products: Product[],
+  req: GetProductsRequest,
+  session: SessionState,
+  lineageKey: string,
+  sourceProductIds: Map<string, string>,
+  reusedConfiguredProductIds: Set<string>,
+): { products: Product[]; capacityDrops: number } {
+  const request = req as unknown as Record<string, unknown>;
+  const targetingOverlay = isRecord(request.targeting_overlay)
+    ? request.targeting_overlay
+    : undefined;
+  const requiredOverlaySupport = isRecord(request.required_overlay_support)
+    ? request.required_overlay_support
+    : undefined;
+  let targeted = products;
+  if (requiredOverlaySupport) {
+    targeted = targeted.filter(product => {
+      const support = (product as unknown as Record<string, unknown>).overlay_support;
+      return overlaySupportContains(support, requiredOverlaySupport);
+    });
+  }
+  if (!targetingOverlay) return { products: targeted, capacityDrops: 0 };
+  pruneConfiguredProducts(session);
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const identityInput = Object.fromEntries(Object.entries(request).filter(([field]) => ![
+    'idempotency_key',
+    'pagination',
+    'fields',
+    'push_notification_config',
+  ].includes(field)));
+  const requestIdentity = canonicalize(identityInput);
+  const validityPeriod = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
+  const plannedProducts = targeted.map(product => {
+    const configuredId = `configured_${createHash('sha256')
+      .update(`${lineageKey}\0${requestIdentity}\0${validityPeriod}\0${product.product_id}`)
+      .digest('hex')
+      .slice(0, 24)}`;
+    return { product, configuredId, existing: session.configuredProducts.get(configuredId) };
+  });
+  const additionalProducts = plannedProducts.filter(({ existing }) => existing === undefined).length;
+  const capacityDrops = Math.max(
+    0,
+    session.configuredProducts.size + additionalProducts - MAX_CONFIGURED_PRODUCTS_PER_SESSION,
+  );
+  if (capacityDrops > 0) return { products: [], capacityDrops };
+
+  const configuredProducts = plannedProducts.map(({ product, configuredId, existing }) => {
+    if (existing && (!existing.expires_at || new Date(existing.expires_at) >= new Date())) {
+      sourceProductIds.set(configuredId, product.product_id);
+      reusedConfiguredProductIds.add(configuredId);
+      return structuredClone(existing);
+    }
+    if (existing) {
+      session.configuredProducts.delete(configuredId);
+      session.configuredProductTargeting.delete(configuredId);
+    }
+    const configured = {
+      ...structuredClone(product),
+      product_id: configuredId,
+      is_custom: true,
+      expires_at: product.expires_at ?? expiresAt,
+    } as Product;
+    session.configuredProducts.set(configuredId, configured);
+    session.configuredProductTargeting.set(configuredId, structuredClone(targetingOverlay));
+    sourceProductIds.set(configuredId, product.product_id);
+    return configured;
+  });
+  return { products: configuredProducts, capacityDrops };
+}
+
+function bindConfiguredTargetingToProposal(proposal: Proposal, session: SessionState): Proposal {
+  const internal = proposal as unknown as Record<string, unknown>;
+  if (!isRecord(internal.__canonical_commercial_terms)) return proposal;
+  const terms = structuredClone(internal.__canonical_commercial_terms);
+  if (!Array.isArray(terms.purchases)) return proposal;
+  let changed = false;
+  terms.purchases = terms.purchases.map(purchase => {
+    if (!isRecord(purchase) || typeof purchase.product_id !== 'string') return purchase;
+    const bound = session.configuredProductTargeting.get(purchase.product_id);
+    if (!bound || purchase.targeting_overlay !== undefined) return purchase;
+    changed = true;
+    return { ...purchase, targeting_overlay: structuredClone(bound) };
+  });
+  if (!changed) return proposal;
+  internal.__canonical_commercial_terms = terms;
+  internal.__canonical_terms_digest = proposalTermsDigest(terms);
+  return proposal;
 }
 
 function outwardProposal(proposal: Record<string, unknown>, products: Map<string, Product>): Record<string, unknown> {
@@ -5928,8 +6400,17 @@ export function projectProductDiscoveryResult(
     ? new Set(criteria.product_ids.filter((id): id is string => typeof id === 'string'))
     : undefined;
   if (requestedProductIds) {
+    const matchesRequestedProduct = (productId: string): boolean => {
+      if (requestedProductIds.has(productId)) return true;
+      const product = proposalProducts.get(productId) as unknown as Record<string, unknown> | undefined;
+      return product?.is_custom === true;
+    };
     products = products.filter(product => (
-      typeof product.product_id === 'string' && requestedProductIds.has(product.product_id)
+      typeof product.product_id === 'string'
+      && (
+        requestedProductIds.has(product.product_id)
+        || product.is_custom === true
+      )
     ));
     if (toolName === 'request_proposals') {
       proposals = proposals.filter(proposal => (
@@ -5937,7 +6418,7 @@ export function projectProductDiscoveryResult(
         && proposal.allocations.every(allocation => (
           isRecord(allocation)
           && typeof allocation.product_id === 'string'
-          && requestedProductIds.has(allocation.product_id)
+          && matchesRequestedProduct(allocation.product_id)
         ))
       ));
     }
@@ -5956,9 +6437,18 @@ export function projectProductDiscoveryResult(
     const requestedFields = Array.isArray(originalArgs.fields)
       ? new Set(originalArgs.fields.filter((field): field is string => typeof field === 'string'))
       : undefined;
+    const requiredProductFields = new Set<string>();
+    if (isRecord(criteria?.required_overlay_support)) requiredProductFields.add('overlay_support');
+    if (isRecord(criteria?.targeting_overlay)) {
+      requiredProductFields.add('is_custom');
+      requiredProductFields.add('expires_at');
+      if (products.some(product => isRecord(product.targeting_resolution))) {
+        requiredProductFields.add('targeting_resolution');
+      }
+    }
     return {
       outcome: 'listed',
-      products: products.map(product => compactLifecycleProduct(product, requestedFields)),
+      products: products.map(product => compactLifecycleProduct(product, requestedFields, requiredProductFields)),
       ...(pagination && typeof pagination.cursor === 'string' && { next_cursor: pagination.cursor }),
       ...(typeof result.wholesale_feed_version === 'string' && { feed_version: result.wholesale_feed_version }),
       ...(typeof result.pricing_version === 'string' && { pricing_version: result.pricing_version }),
@@ -6244,15 +6734,6 @@ export function validateProductDiscoveryAliasInput(
       return { message: 'if_pricing_version requires if_feed_version', field: 'if_feed_version' };
     }
     const criteria = isRecord(args.criteria) ? args.criteria : undefined;
-    if (criteria?.targeting_overlay !== undefined || criteria?.required_overlay_support !== undefined) {
-      return {
-        code: 'UNSUPPORTED_FEATURE',
-        message: 'The training agent does not execute split-task targeting criteria until the 3.2 SDK rollout; use schema fixtures for preview validation.',
-        field: criteria.targeting_overlay !== undefined
-          ? 'criteria.targeting_overlay'
-          : 'criteria.required_overlay_support',
-      };
-    }
     if (isRecord(criteria?.catalog) && args.brand === undefined && !hasNaturalAccountBrand) {
       return { message: 'brand is required when catalog criteria are present', field: 'brand' };
     }
@@ -6268,15 +6749,6 @@ export function validateProductDiscoveryAliasInput(
       return { message: 'brand is required for request_proposals', field: 'brand' };
     }
     const criteria = isRecord(args.criteria) ? args.criteria : undefined;
-    if (criteria?.targeting_overlay !== undefined || criteria?.required_overlay_support !== undefined) {
-      return {
-        code: 'UNSUPPORTED_FEATURE',
-        message: 'The training agent does not execute split-task targeting criteria until the 3.2 SDK rollout; use schema fixtures for preview validation.',
-        field: criteria.targeting_overlay !== undefined
-          ? 'criteria.targeting_overlay'
-          : 'criteria.required_overlay_support',
-      };
-    }
     if (isRecord(criteria?.catalog) && args.brand === undefined && !hasNaturalAccountBrand) {
       return { message: 'brand is required when catalog criteria are present', field: 'brand' };
     }
@@ -7031,6 +7503,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   const buyingMode = req.buying_mode ?? 'brief';
   const proposalLifecycleWrite = buyingMode === 'refine'
     || (req as unknown as Record<string, unknown>).__require_proposals === true;
+  const concreteTargetingWrite = isRecord((req as unknown as Record<string, unknown>).targeting_overlay);
   const compactLifecycleWrite = proposalLifecycleWrite
     && (req as unknown as Record<string, unknown>).__compact_proposal_lifecycle === true;
   const sessionScope = productDiscoverySessionKey(args, ctx);
@@ -7066,7 +7539,7 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
     };
   }
 
-  if (!proposalLifecycleWrite) {
+  if (!proposalLifecycleWrite && !concreteTargetingWrite) {
     let directives: GetProductsReadDirectives = {};
     try {
       const session = await getSession(
@@ -7106,8 +7579,8 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   try {
     if (compactLifecycleWrite) evictSessionFromRequestCache(sessionScope);
     const result = await handleGetProductsUnlocked(args, ctx, paginationOffset);
-    // Keep the mutex until every refine mutation is durable, not just proposal
-    // holds, so a following refine request observes the committed context.
+    // Keep the mutex until every proposal/configured-product mutation is
+    // durable so concurrent discovery cannot lose a returned configured ID.
     await flushDirtySessions();
     return result;
   } finally {
@@ -7240,8 +7713,7 @@ async function handleGetProductsUnlocked(
   }
   if (buyingMode !== 'wholesale') overlayNegotiatedPricingOptions(session, productMap);
   products = Array.from(productMap.values());
-  const registryProducts = products;
-
+  let registryProducts = [...products];
   const requestedProductIds = Array.isArray((req as unknown as Record<string, unknown>).product_ids)
     ? new Set(((req as unknown as Record<string, unknown>).product_ids as unknown[])
         .filter((id): id is string => typeof id === 'string'))
@@ -7307,6 +7779,34 @@ async function handleGetProductsUnlocked(
       });
     }
   }
+  const discoverySourceProductIds = new Map<string, string>();
+  const reusedConfiguredProductIds = new Set<string>();
+  const discoveryTargeting = applyDiscoveryTargeting(
+    products,
+    req,
+    session,
+    productDiscoverySessionKey(req, ctx),
+    discoverySourceProductIds,
+    reusedConfiguredProductIds,
+  );
+  if (discoveryTargeting.capacityDrops > 0) {
+    return {
+      errors: [{
+        code: 'LIMIT_EXCEEDED',
+        message: `Configured-product session limit reached (max ${MAX_CONFIGURED_PRODUCTS_PER_SESSION}); ${discoveryTargeting.capacityDrops} matching product(s) could not be configured. Start a new session or retry after prior offers expire.`,
+        field: 'targeting_overlay',
+        recovery: 'correctable',
+        details: {
+          limit: MAX_CONFIGURED_PRODUCTS_PER_SESSION,
+          dropped_products: discoveryTargeting.capacityDrops,
+        },
+      }] as TaskError[],
+    };
+  }
+  products = discoveryTargeting.products;
+  registryProducts = [...new Map(
+    [...registryProducts, ...products].map(product => [product.product_id, product]),
+  ).values()];
   // Flexible-window availability discovery (offer_filters.availability_horizon)
   // is not an eligibility filter — products stay in the result set even when
   // the seller can only cover part of the horizon — so it is read here but
@@ -7967,9 +8467,9 @@ async function handleGetProductsUnlocked(
       && exactProductIds?.size
       && [...exactProductIds].every(productId => session.complyExtensions.seededProducts.has(productId))
     ) {
-      const requestedProducts = [...exactProductIds]
-        .map(productId => productsById.get(productId))
-        .filter((product): product is Product => product !== undefined);
+      const requestedProducts = products.filter(product => (
+        exactProductIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id)
+      ));
       if (requestedProducts.length === exactProductIds.size) {
         const allocationPercentage = 100 / requestedProducts.length;
         const firstPricing = requestedProducts[0].pricing_options[0];
@@ -7994,14 +8494,16 @@ async function handleGetProductsUnlocked(
     }
     if (exactProductIds) {
       proposals = proposals.filter(proposal => proposal.allocations.every(allocation => (
-        exactProductIds.has(allocation.product_id)
+        exactProductIds.has(discoverySourceProductIds.get(allocation.product_id) ?? allocation.product_id)
       )));
       // Exact product selection asks the seller to quote those published
       // offers. Seeded/conformance products have no pre-authored proposal
       // catalog row, so construct one indicative plan before assigning the
       // caller-scoped immutable proposal ID below.
       if (proposals.length === 0) {
-        const selectedProducts = products.filter(product => exactProductIds.has(product.product_id));
+        const selectedProducts = products.filter(product => (
+          exactProductIds.has(discoverySourceProductIds.get(product.product_id) ?? product.product_id)
+        ));
         if (selectedProducts.length === exactProductIds.size && selectedProducts.length > 0) {
           const allocationPercentage = 100 / selectedProducts.length;
           proposals = [{
@@ -8082,8 +8584,9 @@ async function handleGetProductsUnlocked(
           __outcome_target_forecast: outcomeTargetPlan.forecast,
         }),
       } as unknown as Proposal;
-      return existingById.get(proposalId)
-        ?? withCanonicalProposalEnvelope(
+      const existing = existingById.get(proposalId);
+      if (existing) return existing;
+      return bindConfiguredTargetingToProposal(withCanonicalProposalEnvelope(
           draftProposalSnapshot(snapshot),
           productsById,
           {
@@ -8094,7 +8597,7 @@ async function handleGetProductsUnlocked(
             ...(Array.isArray(requestBrand?.countries)
               && { countries: [...requestBrand.countries].filter(country => typeof country === 'string').sort() }),
           },
-        );
+        ), session);
     });
     if (proposals.length === 0) {
       return {
@@ -8193,7 +8696,18 @@ async function handleGetProductsUnlocked(
       return [successor];
     });
   }
-  products = applyAvailabilityHorizonForecasts(products, availabilityHorizon, session);
+  products = applyAvailabilityHorizonForecasts(
+    products,
+    availabilityHorizon,
+    session,
+    discoverySourceProductIds,
+    reusedConfiguredProductIds,
+  );
+  for (const product of products) {
+    if (session.configuredProducts.has(product.product_id)) {
+      session.configuredProducts.set(product.product_id, structuredClone(product));
+    }
+  }
   const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
   const staleDirective = readDirectives
     ? readDirectives.staleDirective
@@ -10471,6 +10985,7 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
       productsById.set(catalogProduct.product.product_id, { ...catalogProduct.product });
     }
     overlaySeededProducts(session, productsById);
+    overlayConfiguredProducts(session, productsById);
   }
 
   const results: ValidateInputResult[] = await Promise.all(targets.map(target => {
@@ -10764,6 +11279,7 @@ async function handleCreateMediaBuyUnlocked(
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, cp.product]));
   overlaySeededProducts(session, productMap);
+  overlayConfiguredProducts(session, productMap);
   overlayNegotiatedPricingOptions(session, productMap);
 
   // Validate metric-kind optimization_goals against the package's product
@@ -11053,6 +11569,10 @@ async function handleCreateMediaBuyUnlocked(
           recovery: 'correctable',
         }] as TaskError[],
       };
+    }
+    if (executedCompactProposalSession && executedCompactProposalSession !== session) {
+      overlayConfiguredProducts(executedCompactProposalSession, productMap);
+      overlayNegotiatedPricingOptions(executedCompactProposalSession, productMap);
     }
 
     const internalProposal = proposal as unknown as Record<string, unknown>;
@@ -11952,6 +12472,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, { ...cp.product }]));
   overlaySeededProducts(session, productMap);
+  overlayConfiguredProducts(session, productMap);
   overlayNegotiatedPricingOptions(session, productMap);
   const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
   const mb = session.mediaBuys.get(mediaBuyId) ?? getComplianceMediaBuy(mediaBuyId);
@@ -12461,6 +12982,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   const effectivePolicy = aggregateCreativePolicy(session);
   const productValidationMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
   overlaySeededProducts(session, productValidationMap);
+  overlayConfiguredProducts(session, productValidationMap);
   const enforcedPolicies = aggregateEnforcedPolicies(session);
 
   const results: SyncCreativeResult[] = [];
@@ -13085,6 +13607,7 @@ async function handleUpdateMediaBuyUnlocked(
 
   const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
   overlaySeededProducts(session, productMap);
+  overlayConfiguredProducts(session, productMap);
 
   const actionRejection = options.acceptedProposalExecution
     ? undefined
@@ -15644,6 +16167,7 @@ function roundCurrency(value: number, currency: string): number {
 function effectiveProductMapForSession(session: SessionState): Map<string, Product> {
   const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, { ...cp.product }]));
   overlaySeededProducts(session, productMap);
+  overlayConfiguredProducts(session, productMap);
   overlayNegotiatedPricingOptions(session, productMap);
   return productMap;
 }
@@ -16712,8 +17236,10 @@ export async function handleBuyProducts(
 
   const catalog = new Map(getCatalog().map(entry => [entry.product.product_id, entry.product]));
   overlaySeededProducts(session, catalog);
+  overlayConfiguredProducts(session, catalog);
   const purchaseStartedAt = new Date().toISOString();
   const canonicalPurchases: CompactProductPurchase[] = [];
+  const targetedPackageCounts = new Map<string, number>();
   for (let index = 0; index < args.purchases.length; index++) {
     const purchase = args.purchases[index]!;
     const product = catalog.get(purchase.product_id);
@@ -16766,10 +17292,63 @@ export async function handleBuyProducts(
         };
       }
     }
+    const boundTargeting = session.configuredProductTargeting.get(purchase.product_id);
+    const requestedTargeting = isRecord(purchase.targeting_overlay)
+      ? purchase.targeting_overlay
+      : undefined;
+    const overlaySupport = isRecord(productTerms.overlay_support)
+      ? productTerms.overlay_support
+      : {};
+    if (requestedTargeting) {
+      for (const field of [
+        'geo_regions', 'geo_regions_exclude',
+        'geo_metros', 'geo_metros_exclude',
+        'geo_places', 'geo_places_exclude',
+        'placement_selection',
+      ]) {
+        if (requestedTargeting[field] === undefined) continue;
+        const fieldSupport = overlaySupport[field];
+        if (!isRecord(fieldSupport) || typeof fieldSupport.max_packages !== 'number') continue;
+        const limitKey = `${purchase.product_id}\0${field}`;
+        const count = (targetedPackageCounts.get(limitKey) ?? 0) + 1;
+        if (count > fieldSupport.max_packages) {
+          return {
+            errors: [{
+              code: 'UNSUPPORTED_FEATURE',
+              message: `Purchase batch exceeds overlay_support.${field}.max_packages for this configured product.`,
+              field: `purchases[${index}].targeting_overlay.${field}`,
+              recovery: 'correctable',
+              details: { max_packages: fieldSupport.max_packages },
+            }],
+          };
+        }
+        targetedPackageCounts.set(limitKey, count);
+      }
+    }
+    const resolvedTargeting = resolveConfiguredPurchaseTargeting(
+      boundTargeting,
+      requestedTargeting,
+      overlaySupport,
+      `purchases[${index}].targeting_overlay`,
+    );
+    if (resolvedTargeting.errorPath) {
+      return {
+        errors: [{
+          code: 'UNSUPPORTED_FEATURE',
+          message: 'Purchase targeting must narrow targeting bound to the configured product or use a dimension declared in overlay_support.',
+          field: resolvedTargeting.errorPath,
+          recovery: 'correctable',
+        }],
+      };
+    }
+    const effectiveTargeting = resolvedTargeting.targeting;
     const purchaseStartTime = purchase.start_time ?? args.start_time;
     canonicalPurchases.push({
       ...structuredClone(purchase),
       pricing: canonicalPricing as unknown as CompactProductPurchase['pricing'],
+      ...(effectiveTargeting && {
+        targeting_overlay: effectiveTargeting as CompactProductPurchase['targeting_overlay'],
+      }),
       start_time: purchaseStartTime === 'asap' ? purchaseStartedAt : purchaseStartTime,
       end_time: purchase.end_time ?? args.end_time,
       ...(purchase.measurement_terms === undefined

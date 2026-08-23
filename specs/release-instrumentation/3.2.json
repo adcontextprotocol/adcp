@@ -1,0 +1,150 @@
+{
+  "release": "3.2.0-beta.5",
+  "surfaces": ["docs", "training_agent", "compliance", "training"],
+  "features": [
+    {
+      "id": "compact_media_buy_lifecycle",
+      "surfaces": {
+        "docs": { "status": "covered", "evidence": ["docs/media-buy/product-discovery/proposal-negotiation.mdx"] },
+        "training_agent": { "status": "covered", "evidence": ["server/src/training-agent/task-handlers.ts"] },
+        "compliance": { "status": "covered", "evidence": ["static/compliance/source/protocols/media-buy/scenarios/typed_proposal_negotiation.yaml"] },
+        "training": { "status": "covered", "evidence": ["server/src/db/migrations/550_curriculum_3_2_criteria.sql"] }
+      }
+    },
+    {
+      "id": "targeting_aware_discovery",
+      "surfaces": {
+        "docs": { "status": "covered", "evidence": ["docs/reference/migration/targeting-aware-discovery.mdx"] },
+        "training_agent": { "status": "covered", "evidence": ["server/src/training-agent/task-handlers.ts", "server/tests/unit/training-agent.test.ts"] },
+        "compliance": { "status": "covered", "evidence": ["static/compliance/source/protocols/media-buy/scenarios/targeting_aware_discovery.yaml"] },
+        "training": { "status": "covered", "evidence": ["docs/learning/specialist/media-buy.mdx", "server/src/db/migrations/550_curriculum_3_2_criteria.sql"] }
+      }
+    },
+    {
+      "id": "availability_and_outcome_planning",
+      "surfaces": {
+        "docs": { "status": "covered", "evidence": ["docs/reference/whats-new-in-3-2.mdx"] },
+        "training_agent": { "status": "covered", "evidence": ["server/src/training-agent/task-handlers.ts"] },
+        "compliance": { "status": "covered", "evidence": ["static/compliance/source/protocols/media-buy/scenarios/availability_windows.yaml", "static/compliance/source/protocols/media-buy/scenarios/outcome_target.yaml"] },
+        "training": { "status": "covered", "evidence": ["server/src/db/migrations/550_curriculum_3_2_criteria.sql"] }
+      }
+    },
+    {
+      "id": "canonical_creative_quality",
+      "surfaces": {
+        "docs": { "status": "covered", "evidence": ["docs/creative/canonical-formats.mdx", "docs/creative/channels/video.mdx", "docs/creative/accessibility.mdx"] },
+        "training_agent": { "status": "covered", "evidence": ["server/src/training-agent/task-handlers.ts"] },
+        "compliance": { "status": "covered", "evidence": ["static/compliance/source/protocols/creative/index.yaml"] },
+        "training": { "status": "covered", "evidence": ["server/src/db/migrations/550_curriculum_3_2_criteria.sql"] }
+      }
+    },
+    {
+      "id": "request_signing_profile_3_2",
+      "surfaces": {
+        "docs": { "status": "covered", "evidence": ["docs/building/by-layer/L1/request-signing.mdx"] },
+        "training_agent": { "status": "covered", "evidence": ["server/src/training-agent/tenants/signing.ts"] },
+        "compliance": { "status": "covered", "evidence": ["static/compliance/source/test-vectors/request-signing/profile-3.2/positive/001-post-with-content-digest.json", "static/compliance/source/test-vectors/request-signing/profile-3.2/negative/001-base64url-sf-binary.json"] },
+        "training": { "status": "covered", "evidence": ["server/src/db/migrations/550_curriculum_3_2_criteria.sql"] }
+      }
+    },
+    {
+      "id": "agent_notifications",
+      "surfaces": {
+        "docs": { "status": "covered", "evidence": ["docs/protocol/sync_agent_notification_configs.mdx"] },
+        "training_agent": { "status": "covered", "evidence": ["server/src/training-agent/agent-notification-configs.ts"] },
+        "compliance": { "status": "covered", "evidence": ["static/compliance/source/universal/agent-notification-configs.yaml"] },
+        "training": { "status": "not_applicable", "reason": "Operational notification registration is not a standalone specialist competency in the 3.2 curriculum." }
+      }
+    },
+    {
+      "id": "idempotency_retention_and_retry_binding",
+      "surfaces": {
+        "docs": { "status": "covered", "evidence": ["docs/learning/specialist/security.mdx"] },
+        "training_agent": { "status": "covered", "evidence": ["server/src/training-agent/idempotency.ts", "server/src/db/migrations/549_idempotency_retention_boundary.sql", "server/tests/unit/idempotency-store.test.ts"] },
+        "compliance": { "status": "covered", "evidence": ["static/compliance/source/universal/idempotency.yaml"] },
+        "training": { "status": "covered", "evidence": ["docs/learning/specialist/security.mdx"] }
+      }
+    },
+    {
+      "id": "webhook_delivery_identity_and_recovery",
+      "surfaces": {
+        "docs": { "status": "covered", "evidence": ["docs/learning/specialist/security.mdx"] },
+        "training_agent": { "status": "covered", "evidence": ["server/src/training-agent/webhooks.ts"] },
+        "compliance": { "status": "covered", "evidence": ["static/compliance/source/universal/webhook-emission.yaml"] },
+        "training": { "status": "covered", "evidence": ["server/src/db/migrations/550_curriculum_3_2_criteria.sql", "docs/learning/specialist/security.mdx"] }
+      }
+    },
+    {
+      "id": "portable_attestations",
+      "surfaces": {
+        "docs": { "status": "covered", "evidence": ["docs/reference/whats-new-in-3-2.mdx"] },
+        "training_agent": { "status": "covered", "evidence": ["server/src/training-agent/task-handlers.ts"] },
+        "compliance": { "status": "covered", "evidence": ["static/compliance/source/test-vectors/attestations/vectors.json", "static/compliance/source/test-vectors/rights-attestations/vectors.json"] },
+        "training": { "status": "not_applicable", "reason": "Portable attestation transport is not a standalone certification competency in the current specialist curriculum." }
+      }
+    },
+    {
+      "id": "delivery_reconciliation",
+      "surfaces": {
+        "docs": { "status": "covered", "evidence": ["docs/learning/specialist/media-buy.mdx"] },
+        "training_agent": { "status": "covered", "evidence": ["server/src/training-agent/task-handlers.ts"] },
+        "compliance": { "status": "covered", "evidence": ["static/compliance/source/protocols/media-buy/scenarios/delivery_reporting.yaml", "static/compliance/source/protocols/media-buy/scenarios/billing_finality_delivery.yaml"] },
+        "training": { "status": "covered", "evidence": ["server/src/db/migrations/477_broadcast_delivery_criteria.sql"] }
+      }
+    },
+    {
+      "id": "campaign_governance_experimental",
+      "surfaces": {
+        "docs": { "status": "covered", "evidence": ["docs/governance/campaign/specification.mdx"] },
+        "training_agent": { "status": "covered", "evidence": ["server/src/training-agent/governance-handlers.ts"] },
+        "compliance": { "status": "covered", "evidence": ["static/compliance/source/protocols/media-buy/scenarios/governance_conditions.yaml"] },
+        "training": { "status": "covered", "evidence": ["server/src/db/migrations/407_curriculum_3_0_criterion_ids.sql"] }
+      }
+    },
+    {
+      "id": "trusted_match_experimental",
+      "surfaces": {
+        "docs": { "status": "covered", "evidence": ["docs/trusted-match/specification.mdx"] },
+        "training_agent": { "status": "covered", "evidence": ["server/src/training-agent/tenants/router.ts"] },
+        "compliance": { "status": "covered", "evidence": ["static/compliance/source/universal/trusted-match-publisher-authentication.yaml"] },
+        "training": { "status": "not_applicable", "reason": "Trusted Match remains experimental; certification targeting waits for stabilization." }
+      }
+    },
+    {
+      "id": "creative_revisions_candidate",
+      "surfaces": {
+        "docs": { "status": "deferred", "reason": "Issue #6347 and PR #6781 are not merged into the 3.2 beta.5 protocol artifact." },
+        "training_agent": { "status": "deferred", "reason": "Runtime revision staging waits for the final protocol and merged schema contract." },
+        "compliance": { "status": "deferred", "reason": "Conformance scenarios must follow the final creative revision state machine and fields." },
+        "training": { "status": "deferred", "reason": "Certification criteria wait until creative revision behavior is stable and shipped." }
+      }
+    },
+    {
+      "id": "measurement_tracking_candidate",
+      "surfaces": {
+        "docs": { "status": "deferred", "reason": "Issue #6207 and PR #6786 remain under review and are not part of beta.5." },
+        "training_agent": { "status": "deferred", "reason": "Tracking capability declarations wait for the working-group-approved schema." },
+        "compliance": { "status": "deferred", "reason": "Vectors and scenarios wait for final tracker execution and exposure-data semantics." },
+        "training": { "status": "deferred", "reason": "Measurement capability teaching waits for the final discoverability contract." }
+      }
+    },
+    {
+      "id": "audience_activation_candidate",
+      "surfaces": {
+        "docs": { "status": "deferred", "reason": "Issue #4324 and PR #6549 remain unmerged and are not part of beta.5." },
+        "training_agent": { "status": "deferred", "reason": "Activation-method discovery waits for the final product and capability schemas." },
+        "compliance": { "status": "deferred", "reason": "Activation-method validation and filtering scenarios wait for the merged contract." },
+        "training": { "status": "deferred", "reason": "Audience activation curriculum waits for the supported method vocabulary to ship." }
+      }
+    },
+    {
+      "id": "radio_and_place_based_audio_candidates",
+      "surfaces": {
+        "docs": { "status": "deferred", "reason": "Issues #6167, #6139, and #5878 still require explicit 3.2 ship-or-defer decisions." },
+        "training_agent": { "status": "deferred", "reason": "No approved runtime contract yet exists for delayed radio reconciliation or place-based audio." },
+        "compliance": { "status": "deferred", "reason": "Conformance cannot be authored until the working group resolves the open radio contracts." },
+        "training": { "status": "deferred", "reason": "Certification remains unchanged until the radio and place-based audio semantics stabilize." }
+      }
+    }
+  ]
+}

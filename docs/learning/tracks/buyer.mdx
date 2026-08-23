@@ -74,7 +74,7 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
 - **Order lifecycle** — `pending_creatives` → `pending_start` → `active`; check `valid_actions` from `get_media_buys` before acting. S1 covers the full state machine and recovery
 - **Version negotiation** — declare `adcp_major_version` on every request; handle `VERSION_UNSUPPORTED` by selecting a compatible seller or downgrading the payload
 - **Pricing selection** — products return `pricing_options[]`; buyer selects one via `pricing_option_id` in `create_media_buy`
-- **Structured-first discovery** — use `filters` to decide which offers may be returned, `targeting_overlay` to constrain delivery, and `required_overlay_support` for dimensions selected on packages later
+- **Structured-first discovery** — on the compact 3.2 tasks, use `criteria.offer_filters` to decide which offers may be returned, `criteria.targeting_overlay` to constrain delivery, and `criteria.required_overlay_support` for dimensions selected on packages later. The 3.x `get_products` compatibility facade keeps the equivalent top-level fields
 - **Two optional discovery surfaces** — the 3.2 wholesale feed (`list_products`) is the self-serve, lower-resolution surface; a brief (`request_proposals`, or `get_products` with a brief) is the higher-resolution one. Query both where the seller advertises them; a thin or absent feed is not a capability assessment
 - **Resolution acceptance** — no resolution means an exact structured overlay; review `modifications` and brief-derived targeting before selecting an opaque configured `product_id`
 - **Negotiated accountability** — for guaranteed buys, propose `measurement_terms` / `performance_standards`; seller accepts, adjusts, or returns `TERMS_REJECTED`. S1 covers the recovery patterns
@@ -256,11 +256,11 @@ New to running tool calls and reading JSON in a terminal? Do [A2b: Testing your 
 ### What you'll build
 
 <Note>
-The targeting-aware discovery portion is a 3.2 assessment objective. The public
-training seller will enable it after the 3.2 beta SDK release; follow
-[issue #6199](https://github.com/adcontextprotocol/adcp/issues/6199). Until
-then, validate this portion with schema fixtures rather than assuming the live
-training runtime enforces unknown fields.
+The public training seller implements targeting-aware discovery on the exact
+AdCP `3.2-beta.5` wire bundle. Pin `@adcp/sdk@14.0.0-beta.7`, verify the
+seller's advertised version and lifecycle tools, and retain the request,
+response, and package readback as assessment evidence. Do not treat an
+uncapable seller silently ignoring unknown fields as validation.
 </Note>
 
 - Account setup with `sync_accounts`
@@ -281,7 +281,7 @@ To see the seller responses your agent must handle, you can inspect the test sel
 
 ```bash
 # Inspects the test SELLER's get_products response — the shape your buyer agent must parse.
-npx @adcp/sdk@latest test-mcp get_products '{"idempotency_key":"550e8400-e29b-41d4-a716-446655442065","buying_mode":"brief","brief":"your campaign brief"}'
+npx @adcp/sdk@14.0.0-beta.7 test-mcp get_products '{"adcp_version":"3.2-beta.5","idempotency_key":"550e8400-e29b-41d4-a716-446655442065","buying_mode":"brief","brief":"your campaign brief"}'
 ```
 
 See [Build a caller](/docs/building/by-layer/L4/build-a-caller) for client setup and [Validate Your Agent](/docs/building/verification/validate-your-agent) for the storyboard workflow.

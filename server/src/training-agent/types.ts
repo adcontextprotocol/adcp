@@ -409,6 +409,12 @@ export interface SessionState {
     productId: string;
     option: Product['pricing_options'][number];
   }>;
+  /** Request-scoped configured offers minted by targeting-aware discovery.
+   * Kept resolvable for their advertised lifetime and for downstream direct
+   * purchase, creative validation, and delivery flows in the same account. */
+  configuredProducts: Map<string, Product>;
+  /** Concrete discovery targeting bound to each configured product ID. */
+  configuredProductTargeting: Map<string, Record<string, unknown>>;
   /** Durable proposal-successor receipts kept outside immutable proposal
    * snapshots. Finalization uses this to recover an exact idempotent retry
    * after domain state was flushed but before the idempotency receipt was
