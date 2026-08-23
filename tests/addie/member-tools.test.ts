@@ -68,6 +68,7 @@ import { MEMBER_TOOLS, createMemberToolHandlers } from '../../server/src/addie/m
 import { getGitHubAccessToken } from '../../server/src/services/pipes.js';
 import { AgentContextDatabase } from '../../server/src/db/agent-context-db.js';
 import { ComplianceDatabase } from '../../server/src/db/compliance-db.js';
+import { HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS } from '../../server/src/services/hosted-compliance-version.js';
 import { AgentSnapshotDatabase } from '../../server/src/db/agent-snapshot-db.js';
 import * as wgService from '../../server/src/services/working-group-membership-service.js';
 
@@ -1164,6 +1165,13 @@ describe('createMemberToolHandlers', () => {
 
       expect(result).toContain('Quality Evaluation: Seller Agent');
       expect(result).not.toContain('diagnostic only');
+      expect(memberToolMocks.comply).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          timeout_ms: HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS,
+        }),
+        expect.objectContaining({ requested: '3.0' }),
+      );
       expect(ComplianceDatabase.prototype.recordComplianceRun).toHaveBeenCalledTimes(1);
       expect(ComplianceDatabase.prototype.recordComplianceRun).toHaveBeenCalledWith(
         expect.objectContaining({
