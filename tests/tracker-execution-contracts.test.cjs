@@ -81,14 +81,16 @@ function selectorMatches(selector, tracker, executionVersion) {
       selector.custom_event_name === tracker.custom_event_name;
   }
   if (selector.asset_type === 'vast_tracker') {
+    const trackerOffset = tracker.vast_event === 'progress' ? tracker.offset : undefined;
     return selector.vast_event === tracker.vast_event &&
       selector.target === (tracker.target ?? 'linear') &&
-      selector.offset === tracker.offset &&
+      selector.offset === trackerOffset &&
       selector.vast_versions.includes(executionVersion);
   }
+  const trackerOffset = tracker.daast_event === 'progress' ? tracker.offset : undefined;
   return selector.daast_event === tracker.daast_event &&
     selector.target === (tracker.target ?? 'linear') &&
-    selector.offset === tracker.offset &&
+    selector.offset === trackerOffset &&
     selector.daast_versions.includes(executionVersion);
 }
 
@@ -217,6 +219,28 @@ test('VAST selector enforces event, target, progress, and per-version constraint
     vast_event: 'creativeView',
     url: 'https://measurement.example/tracker'
   }), true, 'default linear VAST assets accept creativeView');
+  for (const legacyAsset of [
+    { vast_event: 'start', offset: '00:00:05.000' },
+    { vast_event: 'close' },
+    { vast_event: 'start', target: 'companion' }
+  ]) {
+    assert.equal(validateAsset({
+      asset_type: 'vast_tracker',
+      url: 'https://measurement.example/legacy',
+      ...legacyAsset
+    }), true, `existing 3.x VAST asset became invalid: ${JSON.stringify(legacyAsset)}`);
+  }
+  assert.deepEqual(evaluateTracker({
+    complete: true,
+    honored: [vastSelector()]
+  }, {
+    asset_type: 'vast_tracker',
+    vast_event: 'start',
+    offset: '00:00:05.000'
+  }, '4.2'), {
+    status: 'matched',
+    selector_id: 'vast-start'
+  }, 'ignored non-progress asset offsets are removed before contract matching');
 });
 
 test('DAAST selector enforces event, target, progress, and version shape', () => {
@@ -241,6 +265,18 @@ test('DAAST selector enforces event, target, progress, and version shape', () =>
   assert.equal(validateFormat({ daast_versions: ['9.9'] }), false);
   assert.equal(validateFormat({ daast_version: '1.1', daast_versions: ['1.1'] }), false,
     'producers must not send the singular alias and plural acceptance set together');
+
+  const validateAsset = ajv.getSchema('/schemas/core/assets/daast-tracker-asset.json');
+  for (const legacyAsset of [
+    { daast_event: 'start', offset: '10%' },
+    { daast_event: 'start', target: 'companion' }
+  ]) {
+    assert.equal(validateAsset({
+      asset_type: 'daast_tracker',
+      url: 'https://measurement.example/legacy',
+      ...legacyAsset
+    }), true, `existing 3.x DAAST asset became invalid: ${JSON.stringify(legacyAsset)}`);
+  }
 });
 
 test('complete and empty contract semantics validate and operational uniqueness stays closed', () => {
@@ -266,6 +302,8 @@ test('complete and empty contract semantics validate and operational uniqueness 
       vastSelector({ selector_id: 'v42-v43', vast_versions: ['4.2', '4.3'] })
     ]
   }), 'overlapping_version_sets');
+  assert.match(validate.schema['x-adcp-validation'].asset_normalization,
+    /non-progress asset is ignored and removed/);
 });
 
 test('golden vectors normalize defaults, bind exact versions, and keep incomplete omissions undeclared', () => {

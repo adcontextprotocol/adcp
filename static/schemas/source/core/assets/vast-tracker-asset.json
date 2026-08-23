@@ -31,11 +31,11 @@
     },
     "offset": {
       "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_offset",
-      "description": "VAST `offset` attribute. Required when `vast_event` is `progress`; forbidden otherwise. Format matches the VAST 4.2 XSD `Tracking@offset` pattern: `HH:MM:SS` or `HH:MM:SS.mmm` for absolute time (two-digit hours, minutes 00–59, seconds 00–59), or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted — the VAST 4.2 XSD pattern does not allow a leading minus."
+      "description": "VAST `offset` attribute. Required when `vast_event` is `progress`; ignored otherwise for compatibility with existing 3.x manifests. Format matches the VAST 4.2 XSD `Tracking@offset` pattern: `HH:MM:SS` or `HH:MM:SS.mmm` for absolute time (two-digit hours, minutes 00–59, seconds 00–59), or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted — the VAST 4.2 XSD pattern does not allow a leading minus."
     },
     "target": {
       "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_target",
-      "description": "Which VAST creative element this tracker scopes to — `linear` for `<Linear>/<TrackingEvents>`, `non_linear` for `<NonLinearAds>/<TrackingEvents>`, `companion` for `<CompanionAds>/<Companion>/<TrackingEvents>`. VAST places these under separate XML elements with separate event semantics: `acceptInvitation` is non-linear, `creativeView` is the only companion event in this closed matrix, and `closeLinear` is linear. Defaults to `linear`. Sales agents use this to place the tracker in the correct location during VAST assembly."
+      "description": "Which VAST creative element this tracker scopes to — `linear` for `<Linear>/<TrackingEvents>`, `non_linear` for `<NonLinearAds>/<TrackingEvents>`, `companion` for `<CompanionAds>/<Companion>/<TrackingEvents>`. Defaults to `linear`. Existing 3.x assets remain structurally permissive; a tracker execution contract applies the standards-valid event/target matrix when matching a creative to a product."
     },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
@@ -48,7 +48,15 @@
     "url"
   ],
   "allOf": [
-    { "$ref": "/schemas/core/vast-tracker-constraints.json" }
+    {
+      "if": {
+        "properties": { "vast_event": { "const": "progress" } },
+        "required": ["vast_event"]
+      },
+      "then": {
+        "required": ["offset"]
+      }
+    }
   ],
   "additionalProperties": true
 }

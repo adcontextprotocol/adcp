@@ -21,6 +21,7 @@
     "selector_id_unique": true,
     "structural_selector_identity_unique": true,
     "version_sets": "For one non-version selector identity, version sets must be identical or disjoint; overlapping unequal sets are invalid.",
+    "asset_normalization": "Before selector matching, omitted pixel_tracker.method becomes img, omitted VAST/DAAST target becomes linear, and offset on a non-progress asset is ignored and removed. Existing 3.x asset schemas remain structurally permissive; the selector schema supplies the closed event/target matrix for contract matching.",
     "cardinality": "Each accepted manifest tracker instance is initiated exactly once in total for each logical event occurrence; identical URLs are not deduplicated."
   },
   "additionalProperties": false

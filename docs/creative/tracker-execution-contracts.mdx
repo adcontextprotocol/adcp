@@ -63,7 +63,7 @@ Each `honored[]` entry selects one exact tracker/event combination. It is not a 
 
 Every branch also requires a stable `selector_id`, one `execution_actor` (`seller` or `request_executor`), and a nonempty `firing_paths[]` set (`client`, `server`, or both). Multiple paths mean that one path may perform the single initiation for a logical event; they do not authorize duplicate client-and-server firing.
 
-Asset defaults are normalized before matching: omitted `pixel_tracker.method` is `img`, and omitted VAST/DAAST `target` is `linear`. Two byte-identical URLs in different manifest slots are still two tracker instances. For each logical occurrence of the selected event, the named actor initiates every accepted instance exactly once. This promises construction and handoff of the outbound action—not network delivery, HTTP success, attribution, or reporting credit.
+Asset defaults are normalized before matching: omitted `pixel_tracker.method` is `img`, omitted VAST/DAAST `target` is `linear`, and a legacy `offset` on a non-`progress` asset is ignored and removed before comparison. Contract selectors themselves must omit `offset` for non-`progress` events. Existing 3.x asset schemas remain permissive about event/target combinations; the strict standards matrix is applied when matching those assets to a contract-bearing product. Two byte-identical URLs in different manifest slots are still two tracker instances. For each logical occurrence of the selected event, the named actor initiates every accepted instance exactly once. This promises construction and handoff of the outbound action—not network delivery, HTTP success, attribution, or reporting credit.
 
 ```json
 {

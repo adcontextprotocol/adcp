@@ -64,6 +64,26 @@ test('contract-bearing product and compact declarations require stable option id
     assert.equal(validate({ ...contractDeclaration, format_option_id: '' }), false,
       `${schemaId} accepted an empty seller-authority identity`);
   }
+
+  const validateLegacyProduct = await compile('/schemas/core/product-format-declaration.json');
+  assert.equal(validateLegacyProduct({
+    format_option_id: '',
+    format_kind: 'image',
+    params: { width: 300, height: 250 }
+  }), true, 'legacy non-contract Product declarations retain 3.1 empty-ID compatibility');
+
+  const validateCompact = await compile('/schemas/core/canonical-format-option.json');
+  assert.equal(validateCompact({
+    publisher_domain: 'daily-pulse.example',
+    format_kind: 'image',
+    params: { width: 300, height: 250 }
+  }), false, 'publisher-scoped compact options require their complete namespace pair');
+  assert.equal(validateCompact({
+    format_option_id: 'homepage_image',
+    publisher_domain: 'daily-pulse.example',
+    format_kind: 'image',
+    params: { width: 300, height: 250 }
+  }), true, JSON.stringify(validateCompact.errors, null, 2));
 });
 
 test('package snapshots pair contract, product identity, and immutable digests', async () => {
@@ -119,6 +139,16 @@ test('package and readback surfaces publish PackageFormatSnapshot rather than mu
     formats_to_provide: [contractSnapshot],
     formats_pending: []
   }), false, 'package accepted a contract snapshot without enclosing product_id');
+  assert.equal(validatePackage({
+    package_id: 'pkg_legacy',
+    product_id: ''
+  }), true, 'legacy non-contract packages retain 3.1 empty-ID compatibility');
+  assert.equal(validatePackage({
+    package_id: 'pkg_homepage',
+    product_id: '',
+    formats_to_provide: [contractSnapshot],
+    formats_pending: []
+  }), false, 'contract-bearing packages require a nonempty enclosing product identity');
 
   const validateReadback = await compile('/schemas/media-buy/get-media-buys-response.json');
   const response = {
@@ -139,6 +169,13 @@ test('package and readback surfaces publish PackageFormatSnapshot rather than mu
     }]
   };
   assert.equal(validateReadback(response), true, JSON.stringify(validateReadback.errors, null, 2));
+  const legacyResponse = structuredClone(response);
+  legacyResponse.media_buys[0].packages = [{
+    package_id: 'pkg_legacy',
+    product_id: ''
+  }];
+  assert.equal(validateReadback(legacyResponse), true,
+    'legacy non-contract package readback retains 3.1 empty-ID compatibility');
   delete response.media_buys[0].packages[0].product_id;
   assert.equal(validateReadback(response), false,
     'get_media_buys readback accepted a contract snapshot without enclosing product_id');

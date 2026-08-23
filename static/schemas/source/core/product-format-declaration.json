@@ -9,7 +9,6 @@
   "properties": {
     "format_option_id": {
       "type": "string",
-      "minLength": 1,
       "description": "Stable identifier for this declaration within its namespace. REQUIRED when a product contains multiple declarations with the same format_kind and SHOULD be set on every entry. Publisher-backed options pair it with publisher_domain; product-local options omit publisher_domain. When a single declaration has a unique format_kind and no ID, buyers author canonically with format_kind plus params; they MUST NOT fall back to deprecated format_ids merely because this optional ID is absent. Examples: 'display_image_300x250', 'responsive_search', 'daily_pulse_homepage_image'."
     },
     "publisher_domain": {
@@ -79,7 +78,10 @@
     {
       "$comment": "A production tracker commitment must be durably addressable; ID-less unique-kind declarations cannot carry seller execution authority.",
       "if": { "required": ["tracker_execution_contract"] },
-      "then": { "required": ["format_option_id"] }
+      "then": {
+        "required": ["format_option_id"],
+        "properties": { "format_option_id": { "minLength": 1 } }
+      }
     },
     {
       "$comment": "Publisher-scoped canonical declarations are addressable only by the complete {publisher_domain, format_option_id} identity pair.",

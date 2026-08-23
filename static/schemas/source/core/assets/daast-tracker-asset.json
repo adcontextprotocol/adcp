@@ -31,11 +31,11 @@
     },
     "offset": {
       "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/daast_offset",
-      "description": "DAAST `offset` attribute. Required when `daast_event` is `progress` (DAAST 1.1 §3.2.4.3); forbidden otherwise. Same format as VAST 4.2 `Tracking@offset`: `HH:MM:SS` or `HH:MM:SS.mmm` for absolute time (two-digit hours, minutes 00–59, seconds 00–59), or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted."
+      "description": "DAAST `offset` attribute. Required when `daast_event` is `progress` (DAAST 1.1 §3.2.4.3); ignored otherwise for compatibility with existing 3.x manifests. Same format as VAST 4.2 `Tracking@offset`: `HH:MM:SS` or `HH:MM:SS.mmm` for absolute time (two-digit hours, minutes 00–59, seconds 00–59), or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted."
     },
     "target": {
       "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/daast_target",
-      "description": "Which DAAST creative element this tracker scopes to — `linear` for `<Linear>/<TrackingEvents>` (DAAST 1.1 §3.2.1.7), `companion` for `<CompanionAds>/<Companion>/<TrackingEvents>` (DAAST 1.1 §3.2.2.7, where the only valid event is `creativeView`). DAAST has no `<NonLinearAds>` element. Defaults to `linear`. Sales agents use this to place the tracker in the correct location during DAAST assembly."
+      "description": "Which DAAST creative element this tracker scopes to — `linear` for `<Linear>/<TrackingEvents>` (DAAST 1.1 §3.2.1.7), `companion` for `<CompanionAds>/<Companion>/<TrackingEvents>` (DAAST 1.1 §3.2.2.7). DAAST has no `<NonLinearAds>` element. Defaults to `linear`. Existing 3.x assets remain structurally permissive; a tracker execution contract applies the standards-valid event/target matrix when matching a creative to a product."
     },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",
@@ -48,7 +48,15 @@
     "url"
   ],
   "allOf": [
-    { "$ref": "/schemas/core/daast-tracker-constraints.json" }
+    {
+      "if": {
+        "properties": { "daast_event": { "const": "progress" } },
+        "required": ["daast_event"]
+      },
+      "then": {
+        "required": ["offset"]
+      }
+    }
   ],
   "additionalProperties": true
 }
