@@ -44,6 +44,14 @@ const STRUCTURED_IDENTITIES = {
   viewed_seconds_histogram: ["viewability", "viewed_seconds_histogram", "array"],
 };
 
+const NON_SCALAR_AGGREGATE_IDENTITIES = [
+  "viewability",
+  ...Object.keys(STRUCTURED_IDENTITIES),
+  "quartile_data",
+  "time_based_views",
+  "dooh_metrics",
+];
+
 // Package-grain survey/model-based estimates: reportable and committable,
 // but excluded from row sorting per sort-metric.json's description.
 const SORT_EXCLUDED_LIFT_METRICS = [
@@ -243,11 +251,11 @@ describe("metric identity coherence", () => {
     );
   });
 
-  it("rejects structured identities from scalar metric aggregates", async () => {
+  it("rejects container and structured identities from scalar metric aggregates", async () => {
     const validate = await compile(
       readSchema("/schemas/core/delivery-metric-aggregate.json")
     );
-    for (const metric_id of Object.keys(STRUCTURED_IDENTITIES)) {
+    for (const metric_id of NON_SCALAR_AGGREGATE_IDENTITIES) {
       assert.equal(
         validate({ scope: "standard", metric_id, value: 42 }),
         false,
