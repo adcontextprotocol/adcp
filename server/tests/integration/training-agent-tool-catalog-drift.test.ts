@@ -157,5 +157,13 @@ describe('tool-catalog drift detection', () => {
     for (const tool of splitTools) {
       expect(compatibilityCatalog).not.toContain(tool);
     }
+    for (const tool of [
+      'sync_agent_notification_configs',
+      'build_creative',
+      'preview_creative',
+      'validate_input',
+    ]) {
+      expect(compatibilityCatalog).not.toContain(tool);
+    }
   });
 });

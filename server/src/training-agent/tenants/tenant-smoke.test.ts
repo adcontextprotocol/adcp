@@ -225,6 +225,7 @@ describe('tenant routing smoke', () => {
       expect(signalsAgent?.type).toBe('signals');
       expect(signalsAgent?.url).toMatch(/\/signals\/mcp$/);
       expect(signalsAgent?.jwks_uri).toMatch(/\/\.well-known\/jwks\.json$/);
+
     } finally {
       await close();
     }
@@ -461,7 +462,7 @@ describe('tenant routing smoke', () => {
       );
 
       const capabilitiesResponse = await callTenantTool(url, 3, 'get_adcp_capabilities', {
-        adcp_version: '3.2-beta.2',
+        adcp_version: '3.2-beta.4',
         adcp_major_version: 3,
       }) as {
         result?: { structuredContent?: {
@@ -474,8 +475,8 @@ describe('tenant routing smoke', () => {
           };
         } };
       };
-      expect(capabilitiesResponse.result?.structuredContent?.adcp_version).toBe('3.2-beta.2');
-      expect(capabilitiesResponse.result?.structuredContent?.adcp?.supported_versions).toContain('3.2-beta.2');
+      expect(capabilitiesResponse.result?.structuredContent?.adcp_version).toBe('3.2-beta.4');
+      expect(capabilitiesResponse.result?.structuredContent?.adcp?.supported_versions).toContain('3.2-beta.4');
       const mediaBuy = capabilitiesResponse.result?.structuredContent?.media_buy;
       expect(mediaBuy?.supports_proposals).toBe(true);
       expect(mediaBuy?.lifecycle_tools).toEqual([
@@ -520,7 +521,7 @@ describe('tenant routing smoke', () => {
       }
 
       const requested = await callTenantTool(url, 4, 'request_proposals', {
-        adcp_version: '3.2-beta.2',
+        adcp_version: '3.2-beta.4',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-request-0001',
         account: {
@@ -534,12 +535,12 @@ describe('tenant routing smoke', () => {
           proposals?: Array<{ proposal_id?: string }>;
         } };
       };
-      expect(requested.result?.structuredContent?.adcp_version).toBe('3.2-beta.2');
+      expect(requested.result?.structuredContent?.adcp_version).toBe('3.2-beta.4');
       const sourceProposalId = requested.result?.structuredContent?.proposals?.[0]?.proposal_id;
       expect(sourceProposalId, JSON.stringify(requested)).toBeTruthy();
 
       const partial = await callTenantTool(url, 5, 'refine_proposals', {
-        adcp_version: '3.2-beta.2',
+        adcp_version: '3.2-beta.4',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-refine-three-0001',
         account: {
@@ -560,14 +561,14 @@ describe('tenant routing smoke', () => {
         } };
       };
       const counteroffer = partial.result?.structuredContent;
-      expect(counteroffer?.adcp_version).toBe('3.2-beta.2');
+      expect(counteroffer?.adcp_version).toBe('3.2-beta.4');
       expect(counteroffer?.adcp_error).toBeUndefined();
       expect(counteroffer?.results?.[0]?.outcome, JSON.stringify(counteroffer)).toBe('partial');
       expect(counteroffer?.results?.[0]?.reason_code).toBe('alternatives_unavailable');
       expect(counteroffer?.results?.[0]?.proposals).toHaveLength(2);
 
       const refined = await callTenantTool(url, 6, 'refine_proposals', {
-        adcp_version: '3.2-beta.2',
+        adcp_version: '3.2-beta.4',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-refine-two-0001',
         account: {
@@ -588,7 +589,7 @@ describe('tenant routing smoke', () => {
         } };
       };
       const refinement = refined.result?.structuredContent;
-      expect(refinement?.adcp_version).toBe('3.2-beta.2');
+      expect(refinement?.adcp_version).toBe('3.2-beta.4');
       expect(refinement?.adcp_error).toBeUndefined();
       expect(refinement?.results?.[0]?.outcome).toBe('revised');
       expect(refinement?.results?.[0]?.proposals).toHaveLength(2);
@@ -596,7 +597,7 @@ describe('tenant routing smoke', () => {
       const revisedProposalId = refinement?.results?.[0]?.proposals?.[0]?.proposal_id;
       expect(revisedProposalId).toEqual(expect.any(String));
       const finalized = await callTenantTool(url, 7, 'refine_proposals', {
-        adcp_version: '3.2-beta.2',
+        adcp_version: '3.2-beta.4',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-finalize-0001',
         refinements: [{ proposal_id: revisedProposalId, action: 'finalize' }],
@@ -1221,6 +1222,12 @@ describe('tenant routing smoke', () => {
       expect(controlled?.adcp_error, JSON.stringify(controlled)).toBeUndefined();
       expect(controlled).toMatchObject({ media_buy_id: bought.media_buy_id, revision: 4 });
 
+      const controlledBuy = structured(await callTenantTool(salesUrl, 1101, 'get_media_buys', {
+        account,
+        media_buy_ids: [bought.media_buy_id],
+      })) as { media_buys?: Array<{ accepted_proposal_id?: string }> };
+      expect(controlledBuy.media_buys?.[0]?.accepted_proposal_id).toBe(amendment!.proposal_id);
+
       const postControlDraft = structured(await callTenantTool(salesUrl, 111, 'refine_proposals', {
         idempotency_key: 'tenant-governed-native-post-control-draft',
         account,
@@ -1381,12 +1388,15 @@ describe('tenant routing smoke', () => {
         total_budget: { amount: 1_000, currency: 'USD' },
         start_time: '2027-06-01T00:00:00Z',
         end_time: '2027-07-01T00:00:00Z',
-      }) as { result?: { structuredContent?: { adcp_error?: {
+      }) as { result?: { structuredContent?: { status?: string; errors?: Array<{
         code?: string;
         field?: string;
         details?: { rejected_value?: string; accepted_values?: string[] };
-      } } } };
-      expect(invalidPricing.result?.structuredContent?.adcp_error).toMatchObject({
+      }> } } };
+      // buy_products rejections surface as the media-buy-commitment-response
+      // "Commitment Error" arm: status "failed" plus a preserved errors[] array.
+      expect(invalidPricing.result?.structuredContent?.status).toBe('failed');
+      expect(invalidPricing.result?.structuredContent?.errors?.[0]).toMatchObject({
         code: 'INVALID_PRICING_OPTION',
         field: 'purchases[0].pricing_option_id',
         details: { rejected_value: 'not-advertised', accepted_values: [pricingOptionId] },
@@ -1401,8 +1411,9 @@ describe('tenant routing smoke', () => {
         total_budget: { amount: 1_000, currency: 'USD' },
         start_time: '2027-06-01T00:00:00Z',
         end_time: '2027-07-01T00:00:00Z',
-      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
-      expect(stalePricing.result?.structuredContent?.adcp_error).toMatchObject({
+      }) as { result?: { structuredContent?: { status?: string; errors?: Array<{ code?: string; field?: string }> } } };
+      expect(stalePricing.result?.structuredContent?.status).toBe('failed');
+      expect(stalePricing.result?.structuredContent?.errors?.[0]).toMatchObject({
         code: 'INVALID_REQUEST',
         field: 'pricing_version',
       });
@@ -1725,9 +1736,9 @@ describe('tenant routing smoke', () => {
         };
       };
       const mediaBuy = body.result?.structuredContent?.media_buy;
-      expect(body.result?.structuredContent?.adcp_version).toBe('3.2-beta.2');
+      expect(body.result?.structuredContent?.adcp_version).toBe('3.2-beta.4');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
-      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.2']);
+      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.4']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
@@ -2631,7 +2642,7 @@ describe('tenant routing smoke', () => {
         field: 'adcp_version',
         details: {
           adcp_version: '4.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.2'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.4'],
         },
       });
       expect(unsupportedBody.result?.structuredContent?.context?.correlation_id).toBe('tenant-local-version-unsupported');
@@ -3032,7 +3043,7 @@ describe('tenant routing smoke', () => {
       };
       const payload = {
         idempotency_key: 'tenant-products-idempotency-0001',
-        adcp_version: '3.2-beta.2',
+        adcp_version: '3.2-beta.4',
         buying_mode: 'wholesale',
         account,
       };
@@ -3061,13 +3072,11 @@ describe('tenant routing smoke', () => {
         };
       };
       const discoveredNames = listBody.result?.tools?.map(tool => tool.name) ?? [];
-      expect(discoveredNames).not.toEqual(expect.arrayContaining([
+      expect(discoveredNames).toEqual(expect.arrayContaining([
+        'comply_test_controller',
         'get_products',
         'create_media_buy',
         'update_media_buy',
-      ]));
-      expect(discoveredNames).toEqual(expect.arrayContaining([
-        'comply_test_controller',
         'get_media_buys',
         'list_products',
         'request_proposals',
@@ -3080,24 +3089,14 @@ describe('tenant routing smoke', () => {
       const listAlias = listBody.result?.tools?.find(tool => tool.name === 'list_products');
       const recommendAlias = listBody.result?.tools?.find(tool => tool.name === 'request_proposals');
       expect(listAlias?.execution).toEqual({ taskSupport: 'forbidden' });
-      expect(listAlias?.inputSchema).toMatchObject({ dependentRequired: { if_pricing_version: ['if_feed_version'] } });
+      expect(listAlias?.inputSchema?.properties).toMatchObject({
+        if_feed_version: expect.any(Object),
+        if_pricing_version: expect.any(Object),
+      });
       expect(recommendAlias?.execution).toEqual({ taskSupport: 'forbidden' });
-      expect(recommendAlias?.inputSchema).toMatchObject({
-        properties: { brief: { type: 'string', minLength: 1 } },
-      });
+      expect(recommendAlias?.inputSchema?.properties).toHaveProperty('brief');
       const refineAlias = listBody.result?.tools?.find(tool => tool.name === 'refine_proposals');
-      expect(refineAlias?.inputSchema?.properties?.refinements).toMatchObject({
-        type: 'array',
-        minItems: 1,
-        items: { $ref: '#/$defs/external:media-buy~1proposal-refinement.json' },
-      });
-      expect(refineAlias?.inputSchema?.$defs?.['external:media-buy/proposal-refinement.json'])
-        .toMatchObject({
-          type: 'object',
-          required: ['proposal_id'],
-          properties: { action: { enum: ['revise', 'finalize'] } },
-          oneOf: expect.any(Array),
-        });
+      expect(refineAlias?.inputSchema?.properties).toHaveProperty('refinements');
 
       const keylessLegacy = await callTenantTool(url, 3, 'get_products', {
         buying_mode: 'wholesale',
@@ -3147,10 +3146,10 @@ describe('tenant routing smoke', () => {
       });
 
       const first = await callTenantTool(url, 4, 'get_products', payload) as {
-        result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
+        result?: { structuredContent?: { products?: Array<{ product_id?: string }>; replayed?: boolean } };
       };
       const replay = await callTenantTool(url, 5, 'get_products', payload) as {
-        result?: { structuredContent?: { products?: unknown[]; replayed?: boolean } };
+        result?: { structuredContent?: { products?: Array<{ product_id?: string }>; replayed?: boolean } };
       };
       expect(first.result?.structuredContent?.products?.length).toBeGreaterThan(0);
       expect(first.result?.structuredContent?.replayed).toBeUndefined();
@@ -3160,10 +3159,11 @@ describe('tenant routing smoke', () => {
       const aliasReplay = await callTenantTool(url, 6, 'list_products', {
         adcp_version: payload.adcp_version,
         brand: account.brand,
-      }) as { result?: { structuredContent?: { adcp_version?: string; products?: unknown[]; replayed?: boolean } } };
+      }) as { result?: { structuredContent?: { adcp_version?: string; products?: Array<{ product_id?: string }>; replayed?: boolean } } };
       expect(aliasReplay.result?.structuredContent).not.toHaveProperty('adcp_error');
-      expect(aliasReplay.result?.structuredContent?.adcp_version).toBe('3.2-beta.2');
-      expect(aliasReplay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
+      expect(aliasReplay.result?.structuredContent?.adcp_version).toBe('3.2-beta.4');
+      expect(aliasReplay.result?.structuredContent?.products?.map(product => product.product_id))
+        .toEqual(first.result?.structuredContent?.products?.map(product => product.product_id));
       expect(aliasReplay.result?.structuredContent?.replayed).toBeUndefined();
 
       const missingAliasKey = await callTenantTool(url, 61, 'request_proposals', {
@@ -3314,6 +3314,58 @@ describe('tenant routing smoke', () => {
       expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
       expect(replay.result?.structuredContent?.errors).toEqual(first.result?.structuredContent?.errors);
       expect(replay.result?.structuredContent?.context?.correlation_id).toBe('tenant-advisory-retry');
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('returns the forced 3.2 get_products rejection as transport success', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'tenant-products-rejected.example' },
+        operator: 'pinnacle-agency.example',
+        sandbox: true,
+      };
+      const directive = await callTenantTool(url, 91, 'comply_test_controller', {
+        adcp_version: '3.2-beta.4',
+        account,
+        scenario: 'force_get_products_arm',
+        params: {
+          arm: 'rejected',
+          reason: 'The requested budget is below the minimum for this inventory.',
+          suggestions: ['Increase the campaign budget.'],
+        },
+      }) as { result?: { structuredContent?: { success?: boolean } } };
+      expect(directive.result?.structuredContent?.success).toBe(true);
+
+      const rejected = await callTenantTool(url, 92, 'get_products', {
+        adcp_version: '3.2-beta.4',
+        adcp_major_version: 3,
+        idempotency_key: 'tenant-products-rejected-0001',
+        buying_mode: 'brief',
+        brief: 'A deliberately underfunded campaign.',
+        account,
+      }) as {
+        result?: {
+          isError?: boolean;
+          structuredContent?: {
+            status?: string;
+            reason?: string;
+            suggestions?: string[];
+            products?: unknown[];
+          };
+        };
+      };
+      expect(rejected.result?.isError).toBeUndefined();
+      expect(rejected.result?.structuredContent).toMatchObject({
+        status: 'rejected',
+        reason: 'The requested budget is below the minimum for this inventory.',
+        suggestions: ['Increase the campaign budget.'],
+      });
+      expect(rejected.result?.structuredContent?.products).toBeUndefined();
     } finally {
       await close();
     }

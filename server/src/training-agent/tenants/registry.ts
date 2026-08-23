@@ -189,13 +189,13 @@ function buildDefaultServerOptions(
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
-    ...(storyboardCompat?.version === '3.0' && { adcpVersion: '3.0' }),
+    adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : '3.2-beta.4',
     idempotency: getSdkIdempotencyStore(),
     webhooks: getWebhookSigningMaterial(),
     taskWebhookEmitter: {
       emit: emitFrameworkTaskWebhook,
     },
-    // SDK 13 no longer emits webhooks for terminal inline responses by
+    // The SDK no longer emits webhooks for terminal inline responses by
     // default. Preserve the training agent's existing integration contract
     // while its consumers migrate to inline-terminal handling.
     autoEmitCompletionWebhooks: true,
@@ -209,11 +209,14 @@ function buildDefaultServerOptions(
     // current-path persistence primitive.
     legacyCreativeFormatConverter: projectionAdapters.legacyFormatConverter,
     canonicalFormatLegacyResolver: projectionAdapters.canonicalFormatLegacyResolver,
-    // The repository's experimental 3.2 governance schemas intentionally lead
-    // the pinned SDK codegen. Keep MCP registration passthrough and validate in
-    // the source-aligned handlers until a compatible SDK bundle is published.
-    exposeToolSchemas: false,
-    validation: { requests: 'off', responses: 'off' },
+    exposeToolSchemas: true,
+    validation: storyboardCompat?.version === '3.0'
+      ? { requests: 'off', responses: 'off' }
+      // SDK 14 surfaces several useful legacy-response diagnostics, but a
+      // global strict gate would reject otherwise compatible non-compact
+      // tenant flows. Roll those findings down in warning mode while the new
+      // compact lifecycle keeps dedicated strict contract coverage.
+      : { requests: 'warn', responses: 'warn' },
     // F11 — accept loopback push_notification_config.url only in explicit
     // test/development environments.
     // Conformance storyboards bind a loopback HTTP receiver and supply

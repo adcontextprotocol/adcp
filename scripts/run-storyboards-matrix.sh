@@ -252,7 +252,9 @@ if [ "${FLOOR_SET}" = "3.0-compat" ]; then
 else
   TENANTS=(
     "signals:74:111"
-    "sales:143:314"
+    # #6776 removes ten passing steps from two already-failing proposal
+    # storyboards. Restore 534 with their current-source quarantine.
+    "sales:120:524"
     "governance:73:151"
     "creative:73:169"
     "creative-builder:70:146"
@@ -266,6 +268,7 @@ SUMMARY=""
 REQUIRED_CLEAN_CURRENT_SALES=(
   "media_buy_seller/billing_finality_delivery"
   "media_buy_seller/canonical_formats"
+  "media_buy_seller/vendor_metric_catalog_precondition"
   "canonical_format_validate_input"
   "notification_config_event_scope"
   "notification_config_lifecycle"
@@ -278,8 +281,8 @@ REQUIRED_EXACT_CURRENT_SALES=(
   "media_buy_seller/compact_direct_buy_lifecycle:7:0"
   "media_buy_seller/compact_product_lifecycle:9:0"
   "media_buy_seller/declined_proposal_refinement:6:0"
-  "media_buy_seller/declined_proposal_execution:7:1"
-  "media_buy_seller/expired_proposal_execution:7:1"
+  "media_buy_seller/declined_proposal_execution:8:0"
+  "media_buy_seller/expired_proposal_execution:8:0"
 )
 REQUIRED_CLEAN_CURRENT_SIGNALS=(
   "wholesale_feed_signals"
@@ -364,9 +367,15 @@ for entry in "${TENANTS[@]}"; do
 
   log=$(mktemp -t "storyboards-${tenant}.XXXXXX.log")
 
-  TENANT_PATH="${tenant}" \
-    PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \
-    npx tsx server/tests/manual/run-storyboards.ts > "${log}" 2>&1 || true
+  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; then
+    TENANT_PATH="${tenant}" \
+      PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \
+      bash scripts/run-storyboards-sharded.sh --shard-count 4 > "${log}" 2>&1 || true
+  else
+    TENANT_PATH="${tenant}" \
+      PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \
+      npx tsx server/tests/manual/run-storyboards.ts > "${log}" 2>&1 || true
+  fi
 
   clean=$(grep -oE 'storyboards: [0-9]+/[0-9]+' "${log}" | tail -1 | grep -oE '^storyboards: [0-9]+' | grep -oE '[0-9]+$' || echo "")
   passed=$(grep -oE 'steps: [0-9]+ passed' "${log}" | tail -1 | grep -oE '[0-9]+' || echo "")

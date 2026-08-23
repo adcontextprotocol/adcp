@@ -54,9 +54,9 @@ import { handleSyncAudiences } from './audience-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
+import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
 import { sessionKeyFromArgs } from './state.js';
 import type { ToolArgs, TrainingContext } from './types.js';
-import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
 
 interface TrainingSalesMeta {
@@ -283,6 +283,9 @@ function withCurrentAccountScope(
   account: unknown,
   rawInput?: unknown,
 ): ToolArgs {
+  const rawFields = rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
+    ? rawInput as Record<string, unknown>
+    : {};
   let accountRef = accountRefFromCtx(account);
   const brandDomain = brandDomainFromCtx(account);
   const principal = (account as { authInfo?: { principal?: unknown } } | undefined)?.authInfo?.principal;
@@ -312,7 +315,12 @@ function withCurrentAccountScope(
     };
   }
   return {
+    // `mcpToolProfile: 'all'` exposes compatibility schemas as shallow key
+    // hints. Restore the raw wire values before the local source-schema
+    // validator runs. Explicit wire values win over framework defaults, while
+    // the normalized account and brand below remain authoritative.
     ...input,
+    ...rawFields,
     ...(accountRef && { account: accountRef }),
     ...(brandDomain && { brand: { domain: brandDomain } }),
   } as ToolArgs;
@@ -347,6 +355,30 @@ function translateV5Result<T extends object>(result: unknown, options: { allowAd
     });
   }
   return result as T;
+}
+
+/**
+ * v5 → v6 boundary for tasks whose response schema shares
+ * media-buy-commitment-response.json's status-discriminated "Commitment
+ * Error" arm (buy_products today; accept_proposal/control_media_buy share
+ * the same schema but aren't wired through this path yet).
+ *
+ * translateV5Result throws an AdcpError for a v5 `{ errors: [...] }` result,
+ * which the SDK's create-adcp-server rebuilds into a single `adcp_error`
+ * envelope — that shape has no `errors[]` array and fails this response
+ * schema's `required: ["status", "errors"]` "Commitment Error" arm. The
+ * SDK's own `isErrorArm`/`wrapErrorArm` recognize the v5 handler's bare
+ * `{ errors, ...context }` result directly (no `status` key — its presence
+ * is what disqualifies the isErrorArm match) and correctly synthesize
+ * `status: "failed"` plus a preserved `errors[]` on the wire, so this
+ * returns that bare shape unchanged instead of routing it through the throw.
+ */
+function translateV5CommitmentResult<T extends object>(result: unknown): T {
+  const resultObj = result as (Record<string, unknown> & { errors?: unknown[] }) | undefined;
+  if (Array.isArray(resultObj?.errors) && resultObj.errors.length > 0) {
+    return resultObj as T;
+  }
+  return translateV5Result<T>(result);
 }
 
 function throwGetProductsExecutionError(message: string): never {
@@ -813,7 +845,7 @@ export class TrainingSalesPlatform
       { allowAdvisories: true },
     ),
 
-    buyProducts: async (req, ctx) => translateV5Result(
+    buyProducts: async (req, ctx) => translateV5CommitmentResult(
       await handleBuyProducts(
         withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleBuyProducts>[0],
         buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
@@ -836,34 +868,10 @@ export class TrainingSalesPlatform
 
     getMediaBuys: async (req, ctx) => {
       const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
-      let result = await handleGetMediaBuys(
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account),
+      const result = await handleGetMediaBuys(
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input),
         trainingCtx,
       );
-      const requestedIds = (req as unknown as { media_buy_ids?: unknown }).media_buy_ids;
-      const returnedBuys = (result as { media_buys?: unknown }).media_buys;
-      const principal = (ctx.account as { authInfo?: { principal?: unknown } } | undefined)?.authInfo?.principal;
-      // SDK 14 removes the controller-only sandbox assertion from compact
-      // read AccountRefs. Retry an exact-ID miss in the brand-owned public
-      // sandbox partition; successful ordinary reads never cross scopes.
-      if (
-        Array.isArray(requestedIds)
-        && requestedIds.length > 0
-        && Array.isArray(returnedBuys)
-        && returnedBuys.length === 0
-        && typeof principal === 'string'
-        && principal.startsWith('static:')
-        && brandDomainFromCtx(ctx.account)
-      ) {
-        result = await handleGetMediaBuys(
-          withCurrentAccountScope(
-            req as unknown as Record<string, unknown>,
-            ctx.account,
-            { account: { sandbox: true } },
-          ),
-          trainingCtx,
-        );
-      }
       return translateV5Result(canonicalMediaBuyPlatformResult(result));
     },
 

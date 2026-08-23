@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.18/trusted-match/identity-match-response.json",
+  "title": "Identity Match Response (Router → Publisher)",
+  "description": "Router-to-publisher shape of the Identity Match response. The router collects each identity agent's ordered TMPX chunks (see provider-identity-match-response.json) and forwards them under the emitting `provider_id`, preserving provider attribution and chunk order. Each chunk is a provider-declared `{slot_id, value}` pair; the publisher's deployment configuration (see publisher-tmpx-config.json) maps `(provider_id, slot_id)` to the local ad-server macro name, targeting key, VAST substitution, or play-log field. The provider→router boundary never carries a publisher-local destination name, so no cross-provider name-hijack surface exists. Provider-hop fields (`tmpx_chunks` at the root) MUST NOT appear on this shape — a router that leaks them alongside `tmpx_providers` corrupts per-provider accounting. Envelope extension fields (`context`, `ext`) are intentionally omitted to prevent data leakage across the identity privacy boundary; they are forbidden by this schema. The serve_window_sec field defines a per-package single-shot fcap: after serving the user one impression on each eligible package, the publisher MUST re-query Identity Match before serving from those packages again.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.18/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/3.1.18/core/protocol-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "identity_match_response",
+      "description": "Message type discriminator for deserialization."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Echoed request identifier from the identity match request"
+    },
+    "eligible_package_ids": {
+      "type": "array",
+      "description": "Package IDs the user is eligible for. Packages not listed are ineligible.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "serve_window_sec": {
+      "type": "integer",
+      "description": "Per-package single-shot fcap window, in seconds. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. This is NOT a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by the buyer's impression tracker, which writes cap-fire events to the IdentityMatch cap-state store at the boundary regardless of this window. Maximum 300 — longer windows reduce IdentityMatch load but coarsen fcap granularity below what most campaigns require.",
+      "minimum": 1,
+      "maximum": 300
+    },
+    "tmpx": {
+      "type": "string",
+      "description": "DEPRECATED in favor of tmpx_providers. Routers MAY continue to populate this field for back-compat with consumers that only know the single-token shape; when both fields are present, tmpx_providers is authoritative. Single HPKE-encrypted exposure token containing the resolved user identity tokens. Wire format: kid.base64url_nopad(ciphertext) — unpadded base64url per RFC 4648 section 5 (no = characters). Publishers MUST treat this value as opaque pass-through data. Removed in 4.0."
+    },
+    "tmpx_providers": {
+      "type": "object",
+      "description": "Router-populated: ordered TMPX chunk/value pairs grouped by the originating identity provider's `provider_id`. Each entry's `chunks[]` is a copy of the provider's emitted `tmpx_chunks` list, in the same order. Each chunk carries a provider-local `slot_id` (from the provider's registered `tmpx_slots`) and an opaque URL-safe `value`; the publisher's deployment configuration (see publisher-tmpx-config.json) resolves each `(provider_id, slot_id)` pair to the ad-server macro name, targeting key, VAST substitution, or play-log field for that surface. The protocol carries values and attribution only. Required by router conformance when any identity provider emitted TMPX in this request; collapsing per-provider tokens into a single string loses attribution and breaks per-provider impression accounting. Map keys MUST match the provider_id charset registered in provider-registration.json (enforced by `propertyNames`). Publishers MUST NOT parse, decode, or transform any chunk's `value` — each is an opaque URL-safe wire string substituted verbatim into the mapped destination.",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_]+$",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "chunks": {
+            "type": "array",
+            "description": "Ordered TMPX chunks for this provider. Each entry is a `{slot_id, value}` pair copied verbatim from the provider's `tmpx_chunks`. Ordered-prefix invariant: the sequence of `slot_id`s MUST equal an ordered prefix of the provider's registered `tmpx_slots` — publishers MAY reject responses whose slot_ids or ordering diverge. Cap of 2 chunks in v1; the cap MAY rise without a shape change.",
+            "items": {
+              "$ref": "/schemas/3.1.18/trusted-match/tmpx-chunk.json"
+            },
+            "minItems": 1,
+            "maxItems": 2
+          }
+        },
+        "required": ["chunks"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "type",
+    "request_id",
+    "eligible_package_ids",
+    "serve_window_sec"
+  ],
+  "not": {
+    "anyOf": [
+      { "required": ["tmpx_chunks"] },
+      { "required": ["tmpx_values"] },
+      { "required": ["tmpx_macros"] },
+      { "required": ["context"] },
+      { "required": ["ext"] }
+    ]
+  },
+  "additionalProperties": true
+}

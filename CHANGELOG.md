@@ -1,5 +1,48 @@
 # Changelog
 
+## 3.2.0-beta.5
+
+### Minor Changes
+
+- 496920a: Define cross-transport async identity and convergence rules for direct
+  responses, AdCP polling, A2A tasks, continuations, and webhooks. The contract
+  separates identifier namespaces, makes terminal settlement and publication
+  single-winner, binds webhook delivery keys immutably to payloads, requires
+  recoverable continuation-generation handoffs, preserves legacy composite
+  atomicity, and advertises webhook retry horizons.
+- 81c409b: Add conformance surface for outcome_target reverse forecasting. The new `media_buy_seller/outcome_target` scenario (required by the sales-proposal-mode specialism, gated on `media_buy.outcome_target`) grades the answer contract: `total_budget_guidance` on every returned proposal and a forecast whose points carry the goal's metric or event key, with `forecast_range_unit` `clicks`/`conversions` structuring the curves. Fixes the canonical-proposal gap the contract exposed (#6745): `core/canonical-proposal.json` gains optional `total_budget_guidance` and `forecast`, restoring parity with the legacy proposal's planning outputs so the compact `request_proposals` lifecycle can actually express the answer. The training agent implements a deterministic reverse-forecast reference model.
+- 4097b73: Add creative rejection conformance for the one-policy-per-error invariant. The new controller-gated `creative/policy_backed_rejections` storyboard first discovers an isolated product that declares exactly the automatic-redirect and HTTPS-only registry policies, then submits a canonical hosted display tag that deterministically violates both. Conformance requires exactly two `CREATIVE_REJECTED` entries with one `details.policy_id` each. The runner contract also publishes the reusable `array_length` assertion used to grade exact error cardinality.
+- 1607036: Scope optional media-buy compliance paths to the capabilities sellers actually advertise. Creative-library storyboards now require an explicit library claim, including compound gates where another applicability predicate already exists. Measurement-term acceptance is split from the universal rejection contract behind a new optional capability, and product refinement requires the `refine` buying mode. Sellers outside these optional surfaces will see the affected scenarios move from runnable badge/completeness denominators to not applicable.
+
+### Patch Changes
+
+- 8074975: Align the AdCP 3.2 beta compliance surface and training agent with `@adcp/sdk@14.0.0-beta.5`. The beta.5 validators carry the flexible-window availability vocabulary, so the `availability_windows` `list_with_horizon` step is no longer registered known-failing (closes the adcp-client#2637 exclusion) and the scenario grades all eight steps. Wire pins move from `3.2-beta.3` to `3.2-beta.4` across the training agent, compliance scenarios, and versioned reference docs.
+
+## 3.2.0-beta.4
+
+### Minor Changes
+
+- 18f5f8e: Add conformance surface for flexible-window availability discovery. New `media_buy.availability_horizon` capability declaration gates the new `media_buy_seller/availability_windows` scenario (required by the sales-guaranteed specialism): horizon partitioning into coalesced half-open time windows, eligibility-aware `availability_status` (a gap shorter than the product's minimum bookable duration is `unavailable` even with no competing hold), forecast excluded from `list_products` conditional reads, and `PRODUCT_UNAVAILABLE` on buys against closed or too-short windows. Product fixtures accept an optional seller-internal `availability` calendar (`min_bookable_days`, `booked_windows`) consumed by seeding. Adds schema test vectors for the `availability_horizon` mutual-exclusion and time-dimension shapes.
+- c6b0513: Allow products to disclose per-package cardinality limits for country
+  inclusion, country exclusion, and proximity targeting.
+- 8d0a0c8: Add flexible-window availability discovery. `offer_filters.availability_horizon` lets a buyer ask "which dates can I run?" instead of filtering to one exact flight; sellers answer by partitioning the horizon into `time`-dimensioned forecast points (new `forecast-dimension-time` variant) carrying the new `availability_status` field (`available` | `unavailable`). Availability data is a snapshot bounded by the forecast's `valid_until`, never a hold — proposal finalization remains the firm-avails and commitment boundary. Forecast data is excluded from `list_products` feed-version scoping, and a `list_products` request whose `fields` includes `forecast` must not be answered with `outcome: "unchanged"`.
+- e93e3e4: Add structured reverse-forecast planning input. `criteria.outcome_target` lets a buyer state the outcome they need — a compact goal (a `forecastable-metric` delivery metric or an `event-type` conversion event) plus a desired volume, e.g. "10,000 clicks" — and ask the seller to solve for budget, answering with `total_budget_guidance` on proposals and forecasts whose points carry the goal's key in `metrics`. The goal vocabulary is shared with forecast reporting and package-level optimization goals, so every permitted goal has a defined answer and buyers carry the same metric or event name from plan to buy. Gated by the new `media_buy.outcome_target` capability declaration; sellers that do not declare it reject the field with `UNSUPPORTED_FEATURE` rather than silently ignoring it.
+- e72ff10: Add the projection-only `products_available` outcome for valid AdCP 2.5, 3.0,
+  and 3.1 products-only brief results. The response now provides either a real
+  seller-fenced `listed_purchase` continuation or an explicitly lossy,
+  fail-closed `legacy_create` continuation without fabricating proposals, terms
+  digests, or feed versions. AdCP 2.5 continuations additionally disclose the
+  absence of a mutation replay guarantee. Document transaction-boundary
+  differences between the established and compact media-buy lifecycles, and route
+  supported MediaBuy name actions through compact control.
+
+### Patch Changes
+
+- 71706fb: Correct the OpenRTB source and complete the PAIR profile mapping, including
+  matcher, match method, publisher scope, key rotation, and TMP's lossy scope
+  boundary.
+- 49c81e0: Align the AdCP 3.2 beta compliance surface and training agent with `@adcp/sdk@14.0.0-beta.4`.
+
 ## 3.2.0-beta.3
 
 ### Minor Changes
@@ -449,6 +492,27 @@
 ## Unreleased experimental-surface notices
 
 - Cross-role governance enforcement: the experimental `governance.campaign` surface will add typed `target_agent`, task-scoped `adcp.governance_enforcement`, critical task/payload/commitment JWS bindings, intent-only conditions negotiation, and governance-authoritative settlement. The implementation may merge during 3.2 development; the beta-to-GA period provides the experimental-surface notice window. See the 3.2 release notes and migration guide.
+
+## 3.1.18
+
+### Patch Changes
+
+- 71706fb: Complete the PAIR OpenRTB profile mapping, including
+  matcher, match method, publisher scope, key rotation, and TMP's lossy scope
+  boundary.
+
+## 3.1.17
+
+### Patch Changes
+
+- 4f73f65: Correct the OpenRTB source for PAIR identifiers and clarify that PAIR wire
+  values are rotating, publisher-scoped identifiers rather than universal IDs.
+
+## 3.1.16
+
+### Patch Changes
+
+- 9289fea: Gate inventory-list compliance scenarios on the stable property-list capability and accept either documented no-match outcome.
 
 ## 3.1.15
 

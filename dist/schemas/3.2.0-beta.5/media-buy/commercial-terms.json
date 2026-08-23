@@ -1,0 +1,187 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/commercial-terms.json",
+  "title": "Commercial Terms",
+  "description": "Complete typed commercial envelope for a compact-lifecycle proposal. This is the authoritative audit and refinement snapshot; allocations and narrative fields are explanatory views rather than substitutes for these terms.",
+  "type": "object",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "pricing_integrity": {
+        "pricing_option_ids": "each_purchase.pricing_option_id_equals_pricing.pricing_option_id",
+        "purchase_currencies": "all_purchase.pricing.currency_equal",
+        "total_budget_currency": "when_total_budget_present_equals_purchase_pricing_currency",
+        "monetary_fields": "purchase_budget_min_spend_and_bidding_use_purchase_pricing_currency",
+        "on_violation": "reject_proposal_or_commitment"
+      }
+    }
+  },
+  "properties": {
+    "source_feed_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Wholesale product feed version against which direct published offers were accepted. Omitted when the seller authored terms outside a wholesale snapshot."
+    },
+    "source_pricing_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Pricing-layer version against which published rates were accepted."
+    },
+    "brand": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/brand-key.json"
+    },
+    "advertiser_industry": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/advertiser-industry.json"
+    },
+    "purchases": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/product-purchase.json"
+          },
+          {
+            "required": [
+              "product_id",
+              "pricing_option_id",
+              "pricing",
+              "start_time",
+              "end_time"
+            ]
+          }
+        ]
+      },
+      "minItems": 1,
+      "description": "Exact canonical product, pricing, format, catalog, budget, targeting, bidding, optimization, resolved flight, measurement, and performance terms in the commercial envelope.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "resolved_purchase_terms": "Each purchase carries resolved start_time and end_time. Applicable measurement_terms and performance_standards are copied from the published offer or negotiated successor; omission means no such terms apply."
+        }
+      }
+    },
+    "start_time": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/start-timing.json"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "total_budget": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Hard aggregate daily spend ceiling accepted as part of these terms. It bounds total spend without creating purchase allocations."
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Shared IANA calendar-day boundary for aggregate and purchase daily caps in these terms."
+    },
+    "budget_allocation": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/canonical-budget-allocation.json"
+    },
+    "pacing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/pacing.json"
+    },
+    "bidding": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/bidding-policy.json"
+    },
+    "invoice_recipient": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/business-entity.json"
+    },
+    "purchase_order_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "reporting_commitments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "purchase_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/canonical-reporting-commitment.json"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "purchase_index",
+          "metrics"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "Binding reporting contract keyed by position in purchases. Amendments preserve prior entries and add metrics with effective_at; seller-assigned package IDs live in the execution binding, outside this digest."
+    },
+    "cancellation_terms": {
+      "type": "object",
+      "properties": {
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "fee": {
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          "required": [
+            "amount",
+            "currency"
+          ],
+          "additionalProperties": false
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "effective_at"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "brand",
+    "purchases",
+    "start_time",
+    "end_time"
+  ],
+  "additionalProperties": false
+}

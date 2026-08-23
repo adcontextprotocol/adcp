@@ -42,7 +42,7 @@ import {
 import { mergeSeedProductLegacy as mergeSeedProduct } from '@adcp/sdk/testing';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
-import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type SessionState } from './types.js';
+import { supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -77,6 +77,9 @@ import type {
 import { CreativeAssetSchema, CreativeManifestSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getCanonicalBase } from './canonical-base.js';
+import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
+import { getPromotedFormatShapes } from '../services/format-shape-promotion-registry.js';
+import { validateCtvSemantics } from './ctv-experience-matrix.js';
 import {
   evaluateTrainingProposal,
   proposalCapabilitiesForProfile,
@@ -113,10 +116,17 @@ type InlineCreativeInput = {
   format_kind?: string;
   format_option_ref?: Record<string, unknown>;
   assets?: Record<string, unknown>;
+  component_assets?: Record<string, Record<string, unknown>>;
   manifest?: CreativeManifest;
+  weight?: number;
+  placement_refs?: Array<Record<string, unknown>>;
+  placement_ids?: string[];
 };
+type TrainingCanonicalFormatKind = CanonicalFormatKind
+  | 'seller_rendered_stateful_display'
+  | 'coordinated_placements';
 type InlineCreativeIdentity =
-  | { kind: 'canonical'; formatKind: CanonicalFormatKind; formatOptionRef?: Record<string, unknown> }
+  | { kind: 'canonical'; formatKind: TrainingCanonicalFormatKind; formatOptionRef?: Record<string, unknown> }
   | { kind: 'legacy'; formatId: FormatID; formatOptionRef?: Record<string, unknown> };
 type ValidatedInlineCreative = {
   creative: InlineCreativeInput;
@@ -188,6 +198,10 @@ type AcceptProposalRequest = ToolArgs & {
 type ControlMediaBuyRequest = ToolArgs & {
   media_buy_id: string;
   revision: number;
+  name?: string;
+  paused?: boolean;
+  canceled?: true;
+  cancellation_reason?: string;
   packages?: Array<Record<string, unknown>>;
 };
 type PricingStructure = 'fixed' | 'auction' | 'contingent';
@@ -225,6 +239,7 @@ type ValidateInputArgs = ToolArgs & {
     format_id?: FormatID;
     format_option_ref?: Record<string, unknown>;
     assets?: Record<string, unknown>;
+    component_assets?: Record<string, Record<string, unknown>>;
   };
   targets?: ValidateInputTarget[];
 };
@@ -239,6 +254,12 @@ type ValidateInputResult = {
   target: ValidateInputTarget;
   result_kind: 'validated_pass' | 'validated_fail' | 'unvalidatable_nondeterministic';
   violations?: ValidateInputViolation[];
+  /**
+   * Non-blocking observations (e.g. LEAN policy advisories) that do not
+   * affect result_kind. May be present alongside validated_pass,
+   * validated_fail, or unvalidatable_nondeterministic.
+   */
+  warnings?: ValidateInputViolation[];
 };
 type CanonicalSlot = {
   asset_group_id: string;
@@ -330,6 +351,7 @@ const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
     { asset_group_id: 'display_url', asset_type: 'text' },
     { asset_group_id: 'rating', asset_type: 'text' },
     { asset_group_id: 'price', asset_type: 'text' },
+    { asset_group_id: 'video', asset_type: 'vast' },
     { asset_group_id: 'impression_tracker', asset_type: 'pixel_tracker' },
     { asset_group_id: 'viewability_tracker', asset_type: 'pixel_tracker' },
     { asset_group_id: 'click_tracker', asset_type: 'pixel_tracker' },
@@ -349,7 +371,82 @@ const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
     { asset_group_id: 'offering_ref', asset_type: 'text' },
     { asset_group_id: 'landing_page_url', asset_type: 'url' },
   ],
+  seller_rendered_stateful_display: [
+    { asset_group_id: 'state_canvases', asset_type: 'image', min: 1 },
+    { asset_group_id: 'logo', asset_type: 'image' },
+    { asset_group_id: 'imagery', asset_type: 'image', min: 0 },
+    { asset_group_id: 'headline', asset_type: 'text' },
+    { asset_group_id: 'messaging', asset_type: 'text' },
+    { asset_group_id: 'cta', asset_type: 'text' },
+    { asset_group_id: 'legal_text', asset_type: 'text' },
+    { asset_group_id: 'video_main', asset_type: 'video' },
+    // landing_page_url's required-ness depends on the declared `clickthrough`
+    // policy (see the `clickthrough_policy` semantic check), not a static flag.
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+    { asset_group_id: 'state_click_urls', asset_type: 'url', min: 0 },
+    { asset_group_id: 'layered_source', asset_type: 'zip' },
+    { asset_group_id: 'font_files', asset_type: 'zip' },
+  ],
+  coordinated_placements: [],
 };
+// Canonicals that narrow their accepted slot asset_type set beyond "union of
+// default slots' types plus trackers" (see allowedAssetTypesForCanonical).
+// Mirrors each canonical schema's own `x-adcp-validation.allowed_slot_asset_types`.
+const CANONICAL_ALLOWED_SLOT_ASSET_TYPES: Record<string, string[]> = {
+  seller_rendered_stateful_display: ['image', 'video', 'text', 'url', 'zip', 'pixel_tracker'],
+};
+// Canonical-specific additive slot types that are valid for declared
+// refinements without belonging in the canonical's default slot set.
+const CANONICAL_ADDITIONAL_SLOT_ASSET_TYPES: Record<string, string[]> = {
+  // Copy-bearing CTV activations add character-limited text slots such as
+  // activation_message; they are not part of every VAST manifest by default.
+  video_vast: ['text'],
+};
+// Cross-cutting asset types every canonical accepts regardless of its own
+// default slots: impression/click/viewability trackers, plus `brief` for the
+// asset_source: agent_synthesized / synthesis_nondeterministic pattern that
+// any canonical can opt into via a `creative_brief`-style slots override.
+const CANONICAL_UNIVERSALLY_ALLOWED_ASSET_TYPES = ['pixel_tracker', 'vast_tracker', 'daast_tracker', 'brief'];
+
+/**
+ * Slot asset_type widening guard. A declaration's effective slots (its own
+ * defaults, or a `params.slots` override) MUST NOT introduce an asset_type
+ * outside what the canonical allows. Canonicals with an explicit allowlist
+ * (currently only seller_rendered_stateful_display) use that list; every
+ * other canonical allows the union of its own default slots' asset_types
+ * plus the cross-cutting types above. Executable types (javascript, html,
+ * css, webhook) are therefore only accepted by canonicals whose own defaults
+ * already use them.
+ */
+function allowedAssetTypesForCanonical(kind: string): Set<string> {
+  const explicit = CANONICAL_ALLOWED_SLOT_ASSET_TYPES[kind];
+  if (explicit) return new Set(explicit);
+  const defaultTypes = (CANONICAL_FORMAT_SLOTS[kind] ?? []).map(slot => slot.asset_type);
+  const additionalTypes = CANONICAL_ADDITIONAL_SLOT_ASSET_TYPES[kind] ?? [];
+  return new Set([...defaultTypes, ...additionalTypes, ...CANONICAL_UNIVERSALLY_ALLOWED_ASSET_TYPES]);
+}
+
+function slotAssetTypeAllowlistViolations(
+  formatKind: string,
+  declaredSlots: unknown,
+  fieldPrefix: string,
+): ValidateInputViolation[] {
+  const slots = normalizeCanonicalSlots(declaredSlots);
+  if (!slots) return [];
+  const allowed = allowedAssetTypesForCanonical(formatKind);
+  const violations: ValidateInputViolation[] = [];
+  for (const [index, slot] of slots.entries()) {
+    if (!allowed.has(slot.asset_type)) {
+      violations.push({
+        rule: 'allowed_slot_asset_types',
+        field: `${fieldPrefix}[${index}].asset_type`,
+        expected: [...allowed],
+        predicted: slot.asset_type,
+      });
+    }
+  }
+  return violations;
+}
 const BUILD_CREATIVE_FORMAT_ALIASES: Record<string, string> = {
   display_300x250_generative: 'display_300x250',
   display_728x90_generative: 'display_728x90',
@@ -400,7 +497,15 @@ interface PackageInput {
   params?: Record<string, unknown>;
   targeting?: PackageTargeting;
   targeting_overlay?: PackageTargeting;
-  creative_assignments?: Array<{ creative_id?: string }>;
+  creative_assignments?: Array<{
+    creative_id?: string;
+    rotation_mode?: string;
+    group_id?: string;
+    sequence_position?: number;
+    placement_refs?: Array<Record<string, unknown>>;
+    placement_ids?: string[];
+    [key: string]: unknown;
+  }>;
   creatives?: InlineCreativeInput[];
   context?: Record<string, unknown>;
   measurement_terms?: Record<string, unknown>;
@@ -481,6 +586,7 @@ function persistInlineCreatives(
           ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
         }),
       ...(manifest && { assets: manifest.assets }),
+      ...(manifest?.component_assets && { componentAssets: manifest.component_assets }),
       name: creative.name ?? existing?.name,
       status: existing?.status ?? 'approved',
       syncedAt,
@@ -499,6 +605,26 @@ type CanonicalPackageFormat = Record<string, unknown> & {
   params?: Record<string, unknown>;
   v1_format_ref?: FormatID[];
 };
+
+type LegacyCreativeAssignmentRow = {
+  creative_id?: string;
+  rotation_mode?: string;
+  group_id?: string;
+  sequence_position?: number;
+  placement_refs?: Array<Record<string, unknown>>;
+  placement_ids?: string[];
+  [key: string]: unknown;
+};
+
+function inlineCreativeAssignmentRows(creatives: InlineCreativeInput[] | undefined): LegacyCreativeAssignmentRow[] {
+  if (!Array.isArray(creatives)) return [];
+  return creatives.map(creative => ({
+    creative_id: creative.creative_id,
+    ...(creative.weight !== undefined && { weight: creative.weight }),
+    ...(creative.placement_refs !== undefined && { placement_refs: structuredClone(creative.placement_refs) }),
+    ...(creative.placement_ids !== undefined && { placement_ids: [...creative.placement_ids] }),
+  }));
+}
 
 type IndexedLegacyDeclaration = {
   declaration: CanonicalPackageFormat;
@@ -1513,26 +1639,197 @@ function creativeCoversPackageFormat(
   }
   if (!requiredKind || creativeKind !== requiredKind) return false;
 
+  // This training seller does not materialize localized variants in its
+  // CreativeState. It must therefore fail closed rather than claim that an
+  // assignment satisfies a locale-constrained product or placement option.
+  if (isRecord(requirement.locale_policy)) return false;
+
   const requiredOptionId = requirement.format_option_id;
   const ref = creative.formatOptionRef ?? creative.manifest?.format_option_ref;
+  let hasMatchingOptionRef = false;
   if (requiredOptionId && isRecord(ref)) {
     if (ref.format_option_id !== requiredOptionId) return false;
-    return !requirement.publisher_domain || ref.publisher_domain === requirement.publisher_domain;
+    if (requirement.publisher_domain && ref.publisher_domain !== requirement.publisher_domain) return false;
+    hasMatchingOptionRef = true;
   }
-  if (requiredOptionId && sameKindRequirementCount > 1) return false;
+  if (requiredOptionId && !hasMatchingOptionRef && sameKindRequirementCount > 1) return false;
 
-  // An explicit option reference is the strongest coverage proof. Portable
-  // manifests may omit it, so for an unambiguous kind fall back to validating
-  // the actual manifest slots against the frozen package declaration.
+  // Existing canonical formats use an explicit matching option reference as
+  // sufficient coverage proof. The product-bound 3.2 formats additionally
+  // validate their state/component contract below.
+  if (hasMatchingOptionRef
+    && requiredKind !== 'seller_rendered_stateful_display'
+    && requiredKind !== 'coordinated_placements') return true;
+
+  // Portable manifests may omit an option reference, so for an unambiguous
+  // kind fall back to validating the actual manifest slots against the frozen
+  // package declaration. Product-bound formats always take this path.
   const manifest = creative.manifest;
   if (!manifest) return !requiredOptionId && !requirement.params;
   const params = isRecord(requirement.params) ? requirement.params : {};
+  if (requiredKind === 'coordinated_placements') {
+    const components = Array.isArray(params.components) ? params.components.filter(isRecord) : [];
+    const componentAssets = isRecord(manifest.component_assets) ? manifest.component_assets : {};
+    const declaredIds = new Set(components.flatMap(component =>
+      typeof component.component_id === 'string' ? [component.component_id] : []));
+    if (Object.keys(componentAssets).some(componentId => !declaredIds.has(componentId))) return false;
+    if (components.some(component => component.required === true
+      && (typeof component.component_id !== 'string' || !isRecord(componentAssets[component.component_id])))) return false;
+    const sharedSlots = Array.isArray(params.shared_slots) ? params.shared_slots.filter(isRecord) : [];
+    if (sharedSlots.some(slot => slot.required === true
+      && (typeof slot.asset_group_id !== 'string' || manifest.assets?.[slot.asset_group_id] === undefined))) return false;
+  }
   const slots = normalizeCanonicalSlots(requirement.slots)
     ?? normalizeCanonicalSlots(params.slots)
     ?? CANONICAL_FORMAT_SLOTS[requiredKind ?? '']
     ?? [];
   return validateManifestSlots(manifest, slots).length === 0
     && canonicalParamsSatisfied(manifest, params);
+}
+
+function creativeCanTargetFormat(
+  creative: CreativeState | undefined,
+  requirement: CanonicalPackageFormat,
+  sameKindRequirementCount: number,
+): boolean {
+  if (!creative || isRecord(requirement.locale_policy)) return false;
+  const legacyRefs = Array.isArray(requirement.v1_format_ref) ? requirement.v1_format_ref : [];
+  if (creative.formatId && legacyRefs.some(ref => ref?.id === creative.formatId?.id
+    && (!ref.agent_url || !creative.formatId?.agent_url || ref.agent_url === creative.formatId.agent_url))) {
+    return true;
+  }
+  const creativeKind = creative.formatKind ?? creative.manifest?.format_kind;
+  if (typeof requirement.format_kind === 'string' && creativeKind !== requirement.format_kind) return false;
+  const ref = creative.formatOptionRef ?? creative.manifest?.format_option_ref;
+  if (isRecord(ref) && typeof requirement.format_option_id === 'string') {
+    return ref.format_option_id === requirement.format_option_id
+      && (!requirement.publisher_domain || ref.publisher_domain === requirement.publisher_domain);
+  }
+  if (typeof requirement.format_option_id === 'string' && sameKindRequirementCount > 1) return false;
+  return typeof creativeKind === 'string';
+}
+
+function validateCreateAssignmentSemantics(
+  assignments: LegacyCreativeAssignmentRow[],
+  product: Record<string, unknown>,
+  targeting: PackageTargeting | undefined,
+  session: SessionState,
+  fieldPrefix: string,
+  packageRequirements: CanonicalPackageFormat[] = [],
+): TaskError[] {
+  const errors: TaskError[] = [];
+  const effectiveModes = new Set(assignments.map(assignment => assignment.rotation_mode ?? 'weighted'));
+  if (effectiveModes.size > 1) {
+    errors.push({
+      code: 'VALIDATION_ERROR',
+      message: `${fieldPrefix}: every assignment must resolve to the same rotation_mode`,
+      field: fieldPrefix,
+    });
+  }
+  const sequentialPositions = new Set<string>();
+  for (let index = 0; index < assignments.length; index++) {
+    const assignment = assignments[index]!;
+    if ((assignment.rotation_mode ?? 'weighted') === 'sequential') {
+      const key = `${assignment.group_id ?? '__default__'}:${assignment.sequence_position ?? ''}`;
+      if (sequentialPositions.has(key)) {
+        errors.push({
+          code: 'VALIDATION_ERROR',
+          message: `${fieldPrefix}[${index}]: sequence_position must be unique within its assignment group`,
+          field: `${fieldPrefix}[${index}].sequence_position`,
+        });
+      }
+      sequentialPositions.add(key);
+    }
+  }
+
+  const placements = Array.isArray(product.placements)
+    ? product.placements.filter(isRecord)
+    : [];
+  const placementKey = (placement: Record<string, unknown>): string | undefined =>
+    typeof placement.placement_id === 'string'
+      ? `${typeof placement.publisher_domain === 'string' ? placement.publisher_domain : ''}:${placement.placement_id}`
+      : undefined;
+  const productPlacements = new Map(
+    placements.flatMap(placement => {
+      const key = placementKey(placement);
+      return key ? [[key, placement] as const] : [];
+    }),
+  );
+  const selected = isRecord(targeting?.placement_selection)
+    && targeting.placement_selection.mode === 'selected'
+    && Array.isArray(targeting.placement_selection.placement_refs)
+    ? new Set(targeting.placement_selection.placement_refs.filter(isRecord).flatMap(ref => {
+      const key = placementKey(ref);
+      return key ? [key] : [];
+    }))
+    : undefined;
+
+  for (let index = 0; index < assignments.length; index++) {
+    const assignment = assignments[index]!;
+    const creative = typeof assignment.creative_id === 'string'
+      ? session.creatives.get(assignment.creative_id)
+      : undefined;
+    const routedPlacements: Record<string, unknown>[] = [];
+    const hasExplicitRoute = (Array.isArray(assignment.placement_refs) && assignment.placement_refs.length > 0)
+      || (Array.isArray(assignment.placement_ids) && assignment.placement_ids.length > 0);
+    if (Array.isArray(assignment.placement_refs) && assignment.placement_refs.length > 0) {
+      for (let refIndex = 0; refIndex < assignment.placement_refs.length; refIndex++) {
+        const ref = assignment.placement_refs[refIndex]!;
+        const key = placementKey(ref);
+        const placement = key ? productPlacements.get(key) : undefined;
+        if (!placement || (selected && !selected.has(key!))) {
+          errors.push({
+            code: 'VALIDATION_ERROR',
+            message: `${fieldPrefix}[${index}].placement_refs[${refIndex}] is not within the package's purchased product placements`,
+            field: `${fieldPrefix}[${index}].placement_refs[${refIndex}]`,
+          });
+          continue;
+        }
+        routedPlacements.push(placement);
+      }
+    } else if (Array.isArray(assignment.placement_ids)) {
+      for (let refIndex = 0; refIndex < assignment.placement_ids.length; refIndex++) {
+        const placementId = assignment.placement_ids[refIndex];
+        const matches = placements.filter(placement => placement.placement_id === placementId);
+        const placement = matches.length === 1 ? matches[0] : undefined;
+        const key = placement ? placementKey(placement) : undefined;
+        if (!placement || (selected && !selected.has(key!))) {
+          errors.push({
+            code: 'VALIDATION_ERROR',
+            message: `${fieldPrefix}[${index}].placement_ids[${refIndex}] is unknown, ambiguous, or outside the purchased placement set`,
+            field: `${fieldPrefix}[${index}].placement_ids[${refIndex}]`,
+          });
+          continue;
+        }
+        routedPlacements.push(placement);
+      }
+    }
+
+    const requirementSets = routedPlacements.length > 0
+      ? routedPlacements.map(placement => {
+        const placementRequirements = Array.isArray(placement.format_options)
+          ? placement.format_options.filter(isRecord) as CanonicalPackageFormat[]
+          : [];
+        return placementRequirements.length > 0 ? placementRequirements : packageRequirements;
+      })
+      : hasExplicitRoute
+        ? []
+        : [packageRequirements];
+    for (const requirements of requirementSets) {
+      if (requirements.length > 0 && !requirements.some(requirement => creativeCanTargetFormat(
+        creative,
+        requirement,
+        requirements.filter(other => other.format_kind === requirement.format_kind).length,
+      ))) {
+        errors.push({
+          code: 'VALIDATION_ERROR',
+          message: `${fieldPrefix}[${index}] creative does not satisfy any applicable package format or locale contract`,
+          field: `${fieldPrefix}[${index}]`,
+        });
+      }
+    }
+  }
+  return errors;
 }
 
 function formatsPendingForPackage(pkg: PackageState, session: SessionState): CanonicalPackageFormat[] {
@@ -2332,9 +2629,9 @@ import {
 } from './source-schema.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.2'] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.4'] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
-const CURRENT_ADCP_VERSION = '3.2-beta.2';
+const CURRENT_ADCP_VERSION = '3.2-beta.4';
 const MAX_PACKAGES_PER_BUY = 50;
 
 interface ParsedAdcpReleaseVersion {
@@ -2379,6 +2676,16 @@ function compareAdcpReleaseVersions(left: ParsedAdcpReleaseVersion, right: Parse
   if (!left.prerelease) return 1;
   if (!right.prerelease) return -1;
   return compareAdcpPrerelease(left.prerelease, right.prerelease);
+}
+
+function supportsLifecycleSplitCompatibility(version: string | undefined): boolean {
+  if (version === undefined) return true;
+  const parsed = parseAdcpReleaseVersion(version);
+  return parsed !== undefined && (parsed.major > 3 || (parsed.major === 3 && parsed.minor >= 2));
+}
+
+function lifecycleSplitVersionForContext(ctx: TrainingContext): string | undefined {
+  return isThreeZeroStoryboardCompat(ctx) ? '3.0' : ctx.servedAdcpVersion;
 }
 
 function compareAdcpPrerelease(left: string, right: string): number {
@@ -2547,6 +2854,21 @@ function validatedCreativeIdentity(
 
   if (hasCanonicalIdentity) {
     const formatKind = canonicalFormatKind(creative.format_kind);
+    const usesProductBoundSchema = formatKind === 'seller_rendered_stateful_display'
+      || formatKind === 'coordinated_placements';
+    if (usesProductBoundSchema) {
+      if (creative.format_option_ref !== undefined && !isRecord(creative.format_option_ref)) {
+        return { ok: false, message: 'has an invalid canonical format_option_ref' };
+      }
+      return {
+        ok: true,
+        identity: {
+          kind: 'canonical',
+          formatKind,
+          ...(isRecord(creative.format_option_ref) && { formatOptionRef: creative.format_option_ref }),
+        },
+      };
+    }
     const parsed = CreativeAssetSchema.safeParse({
       creative_id: '__identity_validation__',
       name: 'Identity validation',
@@ -2634,6 +2956,17 @@ function normalizedCreativeManifest(
     ?? existing?.manifest?.assets
     ?? existing?.assets;
   if (!assets) return undefined;
+  const inlineComponentAssets = isRecord(creative.component_assets)
+    ? creative.component_assets as CreativeManifest['component_assets']
+    : undefined;
+  const manifestComponentAssets = isRecord(creative.manifest) && isRecord(creative.manifest.component_assets)
+    ? creative.manifest.component_assets as CreativeManifest['component_assets']
+    : undefined;
+  const componentAssets = inlineComponentAssets
+    ?? manifestComponentAssets
+    ?? (identity.kind === 'canonical' && identity.formatKind === 'coordinated_placements'
+      ? existing?.manifest?.component_assets ?? existing?.componentAssets
+      : undefined);
 
   const sourceManifest = isRecord(creative.manifest)
     ? creative.manifest
@@ -2645,6 +2978,7 @@ function normalizedCreativeManifest(
     format_kind: _staleFormatKind,
     format_option_ref: _staleFormatOptionRef,
     assets: _staleAssets,
+    component_assets: _staleComponentAssets,
     ...manifestMetadata
   } = sourceManifest ?? {};
 
@@ -2654,12 +2988,14 @@ function normalizedCreativeManifest(
       format_kind: identity.formatKind,
       ...(identity.formatOptionRef && { format_option_ref: identity.formatOptionRef }),
       assets,
+      ...(componentAssets && { component_assets: componentAssets }),
     }
     : {
       ...manifestMetadata,
       format_id: identity.formatId,
       ...(identity.formatOptionRef && { format_option_ref: identity.formatOptionRef }),
       assets,
+      ...(componentAssets && { component_assets: componentAssets }),
     };
 }
 
@@ -3205,6 +3541,7 @@ interface TaskError {
   message: string;
   field?: string;
   details?: unknown;
+  suggestion?: string;
   recovery?: string;
   source?: 'producer' | 'sdk';
   sdk_id?: string;
@@ -3404,22 +3741,23 @@ export function deriveStatus(mb: MediaBuyState, session?: SessionState): string 
 }
 
 /** Map lifecycle status to valid buyer actions. */
-function validActionsForStatus(status: string): string[] {
+function validActionsForStatus(status: string, servedAdcpVersion?: string): string[] {
+  const updateName = supportsLifecycleSplitCompatibility(servedAdcpVersion) ? ['update_name'] : [];
   switch (status) {
     case 'pending_creatives':
     case 'pending_start':
-      return ['pause', 'cancel', 'sync_creatives'];
+      return ['pause', 'cancel', ...updateName, 'sync_creatives'];
     case 'active':
-      return ['pause', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
+      return ['pause', 'cancel', ...updateName, 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
     case 'paused':
-      return ['resume', 'cancel', 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
+      return ['resume', 'cancel', ...updateName, 'update_budget', 'update_dates', 'update_packages', 'add_packages', 'sync_creatives'];
     default:
       return [];
   }
 }
 
-function availableActionsForStatus(status: string, explicit?: MediaBuyAvailableActionState[]): MediaBuyAvailableActionState[] {
-  const actions = explicit ?? validActionsForStatus(status).map(action => ({
+function availableActionsForStatus(status: string, explicit?: MediaBuyAvailableActionState[], servedAdcpVersion?: string): MediaBuyAvailableActionState[] {
+  const actions = explicit ?? validActionsForStatus(status, servedAdcpVersion).map(action => ({
     action,
     mode: 'self_serve' as const,
   }));
@@ -3447,8 +3785,8 @@ function hasLatentMediaBuyPause(mb: MediaBuyState, status: string): boolean {
   return mb.status === 'paused' && status !== 'paused' && NON_TERMINAL_MEDIA_BUY_STATUSES.has(status);
 }
 
-function validActionsForMediaBuy(mb: MediaBuyState, status: string): string[] {
-  const actions = validActionsForStatus(status);
+function validActionsForMediaBuy(mb: MediaBuyState, status: string, servedAdcpVersion?: string): string[] {
+  const actions = validActionsForStatus(status, servedAdcpVersion);
   if (!hasLatentMediaBuyPause(mb, status) || actions.includes('resume')) return actions;
   return ['resume', ...actions];
 }
@@ -3529,17 +3867,40 @@ function deriveAvailableActionsFromProductAllowedActions(
     })));
 }
 
-function availableActionsForMediaBuy(mb: MediaBuyState, status: string): MediaBuyAvailableActionState[] {
+function availableActionsForMediaBuy(mb: MediaBuyState, status: string, servedAdcpVersion?: string): MediaBuyAvailableActionState[] {
   const productDerived = deriveAvailableActionsFromProductAllowedActions(mb.productAllowedActions, status);
   const actions = productDerived !== undefined
     ? productDerived
-    : availableActionsForStatus(status, mb.availableActions);
-  const canonical = actions.map(action => ({
-    ...action,
-    task: action.task ?? canonicalTaskForMediaBuyAction(action.action),
-  }));
+    : availableActionsForStatus(status, mb.availableActions, servedAdcpVersion);
+  const canonical = actions
+    .filter(action => action.action !== 'update_name' || supportsLifecycleSplitCompatibility(servedAdcpVersion))
+    .map(action => ({
+      ...action,
+      task: action.task ?? canonicalTaskForMediaBuyAction(action.action),
+    }));
   if (!hasLatentMediaBuyPause(mb, status) || canonical.some(action => action.action === 'resume')) return canonical;
   return [{ task: 'control_media_buy', action: 'resume', mode: 'self_serve' }, ...canonical];
+}
+
+function compactAvailableActions(
+  mediaBuy: MediaBuyState,
+  status: string,
+  servedAdcpVersion?: string,
+): Array<MediaBuyAvailableActionState & { task: 'control_media_buy' }> {
+  const compactControlActions = new Set([
+    'pause', 'resume', 'cancel', 'update_name', 'increase_budget', 'decrease_budget',
+    'reallocate_budget', 'update_budget_allocation', 'update_targeting',
+    'update_pacing', 'update_bidding', 'update_frequency_caps',
+    'update_catalog_assignments', 'update_keywords', 'update_optimization_goals',
+    'update_impression_goal', 'update_spend_target', 'update_reporting_webhook',
+    'remove_packages',
+  ]);
+  return availableActionsForMediaBuy(mediaBuy, status, servedAdcpVersion)
+    .filter(action => compactControlActions.has(action.action))
+    .map(action => ({
+      ...action,
+      task: 'control_media_buy' as const,
+    }));
 }
 
 function canonicalTaskForMediaBuyAction(action: string): MediaBuyAvailableActionState['task'] {
@@ -3556,15 +3917,24 @@ type AttemptedMediaBuyAction =
   | 'pause'
   | 'resume'
   | 'cancel'
+  | 'update_name'
   | 'extend_flight'
   | 'shorten_flight'
   | 'update_flight_dates'
   | 'increase_budget'
   | 'decrease_budget'
   | 'reallocate_budget'
+  | 'update_budget_allocation'
   | 'update_targeting'
   | 'update_pacing'
+  | 'update_bidding'
   | 'update_frequency_caps'
+  | 'update_catalog_assignments'
+  | 'update_keywords'
+  | 'update_optimization_goals'
+  | 'update_impression_goal'
+  | 'update_spend_target'
+  | 'update_reporting_webhook'
   | 'replace_creative'
   | 'update_creative_assignments'
   | 'add_packages'
@@ -3585,9 +3955,43 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): At
     actions.push({ action, ...(packageId && { packageId }) });
   };
 
+  // Legacy update_media_buy defines cancellation as dominant. Sibling
+  // mutations are ignored, so they must not influence action authorization.
+  if (req.canceled === true) {
+    addAction('cancel');
+    return actions;
+  }
   if (req.paused === true) addAction('pause');
   if (req.paused === false) addAction('resume');
-  if (req.canceled === true) addAction('cancel');
+  if (typeof req.name === 'string' && req.name !== mb.name) addAction('update_name');
+
+  const aggregateControl = req as unknown as Record<string, unknown>;
+  const requestedTotal = isRecord(aggregateControl.total_budget)
+    && typeof aggregateControl.total_budget.amount === 'number'
+    ? aggregateControl.total_budget.amount
+    : undefined;
+  const currentTotal = mb.totalBudget
+    ?? mb.packages.reduce((sum, pkg) => sum + pkg.budget, 0);
+  if (requestedTotal !== undefined) {
+    if (requestedTotal > currentTotal) addAction('increase_budget');
+    if (requestedTotal < currentTotal) addAction('decrease_budget');
+  }
+  if (Object.hasOwn(aggregateControl, 'budget_allocation')) addAction('update_budget_allocation');
+  if (Object.hasOwn(aggregateControl, 'daily_budget_cap')) {
+    const requestedCap = aggregateControl.daily_budget_cap;
+    if (requestedCap === null) addAction('increase_budget');
+    if (typeof requestedCap === 'number') {
+      if (mb.dailyBudgetCap === undefined || requestedCap < mb.dailyBudgetCap) addAction('decrease_budget');
+      if (mb.dailyBudgetCap !== undefined && requestedCap > mb.dailyBudgetCap) addAction('increase_budget');
+    }
+  }
+  if (Object.hasOwn(aggregateControl, 'budget_cap_timezone')) addAction('update_pacing');
+  if (Object.hasOwn(aggregateControl, 'pacing')) addAction('update_pacing');
+  if (Object.hasOwn(aggregateControl, 'bidding')) addAction('update_bidding');
+  if (
+    Object.hasOwn(aggregateControl, 'reporting_webhook')
+    || Object.hasOwn(aggregateControl, 'push_notification_config')
+  ) addAction('update_reporting_webhook');
 
   const currentStart = new Date(mb.startTime).getTime();
   const currentEnd = new Date(mb.endTime).getTime();
@@ -3615,12 +4019,21 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): At
       const pkgId = update.package_id || '';
       const pkg = mb.packages.find(p => p.packageId === pkgId);
       if (!pkg) continue;
+      // Package cancellation likewise dominates fields in the same package
+      // update object. Other package updates in the request remain atomic.
+      if (update.canceled === true) {
+        addAction('remove_packages', pkgId);
+        continue;
+      }
       totalBefore += pkg.budget;
       totalAfter += typeof update.budget === 'number' ? update.budget : pkg.budget;
       if (typeof update.budget === 'number') {
         sawBudget = true;
         if (update.budget > pkg.budget) addAction('increase_budget', pkgId);
         if (update.budget < pkg.budget) addAction('decrease_budget', pkgId);
+      }
+      if ((update as unknown as Record<string, unknown>).budget === null) {
+        addAction('increase_budget', pkgId);
       }
       if (update.start_time) addAction('update_flight_dates', pkgId);
       if (update.end_time) {
@@ -3631,8 +4044,26 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): At
           if (nextPackageEnd < currentPackageEnd) addAction('shorten_flight', pkgId);
         }
       }
-      if (update.targeting_overlay || update.targeting || update.keyword_targets_add || update.keyword_targets_remove || update.negative_keywords_add || update.negative_keywords_remove) addAction('update_targeting', pkgId);
-      if (update.pacing) addAction('update_pacing', pkgId);
+      if (update.targeting_overlay || update.targeting) addAction('update_targeting', pkgId);
+      if (update.keyword_targets_add || update.keyword_targets_remove || update.negative_keywords_add || update.negative_keywords_remove) addAction('update_keywords', pkgId);
+      if (Object.hasOwn(update, 'pacing')) addAction('update_pacing', pkgId);
+      if (Object.hasOwn(update, 'bidding')) addAction('update_bidding', pkgId);
+      if (Object.hasOwn(update, 'catalog_ids')) addAction('update_catalog_assignments', pkgId);
+      if (Object.hasOwn(update, 'optimization_goals')) addAction('update_optimization_goals', pkgId);
+      if (Object.hasOwn(update, 'impressions')) addAction('update_impression_goal', pkgId);
+      if (Object.hasOwn(update, 'daily_budget_cap')) {
+        if (update.daily_budget_cap === null) addAction('increase_budget', pkgId);
+        if (typeof update.daily_budget_cap === 'number') {
+          if (pkg.dailyBudgetCap === undefined || update.daily_budget_cap < pkg.dailyBudgetCap) {
+            addAction('decrease_budget', pkgId);
+          }
+          if (pkg.dailyBudgetCap !== undefined && update.daily_budget_cap > pkg.dailyBudgetCap) {
+            addAction('increase_budget', pkgId);
+          }
+        }
+      }
+      if (Object.hasOwn(update, 'min_spend_target')) addAction('update_spend_target', pkgId);
+      if (Object.hasOwn(update, 'paused')) addAction(update.paused ? 'pause' : 'resume', pkgId);
       if (
         update.targeting_overlay
         && typeof update.targeting_overlay === 'object'
@@ -3640,7 +4071,6 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): At
       ) addAction('update_frequency_caps', pkgId);
       if (update.creative_assignments) addAction('update_creative_assignments', pkgId);
       if (update.creatives) addAction('replace_creative', pkgId);
-      if (update.canceled === true) addAction('remove_packages', pkgId);
     }
     if (sawBudget && totalAfter === totalBefore && seenHasAction(seen, 'increase_budget') && seenHasAction(seen, 'decrease_budget')) {
       addAction('reallocate_budget');
@@ -3656,6 +4086,26 @@ function seenHasAction(seen: Set<string>, action: AttemptedMediaBuyAction): bool
     if (key.endsWith(`:${action}`)) return true;
   }
   return false;
+}
+
+function legacyUpdateChangesCommercialEnvelope(req: UpdateMediaBuyArgs): boolean {
+  const root = req as unknown as Record<string, unknown>;
+  if ([
+    'start_time',
+    'end_time',
+    'total_budget',
+    'daily_budget_cap',
+    'budget_cap_timezone',
+    'budget_allocation',
+    'pacing',
+    'bidding',
+    'invoice_recipient',
+    'purchase_order_ref',
+    'agency_estimate_number',
+  ].some(field => Object.hasOwn(root, field))) return true;
+  if (req.new_packages?.length) return true;
+  return Boolean(req.packages?.some(update => Object.keys(update as unknown as Record<string, unknown>)
+    .some(field => !['package_id', 'paused', 'creative_assignments', 'creatives'].includes(field))));
 }
 
 function actionNotAllowedError(
@@ -3771,7 +4221,7 @@ function legacyFormatRef(value: unknown): FormatID | undefined {
   };
 }
 
-function canonicalFormatKind(value: unknown): CanonicalFormatKind | undefined {
+function canonicalFormatKind(value: unknown): TrainingCanonicalFormatKind | undefined {
   switch (value) {
     case 'image':
     case 'html5':
@@ -3785,6 +4235,8 @@ function canonicalFormatKind(value: unknown): CanonicalFormatKind | undefined {
     case 'native_in_feed':
     case 'responsive_creative':
     case 'agent_placement':
+    case 'seller_rendered_stateful_display':
+    case 'coordinated_placements':
     case 'custom':
       return value;
     default:
@@ -3819,7 +4271,9 @@ function requestScopedLegacyRoutes(selector: Readonly<Record<string, unknown>>):
       }
       if (refs.length === 0) continue;
       mappedDeclarations.push({
-        format_kind: formatKind,
+        // The installed 3.1 SDK type predates the two experimental 3.2 kinds;
+        // the runtime projection intentionally carries them through.
+        format_kind: formatKind as CanonicalFormatKind,
         params: isRecord(declaration.params) ? declaration.params : {},
         format_option_id: formatOptionId,
         ...(typeof declaration.publisher_domain === 'string' && { publisher_domain: declaration.publisher_domain }),
@@ -4122,6 +4576,18 @@ function aggregateCreativePolicy(session: import('./types.js').SessionState): Cr
   return anyPolicy ? acc : null;
 }
 
+function aggregateEnforcedPolicies(session: import('./types.js').SessionState): Set<string> {
+  const policies = new Set<string>();
+  for (const fixture of session.complyExtensions.seededProducts.values()) {
+    const enforced = (fixture as { enforced_policies?: unknown }).enforced_policies;
+    if (!Array.isArray(enforced)) continue;
+    for (const policyId of enforced) {
+      if (typeof policyId === 'string') policies.add(policyId);
+    }
+  }
+  return policies;
+}
+
 interface CreativeManifestView {
   provenance?: Record<string, unknown>;
   assets?: Record<string, { provenance?: Record<string, unknown> }>;
@@ -4412,22 +4878,183 @@ function seededProductIds(session: import('./types.js').SessionState): Set<strin
   return ids;
 }
 
+const AVAILABILITY_DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Second-precision RFC3339 UTC, e.g. "2099-09-01T00:00:00Z". */
+function toUtcSecondsIso(ms: number): string {
+  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+/**
+ * Partition [horizon.start_time, horizon.end_time) into maximal half-open,
+ * chronologically-ordered, non-overlapping windows of constant
+ * availability_status, per the forecast-dimension-time.json contract.
+ *
+ * A window is "unavailable" when it overlaps any seeded booked_window, OR
+ * when it is an open gap shorter than min_bookable_days (whole days).
+ * Adjacent windows sharing a status are coalesced into one window, so a
+ * booked span immediately followed by a too-short gap emits as a single
+ * unavailable window.
+ *
+ * Returns undefined when the horizon itself is malformed (non-positive
+ * duration) — callers leave the product's existing forecast untouched in
+ * that case rather than emitting an empty points[] (forecast-point.json
+ * requires minItems: 1).
+ */
+function computeAvailabilityForecastPoints(
+  horizon: { start_time: string; end_time: string },
+  availability: SeededProductAvailability,
+): Array<Record<string, unknown>> | undefined {
+  const horizonStart = Date.parse(horizon.start_time);
+  const horizonEnd = Date.parse(horizon.end_time);
+  if (!Number.isFinite(horizonStart) || !Number.isFinite(horizonEnd) || horizonEnd <= horizonStart) {
+    return undefined;
+  }
+
+  // Union booked windows, clipped to the horizon.
+  const clippedBooked = availability.booked_windows
+    .map(window => ({
+      start: Math.max(Date.parse(window.start_time), horizonStart),
+      end: Math.min(Date.parse(window.end_time), horizonEnd),
+    }))
+    .filter(window => Number.isFinite(window.start) && Number.isFinite(window.end) && window.end > window.start)
+    .sort((a, b) => a.start - b.start);
+  const bookedUnion: Array<{ start: number; end: number }> = [];
+  for (const window of clippedBooked) {
+    const last = bookedUnion[bookedUnion.length - 1];
+    if (last && window.start <= last.end) {
+      last.end = Math.max(last.end, window.end);
+    } else {
+      bookedUnion.push({ ...window });
+    }
+  }
+
+  // Partition the horizon into booked segments and the gaps between them,
+  // classifying each gap by the min-bookable-days eligibility rule.
+  type Segment = { start: number; end: number; status: 'available' | 'unavailable' };
+  const segments: Segment[] = [];
+  let cursor = horizonStart;
+  const classifyGap = (start: number, end: number): Segment => {
+    const gapDays = Math.floor((end - start) / AVAILABILITY_DAY_MS);
+    return { start, end, status: gapDays < availability.min_bookable_days ? 'unavailable' : 'available' };
+  };
+  for (const booked of bookedUnion) {
+    if (booked.start > cursor) segments.push(classifyGap(cursor, booked.start));
+    segments.push({ start: booked.start, end: booked.end, status: 'unavailable' });
+    cursor = booked.end;
+  }
+  if (cursor < horizonEnd) segments.push(classifyGap(cursor, horizonEnd));
+
+  // Coalesce adjacent same-status windows (MUST per forecast-dimension-time.json).
+  const coalesced: Segment[] = [];
+  for (const segment of segments) {
+    const last = coalesced[coalesced.length - 1];
+    if (last && last.status === segment.status && last.end === segment.start) {
+      last.end = segment.end;
+    } else {
+      coalesced.push({ ...segment });
+    }
+  }
+
+  return coalesced.map(segment => {
+    const days = Math.floor((segment.end - segment.start) / AVAILABILITY_DAY_MS);
+    return {
+      dimensions: [{
+        kind: 'time',
+        start_time: toUtcSecondsIso(segment.start),
+        end_time: toUtcSecondsIso(segment.end),
+      }],
+      availability_status: segment.status,
+      metrics: segment.status === 'available'
+        ? { impressions: { mid: days * 1000 }, spend: { mid: days * 250 } }
+        : {},
+    };
+  });
+}
+
+/**
+ * Replace the forecast on each returned product that has a seeded booking
+ * calendar (comply_test_controller.seed_product's fixture.availability) with
+ * a windowed availability forecast scoped to offer_filters.availability_horizon.
+ * Products without seeded availability keep their existing (catalog-baked)
+ * forecast untouched. Not a filter — every product stays in the result set
+ * regardless of how much of the horizon it can cover.
+ */
+function applyAvailabilityHorizonForecasts(
+  products: Product[],
+  horizon: unknown,
+  session: import('./types.js').SessionState,
+): Product[] {
+  if (
+    !isRecord(horizon)
+    || typeof horizon.start_time !== 'string'
+    || typeof horizon.end_time !== 'string'
+  ) {
+    return products;
+  }
+  const { seededProductAvailability } = session.complyExtensions;
+  if (seededProductAvailability.size === 0) return products;
+  const horizonRange = { start_time: horizon.start_time, end_time: horizon.end_time };
+  const now = Date.now();
+  const generatedAt = toUtcSecondsIso(now);
+  const validUntil = toUtcSecondsIso(now + 5 * 60 * 1000);
+  return products.map(product => {
+    const availability = seededProductAvailability.get(product.product_id);
+    if (!availability) return product;
+    const points = computeAvailabilityForecastPoints(horizonRange, availability);
+    if (!points) return product;
+    return {
+      ...product,
+      forecast: {
+        points,
+        forecast_range_unit: 'availability',
+        method: 'modeled',
+        currency: 'USD',
+        generated_at: generatedAt,
+        valid_until: validUntil,
+      } as unknown as Product['forecast'],
+    };
+  });
+}
+
 type CanonicalFormatRef = { agent_url?: string; id?: string };
 type CanonicalFormatOption = {
   format_option_id?: string;
   format_kind?: string;
+  format_shape?: string;
   v1_format_ref?: CanonicalFormatRef[];
 };
 
 function collectCanonicalFormatAdvisories(products: Product[]): TaskError[] {
   const errors: TaskError[] = [];
+  const promotedFormatShapes = getPromotedFormatShapes();
 
   for (let productIndex = 0; productIndex < products.length; productIndex++) {
     const product = products[productIndex] as Product & {
       format_ids?: CanonicalFormatRef[];
       format_options?: CanonicalFormatOption[];
     };
-    if (!Array.isArray(product.format_ids) || !Array.isArray(product.format_options)) continue;
+    if (!Array.isArray(product.format_options)) continue;
+    product.format_options.forEach((option, optionIndex) => {
+      if (option.format_kind !== 'custom' || typeof option.format_shape !== 'string') return;
+      const promotion = promotedFormatShapes[option.format_shape];
+      if (!promotion) return;
+      errors.push({
+        code: 'FORMAT_SHAPE_PROMOTED',
+        message: `Product ${product.product_id} uses legacy custom format shape ${option.format_shape}; migrate to ${promotion.promoted_to}.`,
+        field: `products[${productIndex}].format_options[${optionIndex}].format_shape`,
+        recovery: 'correctable',
+        source: 'producer',
+        details: {
+          product_id: product.product_id,
+          format_shape: option.format_shape,
+          promoted_to: promotion.promoted_to,
+          promotion_release: promotion.promotion_release,
+          transition_end: promotion.transition_end,
+        },
+      });
+    });
+    if (!Array.isArray(product.format_ids)) continue;
     if (product.format_ids.length === 0 || product.format_options.length === 0) continue;
 
     const declaredRefs = new Set(
@@ -4804,6 +5431,12 @@ const PRODUCT_DISCOVERY_TOOLS = new Set([
   'get_products',
   ...PRODUCT_DISCOVERY_LIFECYCLE_TOOLS,
 ]);
+const COMPACT_MEDIA_BUY_TOOLS = new Set([
+  ...PRODUCT_DISCOVERY_LIFECYCLE_TOOLS,
+  'buy_products',
+  'accept_proposal',
+  'control_media_buy',
+]);
 
 function isProductDiscoveryTool(toolName: string): boolean {
   return PRODUCT_DISCOVERY_TOOLS.has(toolName);
@@ -4824,6 +5457,9 @@ function productDiscoverySourceSchemaName(toolName: string): string | undefined 
     case 'request_proposals': return 'request-proposals-request';
     case 'refine_proposals': return 'refine-proposals-request';
     case 'decline_proposals': return 'decline-proposals-request';
+    case 'buy_products': return 'buy-products-request';
+    case 'accept_proposal': return 'accept-proposal-request';
+    case 'control_media_buy': return 'control-media-buy-request';
     default: return undefined;
   }
 }
@@ -4995,6 +5631,9 @@ function canonicalPricingSnapshot(raw: unknown, pricingOptionId: string): Record
   snapshot.pricing_option_id = pricingOptionId;
   if (typeof snapshot.pricing_model !== 'string') snapshot.pricing_model = 'cpm';
   if (typeof snapshot.currency !== 'string') snapshot.currency = 'USD';
+  if (snapshot.event_type === 'custom' && typeof snapshot.custom_event_name !== 'string') {
+    snapshot.custom_event_name = 'conversion';
+  }
   // A selected fixed price supersedes an auction floor in the canonical
   // snapshot; the schema intentionally forbids carrying both.
   if (typeof source.fixed_price === 'number') snapshot.fixed_price = source.fixed_price;
@@ -5084,6 +5723,54 @@ function compactCanonicalProduct(product: Record<string, unknown>): Record<strin
   };
 }
 
+const COMPACT_PRODUCT_FIELDS = new Set([
+  'product_id', 'name', 'description', 'publisher_properties', 'channels',
+  'format_options', 'delivery_type', 'pricing_options', 'reporting_capabilities',
+  'placements', 'forecast', 'expires_at', 'brief_relevance', 'catalog_match',
+  'allowed_actions', 'catalog_types', 'signal_targeting_allowed',
+  'signal_targeting_rules', 'max_optimization_goals', 'measurement_terms',
+  'performance_standards', 'audience_evidence', 'audience_evidence_selections',
+  'demographic_targeting', 'exclusivity', 'audio_distribution_types',
+  'video_placement_types', 'social_placement_surfaces',
+  'sponsored_placement_types', 'ext',
+]);
+
+const COMPACT_FORMAT_OPTION_FIELDS = new Set([
+  'format_option_id', 'format_kind', 'display_name', 'publisher_domain',
+  'applies_to_channels', 'params', 'format_schema', 'format_shape',
+  'locale_policy', 'seller_preference', 'canonical_formats_only',
+  'experimental', 'sample_render_url',
+]);
+
+function pickCompactFields(source: Record<string, unknown>, fields: ReadonlySet<string>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(source)
+    .filter(([field, value]) => fields.has(field) && value !== undefined)
+    .map(([field, value]) => [field, structuredClone(value)]));
+}
+
+/** Project the additive 3.x get_products representation into the closed
+ * canonical offer shape used by list_products. */
+function compactLifecycleProduct(
+  product: Record<string, unknown>,
+  requestedFields?: ReadonlySet<string>,
+): Record<string, unknown> {
+  const selectedFields = requestedFields
+    ? new Set(['product_id', 'name', ...requestedFields])
+    : COMPACT_PRODUCT_FIELDS;
+  const projected = pickCompactFields(product, selectedFields);
+  if (selectedFields.has('format_options') && Array.isArray(product.format_options)) {
+    projected.format_options = product.format_options
+      .filter(isRecord)
+      .map(option => pickCompactFields(option, COMPACT_FORMAT_OPTION_FIELDS));
+  }
+  if (selectedFields.has('pricing_options') && Array.isArray(product.pricing_options)) {
+    projected.pricing_options = product.pricing_options
+      .filter(isRecord)
+      .map(option => canonicalPricingSnapshot(option, String(option.pricing_option_id ?? '')));
+  }
+  return projected;
+}
+
 function outwardProposal(proposal: Record<string, unknown>, products: Map<string, Product>): Record<string, unknown> {
   const brand = {
     domain: typeof proposal.__brand_domain === 'string' ? proposal.__brand_domain : 'advertiser.example',
@@ -5112,6 +5799,99 @@ function outwardProposal(proposal: Record<string, unknown>, products: Map<string
       ? proposal.__canonical_terms_digest
       : proposalTermsDigest(terms),
     ...(isRecord(proposal.insertion_order) && { insertion_order: proposal.insertion_order }),
+    // Reverse-forecast planning (criteria.outcome_target): these are only
+    // populated when the source request_proposals call carried outcome_target
+    // (see computeOutcomeTargetPlan). Absent otherwise — outcome_target
+    // support must never change the shape of an unrelated proposal.
+    ...(isRecord(proposal.__outcome_target_guidance) && {
+      total_budget_guidance: structuredClone(proposal.__outcome_target_guidance),
+    }),
+    ...(isRecord(proposal.__outcome_target_forecast) && {
+      forecast: structuredClone(proposal.__outcome_target_forecast),
+    }),
+  };
+}
+
+// ── Reverse-forecast planning (criteria.outcome_target) ─────────────────────
+//
+// Deterministic reference model, not a market claim. A buyer states a
+// desired metric or event volume; the seller solves for the budget that
+// plans to deliver it. OUTCOME_TARGET_METRIC_RESPONSE_RATE models 1 click
+// per 1,000 impressions; OUTCOME_TARGET_EVENT_RESPONSE_RATE models 1
+// conversion event per 5,000 impressions (an added funnel step beyond a
+// click). Both are training-fixture constants, not real delivery estimates.
+const OUTCOME_TARGET_METRIC_RESPONSE_RATE = 0.001;
+const OUTCOME_TARGET_EVENT_RESPONSE_RATE = 0.0002;
+const OUTCOME_TARGET_DEFAULT_CPM = 10;
+const OUTCOME_TARGET_FORECAST_RATIOS = [0.5, 1, 1.5] as const;
+
+/** The metrics{} key a goal's forecast points carry: the metric name for a
+ * metric goal, or the event type (custom_event_name when custom) for an
+ * event goal — the same key the buyer will later use on optimization_goals. */
+function outcomeTargetGoalKey(goal: Record<string, unknown>): string {
+  if (goal.kind === 'event') {
+    return goal.event_type === 'custom' ? String(goal.custom_event_name) : String(goal.event_type);
+  }
+  return String(goal.metric);
+}
+
+/** A 'spend' metric goal restates the budget the seller is solving for —
+ * there is no plan to construct. Per outcome-target.json, declaring sellers
+ * MAY reject such a goal with INVALID_REQUEST. */
+function outcomeTargetIsUnplannable(goal: Record<string, unknown>): boolean {
+  return goal.kind === 'metric' && goal.metric === 'spend';
+}
+
+function outcomeTargetForecastRangeUnit(goal: Record<string, unknown>): string {
+  if (goal.kind === 'event') return 'conversions';
+  return goal.metric === 'clicks' ? 'clicks' : 'spend';
+}
+
+/** Solve a deterministic budget and delivery curve for one proposal against
+ * a request_proposals criteria.outcome_target goal. CPM comes from the
+ * proposal's first allocation's first pricing option (fixed_price, else
+ * floor_price, else a $10 reference CPM) so every goal has a defined
+ * answer even against auction-only or unpriced fixtures. */
+function computeOutcomeTargetPlan(
+  goal: Record<string, unknown>,
+  volume: number,
+  proposal: Proposal,
+  productsById: Map<string, Product>,
+): { totalBudgetGuidance: Record<string, unknown>; forecast: Record<string, unknown> } {
+  const goalKey = outcomeTargetGoalKey(goal);
+  const responseRate = goal.kind === 'event'
+    ? OUTCOME_TARGET_EVENT_RESPONSE_RATE
+    : OUTCOME_TARGET_METRIC_RESPONSE_RATE;
+  const impressions = volume / responseRate;
+  const firstAllocation = proposal.allocations[0];
+  const product = firstAllocation ? productsById.get(firstAllocation.product_id) : undefined;
+  const firstPricing = product?.pricing_options?.[0] as PricingOptionView | undefined;
+  const cpm = typeof firstPricing?.fixed_price === 'number'
+    ? firstPricing.fixed_price
+    : typeof firstPricing?.floor_price === 'number'
+      ? firstPricing.floor_price
+      : OUTCOME_TARGET_DEFAULT_CPM;
+  const budget = Math.round((impressions / 1000) * cpm);
+  const now = Date.now();
+  const points = OUTCOME_TARGET_FORECAST_RATIOS.map(ratio => ({
+    budget: Math.round(ratio * budget),
+    metrics: { [goalKey]: { mid: Math.round(ratio * volume) } },
+  }));
+  return {
+    totalBudgetGuidance: {
+      min: Math.round(0.8 * budget),
+      recommended: budget,
+      max: Math.round(1.25 * budget),
+      currency: 'USD',
+    },
+    forecast: {
+      points,
+      forecast_range_unit: outcomeTargetForecastRangeUnit(goal),
+      method: 'modeled',
+      currency: 'USD',
+      generated_at: toUtcSecondsIso(now),
+      valid_until: toUtcSecondsIso(now + 5 * 60 * 1000),
+    },
   };
 }
 
@@ -5173,9 +5953,12 @@ export function projectProductDiscoveryResult(
       };
     }
     const pagination = isRecord(result.pagination) ? result.pagination : undefined;
+    const requestedFields = Array.isArray(originalArgs.fields)
+      ? new Set(originalArgs.fields.filter((field): field is string => typeof field === 'string'))
+      : undefined;
     return {
       outcome: 'listed',
-      products,
+      products: products.map(product => compactLifecycleProduct(product, requestedFields)),
       ...(pagination && typeof pagination.cursor === 'string' && { next_cursor: pagination.cursor }),
       ...(typeof result.wholesale_feed_version === 'string' && { feed_version: result.wholesale_feed_version }),
       ...(typeof result.pricing_version === 'string' && { pricing_version: result.pricing_version }),
@@ -5186,6 +5969,16 @@ export function projectProductDiscoveryResult(
 
   if (toolName === 'request_proposals') {
     const outwardProposals = proposals.map(proposal => outwardProposal(proposal, proposalProducts));
+    if (outwardProposals.length === 0 && products.length > 0) {
+      // Native sellers cannot emit the SDK-only products_available projection,
+      // and proposed requires a genuine seller-authored proposal. Fail closed
+      // with a valid native outcome instead of returning a schema-invalid
+      // empty proposal set.
+      return {
+        outcome: 'rejected',
+        reason: 'No viable seller-authored proposal was produced.',
+      };
+    }
     const supportingProducts = supportingProductsForProposals(outwardProposals, products).map(compactCanonicalProduct);
     return {
       outcome: 'proposed',
@@ -5393,6 +6186,12 @@ export function validateProductDiscoveryAliasInput(
     return { message: `idempotency_key is required for ${toolName}`, field: 'idempotency_key' };
   }
   if (toolName === 'list_products') {
+    if (
+      args.max_results !== undefined
+      && (!Number.isInteger(args.max_results) || (args.max_results as number) < 1 || (args.max_results as number) > 100)
+    ) {
+      return { message: 'max_results must be an integer between 1 and 100', field: 'max_results' };
+    }
     if (args.if_pricing_version !== undefined && args.if_feed_version === undefined) {
       return { message: 'if_pricing_version requires if_feed_version', field: 'if_feed_version' };
     }
@@ -5564,6 +6363,9 @@ const LIST_PRODUCTS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('list-product
 const REQUEST_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('request-proposals-request');
 const REFINE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('refine-proposals-request');
 const DECLINE_PROPOSALS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('decline-proposals-request');
+const BUY_PRODUCTS_INPUT_SCHEMA = loadProductDiscoveryInputSchema('buy-products-request');
+const ACCEPT_PROPOSAL_INPUT_SCHEMA = loadProductDiscoveryInputSchema('accept-proposal-request');
+const CONTROL_MEDIA_BUY_INPUT_SCHEMA = loadProductDiscoveryInputSchema('control-media-buy-request');
 const CREATE_MEDIA_BUY_OPPORTUNITY_INPUT_SCHEMA = {
   type: 'object',
   description: 'Planning-cycle closure for proposal execution. Omit status to infer accepted closure, or send closed with accepted_with_seller.',
@@ -5658,6 +6460,27 @@ const TOOLS = [
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     execution: { taskSupport: 'optional' as const },
     inputSchema: DECLINE_PROPOSALS_INPUT_SCHEMA,
+  },
+  {
+    name: 'buy_products',
+    description: 'Buy exact published product offers against the feed and pricing versions returned by list_products.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: BUY_PRODUCTS_INPUT_SCHEMA,
+  },
+  {
+    name: 'accept_proposal',
+    description: 'Accept one committed immutable proposal and create or amend its MediaBuy atomically.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: ACCEPT_PROPOSAL_INPUT_SCHEMA,
+  },
+  {
+    name: 'control_media_buy',
+    description: 'Apply operational controls within an accepted MediaBuy commercial envelope using optimistic concurrency.',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+    execution: { taskSupport: 'optional' as const },
+    inputSchema: CONTROL_MEDIA_BUY_INPUT_SCHEMA,
   },
   {
     name: 'list_creative_formats',
@@ -6100,10 +6923,7 @@ const TOOLS = [
  */
 export function productDiscoveryAliasToolDefinitions(): Array<(typeof TOOLS)[number]> {
   return structuredClone(TOOLS.filter(tool => (
-    tool.name === 'list_products'
-    || tool.name === 'request_proposals'
-    || tool.name === 'refine_proposals'
-    || tool.name === 'decline_proposals'
+    COMPACT_MEDIA_BUY_TOOLS.has(tool.name)
   )));
 }
 
@@ -6141,7 +6961,7 @@ export function visibleTrainingToolNamesForContext(ctx: TrainingContext): string
 
 function toolAvailableForServedAdcpVersion(toolName: string, servedAdcpVersion: string): boolean {
   if (toolName === 'validate_input') return !servedAdcpVersion.startsWith('3.0');
-  if (isProductDiscoveryTool(toolName) && toolName !== 'get_products') {
+  if (COMPACT_MEDIA_BUY_TOOLS.has(toolName)) {
     return supportsGetProductsRejected(servedAdcpVersion);
   }
   return true;
@@ -6206,14 +7026,23 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
         controllerFixtureSessionKey(req, ctx),
       );
       const directivePrincipal = ctx.principal ?? 'anonymous';
-      const rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
-        ? session.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+      let directiveSession = session;
+      let rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
+        ? directiveSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
         : undefined;
+      if (!rejection && ctx.principal?.startsWith('static:')) {
+        directiveSession = await getSession(
+          sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal),
+        );
+        rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
+          ? directiveSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+          : undefined;
+      }
       const staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
         ? session.complyExtensions.forcedUpstreamUnavailable
         : undefined;
       if (rejection) {
-        session.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
+        directiveSession.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
       }
       if (staleDirective) {
         session.complyExtensions.forcedUpstreamUnavailable = undefined;
@@ -6322,7 +7151,14 @@ async function handleGetProductsUnlocked(
     };
   }
 
-  if (wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
+  // list_products's conditional-read shortcut (if_feed_version) answers
+  // "has the catalog changed" — it cannot answer "what's bookable right now."
+  // A caller requesting fields: ["forecast"] wants a live, horizon-scoped
+  // forecast on every call, so the cached-unchanged short-circuit never
+  // applies to that request shape, matching or not.
+  const forecastFieldRequested = Array.isArray((req as unknown as Record<string, unknown>).fields)
+    && ((req as unknown as Record<string, unknown>).fields as unknown[]).includes('forecast');
+  if (!forecastFieldRequested && wholesaleMeta && wholesaleFeedUnchanged(req as WholesaleFeedRequest, wholesaleMeta)) {
     return {
       status: 'completed' as const,
       unchanged: true,
@@ -6423,6 +7259,14 @@ async function handleGetProductsUnlocked(
       });
     }
   }
+  // Flexible-window availability discovery (offer_filters.availability_horizon)
+  // is not an eligibility filter — products stay in the result set even when
+  // the seller can only cover part of the horizon — so it is read here but
+  // applied later (after brief/refine narrow the final product set) rather
+  // than folded into the filter block above.
+  const availabilityHorizon = isRecord(req.filters)
+    ? (req.filters as Record<string, unknown>).availability_horizon
+    : undefined;
   const filteredProducts = products;
 
   // Brief mode: channel-aware keyword matching
@@ -7037,16 +7881,63 @@ async function handleGetProductsUnlocked(
           return selectedPricing
             ? { ...alloc, pricing_option_id: selectedPricing.pricing_option_id }
             : alloc;
-        }),
+        }) as Proposal['allocations'],
       };
     }) as Proposal[];
   const requireProposals = buyingMode === 'brief'
     && (req as unknown as Record<string, unknown>).__require_proposals === true;
+  // criteria.outcome_target expands to a top-level field by
+  // expandProductDiscoveryCriteria; only request_proposals sets
+  // __require_proposals, so this is scoped to that tool.
+  const outcomeTarget = requireProposals && isRecord((req as unknown as Record<string, unknown>).outcome_target)
+    ? (req as unknown as Record<string, unknown>).outcome_target as Record<string, unknown>
+    : undefined;
+  const outcomeTargetGoal = outcomeTarget && isRecord(outcomeTarget.goal) ? outcomeTarget.goal : undefined;
+  if (outcomeTargetGoal && outcomeTargetIsUnplannable(outcomeTargetGoal)) {
+    return {
+      errors: [{
+        code: 'INVALID_REQUEST',
+        message: "The seller cannot plan against a 'spend' goal because it restates the budget being solved for.",
+        field: 'criteria.outcome_target.goal',
+        recovery: 'correctable',
+      }] as TaskError[],
+    };
+  }
   if (requireProposals) {
     const exactProductIds = Array.isArray((req as unknown as Record<string, unknown>).product_ids)
       ? new Set(((req as unknown as Record<string, unknown>).product_ids as unknown[])
           .filter((id): id is string => typeof id === 'string'))
       : undefined;
+    if (
+      proposals.length === 0
+      && exactProductIds?.size
+      && [...exactProductIds].every(productId => session.complyExtensions.seededProducts.has(productId))
+    ) {
+      const requestedProducts = [...exactProductIds]
+        .map(productId => productsById.get(productId))
+        .filter((product): product is Product => product !== undefined);
+      if (requestedProducts.length === exactProductIds.size) {
+        const allocationPercentage = 100 / requestedProducts.length;
+        const firstPricing = requestedProducts[0].pricing_options[0];
+        proposals = [{
+          proposal_id: `prepared_${createHash('sha256').update([...exactProductIds].join('\0')).digest('hex').slice(0, 16)}`,
+          name: 'Prepared compact product proposal',
+          description: 'Deterministic proposal generated from prepared sandbox fixtures.',
+          brief_alignment: 'Uses the exact products selected by the compact lifecycle request.',
+          total_budget_guidance: {
+            min: 1_000,
+            recommended: 1_000,
+            currency: firstPricing.currency ?? 'USD',
+          },
+          allocations: requestedProducts.map(product => ({
+            product_id: product.product_id,
+            allocation_percentage: allocationPercentage,
+            rationale: 'Selected explicitly by the compact lifecycle request.',
+            pricing_option_id: product.pricing_options[0].pricing_option_id,
+          })) as Proposal['allocations'],
+        } as Proposal];
+      }
+    }
     if (exactProductIds) {
       proposals = proposals.filter(proposal => proposal.allocations.every(allocation => (
         exactProductIds.has(allocation.product_id)
@@ -7118,6 +8009,9 @@ async function handleGetProductsUnlocked(
         .digest('hex')
         .slice(0, 24);
       const proposalId = `proposal_request_${digest}`;
+      const outcomeTargetPlan = outcomeTargetGoal && typeof outcomeTarget?.volume === 'number'
+        ? computeOutcomeTargetPlan(outcomeTargetGoal, outcomeTarget.volume, proposal, productsById)
+        : undefined;
       const snapshot = {
         ...proposal,
         proposal_id: proposalId,
@@ -7129,6 +8023,10 @@ async function handleGetProductsUnlocked(
         ...(proposalAccountScope && { __account_scope: proposalAccountScope }),
         ...(typeof requestOpportunity?.opportunity_id === 'string'
           && { __opportunity_id: requestOpportunity.opportunity_id }),
+        ...(outcomeTargetPlan && {
+          __outcome_target_guidance: outcomeTargetPlan.totalBudgetGuidance,
+          __outcome_target_forecast: outcomeTargetPlan.forecast,
+        }),
       } as unknown as Proposal;
       return existingById.get(proposalId)
         ?? withCanonicalProposalEnvelope(
@@ -7241,6 +8139,7 @@ async function handleGetProductsUnlocked(
       return [successor];
     });
   }
+  products = applyAvailabilityHorizonForecasts(products, availabilityHorizon, session);
   const canonicalFormatAdvisories = collectCanonicalFormatAdvisories(products);
   const staleDirective = readDirectives
     ? readDirectives.staleDirective
@@ -7776,7 +8675,26 @@ function schemaIssueField(path: Array<string | number>): string {
   return `manifest.${path.map(part => typeof part === 'number' ? `[${part}]` : part).join('.')}`.replace(/\.\[/g, '[');
 }
 
-function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): ValidateInputViolation[] {
+function jsonPointerPath(pointer: string): Array<string | number> {
+  if (!pointer) return [];
+  return pointer.slice(1).split('/').map(part => {
+    const decoded = part.replace(/~1/g, '/').replace(/~0/g, '~');
+    return /^\d+$/.test(decoded) ? Number(decoded) : decoded;
+  });
+}
+
+async function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): Promise<ValidateInputViolation[]> {
+  if (manifest.format_kind === 'seller_rendered_stateful_display'
+    || manifest.format_kind === 'coordinated_placements'
+    || manifest.component_assets !== undefined) {
+    const result = await validateProtocolSchema('/schemas/core/creative-manifest.json', manifest);
+    return result.errors.map(issue => ({
+      rule: 'schema',
+      field: schemaIssueField(jsonPointerPath(issue.instancePath)),
+      expected: issue.message ?? 'valid creative manifest',
+      predicted: issue.keyword,
+    }));
+  }
   const parsed = CreativeManifestSchema.safeParse(manifest);
   if (parsed.success) return [];
   return parsed.error.issues.map(issue => ({
@@ -7837,6 +8755,9 @@ function validateAssetUrls(manifest: NonNullable<ValidateInputArgs['manifest']>)
   const seen = new WeakSet<object>();
   for (const [slotId, slotValue] of Object.entries(assets)) {
     collectAssetUrlViolations(slotValue, `assets.${slotId}`, violations, seen);
+  }
+  for (const [componentId, componentAssets] of Object.entries(manifest.component_assets ?? {})) {
+    collectAssetUrlViolations(componentAssets, `component_assets.${componentId}`, violations, seen);
   }
   return violations;
 }
@@ -7907,6 +8828,1111 @@ function validateManifestSlots(
   }
 
   return violations;
+}
+
+type SrsdExpectedCanvas = {
+  width?: number;
+  widthRange?: [number, number];
+  widthMode?: string;
+  height?: number;
+  heightRange?: [number, number];
+  viewportHeightPercent?: number;
+};
+
+type SemanticCheckResult = {
+  violations: ValidateInputViolation[];
+  warnings: ValidateInputViolation[];
+};
+
+function effectiveSrsdSlots(params: Record<string, unknown>): CanonicalSlot[] {
+  return normalizeCanonicalSlots(params.slots) ?? CANONICAL_FORMAT_SLOTS.seller_rendered_stateful_display ?? [];
+}
+
+/** Whether `target` is reachable from `start` by following declared transitions. */
+function srsdTransitionGraphReaches(adjacency: Map<string, string[]>, start: string, target: string): boolean {
+  const visited = new Set<string>([start]);
+  const queue = [start];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current === target) return true;
+    for (const next of adjacency.get(current) ?? []) {
+      if (visited.has(next)) continue;
+      visited.add(next);
+      queue.push(next);
+    }
+  }
+  return false;
+}
+
+function validateSellerRenderedStatefulDisplayManifest(
+  params: Record<string, unknown>,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): SemanticCheckResult {
+  const violations: ValidateInputViolation[] = [];
+  const warnings: ValidateInputViolation[] = [];
+  const assets = manifest.assets ?? {};
+  const expected = new Map<string, SrsdExpectedCanvas>();
+  const stateIds = new Set<string>();
+  const stateAnchoring = new Map<string, string>();
+  const states = Array.isArray(params.states) ? params.states : [];
+  const supplyMode = typeof params.supply_mode === 'string' ? params.supply_mode : 'components';
+
+  for (const [stateIndex, rawState] of states.entries()) {
+    if (!isRecord(rawState)) continue;
+    const state = rawState;
+    if (typeof state.state_id !== 'string') continue;
+    if (stateIds.has(state.state_id)) {
+      violations.push({
+        rule: 'unique_state_id',
+        field: `params.states[${stateIndex}].state_id`,
+        expected: 'unique state_id',
+        predicted: state.state_id,
+      });
+    }
+    stateIds.add(state.state_id);
+    if (typeof state.anchoring === 'string') stateAnchoring.set(state.state_id, state.anchoring);
+
+    const motion = typeof state.motion === 'string' ? state.motion : 'static';
+    const hasMaxAnimation = typeof state.max_animation_s === 'number';
+    if (motion === 'animated' && !hasMaxAnimation) {
+      violations.push({
+        rule: 'motion_animation_bound',
+        field: `params.states[${stateIndex}].max_animation_s`,
+        expected: 'required when motion is animated',
+        predicted: undefined,
+      });
+    } else if (motion !== 'animated' && hasMaxAnimation) {
+      violations.push({
+        rule: 'motion_animation_bound',
+        field: `params.states[${stateIndex}].max_animation_s`,
+        expected: 'forbidden unless motion is animated',
+        predicted: state.max_animation_s,
+      });
+    }
+
+    const breakpointIds = new Set<string>();
+    const breakpoints = Array.isArray(state.breakpoints) ? state.breakpoints : [];
+    for (const [breakpointIndex, rawBreakpoint] of breakpoints.entries()) {
+      if (!isRecord(rawBreakpoint)) continue;
+      const breakpoint = rawBreakpoint;
+      if (typeof breakpoint.breakpoint_id !== 'string') continue;
+      if (breakpointIds.has(breakpoint.breakpoint_id)) {
+        violations.push({
+          rule: 'unique_breakpoint_id',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].breakpoint_id`,
+          expected: 'unique within state',
+          predicted: breakpoint.breakpoint_id,
+        });
+      }
+      breakpointIds.add(breakpoint.breakpoint_id);
+
+      const widthRange = Array.isArray(breakpoint.width_range)
+        && breakpoint.width_range.length === 2
+        && breakpoint.width_range.every(value => typeof value === 'number')
+        ? breakpoint.width_range as [number, number]
+        : undefined;
+      if (widthRange && widthRange[0] > widthRange[1]) {
+        violations.push({
+          rule: 'width_range_order',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].width_range`,
+          expected: '[minimum, maximum] with minimum <= maximum',
+          predicted: widthRange,
+        });
+      }
+      const heightRange = Array.isArray(breakpoint.height_range)
+        && breakpoint.height_range.length === 2
+        && breakpoint.height_range.every(value => typeof value === 'number')
+        ? breakpoint.height_range as [number, number]
+        : undefined;
+      if (heightRange && heightRange[0] > heightRange[1]) {
+        violations.push({
+          rule: 'height_range_order',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].height_range`,
+          expected: '[minimum, maximum] with minimum <= maximum',
+          predicted: heightRange,
+        });
+      }
+
+      const fixedWidth = typeof breakpoint.width === 'number' ? breakpoint.width : undefined;
+      const fixedHeight = typeof breakpoint.height === 'number' ? breakpoint.height : undefined;
+      if (typeof breakpoint.canvas_aspect_ratio === 'string' && fixedWidth !== undefined && fixedHeight !== undefined) {
+        const ratioParts = breakpoint.canvas_aspect_ratio.split(':').map(Number);
+        if (ratioParts.length === 2 && ratioParts.every(Number.isFinite) && ratioParts[1] !== 0) {
+          const expectedRatio = ratioParts[0] / ratioParts[1];
+          const actualRatio = fixedWidth / fixedHeight;
+          if (Math.abs(actualRatio - expectedRatio) / expectedRatio > 0.01) {
+            violations.push({
+              rule: 'aspect_consistency',
+              field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}].canvas_aspect_ratio`,
+              expected: breakpoint.canvas_aspect_ratio,
+              predicted: `${fixedWidth}:${fixedHeight}`,
+            });
+          }
+        }
+      }
+
+      const isFluid = typeof breakpoint.width_mode === 'string' || typeof breakpoint.viewport_height_percent === 'number';
+      if (isFluid && supplyMode === 'rendered_canvases') {
+        violations.push({
+          rule: 'fluid_breakpoint_supply',
+          field: `params.states[${stateIndex}].breakpoints[${breakpointIndex}]`,
+          expected: 'fixed or ranged sizing when supply_mode is rendered_canvases',
+          predicted: { width_mode: breakpoint.width_mode, viewport_height_percent: breakpoint.viewport_height_percent },
+        });
+      }
+
+      expected.set(`${state.state_id}:${breakpoint.breakpoint_id}`, {
+        ...(fixedWidth !== undefined && { width: fixedWidth }),
+        ...(widthRange && { widthRange }),
+        ...(typeof breakpoint.width_mode === 'string' && { widthMode: breakpoint.width_mode }),
+        ...(fixedHeight !== undefined && { height: fixedHeight }),
+        ...(heightRange && { heightRange }),
+        ...(typeof breakpoint.viewport_height_percent === 'number' && { viewportHeightPercent: breakpoint.viewport_height_percent }),
+      });
+    }
+
+    const slotBindings = Array.isArray(state.slot_bindings) ? state.slot_bindings : [];
+    if (slotBindings.length > 0) {
+      const effectiveSlotIds = new Set(effectiveSrsdSlots(params).map(slot => slot.asset_group_id));
+      for (const [bindingIndex, slotId] of slotBindings.entries()) {
+        if (typeof slotId !== 'string' || !effectiveSlotIds.has(slotId)) {
+          violations.push({
+            rule: 'slot_binding_resolution',
+            field: `params.states[${stateIndex}].slot_bindings[${bindingIndex}]`,
+            expected: [...effectiveSlotIds],
+            predicted: slotId,
+          });
+        }
+      }
+    }
+
+    if (state.anchoring === 'overlay' || state.anchoring === 'fullscreen_overlay') {
+      const userControls = isRecord(params.user_controls) ? params.user_controls : {};
+      const dismissible = userControls.dismissible === true;
+      const closeAffordance = state.close_affordance === true;
+      if (!dismissible && !closeAffordance) {
+        violations.push({
+          rule: 'dismissibility_floor',
+          field: `params.states[${stateIndex}]`,
+          expected: 'user_controls.dismissible true or close_affordance true',
+          predicted: { dismissible: userControls.dismissible, close_affordance: state.close_affordance },
+        });
+      }
+    }
+  }
+
+  const transitions = Array.isArray(params.transitions) ? params.transitions : [];
+  if (states.length === 1 && transitions.length > 0) {
+    violations.push({
+      rule: 'single_state_shape',
+      field: 'params.transitions',
+      expected: 'absent or empty for a single-state unit',
+      predicted: transitions.length,
+    });
+  } else if (states.length > 1 && transitions.length === 0) {
+    violations.push({
+      rule: 'single_state_shape',
+      field: 'params.transitions',
+      expected: 'present and non-empty when more than one state is declared',
+      predicted: transitions,
+    });
+  }
+
+  const initialStateId = typeof params.initial_state_id === 'string' ? params.initial_state_id : undefined;
+  if (!initialStateId || !stateIds.has(initialStateId)) {
+    violations.push({
+      rule: 'initial_state_resolution',
+      field: 'params.initial_state_id',
+      expected: [...stateIds],
+      predicted: params.initial_state_id,
+    });
+  }
+
+  const effectiveSlots = effectiveSrsdSlots(params);
+  const hasVideoMainSlot = effectiveSlots.some(slot => slot.asset_group_id === 'video_main');
+
+  const transitionIds = new Set<string>();
+  const exitCauses = new Map<string, string>();
+  const adjacency = new Map<string, string[]>();
+  const timerEdges: Array<{ from: string; to: string; delayMs?: number; field: string }> = [];
+  for (const [transitionIndex, rawTransition] of transitions.entries()) {
+    if (!isRecord(rawTransition)) continue;
+    const transitionId = typeof rawTransition.transition_id === 'string'
+      ? rawTransition.transition_id
+      : undefined;
+    if (transitionId && transitionIds.has(transitionId)) {
+      violations.push({
+        rule: 'unique_transition_id',
+        field: `params.transitions[${transitionIndex}].transition_id`,
+        expected: 'unique transition_id',
+        predicted: transitionId,
+      });
+    }
+    if (transitionId) transitionIds.add(transitionId);
+    const fromStateId = typeof rawTransition.from_state_id === 'string'
+      ? rawTransition.from_state_id
+      : undefined;
+    const toStateId = typeof rawTransition.to_state_id === 'string'
+      ? rawTransition.to_state_id
+      : undefined;
+    const trigger = typeof rawTransition.trigger === 'string' ? rawTransition.trigger : undefined;
+    const input = typeof rawTransition.input === 'string' ? rawTransition.input : undefined;
+    const transitionMode = typeof rawTransition.transition_mode === 'string' ? rawTransition.transition_mode : undefined;
+    const delayMs = typeof rawTransition.delay_ms === 'number' ? rawTransition.delay_ms : undefined;
+    const mediaEvent = typeof rawTransition.media_event === 'string' ? rawTransition.media_event : undefined;
+
+    if (trigger === 'scroll_progress') {
+      const scrollStart = typeof rawTransition.scroll_start_percent === 'number'
+        ? rawTransition.scroll_start_percent
+        : undefined;
+      const scrollEnd = typeof rawTransition.scroll_end_percent === 'number'
+        ? rawTransition.scroll_end_percent
+        : undefined;
+      if (scrollStart === undefined || scrollEnd === undefined || scrollStart >= scrollEnd) {
+        violations.push({
+          rule: 'scroll_progress_bounds',
+          field: `params.transitions[${transitionIndex}]`,
+          expected: 'scroll_start_percent < scroll_end_percent',
+          predicted: { scroll_start_percent: scrollStart, scroll_end_percent: scrollEnd },
+        });
+      }
+    }
+
+    if (transitionMode === 'scroll_linked' && trigger !== 'scroll_progress') {
+      violations.push({
+        rule: 'scroll_linked_binding',
+        field: `params.transitions[${transitionIndex}].transition_mode`,
+        expected: 'scroll_linked is valid only with trigger scroll_progress',
+        predicted: trigger,
+      });
+    }
+
+    if (rawTransition.direction !== undefined && trigger !== 'scroll_threshold') {
+      violations.push({
+        rule: 'scroll_threshold_direction',
+        field: `params.transitions[${transitionIndex}].direction`,
+        expected: 'direction is valid only on scroll_threshold transitions',
+        predicted: trigger,
+      });
+    }
+
+    // Exits from a state must be deterministic: two transitions out of the
+    // same state may not share an identical cause tuple. Distinct causes
+    // (tap vs hover, down-scroll vs up-scroll) may coexist — the seller
+    // runtime arms whichever inputs the device supports.
+    if (fromStateId && trigger) {
+      const direction = typeof rawTransition.direction === 'string' ? rawTransition.direction : 'down';
+      const causeParts: Record<string, string> = { trigger };
+      if (trigger === 'user_action') causeParts.input = input ?? '';
+      if (trigger === 'media_event') causeParts.media_event = mediaEvent ?? '';
+      if (trigger === 'scroll_threshold') causeParts.direction = direction;
+      const causeKey = `${fromStateId}|${JSON.stringify(causeParts)}`;
+      const priorTransition = exitCauses.get(causeKey);
+      if (priorTransition !== undefined) {
+        violations.push({
+          rule: 'transition_exit_determinism',
+          field: `params.transitions[${transitionIndex}]`,
+          expected: `at most one transition out of state "${fromStateId}" per cause (trigger/input/media_event/direction)`,
+          predicted: { conflicting_with: priorTransition, cause: causeParts },
+        });
+      } else {
+        exitCauses.set(causeKey, transitionId ?? `transitions[${transitionIndex}]`);
+      }
+    }
+
+    if (trigger === 'media_event') {
+      if (mediaEvent !== 'video_start' && mediaEvent !== 'video_complete') {
+        violations.push({
+          rule: 'media_event_field_required',
+          field: `params.transitions[${transitionIndex}].media_event`,
+          expected: ['video_start', 'video_complete'],
+          predicted: mediaEvent,
+        });
+      }
+      if (!hasVideoMainSlot) {
+        violations.push({
+          rule: 'media_event_video_main_slot_required',
+          field: `params.transitions[${transitionIndex}]`,
+          expected: 'a declared video_main slot',
+          predicted: effectiveSlots.map(slot => slot.asset_group_id),
+        });
+      }
+    }
+
+    if (!fromStateId || !toStateId || !stateIds.has(fromStateId) || !stateIds.has(toStateId) || fromStateId === toStateId) {
+      violations.push({
+        rule: 'transition_state_resolution',
+        field: `params.transitions[${transitionIndex}]`,
+        expected: { from_state_id: [...stateIds], to_state_id: [...stateIds], distinct: true },
+        predicted: { from_state_id: fromStateId, to_state_id: toStateId },
+      });
+      continue;
+    }
+
+    const outgoing = adjacency.get(fromStateId) ?? [];
+    outgoing.push(toStateId);
+    adjacency.set(fromStateId, outgoing);
+
+    if (trigger === 'timer' || trigger === 'in_view_timer') {
+      timerEdges.push({ from: fromStateId, to: toStateId, delayMs, field: `params.transitions[${transitionIndex}].delay_ms` });
+    }
+
+    const toAnchoring = stateAnchoring.get(toStateId);
+    const isOverlayAnchoring = toAnchoring === 'overlay' || toAnchoring === 'fullscreen_overlay';
+    if (trigger !== 'user_action' && isOverlayAnchoring) {
+      warnings.push({
+        rule: 'lean_policy_warnings',
+        field: `params.transitions[${transitionIndex}]`,
+        expected: 'user-initiated entry into overlay/fullscreen_overlay anchoring',
+        predicted: { trigger, to_state_id: toStateId, anchoring: toAnchoring },
+      });
+    }
+    if (trigger === 'user_action' && input === 'hover') {
+      warnings.push({
+        rule: 'lean_policy_warnings',
+        field: `params.transitions[${transitionIndex}].input`,
+        expected: 'non-hover input for user_action transitions (IAB New Ad Portfolio)',
+        predicted: 'hover',
+      });
+    }
+  }
+
+  if (states.length > 1 && initialStateId && stateIds.has(initialStateId)) {
+    const reachable = new Set<string>([initialStateId]);
+    const pending = [initialStateId];
+    while (pending.length > 0) {
+      const current = pending.shift()!;
+      for (const next of adjacency.get(current) ?? []) {
+        if (reachable.has(next)) continue;
+        reachable.add(next);
+        pending.push(next);
+      }
+    }
+    for (const stateId of stateIds) {
+      if (!reachable.has(stateId)) {
+        violations.push({
+          rule: 'state_reachability',
+          field: 'params.transitions',
+          expected: `path from ${initialStateId} to ${stateId}`,
+          predicted: [...reachable],
+        });
+      }
+    }
+
+    for (const edge of timerEdges) {
+      if ((edge.delayMs ?? 0) >= 1000) continue;
+      if (srsdTransitionGraphReaches(adjacency, edge.to, edge.from)) {
+        violations.push({
+          rule: 'timer_cycle_floor',
+          field: edge.field,
+          expected: 'delay_ms >= 1000 for timer/in_view_timer transitions participating in a state cycle',
+          predicted: edge.delayMs,
+        });
+      }
+    }
+  }
+
+  const hasStateCanvases = slotCount(assets, 'state_canvases') > 0;
+  const hasLayeredSource = slotCount(assets, 'layered_source') > 0;
+  if (supplyMode === 'components') {
+    if (hasStateCanvases) {
+      violations.push({
+        rule: 'supply_mode_manifest',
+        field: 'assets.state_canvases',
+        expected: 'forbidden in components supply_mode',
+        predicted: 'present',
+      });
+    }
+    if (hasLayeredSource) {
+      violations.push({
+        rule: 'supply_mode_manifest',
+        field: 'assets.layered_source',
+        expected: 'forbidden in components supply_mode',
+        predicted: 'present',
+      });
+    }
+  } else if (supplyMode === 'layered_source') {
+    if (!hasLayeredSource) {
+      violations.push({
+        rule: 'supply_mode_manifest',
+        field: 'assets.layered_source',
+        expected: 'required in layered_source supply_mode',
+        predicted: 'absent',
+      });
+    }
+    if (hasStateCanvases) {
+      violations.push({
+        rule: 'supply_mode_manifest',
+        field: 'assets.state_canvases',
+        expected: 'forbidden in layered_source supply_mode',
+        predicted: 'present',
+      });
+    }
+  } else if (supplyMode === 'rendered_canvases' && hasLayeredSource) {
+    violations.push({
+      rule: 'supply_mode_manifest',
+      field: 'assets.layered_source',
+      expected: 'forbidden in rendered_canvases supply_mode',
+      predicted: 'present',
+    });
+  }
+
+  if (supplyMode === 'rendered_canvases') {
+    const canvases = slotValues(assets, 'state_canvases');
+    const seen = new Set<string>();
+    for (const [index, rawCanvas] of canvases.entries()) {
+      if (!isRecord(rawCanvas)) continue;
+      const canvas = rawCanvas;
+      const key = `${String(canvas.state_id)}:${String(canvas.breakpoint_id)}`;
+      const target = expected.get(key);
+      if (!target) {
+        violations.push({
+          rule: 'state_canvas_extras',
+          field: `assets.state_canvases[${index}]`,
+          expected: [...expected.keys()],
+          predicted: key,
+        });
+        continue;
+      }
+      if (seen.has(key)) {
+        violations.push({
+          rule: 'state_canvas_extras',
+          field: `assets.state_canvases[${index}]`,
+          expected: 'exactly one canvas per state and breakpoint',
+          predicted: key,
+        });
+      }
+      seen.add(key);
+      if (target.width !== undefined && canvas.width !== target.width) {
+        violations.push({
+          rule: 'state_canvas_dimensions',
+          field: `assets.state_canvases[${index}].width`,
+          expected: target.width,
+          predicted: canvas.width,
+        });
+      }
+      if (target.widthRange && (
+        typeof canvas.width !== 'number'
+        || canvas.width < target.widthRange[0]
+        || canvas.width > target.widthRange[1]
+      )) {
+        violations.push({
+          rule: 'state_canvas_dimensions',
+          field: `assets.state_canvases[${index}].width`,
+          expected: target.widthRange,
+          predicted: canvas.width,
+        });
+      }
+      if (target.height !== undefined && canvas.height !== target.height) {
+        violations.push({
+          rule: 'state_canvas_dimensions',
+          field: `assets.state_canvases[${index}].height`,
+          expected: target.height,
+          predicted: canvas.height,
+        });
+      }
+      if (target.heightRange && (
+        typeof canvas.height !== 'number'
+        || canvas.height < target.heightRange[0]
+        || canvas.height > target.heightRange[1]
+      )) {
+        violations.push({
+          rule: 'state_canvas_dimensions',
+          field: `assets.state_canvases[${index}].height`,
+          expected: target.heightRange,
+          predicted: canvas.height,
+        });
+      }
+    }
+    for (const key of expected.keys()) {
+      if (!seen.has(key)) {
+        violations.push({
+          rule: 'state_canvas_coverage',
+          field: 'assets.state_canvases',
+          expected: key,
+        });
+      }
+    }
+  }
+
+  const constraints = Array.isArray(params.canvas_constraints) ? params.canvas_constraints : [];
+  for (const [constraintIndex, rawConstraint] of constraints.entries()) {
+    if (!isRecord(rawConstraint)) continue;
+    const constraint = rawConstraint;
+    const stateId = typeof constraint.state_id === 'string' ? constraint.state_id : undefined;
+    const breakpointId = typeof constraint.breakpoint_id === 'string' ? constraint.breakpoint_id : undefined;
+    const candidates = [...expected.entries()].filter(([key]) => {
+      const [candidateState, candidateBreakpoint] = key.split(':');
+      return (!stateId || candidateState === stateId) && (!breakpointId || candidateBreakpoint === breakpointId);
+    });
+    if (candidates.length === 0) {
+      violations.push({
+        rule: 'canvas_constraint_selector',
+        field: `params.canvas_constraints[${constraintIndex}]`,
+        expected: [...expected.keys()],
+        predicted: { state_id: stateId, breakpoint_id: breakpointId },
+      });
+      continue;
+    }
+    violations.push(...validateCanvasConstraintRegion(
+      constraint,
+      `params.canvas_constraints[${constraintIndex}]`,
+      candidates.map(([, canvas]) => ({
+        width: canvas.width ?? canvas.widthRange?.[0] ?? 0,
+        height: canvas.height ?? canvas.heightRange?.[0],
+      })),
+    ));
+  }
+  const durationRange = Array.isArray(params.duration_ms_range) ? params.duration_ms_range : undefined;
+  if (durationRange
+    && typeof durationRange[0] === 'number'
+    && typeof durationRange[1] === 'number'
+    && durationRange[0] > durationRange[1]) {
+    violations.push({
+      rule: 'duration_ms_range_order',
+      field: 'params.duration_ms_range',
+      expected: '[minimum, maximum] with minimum <= maximum',
+      predicted: durationRange,
+    });
+  }
+
+  const videoAssets = slotValues(assets, 'video_main');
+  if (videoAssets.length > 0) {
+    const video = videoAssets.length === 1 && isRecord(videoAssets[0]) ? videoAssets[0] : undefined;
+    const durationExact = typeof params.duration_ms_exact === 'number' ? params.duration_ms_exact : undefined;
+    const durationSatisfied = durationExact !== undefined
+      ? video?.duration_ms === durationExact
+      : (!durationRange || (
+          typeof video?.duration_ms === 'number'
+          && (typeof durationRange[0] !== 'number' || video.duration_ms >= durationRange[0])
+          && (typeof durationRange[1] !== 'number' || video.duration_ms <= durationRange[1])
+        ));
+    const ratioParts = typeof params.aspect_ratio === 'string'
+      ? params.aspect_ratio.split(':').map(Number)
+      : undefined;
+    const aspectSatisfied = !ratioParts || (
+      Number.isFinite(ratioParts[0])
+      && Number.isFinite(ratioParts[1])
+      && ratioParts[1] !== 0
+      && typeof video?.width === 'number'
+      && typeof video.height === 'number'
+      && video.height > 0
+      && Math.abs(video.width / video.height - ratioParts[0] / ratioParts[1]) < 0.01
+    );
+    const allowedContainers = Array.isArray(params.containers)
+      ? params.containers.filter((value): value is string => typeof value === 'string')
+      : [];
+    const containerSatisfied = allowedContainers.length === 0 || (
+      typeof video?.container_format === 'string'
+      && allowedContainers.includes(video.container_format)
+    );
+    if (!video || !durationSatisfied || !aspectSatisfied || !containerSatisfied) {
+      violations.push({
+        rule: 'seller_rendered_stateful_display_video_params',
+        field: 'assets.video_main',
+        expected: {
+          cardinality: 'exactly one video when supplied',
+          ...(durationExact !== undefined && { duration_ms_exact: durationExact }),
+          ...(durationExact === undefined && durationRange && { duration_ms_range: durationRange }),
+          ...(params.aspect_ratio !== undefined && { aspect_ratio: params.aspect_ratio }),
+          ...(allowedContainers.length > 0 && { containers: allowedContainers }),
+        },
+        predicted: videoAssets,
+      });
+    }
+  }
+
+  const clickthrough = typeof params.clickthrough === 'string' ? params.clickthrough : 'required';
+  const landingPageCount = slotCount(assets, 'landing_page_url');
+  const stateClickUrls = slotValues(assets, 'state_click_urls');
+  if (clickthrough === 'required' && landingPageCount === 0) {
+    violations.push({
+      rule: 'clickthrough_policy',
+      field: 'assets.landing_page_url',
+      expected: 'required when clickthrough is required',
+      predicted: 'absent',
+    });
+  }
+  if (clickthrough === 'none') {
+    if (landingPageCount > 0) {
+      violations.push({
+        rule: 'clickthrough_policy',
+        field: 'assets.landing_page_url',
+        expected: 'forbidden when clickthrough is none',
+        predicted: 'present',
+      });
+    }
+    if (stateClickUrls.length > 0) {
+      violations.push({
+        rule: 'clickthrough_policy',
+        field: 'assets.state_click_urls',
+        expected: 'forbidden when clickthrough is none',
+        predicted: 'present',
+      });
+    }
+  }
+  const seenClickStates = new Set<string>();
+  for (const [index, raw] of stateClickUrls.entries()) {
+    if (!isRecord(raw)) continue;
+    const stateId = typeof raw.state_id === 'string' ? raw.state_id : undefined;
+    if (!stateId || !stateIds.has(stateId)) {
+      violations.push({
+        rule: 'state_click_url_resolution',
+        field: `assets.state_click_urls[${index}].state_id`,
+        expected: [...stateIds],
+        predicted: stateId,
+      });
+      continue;
+    }
+    if (seenClickStates.has(stateId)) {
+      violations.push({
+        rule: 'state_click_url_resolution',
+        field: `assets.state_click_urls[${index}].state_id`,
+        expected: 'at most one entry per state',
+        predicted: stateId,
+      });
+      continue;
+    }
+    seenClickStates.add(stateId);
+  }
+
+  return { violations, warnings };
+}
+
+function validateCanvasConstraintRegion(
+  constraint: Record<string, unknown>,
+  field: string,
+  canvases: Array<{ width: number; height?: number }>,
+): ValidateInputViolation[] {
+  const region = constraint.region && typeof constraint.region === 'object' && !Array.isArray(constraint.region)
+    ? constraint.region as Record<string, unknown>
+    : undefined;
+  if (!region) return [];
+  const { x, y, width, height } = region;
+  if (![x, y, width, height].every(value => typeof value === 'number')) return [];
+  const unit = region.unit === 'percent' ? 'percent' : 'px';
+  const maxWidth = unit === 'percent' ? 100 : undefined;
+  const maxHeight = unit === 'percent' ? 100 : undefined;
+  if (maxWidth !== undefined && ((x as number) + (width as number) > maxWidth || (y as number) + (height as number) > maxHeight!)) {
+    return [{
+      rule: 'canvas_constraint_region_bounds',
+      field: `${field}.region`,
+      expected: 'percent region contained within 0..100 on both axes',
+      predicted: region,
+    }];
+  }
+  if (unit === 'px' && canvases.some(canvas =>
+    (x as number) + (width as number) > canvas.width
+    || (canvas.height !== undefined && (y as number) + (height as number) > canvas.height)
+  )) {
+    return [{
+      rule: 'canvas_constraint_region_bounds',
+      field: `${field}.region`,
+      expected: 'pixel region contained within every selected canvas',
+      predicted: region,
+    }];
+  }
+  return [];
+}
+
+type ComponentOptionResolution =
+  | { kind: 'resolved'; option: Record<string, unknown> }
+  | { kind: 'not_found' }
+  | { kind: 'invalid_scope'; scope: unknown };
+
+function resolveCoordinatedPlacementComponentOption(
+  product: Product,
+  ref: Record<string, unknown>,
+): ComponentOptionResolution {
+  if (ref.scope !== 'publisher' && ref.scope !== 'product') {
+    return { kind: 'invalid_scope', scope: ref.scope };
+  }
+  const options = (product as unknown as { format_options?: unknown[] }).format_options;
+  if (!Array.isArray(options) || typeof ref.format_option_id !== 'string') return { kind: 'not_found' };
+  const found = options.find((rawOption): rawOption is Record<string, unknown> => {
+    if (!isRecord(rawOption)) return false;
+    if (rawOption.format_option_id !== ref.format_option_id) return false;
+    if (ref.scope === 'publisher') {
+      return typeof ref.publisher_domain === 'string' && rawOption.publisher_domain === ref.publisher_domain;
+    }
+    return rawOption.publisher_domain === undefined;
+  });
+  return found ? { kind: 'resolved', option: found } : { kind: 'not_found' };
+}
+
+function canonicalSlotsForDeclaration(declaration: Record<string, unknown>): CanonicalSlot[] {
+  const kind = typeof declaration.format_kind === 'string' ? declaration.format_kind : '';
+  const declarationParams = declaration.params && typeof declaration.params === 'object' && !Array.isArray(declaration.params)
+    ? declaration.params as Record<string, unknown>
+    : {};
+  const slots = normalizeCanonicalSlots(declarationParams.slots) ?? CANONICAL_FORMAT_SLOTS[kind] ?? [];
+  const allowed = allowedAssetTypesForCanonical(kind);
+  return slots.filter(slot => allowed.has(slot.asset_type));
+}
+
+/** Lowercased placement-ref publisher domain, defaulting to the product's own publisher domain. */
+function normalizedPlacementDomain(explicit: unknown, product: Product): string {
+  const fallback = (product as unknown as { publisher_properties?: Array<{ publisher_domain?: string }> })
+    .publisher_properties?.[0]?.publisher_domain;
+  const domain = typeof explicit === 'string' && explicit.length > 0 ? explicit : (fallback ?? '');
+  return domain.toLowerCase();
+}
+
+function prefixComponentViolations(
+  componentId: string,
+  violations: ValidateInputViolation[],
+): ValidateInputViolation[] {
+  return violations.map(violation => ({
+    ...violation,
+    field: violation.field.startsWith('assets')
+      ? violation.field.replace(/^assets/, `component_assets.${componentId}`)
+      : violation.field,
+  }));
+}
+
+async function validateCoordinatedPlacementsDeclaration(
+  product: Product,
+  params: Record<string, unknown>,
+  manifest: NonNullable<ValidateInputArgs['manifest']>,
+): Promise<SemanticCheckResult> {
+  const violations: ValidateInputViolation[] = [];
+  const warnings: ValidateInputViolation[] = [];
+  const componentIds = new Set<string>();
+  const componentDeclarations = new Map<string, Record<string, unknown>>();
+  const requiredComponents = new Set<string>();
+  const productPlacements = Array.isArray((product as unknown as { placements?: unknown[] }).placements)
+    ? (product as unknown as { placements: unknown[] }).placements
+    : [];
+  const declaredPlacementKeys = new Set(productPlacements.flatMap(rawPlacement => {
+    if (!isRecord(rawPlacement) || typeof rawPlacement.placement_id !== 'string') return [];
+    const publisherDomain = normalizedPlacementDomain(rawPlacement.publisher_domain, product);
+    return [`${publisherDomain}:${rawPlacement.placement_id}`];
+  }));
+  const usedPlacementKeys = new Set<string>();
+  const components = Array.isArray(params.components) ? params.components : [];
+  if (components.length < 2) {
+    violations.push({
+      rule: 'coordinated_placements_components_required',
+      field: 'params.components',
+      expected: 'at least two components',
+      predicted: params.components,
+    });
+  }
+  for (const [componentIndex, rawComponent] of components.entries()) {
+    if (!rawComponent || typeof rawComponent !== 'object') continue;
+    const component = rawComponent as Record<string, unknown>;
+    if (typeof component.component_id !== 'string') continue;
+    if (componentIds.has(component.component_id)) {
+      violations.push({
+        rule: 'unique_component_id',
+        field: `params.components[${componentIndex}].component_id`,
+        expected: 'unique component_id',
+        predicted: component.component_id,
+      });
+    }
+    componentIds.add(component.component_id);
+    if (component.required === true) requiredComponents.add(component.component_id);
+    const placementRef = isRecord(component.placement_ref) ? component.placement_ref : undefined;
+    const placementId = typeof placementRef?.placement_id === 'string' ? placementRef.placement_id : undefined;
+    const publisherDomain = normalizedPlacementDomain(placementRef?.publisher_domain, product);
+    const placementKey = placementId ? `${publisherDomain}:${placementId}` : undefined;
+    if (!placementKey || !declaredPlacementKeys.has(placementKey)) {
+      violations.push({
+        rule: 'coordinated_component_placement_ref',
+        field: `params.components[${componentIndex}].placement_ref`,
+        expected: [...declaredPlacementKeys],
+        predicted: component.placement_ref,
+      });
+    } else if (usedPlacementKeys.has(placementKey)) {
+      violations.push({
+        rule: 'coordinated_component_placement_unique',
+        field: `params.components[${componentIndex}].placement_ref`,
+        expected: 'one component per declared placement',
+        predicted: component.placement_ref,
+      });
+    } else {
+      usedPlacementKeys.add(placementKey);
+    }
+    let declaration: Record<string, unknown> | undefined;
+    if (component.format_option_ref && typeof component.format_option_ref === 'object') {
+      const resolution = resolveCoordinatedPlacementComponentOption(
+        product,
+        component.format_option_ref as Record<string, unknown>,
+      );
+      if (resolution.kind === 'invalid_scope') {
+        violations.push({
+          rule: 'coordinated_component_format_option_ref_scope',
+          field: `params.components[${componentIndex}].format_option_ref.scope`,
+          expected: ['product', 'publisher'],
+          predicted: resolution.scope,
+        });
+      } else if (resolution.kind === 'not_found') {
+        violations.push({
+          rule: 'coordinated_component_format_option_ref',
+          field: `params.components[${componentIndex}].format_option_ref`,
+          expected: 'sibling format option on the same product',
+          predicted: component.format_option_ref,
+        });
+      } else {
+        declaration = resolution.option;
+        if (declaration.format_kind === 'custom' || declaration.format_kind === 'coordinated_placements') {
+          violations.push({
+            rule: 'coordinated_component_format_kind',
+            field: `params.components[${componentIndex}].format_option_ref`,
+            expected: 'non-custom, non-coordinated_placements sibling format',
+            predicted: declaration.format_kind,
+          });
+        }
+      }
+    } else if (typeof component.format_kind === 'string' && component.params && typeof component.params === 'object') {
+      declaration = { format_kind: component.format_kind, params: component.params };
+      if (component.format_kind === 'custom' || component.format_kind === 'coordinated_placements') {
+        violations.push({
+          rule: 'coordinated_component_format_kind',
+          field: `params.components[${componentIndex}].format_kind`,
+          expected: 'non-custom, non-coordinated_placements canonical format',
+          predicted: component.format_kind,
+        });
+      }
+    }
+    if (declaration && declaration.format_kind !== 'custom' && declaration.format_kind !== 'coordinated_placements') {
+      componentDeclarations.set(component.component_id, declaration);
+      const schemaResult = await validateProtocolSchema(
+        '/schemas/core/product-format-declaration.json',
+        declaration,
+      );
+      for (const issue of schemaResult.errors) {
+        violations.push({
+          rule: 'coordinated_component_params_schema',
+          field: `params.components[${componentIndex}]${issue.instancePath.replaceAll('/', '.')}`,
+          expected: issue.message ?? 'params valid for selected canonical',
+          predicted: issue.keyword,
+        });
+      }
+      const componentConstraints = Array.isArray(component.canvas_constraints) ? component.canvas_constraints : [];
+      const declarationParams = declaration.params && typeof declaration.params === 'object'
+        ? declaration.params as Record<string, unknown>
+        : {};
+      if (declarationParams.slots !== undefined) {
+        violations.push(...slotAssetTypeAllowlistViolations(
+          String(declaration.format_kind),
+          declarationParams.slots,
+          `params.components[${componentIndex}].params.slots`,
+        ));
+      }
+      const canvases: Array<{ width: number; height?: number; stateId?: string; breakpointId?: string }> = [];
+      if (typeof declarationParams.width === 'number') {
+        canvases.push({
+          width: declarationParams.width,
+          height: typeof declarationParams.height === 'number' ? declarationParams.height : undefined,
+        });
+      }
+      for (const [key, value] of Object.entries(declarationParams)) {
+        if ((key !== 'sizes' && !key.endsWith('_sizes')) || !Array.isArray(value)) continue;
+        for (const size of value) {
+          if (!isRecord(size) || typeof size.width !== 'number') continue;
+          canvases.push({
+            width: size.width,
+            height: typeof size.height === 'number' ? size.height : undefined,
+          });
+        }
+      }
+      if (declaration.format_kind === 'seller_rendered_stateful_display') {
+        for (const state of Array.isArray(declarationParams.states) ? declarationParams.states : []) {
+          if (!isRecord(state) || typeof state.state_id !== 'string') continue;
+          for (const breakpoint of Array.isArray(state.breakpoints) ? state.breakpoints : []) {
+            if (!isRecord(breakpoint)
+              || typeof breakpoint.breakpoint_id !== 'string'
+              || typeof breakpoint.width !== 'number') continue;
+            const heightRange = Array.isArray(breakpoint.height_range) ? breakpoint.height_range : [];
+            canvases.push({
+              width: breakpoint.width,
+              height: typeof breakpoint.height === 'number'
+                ? breakpoint.height
+                : (typeof heightRange[0] === 'number' ? heightRange[0] : undefined),
+              stateId: state.state_id,
+              breakpointId: breakpoint.breakpoint_id,
+            });
+          }
+        }
+      }
+      for (const [constraintIndex, rawConstraint] of componentConstraints.entries()) {
+        if (!rawConstraint || typeof rawConstraint !== 'object' || Array.isArray(rawConstraint)) continue;
+        const constraint = rawConstraint as Record<string, unknown>;
+        const hasSelector = constraint.state_id !== undefined || constraint.breakpoint_id !== undefined;
+        if (hasSelector && declaration.format_kind !== 'seller_rendered_stateful_display') {
+          violations.push({
+            rule: 'coordinated_canvas_constraint_selector',
+            field: `params.components[${componentIndex}].canvas_constraints[${constraintIndex}]`,
+            expected: 'state_id and breakpoint_id selectors only on seller_rendered_stateful_display components',
+            predicted: { state_id: constraint.state_id, breakpoint_id: constraint.breakpoint_id },
+          });
+        }
+        const selectedCanvases = declaration.format_kind === 'seller_rendered_stateful_display'
+          ? canvases.filter(canvas =>
+              (constraint.state_id === undefined || constraint.state_id === canvas.stateId)
+              && (constraint.breakpoint_id === undefined || constraint.breakpoint_id === canvas.breakpointId))
+          : canvases;
+        if (declaration.format_kind === 'seller_rendered_stateful_display' && selectedCanvases.length === 0) {
+          violations.push({
+            rule: 'coordinated_canvas_constraint_selector',
+            field: `params.components[${componentIndex}].canvas_constraints[${constraintIndex}]`,
+            expected: 'selector matching a declared state and breakpoint',
+            predicted: { state_id: constraint.state_id, breakpoint_id: constraint.breakpoint_id },
+          });
+        }
+        const region = isRecord(constraint.region) ? constraint.region : undefined;
+        if (region?.unit !== 'percent' && selectedCanvases.length === 0) {
+          violations.push({
+            rule: 'coordinated_canvas_constraint_canvas_required',
+            field: `params.components[${componentIndex}].canvas_constraints[${constraintIndex}].region`,
+            expected: 'a component declaration with finite canvas dimensions for pixel constraints',
+            predicted: declarationParams,
+          });
+        }
+        violations.push(...validateCanvasConstraintRegion(
+          constraint,
+          `params.components[${componentIndex}].canvas_constraints[${constraintIndex}]`,
+          selectedCanvases,
+        ));
+      }
+    }
+  }
+  if (requiredComponents.size === 0) {
+    violations.push({
+      rule: 'coordinated_placements_required_component',
+      field: 'params.components',
+      expected: 'at least one component with required: true',
+      predicted: components,
+    });
+  }
+  const sequenceValues = components
+    .map(rawComponent => (isRecord(rawComponent) && typeof rawComponent.sequence === 'number' ? rawComponent.sequence : undefined))
+    .filter((value): value is number => value !== undefined);
+  if (sequenceValues.length > 0) {
+    const uniqueSorted = [...new Set(sequenceValues)].sort((a, b) => a - b);
+    const contiguousFromOne = uniqueSorted.every((value, index) => value === index + 1);
+    if (!contiguousFromOne) {
+      violations.push({
+        rule: 'sequence_values',
+        field: 'params.components',
+        expected: 'sequence values starting at 1 and contiguous across the declared set',
+        predicted: sequenceValues,
+      });
+    }
+  }
+  const sharedSlots = Array.isArray(params.shared_slots) ? params.shared_slots : [];
+  const sharedSlotIds = new Set<string>();
+  const sharedByComponent = new Map<string, CanonicalSlot[]>();
+  for (const [slotIndex, rawSlot] of sharedSlots.entries()) {
+    if (!rawSlot || typeof rawSlot !== 'object') continue;
+    const slot = rawSlot as Record<string, unknown>;
+    const slotId = typeof slot.asset_group_id === 'string' ? slot.asset_group_id : undefined;
+    const slotType = typeof slot.asset_type === 'string' ? slot.asset_type : undefined;
+    if (slotId && sharedSlotIds.has(slotId)) {
+      violations.push({
+        rule: 'coordinated_shared_slot_unique',
+        field: `params.shared_slots[${slotIndex}].asset_group_id`,
+        expected: 'unique shared asset_group_id',
+        predicted: slotId,
+      });
+    }
+    if (slotId) sharedSlotIds.add(slotId);
+    const consumers = Array.isArray(slot.consumed_by) ? slot.consumed_by : [];
+    for (const [consumerIndex, consumer] of consumers.entries()) {
+      if (typeof consumer !== 'string') continue;
+      if (!componentIds.has(consumer)) {
+        violations.push({
+          rule: 'coordinated_shared_slot_consumer',
+          field: `params.shared_slots[${slotIndex}].consumed_by[${consumerIndex}]`,
+          expected: [...componentIds],
+          predicted: consumer,
+        });
+        continue;
+      }
+      if (!slotId || !slotType) continue;
+      const declaration = componentDeclarations.get(consumer);
+      const accepted = declaration
+        ? canonicalSlotsForDeclaration(declaration).find(candidate => candidate.asset_group_id === slotId)
+        : undefined;
+      if (!accepted || accepted.asset_type !== slotType) {
+        violations.push({
+          rule: 'coordinated_shared_slot_compatibility',
+          field: `params.shared_slots[${slotIndex}].consumed_by[${consumerIndex}]`,
+          expected: declaration ? canonicalSlotsForDeclaration(declaration) : [],
+          predicted: { component_id: consumer, asset_group_id: slotId, asset_type: slotType },
+        });
+        continue;
+      }
+      const list = sharedByComponent.get(consumer) ?? [];
+      list.push({ asset_group_id: slotId, asset_type: slotType });
+      sharedByComponent.set(consumer, list);
+    }
+  }
+
+  const componentAssets = manifest.component_assets ?? {};
+  for (const componentId of Object.keys(componentAssets)) {
+    if (!componentIds.has(componentId)) {
+      violations.push({
+        rule: 'coordinated_component_assets_declared',
+        field: `component_assets.${componentId}`,
+        expected: [...componentIds],
+        predicted: componentId,
+      });
+    }
+  }
+  for (const [componentId, declaration] of componentDeclarations) {
+    const supplied = componentAssets[componentId];
+    if (!supplied && requiredComponents.has(componentId)) {
+      violations.push({
+        rule: 'coordinated_component_assets_required',
+        field: `component_assets.${componentId}`,
+        expected: 'asset map for required component',
+      });
+      continue;
+    }
+    if (!supplied) continue;
+    const effectiveAssets = { ...supplied };
+    for (const sharedSlot of sharedByComponent.get(componentId) ?? []) {
+      if (Object.hasOwn(effectiveAssets, sharedSlot.asset_group_id)) {
+        violations.push({
+          rule: 'coordinated_shared_slot_duplicate_supply',
+          field: `component_assets.${componentId}.${sharedSlot.asset_group_id}`,
+          expected: 'shared asset supplied only at manifest.assets',
+          predicted: 'component-specific duplicate',
+        });
+        continue;
+      }
+      const sharedValue = manifest.assets?.[sharedSlot.asset_group_id];
+      if (sharedValue !== undefined) effectiveAssets[sharedSlot.asset_group_id] = sharedValue;
+    }
+    const componentManifest = {
+      format_kind: String(declaration.format_kind),
+      assets: effectiveAssets,
+    };
+    violations.push(...prefixComponentViolations(componentId, validateManifestSlots(
+      componentManifest,
+      canonicalSlotsForDeclaration(declaration),
+    )));
+    const declarationParams = declaration.params && typeof declaration.params === 'object'
+      ? declaration.params as Record<string, unknown>
+      : {};
+    if (declaration.format_kind !== 'seller_rendered_stateful_display'
+      && !canonicalParamsSatisfied(componentManifest as CreativeManifest, declarationParams)) {
+      violations.push({
+        rule: 'coordinated_component_params_satisfied',
+        field: `component_assets.${componentId}`,
+        expected: declarationParams,
+        predicted: effectiveAssets,
+      });
+    }
+    if (declaration.format_kind === 'seller_rendered_stateful_display') {
+      const nested = validateSellerRenderedStatefulDisplayManifest(declarationParams, componentManifest);
+      violations.push(...prefixComponentViolations(componentId, nested.violations));
+      warnings.push(...prefixComponentViolations(componentId, nested.warnings));
+    }
+  }
+  return { violations, warnings };
 }
 
 function normalizeCanonicalSlots(value: unknown): CanonicalSlot[] | undefined {
@@ -8099,7 +10125,31 @@ function validateCanonicalTarget(
       }],
     };
   }
+  if (target.id === 'coordinated_placements') {
+    return {
+      target,
+      result_kind: 'validated_fail',
+      violations: [{
+        rule: 'coordinated_placements_product_context',
+        field: 'targets',
+        expected: 'a product target whose placements and format options define the coordinated components',
+        predicted: target,
+      }],
+    };
+  }
   const violations = validateManifestSlots(manifest, CANONICAL_FORMAT_SLOTS[target.id] ?? []);
+  if (target.id === 'seller_rendered_stateful_display') {
+    for (const [index, canvas] of slotValues(manifest.assets, 'state_canvases').entries()) {
+      if (!isRecord(canvas) || typeof canvas.state_id !== 'string' || typeof canvas.breakpoint_id !== 'string') {
+        violations.push({
+          rule: 'state_canvas_binding_required',
+          field: `assets.state_canvases[${index}]`,
+          expected: 'state_id and breakpoint_id string bindings',
+          predicted: canvas,
+        });
+      }
+    }
+  }
   return violations.length > 0
     ? { target, result_kind: 'validated_fail', violations }
     : { target, result_kind: 'validated_pass' };
@@ -8140,11 +10190,11 @@ function validateCapabilityTarget(
     : { target, result_kind: 'validated_pass' };
 }
 
-function validateProductTarget(
+async function validateProductTarget(
   target: ValidateInputTarget,
   manifest: NonNullable<ValidateInputArgs['manifest']>,
   product: Product | undefined,
-): ValidateInputResult {
+): Promise<ValidateInputResult> {
   if (!product) {
     return {
       target,
@@ -8198,21 +10248,89 @@ function validateProductTarget(
   const params = declaration.params && typeof declaration.params === 'object'
     ? declaration.params as Record<string, unknown>
     : {};
-  const slots = normalizeCanonicalSlots(params.slots) ?? CANONICAL_FORMAT_SLOTS[formatKind] ?? [];
-  const violations = validateManifestSlots(manifest, slots);
+  const declaredSlots = formatKind === 'coordinated_placements' ? params.shared_slots : params.slots;
+  const rawSlots = normalizeCanonicalSlots(declaredSlots) ?? CANONICAL_FORMAT_SLOTS[formatKind] ?? [];
+  const slots = formatKind === 'coordinated_placements'
+    ? rawSlots
+    : rawSlots.filter(slot => allowedAssetTypesForCanonical(formatKind).has(slot.asset_type));
+  const declarationSchemaViolations: ValidateInputViolation[] = [];
+  if (formatKind === 'seller_rendered_stateful_display' || formatKind === 'coordinated_placements') {
+    const schemaResult = await validateProtocolSchema(
+      '/schemas/core/product-format-declaration.json',
+      declaration,
+    );
+    for (const issue of schemaResult.errors) {
+      declarationSchemaViolations.push({
+        rule: 'product_format_declaration_schema',
+        field: `products[].format_options[]${issue.instancePath.replaceAll('/', '.')}`,
+        expected: issue.message ?? 'valid product format declaration',
+        predicted: issue.keyword,
+      });
+    }
+  }
+  const allowedAssetTypeViolations = formatKind !== 'coordinated_placements'
+    ? slotAssetTypeAllowlistViolations(formatKind, params.slots, 'params.slots')
+    : [];
+  let semanticViolations: ValidateInputViolation[] = [];
+  let semanticWarnings: ValidateInputViolation[] = [];
+  if (formatKind === 'seller_rendered_stateful_display') {
+    const semanticResult = validateSellerRenderedStatefulDisplayManifest(params, manifest);
+    semanticViolations = semanticResult.violations;
+    semanticWarnings = semanticResult.warnings;
+  } else if (formatKind === 'coordinated_placements') {
+    const semanticResult = await validateCoordinatedPlacementsDeclaration(product, params, manifest);
+    semanticViolations = semanticResult.violations;
+    semanticWarnings = semanticResult.warnings;
+  }
+  const ctvSemanticResult = validateCtvSemantics(formatKind, params, slots);
+  semanticViolations.push(...ctvSemanticResult.violations);
+  semanticWarnings.push(...ctvSemanticResult.warnings);
+  const violations = [
+    ...declarationSchemaViolations,
+    ...validateManifestSlots(manifest, slots),
+    ...allowedAssetTypeViolations,
+    ...semanticViolations,
+  ];
+  const warnings = semanticWarnings;
   if (params.synthesis_nondeterministic === true) {
     const sourceViolation = nondeterministicSourceViolation(params);
     if (sourceViolation) {
-      return { target, result_kind: 'validated_fail', violations: [...violations, sourceViolation] };
+      return { target, result_kind: 'validated_fail', violations: [...violations, sourceViolation], ...(warnings.length > 0 && { warnings }) };
     }
     if (violations.length > 0) {
-      return { target, result_kind: 'validated_fail', violations };
+      return { target, result_kind: 'validated_fail', violations, ...(warnings.length > 0 && { warnings }) };
     }
-    return { target, result_kind: 'unvalidatable_nondeterministic' };
+    return { target, result_kind: 'unvalidatable_nondeterministic', ...(warnings.length > 0 && { warnings }) };
   }
   return violations.length > 0
-    ? { target, result_kind: 'validated_fail', violations }
-    : { target, result_kind: 'validated_pass' };
+    ? { target, result_kind: 'validated_fail', violations, ...(warnings.length > 0 && { warnings }) }
+    : { target, result_kind: 'validated_pass', ...(warnings.length > 0 && { warnings }) };
+}
+
+async function validateCreativeForProduct(
+  product: Product,
+  manifest: CreativeManifest,
+): Promise<ValidateInputViolation[]> {
+  if (manifest.format_kind !== 'seller_rendered_stateful_display'
+    && manifest.format_kind !== 'coordinated_placements'
+    && manifest.component_assets === undefined) return [];
+  const schemaViolations = await validateManifestSchema(manifest);
+  if (schemaViolations.length > 0) return schemaViolations;
+  const target: ValidateInputTarget = { kind: 'product', id: product.product_id };
+  const result = await validateProductTarget(target, manifest, product);
+  return result.result_kind === 'validated_fail' ? (result.violations ?? []) : [];
+}
+
+function creativeValidationErrors(
+  violations: ValidateInputViolation[],
+  fieldPrefix: string,
+): TaskError[] {
+  return violations.map(violation => ({
+    code: 'VALIDATION_ERROR',
+    message: `${fieldPrefix}: ${violation.rule} expected ${typeof violation.expected === 'string' ? violation.expected : JSON.stringify(violation.expected)}`,
+    field: `${fieldPrefix}.${violation.field}`,
+    recovery: 'correctable',
+  }));
 }
 
 export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext): Promise<object> {
@@ -8274,7 +10392,7 @@ export async function handleValidateInput(args: ToolArgs, ctx: TrainingContext):
   }
 
   const schemaViolations = [
-    ...validateManifestSchema(req.manifest),
+    ...await validateManifestSchema(req.manifest),
     ...validateAssetUrls(req.manifest),
   ];
   if (schemaViolations.length > 0) {
@@ -8820,7 +10938,7 @@ async function handleCreateMediaBuyUnlocked(
     if (proposal) {
       const internal = proposal as unknown as Record<string, unknown>;
       const accountRef = req.account as unknown as { account_id?: string };
-      const requestBrand = req.brand as unknown as { domain?: string; brand_id?: string; countries?: string[] };
+      const requestBrand = (req.brand ?? req.account?.brand) as unknown as { domain?: string; brand_id?: string; countries?: string[] };
       const boundAccountId = internal.__account_id;
       const boundBrandDomain = internal.__brand_domain;
       const boundBrandId = internal.__brand_id;
@@ -9027,6 +11145,38 @@ async function handleCreateMediaBuyUnlocked(
   const createdPackages: PackageState[] = [];
   const inlineCreativesToPersist: ValidatedInlineCreative[] = [];
   const productFormatOptionIndexes: ProductFormatOptionIndexCache = new WeakMap();
+  const requestInlineCreativeIds = new Set<string>();
+  const enforceLifecycleSplit = supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx));
+  for (let i = 0; i < req.packages.length; i++) {
+    const pkg = req.packages[i] as unknown as PackageInput;
+    const inline = collectInlineCreativeIds(pkg.creatives, `packages[${i}].creatives`);
+    errors.push(...inline.errors);
+    inlineCreativesToPersist.push(...inline.validatedCreatives);
+    for (const creativeId of inline.creativeIds) {
+      if (enforceLifecycleSplit && requestInlineCreativeIds.has(creativeId)) {
+        errors.push({
+          code: 'VALIDATION_ERROR',
+          message: `Inline creative ${creativeId} is declared more than once in this create request.`,
+          field: `packages[${i}].creatives`,
+        });
+      } else if (enforceLifecycleSplit && session.creatives.has(creativeId)) {
+        errors.push({
+          code: 'CREATIVE_ALREADY_EXISTS',
+          message: `Inline creative ${creativeId} already exists in the account library; reference it through creative_assignments instead of overwriting it during create.`,
+          field: `packages[${i}].creatives`,
+        });
+      }
+      requestInlineCreativeIds.add(creativeId);
+    }
+  }
+  const creativeValidationSession = structuredClone(session);
+  persistInlineCreatives(
+    creativeValidationSession,
+    inlineCreativesToPersist,
+    req.account as AccountRef | undefined,
+    resolveAccountIdForRef(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId), ctx.principal, req.account),
+    confirmedAt,
+  );
   for (let i = 0; i < req.packages.length; i++) {
     const pkg = req.packages[i] as unknown as PackageInput;
     const pkgLabel = `Package ${i}`;
@@ -9192,6 +11342,41 @@ async function handleCreateMediaBuyUnlocked(
       errors.push({ code: 'INVALID_REQUEST', message: `${pkgLabel}: Invalid end_time: "${endTime}". Use ISO 8601 format.` });
     }
 
+    // Buy-time booking-calendar enforcement (comply_test_controller.seed_product's
+    // fixture.availability): reject synchronously — before any async/submitted
+    // arm — when the flight overlaps a booked window or is shorter than the
+    // product's min_bookable_days. Mirrors the discovery-time windowed forecast
+    // (applyAvailabilityHorizonForecasts) so a buyer can't slip a flight through
+    // create_media_buy that get_products/list_products already marked
+    // "unavailable". "asap" starts have no fixed flight to check.
+    const seededAvailability = session.complyExtensions.seededProductAvailability.get(pkg.product_id);
+    if (seededAvailability && startTime !== 'asap') {
+      const flightStart = Date.parse(startTime);
+      const flightEnd = Date.parse(endTime);
+      if (Number.isFinite(flightStart) && Number.isFinite(flightEnd) && flightEnd > flightStart) {
+        const flightDays = Math.floor((flightEnd - flightStart) / AVAILABILITY_DAY_MS);
+        const overlapsBooked = seededAvailability.booked_windows.some(window => {
+          const bookedStart = Date.parse(window.start_time);
+          const bookedEnd = Date.parse(window.end_time);
+          return flightStart < bookedEnd && bookedStart < flightEnd;
+        });
+        const tooShort = flightDays < seededAvailability.min_bookable_days;
+        if (overlapsBooked || tooShort) {
+          return {
+            errors: [{
+              code: 'PRODUCT_UNAVAILABLE',
+              message: `${pkgLabel}: Product "${pkg.product_id}" is not bookable for ${startTime} to ${endTime}`
+                + (overlapsBooked
+                  ? ' — the flight overlaps a booked window.'
+                  : ` — the flight is shorter than the ${seededAvailability.min_bookable_days}-day minimum bookable duration.`),
+              field: `packages[${i}]`,
+              recovery: 'correctable',
+            }] as TaskError[],
+            ...(isRecord(req.context) && { context: req.context }),
+          };
+        }
+      }
+    }
 
     // Don't build package state if there are any validation errors (atomic create).
     // Spec field is `targeting_overlay`; `targeting` is an alias we accept for
@@ -9201,6 +11386,20 @@ async function handleCreateMediaBuyUnlocked(
     const targetingResult = validateTargeting(incomingTargeting, `packages[${i}].targeting_overlay`);
     if (targetingResult.errors.length) {
       errors.push(...targetingResult.errors);
+    }
+    const requestedAssignmentRows = [
+      ...(Array.isArray(pkg.creative_assignments) ? pkg.creative_assignments : []),
+      ...inlineCreativeAssignmentRows(pkg.creatives),
+    ];
+    if (enforceLifecycleSplit && requestedAssignmentRows.length > 0) {
+      errors.push(...validateCreateAssignmentSemantics(
+        requestedAssignmentRows,
+        product as unknown as Record<string, unknown>,
+        targetingResult.targeting,
+        creativeValidationSession,
+        `packages[${i}].creative_assignments`,
+        formatSnapshot.formats ?? [],
+      ));
     }
 
     if (errors.length > 0) continue;
@@ -9229,15 +11428,37 @@ async function handleCreateMediaBuyUnlocked(
         });
         continue;
       }
+      if (enforceLifecycleSplit && !session.creatives.has(creativeId) && !requestInlineCreativeIds.has(creativeId)) {
+        errors.push({
+          code: 'CREATIVE_NOT_FOUND',
+          message: `${pkgLabel}: Creative not found: ${creativeId}. Sync it first or include its inline body in this create request.`,
+          field: `packages[${i}].creative_assignments[${j}].creative_id`,
+        });
+        continue;
+      }
+      const assignedManifest = session.creatives.get(creativeId)?.manifest;
+      if (assignedManifest) {
+        const violations = await validateCreativeForProduct(product, assignedManifest);
+        errors.push(...creativeValidationErrors(violations, `packages[${i}].creative_assignments[${j}]`));
+      }
       creativeAssignments.push(creativeId);
     }
     const inlineCreatives = collectInlineCreativeIds(pkg.creatives, `packages[${i}].creatives`);
-    errors.push(...inlineCreatives.errors);
+    if (Array.isArray(pkg.creatives)) {
+      for (const [creativeIndex, creative] of pkg.creatives.entries()) {
+        const identity = validatedCreativeIdentity(creative);
+        if (!identity.ok) continue;
+        const existingCreative = creative.creative_id
+          ? session.creatives.get(creative.creative_id)
+          : undefined;
+        const manifest = normalizedCreativeManifest(creative, existingCreative, identity.identity);
+        if (!manifest) continue;
+        const violations = await validateCreativeForProduct(product, manifest);
+        errors.push(...creativeValidationErrors(violations, `packages[${i}].creatives[${creativeIndex}]`));
+      }
+    }
     creativeAssignments.push(...inlineCreatives.creativeIds);
     if (errors.length > 0) continue;
-    if (Array.isArray(pkg.creatives)) {
-      inlineCreativesToPersist.push(...inlineCreatives.validatedCreatives);
-    }
     const formatSelector = packageFormatSelectorForState(
       pkg,
       formatSnapshot.formats,
@@ -9245,7 +11466,7 @@ async function handleCreateMediaBuyUnlocked(
       formatSnapshot.selectedLegacyFormatIds,
     );
 
-    createdPackages.push({
+    const candidatePackage: PackageState = {
       packageId: `pkg-${i}`,
       productId: pkg.product_id,
       budget: pkg.budget,
@@ -9266,6 +11487,7 @@ async function handleCreateMediaBuyUnlocked(
         formatsToProvide: formatSnapshot.formats,
       }),
       creativeAssignments,
+      creativeAssignmentDetails: requestedAssignmentRows.map(assignment => structuredClone(assignment)),
       targeting: targetingResult.targeting,
       ...(isRecord(pkg.context) && { context: pkg.context }),
       ...(isRecord(pkg.measurement_terms) && { measurementTerms: structuredClone(pkg.measurement_terms) }),
@@ -9276,7 +11498,8 @@ async function handleCreateMediaBuyUnlocked(
       ...(isRecord(pkg.ext) && { ext: structuredClone(pkg.ext) }),
       ...(optimizationGoals && optimizationGoals.length > 0 && { optimizationGoals }),
       ...(committedMetrics && committedMetrics.length > 0 && { committedMetrics }),
-    });
+    };
+    createdPackages.push(candidatePackage);
   }
 
   if (errors.length > 0) {
@@ -9308,6 +11531,7 @@ async function handleCreateMediaBuyUnlocked(
 
   const mediaBuy: MediaBuyState = {
     mediaBuyId,
+    ...(typeof req.name === 'string' && { name: req.name }),
     accountRef: persistedAccountRef,
     brandRef: req.brand,
     status: req.paused === true ? 'paused' : 'active',
@@ -9329,6 +11553,8 @@ async function handleCreateMediaBuyUnlocked(
     ...((req as unknown as { bidding?: Record<string, unknown> }).bidding
       ? { aggregateBidding: structuredClone((req as unknown as { bidding: Record<string, unknown> }).bidding) }
       : {}),
+    ...(isRecord((req as unknown as Record<string, unknown>).invoice_recipient)
+      && { invoiceRecipient: structuredClone((req as unknown as Record<string, unknown>).invoice_recipient as Record<string, unknown>) }),
     ...(isRecord((req as unknown as Record<string, unknown>).reporting_webhook)
       && { reportingWebhook: structuredClone((req as unknown as Record<string, unknown>).reporting_webhook as Record<string, unknown>) }),
     packages: createdPackages,
@@ -9408,6 +11634,8 @@ async function handleCreateMediaBuyUnlocked(
   // against the per-task response schema.
   return {
     media_buy_id: mediaBuyId,
+    ...(mediaBuy.name && { name: mediaBuy.name }),
+    ...(mediaBuy.invoiceRecipient && { invoice_recipient: structuredClone(mediaBuy.invoiceRecipient) }),
     ...(req.proposal_id && { proposal_id: req.proposal_id }),
     ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
     media_buy_status: status,
@@ -9420,8 +11648,8 @@ async function handleCreateMediaBuyUnlocked(
     ...(mediaBuy.budgetAllocation && { budget_allocation: mediaBuy.budgetAllocation }),
     ...(mediaBuy.aggregatePacing && { pacing: mediaBuy.aggregatePacing }),
     ...(mediaBuy.aggregateBidding && { bidding: mediaBuy.aggregateBidding }),
-    valid_actions: validActionsForMediaBuy(mediaBuy, status),
-    available_actions: availableActionsForMediaBuy(mediaBuy, status),
+    valid_actions: validActionsForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
+    available_actions: availableActionsForMediaBuy(mediaBuy, status, lifecycleSplitVersionForContext(ctx)),
     packages: createdPackages.map(pkg => ({
       package_id: pkg.packageId,
       product_id: pkg.productId,
@@ -9437,15 +11665,22 @@ async function handleCreateMediaBuyUnlocked(
       ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.context && { context: pkg.context }),
       ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
-      creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
+      creative_assignments: pkg.creativeAssignmentDetails
+        ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     })),
     ...(isRecord(req.context) && { context: req.context }),
   };
 }
 
 export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
-  const req = args as unknown as GetMediaBuysArgs;
-  const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const req = {
+    ...(args as unknown as GetMediaBuysArgs),
+    ...(args.account === undefined && ctx.resolvedAccount !== undefined
+      ? { account: ctx.resolvedAccount }
+      : {}),
+  } as GetMediaBuysArgs;
+  const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  const session = await getSession(sessionKey);
   const filterIds = req.media_buy_ids;
 
   let buys = Array.from(session.mediaBuys.values());
@@ -9517,6 +11752,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
       const openImpairments = mb.impairments ?? [];
       const buy = {
         media_buy_id: mb.mediaBuyId,
+        ...(mb.name && { name: mb.name }),
         ...(mb.acceptedProposal && {
           accepted_proposal_id: mb.acceptedProposal.proposal_id,
           accepted_proposal_terms_digest: mb.acceptedProposal.terms_digest,
@@ -9527,8 +11763,10 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
         confirmed_at: mb.confirmedAt,
         created_at: mb.createdAt,
         updated_at: mb.updatedAt,
-        valid_actions: validActionsForMediaBuy(mb, status),
-        available_actions: availableActionsForMediaBuy(mb, status),
+        valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+        available_actions: mb.acceptedProposal
+          ? compactAvailableActions(mb, status, lifecycleSplitVersionForContext(ctx))
+          : availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
         currency: mb.currency,
         total_budget: totalBudget,
         ...(mb.dailyBudgetCap !== undefined && { daily_budget_cap: mb.dailyBudgetCap }),
@@ -9536,6 +11774,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
         ...(mb.budgetAllocation && { budget_allocation: mb.budgetAllocation }),
         ...(mb.aggregatePacing && { pacing: mb.aggregatePacing }),
         ...(mb.aggregateBidding && { bidding: mb.aggregateBidding }),
+        ...(mb.invoiceRecipient && { invoice_recipient: structuredClone(mb.invoiceRecipient) }),
         start_time: mb.startTime,
         end_time: mb.endTime,
         health: (openImpairments.length > 0 ? 'impaired' : 'ok') as 'ok' | 'impaired',
@@ -9563,7 +11802,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
           const pkgData = {
             package_id: pkg.packageId,
             ...(pkg.legacyOmitProductId ? {} : { product_id: pkg.productId }),
-            budget: pkg.budget,
+            ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
             ...(pkg.dailyBudgetCap !== undefined && { daily_budget_cap: pkg.dailyBudgetCap }),
             ...(pkg.minSpendTarget !== undefined && { min_spend_target: pkg.minSpendTarget }),
             pricing_option_id: pkg.pricingOptionId,
@@ -10058,10 +12297,63 @@ function creativeSessionKey(args: ToolArgs, ctx: TrainingContext): string {
   );
 }
 
+/**
+ * Deterministic emulator for the controller-seeded policy-backed rejection
+ * fixture. Production sellers fetch and scan the hosted tag (or delegate that
+ * work to a governance agent); the training agent recognizes the fixture's
+ * stable test-asset path only when the seeded product explicitly declares the
+ * corresponding policies. This must not become a general source-text scanner:
+ * raw location/http regexes misclassify click-gated navigation and inert text.
+ */
+function runtimeCreativePolicyErrors(creative: {
+  assets?: Record<string, unknown>;
+  manifest?: { assets?: Record<string, unknown> };
+}, enforcedPolicies: ReadonlySet<string>): TaskError[] {
+  const dualViolationFixtureUrl = 'https://adcontextprotocol.org/test-assets/acme-outdoor/policy-backed-auto-redirect-http.js';
+  const assets = creative.assets ?? creative.manifest?.assets ?? {};
+  const urls = Object.values(assets).flatMap(asset => {
+    if (!isRecord(asset)) return [];
+    return typeof asset.url === 'string' ? [asset.url] : [];
+  });
+  const isDualViolationFixture = urls.includes(dualViolationFixtureUrl);
+  if (!isDualViolationFixture) return [];
+
+  const errors: TaskError[] = [];
+  if (enforcedPolicies.has('creative_security_auto_redirect')) {
+    errors.push({
+      code: 'CREATIVE_REJECTED',
+      message: 'Creative performs navigation without user interaction.',
+      suggestion: 'Remove automatic navigation and require an explicit user action before redirecting.',
+      recovery: 'correctable',
+      details: {
+        policy_id: 'creative_security_auto_redirect',
+        policy_url: 'https://adcontextprotocol.org/api/policies/resolve?policy_id=creative_security_auto_redirect&version=1.0.0',
+        reasons: ['Executable creative content invokes a location navigation API without a user-action gate.'],
+      },
+    });
+  }
+
+  if (enforcedPolicies.has('creative_security_https_only')) {
+    errors.push({
+      code: 'CREATIVE_REJECTED',
+      message: 'Creative makes an insecure HTTP request from a secure serving context.',
+      suggestion: 'Move every creative dependency and network request to HTTPS.',
+      recovery: 'correctable',
+      details: {
+        policy_id: 'creative_security_https_only',
+        policy_url: 'https://adcontextprotocol.org/api/policies/resolve?policy_id=creative_security_https_only&version=1.0.0',
+        reasons: ['Executable creative content contains an HTTP network URL.'],
+      },
+    });
+  }
+
+  return errors;
+}
+
 export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncCreativesRequest & ToolArgs & { dry_run?: boolean };
   const sessionKey = creativeSessionKey(req, ctx);
-  const session = await getSession(sessionKey);
+  const session = await getSession(sessionKey, controllerFixtureSessionKey(req, ctx));
   const isDryRun = req.dry_run === true;
   const accountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
@@ -10084,8 +12376,12 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   // Returns null when no fixture seeds policy fields — pre-existing
   // storyboards that don't exercise provenance enforcement keep working.
   const effectivePolicy = aggregateCreativePolicy(session);
+  const productValidationMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+  overlaySeededProducts(session, productValidationMap);
+  const enforcedPolicies = aggregateEnforcedPolicies(session);
 
   const results: SyncCreativeResult[] = [];
+  const stagedCreativeManifests = new Map<string, CreativeManifest>();
   for (const creative of req.creatives) {
     if (!creative.creative_id) {
       return {
@@ -10101,6 +12397,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       format_kind?: string;
       format_option_ref?: Record<string, unknown>;
       assets?: Record<string, unknown>;
+      component_assets?: Record<string, Record<string, unknown>>;
       manifest?: CreativeManifest;
     };
     const identityResult = validatedCreativeIdentity(creativeShape);
@@ -10111,6 +12408,17 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     }
     const identity = identityResult.identity;
     const formatId = identity.kind === 'legacy' ? identity.formatId : undefined;
+    const formatKind = identity.kind === 'canonical' ? identity.formatKind : undefined;
+
+    const runtimePolicyErrors = runtimeCreativePolicyErrors(creativeShape, enforcedPolicies);
+    if (runtimePolicyErrors.length > 0) {
+      results.push({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: runtimePolicyErrors,
+      });
+      continue;
+    }
 
     // Enforce creative_policy.provenance_required / provenance_requirements /
     // accepted_verifiers BEFORE persisting the creative. Per-creative failure
@@ -10147,9 +12455,81 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
     const existing = session.creatives.has(creativeId);
     const existingCreative = session.creatives.get(creativeId);
+    const topLevelComponentAssetsSupplied = Object.hasOwn(creativeShape, 'component_assets');
+    const nestedComponentAssetsSupplied = isRecord(creativeShape.manifest)
+      && Object.hasOwn(creativeShape.manifest, 'component_assets');
+    if ((topLevelComponentAssetsSupplied && !isRecord(creativeShape.component_assets))
+      || (nestedComponentAssetsSupplied && !isRecord(creativeShape.manifest?.component_assets))) {
+      results.push({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `creatives[${creativeId}].component_assets must be an object when supplied`,
+          field: `creatives[${creativeId}].component_assets`,
+          recovery: 'correctable',
+        }],
+      });
+      continue;
+    }
+    const candidateManifest = normalizedCreativeManifest(
+      creativeShape as InlineCreativeInput,
+      existingCreative,
+      identity,
+    );
+    const requiresProductBoundManifestValidation = formatKind === 'coordinated_placements'
+      || formatKind === 'seller_rendered_stateful_display'
+      || topLevelComponentAssetsSupplied
+      || nestedComponentAssetsSupplied;
+    if (requiresProductBoundManifestValidation && !candidateManifest) {
+      results.push({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `creatives[${creativeId}] requires a manifest with assets`,
+          field: `creatives[${creativeId}].assets`,
+          recovery: 'correctable',
+        }],
+      });
+      continue;
+    }
+    if (candidateManifest) stagedCreativeManifests.set(creativeId, candidateManifest);
+    if (candidateManifest) {
+      if (requiresProductBoundManifestValidation || candidateManifest.component_assets !== undefined) {
+        const schemaViolations = await validateManifestSchema(candidateManifest);
+        if (schemaViolations.length > 0) {
+          results.push({
+            creative_id: creativeId,
+            action: 'failed',
+            errors: creativeValidationErrors(schemaViolations, `creatives[${creativeId}]`),
+          });
+          stagedCreativeManifests.delete(creativeId);
+          continue;
+        }
+      }
+      const assignedViolations: ValidateInputViolation[] = [];
+      for (const mediaBuy of session.mediaBuys.values()) {
+        for (const pkg of mediaBuy.packages) {
+          if (!pkg.creativeAssignments.includes(creativeId)) continue;
+          const product = productValidationMap.get(pkg.productId);
+          if (!product) continue;
+          assignedViolations.push(...await validateCreativeForProduct(product, candidateManifest));
+        }
+      }
+      if (assignedViolations.length > 0) {
+        results.push({
+          creative_id: creativeId,
+          action: 'failed',
+          errors: creativeValidationErrors(assignedViolations, `creatives[${creativeId}]`),
+        });
+        stagedCreativeManifests.delete(creativeId);
+        continue;
+      }
+    }
 
     if (!isDryRun) {
-      const manifest = normalizedCreativeManifest(creativeShape, existingCreative, identity);
+      const manifest = candidateManifest;
       session.creatives.set(creativeId, {
         creativeId,
         accountId: accountId ?? existingCreative?.accountId,
@@ -10164,6 +12544,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
             ...(identity.formatOptionRef && { formatOptionRef: identity.formatOptionRef }),
           }),
         ...(manifest && { assets: manifest.assets }),
+        ...(manifest?.component_assets && { componentAssets: manifest.component_assets }),
         name: creative.name,
         status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
@@ -10192,6 +12573,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   // references but skip the package mutation.
   const assignmentResults: AssignmentResult[] = [];
   if (req.assignments?.length) {
+    const assignmentProducts = productValidationMap;
     const availableCreativeIds = new Set(session.creatives.keys());
     for (const result of results) {
       if (result.action !== 'failed') availableCreativeIds.add(result.creative_id);
@@ -10215,8 +12597,25 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'error', message: `Creative not found: ${creativeId}` });
         continue;
       }
+      const product = assignmentProducts.get(pkg.productId);
+      const candidateManifest = stagedCreativeManifests.get(creativeId)
+        ?? session.creatives.get(creativeId)?.manifest;
+      if (product && candidateManifest) {
+        const violations = await validateCreativeForProduct(product, candidateManifest);
+        if (violations.length > 0) {
+          assignmentResults.push({
+            creative_id: creativeId,
+            package_id: packageId,
+            status: 'error',
+            message: `Creative does not satisfy product ${product.product_id}: ${violations.map(v => v.rule).join(', ')}`,
+          });
+          continue;
+        }
+      }
       if (!isDryRun && !pkg.creativeAssignments.includes(creativeId)) {
+        pkg.creativeAssignmentDetails ??= pkg.creativeAssignments.map(existingId => ({ creative_id: existingId }));
         pkg.creativeAssignments.push(creativeId);
+        pkg.creativeAssignmentDetails.push({ creative_id: creativeId });
       }
       assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'assigned' });
     }
@@ -10445,6 +12844,9 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
         created_date: c.syncedAt,
         updated_date: c.syncedAt,
         ...(c.manifest?.assets && (!selectedFields || selectedFields.has('assets')) && { assets: c.manifest.assets }),
+        ...(c.manifest?.component_assets
+          && (!selectedFields || selectedFields.has('component_assets'))
+          && { component_assets: c.manifest.component_assets }),
       };
       if (emitPricing && (c.formatKind || c.formatId?.id) && (!selectedFields || selectedFields.has('pricing_options'))) {
         base.pricing_options = [getCreativePricing(req.account!, c)];
@@ -10555,7 +12957,7 @@ function mediaBuyMutationConflict(): Record<string, unknown> {
 export async function handleUpdateMediaBuy(
   args: ToolArgs,
   ctx: TrainingContext,
-  options: { acceptedProposalExecution?: boolean; governance?: TrustedGovernedExecution } = {},
+  options: { acceptedProposalExecution?: boolean; operationalControlExecution?: boolean; governance?: TrustedGovernedExecution } = {},
 ): Promise<Record<string, unknown>> {
   const mutex = await acquireMediaBuyMutationMutex(args, ctx);
   if (!mutex) return mediaBuyMutationConflict();
@@ -10572,7 +12974,7 @@ export async function handleUpdateMediaBuy(
 async function handleUpdateMediaBuyUnlocked(
   args: ToolArgs,
   ctx: TrainingContext,
-  options: { acceptedProposalExecution?: boolean; governance?: TrustedGovernedExecution } = {},
+  options: { acceptedProposalExecution?: boolean; operationalControlExecution?: boolean; governance?: TrustedGovernedExecution } = {},
 ): Promise<Record<string, unknown>> {
   const req = args as unknown as UpdateMediaBuyArgs;
   const session = await getSession(
@@ -10606,6 +13008,94 @@ async function handleUpdateMediaBuyUnlocked(
     : rejectUnavailableAction(mb, req, currentStatus, productMap);
   if (actionRejection) return actionRejection;
 
+  // Revision check for optimistic concurrency
+  const reqRevision = req.revision;
+  if (reqRevision !== undefined && reqRevision !== mb.revision) {
+    return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mb.revision}, got ${reqRevision}` }] };
+  }
+
+  // Established update_media_buy made root cancellation dominant over every
+  // sibling mutation. Authorize only the cancel action, then commit it before
+  // validating fields that the protocol says are ignored.
+  if (req.canceled === true) {
+    const cancelRejection = options.acceptedProposalExecution
+      ? undefined
+      : rejectUnavailableAction(mb, req, currentStatus, productMap);
+    if (cancelRejection) return cancelRejection;
+
+    const now = new Date().toISOString();
+    const ignoredFields = Object.entries(req as unknown as Record<string, unknown>)
+      .filter(([field, value]) => value !== undefined && !new Set([
+        'account',
+        'adcp_version',
+        'adcp_major_version',
+        'media_buy_id',
+        'revision',
+        'idempotency_key',
+        'governance_context',
+        'context',
+        'ext',
+        'canceled',
+        'cancellation_reason',
+      ]).has(field))
+      .map(([field]) => field);
+    const warnings: Array<Record<string, unknown>> = ignoredFields.length > 0
+      ? [{
+          code: 'fields_ignored_due_to_precedence',
+          message: 'Root media-buy cancellation took precedence over other requested mutations.',
+          affected_resource: { resource_type: 'media_buy', media_buy_id: mb.mediaBuyId },
+          details: { ignored_fields: ignoredFields },
+        }]
+      : [];
+
+    mb = structuredClone(mb);
+    mb.revision += 1;
+    mb.canceledAt = now;
+    mb.canceledBy = 'buyer';
+    mb.cancellationReason = req.cancellation_reason;
+    for (const pkg of mb.packages) {
+      pkg.creativeAssignments = [];
+      pkg.creativeAssignmentDetails = [];
+    }
+    mb.history.push({
+      revision: mb.revision,
+      timestamp: now,
+      actor: 'buyer',
+      action: 'canceled',
+      summary: req.cancellation_reason || 'Media buy canceled by buyer',
+    });
+    mb.updatedAt = now;
+    session.mediaBuys.set(mediaBuyId, mb);
+
+    const status = deriveStatus(mb, session);
+    return {
+      media_buy_id: mb.mediaBuyId,
+      ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
+      status,
+      media_buy_status: status,
+      revision: mb.revision,
+      valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+      available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+      cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
+      ...(warnings.length > 0 && { warnings }),
+      ...(req.context !== undefined && { context: req.context }),
+    };
+  }
+
+  if (
+    !options.acceptedProposalExecution
+    && Object.hasOwn(req as unknown as Record<string, unknown>, 'invoice_recipient')
+  ) {
+    return {
+      errors: [{
+        code: 'UNSUPPORTED_FEATURE',
+        message: 'This seller cannot atomically re-authorize invoice_recipient on an existing media buy.',
+        field: 'invoice_recipient',
+        recovery: 'terminal',
+      }] as TaskError[],
+    };
+  }
+
   const pausedValue = req.paused;
   if (pausedValue === true && !NON_TERMINAL_MEDIA_BUY_STATUSES.has(currentStatus)) {
     return {
@@ -10620,23 +13110,30 @@ async function handleUpdateMediaBuyUnlocked(
     };
   }
 
-  // Revision check for optimistic concurrency
-  const reqRevision = req.revision;
-  if (reqRevision !== undefined && reqRevision !== mb.revision) {
-    return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mb.revision}, got ${reqRevision}` }] };
-  }
+  const validationReq = req.packages
+    ? {
+        ...req,
+        packages: (req.packages as PackageUpdateExt[]).map(update => update.canceled === true
+          ? {
+              package_id: update.package_id,
+              canceled: true,
+              ...(update.cancellation_reason !== undefined && { cancellation_reason: update.cancellation_reason }),
+            }
+          : update),
+      } as UpdateMediaBuyArgs
+    : req;
 
   // Compute the monetary delta from the seller's authoritative pre-update
   // revision, then enforce the buyer intent's signed ceiling before mutating
   // any state. The buyer's post-update totals are never trusted as the delta.
   const submittedBudgets = [
-    ...(req.packages ?? []).flatMap(update => typeof update.budget === 'number' ? [update.budget] : []),
-    ...(req.new_packages ?? []).flatMap(pkg => typeof pkg.budget === 'number' ? [pkg.budget] : []),
+    ...(validationReq.packages ?? []).flatMap(update => typeof update.budget === 'number' ? [update.budget] : []),
+    ...(validationReq.new_packages ?? []).flatMap(pkg => typeof pkg.budget === 'number' ? [pkg.budget] : []),
   ];
   if (submittedBudgets.some(budget => !Number.isFinite(budget) || budget < 0)) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: 'Package budgets must be finite, non-negative numbers.' }] };
   }
-  const aggregateUpdate = aggregateMediaBuyUpdate(req);
+  const aggregateUpdate = aggregateMediaBuyUpdate(validationReq);
   if (aggregateUpdate.total_budget && (
     !Number.isFinite(aggregateUpdate.total_budget.amount)
     || aggregateUpdate.total_budget.amount < 0
@@ -10651,7 +13148,18 @@ async function handleUpdateMediaBuyUnlocked(
   }
   const resultingAllocation = aggregateUpdate.budget_allocation ?? mb.budgetAllocation;
   const sellerOptimized = resultingAllocation?.mode === 'seller_optimized';
-  const fixedRedistribution = aggregateUpdate.total_budget && !sellerOptimized && req.packages === undefined && req.new_packages === undefined
+  if (
+    !sellerOptimized
+    && (validationReq.packages ?? []).some(update => update.budget === null)
+  ) {
+    return {
+      errors: [{
+        code: 'VALIDATION_ERROR',
+        message: 'A null package budget is valid only in seller-optimized allocation mode.',
+      }],
+    };
+  }
+  const fixedRedistribution = aggregateUpdate.total_budget && !sellerOptimized && validationReq.packages === undefined && validationReq.new_packages === undefined
     ? proportionalFixedPackageBudgets(mb, aggregateUpdate.total_budget.amount)
     : undefined;
   if (fixedRedistribution?.error) {
@@ -10660,8 +13168,8 @@ async function handleUpdateMediaBuyUnlocked(
   if (
     aggregateUpdate.total_budget
     && !sellerOptimized
-    && (req.packages !== undefined || req.new_packages !== undefined)
-    && aggregateUpdate.total_budget.amount !== projectedPackageBudgetTotal(mb, req)
+    && (validationReq.packages !== undefined || validationReq.new_packages !== undefined)
+    && aggregateUpdate.total_budget.amount !== projectedPackageBudgetTotal(mb, validationReq)
   ) {
     return {
       errors: [{
@@ -10670,7 +13178,7 @@ async function handleUpdateMediaBuyUnlocked(
       }],
     };
   }
-  const updateDelta = positiveMediaBuyUpdateDelta(mb, req);
+  const updateDelta = positiveMediaBuyUpdateDelta(mb, validationReq);
   if (!Number.isFinite(updateDelta)) {
     return { errors: [{ code: 'VALIDATION_ERROR', message: 'Package budgets must be finite numbers.' }] };
   }
@@ -10678,7 +13186,7 @@ async function handleUpdateMediaBuyUnlocked(
   const updateGovernanceContext = typeof rawGovernanceContext === 'string' && rawGovernanceContext
     ? rawGovernanceContext
     : undefined;
-  const requiresGovernance = mediaBuyUpdateRequiresGovernance(mb, req, updateDelta);
+  const requiresGovernance = mediaBuyUpdateRequiresGovernance(mb, validationReq, updateDelta);
   const updateGovernanceAgents = resolveGovernanceAgentsForAccount(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     ctx.principal,
@@ -10690,7 +13198,7 @@ async function handleUpdateMediaBuyUnlocked(
       ctx.authenticatedAgentUrl,
       options.governance?.task ?? 'update_media_buy',
       `${getCanonicalBase()}/sales`,
-      governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
+      governedRequestPayload(ctx, validationReq as unknown as Record<string, unknown>),
       options.governance?.commitment.amount ?? updateDelta,
       options.governance?.commitment.currency ?? mb.currency,
     );
@@ -10712,32 +13220,23 @@ async function handleUpdateMediaBuyUnlocked(
   // and partial package changes remain atomic.
   mb = structuredClone(mb);
   mb.revision += 1;
+  const warnings: Array<Record<string, unknown>> = [];
+  const stagedInlineCreatives: ValidatedInlineCreative[] = [];
+  const creativeValidationSession = structuredClone(session);
+  const requestInlineCreativeIds = new Set<string>();
 
-  // Media buy cancellation
-  const isCanceled = req.canceled === true;
-  if (isCanceled) {
-    const reason = req.cancellation_reason;
-    mb.canceledAt = now;
-    mb.canceledBy = 'buyer';
-    mb.cancellationReason = reason;
-    mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'canceled', summary: reason || 'Media buy canceled by buyer' });
-    mb.updatedAt = now;
-    session.mediaBuys.set(mediaBuyId, mb);
-
-    const status = deriveStatus(mb, session);
-    // `media_buy_status` is the canonical 3.1 body field (#4895); legacy
-    // body `status: MediaBuyStatus` removed in 3.2 (#4906).
-    return {
-      media_buy_id: mb.mediaBuyId,
-      ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
-      status,
-      media_buy_status: status,
+  if (typeof req.name === 'string' && req.name !== mb.name) {
+    const priorName = mb.name;
+    mb.name = req.name;
+    mb.history.push({
       revision: mb.revision,
-      valid_actions: validActionsForMediaBuy(mb, status),
-      available_actions: availableActionsForMediaBuy(mb, status),
-      cancellation: { canceled_at: mb.canceledAt, canceled_by: mb.canceledBy, reason: mb.cancellationReason },
-      ...(req.context !== undefined && { context: req.context }),
-    };
+      timestamp: now,
+      actor: 'buyer',
+      action: 'name_updated',
+      summary: priorName
+        ? `Media buy name changed from ${priorName} to ${req.name}`
+        : `Media buy name set to ${req.name}`,
+    });
   }
 
   // Pause/resume at media buy level
@@ -10769,22 +13268,70 @@ async function handleUpdateMediaBuyUnlocked(
   }
 
   // Update packages
-  const warnings: string[] = [];
   if (req.packages?.length) {
     const knownPkgIds = new Set(mb.packages.map(p => p.packageId));
 
-    // Pre-validate all creative_assignments across every package before
-    // mutating anything, so a bad creative_id in pkg[N] doesn't leave
-    // pkg[0..N-1] with partially-applied assignments.
+    // Validate every package's complete post-update trafficking state before
+    // mutating the detached buy. This catches targeting routes orphaned by a
+    // sibling change as well as invalid replacement or inline assignments.
     for (const update of req.packages as PackageUpdateExt[]) {
-      const assignments = (update as PackageUpdate & { creative_assignments?: Array<{ creative_id: string }> }).creative_assignments;
+      if (update.canceled === true) continue;
+      const pkgId = update.package_id || '';
+      const pkg = mb.packages.find(candidate => candidate.packageId === pkgId);
+      if (!pkg) {
+        return { errors: [{ code: 'PACKAGE_NOT_FOUND', message: `Package not found: ${pkgId}. Known packages: ${[...knownPkgIds].join(', ')}` }] };
+      }
+      const assignments = (update as PackageUpdate & { creative_assignments?: LegacyCreativeAssignmentRow[] }).creative_assignments;
+      const traffickingChanged = update.creatives !== undefined
+        || assignments !== undefined
+        || update.targeting_overlay !== undefined
+        || update.targeting !== undefined;
+      if (!traffickingChanged) continue;
+      const enforceLifecycleSplit = supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx));
+      const product = enforceLifecycleSplit ? productMap.get(pkg.productId) : undefined;
+      if (enforceLifecycleSplit && !product) {
+        return { errors: [{ code: 'PRODUCT_NOT_FOUND', message: `Product not found for package ${pkgId}: ${pkg.productId}` }] };
+      }
       const inlineCreatives = collectInlineCreativeIds(update.creatives, `packages[${update.package_id || '?'}].creatives`);
       if (inlineCreatives.errors.length) {
         return { errors: inlineCreatives.errors };
       }
-      if (assignments === undefined) continue;
-      const pkgId = update.package_id || '';
-      if (assignments.length === 0) {
+      for (const inline of inlineCreatives.validatedCreatives) {
+        if (requestInlineCreativeIds.has(inline.creativeId)) {
+          return {
+            errors: [{
+              code: 'VALIDATION_ERROR',
+              message: `Inline creative ${inline.creativeId} is declared more than once in this update request.`,
+              field: `packages[${pkgId}].creatives`,
+            }] as TaskError[],
+          };
+        }
+        requestInlineCreativeIds.add(inline.creativeId);
+      }
+      persistInlineCreatives(
+        creativeValidationSession,
+        inlineCreatives.validatedCreatives,
+        mb.accountRef,
+        undefined,
+        now,
+      );
+      if (product && Array.isArray(update.creatives)) {
+        for (const [creativeIndex, creative] of update.creatives.entries()) {
+          const inlineCreative = creative as unknown as InlineCreativeInput;
+          const identity = validatedCreativeIdentity(inlineCreative);
+          if (!identity.ok) continue;
+          const existingCreative = inlineCreative.creative_id
+            ? session.creatives.get(inlineCreative.creative_id)
+            : undefined;
+          const manifest = normalizedCreativeManifest(inlineCreative, existingCreative, identity.identity);
+          if (!manifest) continue;
+          const violations = await validateCreativeForProduct(product, manifest);
+          if (violations.length > 0) {
+            return { errors: creativeValidationErrors(violations, `packages[${pkgId}].creatives[${creativeIndex}]`) };
+          }
+        }
+      }
+      if (assignments?.length === 0) {
         const currentStatus = deriveStatus(mb, session);
         if (['active', 'paused', 'pending_start'].includes(currentStatus)) {
           return {
@@ -10792,14 +13339,43 @@ async function handleUpdateMediaBuyUnlocked(
           };
         }
       }
-      for (const assignment of assignments) {
+      const candidateRows = update.creatives !== undefined
+        ? inlineCreativeAssignmentRows(update.creatives)
+        : assignments !== undefined
+          ? assignments.map(assignment => structuredClone(assignment))
+          : (pkg.creativeAssignmentDetails
+            ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })));
+      for (const assignment of candidateRows) {
         const cid = assignment.creative_id;
-        if (!cid) {
+        if (typeof cid !== 'string' || cid.length === 0) {
           return { errors: [{ code: 'VALIDATION_ERROR', message: `creative_assignments[].creative_id is required for package ${pkgId}`, field: `packages[${pkgId}].creative_assignments` }] };
         }
-        if (!session.creatives.has(cid)) {
+        if (!creativeValidationSession.creatives.has(cid)) {
           return { errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative not found: ${cid}. Sync the creative via sync_creatives before assigning.`, field: `packages[${pkgId}].creative_assignments` }] };
         }
+        const manifest = session.creatives.get(cid)?.manifest;
+        if (product && manifest) {
+          const violations = await validateCreativeForProduct(product, manifest);
+          if (violations.length > 0) {
+            return { errors: creativeValidationErrors(violations, `packages[${pkgId}].creative_assignments`) };
+          }
+        }
+      }
+      const incomingTargeting = (update as PackageUpdateExt).targeting_overlay
+        ?? (update as PackageUpdateExt).targeting
+        ?? pkg.targeting;
+      const targetingResult = validateTargeting(incomingTargeting, `packages[${pkgId}].targeting_overlay`);
+      if (targetingResult.errors.length) return { errors: targetingResult.errors };
+      if (enforceLifecycleSplit) {
+        const assignmentErrors = validateCreateAssignmentSemantics(
+          candidateRows,
+          product as unknown as Record<string, unknown>,
+          targetingResult.targeting,
+          creativeValidationSession,
+          `packages[${pkgId}].creative_assignments`,
+          (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
+        );
+        if (assignmentErrors.length) return { errors: assignmentErrors };
       }
     }
 
@@ -10812,10 +13388,31 @@ async function handleUpdateMediaBuyUnlocked(
 
       // Package cancellation
       if ((update as PackageUpdateExt).canceled === true) {
+        const ignoredFields = Object.entries(update as unknown as Record<string, unknown>)
+          .filter(([field, value]) => value !== undefined && !new Set([
+            'package_id',
+            'canceled',
+            'cancellation_reason',
+          ]).has(field))
+          .map(([field]) => field);
+        if (ignoredFields.length > 0) {
+          warnings.push({
+            code: 'fields_ignored_due_to_precedence',
+            message: `Package cancellation took precedence over sibling mutations for ${pkgId}.`,
+            affected_resource: {
+              resource_type: 'package',
+              media_buy_id: mb.mediaBuyId,
+              package_id: pkgId,
+            },
+            details: { ignored_fields: ignoredFields.map(field => `packages[${pkgId}].${field}`) },
+          });
+        }
         pkg.canceled = true;
         pkg.canceledAt = now;
         pkg.canceledBy = 'buyer';
         pkg.cancellationReason = (update as PackageUpdateExt).cancellation_reason;
+        pkg.creativeAssignments = [];
+        pkg.creativeAssignmentDetails = [];
         affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_canceled', summary: `Package ${pkgId} canceled`, packageId: pkgId });
         continue;
@@ -10835,11 +13432,12 @@ async function handleUpdateMediaBuyUnlocked(
         }
         const oldBudget = pkg.budget;
         pkg.budget = update.budget;
+        delete pkg.budgetCapRemoved;
         affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'budget_updated', summary: `Package ${pkgId} budget changed from ${oldBudget} to ${update.budget}`, packageId: pkgId });
       } else if ((update as unknown as Record<string, unknown>).budget === null) {
         const oldBudget = pkg.budget;
-        pkg.budget = 0;
+        pkg.budgetCapRemoved = true;
         affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'budget_updated', summary: `Package ${pkgId} budget cap removed from ${oldBudget}`, packageId: pkgId });
       }
@@ -10947,7 +13545,12 @@ async function handleUpdateMediaBuyUnlocked(
 
       if (update.end_time) {
         if (isNaN(new Date(update.end_time).getTime())) {
-          warnings.push(`Invalid end_time for package ${pkgId}: "${update.end_time}". Skipped.`);
+          return { errors: [{
+            code: 'VALIDATION_ERROR',
+            message: `Invalid end_time for package ${pkgId}: "${update.end_time}".`,
+            field: `packages[${pkgId}].end_time`,
+            recovery: 'correctable',
+          }] };
         } else {
           pkg.endTime = update.end_time;
           affectedPackageIds.add(pkgId);
@@ -10974,24 +13577,21 @@ async function handleUpdateMediaBuyUnlocked(
       // Replacement semantics: the provided array replaces pkg.creativeAssignments
       // entirely. Empty arrays are rejected in the pre-pass for active/paused/pending_start buys;
       // validity of creative_ids was also checked in the pre-pass.
-      const creativeAssignments = (update as PackageUpdate & { creative_assignments?: Array<{ creative_id: string }> }).creative_assignments;
+      const creativeAssignments = (update as PackageUpdate & { creative_assignments?: Array<{ creative_id: string; [key: string]: unknown }> }).creative_assignments;
       if (creativeAssignments !== undefined) {
         const creativeIds = creativeAssignments.map(a => a.creative_id);
         pkg.creativeAssignments = creativeIds;
+        pkg.creativeAssignmentDetails = structuredClone(creativeAssignments);
         affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
       if (update.creatives !== undefined) {
         const inlineCreatives = collectInlineCreativeIds(update.creatives, `packages[${pkgId}].creatives`);
         const creativeIds = inlineCreatives.creativeIds;
-        persistInlineCreatives(
-          session,
-          inlineCreatives.validatedCreatives,
-          req.account as AccountRef | undefined,
-          resolveAccountIdForRef(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId), ctx.principal, req.account),
-          now,
-        );
+        stagedInlineCreatives.push(...inlineCreatives.validatedCreatives);
         pkg.creativeAssignments = creativeIds;
+        pkg.creativeAssignmentDetails = inlineCreativeAssignmentRows(update.creatives)
+          .map(row => structuredClone(row));
         affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'inline_creatives_updated', summary: `Package ${pkgId} inline creatives replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
@@ -11023,6 +13623,7 @@ async function handleUpdateMediaBuyUnlocked(
   const newPackages = req.new_packages;
   if (newPackages?.length) {
     const productFormatOptionIndexes: ProductFormatOptionIndexCache = new WeakMap();
+    const enforceLifecycleSplit = supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx));
     if (mb.packages.length + newPackages.length > MAX_PACKAGES_PER_BUY) {
       return {
         errors: [{ code: 'LIMIT_EXCEEDED', message: `Adding ${newPackages.length} packages would exceed the per-buy limit of ${MAX_PACKAGES_PER_BUY}.` }] as TaskError[],
@@ -11057,6 +13658,57 @@ async function handleUpdateMediaBuyUnlocked(
       if (targetingResult.errors.length) {
         return { errors: targetingResult.errors };
       }
+      const inlineCreatives = collectInlineCreativeIds(npkg.creatives, `new_packages[${i}].creatives`);
+      if (inlineCreatives.errors.length) return { errors: inlineCreatives.errors };
+      for (const inline of inlineCreatives.validatedCreatives) {
+        if (enforceLifecycleSplit && requestInlineCreativeIds.has(inline.creativeId)) {
+          return {
+            errors: [{
+              code: 'VALIDATION_ERROR',
+              message: `Inline creative ${inline.creativeId} is declared more than once in this update request.`,
+              field: `new_packages[${i}].creatives`,
+            }] as TaskError[],
+          };
+        }
+        requestInlineCreativeIds.add(inline.creativeId);
+      }
+      persistInlineCreatives(
+        creativeValidationSession,
+        inlineCreatives.validatedCreatives,
+        mb.accountRef,
+        undefined,
+        now,
+      );
+      const assignmentRows = [
+        ...(Array.isArray(npkg.creative_assignments)
+          ? npkg.creative_assignments.map(assignment =>
+            structuredClone(assignment) as unknown as LegacyCreativeAssignmentRow
+          )
+          : []),
+        ...inlineCreativeAssignmentRows(npkg.creatives),
+      ];
+      for (const assignment of assignmentRows) {
+        if (enforceLifecycleSplit && (typeof assignment.creative_id !== 'string' || !creativeValidationSession.creatives.has(assignment.creative_id))) {
+          return {
+            errors: [{
+              code: 'CREATIVE_NOT_FOUND',
+              message: `New package ${i}: assigned creative was not found in the account library or inline payload.`,
+              field: `new_packages[${i}].creative_assignments`,
+            }] as TaskError[],
+          };
+        }
+      }
+      if (enforceLifecycleSplit) {
+        const assignmentErrors = validateCreateAssignmentSemantics(
+          assignmentRows,
+          product as unknown as Record<string, unknown>,
+          targetingResult.targeting,
+          creativeValidationSession,
+          `new_packages[${i}].creative_assignments`,
+          formatSnapshot.formats ?? [],
+        );
+        if (assignmentErrors.length) return { errors: assignmentErrors };
+      }
       const newPkg: PackageState = {
         packageId: pkgId,
         productId,
@@ -11089,10 +13741,12 @@ async function handleUpdateMediaBuyUnlocked(
         ...(!isThreeZeroStoryboardCompat(ctx) && formatSnapshot.formats?.length && {
           formatsToProvide: formatSnapshot.formats,
         }),
-        creativeAssignments: [],
+        creativeAssignments: assignmentRows.flatMap(row => typeof row.creative_id === 'string' ? [row.creative_id] : []),
+        creativeAssignmentDetails: assignmentRows.map(row => structuredClone(row)),
         targeting: targetingResult.targeting,
         context: npkg.context ? structuredClone(npkg.context) : undefined,
       };
+      stagedInlineCreatives.push(...inlineCreatives.validatedCreatives);
       mb.packages.push(newPkg);
       affectedPackageIds.add(pkgId);
       mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'package_added', summary: `New package ${pkgId} added (product: ${productId})`, packageId: pkgId });
@@ -11116,6 +13770,7 @@ async function handleUpdateMediaBuyUnlocked(
         if (nextBudget === undefined) continue;
         const oldBudget = pkg.budget;
         pkg.budget = nextBudget;
+        delete pkg.budgetCapRemoved;
         affectedPackageIds.add(pkg.packageId);
         mb.history.push({
           revision: mb.revision,
@@ -11155,6 +13810,8 @@ async function handleUpdateMediaBuyUnlocked(
   }
   const reportingWebhook = (req as unknown as Record<string, unknown>).reporting_webhook;
   if (isRecord(reportingWebhook)) mb.reportingWebhook = structuredClone(reportingWebhook);
+  const invoiceRecipient = (req as unknown as Record<string, unknown>).invoice_recipient;
+  if (isRecord(invoiceRecipient)) mb.invoiceRecipient = structuredClone(invoiceRecipient);
 
   // Every successful revision is observable through get_media_buys history.
   // Aggregate-only controls (for example daily_budget_cap) do not pass through
@@ -11177,11 +13834,91 @@ async function handleUpdateMediaBuyUnlocked(
 
   mb.updatedAt = now;
 
+  // Inline creative bodies update the account-scoped creative library. A
+  // creative may be shared by packages omitted from this request, so validate
+  // every surviving reference against the staged replacement before commit.
+  if (stagedInlineCreatives.length > 0 && supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx))) {
+    const stagedCreativeIds = new Set(stagedInlineCreatives.map(({ creativeId }) => creativeId));
+    for (const pkg of mb.packages) {
+      if (pkg.canceled || !pkg.creativeAssignments.some(creativeId => stagedCreativeIds.has(creativeId))) continue;
+      const product = productMap.get(pkg.productId);
+      if (!product) {
+        return { errors: [{ code: 'PRODUCT_NOT_FOUND', message: `Product not found for package ${pkg.packageId}: ${pkg.productId}` }] };
+      }
+      const assignmentRows = pkg.creativeAssignmentDetails
+        ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId }));
+      const assignmentErrors = validateCreateAssignmentSemantics(
+        assignmentRows,
+        product as unknown as Record<string, unknown>,
+        pkg.targeting,
+        creativeValidationSession,
+        `packages[${pkg.packageId}].creative_assignments`,
+        (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
+      );
+      if (assignmentErrors.length) return { errors: assignmentErrors };
+    }
+  }
+
+  if (
+    !options.acceptedProposalExecution
+    && !options.operationalControlExecution
+    && mb.acceptedProposal
+    && legacyUpdateChangesCommercialEnvelope(req)
+  ) {
+    const priorAccepted = mb.acceptedProposal;
+    let currentTerms: CanonicalProposal;
+    try {
+      currentTerms = proposalForCurrentMediaBuy(priorAccepted, mb);
+    } catch (error) {
+      return {
+        errors: [{
+          code: 'REQUOTE_REQUIRED',
+          message: error instanceof Error ? error.message : 'The update cannot be represented as an accepted proposal successor.',
+          recovery: 'correctable',
+        }] as TaskError[],
+      };
+    }
+    const acceptedSuccessor = {
+      ...currentTerms,
+      proposal_id: `proposal_legacy_update_${mb.mediaBuyId}_${mb.revision}`,
+      proposal_kind: 'media_buy_update',
+      parent_proposal_id: priorAccepted.proposal_id,
+      media_buy_id: mb.mediaBuyId,
+      base_media_buy_revision: mb.revision - 1,
+      proposal_status: 'accepted',
+      accepted_at: now,
+      name: 'Accepted legacy media-buy update',
+    } as CanonicalProposal;
+    mb.acceptedProposal = structuredClone(acceptedSuccessor);
+    session.proposalRefinementRecords.set(acceptedSuccessor.proposal_id, {
+      proposal: structuredClone(acceptedSuccessor),
+      version: 1,
+      ...(ctx.resolvedAccountId && { ownerAccountId: ctx.resolvedAccountId }),
+      accepted: {
+        accepted_at: now,
+        media_buy_id: mb.mediaBuyId,
+        media_buy_revision: mb.revision,
+      },
+    });
+  }
+
+  // Inline creative bodies share the legacy update transaction. Persist them
+  // only after every package/new-package check has succeeded.
+  if (stagedInlineCreatives.length > 0) {
+    persistInlineCreatives(
+      session,
+      stagedInlineCreatives,
+      req.account as AccountRef | undefined,
+      resolveAccountIdForRef(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId), ctx.principal, req.account),
+      now,
+    );
+  }
+
   const status = deriveStatus(mb, session);
   const updatedPackages = mb.packages.map(pkg => ({
     package_id: pkg.packageId,
     product_id: pkg.productId,
-    budget: pkg.budget,
+    ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
     pricing_option_id: pkg.pricingOptionId,
     paused: pkg.paused,
     start_time: pkg.startTime,
@@ -11191,7 +13928,8 @@ async function handleUpdateMediaBuyUnlocked(
     ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
     ...(pkg.context && { context: pkg.context }),
     ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
-    creative_assignments: pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
+    creative_assignments: pkg.creativeAssignmentDetails
+      ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     ...(pkg.canceledAt && {
       cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
     }),
@@ -11201,12 +13939,14 @@ async function handleUpdateMediaBuyUnlocked(
   // body `status: MediaBuyStatus` removed in 3.2 (#4906).
   const result = {
     media_buy_id: mb.mediaBuyId,
+    ...(mb.name && { name: mb.name }),
+    ...(mb.invoiceRecipient && { invoice_recipient: structuredClone(mb.invoiceRecipient) }),
     ...(req.idempotency_key && { idempotency_key: req.idempotency_key }),
     status,
     media_buy_status: status,
     revision: mb.revision,
-    valid_actions: validActionsForMediaBuy(mb, status),
-    available_actions: availableActionsForMediaBuy(mb, status),
+    valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+    available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
     ...((aggregateUpdate.total_budget !== undefined || packageBudgetChanged) && {
       currency: mb.currency,
       total_budget: mb.totalBudget,
@@ -11347,6 +14087,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         profile: 'adcp/webhook-signing/v1',
         algorithms: ['ed25519'],
         legacy_hmac_fallback: true,
+        delivery_retry_horizon_seconds: 86400,
       },
       identity: {
         brand_json_url: `${getAgentUrl()}/.well-known/brand.json`,
@@ -11359,6 +14100,16 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         proposal_refinement: proposalCapabilitiesForProfile(ctx.proposalNegotiationProfile),
       }),
       supports_proposals: true,
+      // Flexible-window availability discovery: parses
+      // offer_filters.availability_horizon and answers with time-dimensioned
+      // forecast points carrying availability_status. See
+      // applyAvailabilityHorizonForecasts / handleGetProductsUnlocked.
+      availability_horizon: true,
+      // Reverse-forecast planning: parses criteria.outcome_target and
+      // answers with total_budget_guidance plus a forecast whose points
+      // carry the goal's metric/event key in metrics. See
+      // computeOutcomeTargetPlan / handleGetProductsUnlocked.
+      outcome_target: true,
       performance_feedback: {
         reports_application_status: true,
       },
@@ -13466,7 +16217,7 @@ function proposalForCurrentMediaBuy(
       ]) delete purchase[field];
       return {
         ...purchase,
-        budget: pkg.budget,
+        ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
         start_time: pkg.startTime,
         end_time: pkg.endTime,
         ...(pkg.impressions !== undefined && { impressions: pkg.impressions }),
@@ -13497,6 +16248,7 @@ function proposalForCurrentMediaBuy(
     'budget_allocation',
     'pacing',
     'bidding',
+    'invoice_recipient',
   ]) delete commercialTerms[field];
   if (mediaBuy.totalBudget !== undefined) {
     commercialTerms.total_budget = { amount: mediaBuy.totalBudget, currency: mediaBuy.currency };
@@ -13506,6 +16258,7 @@ function proposalForCurrentMediaBuy(
   if (mediaBuy.budgetAllocation !== undefined) commercialTerms.budget_allocation = structuredClone(mediaBuy.budgetAllocation);
   if (mediaBuy.aggregatePacing !== undefined) commercialTerms.pacing = mediaBuy.aggregatePacing;
   if (mediaBuy.aggregateBidding !== undefined) commercialTerms.bidding = structuredClone(mediaBuy.aggregateBidding);
+  if (mediaBuy.invoiceRecipient !== undefined) commercialTerms.invoice_recipient = structuredClone(mediaBuy.invoiceRecipient);
 
   return {
     ...source,
@@ -13882,6 +16635,7 @@ export async function handleBuyProducts(
 
   const catalog = new Map(getCatalog().map(entry => [entry.product.product_id, entry.product]));
   overlaySeededProducts(session, catalog);
+  const purchaseStartedAt = new Date().toISOString();
   const canonicalPurchases: CompactProductPurchase[] = [];
   for (let index = 0; index < args.purchases.length; index++) {
     const purchase = args.purchases[index]!;
@@ -13935,10 +16689,11 @@ export async function handleBuyProducts(
         };
       }
     }
+    const purchaseStartTime = purchase.start_time ?? args.start_time;
     canonicalPurchases.push({
       ...structuredClone(purchase),
       pricing: canonicalPricing as unknown as CompactProductPurchase['pricing'],
-      start_time: purchase.start_time ?? args.start_time,
+      start_time: purchaseStartTime === 'asap' ? purchaseStartedAt : purchaseStartTime,
       end_time: purchase.end_time ?? args.end_time,
       ...(purchase.measurement_terms === undefined
         && isRecord(productTerms.measurement_terms)
@@ -13966,7 +16721,21 @@ export async function handleBuyProducts(
       },
     },
   }) as Record<string, unknown>;
-  if (Array.isArray(createResult.errors) && createResult.errors.length > 0) return createResult;
+  if (Array.isArray(createResult.errors) && createResult.errors.length > 0) {
+    // Legacy create_media_buy's error shape is bare { errors, ...context } —
+    // its own response schema has its own convention (see e.g. the
+    // inventory_list_no_match storyboard) and is intentionally left
+    // untouched. Re-emit that same bare shape here (not status: "failed"):
+    // the v6 SalesPlatform wrapper (v6-sales-platform.ts) recognizes this
+    // exact { errors, ...context } shape as the SDK's "error arm" and
+    // synthesizes status/adcp_error/isError correctly on the wire. Adding
+    // status here would make the wrapper miss that recognition and fall
+    // back to a single-adcp_error envelope that fails buy-products-response.json.
+    return {
+      errors: createResult.errors,
+      ...(isRecord(createResult.context) && { context: createResult.context }),
+    };
+  }
 
   const mediaBuyId = String(createResult.media_buy_id);
   const acceptedAt = new Date().toISOString();
@@ -13980,7 +16749,7 @@ export async function handleBuyProducts(
     brand,
     ...(args.advertiser_industry !== undefined && { advertiser_industry: args.advertiser_industry }),
     purchases: canonicalPurchases,
-    start_time: args.start_time,
+    start_time: args.start_time === 'asap' ? purchaseStartedAt : args.start_time,
     end_time: args.end_time,
     ...(args.total_budget !== undefined && { total_budget: args.total_budget }),
     ...(args.daily_budget_cap !== undefined && { daily_budget_cap: args.daily_budget_cap }),
@@ -14238,6 +17007,7 @@ async function acceptExistingMediaBuyProposal(
         ...(compactTerms.budget_allocation !== undefined && { budget_allocation: compactTerms.budget_allocation }),
         ...(compactTerms.pacing !== undefined && { pacing: compactTerms.pacing }),
         ...(compactTerms.bidding !== undefined && { bidding: compactTerms.bidding }),
+        ...(compactTerms.invoice_recipient !== undefined && { invoice_recipient: compactTerms.invoice_recipient }),
         packages: packageUpdates,
         ...(newPackages.length > 0 && { new_packages: newPackages }),
       };
@@ -14679,6 +17449,7 @@ async function handleControlMediaBuyUnlocked(
     }
   }
   const updateResult = await handleUpdateMediaBuyUnlocked(args as unknown as ToolArgs, ctx, {
+    operationalControlExecution: true,
     ...(mediaBuy && {
       governance: {
         task: 'control_media_buy' as const,
@@ -14711,6 +17482,9 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   request_proposals: handleGetProducts,
   refine_proposals: handleGetProducts,
   decline_proposals: handleGetProducts,
+  buy_products: (args, ctx) => handleBuyProducts(args as BuyProductsRequest, ctx),
+  accept_proposal: (args, ctx) => handleAcceptProposal(args as AcceptProposalRequest, ctx),
+  control_media_buy: (args, ctx) => handleControlMediaBuy(args as ControlMediaBuyRequest, ctx),
   list_creative_formats: handleListCreativeFormats,
   validate_input: handleValidateInput,
   create_media_buy: handleCreateMediaBuy,

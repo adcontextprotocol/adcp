@@ -72,6 +72,7 @@ import {
 } from '@adcp/sdk/testing';
 import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
+import { getTestKitForStoryboard } from '../../services/storyboards.js';
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
@@ -5308,10 +5309,16 @@ export function createMemberToolHandlers(
 
     try {
       const authProbeTask = await inferHostedAuthProbeTask(resolved.resolvedUrl, authOption, runTarget);
+      // adcp#6735 — pre-populate the storyboard-declared test kit so
+      // `from_test_kit` steps run with the credential the storyboard was
+      // authored against; the run-auth bearer substitution no-ops when the
+      // kit already carries auth.
+      const declaredTestKit = getTestKitForStoryboard(storyboardId, runOptions);
       const result = await runStoryboard(
         resolved.resolvedUrl,
         sb,
         withSdkSafeTransport(withHostedStoryboardRunOptions({
+          ...(declaredTestKit && { test_kit: declaredTestKit }),
           ...(authOption && { auth: authOption }),
         }, runTarget, authProbeTask)),
       );
@@ -5525,11 +5532,14 @@ export function createMemberToolHandlers(
 
     try {
       const authProbeTask = await inferHostedAuthProbeTask(resolved.resolvedUrl, authOption, runTarget);
+      // adcp#6735 — same declared-kit pre-population as run_storyboard.
+      const declaredStepTestKit = getTestKitForStoryboard(storyboardId, runOptions);
       const result: StoryboardStepResult = await runStoryboardStep(
         resolved.resolvedUrl,
         sb,
         resolvedStepId,
         withSdkSafeTransport(withHostedStoryboardRunOptions({
+          ...(declaredStepTestKit && { test_kit: declaredStepTestKit }),
           context,
           ...(authOption && { auth: authOption }),
         }, runTarget, authProbeTask)),

@@ -172,6 +172,8 @@ Governance agents declare standardized capabilities using `registry:` prefixed f
 The `registry:` convention is the **delegated** form of policy reference — buyer asks the seller's governance agent to evaluate the policy as a binary feature. The complementary **attribution** pattern, where producers tag mechanism-level filters and measurements with `policy_id` to record buyer-chosen thresholds and motivated evaluations, lives at [Policy Attribution](/docs/governance/policy-attribution).
 </Note>
 
+The same registry entry can provide an actionable creative rejection vocabulary without creating a protocol enum. Governance agents advertise `registry:{policy_id}` compliance features, while sellers cite the bare `policy_id` in existing `CREATIVE_REJECTED` details. The registry owns the shared rule and calibration examples; the agent owns detection methodology; the seller owns the enforcement decision. See [Policy-backed creative rejections](/docs/governance/creative/policy-backed-rejections).
+
 **Property governance agent declares:**
 ```json
 {

@@ -1,0 +1,157 @@
+---
+title: What's new in AdCP 3.2
+sidebarTitle: What's new in 3.2
+description: "Adopter overview of AdCP 3.2: compact media buying, targeting-aware discovery, canonical creative workflows, stronger security, portable evidence, and operational reconciliation."
+"og:title": "AdCP — What's New in 3.2"
+---
+
+# What's new in AdCP 3.2
+
+<Warning>
+**3.2 is in beta.** The protocol beta.4 artifacts and
+`@adcp/sdk@14.0.0-beta.5` now support the same exact checkpoint. Python and Go
+3.2 packages are still pending. Later betas require a fresh SDK support
+statement against their exact bundle. See the
+[3.2 beta program](/dist/docs/3.1.19/reference/3-2-beta) before testing.
+</Warning>
+
+AdCP 3.2 makes the protocol easier to implement as a set of explicit agent
+operations. It separates product listing, proposal negotiation, purchase, and
+operational control; makes targeting and creative capabilities discoverable;
+and strengthens the evidence and security contracts that autonomous execution
+depends on.
+
+Existing 3.1 integrations can remain pinned to `"3.1"`. The broad 3.x
+`get_products`, `create_media_buy`, and `update_media_buy` facades remain
+available for compatibility. New integrations should prefer the compact 3.2
+tools after capability discovery.
+
+## The 3.2 feature set
+
+### A smaller, explicit media-buy lifecycle
+
+Seven task-specific tools replace overloaded modes in the compatibility
+facades:
+
+- `list_products` lists published offers;
+- `request_proposals`, `refine_proposals`, and `decline_proposals` manage
+  immutable proposal snapshots;
+- `buy_products` purchases published offers directly;
+- `accept_proposal` executes committed new-buy, amendment, or negotiated
+  cancellation terms;
+- `control_media_buy` applies revision-checked operational controls inside the
+  accepted commercial envelope.
+
+Sellers advertise the subset they support through
+`media_buy.lifecycle_tools`. Its absence tells callers to use the compatibility
+facades. See [Proposal negotiation](/dist/docs/3.1.19/media-buy/product-discovery/proposal-negotiation)
+for the end-to-end draft → refine → finalize → accept flow.
+
+### Targeting that survives discovery and execution
+
+Targeting-aware discovery separates concrete constraints from future
+selectability. Buyers place known values in `targeting_overlay` and use
+`required_overlay_support` when values will be chosen later. Sellers return
+configured products whose price, forecast, expiry, and targeting resolution
+match the request.
+
+The 3.2 surface includes portable demographics, country-aware subdivisions,
+named places, browser families, property exclusions, audience evidence, and
+exact package readback. Products can also disclose per-package cardinality for
+country inclusion, country exclusion, and proximity targeting before a buyer
+creates or updates a package. See [Targeting-aware product discovery](/dist/docs/3.1.19/reference/migration/targeting-aware-discovery).
+
+### Commercial terms and controls are explicit
+
+3.2 adds seller-optimized shared budgets, bidding policy, atomic total-budget
+updates, daily caps, creative rotation, contingent revenue-share pricing, and
+structured warnings and durable indicators. Commercial changes outside an
+accepted proposal flow through refinement; operational changes inside accepted
+terms use `control_media_buy`.
+
+This split gives buyers one recovery rule: follow the accepted terms and current
+revision for control; request a new immutable commercial snapshot for anything
+that changes those terms.
+
+### Canonical creative workflows
+
+Canonical format declarations become the authoring and discovery path.
+Creative agents advertise stable capability IDs and supported operations;
+products expose accepted `format_options[]`; build and transformer calls select
+those capabilities directly.
+
+3.2 also adds image pixel-density and rendition-set semantics, creative
+localization, optional async preview, audio loudness constraints, VAST 4.3 and
+validation levels, structured accessibility rejection detail, and synthetic
+depiction provenance.
+
+`list_creative_formats` remains a compatibility task, but new discovery must
+use product format options and creative capabilities. Exact plural
+`format_ids` fields are deprecated for removal in 4.0.
+
+### Portable evidence and safer asset access
+
+Portable attestations allow a producer to reference signed evidence without
+embedding the full assertion in every payload. Audience evidence, rights
+grants, runtime signal quality, and brand-verifier authorization build on the
+same reference-and-verification pattern.
+
+Inline cloud credentials in secured asset payloads are deprecated. Prefer
+short-lived signed URLs, pre-authorized workload identity, or bounded
+asset-scoped bearer tokens. See [Migrating secured asset access](/dist/docs/3.1.19/reference/migration/asset-access).
+
+### Stronger request integrity
+
+Request signing remains optional in 3.2, but a 3.2 signing profile has one
+cryptographic posture: every accepted signature on a body-bearing request
+covers `content-digest`. Legacy `"either"` and `"forbidden"` profiles remain
+only for explicit 3.0/3.1 compatibility endpoints.
+
+Request `Signature` and `Content-Digest` binary values also move from the 3.1
+unpadded Base64URL override to RFC 8941 padded standard Base64. Parser selection
+comes from the trusted endpoint/profile. Webhook v1 keeps its separately routed
+legacy Base64URL encoding throughout 3.x.
+
+3.2 also grades OAuth discovery consistency, tightens signed-response verifier
+errors, and requires integer `error.retry_after` values from 3.2 producers.
+
+### Better convergence and accountability
+
+Capability-change notifications, account status notifications, snapshot/log
+repair rules, demographic and spot-level delivery reporting, package metric
+accountability, and relationship-scoped indicators make asynchronous agent
+state easier to reconcile.
+
+The compliance bundle adds deterministic read-filter checks, fixture
+resolution, grounded readbacks, and capability-selected runtime projections so
+agents are graded against behavior they actually advertise.
+
+### Experimental governance and Trusted Match revisions
+
+The experimental campaign-governance surface gains task-scoped enforcement,
+authenticated caller binding, opaque plan authorization, prepared execution,
+and governance-owned outcome reconciliation. Trusted Match experimental
+surfaces refine publisher authentication, router merge behavior, context
+attribution, and publisher-owned creative data.
+
+These remain experimental. Implementers must inspect `experimental_features`,
+pin an exact 3.2 release, and follow the applicable migration notice.
+
+## What requires adopter attention
+
+| If you are… | Review before advertising 3.2 |
+|---|---|
+| Any seller or service | Advertise `"3.2-beta.N"` only for the exact beta served, echo it on responses, and keep 3.1 traffic on its negotiated contract. |
+| A buyer | Gate compact tools and optional targeting on capabilities; do not infer 3.2 support from a major-only declaration. |
+| A media-buy implementer | Use `media_buy_status` on create/update success payloads; root `status` is the task-envelope state. |
+| A signing implementation | Require `content-digest` coverage for every signed body on a 3.2 signing endpoint. |
+| A creative implementation | Prefer canonical capability and product format discovery; retain legacy conversion only at a proven compatibility boundary. |
+| An SDK maintainer | Generate from the signed beta.0 tarball, name the exact supported bundle, and feed protocol corrections into beta.1. |
+| A compliance operator | Treat beta.0 as an implementation input; treat beta.1 as SDK-backed only after the exact beta.1 SDK refresh and integration evidence publish. Do not issue a 3.2 badge from beta.0. |
+
+## Start here
+
+1. Read the [3.2 beta program](/dist/docs/3.1.19/reference/3-2-beta).
+2. Follow [Migrating from 3.1 to 3.2](/dist/docs/3.1.19/reference/migration/3-1-to-3-2).
+3. Choose the exact package and support level in [Choose your SDK](/dist/docs/3.1.19/building/by-layer/L4/choose-your-sdk).
+4. Use the [Release Notes](/dist/docs/3.1.19/reference/release-notes#version-3-2-0) for the cumulative record.

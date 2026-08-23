@@ -21,6 +21,30 @@ seller's published offers and pricing. Proposal tasks create immutable,
 seller-authored commercial snapshots for a specific planning conversation.
 </Note>
 
+## Both surfaces are optional; neither outranks the other
+
+Sellers choose which discovery surfaces to offer, and `lifecycle_tools` is the
+complete statement of that choice. A seller that omits `list_products` offers
+no wholesale feed — like a company that quotes through a sales conversation
+rather than a self-serve signup page. A seller that omits `request_proposals`
+sells only published offers. Both are fully conformant; no conformance
+scenario requires the wholesale path, and the advertised subset carries no
+implication about inventory breadth or planning capability.
+
+The two surfaces serve different buying modes. The wholesale feed is the
+self-serve, lower-resolution surface: the buyer brings its own intelligence
+and selects published offers directly, much as it would on an open exchange.
+A brief through `request_proposals` is the higher-resolution surface: the
+seller plans against the buyer's actual intent. Buyers SHOULD use both
+surfaces where the seller advertises them. A wholesale feed is a seller's
+published-offer subset, not a capability assessment, and buyers SHOULD NOT
+rank or filter sellers by feed breadth or feed absence.
+
+Every product in a feed is a purchasable offer: `buy_products` transacts it
+exactly as listed under its `feed_version`. Sellers demonstrate built-to-brief
+capability by answering briefs, not by publishing representative products that
+cannot be bought as listed.
+
 ## 1. Discover the available lifecycle
 
 Do not infer compact-tool support from the protocol version alone. Use the
@@ -79,7 +103,7 @@ without asking the seller to author a media plan:
 
 ```javascript
 const result = await seller.listProducts({
-  adcp_version: '3.2-beta.2',
+  adcp_version: '3.2-beta.4',
   account: { account_id: 'account_123' },
   criteria: {
     offer_filters: {
@@ -114,7 +138,7 @@ structured criteria to StreamHaus while keeping strategy in prose:
 
 ```javascript
 const response = await seller.requestProposals({
-  adcp_version: '3.2-beta.2',
+  adcp_version: '3.2-beta.4',
   idempotency_key: 'acme-q2-proposals-001',
   account: { account_id: 'account_123' },
   brand: { domain: 'acme-outdoor.example' },

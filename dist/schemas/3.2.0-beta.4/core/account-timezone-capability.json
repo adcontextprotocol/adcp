@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/account-timezone-capability.json",
+  "title": "Account Timezone Capability",
+  "description": "Declares where the operational timezone for advertiser accounts comes from. Account timezone is the default calendar-day boundary for account-scoped behavior unless a feature explicitly declares a different basis. It does not replace explicit timezone fields for reporting, billing, or another feature whose upstream clock differs.",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": [
+        "seller_fixed",
+        "account_fixed"
+      ],
+      "description": "seller_fixed means every account uses fixed_timezone. account_fixed means each account has an immutable timezone returned on Account and selected or assigned during account establishment."
+    },
+    "fixed_timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Seller-wide timezone used by every account. Required only for seller_fixed. Use UTC or an IANA timezone identifier."
+    },
+    "account_selection": {
+      "type": "string",
+      "enum": [
+        "seller_assigned",
+        "buyer_selected"
+      ],
+      "description": "How an account_fixed timezone is established. seller_assigned covers an existing upstream account or seller onboarding choice; buyer_selected requires timezone in buyer-declared sync_accounts provisioning."
+    },
+    "supported_timezones": {
+      "type": "array",
+      "description": "Exact timezone values accepted during buyer-selected account provisioning. Required when account_selection is buyer_selected so buyers can validate the choice before sync_accounts.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "mode"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "seller_fixed"
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "then": {
+        "required": [
+          "fixed_timezone"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "account_selection"
+              ]
+            },
+            {
+              "required": [
+                "supported_timezones"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "account_fixed"
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "then": {
+        "required": [
+          "account_selection"
+        ],
+        "not": {
+          "required": [
+            "fixed_timezone"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "account_selection": {
+            "const": "buyer_selected"
+          }
+        },
+        "required": [
+          "account_selection"
+        ]
+      },
+      "then": {
+        "required": [
+          "supported_timezones"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "account_selection": {
+            "const": "seller_assigned"
+          }
+        },
+        "required": [
+          "account_selection"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "supported_timezones"
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

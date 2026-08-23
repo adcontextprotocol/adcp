@@ -20,10 +20,7 @@ import {
   resolveTrainingSalesRequestContext,
   salesCapabilityProjection,
 } from '../v6-sales-platform.js';
-import {
-  COMPLY_TEST_CONTROLLER_TOOL,
-  handleComplyTestController,
-} from '../comply-test-controller.js';
+import { handleComplyTestController } from '../comply-test-controller.js';
 import {
   adcpError,
   resolveServedAdcpVersion,
@@ -130,30 +127,9 @@ const SALES_CURRENT_SCENARIOS = [
   'evaluate_distributed_brand_resolution',
 ] as const;
 
-const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.2'] as const;
-const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.2';
+const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.4'] as const;
+const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.4';
 const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
-const THREE_ZERO_COMPLIANCE_SCENARIOS = new Set([
-  'force_creative_status',
-  'force_account_status',
-  'force_media_buy_status',
-  'force_session_status',
-  'simulate_delivery',
-  'simulate_budget_spend',
-]);
-const THREE_ZERO_POSTAL_TARGETING_KEYS = new Set([
-  'us_zip',
-  'us_zip_plus_four',
-  'gb_outward',
-  'gb_full',
-  'ca_fsa',
-  'ca_full',
-  'de_plz',
-  'fr_code_postal',
-  'au_postcode',
-  'ch_plz',
-  'at_plz',
-]);
 const PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES = [
   'list_products',
   'request_proposals',
@@ -461,6 +437,8 @@ async function tryHandleLocalComplyScenario(
   const isThreeZeroCompat = storyboardCompat?.version === '3.0';
   const isRejectedGetProductsDirective = rawArgs.scenario === 'force_get_products_arm'
     && (rawArgs.params as Record<string, unknown> | undefined)?.arm === 'rejected';
+  const isCompactLifecycleProbe = rawArgs.scenario === 'compact_product_lifecycle_probe'
+    || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe';
   if (
     rawArgs.scenario !== 'seed_measurement_catalog'
     && rawArgs.scenario !== 'force_creative_purge'
@@ -469,6 +447,7 @@ async function tryHandleLocalComplyScenario(
     && rawArgs.scenario !== 'compact_product_lifecycle_probe'
     && rawArgs.scenario !== 'compact_direct_buy_lifecycle_probe'
     && rawArgs.scenario !== 'list_scenarios'
+    && !isCompactLifecycleProbe
     && !isRejectedGetProductsDirective
   ) return false;
   if (
@@ -641,18 +620,6 @@ function projectTenantToolDiscovery(
     const tools = parsed.result?.tools;
     if (!Array.isArray(tools)) return body;
     if (tenantId === 'sales') {
-      // SDK 14's compact media-buy discovery profile intentionally excludes
-      // test-harness extensions. The training agent is itself a sandbox and
-      // its compliance scenarios require the controller to be discoverable;
-      // dispatch still enforces account.sandbox=true. Keep the seven native
-      // lifecycle tools as the advertised protocol surface and add this one
-      // cross-cutting harness tool alongside them.
-      if (
-        storyboardCompat?.version !== '3.0'
-        && !tools.some(tool => tool.name === COMPLY_TEST_CONTROLLER_TOOL.name)
-      ) {
-        tools.push({ ...COMPLY_TEST_CONTROLLER_TOOL });
-      }
       const getProducts = tools.find(tool => tool.name === 'get_products');
       if (getProducts) {
         const inputSchema = getProducts.inputSchema ?? {};
@@ -751,6 +718,7 @@ function projectTenantCapabilities(
           wholesale_feed_webhooks?: Record<string, unknown>;
           webhook_signing?: Record<string, unknown>;
           identity?: Record<string, unknown>;
+          account?: Record<string, unknown>;
           compliance_testing?: Record<string, unknown>;
         };
       };
@@ -774,7 +742,27 @@ function projectTenantCapabilities(
         ? adcp.supported_versions
         : [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
     };
+    if (tenantId === 'sales' && storyboardCompat?.version !== '3.0') {
+      structured.adcp.capability_changes = {
+        capabilities_version: 'training-agent-3.2-beta.4',
+        last_modified: '2026-08-20T00:00:00.000Z',
+        cache_ttl_seconds: 300,
+        notifications: {
+          supported: true,
+          registration_task: 'sync_agent_notification_configs',
+          event_types: ['capabilities.changed'],
+          coalescence_window_seconds: 300,
+        },
+      };
+    }
     if (storyboardCompat?.version !== '3.0') {
+      const account = structured.account && typeof structured.account === 'object'
+        ? structured.account
+        : {};
+      structured.account = {
+        ...account,
+        supported_account_currency_modes: ['fixed', 'per_media_buy'],
+      };
       const governanceTasks: Record<string, Array<{ task: string; modes: ['signed_context'] }>> = {
         sales: supportsGetProductsRejected(servedVersion)
           ? [
@@ -836,6 +824,8 @@ function projectTenantCapabilities(
         delete mediaBuy.lifecycle_tools;
         delete mediaBuy.proposal_refinement;
         delete mediaBuy.supports_proposals;
+        delete mediaBuy.availability_horizon;
+        delete mediaBuy.outcome_target;
       }
       const salesProjection = salesCapabilityProjection();
       structured.media_buy = {
@@ -843,6 +833,14 @@ function projectTenantCapabilities(
         ...salesProjection,
         ...(supportsGetProductsRejected(servedVersion) && {
           lifecycle_tools: [...PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES],
+          // Flexible-window availability discovery: the platform parses
+          // offer_filters.availability_horizon and answers with
+          // time-dimensioned forecast points (see handleGetProductsUnlocked).
+          availability_horizon: true,
+          // Reverse-forecast planning: the platform parses
+          // criteria.outcome_target and answers with total_budget_guidance
+          // plus a forecast (see computeOutcomeTargetPlan).
+          outcome_target: true,
         }),
         ...(proposalNegotiationProfile && supportsGetProductsRejected(servedVersion) && {
           supports_proposals: true,
@@ -857,6 +855,10 @@ function projectTenantCapabilities(
           ...salesProjection.features,
         },
       };
+      if (!supportsGetProductsRejected(servedVersion)) {
+        delete structured.media_buy.lifecycle_tools;
+        delete structured.media_buy.proposal_refinement;
+      }
       const creative = structured.creative && typeof structured.creative === 'object'
         ? structured.creative
         : {};
@@ -886,34 +888,6 @@ function projectTenantCapabilities(
         scenarios: [...scenarios],
       };
     }
-    if (storyboardCompat?.version === '3.0') {
-      // SDK 14 emits current capability vocabulary even when an adopter
-      // projects a request onto the frozen 3.0 wire contract. Keep the
-      // current platform internally intact, but remove vocabulary that the
-      // released 3.0 schema cannot represent at this response boundary.
-      if (tenantId === 'si') delete structured.specialisms;
-      const complianceTesting = structured.compliance_testing;
-      if (complianceTesting && Array.isArray(complianceTesting.scenarios)) {
-        complianceTesting.scenarios = complianceTesting.scenarios.filter(
-          (scenario): scenario is string => (
-            typeof scenario === 'string' && THREE_ZERO_COMPLIANCE_SCENARIOS.has(scenario)
-          ),
-        );
-      }
-      const mediaBuy = structured.media_buy;
-      const execution = mediaBuy?.execution;
-      const targeting = execution && typeof execution === 'object'
-        ? (execution as Record<string, unknown>).targeting
-        : undefined;
-      const postalAreas = targeting && typeof targeting === 'object'
-        ? (targeting as Record<string, unknown>).geo_postal_areas
-        : undefined;
-      if (postalAreas && typeof postalAreas === 'object' && !Array.isArray(postalAreas)) {
-        (targeting as Record<string, unknown>).geo_postal_areas = Object.fromEntries(
-          Object.entries(postalAreas).filter(([key]) => THREE_ZERO_POSTAL_TARGETING_KEYS.has(key)),
-        );
-      }
-    }
     projectWholesaleCapabilities(structured, tenantId, storyboardCompat);
     const firstText = parsed.result?.content?.[0];
     if (firstText?.type === 'text') {
@@ -937,13 +911,7 @@ function projectWholesaleCapabilities(
   tenantId: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): void {
-  const addWebhookSigningIdentity = (): void => {
-    structured.webhook_signing = {
-      supported: true,
-      profile: 'adcp/webhook-signing/v1',
-      algorithms: ['ed25519'],
-      legacy_hmac_fallback: true,
-    };
+  const addBrandIdentity = (): void => {
     const brandJsonUrl = storyboardCompat?.version === '3.0'
       ? `${getAgentUrl()}/.well-known/brand.json?compat=3.0`
       : `${getAgentUrl()}/.well-known/brand.json`;
@@ -953,10 +921,24 @@ function projectWholesaleCapabilities(
     };
   };
 
+  const addWebhookSigning = (): void => {
+    structured.webhook_signing = {
+      supported: true,
+      profile: 'adcp/webhook-signing/v1',
+      algorithms: ['ed25519'],
+      legacy_hmac_fallback: true,
+      delivery_retry_horizon_seconds: 86400,
+    };
+  };
+
+  // Every training-agent tenant is represented by the same published brand
+  // identity, even when it does not implement wholesale-feed webhooks.
+  addBrandIdentity();
+
   if (storyboardCompat?.version === '3.0') {
     delete structured.wholesale_feed_versioning;
     delete structured.wholesale_feed_webhooks;
-    addWebhookSigningIdentity();
+    addWebhookSigning();
     return;
   }
 
@@ -997,7 +979,7 @@ function projectWholesaleCapabilities(
       'wholesale_feed.bulk_change',
     ],
   };
-  addWebhookSigningIdentity();
+  addWebhookSigning();
 }
 
 /**

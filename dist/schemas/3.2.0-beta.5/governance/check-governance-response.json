@@ -1,0 +1,504 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/governance/check-governance-response.json",
+  "title": "Check Governance Response",
+  "description": "Governance agent's response to a check request. Only an approved verdict authorizes execution. Conditions are an intent-phase counterproposal and never carry authorization context; the caller must adjust and re-check.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "required": [
+          "check_type"
+        ]
+      },
+      "then": {
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "verdict": {
+                  "const": "conditions"
+                }
+              },
+              "required": [
+                "verdict"
+              ]
+            },
+            "then": {
+              "required": [
+                "conditions",
+                "consultation_context"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "governance_context"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "expires_at"
+                    ]
+                  }
+                ]
+              },
+              "properties": {
+                "check_type": {
+                  "const": "intent"
+                },
+                "conditions": {
+                  "minItems": 1
+                }
+              }
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "conditions"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "consultation_context"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "verdict": {
+                  "const": "denied"
+                }
+              },
+              "required": [
+                "verdict"
+              ]
+            },
+            "then": {
+              "required": [
+                "findings"
+              ],
+              "properties": {
+                "findings": {
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "verdict": {
+                  "const": "approved"
+                }
+              },
+              "required": [
+                "verdict"
+              ]
+            },
+            "then": {
+              "required": [
+                "expires_at",
+                "governance_context"
+              ]
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "governance_context"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "expires_at"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "else": {
+        "allOf": [
+          {
+            "required": [
+              "plan_id"
+            ]
+          },
+          {
+            "if": {
+              "properties": {
+                "verdict": {
+                  "const": "conditions"
+                }
+              },
+              "required": [
+                "verdict"
+              ]
+            },
+            "then": {
+              "required": [
+                "conditions"
+              ],
+              "properties": {
+                "conditions": {
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "verdict": {
+                  "const": "denied"
+                }
+              },
+              "required": [
+                "verdict"
+              ]
+            },
+            "then": {
+              "required": [
+                "findings"
+              ],
+              "properties": {
+                "findings": {
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "verdict": {
+                  "enum": [
+                    "approved",
+                    "conditions"
+                  ]
+                }
+              },
+              "required": [
+                "verdict"
+              ]
+            },
+            "then": {
+              "required": [
+                "expires_at"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "runtime_attestation_evaluations"
+        ]
+      },
+      "then": {
+        "required": [
+          "runtime_attestation_binding_digest"
+        ]
+      }
+    }
+  ],
+  "x-status": "experimental",
+  "properties": {
+    "check_id": {
+      "type": "string",
+      "description": "Unique identifier for this governance check record. Use in report_plan_outcome to link outcomes to the check that authorized them.",
+      "x-entity": "governance_check"
+    },
+    "verdict": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/governance-decision.json",
+      "description": "Governance verdict: approved | denied | conditions. Renamed from `status` in 3.1 to free the top-level `status` key for the envelope task-status (TaskStatus) under MCP flat-on-the-wire serialization. The enum values are unchanged; only the property name moved."
+    },
+    "check_type": {
+      "type": "string",
+      "enum": [
+        "intent",
+        "execution"
+      ],
+      "description": "Check shape that produced the verdict. Required for the cross-role governance_enforcement contract. Its presence selects the modern verdict-specific response rules; its absence selects the deprecated legacy 3.x compatibility shape. Intent checks may return conditions; execution checks are binary approved or denied."
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "Plan identifier echoed on an initial plan-addressed check. Optional on continuation checks addressed by governance_context; services do not need this value and MUST treat the token binding as authoritative.",
+      "x-entity": "governance_plan"
+    },
+    "explanation": {
+      "type": "string",
+      "description": "Human-readable explanation of the governance decision."
+    },
+    "findings": {
+      "type": "array",
+      "description": "Specific issues found during the governance check. Present when verdict is 'denied' or 'conditions'. MAY also be present on 'approved' for informational findings (e.g., budget approaching limit).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "description": "Validation category that flagged the issue (e.g., 'budget_compliance', 'regulatory_compliance', 'brand_safety'). This is an **agent-internal** taxonomy: the string is defined by the governance agent's own policy model and is not constrained to any protocol-level enum. Sellers and buyers MUST NOT pattern-match `category_id` values against a fixed list — treat them as opaque labels with human-readable significance for audit but no machine-level contract. See the Campaign Governance specification for how an agent composes internal specialist review behind one endpoint."
+          },
+          "policy_id": {
+            "type": "string",
+            "description": "ID of the policy that triggered this finding. May reference a registry policy (with source: registry) or a bespoke inline policy (with source: inline). Bespoke policy_ids are unique within their authoring container; use source_plan_id when findings aggregate across multiple plans (e.g., portfolio evaluations). When the violation traces to a producer-tagged surface (feature-requirement, creative-feature-result, or validation-result feature) carrying policy_id, governance agents SHOULD echo that policy_id here for end-to-end traceability, and MUST NOT invent a policy_id that wasn't present on the originating surface. See /docs/governance/policy-attribution.",
+            "$comment": "x-entity deliberately omitted — a finding's policy_id can reference EITHER a governance_registry_policy or a governance_inline_policy depending on which policy matched. Resolution requires a sibling source discriminator the lint can't see from this leaf. Storyboards that capture from findings must re-annotate at the consume site (see #2685 for the registry/inline split)."
+          },
+          "source_plan_id": {
+            "type": "string",
+            "description": "For portfolio or aggregated evaluations where findings draw on bespoke policies from multiple member plans: identifies the plan whose policy triggered this finding. Omit when the finding's policy_id is unambiguous within the response context (e.g., single-plan check_governance).",
+            "x-entity": "governance_plan"
+          },
+          "severity": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/escalation-severity.json"
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Human-readable description of the issue."
+          },
+          "details": {
+            "type": "object",
+            "description": "Structured details for programmatic consumption.",
+            "additionalProperties": true
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Confidence score (0-1) in this finding. Distinguishes 'this definitely violates the policy' (0.95) from 'this might violate depending on how audience segments resolve' (0.6). When absent, the finding is presented without a confidence qualifier."
+          },
+          "uncertainty_reason": {
+            "type": "string",
+            "description": "Explanation of why confidence is below 1.0 (e.g., 'Targeting includes regions that partially overlap jurisdiction boundaries'). Present when confidence is below a governance-agent-defined threshold."
+          },
+          "attestation_reference_digest": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "description": "When this finding relies on or reports a runtime attestation evaluation, the reference_digest of the exact AttestationReference in runtime_attestation_evaluations[]. Findings MUST NOT copy credential bodies or treat a presenter assertion as verified evidence."
+          }
+        },
+        "required": [
+          "category_id",
+          "severity",
+          "explanation"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "conditions": {
+      "type": "array",
+      "description": "Intent-phase counterproposal. Present only when verdict is 'conditions'. It does not authorize execution and MUST NOT be returned for execution or lifecycle checks. Each field path is rooted at the complete check_governance request arguments, so both payload.* and proposed_commitment.* can be addressed. After applying conditions, the caller MUST re-call check_governance with the adjusted parameters and receive approved before proceeding.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Dot-path rooted at the complete check_governance request arguments (for example payload.total_budget.amount or proposed_commitment.amount). Conditions are not valid for committed execution checks."
+          },
+          "required_value": {
+            "description": "The value the field must have for approval. When present, the condition is machine-actionable. When absent, the condition is advisory."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this condition is required."
+          }
+        },
+        "required": [
+          "field",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "consultation_context": {
+      "type": "string",
+      "description": "Opaque negotiation handle present only with modern conditions responses. It carries no authorization and MUST NOT be sent to a downstream service. The governance agent MUST bind it server-side to the authenticated principal, caller, plan, tool, purchase type, and target audience, and reject a re-check if any binding changes. The buyer returns it only on the adjusted intent re-check.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this approval expires. In the cross-role shape, present only when verdict is 'approved'. Deprecated legacy conditions responses may also carry it for 3.x compatibility. The caller must act before this time or re-call check_governance. A lapsed approval is no approval."
+    },
+    "next_check": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller should next call check_governance with delivery metrics. Present when the governance agent expects ongoing delivery reporting."
+    },
+    "delivery_statement": {
+      "type": "object",
+      "description": "Canonical seller-attributed delivery statement retained by governance. Present on delivery execution checks. The buyer binds any later observation to this exact statement through report_plan_outcome.",
+      "properties": {
+        "statement_id": {
+          "type": "string",
+          "x-entity": "governance_delivery_statement"
+        },
+        "statement_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "issued_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "seller_reference": {
+          "type": "string"
+        },
+        "reporting_period": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": false
+        },
+        "cumulative_spend": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "canonical_payload": {
+          "type": "object",
+          "description": "Exact retained digest-bearing payload. To verify statement_digest, apply RFC 8785 JCS after removing delivery_metrics.statement_digest.",
+          "properties": {
+            "seller_reference": {
+              "type": "string"
+            },
+            "delivery_metrics": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "seller_reference",
+            "delivery_metrics"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "statement_id",
+        "statement_digest",
+        "sequence",
+        "issued_at",
+        "seller_reference",
+        "reporting_period",
+        "cumulative_spend",
+        "currency",
+        "canonical_payload"
+      ],
+      "additionalProperties": false
+    },
+    "categories_evaluated": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Governance categories evaluated during this check. Each value is an **agent-internal** label (e.g., `budget_authority`, `regulatory_compliance`, or any internal-reviewer key the agent's policy model defines) — not a protocol-level enum. Since one governance agent per account composes all specialist review behind its single endpoint, `categories_evaluated` is how that internal decomposition surfaces to auditors. Consumers MUST treat values as opaque labels for display and audit, not as a machine-level contract."
+    },
+    "policies_evaluated": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Policy IDs evaluated during this check. Includes registry policy IDs (resolved via the policy registry) and any inline `policy_id`s declared in the plan's `custom_policies`."
+    },
+    "mode": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/governance-mode.json",
+      "description": "Governance enforcement mode active when this check was evaluated. Allows counterparties, regulators, and auditors to distinguish whether a finding blocked execution (enforce) or was logged silently (audit)."
+    },
+    "runtime_attestation_evaluations": {
+      "type": "array",
+      "description": "Evaluator-of-record results for request runtime_attestations[], in the same order and with exactly one result per presentation. Each result is the shared AttestationEvaluation and MUST bind to this response's check_id through action_binding.action_type = https://adcontextprotocol.org/actions/governance-check and action_binding.action_id = check_id. The signed governance_context MUST bind the same reference_digest/outcome pairs; large evidence stays in the audit log rather than the token.",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/attestation-evaluation.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action_binding": {
+                "type": "object",
+                "properties": {
+                  "action_type": {
+                    "type": "string",
+                    "const": "https://adcontextprotocol.org/actions/governance-check"
+                  }
+                },
+                "required": [
+                  "action_type",
+                  "action_id"
+                ]
+              }
+            },
+            "required": [
+              "action_binding"
+            ]
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 10
+    },
+    "runtime_attestation_binding_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 of RFC 8785 JCS({ evaluations: runtime_attestation_evaluations, findings: attestation_bound_findings }), where attestation_bound_findings is the response findings[] subset carrying attestation_reference_digest, preserved in response order. Required whenever runtime_attestation_evaluations is present. The governance_context JWS carries this exact value as runtime_attestation_binding_digest; get_plan_audit_logs retains ordered {reference, evaluation} pairs so auditors can first recompute every reference_digest and then prove which evaluations and findings the signed decision relied on."
+    },
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque authorization context for this governed action. Present only when verdict is approved; denied and conditions responses MUST NOT carry it. The buyer attaches it to the protocol envelope when sending the governed request. The service persists and forwards it on subsequent execution and lifecycle checks without requiring plan_id.\n\nGovernance agents MUST emit a compact JWS per the AdCP JWS profile. Verifiers validate the standard authorization claims but MUST NOT interpret embedded governance state for business logic. The issuing governance agent uses the token to recover its internal plan and decision state.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+    }
+  },
+  "required": [
+    "check_id",
+    "verdict",
+    "explanation"
+  ],
+  "additionalProperties": true
+}

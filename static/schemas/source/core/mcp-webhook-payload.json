@@ -30,14 +30,14 @@
   "properties": {
     "idempotency_key": {
       "type": "string",
-      "description": "Sender-generated key stable across retries of the same webhook event. Publishers MUST generate a cryptographically random value (UUID v4 recommended) per distinct event and reuse the same key on every retry of that event. Receivers MUST dedupe by this key, scoped to the authenticated sender identity (HMAC secret or Bearer credential) — keys from different publishers are independent. This is the canonical dedup field — the (task_id, status, timestamp) tuple is insufficient when a single transition is retried with unchanged timestamp or when two transitions share a timestamp.",
+      "description": "Sender-generated delivery key stable across RFC 8785 JCS-equivalent retries of the complete authenticated webhook payload. Publishers MUST generate a cryptographically random value (UUID v4 recommended), bind it immutably to the first canonical payload for the advertised delivery retry horizon, and use a fresh key for a changed payload or distinct delivery. Receivers scope the binding to the authenticated sender identity. Same key plus identical payload while active returns retryable 503; after durable acknowledgement it returns 2xx; same key plus a different canonical payload returns non-retryable 409. This is the transport delivery identity, not request idempotency or stable logical notification identity.",
       "minLength": 16,
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "notification_id": {
       "type": "string",
-      "description": "Event-layer identifier for one logical notification. Stable across re-emissions of the same logical event and distinct from the per-fire `idempotency_key` issued at the transport layer. Receivers MUST track both when this field is present: `idempotency_key` suppresses transport retries, while `notification_id` recognizes a repeated logical event. Seeing the same `notification_id` under two different `idempotency_key` values is a re-emission signal, not a transport retry. Population and the separate resource key used for repair are event-shape-dependent (see notification-type.json enumDescriptions): impairment aliases `impairment_id`, creative and account notifications use transition identifiers and repair by `creative_id` or `account_id`, wholesale events alias `event.event_id` and repair by feed scope/version, and capability changes use a revision-event identifier and repair against `capabilities_version`. Point-in-time delivery events (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`) omit this field and dedupe only by `idempotency_key`. Future notification types declare their identity and repair-key semantics in notification-type.json. Charset is constrained to `[A-Za-z0-9_.:-]` — the same safe-to-log/safe-to-concat character class as `idempotency_key` — so receivers can write this value into log lines, dashboard URLs, and LLM prompts without escaping.",
+      "description": "Optional event-layer identifier for one logical notification. Stable across re-emissions of the same logical event and distinct from the per-delivery `idempotency_key`. For terminal task webhooks, the authoritative terminal identity remains the authenticated seller plus the bound task_id; when notification_id is present, different delivery keys carrying the same value are re-emissions and MUST NOT republish terminal effects. For other event families, population and repair identity remain event-shape-dependent (see notification-type.json enumDescriptions): impairment aliases impairment_id, creative and account notifications use transition identifiers, wholesale events alias event.event_id, and capability changes use a revision-event identifier. Point-in-time delivery events (scheduled, final, delayed, adjusted, window_update) omit this field and dedupe by idempotency_key plus their delivery-report identity. Charset is constrained to `[A-Za-z0-9_.:-]`.",
       "minLength": 1,
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
@@ -66,7 +66,7 @@
     "timestamp": {
       "type": "string",
       "format": "date-time",
-      "description": "ISO 8601 timestamp when this webhook was generated."
+      "description": "ISO 8601 timestamp when this logical webhook delivery was first generated. Every retry under the same idempotency_key MUST repeat this exact body value, along with every other payload member; only transport/signature metadata such as a fresh RFC 9421 nonce or created parameter may change between attempts."
     },
     "message": {
       "type": "string",
@@ -74,7 +74,7 @@
     },
     "context_id": {
       "type": "string",
-      "description": "Session/conversation identifier. Use this to continue the conversation if input-required status needs clarification or additional parameters."
+      "description": "Session/conversation correlation identifier. This value alone is not continuation authority and MUST NOT be used to resume input-required or auth-required work without the verified native transport identity required by that transport."
     },
     "token": {
       "type": "string",
@@ -125,6 +125,7 @@
       "description": "Webhook for completed create_media_buy",
       "data": {
         "idempotency_key": "whk_01HW9D3H8FZP2N6R8T0V4X6Z9B",
+        "notification_id": "task_456.terminal",
         "operation_id": "op_456",
         "task_id": "task_456",
         "task_type": "create_media_buy",
@@ -185,6 +186,7 @@
       "description": "Webhook for failed sync_creatives",
       "data": {
         "idempotency_key": "whk_01HW9D5N9TQV4M6P8R0T2V4X6Z",
+        "notification_id": "task_789.terminal",
         "operation_id": "op_789",
         "task_id": "task_789",
         "task_type": "sync_creatives",

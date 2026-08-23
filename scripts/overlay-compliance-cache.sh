@@ -123,6 +123,39 @@ function patchFile(file) {
   }
   let text = fs.readFileSync(file, 'utf8');
   const zod = file.endsWith('.mjs') ? 'z' : 'import_zod.z';
+  function addLiteralToConstUnion(constName, afterValue, value) {
+    const declarationStart = text.indexOf(`const ${constName} =`);
+    if (declarationStart < 0) return;
+    const unionEnd = text.indexOf(']);', declarationStart);
+    if (unionEnd < 0) return;
+    const before = text.slice(0, declarationStart);
+    let declaration = text.slice(declarationStart, unionEnd + 3);
+    const literal = `${zod}.literal("${value}")`;
+    if (!declaration.includes(literal)) {
+      declaration = declaration.replace(
+        `${zod}.literal("${afterValue}")`,
+        `${zod}.literal("${afterValue}"), ${literal}`,
+      );
+    }
+    text = before + declaration + text.slice(unionEnd + 3);
+  }
+  function addLiteralToFirstActionUnion(constName, afterValue, value) {
+    const declarationStart = text.indexOf(`const ${constName} =`);
+    if (declarationStart < 0) return;
+    const actionStart = text.indexOf(`action: ${zod}.union([`, declarationStart);
+    const actionEnd = text.indexOf(']),', actionStart);
+    if (actionStart < 0 || actionEnd < 0) return;
+    const before = text.slice(0, actionStart);
+    let action = text.slice(actionStart, actionEnd + 2);
+    const literal = `${zod}.literal("${value}")`;
+    if (!action.includes(literal)) {
+      action = action.replace(
+        `${zod}.literal("${afterValue}")`,
+        `${zod}.literal("${afterValue}"), ${literal}`,
+      );
+    }
+    text = before + action + text.slice(actionEnd + 2);
+  }
   const legacyCapabilities =
     'zod_1.z.literal("force_creative_status"), zod_1.z.literal("force_account_status"), zod_1.z.literal("force_media_buy_status"), zod_1.z.literal("force_session_status"), zod_1.z.literal("simulate_delivery"), zod_1.z.literal("simulate_budget_spend")]))';
   const partialCapabilities =
@@ -163,6 +196,13 @@ function patchFile(file) {
     `${zod}.literal("javascript"), ${zod}.literal("vast")`,
     `${zod}.literal("javascript"), ${zod}.literal("zip"), ${zod}.literal("vast")`,
   );
+  // Same-PR media-buy lifecycle changes add update_name to the canonical and
+  // legacy valid-action vocabularies. The staged JSON Schema bundle already
+  // carries the value; keep the SDK snapshot's generated response validators
+  // and structured control-action projection aligned for current-source runs.
+  addLiteralToConstUnion('CanonicalMediaBuyActionNameSchema', 'cancel', 'update_name');
+  addLiteralToConstUnion('MediaBuyValidActionSchema', 'cancel', 'update_name');
+  addLiteralToFirstActionUnion('CanonicalMediaBuyActionSchema', 'cancel', 'update_name');
   fs.writeFileSync(file, text);
 }
 

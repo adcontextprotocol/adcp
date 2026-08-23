@@ -20,7 +20,7 @@ export const TALENT_ROLES = ['host', 'guest', 'creator', 'cast', 'narrator', 'pr
 export type TalentRole = typeof TALENT_ROLES[number];
 
 /** First wire release that carries the get_products business-rejection arm. */
-export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.0' as const;
+export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 
 export const PROPOSAL_NEGOTIATION_PROFILES = [
   'ask-only',
@@ -32,11 +32,16 @@ export type ProposalNegotiationProfile = (typeof PROPOSAL_NEGOTIATION_PROFILES)[
 
 export function supportsGetProductsRejected(servedVersion: string | undefined): boolean {
   if (!servedVersion) return false;
-  const match = servedVersion.match(/^(\d+)\.(\d+)(?:-|$)/);
+  const match = servedVersion.match(/^(\d+)\.(\d+)(?:-(beta|rc)(?:\.(\d+))?)?$/);
   if (!match) return false;
   const major = Number.parseInt(match[1], 10);
   const minor = Number.parseInt(match[2], 10);
-  return major > 3 || (major === 3 && minor >= 2);
+  if (major > 3 || (major === 3 && minor > 2)) return true;
+  if (major !== 3 || minor !== 2) return false;
+  const qualifier = match[3];
+  if (!qualifier || qualifier === 'rc') return true;
+  const prerelease = Number.parseInt(match[4] ?? '0', 10);
+  return qualifier === 'beta' && prerelease >= 2;
 }
 
 /** AccountReference from SDK — identifies an account on create_media_buy */
@@ -311,6 +316,17 @@ export interface SeededMeasurementCatalog {
   metrics: Array<{ metric_id: string; [key: string]: unknown }>;
 }
 
+/** Seller-internal booking calendar seeded via comply_test_controller.seed_product's
+ * fixture.availability. Drives windowed forecast partitioning for
+ * offer_filters.availability_horizon (get_products/list_products/request_proposals)
+ * and buy-time PRODUCT_UNAVAILABLE validation in create_media_buy. Kept out of
+ * seededProducts so the calendar never round-trips through the Product response
+ * shape — it is not a product field. */
+export interface SeededProductAvailability {
+  min_bookable_days: number;
+  booked_windows: Array<{ start_time: string; end_time: string }>;
+}
+
 export interface ComplyExtensions {
   accountStatuses: Map<string, string>;
   siSessions: Map<string, { status: string; terminationReason?: string }>;
@@ -320,6 +336,9 @@ export interface ComplyExtensions {
    * on the static catalog so storyboards can reference fixture IDs without
    * polluting the shared catalog. Merged into get_products output. */
   seededProducts: Map<string, Record<string, unknown>>;
+  /** Booking calendars seeded via seed_product's fixture.availability, keyed by product_id.
+   * See SeededProductAvailability. */
+  seededProductAvailability: Map<string, SeededProductAvailability>;
   /** Pricing options seeded via seed_pricing_option, keyed by `<product_id>:<pricing_option_id>`. */
   seededPricingOptions: Map<string, Record<string, unknown>>;
   /** Creative formats seeded via comply_test_controller.seed_creative_format.
@@ -369,6 +388,9 @@ export interface ComplyExtensions {
 }
 
 export interface SessionState {
+  /** Caller-scoped agent-level capability-change subscribers. Values retain
+   * write-only credentials; read responses redact them. */
+  agentNotificationConfigs: Map<string, Record<string, unknown>>;
   mediaBuys: Map<string, MediaBuyState>;
   creatives: Map<string, CreativeState>;
   signalActivations: Map<string, SignalActivationState>;
@@ -521,6 +543,8 @@ export interface MediaBuyProductAllowedActionState {
 
 export interface MediaBuyState {
   mediaBuyId: string;
+  /** Human-readable trafficking label; not identity or commercial terms. */
+  name?: string;
   accountRef: AccountRef;
   brandRef?: BrandRef;
   status: string;
@@ -536,10 +560,17 @@ export interface MediaBuyState {
   budgetAllocation?: Record<string, unknown>;
   aggregatePacing?: string;
   aggregateBidding?: Record<string, unknown>;
+  invoiceRecipient?: Record<string, unknown>;
   reportingWebhook?: Record<string, unknown>;
   packages: PackageState[];
   productAllowedActions?: MediaBuyProductAllowedActionState[];
   availableActions?: MediaBuyAvailableActionState[];
+  /** Stable execution identities assigned by purchase position. */
+  purchaseBindings?: Array<{
+    purchase_index: number;
+    product_id: string;
+    package_id: string;
+  }>;
   startTime: string;
   endTime: string;
   revision: number;
@@ -580,7 +611,11 @@ export interface Impairment {
 export interface PackageState {
   packageId: string;
   productId: string;
+  /** Last concrete allocation used for deterministic delivery simulation. */
   budget: number;
+  /** A seller-optimized update removed this package's hard cap while the
+   * media-buy total remains the authoritative spend ceiling. */
+  budgetCapRemoved?: boolean;
   dailyBudgetCap?: number;
   minSpendTarget?: number;
   pricingOptionId: string;
@@ -614,6 +649,9 @@ export interface PackageState {
    * catalog changes; formats_pending is derived from it at read time. */
   formatsToProvide?: Array<Record<string, unknown>>;
   creativeAssignments: string[];
+  /** Complete legacy trafficking rows retained for lossless create/update
+   * readback. Delivery simulation still indexes the creative IDs separately. */
+  creativeAssignmentDetails?: Array<Record<string, unknown>>;
   targeting?: PackageTargeting;
   context?: Record<string, unknown>;
   legacyOmitProductId?: boolean;
@@ -664,6 +702,7 @@ export interface CreativeManifest {
   format_kind?: string;
   format_option_ref?: Record<string, unknown>;
   assets: Record<string, ManifestAsset | ManifestAsset[]>;
+  component_assets?: Record<string, Record<string, ManifestAsset | ManifestAsset[]>>;
 }
 
 export interface CreativeState {
@@ -675,6 +714,7 @@ export interface CreativeState {
   formatKind?: string;
   formatOptionRef?: Record<string, unknown>;
   assets?: Record<string, ManifestAsset | ManifestAsset[]>;
+  componentAssets?: Record<string, Record<string, ManifestAsset | ManifestAsset[]>>;
   name?: string;
   status: string;
   syncedAt: string;

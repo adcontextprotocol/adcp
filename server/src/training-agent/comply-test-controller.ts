@@ -33,6 +33,7 @@ import type {
   BrandRef,
   ComplyDeliveryAccumulator,
   ComplyBudgetSimulation,
+  SeededProductAvailability,
 } from './types.js';
 import { supportsGetProductsRejected } from './types.js';
 import {
@@ -43,17 +44,13 @@ import {
   sessionKeyFromArgs,
 } from './state.js';
 import { getAgentUrl } from './config.js';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   getAccountNotificationSubscribers,
   sandboxAccountRefForId,
   seedAccountFixture,
 } from './account-handlers.js';
-import {
-  accountScopeFromRef,
-  canonicalizeAccountRef,
-  type CanonicalAccountRef,
-} from './account-scope.js';
+import { canonicalizeAccountRef, type CanonicalAccountRef } from './account-scope.js';
 import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
@@ -420,6 +417,53 @@ function normalizeSeedPackage(pkg: Record<string, unknown>, mbStart: string, mbE
     optimizationGoals: Array.isArray(pkg.optimizationGoals) ? pkg.optimizationGoals as PackageState['optimizationGoals'] : Array.isArray(pkg.optimization_goals) ? pkg.optimization_goals as PackageState['optimizationGoals'] : undefined,
     committedMetrics: Array.isArray(pkg.committedMetrics) ? pkg.committedMetrics as PackageState['committedMetrics'] : Array.isArray(pkg.committed_metrics) ? pkg.committed_metrics as PackageState['committedMetrics'] : undefined,
   };
+}
+
+/**
+ * Parse and validate seed_product's fixture.availability into the seller-
+ * internal booking calendar used by windowed forecast partitioning
+ * (offer_filters.availability_horizon) and buy-time PRODUCT_UNAVAILABLE
+ * validation. Thrown errors surface as INVALID_PARAMS through the SDK's
+ * comply_test_controller dispatch, matching the other seed scenarios' fail-fast
+ * fixture validation.
+ */
+function parseSeededProductAvailability(productId: string, value: unknown): SeededProductAvailability {
+  if (!isRecord(value)) {
+    throw new TestControllerError(
+      'INVALID_PARAMS',
+      `seed_product fixture.availability must be an object for product ${productId}`,
+    );
+  }
+  const minBookableDays = value.min_bookable_days;
+  if (typeof minBookableDays !== 'number' || !Number.isFinite(minBookableDays) || minBookableDays < 0) {
+    throw new TestControllerError(
+      'INVALID_PARAMS',
+      `seed_product fixture.availability.min_bookable_days must be a non-negative number for product ${productId}`,
+    );
+  }
+  const rawWindows = value.booked_windows;
+  if (rawWindows !== undefined && !Array.isArray(rawWindows)) {
+    throw new TestControllerError(
+      'INVALID_PARAMS',
+      `seed_product fixture.availability.booked_windows must be an array for product ${productId}`,
+    );
+  }
+  const bookedWindows = ((rawWindows ?? []) as unknown[]).map((window, index) => {
+    if (
+      !isRecord(window)
+      || typeof window.start_time !== 'string'
+      || typeof window.end_time !== 'string'
+      || Number.isNaN(Date.parse(window.start_time))
+      || Number.isNaN(Date.parse(window.end_time))
+    ) {
+      throw new TestControllerError(
+        'INVALID_PARAMS',
+        `seed_product fixture.availability.booked_windows[${index}] must have valid RFC3339 start_time/end_time for product ${productId}`,
+      );
+    }
+    return { start_time: window.start_time, end_time: window.end_time };
+  });
+  return { min_bookable_days: minBookableDays, booked_windows: bookedWindows };
 }
 
 function normalizeAvailableActions(actions: unknown): MediaBuyAvailableActionState[] | undefined {
@@ -995,7 +1039,16 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
     async seedProduct(productId, fixture) {
       const ext = session.complyExtensions;
       enforceMapCap(ext.seededProducts, productId, 'seeded products');
-      ext.seededProducts.set(productId, { product_id: productId, ...(fixture ?? {}) });
+      // fixture.availability is seller-internal booking calendar state (spec:
+      // flexible-window availability discovery), not a Product response field.
+      // Split it out so it never round-trips through get_products/list_products.
+      const { availability, ...productFields } = (fixture ?? {}) as Record<string, unknown> & {
+        availability?: unknown;
+      };
+      ext.seededProducts.set(productId, { product_id: productId, ...productFields });
+      if (availability !== undefined) {
+        ext.seededProductAvailability.set(productId, parseSeededProductAvailability(productId, availability));
+      }
     },
 
     async seedPricingOption(productId, pricingOptionId, fixture) {
@@ -1160,108 +1213,157 @@ const LOCAL_SCENARIOS = [
   'verify_governance_token',
 ] as const;
 
+async function handleCompactLifecycleProbe(
+  scenario: 'compact_product_lifecycle_probe' | 'compact_direct_buy_lifecycle_probe',
+  fixtureSession: SessionState,
+  params: Record<string, unknown>,
+  ctx: TrainingContext,
+): Promise<object> {
+  const lifecycleSession = await getSession(sessionKeyFromArgs(
+    {},
+    ctx.mode,
+    ctx.userId,
+    ctx.moduleId,
+    ctx.principal ?? 'anonymous',
+  ));
+  const operation = typeof params.operation === 'string' ? params.operation : undefined;
+  if (operation === 'prepare') {
+    const productId = typeof params.product_id === 'string' ? params.product_id : undefined;
+    if (!productId) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: `${scenario} prepare requires params.product_id`,
+      };
+    }
+    const product = fixtureSession.complyExtensions.seededProducts.get(productId);
+    const pricing = [...fixtureSession.complyExtensions.seededPricingOptions]
+      .filter(([key]) => key.startsWith(`${productId}:`));
+    if (!product || pricing.length === 0) {
+      return {
+        success: false,
+        error: 'INVALID_STATE',
+        error_detail: `Fixture pre-flight did not seed product and pricing for ${productId}`,
+      };
+    }
+    // Compact proposal operations intentionally omit account after the first
+    // request and address state by authenticated principal. Promote only the
+    // explicitly prepared fixture into that principal partition; never copy
+    // unrelated controller fixtures or entity state across the boundary.
+    enforceMapCap(lifecycleSession.complyExtensions.seededProducts, productId, 'seeded products');
+    const preparedProduct = structuredClone(product);
+    if (scenario === 'compact_product_lifecycle_probe') {
+      const allowedActions = Array.isArray(preparedProduct.allowed_actions)
+        ? preparedProduct.allowed_actions
+        : [];
+      if (!allowedActions.some(action => (
+        isRecord(action)
+        && action.action === 'decrease_budget'
+        && Array.isArray(action.modes)
+        && action.modes.includes('self_serve')
+      ))) {
+        preparedProduct.allowed_actions = [
+          ...allowedActions,
+          { action: 'decrease_budget', modes: ['self_serve'] },
+        ];
+      }
+    }
+    fixtureSession.complyExtensions.seededProducts.set(productId, structuredClone(preparedProduct));
+    lifecycleSession.complyExtensions.seededProducts.set(productId, preparedProduct);
+    for (const [key, option] of pricing) {
+      enforceMapCap(lifecycleSession.complyExtensions.seededPricingOptions, key, 'seeded pricing options');
+      lifecycleSession.complyExtensions.seededPricingOptions.set(key, structuredClone(option));
+    }
+    return {
+      success: true,
+      simulated: {
+        prepared: true,
+        product_id: productId,
+      },
+      message: `Prepared ${productId} for the compact lifecycle storyboard`,
+    };
+  }
+
+  if (scenario === 'compact_product_lifecycle_probe' && operation === 'expire_proposal') {
+    const proposalId = typeof params.proposal_id === 'string' ? params.proposal_id : undefined;
+    if (!proposalId) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: 'compact_product_lifecycle_probe expire_proposal requires params.proposal_id',
+      };
+    }
+    const proposalSession = await getSession(sessionKeyFromArgs(
+      { account: { account_id: ctx.proposalRefinementScope?.account_id ?? 'public_sandbox' } },
+      ctx.mode,
+      ctx.userId,
+      ctx.moduleId,
+      ctx.proposalRefinementScope?.principal_id
+        ?? (ctx.authenticatedAgentUrl ? `agent:${ctx.authenticatedAgentUrl}` : ctx.principal)
+        ?? 'anonymous',
+    ));
+    const scopedRecord = proposalSession.proposalRefinementRecords.get(proposalId);
+    const recordSession = scopedRecord ? proposalSession : lifecycleSession;
+    const record = scopedRecord
+      ?? lifecycleSession.proposalRefinementRecords.get(proposalId);
+    if (!record) {
+      return {
+        success: false,
+        error: 'NOT_FOUND',
+        error_detail: `Proposal ${proposalId} was not found`,
+      };
+    }
+    const expiresAt = record.proposal.expires_at;
+    if (typeof expiresAt !== 'string' || !Number.isFinite(Date.parse(expiresAt))) {
+      return {
+        success: false,
+        error: 'INVALID_STATE',
+        error_detail: `Proposal ${proposalId} has no valid expires_at`,
+      };
+    }
+    const targetTime = new Date(Date.parse(expiresAt) + 1_000).toISOString();
+    // The training sandbox does not own a virtual process clock. Persist an
+    // already-past deadline so every subsequent execution path observes the
+    // same processed lapse represented by target_time.
+    const expiredAt = new Date(Date.now() - 1_000).toISOString();
+    recordSession.proposalRefinementRecords.set(proposalId, {
+      ...record,
+      version: record.version + 1,
+      activeHold: undefined,
+      proposal: { ...record.proposal, expires_at: expiredAt },
+    });
+    if (recordSession.lastGetProductsContext?.proposals) {
+      recordSession.lastGetProductsContext = {
+        ...recordSession.lastGetProductsContext,
+        proposals: recordSession.lastGetProductsContext.proposals.map(proposal => (
+          proposal.proposal_id === proposalId
+            ? { ...proposal, expires_at: expiredAt }
+            : proposal
+        )),
+      };
+    }
+    return {
+      success: true,
+      simulated: {
+        expiry_processed: true,
+        proposal_id: proposalId,
+        target_time: targetTime,
+      },
+      message: `Processed proposal ${proposalId} after its hold deadline`,
+    };
+  }
+
+  return {
+    success: false,
+    error: 'INVALID_PARAMS',
+    error_detail: `Unsupported ${scenario} operation: ${String(operation)}`,
+  };
+}
+
 function localScenariosFor(ctx: TrainingContext): string[] {
   return ctx.storyboardCompat?.version === '3.0'
     ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations')
     : [...LOCAL_SCENARIOS];
-}
-
-async function handleCompactLifecycleProbe(
-  rawArgs: Record<string, unknown>,
-  ctx: TrainingContext,
-  session: SessionState,
-): Promise<object> {
-  const params = isRecord(rawArgs.params) ? rawArgs.params : {};
-  const operation = params.operation;
-  const productId = typeof params.product_id === 'string' ? params.product_id : undefined;
-  if (operation === 'prepare' && productId) {
-    const seededProduct = session.complyExtensions.seededProducts.get(productId);
-    if (seededProduct && !Array.isArray(seededProduct.allowed_actions)) {
-      seededProduct.allowed_actions = [{ action: 'decrease_budget', modes: ['self_serve'] }];
-    }
-    return {
-      success: true,
-      simulated: { prepared: true, product_id: productId },
-    };
-  }
-  if (rawArgs.scenario !== 'compact_product_lifecycle_probe' || operation !== 'expire_proposal') {
-    return {
-      success: false,
-      error: 'INVALID_PARAMS',
-      error_detail: 'Unsupported compact lifecycle probe operation.',
-    };
-  }
-
-  const proposalId = typeof params.proposal_id === 'string' ? params.proposal_id : undefined;
-  if (!proposalId || !rawArgs.account) {
-    return {
-      success: false,
-      error: 'INVALID_PARAMS',
-      error_detail: 'compact_product_lifecycle_probe expire_proposal requires proposal_id and account.',
-    };
-  }
-
-  let accountId: string;
-  try {
-    const canonical = canonicalizeAccountRef(rawArgs.account);
-    accountId = ctx.proposalRefinementScope?.account_id
-      ?? (ctx.principal?.startsWith('static:')
-        ? 'public_sandbox'
-        : canonical.kind === 'account_id'
-          ? canonical.account_id
-          : `synthetic_${createHash('sha256').update(accountScopeFromRef(rawArgs.account)).digest('hex').slice(0, 32)}`);
-  } catch {
-    return {
-      success: false,
-      error: 'INVALID_PARAMS',
-      error_detail: 'compact lifecycle probe requires a valid account reference.',
-    };
-  }
-
-  const proposalSessionKey = sessionKeyFromArgs(
-    { account: { account_id: accountId } },
-    ctx.mode,
-    ctx.userId,
-    ctx.moduleId,
-    ctx.proposalRefinementScope?.principal_id
-      ?? (ctx.authenticatedAgentUrl ? `agent:${ctx.authenticatedAgentUrl}` : ctx.principal)
-      ?? 'anonymous',
-  );
-  const proposalSession = await getSession(proposalSessionKey);
-  const record = proposalSession.proposalRefinementRecords.get(proposalId);
-  if (!record) {
-    return {
-      success: false,
-      error: 'NOT_FOUND',
-      error_detail: `Proposal not found: ${proposalId}`,
-    };
-  }
-
-  const targetTime = new Date();
-  const expiredAt = new Date(targetTime.getTime() - 1).toISOString();
-  proposalSession.proposalRefinementRecords.set(proposalId, {
-    ...record,
-    version: record.version + 1,
-    proposal: { ...record.proposal, expires_at: expiredAt },
-  });
-  if (proposalSession.lastGetProductsContext?.proposals) {
-    proposalSession.lastGetProductsContext = {
-      ...proposalSession.lastGetProductsContext,
-      proposals: proposalSession.lastGetProductsContext.proposals.map(proposal => (
-        proposal.proposal_id === proposalId
-          ? { ...proposal, expires_at: expiredAt }
-          : proposal
-      )),
-    };
-  }
-  return {
-    success: true,
-    simulated: {
-      expiry_processed: true,
-      proposal_id: proposalId,
-      target_time: targetTime.toISOString(),
-    },
-  };
 }
 
 /**
@@ -1478,8 +1580,10 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
         : staticTaskAccount
           ? { ...args, account: staticTaskAccount }
           : args;
-  let sessionKey = targetsGetProductsState
-    ? getProductsSessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId)
+  let sessionKey = scenario === 'force_get_products_arm' && ctx.principal?.startsWith('static:')
+    ? sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal)
+    : targetsGetProductsState
+      ? getProductsSessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId)
     : sessionKeyFromArgs(
       sessionArgs,
       ctx.mode,
@@ -1555,6 +1659,12 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   if (scenario === 'force_create_media_buy_arm') {
     return handleForceCreateMediaBuyArm(session, rawArgs);
   }
+  if (
+    scenario === 'compact_product_lifecycle_probe'
+    || scenario === 'compact_direct_buy_lifecycle_probe'
+  ) {
+    return handleCompactLifecycleProbe(scenario, session, params, ctx);
+  }
   if (scenario === 'force_get_products_arm' && params.arm === 'rejected') {
     if (!supportsGetProductsRejected(ctx.servedAdcpVersion)) {
       return {
@@ -1567,9 +1677,6 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
   if (scenario === 'force_task_completion') {
     return handleForceTaskCompletion(sessionKey, rawArgs);
-  }
-  if (scenario === 'compact_product_lifecycle_probe' || scenario === 'compact_direct_buy_lifecycle_probe') {
-    return handleCompactLifecycleProbe(rawArgs, ctx, session);
   }
   if (scenario === 'evaluate_distributed_brand_resolution') {
     const params = isRecord(rawArgs.params) ? rawArgs.params : {};
