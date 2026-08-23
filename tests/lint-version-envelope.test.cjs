@@ -117,3 +117,51 @@ test('release-precision version grammar stays aligned across inlined negotiation
   );
   assert.equal(versionPatternCheck?.pattern, canonicalPattern);
 });
+
+test('every source request schema with adcp_version also has adcp_major_version', () => {
+  const violations = [];
+  for (const file of listJsonFiles(SOURCE_DIR)) {
+    if (!file.endsWith('-request.json')) continue;
+    let schema;
+    try { schema = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
+    if (!schema.properties) continue;
+    const hasVersion = 'adcp_version' in schema.properties;
+    const hasMajor = 'adcp_major_version' in schema.properties;
+    if (hasVersion && !hasMajor) {
+      violations.push(path.relative(path.resolve(__dirname, '..'), file));
+    }
+  }
+  assert.deepEqual(
+    violations,
+    [],
+    'Request schemas that declare adcp_version MUST also declare ' +
+      'adcp_major_version (deprecated but required through 3.x). ' +
+      'Missing in:\n' + violations.map((v) => `  ${v}`).join('\n'),
+  );
+});
+
+const DIST_DIR = path.resolve(__dirname, '..', 'dist', 'schemas');
+
+test('every versioned dist request schema with adcp_version also has adcp_major_version', () => {
+  if (!fs.existsSync(DIST_DIR)) return;
+  const violations = [];
+  for (const ver of fs.readdirSync(DIST_DIR).filter((d) => d.match(/^\d/))) {
+    const bundled = path.join(DIST_DIR, ver, 'bundled');
+    if (!fs.existsSync(bundled)) continue;
+    for (const file of listJsonFiles(bundled)) {
+      if (!file.endsWith('-request.json')) continue;
+      let schema;
+      try { schema = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
+      if (!schema.properties) continue;
+      if ('adcp_version' in schema.properties && !('adcp_major_version' in schema.properties)) {
+        violations.push(path.relative(path.resolve(__dirname, '..'), file));
+      }
+    }
+  }
+  assert.deepEqual(
+    violations,
+    [],
+    'Versioned bundled dist schemas must preserve adcp_major_version alongside ' +
+      'adcp_version. Missing in:\n' + violations.map((v) => `  ${v}`).join('\n'),
+  );
+});
