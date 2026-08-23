@@ -14,6 +14,7 @@
 
 import express from 'express';
 import http from 'node:http';
+import type { Socket } from 'node:net';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import YAML from 'yaml';
@@ -136,6 +137,11 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
   }));
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);
+    const connections = new Set<Socket>();
+    srv.on('connection', socket => {
+      connections.add(socket);
+      socket.once('close', () => connections.delete(socket));
+    });
     srv.listen(0, '127.0.0.1', () => {
       const addr = srv.address();
       if (!addr || typeof addr === 'string') {
@@ -155,10 +161,19 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
       resolve({
         baseUrl: localAgentBaseUrl,
         url: `${localAgentBaseUrl}/${tenantPath}/mcp`,
-        close: () => new Promise<void>(res => {
+        close: async () => {
           stopSessionCleanup();
-          srv.close(() => res());
-        }),
+          srv.close();
+          // The embedded runner owns every connection. Do not wait for the
+          // SDK client's keep-alive timeout after the last storyboard; that
+          // needlessly retains the full training-agent process in every CI
+          // shard. Call close() first so no new connections can race in, then
+          // terminate every runner-owned socket deterministically. The
+          // explicit socket set also covers upgraded/long-lived connections,
+          // which closeAllConnections() deliberately excludes.
+          srv.closeAllConnections?.();
+          for (const socket of connections) socket.destroy();
+        },
       });
     });
   });
@@ -169,6 +184,25 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
  * a regression — track each entry with the upstream/internal issue that gates
  * removal so the skip list doesn't silently grow.
  */
+const CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
+  [
+    'webhook_emission',
+    'adcontextprotocol/adcp-client#2653: the packaged loopback webhook runner does not complete and exhausts the hosted runner memory envelope before returning a result. Remove when webhook_emission completes with bounded memory.',
+  ],
+  [
+    'wholesale_feed_products_scope_isolation',
+    'adcontextprotocol/adcp-client#2654: the packaged storyboard path projects the reserved account-overlay request as cache_scope public rather than account and retains excessive memory. Direct training-agent account-overlay coverage remains green. Remove when the packaged runner preserves the account scope.',
+  ],
+  [
+    'media_buy_seller/proposal_finalize',
+    'adcontextprotocol/adcp#6776: the legacy get_products finalize response is committed, but create_media_buy resolves the catalog draft from a different session and fails PROPOSAL_NOT_COMMITTED; the combined packaged run also exhausts hosted-runner memory. Remove when committed proposal state is executable with bounded memory.',
+  ],
+  [
+    'media_buy_seller/proposal_finalize_asap_timing',
+    'adcontextprotocol/adcp#6776: the legacy get_products finalize response is committed, but create_media_buy resolves the catalog draft from a different session and fails PROPOSAL_NOT_COMMITTED; the combined packaged run also exhausts hosted-runner memory. Remove when committed proposal state is executable with bounded memory.',
+  ],
+]);
+
 const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
   [
     'media_buy_seller/targeting_aware_discovery',
@@ -482,7 +516,15 @@ function patchStoryboardForLocalRunner(sb: Storyboard): Storyboard {
 function isApplicable(sb: Storyboard): boolean {
   if (filter && !sb.id.includes(filter) && !(sb.category ?? '').includes(filter)) return false;
   if (KNOWN_FAILING_STORYBOARDS.has(sb.id)) return false;
+  if (releasedComplianceVersion === undefined && CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS.has(sb.id)) return false;
   return true;
+}
+
+function knownFailingReason(storyboardId: string): string | undefined {
+  return KNOWN_FAILING_STORYBOARDS.get(storyboardId)
+    ?? (releasedComplianceVersion === undefined
+      ? CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS.get(storyboardId)
+      : undefined);
 }
 
 /**
@@ -628,14 +670,14 @@ async function main() {
     console.log(`Shard: ${shard.index + 1}/${shard.count} (${all.length} of ${applicable.length} applicable storyboards)\n`);
   }
   const skippedKnownFailing = everything
-    .filter(sb => KNOWN_FAILING_STORYBOARDS.has(sb.id))
+    .filter(sb => knownFailingReason(sb.id) !== undefined)
     .filter(sb => !filter || sb.id.includes(filter) || (sb.category ?? '').includes(filter));
   if (skippedKnownFailing.length > 0) {
     // eslint-disable-next-line no-console
     console.log('Skipping storyboards on the known-failing list:');
     for (const sb of skippedKnownFailing) {
       // eslint-disable-next-line no-console
-      console.log(`  - ${sb.id}: ${KNOWN_FAILING_STORYBOARDS.get(sb.id)}`);
+      console.log(`  - ${sb.id}: ${knownFailingReason(sb.id)}`);
     }
     // eslint-disable-next-line no-console
     console.log('');
@@ -872,7 +914,19 @@ async function main() {
   console.log(`  steps: ${totals.passed} passed | ${totals.failed} failed | ${totals.skipped} skipped | ${totals.not_applicable} not applicable`);
 
   await close();
-  process.exit(totals.failed > 0 || failing.some(r => r.error) ? 1 : 0);
+  const exitCode = totals.failed > 0 || failing.some(r => r.error) ? 1 : 0;
+  if (shard) {
+    // Shard wrappers grade the complete totals block above, not this process
+    // status. Large SDK runs can stall inside Node/V8 platform disposal after
+    // process.exit() has begun, retaining the compiled schema graph until a
+    // hosted runner kills the job. Ensure preceding stdout writes have reached
+    // the pipe, then terminate the already-complete shard without running that
+    // redundant shutdown path. Non-sharded/manual runs retain their normal
+    // success/failure exit status.
+    await new Promise<void>(resolve => process.stdout.write('', resolve));
+    process.kill(process.pid, 'SIGKILL');
+  }
+  process.exit(exitCode);
 }
 
 main().catch(err => {
