@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/creative-variant.json",
+  "title": "Creative Variant",
+  "description": "A specific execution variant of a creative with delivery metrics. For catalog-driven packages, each catalog item rendered as a distinct ad execution is a variant — the variant's manifest includes the catalog reference with the specific item rendered. For asset group optimization, represents one combination of assets the platform selected. For generative creative, represents a platform-generated variant. For standard creatives, maps 1:1 with the creative itself.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "localized_parent": {
+        "required_field": "locale_variant_id",
+        "member_of": "list_creatives.localization.variants[].locale_variant_id",
+        "applies_to_default_fallback": true
+      }
+    },
+    "spec": "docs/creative/task-reference/get_creative_delivery.mdx#localized-delivery-attribution"
+  },
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/delivery-metrics.json"
+    },
+    {
+      "properties": {
+        "variant_id": {
+          "type": "string",
+          "description": "Platform-assigned identifier for this variant"
+        },
+        "locale_variant_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Buyer-assigned locale variant that supplied the served assets. Required for every delivered variant of a localized creative, including default fallback delivery. Omitted for unlocalized creatives.",
+          "x-entity": "creative_locale_variant"
+        },
+        "manifest": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/creative-manifest.json",
+          "description": "The rendered creative manifest for this variant — the actual output that was served, not the input assets. In 3.2 it carries canonical `format_kind`, optional `format_option_ref`, and the resolved assets (specific headline, image, video, etc. the platform selected or generated). For Tier 2, shows which asset combination was picked. For Tier 3, contains the generated assets which may differ entirely from the input brand identity. Pass to preview_creative to re-render."
+        },
+        "generation_context": {
+          "type": "object",
+          "description": "Input signals that triggered generation of this variant (Tier 3). Describes why the platform created this specific variant. Platforms should provide summarized or anonymized signals rather than raw user input. For web contexts, may include page topic or URL. For conversational contexts, an anonymized content signal. For search, query category or intent. When the content context is managed through AdCP content standards, reference the artifact directly via the artifact field.",
+          "properties": {
+            "context_type": {
+              "type": "string",
+              "description": "Type of context that triggered generation (e.g., 'web_page', 'conversational', 'search', 'app', 'dooh')"
+            },
+            "artifact": {
+              "type": "object",
+              "description": "Reference to the content-standards artifact that provided the generation context. Links this variant to the specific piece of content (article, video, podcast segment, etc.) where the ad was placed.",
+              "properties": {
+                "property_id": {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/identifier.json",
+                  "description": "Property where the artifact appears"
+                },
+                "artifact_id": {
+                  "type": "string",
+                  "description": "Artifact identifier within the property"
+                }
+              },
+              "required": [
+                "property_id",
+                "artifact_id"
+              ],
+              "additionalProperties": false
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "variant_id"
+      ]
+    }
+  ]
+}

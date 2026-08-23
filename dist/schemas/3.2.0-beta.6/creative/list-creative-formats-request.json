@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/creative/list-creative-formats-request.json",
+  "title": "List Creative Formats Request (Creative Agent)",
+  "deprecated": true,
+  "x-deprecated-in": "3.2.0",
+  "description": "**DEPRECATED in 3.2.** Compatibility request for legacy named-format discovery. Creative agents advertise canonical operation capabilities on get_adcp_capabilities `creative.supported_formats[]`.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "include_pricing": {
+            "const": true
+          }
+        },
+        "required": [
+          "include_pricing"
+        ]
+      },
+      "then": {
+        "required": [
+          "account"
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "format_ids": {
+      "type": "array",
+      "deprecated": true,
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Return only these specific named-format IDs. Use canonical-format discovery in 4.0.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "type": {
+      "type": "string",
+      "description": "Filter by format type (technical categories with distinct requirements)",
+      "enum": [
+        "audio",
+        "video",
+        "display",
+        "dooh"
+      ]
+    },
+    "asset_types": {
+      "type": "array",
+      "description": "Filter to formats that include these asset types. For third-party tags, search for 'html' or 'javascript'. For published-post reference formats, search for 'published_post'. E.g., ['image', 'text'] returns formats with images and text, ['javascript'] returns formats accepting JavaScript tags.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/asset-content-type.json"
+      },
+      "minItems": 1
+    },
+    "max_width": {
+      "type": "integer",
+      "description": "Maximum width in pixels (inclusive). Returns formats with width <= this value. Omit for responsive/fluid formats."
+    },
+    "max_height": {
+      "type": "integer",
+      "description": "Maximum height in pixels (inclusive). Returns formats with height <= this value. Omit for responsive/fluid formats."
+    },
+    "min_width": {
+      "type": "integer",
+      "description": "Minimum width in pixels (inclusive). Returns formats with width >= this value."
+    },
+    "min_height": {
+      "type": "integer",
+      "description": "Minimum height in pixels (inclusive). Returns formats with height >= this value."
+    },
+    "is_responsive": {
+      "type": "boolean",
+      "description": "Filter for responsive formats that adapt to container size. When true, returns formats without fixed dimensions."
+    },
+    "name_search": {
+      "type": "string",
+      "description": "Search for formats by name (case-insensitive partial match)"
+    },
+    "wcag_level": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/wcag-level.json",
+      "description": "Filter to formats that meet at least this WCAG conformance level (A < AA < AAA)"
+    },
+    "disclosure_positions": {
+      "type": "array",
+      "description": "Filter to formats that support all of these disclosure positions. When a format has disclosure_capabilities, match against those positions. Otherwise fall back to supported_disclosure_positions. Use to find formats compatible with a brief's compliance requirements.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/disclosure-position.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "disclosure_persistence": {
+      "type": "array",
+      "description": "Filter to formats where each requested persistence mode is supported by at least one position in disclosure_capabilities. Different positions may satisfy different modes. Use to find formats compatible with jurisdiction-specific persistence requirements (e.g., continuous for EU AI Act).",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/disclosure-persistence.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "output_format_ids": {
+      "type": "array",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.1.** Discover build capability via `list_transformers` (filter its `output_format_ids`) instead — build capability is a property of transformers, not a relationship between formats. *Legacy:* filter to formats whose `output_format_ids` includes any of these format IDs.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "input_format_ids": {
+      "type": "array",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.1.** Discover build capability via `list_transformers` (filter its `input_format_ids`) instead. *Legacy:* filter to formats whose `input_format_ids` includes any of these format IDs.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "include_pricing": {
+      "type": "boolean",
+      "default": false,
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.1. Removed at 4.0.** Use `list_transformers` with `include_pricing` and `account` for transformation and generation pricing. *Legacy 3.x behavior:* include `pricing_options` on each returned format. Requires `account`; when false or omitted, pricing is not computed. Agents supporting the 3.1 format-pricing surface MUST continue to honor this field through 3.x."
+    },
+    "account": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/account-ref.json",
+      "deprecated": true,
+      "description": "**DEPRECATED for `list_creative_formats` in 3.1. Removed at 4.0.** Use the account-scoped `list_transformers` request instead. *Legacy 3.x behavior:* identifies the rate card used when `include_pricing` is true."
+    },
+    "pagination": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/pagination-request.json"
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

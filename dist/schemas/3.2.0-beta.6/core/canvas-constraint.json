@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/canvas-constraint.json",
+  "title": "Canvas Constraint",
+  "description": "Rectangular rule applied to buyer artwork. State and breakpoint selectors are optional so the same shape can constrain a coordinated-placement component or a specific stateful-display canvas.",
+  "type": "object",
+  "properties": {
+    "constraint": {
+      "type": "string",
+      "enum": [
+        "safe_area",
+        "reserved_region",
+        "decoration_only_edge",
+        "no_text_or_logos"
+      ]
+    },
+    "state_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "breakpoint_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "region": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "px",
+            "percent"
+          ],
+          "default": "px"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "unit": {
+                "const": "percent"
+              }
+            },
+            "required": [
+              "unit"
+            ]
+          },
+          "then": {
+            "properties": {
+              "x": {
+                "maximum": 100
+              },
+              "y": {
+                "maximum": 100
+              },
+              "width": {
+                "maximum": 100
+              },
+              "height": {
+                "maximum": 100
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "constraint",
+    "region"
+  ],
+  "dependencies": {
+    "breakpoint_id": [
+      "state_id"
+    ]
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "selector_resolution": "state_id and breakpoint_id resolve against the containing seller_rendered_stateful_display declaration; coordinated_placements component constraints omit both selectors",
+      "region_bounds": "percent regions satisfy x + width <= 100 and y + height <= 100; pixel regions fit within every selected canvas"
+    },
+    "spec": "docs/creative/canonical-formats.mdx#premium-display-in-32"
+  },
+  "additionalProperties": true
+}

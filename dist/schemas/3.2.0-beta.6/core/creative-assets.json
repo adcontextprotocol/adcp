@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/creative-assets.json",
+  "title": "Creative Assets",
+  "description": "Map of canonical asset-group or legacy asset identifiers to supplied creative assets. Values are either a single discriminated asset or a non-empty repeatable asset array.",
+  "type": "object",
+  "patternProperties": {
+    "^[a-z0-9_]+$": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/assets/asset-union.json"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/assets/asset-union.json"
+          },
+          "minItems": 1
+        }
+      ]
+    }
+  },
+  "additionalProperties": true
+}
