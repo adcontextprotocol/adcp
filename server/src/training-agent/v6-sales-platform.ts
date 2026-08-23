@@ -671,7 +671,6 @@ export class TrainingSalesPlatform
   accounts: AccountStore<TrainingSalesMeta> = trainingSalesAccounts;
   agentRegistry = trainingBuyerAgentRegistry;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sales: SalesPlatform<TrainingSalesMeta> = {
     createMediaBuy: async (req, ctx) => {
       const requestWithRawSelectors = restoreRawPackageSelectors(
@@ -706,11 +705,10 @@ export class TrainingSalesPlatform
       ) {
         const submitted = v5Result as { task_id: string; message?: string };
         const completionOwnerKey = sessionKeyFromArgs(args, 'open');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return ctx.handoffToTask(
           async () => await waitForForcedTaskCompletion(submitted.task_id, completionOwnerKey),
           { task_id: submitted.task_id },
-        ) as any;
+        );
       }
       return translateV5Result(canonicalMediaBuyPlatformResult(v5Result));
     },
@@ -797,7 +795,7 @@ export class TrainingSalesPlatform
       const result = await handleLogEvent(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
-  } as SalesPlatform<TrainingSalesMeta>;
+  };
 
   /** SDK 14's primary AdCP 3.2 surface. Legacy `sales` remains registered so
    * 3.0/3.1 callers can invoke the deprecated tool names explicitly. */
@@ -881,7 +879,7 @@ export class TrainingSalesPlatform
         buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
       ),
     ),
-    } as MediaBuyLifecyclePlatform<TrainingSalesMeta>;
+    };
   }
 
   // Audience-targeting capability is declared above; expose sync_audiences
