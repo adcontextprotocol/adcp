@@ -52,6 +52,23 @@ export interface AccountWebhookChallengePayload {
   event_types: string[];
 }
 
+export interface AgentWebhookChallengeConfig {
+  subscriberId: string;
+  url: string;
+  eventTypes: string[];
+  authentication?: AccountWebhookChallengeConfig['authentication'];
+}
+
+export interface AgentWebhookChallengePayload {
+  type: 'webhook.challenge';
+  scope: 'agent';
+  challenge: string;
+  subscriber_id: string;
+  seller_agent_url: string;
+  delivery_auth: AccountWebhookChallengePayload['delivery_auth'];
+  event_types: string[];
+}
+
 export type AccountWebhookChallengeResult =
   | { ok: true; normalizedUrl: string }
   | { ok: false };
@@ -204,6 +221,80 @@ export async function proveAccountWebhookControl(
   }
 }
 
+/** Prove control of an agent-level subscriber before activating it. Agent
+ * subscriptions intentionally omit account_id because they may be registered
+ * before the caller has any seller account. */
+export async function proveAgentWebhookControl(
+  config: AgentWebhookChallengeConfig,
+  options: ChallengeOptions = {},
+): Promise<AccountWebhookChallengeResult> {
+  const now = options.now ?? Date.now;
+  const issuedAt = now();
+  const issuedAtSeconds = Math.floor(issuedAt / 1000);
+  const normalizedUrl = canonicalTargetUri(config.url);
+  const challenge = options.challenge ?? randomBytes(32).toString('base64url');
+  const expiresAtMs = (issuedAtSeconds * 1000) + ACCOUNT_WEBHOOK_CHALLENGE_TTL_MS;
+  const payload: AgentWebhookChallengePayload = {
+    type: 'webhook.challenge',
+    scope: 'agent',
+    challenge,
+    subscriber_id: config.subscriberId,
+    seller_agent_url: getAgentUrl(),
+    delivery_auth: deliveryAuth(config.authentication),
+    event_types: [...new Set(config.eventTypes)].sort(),
+  };
+  const body = JSON.stringify(payload);
+  const unsignedRequest = {
+    method: 'POST',
+    url: normalizedUrl,
+    headers: { 'content-type': 'application/json' },
+    body,
+  };
+
+  let signedHeaders: Record<string, string>;
+  try {
+    const material = getWebhookSigningMaterial();
+    const signingOptions = {
+      now: () => issuedAtSeconds,
+      windowSeconds: ACCOUNT_WEBHOOK_CHALLENGE_TTL_MS / 1000,
+    };
+    const signed = 'signerProvider' in material
+      ? await signWebhookAsync(unsignedRequest, material.signerProvider, signingOptions)
+      : signWebhook(unsignedRequest, material.signerKey, signingOptions);
+    signedHeaders = signed.headers;
+  } catch (error) {
+    logger.error({ err: error }, 'Agent webhook challenge signing failed');
+    return { ok: false };
+  }
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const controller = new AbortController();
+    const timeoutMs = Math.min(CHALLENGE_TIMEOUT_MS, Math.max(1, options.timeoutMs ?? CHALLENGE_TIMEOUT_MS));
+    timeout = setTimeout(() => controller.abort(), timeoutMs);
+    timeout.unref?.();
+    const response = await (options.fetch ?? createTrainingWebhookFetch())(normalizedUrl, {
+      method: 'POST',
+      headers: signedHeaders,
+      body,
+      redirect: 'manual',
+      signal: controller.signal,
+    });
+    if (response.status < 200 || response.status >= 300 || now() >= expiresAtMs) {
+      await response.body?.cancel().catch(() => undefined);
+      return { ok: false };
+    }
+    const echoed = responseEcho(await readBoundedJson(response));
+    return echoed === challenge && now() < expiresAtMs
+      ? { ok: true, normalizedUrl }
+      : { ok: false };
+  } catch {
+    return { ok: false };
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 export function accountWebhookProofTuple(
   accountId: string,
   config: AccountWebhookChallengeConfig,
@@ -214,6 +305,16 @@ export function accountWebhookProofTuple(
     subscriber_id: config.subscriberId,
     webhook_url: normalizeAccountWebhookUrl(config.url),
     delivery_auth: auth,
+    event_types: [...new Set(config.eventTypes)].sort(),
+  });
+}
+
+export function agentWebhookProofTuple(config: AgentWebhookChallengeConfig): string {
+  return JSON.stringify({
+    scope: 'agent',
+    subscriber_id: config.subscriberId,
+    webhook_url: canonicalTargetUri(config.url),
+    delivery_auth: deliveryAuth(config.authentication),
     event_types: [...new Set(config.eventTypes)].sort(),
   });
 }

@@ -445,6 +445,62 @@ describe("deterministic proposal negotiation profiles", () => {
     ]);
   });
 
+  it("refines a proposal whose CPA purchase uses a named custom event", async () => {
+    const context: TrainingContext = {
+      mode: "open",
+      tenantId: "sales",
+      principal: "typed-profile-custom-event",
+      authenticatedAgentUrl: "https://buyer.example",
+      proposalNegotiationProfile: "constrained-seller",
+    };
+    const requested = await executeTrainingAgentTool(
+      "request_proposals",
+      {
+        idempotency_key: "typed-custom-event-request-0001",
+        brand: { domain: "buyer.example" },
+        brief: "US and Canada display campaign",
+      },
+      context
+    );
+    expect(requested.success, requested.error).toBe(true);
+    const source = (requested.data?.proposals as CanonicalProposal[])[0]!;
+    expect(source.commercial_terms.purchases[0]?.pricing).toMatchObject({
+      pricing_model: "cpa",
+      event_type: "custom",
+      custom_event_name: "agent_session",
+    });
+
+    const refined = await executeTrainingAgentTool(
+      "refine_proposals",
+      {
+        idempotency_key: "typed-custom-event-refine-0001",
+        refinements: [{
+          proposal_id: source.proposal_id,
+          action: "revise",
+          constraints: { total_budget: { currency: "USD", max: 50_000 } },
+          alternatives: { count: 2 },
+        }],
+      },
+      context
+    );
+    expect(refined.success, refined.error).toBe(true);
+    expect(refined.data?.results).toEqual([
+      expect.objectContaining({
+        outcome: "revised",
+        proposals: [expect.any(Object), expect.any(Object)],
+      }),
+    ]);
+    const successors = (refined.data?.results as Array<{
+      proposals: CanonicalProposal[];
+    }>)[0]!.proposals;
+    for (const successor of successors) {
+      expect(successor.commercial_terms.purchases[0]?.pricing).toMatchObject({
+        event_type: "custom",
+        custom_event_name: "agent_session",
+      });
+    }
+  });
+
   it("executes request, constrained retry, finalize, accept, amendment, and cancellation end to end", async () => {
     const context: TrainingContext = {
       mode: "open",

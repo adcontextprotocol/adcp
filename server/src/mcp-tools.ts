@@ -926,7 +926,10 @@ export class MCPToolHandler {
           }], withSdkSafeTransport({}));
           const client = multiClient.agent("query");
 
-          const result = await client.executeTask("get_products", params);
+          const result = await client.executeTask(
+            "get_products",
+            params as unknown as Parameters<typeof client.executeTask<"get_products">>[1],
+          );
 
           if (!result.success) {
             return {

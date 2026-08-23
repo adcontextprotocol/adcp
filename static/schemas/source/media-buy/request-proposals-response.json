@@ -2,11 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/request-proposals-response.json",
   "title": "Request Proposals Response",
-  "description": "One or more immutable draft media-plan proposals and compact canonical products referenced by their purchases. Products always carry product_id and name and never carry legacy named-format identifiers. Returning only products does not satisfy request_proposals.",
+  "description": "One or more immutable draft media-plan proposals and compact canonical products referenced by their purchases. Products always carry product_id and name and never carry legacy named-format identifiers. During the AdCP 3.x compatibility window, an SDK projecting a valid products-only get_products brief result may instead return the deprecated products_available outcome with an explicit purchase continuation. Native 3.2 sellers MUST NOT use that compatibility outcome, and adapters MUST NOT fabricate a proposal, terms digest, or feed version.",
   "type": "object",
   "properties": {
     "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
-    "outcome": { "type": "string", "enum": ["proposed", "rejected"] },
+    "outcome": { "type": "string", "enum": ["proposed", "products_available", "rejected"] },
     "reason": { "type": "string", "minLength": 1 },
     "suggestions": {
       "type": "array",
@@ -34,6 +34,119 @@
       "minItems": 1,
       "items": { "$ref": "/schemas/core/canonical-product.json" }
     },
+    "incomplete": {
+      "type": "array",
+      "description": "Usable partial discovery result retained from the established get_products response. Absence means the source response did not declare an incomplete scope; it does not authorize an adapter to infer missing proposal terms.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "scope": { "type": "string", "enum": ["products", "pricing", "forecast", "proposals", "wholesale_feed"] },
+          "description": { "type": "string", "minLength": 1 },
+          "estimated_wait": { "$ref": "/schemas/core/duration.json" }
+        },
+        "required": ["scope", "description"],
+        "additionalProperties": false
+      }
+    },
+    "purchase_continuation": {
+      "type": "object",
+      "deprecated": true,
+      "x-deprecated-in": "3.2.0",
+      "x-removed-in": "4.0.0",
+      "x-compatibility-projection-only": true,
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "listed_product_binding": "For listed_purchase, product_ids equals the set of products[].product_id and every selected pricing option is present on that same account-scoped fenced response.",
+          "legacy_token_binding": "For legacy_create, continuation_token is principal-, account-, expiry-, and complete product/pricing-payload-bound and single-use at first mutation."
+        }
+      },
+      "description": "Deprecated AdCP 3.x projection instruction for purchasing products returned without a proposal. This is coordinator state, not a claim that the established seller implements a compact task. A native 3.2 seller MUST NOT emit it.",
+      "oneOf": [
+        {
+          "properties": {
+            "kind": { "type": "string", "const": "listed_purchase" },
+            "product_ids": {
+              "type": "array",
+              "description": "Exact products the coordinator promoted and re-read through account-scoped list_products before returning this result. The set MUST match products[].product_id.",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1, "x-entity": "product" }
+            },
+            "cache_scope": { "type": "string", "const": "account" },
+            "feed_version": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Real seller-issued account-scoped feed fence obtained by re-reading the promoted products through list_products."
+            },
+            "pricing_version": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Real seller-issued pricing fence from the same account-scoped list_products response, when the seller versions pricing independently."
+            }
+          },
+          "required": ["kind", "product_ids", "cache_scope", "feed_version"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "kind": { "type": "string", "const": "legacy_create" },
+            "continuation_token": {
+              "type": "string",
+              "minLength": 16,
+              "description": "Opaque, short-lived coordinator token bound to the caller principal, account, and complete observed product/pricing payload. It is not a seller-issued feed fence."
+            },
+            "continuation_expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Absolute expiry of the single-use compatibility continuation."
+            },
+            "source_adcp_version": {
+              "type": "string",
+              "enum": ["2.5", "3.0", "3.1"],
+              "description": "Established AdCP version actually negotiated with the peer. This provenance is required; the coordinator MUST NOT infer stronger guarantees from the label."
+            },
+            "product_ids": {
+              "type": "array",
+              "description": "Exact products bound to this continuation. A follow-up MUST select a non-empty subset and MUST NOT substitute an ID from another discovery result.",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1, "x-entity": "product" }
+            },
+            "losses": {
+              "type": "array",
+              "description": "Guarantees that the established create_media_buy continuation cannot provide. The coordinator MUST fail before mutation unless the caller explicitly accepts every listed loss.",
+              "minItems": 2,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "enum": ["feed_version_not_atomic", "pricing_version_not_atomic", "mutation_idempotency_not_guaranteed"]
+              },
+              "allOf": [
+                { "contains": { "const": "feed_version_not_atomic" } },
+                { "contains": { "const": "pricing_version_not_atomic" } }
+              ]
+            },
+            "requires_explicit_acceptance": { "type": "boolean", "const": true }
+          },
+          "required": ["kind", "continuation_token", "continuation_expires_at", "source_adcp_version", "product_ids", "losses", "requires_explicit_acceptance"],
+          "allOf": [
+            {
+              "if": {
+                "properties": { "source_adcp_version": { "const": "2.5" } },
+                "required": ["source_adcp_version"]
+              },
+              "then": {
+                "properties": {
+                  "losses": { "contains": { "const": "mutation_idempotency_not_guaranteed" } }
+                }
+              }
+            }
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
     "targeting_resolution": {
       "$ref": "/schemas/media-buy/get-products-targeting-resolution.json",
       "description": "Response-level confirmation of structured targeting interpreted from explicit hard requirements in the brief. Sellers MUST emit this when that interpretation materially affects eligibility, pricing, or forecasting; otherwise it remains a best practice. Product-specific changes to explicit criteria.targeting_overlay values remain on Product.targeting_resolution."
@@ -57,6 +170,51 @@
         "anyOf": [
           { "required": ["reason"] },
           { "required": ["suggestions"] },
+          { "required": ["purchase_continuation"] },
+          { "required": ["task_id"] }
+        ]
+      }
+    },
+    {
+      "properties": {
+        "outcome": { "type": "string", "const": "products_available" },
+        "status": { "type": "string", "const": "completed" }
+      },
+      "required": ["outcome", "products", "purchase_continuation"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "purchase_continuation": {
+                "properties": { "kind": { "const": "listed_purchase" } },
+                "required": ["kind"]
+              }
+            },
+            "required": ["purchase_continuation"]
+          },
+          "then": {
+            "properties": {
+              "products": { "items": { "required": ["pricing_options"] } }
+            },
+            "not": {
+              "properties": {
+                "incomplete": {
+                  "contains": {
+                    "properties": { "scope": { "enum": ["products", "pricing", "wholesale_feed"] } },
+                    "required": ["scope"]
+                  }
+                }
+              },
+              "required": ["incomplete"]
+            }
+          }
+        }
+      ],
+      "not": {
+        "anyOf": [
+          { "required": ["proposals"] },
+          { "required": ["reason"] },
+          { "required": ["suggestions"] },
           { "required": ["task_id"] }
         ]
       }
@@ -71,6 +229,8 @@
         "anyOf": [
           { "required": ["proposals"] },
           { "required": ["products"] },
+          { "required": ["incomplete"] },
+          { "required": ["purchase_continuation"] },
           { "required": ["task_id"] }
         ]
       }

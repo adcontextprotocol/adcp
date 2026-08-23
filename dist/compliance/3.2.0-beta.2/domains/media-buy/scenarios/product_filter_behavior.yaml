@@ -1,0 +1,191 @@
+id: media_buy_seller/product_filter_behavior
+version: "1.0.0"
+title: "Seller applies deterministic product filters in every buying mode"
+category: media_buy_seller
+summary: "Verifies schema-valid get_products filters affect brief curation, wholesale feeds, and refinement instead of silently no-oping."
+track: media_buy
+
+required_tools:
+  - get_products
+  - comply_test_controller
+
+narrative: |
+  Deterministic offer filters have the same exclusion semantics in brief,
+  wholesale, and refine modes. Buying mode changes curation and lifecycle
+  behavior, not whether filters apply.
+
+  The controller seeds one matching product plus separate channel and delivery
+  type negative controls. This catches partial implementations: applying only
+  the channel predicate still leaks the delivery negative, and applying only
+  the delivery predicate still leaks the channel negative. Assertions use
+  membership and field values rather than requiring filtered and unfiltered
+  responses to differ.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - product_filtering
+  examples:
+    - "Sellers that accept get_products filters in any buying mode"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The controller seeds one non-guaranteed OLV product, one non-guaranteed
+    display product, and one guaranteed OLV product, all transactable in USD.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "filter_behavior_matching_olv"
+      delivery_type: "non_guaranteed"
+      channels: ["olv"]
+      format_ids:
+        - id: "video_30s"
+    - product_id: "filter_behavior_negative_channel"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+    - product_id: "filter_behavior_negative_delivery"
+      delivery_type: "guaranteed"
+      channels: ["olv"]
+      format_ids:
+        - id: "video_30s"
+  pricing_options:
+    - product_id: "filter_behavior_matching_olv"
+      pricing_option_id: "filter_behavior_matching_olv_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 12.0
+    - product_id: "filter_behavior_negative_channel"
+      pricing_option_id: "filter_behavior_negative_channel_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 10.0
+    - product_id: "filter_behavior_negative_delivery"
+      pricing_option_id: "filter_behavior_negative_delivery_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 11.0
+
+phases:
+  - id: brief_filters
+    title: "Apply filters before brief curation"
+    steps:
+      - id: get_filtered_brief_products
+        title: "Exclude both negative controls from a curated result"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          buying_mode: "brief"
+          brief: "Curate premium inventory for outdoor enthusiasts."
+          filters: &matching_filters
+            channels: ["olv"]
+            delivery_type: "non_guaranteed"
+            pricing_currencies: ["USD"]
+          account: &buyer_account
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "product_filter_behavior--brief"
+        expected: |
+          Curate only from products satisfying every deterministic predicate.
+          The brief itself states neither a channel nor a delivery type.
+        validations: &matching_validations
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "products[0].channels[0]"
+            value: "olv"
+            description: "Returned product has the requested channel"
+          - check: field_value
+            path: "products[0].delivery_type"
+            value: "non_guaranteed"
+            description: "Returned product has the requested delivery type"
+          - check: field_absent
+            path: "products[1]"
+            description: "Both independently non-matching products are excluded"
+
+  - id: wholesale_filters
+    title: "Apply filters to the wholesale product feed"
+    steps:
+      - id: get_filtered_wholesale_products
+        title: "Exclude both negative controls from the wholesale feed"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "wholesale"
+          filters: *matching_filters
+          account: *buyer_account
+          context:
+            correlation_id: "product_filter_behavior--wholesale"
+        expected: |
+          Return only the seeded non-guaranteed OLV product. Returning either
+          negative control reveals that at least one accepted predicate no-oped.
+        context_outputs:
+          - key: "filter_behavior_product_id"
+            path: "products[0].product_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "filter_behavior_matching_olv"
+            description: "The matching seeded product is returned"
+          - check: field_value
+            path: "products[0].channels[0]"
+            value: "olv"
+            description: "Returned wholesale product has the requested channel"
+          - check: field_value
+            path: "products[0].delivery_type"
+            value: "non_guaranteed"
+            description: "Returned wholesale product has the requested delivery type"
+          - check: field_absent
+            path: "products[1]"
+            description: "Both independently non-matching products are excluded"
+
+  - id: refine_filters
+    title: "Apply replacement filters during refinement"
+    steps:
+      - id: filter_refined_product_out
+        title: "Exclude a referenced product that fails replacement filters"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "refine"
+          refine:
+            - scope: "product"
+              product_id: "$context.filter_behavior_product_id"
+          filters:
+            channels: ["display"]
+            delivery_type: "guaranteed"
+          account: *buyer_account
+          context:
+            correlation_id: "product_filter_behavior--refine"
+        expected: |
+          Return no products. Supplied refine filters are the complete
+          replacement filter state, and naming a product in refine[] does not
+          exempt that product from the active predicates.
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_absent
+            path: "products[0]"
+            description: "Refine filters exclude the referenced non-matching product"

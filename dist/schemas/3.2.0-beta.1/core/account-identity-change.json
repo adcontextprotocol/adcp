@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/account-identity-change.json",
+  "title": "Account Identity Change",
+  "description": "A requested operator-identity change that has not been applied. The account's top-level operator and operator_unit remain canonical until this object disappears after approval and the canonical fields advance. Rejected changes remain visible until replaced by a later request so buyers polling list_accounts can observe the outcome.",
+  "oneOf": [
+    {
+      "title": "AccountIdentityChangePending",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "pending_approval",
+          "description": "The seller is reviewing the requested transition."
+        },
+        "requested_operator_identity": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/operator-identity.json",
+          "description": "Complete desired operator identity submitted by the buyer."
+        },
+        "requested_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the seller recorded the request."
+        }
+      },
+      "required": [
+        "status",
+        "requested_operator_identity"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "AccountIdentityChangeRejected",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "rejected",
+          "description": "The seller rejected the transition and retained the current canonical identity."
+        },
+        "requested_operator_identity": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/operator-identity.json",
+          "description": "Complete desired operator identity submitted by the buyer."
+        },
+        "requested_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the seller recorded the request."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Human-readable rejection reason.",
+          "minLength": 1,
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "status",
+        "requested_operator_identity",
+        "reason"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

@@ -113,7 +113,7 @@ If you maintain a fourth-party SDK, mirror the regex above. Stay away from liter
 If you're contributing to the spec workflow itself: cosign signing happens during `npm run version` (chained from the `sign-protocol-tarball.sh` step) inside `release.yml`. The OIDC token is minted at signing time, so the cert subject reflects the trigger ref of that workflow run. Tag-based signing would require either:
 
 - A second workflow that runs on `release: published` and re-signs the tarball using the post-tag OIDC subject, or
-- Restructuring the release pipeline so signing happens after `changeset tag` and within a context where `refs/tags/*` is the active ref.
+- Restructuring the release pipeline so signing happens after `changeset git-tag` and within a context where `refs/tags/*` is the active ref.
 
 Today's signed-from-branch shape is intentional — it lets every consumer verify a single canonical artifact without reasoning about tag-vs-branch identity. The regex's `refs/(heads|tags)/.*` is forward-compat in case that changes.
 

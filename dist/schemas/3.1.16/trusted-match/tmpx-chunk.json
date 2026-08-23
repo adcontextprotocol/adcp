@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.16/trusted-match/tmpx-chunk.json",
+  "title": "TMPX Chunk",
+  "description": "A single provider TMPX chunk — the provider-local `slot_id` (declared at registration in `tmpx_slots`) and its opaque URL-safe `value`. Same shape on both hops of the Identity Match response: providers emit `tmpx_chunks[]` on the provider→router shape, the router forwards them under `tmpx_providers[provider_id].chunks[]` on the router→publisher shape. Publisher-local destination names never appear here — the publisher's deployment configuration resolves `(provider_id, slot_id)` → local destination via publisher-tmpx-config.json.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "slot_id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Provider-local slot identifier from the emitting provider's registered `tmpx_slots` (provider-registration.json). Opaque provider-namespaced token; publishers map `(provider_id, slot_id)` → local destination via `tmpx_macro_mapping`. NOT an ad-server macro name."
+    },
+    "value": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "description": "Opaque, URL-safe wire string the publisher substitutes verbatim into the destination the publisher's mapping resolves for this `(provider_id, slot_id)` pair. Publishers MUST NOT parse, decode, or transform this value."
+    }
+  },
+  "required": ["slot_id", "value"],
+  "additionalProperties": false
+}

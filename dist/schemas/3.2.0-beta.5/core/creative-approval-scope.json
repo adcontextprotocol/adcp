@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/creative-approval-scope.json",
+  "title": "Scoped creative approval",
+  "description": "Approval outcome for one publisher or placement scope inside a package–creative assignment. Used when a multi-publisher package does not have one uniform approval outcome.",
+  "type": "object",
+  "properties": {
+    "scope": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/indicator-scope.json",
+      "description": "Publisher or placement to which this approval outcome applies."
+    },
+    "approval_status": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/creative-approval-status.json"
+        },
+        {
+          "enum": [
+            "pending_review",
+            "approved",
+            "rejected"
+          ]
+        }
+      ]
+    },
+    "rejection_reason": {
+      "type": "string",
+      "description": "Human-readable explanation when this scope is rejected."
+    }
+  },
+  "required": [
+    "scope",
+    "approval_status"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "approval_status": {
+            "const": "rejected"
+          }
+        },
+        "required": [
+          "approval_status"
+        ]
+      },
+      "then": {
+        "required": [
+          "rejection_reason"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "approval_status": {
+            "enum": [
+              "approved",
+              "pending_review"
+            ]
+          }
+        },
+        "required": [
+          "approval_status"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "rejection_reason"
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

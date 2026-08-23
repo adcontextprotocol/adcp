@@ -27,7 +27,7 @@
     "include_result": {
       "type": "boolean",
       "default": false,
-      "description": "Include the task's result payload when status is completed. Defaults to false for lightweight status-only polls. When true, sellers MUST include result on the response when status is completed."
+      "description": "Include the task's canonical terminal result payload when one exists. Defaults to false for lightweight status-only polls. When true, sellers MUST include result for completed, failed, or rejected terminal tasks when that task produced a terminal artifact; canceled tasks may have no result. The legacy singular error field remains a convenience for failed tasks but does not replace the canonical terminal result."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

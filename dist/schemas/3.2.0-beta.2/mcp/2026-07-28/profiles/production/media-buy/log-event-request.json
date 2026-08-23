@@ -1,0 +1,421 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/log-event-request.json",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    }
+  ],
+  "x-mutates-state": true,
+  "properties": {
+    "event_source_id": {
+      "type": "string",
+      "x-entity": "event_source"
+    },
+    "test_event_code": {
+      "type": "string"
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:core~1event.json"
+      },
+      "minItems": 1,
+      "maxItems": 10000
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "event_source_id",
+    "events"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/event.json": {
+      "type": "object",
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "event_type": {
+          "$ref": "#/$defs/external:enums~1event-type.json"
+        },
+        "event_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "user_match": {
+          "$ref": "#/$defs/external:core~1user-match.json"
+        },
+        "custom_data": {
+          "$ref": "#/$defs/external:core~1event-custom-data.json"
+        },
+        "action_source": {
+          "$ref": "#/$defs/external:enums~1action-source.json"
+        },
+        "surface": {
+          "$ref": "#/$defs/external:core~1event-surface.json"
+        },
+        "event_source_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "custom_event_name": {
+          "type": "string"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "event_type": {
+                "const": "watch_milestone"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "custom_data"
+            ],
+            "properties": {
+              "custom_data": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/external:core~1event-custom-data.json"
+                  },
+                  {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "progress_percent"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "progress_seconds"
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "required": [
+        "event_id",
+        "event_type",
+        "event_time"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/event-type.json": {
+      "type": "string",
+      "enum": [
+        "page_view",
+        "view_content",
+        "select_content",
+        "select_item",
+        "search",
+        "share",
+        "add_to_cart",
+        "remove_from_cart",
+        "viewed_cart",
+        "add_to_wishlist",
+        "initiate_checkout",
+        "add_payment_info",
+        "purchase",
+        "refund",
+        "lead",
+        "qualify_lead",
+        "close_convert_lead",
+        "disqualify_lead",
+        "complete_registration",
+        "subscribe",
+        "follow",
+        "content_view",
+        "watch_milestone",
+        "start_trial",
+        "app_install",
+        "app_launch",
+        "contact",
+        "schedule",
+        "donate",
+        "submit_application",
+        "custom"
+      ]
+    },
+    "external:core/user-match.json": {
+      "type": "object",
+      "properties": {
+        "uids": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "$ref": "#/$defs/external:enums~1uid-type.json"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "value"
+            ],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "hashed_email": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "hashed_phone": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "click_id": {
+          "type": "string"
+        },
+        "click_id_type": {
+          "type": "string"
+        },
+        "client_ip": {
+          "type": "string"
+        },
+        "client_user_agent": {
+          "type": "string"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "uids"
+          ]
+        },
+        {
+          "required": [
+            "hashed_email"
+          ]
+        },
+        {
+          "required": [
+            "hashed_phone"
+          ]
+        },
+        {
+          "required": [
+            "click_id"
+          ]
+        },
+        {
+          "required": [
+            "client_ip",
+            "client_user_agent"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/uid-type.json": {
+      "type": "string",
+      "enum": [
+        "rampid",
+        "rampid_derived",
+        "id5",
+        "uid2",
+        "euid",
+        "pairid",
+        "maid",
+        "hashed_email",
+        "publisher_first_party",
+        "world_id_nullifier",
+        "other"
+      ]
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/event-custom-data.json": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "order_id": {
+          "type": "string"
+        },
+        "content_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "content_type": {
+          "type": "string"
+        },
+        "content_name": {
+          "type": "string"
+        },
+        "content_category": {
+          "type": "string"
+        },
+        "num_items": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "search_string": {
+          "type": "string"
+        },
+        "progress_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "progress_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "contents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "quantity": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "price": {
+                "type": "number",
+                "minimum": 0
+              },
+              "brand": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "additionalProperties": true
+    },
+    "external:enums/action-source.json": {
+      "type": "string",
+      "enum": [
+        "website",
+        "app",
+        "offline",
+        "phone_call",
+        "chat",
+        "email",
+        "in_store",
+        "system_generated",
+        "other"
+      ]
+    },
+    "external:core/event-surface.json": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": [
+            "owned_property",
+            "website",
+            "app",
+            "offline",
+            "phone_call",
+            "chat",
+            "email",
+            "in_store",
+            "system_generated",
+            "other"
+          ]
+        },
+        "property_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "namespace": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "property_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "x-entity": "property"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "category"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

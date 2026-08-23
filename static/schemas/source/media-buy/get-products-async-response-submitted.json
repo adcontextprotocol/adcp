@@ -12,7 +12,7 @@
     },
     "task_id": {
       "type": "string",
-      "description": "Task handle the buyer uses with tasks/get, and that the seller references on push-notification callbacks. The products array is issued on the completion artifact, not here. Per AdCP wire conventions this is snake_case; A2A adapters MAY surface it as taskId, but the payload field emitted by the agent is task_id.",
+      "description": "Task handle the buyer uses with get_task_status (or the legacy AdCP tasks/get alias), and that the seller references on push-notification callbacks. The products array is issued on the completion artifact, not here. This AdCP application-layer handle remains the snake_case task_id in every transport payload and is distinct from any transport-native A2A Task id.",
       "x-entity": "task"
     },
     "message": {

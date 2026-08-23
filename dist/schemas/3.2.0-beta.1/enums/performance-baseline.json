@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/performance-baseline.json",
+  "title": "Performance Baseline",
+  "description": "The expectation represented by performance_index = 1.0. Naming the baseline makes normalized feedback interpretable without disclosing the underlying benchmark value.",
+  "type": "string",
+  "enum": [
+    "campaign_target",
+    "control_group",
+    "seller_history",
+    "buyer_portfolio",
+    "market_benchmark",
+    "other"
+  ]
+}

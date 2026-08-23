@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/coordinated_placements.json",
+  "title": "Canonical Format: Coordinated Placements",
+  "description": "One creative manifest atomically supplies assets for multiple declared product placements. Each component binds to a public `Product.placements[]` entry and either declares an inline non-custom canonical format or references a sibling format option on the same product. Components cannot nest coordinated placements. The manifest supplies component slots under `component_assets.<component_id>`; `shared_slots` assets are supplied once at top level. Inventory exclusivity remains `Product.exclusivity`, not a creative-format parameter. Ordinary products whose placements accept independently assigned creatives do not need this canonical.",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "experimental": {
+      "default": true,
+      "description": "Experimental in AdCP 3.2 while the creative working group gathers implementation evidence for atomic cross-placement composition."
+    },
+    "v1_translatable": {
+      "default": false,
+      "description": "No v1 named-format equivalent can express a coordinated multi-placement buy."
+    },
+    "since_version": { "default": "3.2" },
+    "composition_model": { "default": "deterministic" },
+    "components": {
+      "type": "array",
+      "minItems": 2,
+      "contains": {
+        "type": "object",
+        "properties": { "required": { "type": "boolean", "const": true } },
+        "required": ["required"]
+      },
+      "items": {
+        "type": "object",
+        "properties": {
+          "component_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "description": "Stable coordination-local component identifier. Values MUST be unique within `components[]`."
+          },
+          "placement_ref": {
+            "$ref": "/schemas/core/placement-ref.json",
+            "description": "Public product placement this component supplies. MUST resolve against the containing product's `placements[]`."
+          },
+          "required": { "type": "boolean" },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Declared presentation order for sequential-messaging coordinated buys. Components sharing a sequence value present simultaneously; absent means unordered/simultaneous (default). Sequence declares seller-rendered ordering, not buyer-controlled timing."
+          },
+          "serving_policy": {
+            "type": "string",
+            "enum": ["seller_served_only", "third_party_allowed"],
+            "description": "Per-component serving/tracking policy. Some sellers restrict specific components (e.g., page skins) to first-party serving while allowing third-party tags on sibling components. Defaults to the product-level policy when absent."
+          },
+          "canvas_constraints": {
+            "type": "array",
+            "items": { "$ref": "/schemas/core/canvas-constraint.json" },
+            "description": "Artwork constraints applied to this component, including safe areas and seller-reserved regions."
+          },
+          "format_option_ref": {
+            "$ref": "/schemas/core/format-option-ref.json",
+            "description": "Reference to a sibling `format_options[]` entry on the same product. It MUST NOT resolve to `custom` or `coordinated_placements`."
+          },
+          "format_kind": {
+            "type": "string"
+          },
+          "params": { "type": "object" }
+        },
+        "required": ["component_id", "placement_ref", "required"],
+        "anyOf": [
+          {
+            "required": ["format_option_ref"],
+            "not": { "anyOf": [{ "required": ["format_kind"] }, { "required": ["params"] }] }
+          },
+          {
+            "required": ["format_kind", "params"],
+            "not": { "required": ["format_option_ref"] },
+            "oneOf": [
+              { "properties": { "format_kind": { "type": "string", "const": "image" }, "params": { "$ref": "/schemas/formats/canonical/image.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "html5" }, "params": { "$ref": "/schemas/formats/canonical/html5.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "display_tag" }, "params": { "$ref": "/schemas/formats/canonical/display_tag.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "image_carousel" }, "params": { "$ref": "/schemas/formats/canonical/image_carousel.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "video_hosted" }, "params": { "$ref": "/schemas/formats/canonical/video_hosted.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "video_vast" }, "params": { "$ref": "/schemas/formats/canonical/video_vast.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "audio_hosted" }, "params": { "$ref": "/schemas/formats/canonical/audio_hosted.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "audio_daast" }, "params": { "$ref": "/schemas/formats/canonical/audio_daast.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "sponsored_placement" }, "params": { "$ref": "/schemas/formats/canonical/sponsored_placement.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "native_in_feed" }, "params": { "$ref": "/schemas/formats/canonical/native_in_feed.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "responsive_creative" }, "params": { "$ref": "/schemas/formats/canonical/responsive_creative.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "agent_placement" }, "params": { "$ref": "/schemas/formats/canonical/agent_placement.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "seller_rendered_stateful_display" }, "params": { "$ref": "/schemas/formats/canonical/seller_rendered_stateful_display.json" } }, "required": ["format_kind"] }
+            ]
+          }
+        ],
+        "additionalProperties": true
+      }
+    },
+    "shared_slots": {
+      "type": "array",
+      "description": "Manifest slots supplied once and consumed by one or more coordinated components.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "asset_group_id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+          "asset_type": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "published_post", "zip", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"]
+          },
+          "required": { "type": "boolean", "default": false },
+          "min": { "type": "integer", "minimum": 0 },
+          "max": { "type": "integer", "minimum": 1 },
+          "consumed_by": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string" },
+            "description": "Component IDs that consume this shared asset. Every value MUST resolve to `components[].component_id`."
+          }
+        },
+        "required": ["asset_group_id", "asset_type", "consumed_by"],
+        "additionalProperties": true
+      }
+    }
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "component_id_uniqueness": "components[].component_id values must be unique",
+      "required_component": "at least one component must be required",
+      "placement_ref_resolution": "components[].placement_ref values must resolve to distinct Product.placements[] entries",
+      "format_option_ref_resolution": "component references resolve only against sibling format_options entries on the same product",
+      "component_kind": "resolved and inline components cannot be custom or coordinated_placements",
+      "inline_params": "inline params validate against the schema selected by inline format_kind",
+      "component_assets": "required components have a component_assets entry satisfying their resolved canonical slots",
+      "sequence_values": "when any component declares sequence, sequence values must start at 1 and be contiguous across the declared set",
+      "referenced_option_schema": "declarations resolved via format_option_ref are schema-validated identically to inline params",
+      "shared_slot_consumers": "every shared_slots[].consumed_by value resolves to a declared component_id whose canonical slots accept the shared asset_group_id and asset_type"
+    },
+    "spec": "docs/creative/canonical-formats.mdx#premium-display-in-32"
+  },
+  "required": ["components"],
+  "additionalProperties": true
+}

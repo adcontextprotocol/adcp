@@ -13,6 +13,7 @@ import { sendTrackedBatchMarketingEmails, type TrackedBatchMarketingEmail } from
 import { proposeContentForUser, type ContentUser } from '../routes/content.js';
 import { generateIllustration } from '../services/illustration-generator.js';
 import { createIllustration, approveIllustration } from '../db/illustration-db.js';
+import { withNewsletterSendLock } from './send-lock.js';
 
 const logger = createLogger('newsletter-send');
 
@@ -23,7 +24,31 @@ const logger = createLogger('newsletter-send');
 export async function sendNewsletter(
   config: NewsletterConfig,
   edition: EditionRecord,
-): Promise<{ sent: number }> {
+): Promise<{ sent: number; outcome: 'delivered' | 'busy' | 'not_sendable' | 'failed' }> {
+  const locked = await withNewsletterSendLock(config.id, edition.id, async () => {
+    // The edition passed by the caller may be stale by the time the lock is
+    // acquired. Re-read it under the lock and only deliver an approved row.
+    const current = await config.db.getCurrent();
+    if (!current || current.id !== edition.id || current.status !== 'approved') {
+      return { sent: 0, outcome: 'not_sendable' as const };
+    }
+    return deliverNewsletter(config, current);
+  });
+
+  if (!locked.acquired) {
+    logger.warn(
+      { newsletterId: config.id, editionId: edition.id },
+      'Newsletter delivery already in progress',
+    );
+    return { sent: 0, outcome: 'busy' };
+  }
+  return locked.value;
+}
+
+async function deliverNewsletter(
+  config: NewsletterConfig,
+  edition: EditionRecord,
+): Promise<{ sent: number; outcome: 'delivered' | 'failed' }> {
   const content = edition.content;
   const editionDate = edition.edition_date.toISOString().split('T')[0];
   const subject = config.generateSubject(content);
@@ -73,7 +98,10 @@ export async function sendNewsletter(
 
   // Mark as sent
   if (stats.email_count > 0 || stats.slack_count > 0) {
-    await config.db.markSent(edition.id, stats);
+    const markedSent = await config.db.markSent(edition.id, stats);
+    if (!markedSent) {
+      throw new Error(`Failed to finalize ${config.id} edition ${edition.id} after delivery`);
+    }
 
     // Publish as perspective (non-blocking)
     publishAsPerspective(config, edition.id, content, editionDate, subject).catch((err) => {
@@ -96,7 +124,10 @@ export async function sendNewsletter(
     });
   }
 
-  return { sent: stats.email_count };
+  return {
+    sent: stats.email_count,
+    outcome: stats.email_count > 0 || stats.slack_count > 0 ? 'delivered' : 'failed',
+  };
 }
 
 // ─── Perspective Publishing ────────────────────────────────────────────

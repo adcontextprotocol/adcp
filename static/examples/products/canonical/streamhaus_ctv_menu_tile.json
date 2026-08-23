@@ -1,0 +1,55 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "streamhaus_ctv_menu_tile",
+  "name": "StreamHaus CTV Home Screen — Menu Tile",
+  "description": "Video-capable hero tile on StreamHaus's smart-TV home screen, in the Fire TV Feature Rotator / Samsung 1st Screen Masthead pattern. Buyer ships a native_in_feed asset bundle (background image, icon, title, advertiser name, landing page) plus a required focus-triggered video; the platform autoplays it muted when the viewer's remote focus lands on the tile. QR code and deep-link activations are engagement events layered on top of the one rendered impression, never additional impressions.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "tv.streamhaus.example",
+      "selection_type": "all"
+    }
+  ],
+  "channels": ["ctv"],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "streamhaus_menu_tile_cpm",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 45
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 120,
+    "timezone": "America/Los_Angeles",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "engagements", "spend"],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "native_in_feed",
+      "format_option_id": "streamhaus_menu_tile_hero",
+      "display_name": "StreamHaus Menu Tile — video-capable hero",
+      "params": {
+        "ctv_ad_experience": "menu",
+        "menu_placement": "tile",
+        "focus_behavior": "autoplay_muted",
+        "motion_level": "full_motion",
+        "activation_methods": ["qr_code", "deep_link"],
+        "asset_source": "buyer_uploaded",
+        "ssl_required": true,
+        "slots": [
+          { "asset_group_id": "title", "asset_type": "text", "required": true, "max_chars": 40 },
+          { "asset_group_id": "main_image", "asset_type": "image", "required": true },
+          { "asset_group_id": "icon", "asset_type": "image", "required": true },
+          { "asset_group_id": "advertiser_name", "asset_type": "text", "required": true },
+          { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true },
+          { "asset_group_id": "video", "asset_type": "vast", "required": true },
+          { "asset_group_id": "impression_tracker", "asset_type": "pixel_tracker", "required": false }
+        ]
+      }
+    }
+  ]
+}

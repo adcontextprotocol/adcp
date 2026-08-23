@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/creative/get-creative-features-request.json",
+  "title": "Get Creative Features Request",
+  "description": "Request payload for the get_creative_features task. Submits a creative manifest for evaluation by a governance agent, which analyzes the creative and returns scored feature values (brand safety, content categorization, quality metrics, etc.).",
+  "x-tool-summary": "Evaluate a creative manifest and return scored safety, content, quality, and governance features.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "creative_manifest": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/creative-manifest.json",
+      "description": "The canonical creative manifest to evaluate. In 3.2 it contains `format_kind`, optional `format_option_ref`, and typed assets. The deprecated named `format_id` branch remains available only for older 3.x peers."
+    },
+    "feature_ids": {
+      "type": "array",
+      "description": "Optional filter to specific features. If omitted, returns all available features.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "account": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/account-ref.json",
+      "description": "Account for billing this evaluation. Required when the governance agent charges per evaluation."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "creative_manifest"
+  ],
+  "additionalProperties": true
+}

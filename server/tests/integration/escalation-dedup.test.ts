@@ -11,7 +11,13 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type { Pool } from 'pg';
 import { initializeDatabase, closeDatabase, query } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { createEscalation } from '../../src/db/escalation-db.js';
+import {
+  claimEscalationNotification,
+  createEscalation,
+  getEscalation,
+  markNotificationSent,
+  releaseEscalationNotificationClaim,
+} from '../../src/db/escalation-db.js';
 
 const SUFFIX = `${process.pid}-${Date.now()}`;
 const DEDUP_KEY = `test:slack:not_in_channel:C-${SUFFIX}`;
@@ -116,5 +122,61 @@ describe('createEscalation dedup_key behavior', () => {
       a.id,
       b.id,
     ]);
+  });
+
+  it('atomically grants only one initial-notification claim', async () => {
+    const escalation = await createEscalation({
+      category: 'needs_human_action',
+      summary: 'notification claim race',
+      dedup_key: DEDUP_KEY,
+    });
+
+    const claims = await Promise.all([
+      claimEscalationNotification(escalation.id),
+      claimEscalationNotification(escalation.id),
+    ]);
+
+    expect(claims.sort()).toEqual([false, true]);
+    const claimed = await getEscalation(escalation.id);
+    expect(claimed?.notification_claimed_at).not.toBeNull();
+    expect(claimed?.notification_sent_at).toBeNull();
+
+    await releaseEscalationNotificationClaim(escalation.id);
+    expect((await getEscalation(escalation.id))?.notification_claimed_at).toBeNull();
+  });
+
+  it('does not release a claim after a Slack message timestamp is recorded', async () => {
+    const escalation = await createEscalation({
+      category: 'needs_human_action',
+      summary: 'completed notification claim',
+      dedup_key: DEDUP_KEY,
+    });
+    expect(await claimEscalationNotification(escalation.id)).toBe(true);
+    await markNotificationSent(escalation.id, 'C_TEST', '123.456');
+
+    await releaseEscalationNotificationClaim(escalation.id);
+
+    const persisted = await getEscalation(escalation.id);
+    expect(persisted?.notification_claimed_at).toBeNull();
+    expect(persisted?.notification_sent_at).not.toBeNull();
+    expect(persisted?.notification_message_ts).toBe('123.456');
+  });
+
+  it('reclaims an initial-notification claim after the worker-crash timeout', async () => {
+    const escalation = await createEscalation({
+      category: 'needs_human_action',
+      summary: 'stale notification claim',
+      dedup_key: DEDUP_KEY,
+    });
+    expect(await claimEscalationNotification(escalation.id)).toBe(true);
+    await pool.query(
+      `UPDATE addie_escalations
+       SET notification_claimed_at = NOW() - INTERVAL '16 minutes'
+       WHERE id = $1`,
+      [escalation.id],
+    );
+
+    expect(await claimEscalationNotification(escalation.id)).toBe(true);
+    expect((await getEscalation(escalation.id))?.notification_claimed_at).not.toBeNull();
   });
 });
