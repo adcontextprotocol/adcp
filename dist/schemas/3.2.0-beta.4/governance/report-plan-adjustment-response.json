@@ -1,0 +1,136 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/governance/report-plan-adjustment-response.json",
+  "title": "Report Plan Adjustment Response",
+  "description": "Append-only adjustment lifecycle result and attributed plan accounting state.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
+  "properties": {
+    "adjustment_id": {
+      "type": "string",
+      "description": "Governance-agent identifier for the adjustment record.",
+      "x-entity": "governance_adjustment"
+    },
+    "adjustment_state": {
+      "type": "string",
+      "enum": [
+        "reported",
+        "verified",
+        "disputed"
+      ],
+      "description": "reported has seller evidence but no buyer decision; verified was accepted by the plan owner; disputed was rejected by the plan owner. Only verified records can affect net cost or headroom."
+    },
+    "adjustment_type": {
+      "type": "string",
+      "enum": [
+        "decommitment",
+        "refund",
+        "credit",
+        "makegood"
+      ]
+    },
+    "amount": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "headroom_restored": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Amount by which current ledger commitment was reduced under the plan accounting mode."
+    },
+    "plan_summary": {
+      "type": "object",
+      "properties": {
+        "accounting_mode": {
+          "type": "string",
+          "enum": [
+            "gross_commitment",
+            "verified_net_cost"
+          ]
+        },
+        "gross_committed": {
+          "type": "number",
+          "minimum": 0
+        },
+        "adjustments_reported": {
+          "type": "number",
+          "minimum": 0
+        },
+        "adjustments_verified": {
+          "type": "number",
+          "minimum": 0
+        },
+        "net_cost": {
+          "type": "number",
+          "minimum": 0
+        },
+        "headroom_restored": {
+          "type": "number",
+          "minimum": 0
+        },
+        "ledger_committed": {
+          "type": "number",
+          "minimum": 0
+        },
+        "net_committed": {
+          "type": "number",
+          "minimum": 0
+        },
+        "budget_remaining": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "accounting_mode",
+        "gross_committed",
+        "adjustments_reported",
+        "adjustments_verified",
+        "net_cost",
+        "headroom_restored",
+        "ledger_committed",
+        "net_committed",
+        "budget_remaining"
+      ],
+      "additionalProperties": false
+    },
+    "replayed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Set to true when this response was returned from the idempotency cache rather than from a fresh execution. Set to false (or omitted) when the request was executed fresh. Buyers use this to distinguish cached replays from new executions — matters for billing reconciliation, audit logs, state-machine routing (cached state-tracking fields are historical snapshots, not current state — re-read via the resource's read endpoint), and any downstream system that assumes exactly-once event semantics. From 3.1 onward, `replayed` MAY appear on responses to any request that resolved via the idempotency cache, including read tools — universal `idempotency_key` (see security.mdx §Idempotency) means the cache holds read responses too."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+    }
+  },
+  "required": [
+    "adjustment_id",
+    "adjustment_state",
+    "adjustment_type",
+    "amount",
+    "headroom_restored",
+    "plan_summary"
+  ],
+  "additionalProperties": true
+}

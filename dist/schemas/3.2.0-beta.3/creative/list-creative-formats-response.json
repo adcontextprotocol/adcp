@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/creative/list-creative-formats-response.json",
+  "title": "List Creative Formats Response (Creative Agent)",
+  "deprecated": true,
+  "description": "**DEPRECATED in 3.2.** Compatibility response for legacy named formats. Use get_adcp_capabilities `creative.supported_formats[]` for canonical creative-agent discovery.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "formats": {
+      "type": "array",
+      "deprecated": true,
+      "description": "Deprecated named-format definitions projected for older 3.x callers. Canonical creative capabilities are declared by get_adcp_capabilities creative.supported_formats[].",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/format.json"
+      }
+    },
+    "creative_agents": {
+      "type": "array",
+      "deprecated": true,
+      "description": "Deprecated recursive discovery projection retained only for historical 3.x responses. New buyers use registry reverse lookup and direct get_adcp_capabilities confirmation.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "agent_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Base URL for the creative agent (e.g., 'https://reference.example.com', 'https://dco.example.com')."
+          },
+          "agent_name": {
+            "type": "string",
+            "description": "Human-readable name for the creative agent"
+          },
+          "capabilities": {
+            "type": "array",
+            "description": "Capabilities this creative agent provides",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/creative-agent-capability.json"
+            }
+          }
+        },
+        "required": [
+          "agent_url"
+        ]
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/error.json"
+      }
+    },
+    "pagination": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/pagination-response.json"
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "formats"
+  ],
+  "additionalProperties": true
+}

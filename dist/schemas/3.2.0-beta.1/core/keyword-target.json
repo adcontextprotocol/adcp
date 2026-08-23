@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/keyword-target.json",
+  "title": "Keyword Target",
+  "description": "A keyword and match-mode identity used by canonical package targeting controls.",
+  "type": "object",
+  "properties": {
+    "keyword": {
+      "type": "string",
+      "minLength": 1
+    },
+    "match_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/match-type.json"
+    },
+    "bid_price": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "keyword",
+    "match_type"
+  ],
+  "additionalProperties": false
+}

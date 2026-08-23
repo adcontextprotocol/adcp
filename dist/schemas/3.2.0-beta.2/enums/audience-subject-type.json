@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/audience-subject-type.json",
+  "title": "Audience Subject Type",
+  "description": "The kind of subject characterized by audience data or population-level evidence.",
+  "type": "string",
+  "enum": [
+    "individual",
+    "household",
+    "business",
+    "contextual",
+    "none"
+  ]
+}

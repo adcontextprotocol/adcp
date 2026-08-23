@@ -1,0 +1,60 @@
+---
+title: request_proposals
+description: "Request one or more seller-authored draft media plans."
+"og:title": "AdCP request_proposals Task"
+testable: false
+---
+
+`request_proposals` creates one or more immutable draft media-plan proposal snapshots from a brief. It can begin a consultative workflow directly or use `product_ids` returned by [`list_products`](/dist/docs/3.2.0-beta.0/media-buy/task-reference/list_products). Success always contains at least one proposal; returning products without a proposal does not satisfy this task.
+
+`brand` contains only the stable BrandKey (`domain`, optional `brand_id`, and optional ISO country `countries[]`); the seller resolves the canonical brand manifest rather than receiving a full brand file in every call. Countries qualify commercial advertiser identity and do not target delivery. `account` is optional and adds seller-specific commercial terms. A natural-key account can supply the request's sole brand identity and qualify it with an operator-owned unit and fixed account currency.
+
+{/* Using latest because this schema is not yet released in any version.
+    Update to the correct version alias after the next release. */}
+**Request schema:** [`/schemas/3.2.0-beta.0/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.0/media-buy/request-proposals-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441001",
+  "brief": "Reach outdoor enthusiasts with premium video inventory.",
+  "account": {
+    "brand": {
+      "domain": "nova-athletics.example",
+      "countries": ["DE", "NL"]
+    },
+    "operator": "pinnacle-media.example",
+    "operator_unit": {
+      "id": "seat_emea_01",
+      "name": "EMEA"
+    },
+    "currency": "EUR"
+  },
+  "opportunity": {
+    "opportunity_id": "opp_spring_launch_2027",
+    "phase": "active_sourcing",
+    "intent": "live_rfp",
+    "response_deadline": "2027-01-15T17:00:00Z"
+  },
+  "criteria": {
+    "product_ids": ["product_premium_video"],
+    "targeting_overlay": {
+      "geo_countries": ["US"]
+    },
+    "required_overlay_support": {
+      "geo_metros": { "systems": ["nielsen_dma"] }
+    }
+  }
+}
+```
+
+Put machine-representable requirements in `criteria`: `offer_filters` select commercial offers, `targeting_overlay` supplies concrete delivery constraints that must be reflected in pricing and forecasts, and `required_overlay_support` identifies dimensions the buyer must be able to choose later. Keep goals, semantic audience meaning, and requirements without a structured AdCP field in `brief`.
+
+Explicit hard requirements in the brief remain binding. When the seller's structured interpretation materially affects product eligibility, pricing, or forecasting, the response includes `targeting_resolution.brief_targeting`. Exact structured overlays are not echoed; any product-specific alternative appears as sparse `Product.targeting_resolution.modifications` for buyer approval.
+
+Every returned purchase references the exact `product_id` and `pricing_option_id` whose pricing and forecast the seller used. The returned `proposal_id` is the only proposal linkage needed by [`refine_proposals`](/dist/docs/3.2.0-beta.0/media-buy/task-reference/refine_proposals) and [`decline_proposals`](/dist/docs/3.2.0-beta.0/media-buy/task-reference/decline_proposals). Each ID identifies one immutable commercial snapshot; refinement and finalization mint new IDs instead of adding a second version field. A draft is indicative and does not reserve inventory. Finalize it through `refine_proposals` before passing the resulting committed proposal to [`accept_proposal`](/dist/docs/3.2.0-beta.0/media-buy/task-reference/accept_proposal). The deprecated [`create_media_buy`](/dist/docs/3.2.0-beta.0/media-buy/task-reference/create_media_buy) proposal mode remains the 3.x compatibility adapter.
+
+`opportunity` is optional shared planning-cycle context and must be open when supplied here. Its buyer-assigned `opportunity_id` can span request, decline, and purchase calls without becoming part of proposal identity. Sellers associate it with every proposal created by the request, and revised proposals inherit the same association.
+
+The response uses `outcome: "proposed"` for a successful draft set and `outcome: "rejected"` with a reason when the seller cannot construct a viable plan.
+
+Sellers MAY respond asynchronously with `status: "submitted"` when consultative planning requires upstream system queries or human sales-desk review. In that case the response contains a `task_id` for polling via [`get_task_status`](https://adcontextprotocol.org/schemas/3.2.0-beta.0/protocol/get-task-status-request.json); terminal draft proposals are delivered on the completion artifact or via push notification if `push_notification_config` was supplied.

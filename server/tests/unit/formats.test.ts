@@ -22,9 +22,22 @@ vi.mock('@adcp/sdk', () => ({
 import { FormatsService } from '../../src/formats.js';
 
 function capabilityResponse(entries: Array<Record<string, unknown>>) {
+  const previewIds = entries
+    .filter(entry => Array.isArray(entry.operations) && entry.operations.includes('preview'))
+    .map(entry => entry.capability_id)
+    .filter((id): id is string => typeof id === 'string');
   return {
     success: true,
-    data: { creative: { supported_formats: entries } },
+    data: {
+      creative: {
+        supported_formats: entries,
+        ...(previewIds.length === 0 ? {} : {
+          preview: {
+            routes: previewIds.map(capability_id => ({ capability_id, rendering_origin: 'agent_approximation' })),
+          },
+        }),
+      },
+    },
   };
 }
 

@@ -43,6 +43,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `COMPLIANCE_UNSATISFIED` | correctable | choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement |
 | `CONFIGURATION_ERROR` | terminal | surface to a human at the seller — the buyer cannot resolve a seller-side deployment misconfiguration and MUST NOT auto-retry |
 | `CONFLICT` | transient | re-read the resource and retry with current state |
+| `CONFLICTING_SELECTORS` | correctable | emit one canonical format selector route, or make every required legacy 3.x compatibility projection select the same product format contract under the canonical v2-narrows-v1 comparison |
 | `CREATIVE_DEADLINE_EXCEEDED` | correctable | check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller |
 | `CREATIVE_INACCESSIBLE` | correctable | verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit |
 | `CREATIVE_LOCALE_NOT_ACCEPTED` | correctable | supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default |
@@ -59,6 +60,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `FORMAT_NOT_SUPPORTED` | correctable | refresh get_adcp_capabilities creative.supported_formats[] and retry with a capability_id whose operations contains the intended build, preview, or validate operation |
 | `FORMAT_OPTION_UNRESOLVED` | correctable | advisory — publisher-side fix needed: a placement's <code>{"format_options[].format_option_id"}</code> references a <code>{"format_option_id"}</code> that does not exist in this file's top-level <code>{"formats[]"}</code>. Buyer SDK MUST fail closed for that placement (drop the format from the placement's accepted set) and surface this code. Publisher fix: either declare the missing format option in <code>{"formats[]"}</code> or remove the reference from the placement. Do not auto-retry |
 | `FORMAT_PROJECTION_FAILED` | correctable | advisory — seller-side fix needed: ask the seller to add an explicit <code>{"canonical"}</code> field on the legacy format declaration, or contribute a registry entry (format_id_glob or structural match) to v1-canonical-mapping.json. Do not auto-retry; the product is still valid on the legacy named-format path |
+| `FORMAT_SHAPE_PROMOTED` | correctable | advisory — migrate the legacy custom format_shape to error.details.promoted_to before error.details.transition_end; dual emission is allowed during the transition window. Do not auto-retry |
 | `GOVERNANCE_DENIED` | correctable | restructure the buy, escalate to human spending authority, or contact the governance agent for details |
 | `GOVERNANCE_UNAVAILABLE` | transient | retry with backoff; if the agent remains unreachable, the buyer MUST contact the plan's governance operator |
 | `IDEMPOTENCY_CONFLICT` | correctable | use a fresh UUID v4 for the new request, or resend the exact original payload to get the cached response |
@@ -403,6 +405,15 @@ The seller's deployment is misconfigured in a way that prevents handling the req
 Concurrent modification detected. The resource was modified by another request between read and write. Recovery: transient (re-read the resource and retry with current state).
 
 </Accordion>
+<a id="error-code-conflicting-selectors"></a>
+
+<Accordion title="CONFLICTING_SELECTORS — correctable">
+
+**Suggested action:** emit one canonical format selector route, or make every required legacy 3.x compatibility projection select the same product format contract under the canonical v2-narrows-v1 comparison
+
+A 3.x package request carries multiple resolvable format selector routes that select different canonical product format declaration sets. Sellers MUST first resolve every present route independently (<code>{"format_option_refs"}</code>, direct <code>{"format_kind"}</code> plus <code>{"params"}</code>, and deprecated <code>{"format_ids"}</code>) without applying precedence. An unresolved option reference or an unprojectable legacy ID is rejected with <code>{"UNSUPPORTED_FEATURE"}</code>, not this code. Once all routes resolve, sellers derive the product <code>{"format_options[]"}</code> entries selected by each route using directional product satisfaction and require those sets to match. Legacy parameter compatibility uses the asymmetric v2-narrows-v1 relation defined by canonical formats, not raw object equality. For fixed-size image selectors, both width and height participate in compatibility. Sellers MUST reject different format shapes, selected option sets, or incompatible dimensions rather than silently choosing the canonical route. <code>{"error.field"}</code> SHOULD point at the conflicting package, and <code>{"error.details"}</code> SHOULD identify the supplied selector routes and their normalized canonical summaries. Recovery: correctable (emit one canonical selector route, or make a required legacy 3.x compatibility projection select the same product format contract).
+
+</Accordion>
 <a id="error-code-creative-deadline-exceeded"></a>
 
 <Accordion title="CREATIVE_DEADLINE_EXCEEDED — correctable">
@@ -577,6 +588,15 @@ Non-fatal advisory raised when a legacy named format on a product cannot be proj
 **Multi-hop deduplication.** Each hop that detects the same condition SHOULD deduplicate by <code>{"(code, field)"}</code> rather than re-emit. The existing entry's <code>{"sdk_id"}</code> identifies which earlier processor saw it first; downstream SDKs SHOULD NOT add a second entry for the same <code>{"(code, field)"}</code> pair unless they have materially different <code>{"error.details"}</code> (e.g., a different <code>{"resolution_failure"}</code> reason from a different registry version).
 
 Recovery: correctable (seller-side action — add explicit <code>{"canonical"}</code> field on the legacy format file, contribute a v1-canonical-mapping registry entry, or author a 3.1+ <code>{"ProductFormatDeclaration"}</code> with <code>{"v1_format_ref"}</code> linking back). See canonical-formats.mdx 'Dual emission and v2↔v1 projection' for the full rules.
+
+</Accordion>
+<a id="error-code-format-shape-promoted"></a>
+
+<Accordion title="FORMAT_SHAPE_PROMOTED — correctable">
+
+**Suggested action:** advisory — migrate the legacy custom format_shape to error.details.promoted_to before error.details.transition_end; dual emission is allowed during the transition window. Do not auto-retry
+
+Non-fatal deprecation advisory raised when a 3.2-aware SDK encounters <code>{"format_kind: custom"}</code> with a <code>{"format_shape"}</code> that has been promoted to a first-class canonical. SDKs MUST preserve the declaration during its transition window and SHOULD augment the containing response's <code>{"errors[]"}</code> with <code>{"source: sdk"}</code>, <code>{"sdk_id"}</code>, this code, and <code>{"details: { format_shape, promoted_to, promotion_release, transition_end }"}</code>. Producers that self-detect their own legacy declaration MAY emit the same advisory with <code>{"source: producer"}</code>. Recovery is seller-side: dual-emit during the published transition window, migrate consumers, then replace the custom declaration with the promoted canonical.
 
 </Accordion>
 <a id="error-code-governance-denied"></a>

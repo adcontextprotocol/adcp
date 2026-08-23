@@ -1,0 +1,362 @@
+{
+  "version": "3.0.0",
+  "extension_uri": "https://adcontextprotocol.org/extensions/adcp/v3",
+  "a2a_protocol_version": "1.0",
+  "description": "Reference vectors for the AdCP A2A Profile Extension v3 advertisement, activation, invocation, response, and AdCP polling rules.",
+  "advertisement_vectors": [
+    {
+      "id": "agent-card-capabilities-extension",
+      "description": "The versioned profile is required and advertised under AgentCard.capabilities.extensions without capability params.",
+      "valid": true,
+      "agent_card": {
+        "name": "StreamHaus sales agent",
+        "description": "Advertising sales agent",
+        "version": "3.2.0",
+        "supportedInterfaces": [{
+          "url": "https://sales.streamhaus.example/a2a/jsonrpc",
+          "protocolBinding": "JSONRPC",
+          "protocolVersion": "1.0"
+        }],
+        "capabilities": {
+          "extensions": [{
+            "uri": "https://adcontextprotocol.org/extensions/adcp/v3",
+            "description": "AdCP structured task invocation profile",
+            "required": true
+          }]
+        },
+        "defaultInputModes": ["application/json"],
+        "defaultOutputModes": ["application/json"],
+        "skills": [
+          {"id": "get_adcp_capabilities", "name": "Discover AdCP capabilities", "description": "Discover runtime AdCP capabilities", "tags": ["adcp"]},
+          {"id": "get_task_status", "name": "Get AdCP task status", "description": "Poll an AdCP application task", "tags": ["adcp"]}
+        ]
+      }
+    },
+    {
+      "id": "agent-card-top-level-extension-invalid",
+      "description": "A top-level extensions array does not advertise an A2A 1.0 AgentExtension.",
+      "valid": false,
+      "expected_error": "extension_not_under_capabilities",
+      "agent_card": {
+        "capabilities": {},
+        "extensions": [{
+          "uri": "https://adcontextprotocol.org/extensions/adcp/v3",
+          "required": true
+        }]
+      }
+    },
+    {
+      "id": "agent-card-capability-params-invalid",
+      "description": "Runtime AdCP capabilities must not be duplicated in AgentExtension.params.",
+      "valid": false,
+      "expected_error": "extension_params_not_empty",
+      "agent_card": {
+        "capabilities": {
+          "extensions": [{
+            "uri": "https://adcontextprotocol.org/extensions/adcp/v3",
+            "required": true,
+            "params": {
+              "adcp_version": "3.2",
+              "protocols_supported": ["media_buy"]
+            }
+          }]
+        }
+      }
+    },
+    {
+      "id": "agent-card-skill-name-not-id-invalid",
+      "description": "The canonical task name belongs in AgentSkill.id; the human-readable name is not a dispatch key.",
+      "valid": false,
+      "expected_error": "missing_get_adcp_capabilities_skill_id",
+      "agent_card": {
+        "capabilities": {
+          "extensions": [{
+            "uri": "https://adcontextprotocol.org/extensions/adcp/v3",
+            "required": true
+          }]
+        },
+        "skills": [{
+          "id": "capability-discovery",
+          "name": "get_adcp_capabilities",
+          "description": "Incorrectly places the task dispatch name in AgentSkill.name",
+          "tags": ["adcp"]
+        }]
+      }
+    }
+  ],
+  "invocation_vectors": [
+    {
+      "id": "activated-structured-invocation",
+      "description": "An activated request carries one authoritative DataPart with skill and input.",
+      "valid": true,
+      "headers": {
+        "A2A-Version": "1.0",
+        "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+      },
+      "message": {
+        "messageId": "msg-invoke-001",
+        "role": "ROLE_USER",
+        "parts": [{
+          "data": {
+            "skill": "get_products",
+            "input": {
+              "buying_mode": "brief",
+              "brief": "Premium CTV inventory for a spring campaign"
+            }
+          }
+        }]
+      }
+    },
+    {
+      "id": "activated-invocation-with-advisory-text",
+      "description": "A generated display-only TextPart may accompany the one authoritative invocation DataPart.",
+      "valid": true,
+      "headers": {
+        "A2A-Version": "1.0",
+        "A2A-Extensions": "https://example.com/trace/v1, https://adcontextprotocol.org/extensions/adcp/v3"
+      },
+      "message": {
+        "messageId": "msg-invoke-002",
+        "role": "ROLE_USER",
+        "parts": [
+          {"text": "AdCP task: get_products", "mediaType": "text/plain", "metadata": {"generated": true}},
+          {"data": {"skill": "get_products", "input": {"buying_mode": "brief", "brief": "Premium CTV inventory"}}}
+        ]
+      }
+    },
+    {
+      "id": "profile-not-activated-invalid",
+      "description": "The structured profile is inactive without A2A-Extensions activation.",
+      "valid": false,
+      "expected_error": "extension_not_activated",
+      "headers": {"A2A-Version": "1.0"},
+      "message": {
+        "messageId": "msg-invoke-003",
+        "role": "ROLE_USER",
+        "parts": [{"data": {"skill": "get_products", "input": {}}}]
+      }
+    },
+    {
+      "id": "missing-message-id-invalid",
+      "description": "A2A 1.0 requires messageId on every Message, including profile invocations.",
+      "valid": false,
+      "expected_error": "invalid_a2a_message",
+      "headers": {
+        "A2A-Version": "1.0",
+        "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+      },
+      "message": {
+        "role": "ROLE_USER",
+        "parts": [{"data": {"skill": "get_products", "input": {"buying_mode": "brief", "brief": "Premium CTV inventory"}}}]
+      }
+    },
+    {
+      "id": "legacy-parameters-invalid",
+      "description": "parameters is not an alias for input in the AdCP v3 A2A profile.",
+      "valid": false,
+      "expected_error": "invalid_invocation_shape",
+      "headers": {
+        "A2A-Version": "1.0",
+        "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+      },
+      "message": {
+        "messageId": "msg-invoke-004",
+        "role": "ROLE_USER",
+        "parts": [{"data": {"skill": "get_products", "parameters": {}}}]
+      }
+    },
+    {
+      "id": "duplicate-invocation-datapart-invalid",
+      "description": "Two invocation DataParts are ambiguous and must be rejected.",
+      "valid": false,
+      "expected_error": "multiple_invocation_dataparts",
+      "headers": {
+        "A2A-Version": "1.0",
+        "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+      },
+      "message": {
+        "messageId": "msg-invoke-005",
+        "role": "ROLE_USER",
+        "parts": [
+          {"data": {"skill": "get_products", "input": {}}},
+          {"data": {"skill": "create_media_buy", "input": {}}}
+        ]
+      }
+    },
+    {
+      "id": "file-part-invalid",
+      "description": "FileParts are outside the AdCP v3 A2A invocation profile.",
+      "valid": false,
+      "expected_error": "unsupported_part_type",
+      "headers": {
+        "A2A-Version": "1.0",
+        "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+      },
+      "message": {
+        "messageId": "msg-invoke-006",
+        "role": "ROLE_USER",
+        "parts": [
+          {"data": {"skill": "sync_creatives", "input": {}}},
+          {"url": "https://cdn.example.com/creative.mp4", "mediaType": "video/mp4"}
+        ]
+      }
+    },
+    {
+      "id": "get-task-status-poll",
+      "description": "A durable AdCP task is polled through a fresh activated get_task_status invocation.",
+      "valid": true,
+      "headers": {
+        "A2A-Version": "1.0",
+        "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+      },
+      "message": {
+        "messageId": "msg-poll-001",
+        "role": "ROLE_USER",
+        "parts": [{
+          "data": {
+            "skill": "get_task_status",
+            "input": {
+              "task_id": "adcp-task-9a21",
+              "include_result": true
+            }
+          }
+        }]
+      }
+    },
+    {
+      "id": "input-required-continuation",
+      "description": "A continuation uses a new messageId inside a Message that retains the A2A taskId and contextId and resends typed input.",
+      "valid": true,
+      "headers": {
+        "A2A-Version": "1.0",
+        "A2A-Extensions": "https://adcontextprotocol.org/extensions/adcp/v3"
+      },
+      "message": {
+        "messageId": "msg-continue-001",
+        "taskId": "a2a-task-input-001",
+        "contextId": "ctx-input-001",
+        "role": "ROLE_USER",
+        "parts": [{
+          "data": {
+            "skill": "get_products",
+            "input": {
+              "buying_mode": "brief",
+              "brief": "Premium CTV inventory with a $75K budget"
+            }
+          }
+        }]
+      }
+    }
+  ],
+  "response_vectors": [
+    {
+      "id": "bare-send-message-task-invalid",
+      "description": "A non-streaming SendMessage response must select the response task branch rather than return a bare Task.",
+      "valid": false,
+      "handler_return": "completed",
+      "expected_error": "invalid_send_message_response",
+      "response": {
+        "id": "a2a-task-bare-001",
+        "contextId": "ctx-bare-001",
+        "status": {"state": "TASK_STATE_COMPLETED"},
+        "artifacts": [{
+          "artifactId": "adcp-result",
+          "parts": [{"data": {"status": "completed", "products": []}}]
+        }]
+      }
+    },
+    {
+      "id": "submitted-inside-completed-a2a-task",
+      "description": "A queued AdCP operation is returned in a completed A2A Task with its handle only in the DataPart.",
+      "valid": true,
+      "handler_return": "submitted",
+      "response": {
+        "task": {
+          "id": "a2a-task-create-42",
+          "contextId": "ctx-create-42",
+          "status": {"state": "TASK_STATE_COMPLETED"},
+          "artifacts": [{
+            "artifactId": "adcp-result",
+            "parts": [
+              {"text": "The media buy is awaiting IO signature."},
+              {"data": {"status": "submitted", "task_id": "adcp-task-9a21", "message": "Awaiting IO signature"}}
+            ]
+          }]
+        }
+      },
+      "expected_adcp_task_id": "adcp-task-9a21"
+    },
+    {
+      "id": "submitted-native-a2a-state-invalid",
+      "description": "An AdCP Submitted handler result must not leave the A2A Task in its native submitted state.",
+      "valid": false,
+      "handler_return": "submitted",
+      "expected_error": "submitted_handler_return_not_a2a_completed",
+      "response": {
+        "task": {
+          "id": "a2a-task-create-43",
+          "contextId": "ctx-create-43",
+          "status": {"state": "TASK_STATE_SUBMITTED"},
+          "artifacts": [{
+            "artifactId": "adcp-result",
+            "parts": [{"data": {"status": "submitted", "task_id": "adcp-task-9a22"}}]
+          }]
+        }
+      }
+    },
+    {
+      "id": "duplicated-adcp-task-id-invalid",
+      "description": "artifact.metadata.adcp_task_id duplicates the authoritative DataPart handle and is forbidden.",
+      "valid": false,
+      "handler_return": "submitted",
+      "expected_error": "adcp_task_id_metadata_duplication",
+      "response": {
+        "task": {
+          "id": "a2a-task-create-44",
+          "contextId": "ctx-create-44",
+          "status": {"state": "TASK_STATE_COMPLETED"},
+          "artifacts": [{
+            "artifactId": "adcp-result",
+            "metadata": {"adcp_task_id": "adcp-task-9a23"},
+            "parts": [{"data": {"status": "submitted", "task_id": "adcp-task-9a23"}}]
+          }]
+        }
+      }
+    },
+    {
+      "id": "completed-get-task-status-result",
+      "description": "Each get_task_status poll is a completed A2A invocation carrying a direct AdCP polling response.",
+      "valid": true,
+      "handler_return": "get_task_status",
+      "response": {
+        "task": {
+          "id": "a2a-task-poll-11",
+          "contextId": "ctx-poll-11",
+          "status": {"state": "TASK_STATE_COMPLETED"},
+          "artifacts": [{
+            "artifactId": "adcp-result",
+            "parts": [{
+              "data": {
+                "task_id": "adcp-task-9a21",
+                "task_type": "create_media_buy",
+                "protocol": "media-buy",
+                "status": "completed",
+                "created_at": "2026-08-17T09:00:00Z",
+                "updated_at": "2026-08-17T09:05:00Z",
+                "completed_at": "2026-08-17T09:05:00Z",
+                "result": {
+                  "status": "completed",
+                  "media_buy_id": "mb_12345",
+                  "confirmed_at": "2026-08-17T09:05:00Z",
+                  "revision": 1,
+                  "packages": [{"package_id": "pkg_001"}]
+                }
+              }
+            }]
+          }]
+        }
+      },
+      "expected_adcp_task_id": "adcp-task-9a21"
+    }
+  ]
+}

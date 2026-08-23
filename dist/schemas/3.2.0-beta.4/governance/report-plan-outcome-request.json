@@ -1,0 +1,274 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/governance/report-plan-outcome-request.json",
+  "title": "Report Plan Outcome Request",
+  "description": "Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agent) after a seller responds. The authenticated reporter must match the caller on the original approved intent, purchase_type must match that intent, and only one terminal settlement is allowed across all lifecycle checks sharing the opaque action binding. This is the 'after' half of the governance loop. Sellers do not call this task -- they report delivery data via check_governance with phase 'delivery'.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "completed"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "check_id",
+          "governance_context",
+          "seller_response"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "check_id",
+          "governance_context",
+          "error"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "delivery"
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "check_id",
+          "governance_context",
+          "delivery"
+        ]
+      }
+    }
+  ],
+  "x-status": "experimental",
+  "x-mutates-state": true,
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "description": "The plan this outcome is for. The plan is owned by the authenticated buyer that synchronized it; plan_id is an identifier, not an account credential. Completed and failed settlements inherit their commercial binding from the exact approved check tuple.",
+      "x-entity": "governance_plan"
+    },
+    "check_id": {
+      "type": "string",
+      "description": "The check_id from check_governance. Required for completed and failed outcomes and for buyer delivery observations. A delivery observation names the exact seller delivery check whose canonical statement is being compared.",
+      "x-entity": "governance_check"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Buyer-generated unique key for this outcome report. An identical retry returns the cached response without another settlement; reuse with a different canonical payload returns IDEMPOTENCY_CONFLICT. Use a fresh UUID v4 for each distinct report.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "purchase_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/purchase-type.json",
+      "description": "The type of financial commitment this outcome is for. Must equal the original approved intent's purchase_type. Determines which budget allocation (if any) to charge against. Defaults to 'media_buy' when omitted.",
+      "default": "media_buy"
+    },
+    "outcome": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/outcome-type.json",
+      "description": "Outcome type."
+    },
+    "seller_response": {
+      "type": "object",
+      "description": "The seller's full response. Required when outcome is 'completed'.",
+      "properties": {
+        "seller_reference": {
+          "type": "string",
+          "description": "The seller's identifier for the created resource (e.g., media_buy_id, rights_grant_id, deployment_id). Not interpreted by the governance agent — included in audit logs for human-readable traceability alongside the opaque governance_context.",
+          "maxLength": 255
+        },
+        "committed_budget": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Buyer-reported seller amount retained for reconciliation and audit. It is never ledger authority: the governance agent derives the reserved commitment from its own approved intent check, or from the matching purchase execution check when one exists. A report above that authorized amount is rejected; a lower report does not restore headroom."
+        },
+        "packages": {
+          "type": "array",
+          "description": "Confirmed packages with actual budget and targeting.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "budget": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "planned_delivery": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/planned-delivery.json",
+          "description": "What the seller said it will deliver. When seller-side governance is not configured, this is the governance agent's only view of the seller's delivery parameters."
+        },
+        "creative_deadline": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 deadline for creative submission."
+        }
+      },
+      "additionalProperties": true
+    },
+    "delivery": {
+      "type": "object",
+      "description": "Buyer-attributed observation compared with the canonical seller delivery statement identified by check_id. This evidence never overwrites seller evidence or creates a second commitment. A conflict produces an explicit disputed reconciliation state while the operational period is open; the plan owner may close it without asserting final billing truth.",
+      "properties": {
+        "observation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Stable buyer-issued identifier for this observation.",
+          "x-entity": "governance_delivery_observation"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "seller_statement_copy",
+            "buyer_measurement"
+          ],
+          "description": "Whether the buyer is forwarding the seller statement it received or reporting an independently measured observation. A forwarded seller statement is not independent evidence."
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "seller_statement_id": {
+          "type": "string",
+          "description": "Seller statement identifier as received by the buyer. Required for seller_statement_copy.",
+          "x-entity": "governance_delivery_statement"
+        },
+        "seller_statement_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "Digest received with the seller statement. Governance compares it to the seller-authenticated canonical digest."
+        },
+        "reporting_period": {
+          "type": "object",
+          "description": "Start and end timestamps for the reporting window.",
+          "properties": {
+            "start": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": false
+        },
+        "cumulative_spend": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Buyer-attributed cumulative spend for the governed action."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "period_closed": {
+          "type": "boolean",
+          "default": false,
+          "description": "Buyer-declared operational closure of this governance reporting period. When true, governance freezes the period after recording this observation. An unresolved mismatch becomes closed_unresolved and no longer blocks later governance. Closure is not final billing or commercial settlement. Only the authenticated plan owner may set this to true; the governance agent MUST reject it from any other authenticated reporter."
+        },
+        "impressions": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "observation_id",
+        "source",
+        "observed_at",
+        "reporting_period",
+        "cumulative_spend",
+        "currency"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "seller_statement_copy"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "required": [
+              "seller_statement_id",
+              "seller_statement_digest"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "description": "Error details. Required when outcome is 'failed'.",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Error code from the seller."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error description."
+        }
+      },
+      "additionalProperties": false
+    },
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque governance context from the check_governance response. Required with check_id for completed and failed outcomes and buyer delivery observations.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "plan_id",
+    "outcome"
+  ],
+  "additionalProperties": true
+}

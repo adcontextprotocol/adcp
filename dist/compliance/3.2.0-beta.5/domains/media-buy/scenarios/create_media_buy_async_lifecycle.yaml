@@ -1,0 +1,405 @@
+id: media_buy_seller/create_media_buy_async_lifecycle
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Seller exposes create_media_buy tasks through read and list lifecycle tools"
+category: media_buy_seller
+summary: "Forces create_media_buy into the submitted arm, reconciles the task through get_task_status and list_tasks, completes it deterministically, and verifies the terminal media-buy result."
+track: media_buy
+
+# The async arm is optional. Sellers that cannot deterministically exercise it
+# skip this scenario before any state is created.
+requires_capability:
+  path: compliance_testing.scenarios
+  contains: force_create_media_buy_arm
+
+required_tools:
+  - create_media_buy
+  - get_task_status
+  - list_tasks
+  - comply_test_controller
+
+narrative: |
+  A submitted create_media_buy response is useful only when the buyer can
+  reconcile the task later. This scenario closes that loop across the three
+  surfaces that share the task identity: create_media_buy issues task_id,
+  get_task_status reads the task, and list_tasks discovers it for recovery.
+
+  The compliance controller makes both ends deterministic. It forces the next
+  create_media_buy call into the submitted arm, then force_task_completion
+  resolves that exact task with a schema-valid CreateMediaBuyResponse. The
+  storyboard observes the task before and after completion so a seller cannot
+  return an untracked task_id or let its read and list views drift.
+
+  get_task_status and list_tasks are optional AdCP task-reconciliation tools.
+  Their steps use requires_tool so a baseline media-buy seller that does not
+  advertise either surface is not failed for omitting it. When advertised,
+  each surface is graded.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_test_controller
+  examples:
+    - "Sellers that defer media-buy creation for IO signing or human approval"
+    - "Platforms that queue media-buy activation for asynchronous processing"
+
+caller:
+  role: compliance_runner
+  example: "AdCP Verified runner reconciling an asynchronous media buy"
+
+prerequisites:
+  description: |
+    Seller exposes comply_test_controller in sandbox mode and advertises
+    force_create_media_buy_arm. The terminal phase also requires the seller to
+    advertise force_task_completion. Task read/list steps run only when the
+    corresponding optional tools are advertised.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "async_lifecycle_video_q3"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_options:
+        - format_option_id: "video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+  pricing_options:
+    - product_id: "async_lifecycle_video_q3"
+      pricing_option_id: "async_lifecycle_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 18.0
+
+phases:
+  - id: submit_async_media_buy
+    title: "Create a deterministic submitted task"
+    narrative: |
+      Register a one-shot controller directive, then create the media buy. The
+      response task_id must be the exact identity registered by the controller.
+
+    steps:
+      - id: force_create_media_buy_submitted
+        title: "Force the next create_media_buy into the submitted arm"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        comply_scenario: create_media_buy_async_lifecycle
+        stateful: true
+        context_outputs:
+          - name: forced_async_media_buy_task_id
+            path: "forced.task_id"
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "force_create_media_buy_arm"
+          params:
+            arm: "submitted"
+            task_id: "task_async_media_buy_lifecycle_q3"
+            message: "Awaiting insertion-order approval"
+          context:
+            correlation_id: "create_media_buy_async_lifecycle--force_submitted"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller accepts the submitted-arm directive"
+          - check: field_value
+            path: "forced.arm"
+            value: "submitted"
+            description: "Controller echoes the forced response arm"
+          - check: field_value
+            path: "forced.task_id"
+            value: "task_async_media_buy_lifecycle_q3"
+            description: "Controller echoes the deterministic task identity"
+
+      - id: create_submitted_media_buy
+        title: "Create the media buy and capture its task"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy_async_lifecycle
+        stateful: true
+        context_outputs:
+          - name: async_media_buy_task_id
+            path: "task_id"
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "async_lifecycle_video_q3"
+              budget: 30000
+              pricing_option_id: "async_lifecycle_cpm"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_create_media_buy_async_lifecycle_submit"
+          context:
+            correlation_id: "create_media_buy_async_lifecycle--create_submitted"
+        validations:
+          - check: response_schema
+            description: "Response matches the submitted arm of create-media-buy-response.json"
+          - check: field_value
+            path: "status"
+            value: "submitted"
+            description: "The media-buy operation is queued as an async task"
+          - check: field_value
+            path: "task_id"
+            value: "$context.forced_async_media_buy_task_id"
+            description: "create_media_buy returns the controller-issued task identity"
+          - check: field_absent
+            path: "media_buy_id"
+            description: "The media buy is issued only on terminal completion"
+          - check: field_absent
+            path: "packages"
+            description: "Packages are issued only on terminal completion"
+
+  - id: reconcile_submitted_task
+    title: "Read the submitted task consistently"
+    narrative: |
+      Optional task-reconciliation surfaces must resolve the task identity from
+      create_media_buy and agree that it is still submitted.
+
+    steps:
+      - id: get_submitted_media_buy_task
+        title: "Poll the submitted task"
+        task: get_task_status
+        requires_tool: get_task_status
+        schema_ref: "protocol/get-task-status-request.json"
+        response_schema_ref: "protocol/get-task-status-response.json"
+        doc_ref: "/protocol/get_task_status"
+        comply_scenario: create_media_buy_async_lifecycle
+        stateful: true
+        sample_request:
+          task_id: "$context.async_media_buy_task_id"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "create_media_buy_async_lifecycle--get_submitted"
+        validations:
+          - check: response_schema
+            description: "Response matches get-task-status-response.json"
+          - check: field_value
+            path: "task_id"
+            value: "$context.async_media_buy_task_id"
+            description: "Polling resolves the task returned by create_media_buy"
+          - check: field_value
+            path: "task_type"
+            value: "create_media_buy"
+            description: "Task type identifies the originating operation"
+          - check: field_value
+            path: "protocol"
+            value: "media-buy"
+            description: "Task remains in the media-buy protocol"
+          - check: field_value
+            path: "status"
+            value: "submitted"
+            description: "Task remains submitted before controller completion"
+
+      - id: list_submitted_media_buy_task
+        title: "Discover the submitted task through list_tasks"
+        task: list_tasks
+        requires_tool: list_tasks
+        schema_ref: "protocol/list-tasks-request.json"
+        response_schema_ref: "protocol/list-tasks-response.json"
+        doc_ref: "/protocol/list_tasks"
+        comply_scenario: create_media_buy_async_lifecycle
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            task_ids:
+              - "$context.async_media_buy_task_id"
+            task_type: "create_media_buy"
+          pagination:
+            max_results: 1
+          context:
+            correlation_id: "create_media_buy_async_lifecycle--list_submitted"
+        validations:
+          - check: response_schema
+            description: "Response matches list-tasks-response.json"
+          - check: field_value
+            path: "query_summary.total_matching"
+            value: 1
+            description: "The exact task filter matches one task"
+          - check: field_value
+            path: "tasks[0].task_id"
+            value: "$context.async_media_buy_task_id"
+            description: "list_tasks discovers the task returned by create_media_buy"
+          - check: field_value
+            path: "tasks[0].task_type"
+            value: "create_media_buy"
+            description: "Listed task identifies the originating operation"
+          - check: field_value
+            path: "tasks[0].domain"
+            value: "media-buy"
+            description: "Listed task remains in the media-buy domain"
+          - check: field_value
+            path: "tasks[0].status"
+            value: "submitted"
+            description: "List and read surfaces agree on submitted status"
+
+  - id: complete_and_reconcile_task
+    title: "Complete the task and observe its terminal result"
+    requires_capability:
+      path: compliance_testing.scenarios
+      contains: force_task_completion
+    narrative: |
+      Resolve the submitted task with a valid media-buy response, then verify
+      get_task_status and list_tasks converge on the same completed identity.
+
+    steps:
+      - id: complete_async_media_buy_task
+        title: "Force the media-buy task to completion"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        comply_scenario: create_media_buy_async_lifecycle
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "force_task_completion"
+          params:
+            task_id: "$context.async_media_buy_task_id"
+            result:
+              media_buy_id: "mb_async_media_buy_lifecycle_q3"
+              media_buy_status: "pending_creatives"
+              confirmed_at: "2026-08-15T12:00:00Z"
+              revision: 1
+              currency: "USD"
+              packages:
+                - package_id: "pkg_async_media_buy_lifecycle_q3"
+                  product_id: "async_lifecycle_video_q3"
+                  budget: 30000
+                  pricing_option_id: "async_lifecycle_cpm"
+                  paused: false
+              context:
+                correlation_id: "create_media_buy_async_lifecycle--terminal_result"
+          context:
+            correlation_id: "create_media_buy_async_lifecycle--complete"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller completes the submitted task"
+          - check: field_value
+            path: "current_state"
+            value: "completed"
+            description: "Controller reports the terminal task state"
+
+      - id: get_completed_media_buy_task
+        title: "Poll the completed task with its result"
+        task: get_task_status
+        requires_tool: get_task_status
+        schema_ref: "protocol/get-task-status-request.json"
+        response_schema_ref: "protocol/get-task-status-response.json"
+        doc_ref: "/protocol/get_task_status"
+        comply_scenario: create_media_buy_async_lifecycle
+        stateful: true
+        sample_request:
+          task_id: "$context.async_media_buy_task_id"
+          include_result: true
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "create_media_buy_async_lifecycle--get_completed"
+        validations:
+          - check: response_schema
+            description: "Response matches get-task-status-response.json"
+          - check: field_value
+            path: "task_id"
+            value: "$context.async_media_buy_task_id"
+            description: "Terminal polling preserves the submitted task identity"
+          - check: field_value
+            path: "task_type"
+            value: "create_media_buy"
+            description: "Terminal task preserves its originating operation"
+          - check: field_value
+            path: "status"
+            value: "completed"
+            description: "Polling observes the deterministic terminal state"
+          - check: field_value
+            path: "result.media_buy_id"
+            value: "mb_async_media_buy_lifecycle_q3"
+            description: "Terminal result issues the media-buy identity"
+          - check: field_value
+            path: "result.packages[0].package_id"
+            value: "pkg_async_media_buy_lifecycle_q3"
+            description: "Terminal result carries the created package"
+          - check: field_value
+            path: "result.context.correlation_id"
+            value: "create_media_buy_async_lifecycle--terminal_result"
+            description: "Controller-supplied terminal context round-trips unchanged"
+
+      - id: list_completed_media_buy_task
+        title: "Discover the completed task through list_tasks"
+        task: list_tasks
+        requires_tool: list_tasks
+        schema_ref: "protocol/list-tasks-request.json"
+        response_schema_ref: "protocol/list-tasks-response.json"
+        doc_ref: "/protocol/list_tasks"
+        comply_scenario: create_media_buy_async_lifecycle
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            task_ids:
+              - "$context.async_media_buy_task_id"
+            task_type: "create_media_buy"
+            status: "completed"
+          pagination:
+            max_results: 1
+          context:
+            correlation_id: "create_media_buy_async_lifecycle--list_completed"
+        validations:
+          - check: response_schema
+            description: "Response matches list-tasks-response.json"
+          - check: field_value
+            path: "query_summary.total_matching"
+            value: 1
+            description: "The completed-task filter matches one task"
+          - check: field_value
+            path: "tasks[0].task_id"
+            value: "$context.async_media_buy_task_id"
+            description: "Terminal list view preserves the submitted task identity"
+          - check: field_value
+            path: "tasks[0].status"
+            value: "completed"
+            description: "List and read surfaces agree on terminal status"

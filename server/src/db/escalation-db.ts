@@ -44,6 +44,7 @@ export interface Escalation {
   original_request: string | null;
   addie_context: string | null;
   notification_channel_id: string | null;
+  notification_claimed_at: Date | null;
   notification_sent_at: Date | null;
   notification_message_ts: string | null;
   status: EscalationStatus;
@@ -635,6 +636,46 @@ export async function setEscalationGithubIssue(
 }
 
 /**
+ * Atomically claim the right to send an escalation's initial notification.
+ * Claims expire so a worker crash before Slack delivery does not suppress
+ * notifications forever. `notification_sent_at` remains reserved for
+ * confirmed delivery because it drives the admin UI's "Team notified" state.
+ */
+export async function claimEscalationNotification(id: number): Promise<boolean> {
+  const result = await query<{ id: number }>(
+    `UPDATE addie_escalations
+     SET notification_claimed_at = NOW(),
+         updated_at = NOW()
+     WHERE id = $1
+       AND notification_sent_at IS NULL
+       AND (
+         notification_claimed_at IS NULL
+         OR notification_claimed_at < NOW() - INTERVAL '15 minutes'
+       )
+     RETURNING id`,
+    [id],
+  );
+  return result.rows.length === 1;
+}
+
+/**
+ * Release a notification claim when delivery definitely did not happen so a
+ * later invariant run can retry. Once a Slack message timestamp exists, the
+ * claim is never cleared.
+ */
+export async function releaseEscalationNotificationClaim(id: number): Promise<void> {
+  await query(
+    `UPDATE addie_escalations
+     SET notification_claimed_at = NULL,
+         updated_at = NOW()
+     WHERE id = $1
+       AND notification_sent_at IS NULL
+       AND notification_message_ts IS NULL`,
+    [id],
+  );
+}
+
+/**
  * Mark notification as sent
  */
 export async function markNotificationSent(
@@ -645,6 +686,7 @@ export async function markNotificationSent(
   await query(
     `UPDATE addie_escalations
      SET notification_channel_id = $2,
+         notification_claimed_at = NULL,
          notification_sent_at = NOW(),
          notification_message_ts = $3,
          updated_at = NOW()

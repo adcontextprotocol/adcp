@@ -2229,6 +2229,9 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
     targetDir,
     manifestPath,
     urlVersion,
+    manifestMetadata: {
+      canonical_wire_manifest: '../../manifest.json',
+    },
   });
   console.log(
     `   ✓ MCP ${MCP_PROTOCOL_VERSION} projection: ${stats.toolCount} tools, ${stats.schemaCount} schemas, `
@@ -2262,7 +2265,8 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
         exclude_protocols: ['compliance'],
         exclude_deprecated: true,
       },
-      canonical_projection: '../../manifest.json',
+      complete_discovery_projection: '../../manifest.json',
+      canonical_wire_manifest: '../../../../manifest.json',
     },
   });
   console.log(
@@ -2306,8 +2310,9 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
           include_tools: toolNames,
           exclude_deprecated: true,
         },
-        delivery: 'active 3.2 role-filtered validation artifacts; not a complete 3.x tools/list registration',
-        canonical_projection: '../../manifest.json',
+        delivery: 'active 3.2 role-filtered discovery inputs and response schemas; canonical wire schemas remain the call-validation authority',
+        complete_discovery_projection: '../../manifest.json',
+        canonical_wire_manifest: '../../../../manifest.json',
       },
     });
     if (profileStats.toolCount !== toolNames.length) {
@@ -2336,14 +2341,15 @@ function generateMcpProjectionForVersion(versionDir, urlVersion) {
           include_tools: toolNames,
           exclude_deprecated: true,
         },
-        delivery: 'client-side prompt input projection; servers continue to advertise outputSchema and clients validate with the parent profile',
-        validation_profile: '../manifest.json',
-        canonical_projection: '../../../manifest.json',
+        delivery: 'client-side prompt input projection; the parent profile supplies tools/list discovery inputs, while canonical wire schemas validate calls',
+        discovery_profile: '../manifest.json',
+        complete_discovery_projection: '../../../manifest.json',
+        canonical_wire_manifest: '../../../../../manifest.json',
       },
     });
     console.log(
       `   ✓ ${profileName} ${surfaceVersion} profile: ${profileStats.toolCount} tools, `
-        + `${(profileStats.totalBytes / (1024 * 1024)).toFixed(2)} MiB validation, `
+        + `${(profileStats.totalBytes / (1024 * 1024)).toFixed(2)} MiB discovery/response schemas, `
         + `${(modelContextStats.totalBytes / 1024).toFixed(0)} KiB model context`
     );
   }

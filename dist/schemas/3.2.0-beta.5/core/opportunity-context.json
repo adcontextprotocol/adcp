@@ -1,0 +1,128 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/opportunity-context.json",
+  "title": "Opportunity Context",
+  "description": "Buyer-supplied context for one planning cycle across proposal request, decline, and media-buy creation. The opaque opportunity_id is stable within the seller and account scope; sellers associate it with proposals without treating it as proposal identity.",
+  "type": "object",
+  "properties": {
+    "opportunity_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "opportunity",
+      "description": "Opaque buyer-assigned identifier for this planning cycle, scoped to the seller and account."
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "exploratory",
+        "planning",
+        "active_sourcing"
+      ],
+      "description": "Current stage of buyer planning."
+    },
+    "intent": {
+      "type": "string",
+      "enum": [
+        "test",
+        "speculative",
+        "planning",
+        "live_rfp"
+      ],
+      "description": "How seriously the buyer is evaluating supply in this cycle."
+    },
+    "planning_horizon": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/date-range.json",
+      "description": "Inclusive calendar range in which the buyer expects the campaign to run."
+    },
+    "response_deadline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Deadline by which the buyer needs a seller response."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "closed"
+      ],
+      "description": "Whether the planning cycle remains open. On calls after initial creation, omission means no status update and MUST NOT reopen or close the opportunity implicitly, except that successful create_media_buy proposal execution explicitly infers accepted closure."
+    },
+    "close_reason": {
+      "type": "string",
+      "enum": [
+        "accepted_with_seller",
+        "purchased_elsewhere",
+        "selected_alternative",
+        "not_pursued",
+        "budget_changed",
+        "timing_changed",
+        "other"
+      ],
+      "description": "Why the opportunity closed. Required when status is closed."
+    },
+    "close_detail": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "Optional non-sensitive context about closure. MUST NOT identify a competitor or disclose confidential clearing terms."
+    }
+  },
+  "required": [
+    "opportunity_id"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "closed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "close_reason"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "close_reason"
+              ]
+            },
+            {
+              "required": [
+                "close_detail"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "close_reason": {
+            "const": "other"
+          }
+        },
+        "required": [
+          "close_reason"
+        ]
+      },
+      "then": {
+        "required": [
+          "close_detail"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/performance-feedback-metric.json",
+  "title": "Performance Feedback Metric",
+  "description": "Metric identity for a performance-feedback assertion. Uses the same standard/vendor discriminator and qualifier vocabulary as committed_metrics, missing_metrics, and metric_aggregates.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "scope"
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "standard"
+        },
+        "metric_id": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/available-metric.json"
+        },
+        "qualifier": {
+          "type": "object",
+          "description": "Identity-affecting metric qualifiers. Statistical evidence and feedback-producer identity do not belong here.",
+          "properties": {
+            "viewability_standard": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/viewability-standard.json"
+            },
+            "completion_source": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/completion-source.json"
+            },
+            "attribution_methodology": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/attribution-methodology.json"
+            },
+            "attribution_window": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/duration.json"
+            },
+            "lift_dimension": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/lift-dimension.json"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "scope",
+        "metric_id"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "vendor"
+        },
+        "vendor": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/brand-ref.json",
+          "description": "Vendor that defines this metric. This can differ from the producer of the feedback assertion."
+        },
+        "metric_id": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/vendor-metric-id.json"
+        }
+      },
+      "required": [
+        "scope",
+        "vendor",
+        "metric_id"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

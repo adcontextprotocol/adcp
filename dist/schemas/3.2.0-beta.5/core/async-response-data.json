@@ -1,0 +1,208 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/async-response-data.json",
+  "title": "AdCP Async Response Data",
+  "description": "Validation union of supported async webhook payloads. For completed/failed statuses, use the main task response schema. For rejected get_products outcomes and working/input-required/submitted statuses, use the status-specific schemas. Because this shared webhook union is not tagged with the originating task type, callers MUST also validate a terminal result against that task or event's specific schema. Polling responses use a generic result selected through manifest.task_result_resolution instead of embedding this union.",
+  "anyOf": [
+    {
+      "title": "GetProductsResponse",
+      "description": "Response for completed or failed get_products",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/get-products-response.json"
+    },
+    {
+      "title": "GetProductsRejected",
+      "description": "Terminal business rejection for a well-formed get_products brief or refinement",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/get-products-rejected.json"
+    },
+    {
+      "title": "GetProductsAsyncWorking",
+      "description": "Progress data for working get_products",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/get-products-async-response-working.json"
+    },
+    {
+      "title": "GetProductsAsyncInputRequired",
+      "description": "Input requirements for get_products needing clarification",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/get-products-async-response-input-required.json"
+    },
+    {
+      "title": "GetProductsAsyncSubmitted",
+      "description": "Acknowledgment for submitted get_products (custom curation)",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/get-products-async-response-submitted.json"
+    },
+    {
+      "title": "RequestProposalsResponse",
+      "description": "Terminal response for request_proposals",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/request-proposals-response.json"
+    },
+    {
+      "title": "RequestProposalsAsyncSubmitted",
+      "description": "Acknowledgment for submitted request_proposals (consultative planning requiring upstream queries or human review)",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/request-proposals-async-response-submitted.json"
+    },
+    {
+      "title": "RefineProposalsResponse",
+      "description": "Terminal response for refine_proposals",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/refine-proposals-response.json"
+    },
+    {
+      "title": "RefineProposalsAsyncSubmitted",
+      "description": "Acknowledgment for submitted refine_proposals (complex revision requiring re-underwriting or upstream pricing queries)",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/refine-proposals-async-response-submitted.json"
+    },
+    {
+      "title": "DeclineProposalsResponse",
+      "description": "Terminal response for decline_proposals",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/decline-proposals-response.json"
+    },
+    {
+      "title": "MediaBuyCommitmentResponse",
+      "description": "Shared terminal response for buy_products and accept_proposal; originating task identity is carried by the task envelope and manifest resolver.",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/media-buy-commitment-response.json"
+    },
+    {
+      "title": "ControlMediaBuyResponse",
+      "description": "Terminal response for control_media_buy",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/control-media-buy-response.json"
+    },
+    {
+      "title": "CompactTaskSubmitted",
+      "description": "Submitted envelope for any compact lifecycle task; the originating tool is resolved from the task envelope.",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/compact-task-submitted.json"
+    },
+    {
+      "title": "CompactTaskWorking",
+      "description": "Working progress for any compact lifecycle task.",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/compact-task-working.json"
+    },
+    {
+      "title": "CompactTaskInputRequired",
+      "description": "Input-required payload for any compact lifecycle task.",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/compact-task-input-required.json"
+    },
+    {
+      "title": "GetSignalsResponse",
+      "description": "Response for completed or failed get_signals",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/signals/get-signals-response.json"
+    },
+    {
+      "title": "GetSignalsAsyncWorking",
+      "description": "Progress data for working get_signals",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/signals/get-signals-async-response-working.json"
+    },
+    {
+      "title": "GetSignalsAsyncSubmitted",
+      "description": "Acknowledgment for submitted get_signals (semantic discovery)",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/signals/get-signals-async-response-submitted.json"
+    },
+    {
+      "title": "CreateMediaBuyResponse",
+      "description": "Response for completed or failed create_media_buy",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/create-media-buy-response.json"
+    },
+    {
+      "title": "CreateMediaBuyAsyncWorking",
+      "description": "Progress data for working create_media_buy",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/create-media-buy-async-response-working.json"
+    },
+    {
+      "title": "CreateMediaBuyAsyncInputRequired",
+      "description": "Input requirements for create_media_buy needing user input",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/create-media-buy-async-response-input-required.json"
+    },
+    {
+      "title": "CreateMediaBuyAsyncSubmitted",
+      "description": "Acknowledgment for submitted create_media_buy",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/create-media-buy-async-response-submitted.json"
+    },
+    {
+      "title": "UpdateMediaBuyResponse",
+      "description": "Response for completed or failed update_media_buy",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/update-media-buy-response.json"
+    },
+    {
+      "title": "UpdateMediaBuyAsyncWorking",
+      "description": "Progress data for working update_media_buy",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/update-media-buy-async-response-working.json"
+    },
+    {
+      "title": "UpdateMediaBuyAsyncInputRequired",
+      "description": "Input requirements for update_media_buy needing user input",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/update-media-buy-async-response-input-required.json"
+    },
+    {
+      "title": "UpdateMediaBuyAsyncSubmitted",
+      "description": "Acknowledgment for submitted update_media_buy",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/update-media-buy-async-response-submitted.json"
+    },
+    {
+      "title": "MediaBuyDeliveryWebhookResult",
+      "description": "Delivery-report payload for media_buy_delivery webhook notifications. This is the inner result object carried by mcp-webhook-payload.json, not the full top-level get_media_buy_delivery task response envelope.",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/media-buy-delivery-webhook-result.json"
+    },
+    {
+      "title": "BuildCreativeResponse",
+      "description": "Response for completed or failed build_creative",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/build-creative-response.json"
+    },
+    {
+      "title": "PreviewCreativeResponse",
+      "description": "Terminal response for completed preview_creative",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/creative/preview-creative-response.json"
+    },
+    {
+      "title": "BuildCreativeAsyncWorking",
+      "description": "Progress data for working build_creative",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/build-creative-async-response-working.json"
+    },
+    {
+      "title": "BuildCreativeAsyncInputRequired",
+      "description": "Input requirements for build_creative needing user input",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/build-creative-async-response-input-required.json"
+    },
+    {
+      "title": "BuildCreativeAsyncSubmitted",
+      "description": "Acknowledgment for submitted build_creative",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/build-creative-async-response-submitted.json"
+    },
+    {
+      "title": "SyncCreativesResponse",
+      "description": "Response for completed or failed sync_creatives",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/creative/sync-creatives-response.json"
+    },
+    {
+      "title": "SyncCreativesAsyncWorking",
+      "description": "Progress data for working sync_creatives",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/creative/sync-creatives-async-response-working.json"
+    },
+    {
+      "title": "SyncCreativesAsyncInputRequired",
+      "description": "Input requirements for sync_creatives needing user input",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/creative/sync-creatives-async-response-input-required.json"
+    },
+    {
+      "title": "SyncCreativesAsyncSubmitted",
+      "description": "Acknowledgment for submitted sync_creatives",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/creative/sync-creatives-async-response-submitted.json"
+    },
+    {
+      "title": "SyncCatalogsResponse",
+      "description": "Response for completed or failed sync_catalogs",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/sync-catalogs-response.json"
+    },
+    {
+      "title": "SyncCatalogsAsyncWorking",
+      "description": "Progress data for working sync_catalogs",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/sync-catalogs-async-response-working.json"
+    },
+    {
+      "title": "SyncCatalogsAsyncInputRequired",
+      "description": "Input requirements for sync_catalogs needing buyer input",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/sync-catalogs-async-response-input-required.json"
+    },
+    {
+      "title": "SyncCatalogsAsyncSubmitted",
+      "description": "Acknowledgment for submitted sync_catalogs",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/sync-catalogs-async-response-submitted.json"
+    }
+  ]
+}

@@ -9,6 +9,29 @@
       "type": "boolean",
       "const": true
     },
+    "countrySupport": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/supported"
+        },
+        {
+          "type": "object",
+          "description": "Binding support for protocol-valid ISO 3166-1 alpha-2 country values, subject to the declared per-package cardinality limit. This object does not enumerate or restrict individual country codes.",
+          "properties": {
+            "max_values_per_package": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of country values accepted in this targeting field on one package."
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json"
+            }
+          },
+          "required": ["max_values_per_package"],
+          "additionalProperties": false
+        }
+      ]
+    },
     "metroSupport": {
       "anyOf": [
         {
@@ -147,8 +170,8 @@
     }
   },
   "properties": {
-    "geo_countries": { "$ref": "#/definitions/supported" },
-    "geo_countries_exclude": { "$ref": "#/definitions/supported" },
+    "geo_countries": { "$ref": "#/definitions/countrySupport" },
+    "geo_countries_exclude": { "$ref": "#/definitions/countrySupport" },
     "geo_regions": {
       "anyOf": [
         { "$ref": "#/definitions/supported" },
@@ -191,6 +214,11 @@
               "items": { "$ref": "/schemas/enums/transport-mode.json" },
               "minItems": 1,
               "uniqueItems": true
+            },
+            "max_values_per_package": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Maximum number of proximity entries accepted on one package."
             },
             "ext": { "$ref": "/schemas/core/ext.json" }
           },
