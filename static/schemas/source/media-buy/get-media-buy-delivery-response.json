@@ -393,6 +393,18 @@
                         "$ref": "/schemas/core/catalog-item-delivery-metrics.json"
                       }
                     },
+                    "by_catalog_item_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_catalog_item was truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_catalog_item is present and the request included reporting_dimensions.catalog_item (false means the list is complete). When the breakdown was returned automatically without a request key, the flag is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
+                    "by_catalog_item_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_catalog_item rows. Sellers MUST return this field whenever by_catalog_item is present and the request included reporting_dimensions.catalog_item. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric. When the breakdown was returned automatically without a request key, the field is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
+                    "by_catalog_item_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_catalog_item ordering. Sellers MUST return this field whenever by_catalog_item is present and the request included reporting_dimensions.catalog_item, alongside by_catalog_item_sorted_by. When the breakdown was returned automatically without a request key, the field is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
                     "by_creative": {
                       "type": "array",
                       "description": "Metrics broken down by creative within this package. Available when the seller supports creative-level reporting.",
@@ -400,12 +412,36 @@
                         "$ref": "/schemas/core/creative-delivery-metrics.json"
                       }
                     },
+                    "by_creative_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_creative was truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_creative is present and the request included reporting_dimensions.creative (false means the list is complete). When the breakdown was returned automatically without a request key, the flag is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
+                    "by_creative_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_creative rows. Sellers MUST return this field whenever by_creative is present and the request included reporting_dimensions.creative. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric. When the breakdown was returned automatically without a request key, the field is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
+                    "by_creative_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_creative ordering. Sellers MUST return this field whenever by_creative is present and the request included reporting_dimensions.creative, alongside by_creative_sorted_by. When the breakdown was returned automatically without a request key, the field is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
                     "by_keyword": {
                       "type": "array",
                       "description": "Metrics broken down by keyword within this package. One row per (keyword, match_type) pair — the same keyword with different match types appears as separate rows. Keyword-grain only: rows reflect aggregate performance of each targeted keyword, not individual search queries. Rows may not sum to package totals when a single impression is attributed to the triggering keyword only. Available for search and retail media packages when the seller supports keyword-level reporting.",
                       "items": {
                         "$ref": "/schemas/core/keyword-delivery-metrics.json"
                       }
+                    },
+                    "by_keyword_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_keyword was truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_keyword is present and the request included reporting_dimensions.keyword (false means the list is complete). When the breakdown was returned automatically without a request key, the flag is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
+                    "by_keyword_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_keyword rows. Sellers MUST return this field whenever by_keyword is present and the request included reporting_dimensions.keyword. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric. When the breakdown was returned automatically without a request key, the field is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
+                    "by_keyword_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_keyword ordering. Sellers MUST return this field whenever by_keyword is present and the request included reporting_dimensions.keyword, alongside by_keyword_sorted_by. When the breakdown was returned automatically without a request key, the field is RECOMMENDED but not required — automatic rows carry no completeness contract."
                     },
                     "by_geo": {
                       "type": "array",
