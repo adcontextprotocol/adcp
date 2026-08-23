@@ -62,24 +62,43 @@ export const STRICT_REQUIRED_FOR: readonly string[] = [
 /** JSON-RPC protocol method names the strict route requires signed.
  *  Wire-distinct from `STRICT_REQUIRED_FOR` (AdCP tool names) per the
  *  `request_signing.protocol_methods_*` namespace introduced in adcp#4318
- *  — `tasks/cancel` is the A2A 0.3.0 §7.x lifecycle method, not an AdCP
- *  operation. The MCP transport's auto-registered `tasks/*` JSON-RPC
- *  methods route through the same authenticated channel as `tools/call`,
- *  so the same RFC 9421 covered components apply. */
-export const STRICT_PROTOCOL_METHODS_REQUIRED_FOR: readonly string[] = ['tasks/cancel'];
+ *  — these exercise a simple A2A 0.3 lifecycle method, its nested
+ *  push-notification-config family, and the corresponding A2A 1.0 PascalCase
+ *  surface. They route through the same authenticated JSON-RPC channel as
+ *  `tools/call`, so the same RFC 9421 covered components apply. */
+export const STRICT_PROTOCOL_METHODS_REQUIRED_FOR: readonly string[] = [
+  'tasks/cancel',
+  'tasks/pushNotificationConfig/set',
+  'CreateTaskPushNotificationConfig',
+];
+
+/** Wire-name grammar mirroring the request-signing capability schema.
+ * A2A 0.3 uses slash paths (including mixed-case nested segments), while
+ * A2A 1.0 uses PascalCase RPC names. AdCP operation names remain lowercase
+ * snake_case and therefore cannot collide with either protocol namespace. */
+export const PROTOCOL_METHOD_NAME_PATTERN =
+  /^(?:[a-z][A-Za-z0-9_]*(?:\/[A-Za-z][A-Za-z0-9_]*)+|[A-Z][A-Za-z0-9_]*)$/;
+export const PROTOCOL_METHOD_NAME_MAX_LENGTH = 256;
+
+export function isProtocolMethodName(value: string): boolean {
+  return value.length <= PROTOCOL_METHOD_NAME_MAX_LENGTH
+    && value !== 'tools/call'
+    && PROTOCOL_METHOD_NAME_PATTERN.test(value);
+}
 
 /**
  * Resolve the operation string for an inbound JSON-RPC request body. Returns
  * the AdCP tool name for `tools/call` (matching the SDK's `mcpToolNameResolver`)
- * AND the bare JSON-RPC method name for protocol-level methods like
- * `tasks/cancel` / `tasks/get` (which the SDK's resolver returns `undefined`
- * for, since it only knows the MCP `tools/call` envelope).
+ * AND the bare JSON-RPC method name for protocol-level methods like A2A 0.3
+ * `tasks/cancel` or A2A 1.0 `CancelTask` (which the SDK's resolver returns
+ * `undefined` for, since it only knows the MCP `tools/call` envelope).
  *
  * Implements the "MUST NOT cross-namespace match" rule from
  * docs/building/by-layer/L1/security.mdx: AdCP tool names live in the
- * `tools/call` `params.name` slot and never contain `/`; JSON-RPC protocol
- * methods live in the `method` slot and always contain `/`. The resolver
- * returns `undefined` for any body whose namespace doesn't match its slot
+ * `tools/call` `params.name` slot and use lowercase snake_case; JSON-RPC
+ * protocol methods live in the `method` slot and use an A2A 0.3 slash path or
+ * an A2A 1.0 PascalCase name. The resolver returns `undefined` for any body
+ * whose namespace doesn't match its slot
  * (e.g., a `tools/call` envelope with `params.name: "tasks/cancel"`), so
  * `required_for` matching cannot be tricked across namespaces by a body
  * that smuggles a wrong-namespace string into the wrong slot.
@@ -100,19 +119,18 @@ export function mcpOperationResolver(req: { rawBody?: string }): string | undefi
   if (body.method === 'tools/call') {
     const name = body.params?.name;
     if (typeof name !== 'string') return undefined;
-    // Cross-namespace match prevention: AdCP tool names never contain `/`.
-    // A `tools/call` body whose params.name contains `/` is either malformed
-    // or smuggling a JSON-RPC method string into the AdCP slot — refuse to
-    // resolve so the verifier doesn't accidentally satisfy a
-    // `protocol_methods_required_for` match through the wrong envelope.
-    if (name.includes('/')) return undefined;
+    // Cross-namespace match prevention: a `tools/call` body whose params.name
+    // has an A2A 0.3 slash-path or A2A 1.0 PascalCase shape is either malformed
+    // or smuggling a JSON-RPC method string into the AdCP slot. Refuse to
+    // resolve so the verifier cannot satisfy protocol_methods_required_for
+    // through the wrong envelope field.
+    if (isProtocolMethodName(name)) return undefined;
     return name;
   }
-  // JSON-RPC protocol methods (e.g. `tasks/cancel`). Defense-in-depth: only
-  // return when the method string is shaped like a JSON-RPC method (contains
-  // `/`); a non-`tools/call` method without `/` is not in our protocol-method
-  // namespace and must not satisfy a `required_for` match.
-  return body.method.includes('/') ? body.method : undefined;
+  // Defense-in-depth: only return a recognized A2A 0.3 slash-path or A2A 1.0
+  // PascalCase wire shape. A lower_snake_case non-tools/call method is not in
+  // the protocol-method namespace and must not satisfy a required_for match.
+  return isProtocolMethodName(body.method) ? body.method : undefined;
 }
 
 let defaultCapability: VerifierCapability | null = null;

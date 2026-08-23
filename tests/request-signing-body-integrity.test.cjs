@@ -13,6 +13,16 @@ const fixturePath = path.join(
   '../static/compliance/source/test-vectors/request-signing/body-integrity-policy.json'
 );
 const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+const protocolMethodFixturePath = path.join(
+  path.dirname(fixturePath),
+  'protocol-method-names.json'
+);
+const protocolMethodFixture = JSON.parse(fs.readFileSync(protocolMethodFixturePath, 'utf8'));
+const capabilitiesSchemaPath = path.join(
+  __dirname,
+  '../static/schemas/source/protocol/get-adcp-capabilities-response.json'
+);
+const capabilitiesSchema = JSON.parse(fs.readFileSync(capabilitiesSchemaPath, 'utf8'));
 
 describe('AdCP 3.2 request-signing body-integrity policy', () => {
   it('pins the fixture to the 3.2 signing profile', () => {
@@ -130,4 +140,61 @@ describe('AdCP 3.2 request-signing body-integrity policy', () => {
       'the raw signature must be valid so only sf-binary parsing causes rejection'
     );
   });
+});
+
+describe('AdCP 3.2 request-signing protocol-method names', () => {
+  const requestSigningProperties = capabilitiesSchema.properties.request_signing.properties;
+  const protocolMethodFields = [
+    'protocol_methods_supported_for',
+    'protocol_methods_warn_for',
+    'protocol_methods_required_for',
+  ];
+  const acceptsDeclaration = (field, method) => {
+    const itemSchema = requestSigningProperties[field].items;
+    return method.length <= itemSchema.maxLength
+      && new RegExp(itemSchema.pattern).test(method)
+      && itemSchema.not?.const !== method;
+  };
+
+  it('pins the fixture to the 3.2 signing profile', () => {
+    assert.equal(protocolMethodFixture.profile_version, '3.2');
+  });
+
+  it('uses one declaration schema for all three protocol-method buckets', () => {
+    const itemSchemas = protocolMethodFields.map(
+      field => JSON.stringify(requestSigningProperties[field].items)
+    );
+    assert.equal(new Set(itemSchemas).size, 1);
+  });
+
+  for (const declaration of protocolMethodFixture.valid_declarations) {
+    it(`accepts ${declaration.family} wire method names`, () => {
+      for (const field of protocolMethodFields) {
+        for (const method of declaration.methods) {
+          assert.equal(acceptsDeclaration(field, method), true, `${field} must accept ${method}`);
+        }
+      }
+    });
+  }
+
+  it('keeps lower_snake_case AdCP operations and malformed paths out of the protocol namespace', () => {
+    for (const method of protocolMethodFixture.invalid_declarations) {
+      for (const field of protocolMethodFields) {
+        assert.equal(acceptsDeclaration(field, method), false, `${field} must reject ${method}`);
+      }
+    }
+  });
+
+  it('bounds protocol method declarations', () => {
+    for (const field of protocolMethodFields) {
+      assert.equal(acceptsDeclaration(field, 'A'.repeat(256)), true);
+      assert.equal(acceptsDeclaration(field, 'A'.repeat(257)), false);
+    }
+  });
+
+  for (const testCase of protocolMethodFixture.exact_match_cases) {
+    it(testCase.id, () => {
+      assert.equal(new Set(testCase.declared_methods).has(testCase.wire_method), testCase.matches);
+    });
+  }
 });

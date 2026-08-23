@@ -41,6 +41,7 @@ import {
   REPLAY_TTL_SECONDS,
 } from '../../src/training-agent/idempotency.js';
 import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { canonicalize } from '@adcp/sdk';
 
 function resignTermsDigest(proposal: Record<string, unknown>): void {
@@ -102,6 +103,14 @@ const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
 const CURRENT_ADCP_VERSION = '3.2-beta.4';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open', authenticatedAgentUrl: 'https://buyer.example' };
+
+const protocolMethodFixture = JSON.parse(readFileSync(new URL(
+  '../../../static/compliance/source/test-vectors/request-signing/protocol-method-names.json',
+  import.meta.url,
+), 'utf8')) as {
+  valid_declarations: Array<{ family: string; methods: string[] }>;
+  invalid_declarations: string[];
+};
 
 describe('canonical package readiness parameter matching', () => {
   const manifest = (width: number, height: number) => ({
@@ -15579,15 +15588,23 @@ describe('get_adcp_capabilities handler', () => {
     expect(requiredFor).toContain('create_media_buy');
     expect(requiredFor).toContain('update_media_buy');
     expect(requiredFor).toContain('sync_creatives');
-    // Wire shape — namespace is enforced by absence of `/`.
-    expect(requiredFor.every(op => !op.includes('/'))).toBe(true);
+    const { isProtocolMethodName } = await import('../../src/training-agent/request-signing.js');
+    expect(requiredFor.every(op => !isProtocolMethodName(op))).toBe(true);
 
-    expect(rs.protocol_methods_required_for).toEqual(['tasks/cancel']);
-    expect(rs.protocol_methods_supported_for).toEqual(['tasks/cancel']);
+    expect(rs.protocol_methods_required_for).toEqual([
+      'tasks/cancel',
+      'tasks/pushNotificationConfig/set',
+      'CreateTaskPushNotificationConfig',
+    ]);
+    expect(rs.protocol_methods_supported_for).toEqual([
+      'tasks/cancel',
+      'tasks/pushNotificationConfig/set',
+      'CreateTaskPushNotificationConfig',
+    ]);
 
     // Cross-namespace leak guard.
     const supportedFor = rs.supported_for as string[];
-    expect(supportedFor.every(op => !op.includes('/'))).toBe(true);
+    expect(supportedFor.every(op => !isProtocolMethodName(op))).toBe(true);
   });
 });
 
@@ -15627,6 +15644,53 @@ describe('mcpOperationResolver', () => {
       id: 1,
     });
     expect(mcpOperationResolver({ rawBody })).toBe('tasks/get');
+  });
+
+  it('returns a nested A2A 0.3 push-notification-config method name', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'tasks/pushNotificationConfig/set',
+      params: {},
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBe('tasks/pushNotificationConfig/set');
+  });
+
+  it('returns an A2A 1.0 PascalCase method name', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'SendMessage',
+      params: {},
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBe('SendMessage');
+  });
+
+  it('matches the decoded method string regardless of its JSON escape spelling', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = '{"jsonrpc":"2.0","method":"\\u0043ancelTask","params":{},"id":1}';
+    expect(mcpOperationResolver({ rawBody })).toBe('CancelTask');
+  });
+
+  it('does not classify the reserved tools/call envelope as a protocol method', async () => {
+    const { isProtocolMethodName } = await import('../../src/training-agent/request-signing.js');
+    expect(isProtocolMethodName('tools/call')).toBe(false);
+  });
+
+  it('classifies the published conformance corpus with the runtime grammar', async () => {
+    const { isProtocolMethodName } = await import('../../src/training-agent/request-signing.js');
+    for (const declaration of protocolMethodFixture.valid_declarations) {
+      for (const method of declaration.methods) {
+        expect(isProtocolMethodName(method), `${declaration.family}: ${method}`).toBe(true);
+      }
+    }
+    for (const method of protocolMethodFixture.invalid_declarations) {
+      expect(isProtocolMethodName(method), method).toBe(false);
+    }
+    expect(isProtocolMethodName('A'.repeat(256))).toBe(true);
+    expect(isProtocolMethodName('A'.repeat(257))).toBe(false);
   });
 
   it('returns undefined for missing rawBody', async () => {
@@ -15671,7 +15735,18 @@ describe('mcpOperationResolver', () => {
     expect(mcpOperationResolver({ rawBody })).toBeUndefined();
   });
 
-  it('refuses non-tools/call method that does not contain slash (defense in depth)', async () => {
+  it('refuses tools/call with a PascalCase protocol method in params.name', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'tools/call',
+      params: { name: 'SendMessage', arguments: {} },
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBeUndefined();
+  });
+
+  it('refuses a lower_snake_case non-tools/call method (defense in depth)', async () => {
     const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
     const rawBody = JSON.stringify({
       jsonrpc: '2.0',

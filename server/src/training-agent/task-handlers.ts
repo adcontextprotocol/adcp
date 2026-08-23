@@ -2616,7 +2616,7 @@ import {
   REPLAY_TTL_SECONDS,
 } from './idempotency.js';
 import { maybeEmitCompletionWebhook } from './webhooks.js';
-import { selectSigningCapability } from './request-signing.js';
+import { isProtocolMethodName, selectSigningCapability } from './request-signing.js';
 import {
   getScopedTrainingTaskStore,
   resetTrainingTaskStore,
@@ -13990,22 +13990,16 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
   const signingCap = selectSigningCapability(ctx);
   // Wire shape splits the SDK's flat `required_for` / `supported_for` lists
   // back into the two namespaces defined in the spec (adcp#4318):
-  //   - `required_for` / `supported_for`: AdCP tool names (no `/`)
-  //   - `protocol_methods_*`: JSON-RPC method names (e.g. `tasks/cancel`)
+  //   - `required_for` / `supported_for`: lowercase_snake_case AdCP operations
+  //   - `protocol_methods_*`: A2A 0.3 slash paths or A2A 1.0 PascalCase names
   // The internal verifier capability merges both for by-string matching;
   // the wire response separates them so verifiers and storyboard runners
   // don't conflate the two namespaces.
   //
-  // The `/` test is the structural inverse of the schema's
-  // `pattern: "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"` constraint on
-  // `protocol_methods_*` items in `static/schemas/source/protocol/get-adcp-capabilities-response.json`.
-  // AdCP tool names are snake_case and have never contained `/`; this filter
-  // is correct as long as that invariant holds.
-  const isProtocolMethod = (op: string): boolean => op.includes('/');
-  const requiredFor = signingCap.required_for.filter(op => !isProtocolMethod(op));
-  const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethod(op));
-  const protocolMethodsRequiredFor = signingCap.required_for.filter(isProtocolMethod);
-  const protocolMethodsSupportedFor = signingCap.supported_for?.filter(isProtocolMethod) ?? [];
+  const requiredFor = signingCap.required_for.filter(op => !isProtocolMethodName(op));
+  const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethodName(op));
+  const protocolMethodsRequiredFor = signingCap.required_for.filter(isProtocolMethodName);
+  const protocolMethodsSupportedFor = signingCap.supported_for?.filter(isProtocolMethodName) ?? [];
   const wholesaleProfile = wholesaleCapabilityProfile(ctx);
   const complianceScenarios = [
     'force_creative_status',

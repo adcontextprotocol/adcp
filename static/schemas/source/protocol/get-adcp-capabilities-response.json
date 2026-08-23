@@ -2239,7 +2239,8 @@
           "type": "array",
           "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. Not MCP tool names, A2A skill names, or any transport-specific rename — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. JSON-RPC protocol method names like `tasks/cancel` belong in `protocol_methods_required_for`, not here. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Every operation listed MUST also appear in `supported_for`; see `x-adcp-validation`.",
           "items": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
           },
           "default": [],
           "x-adcp-validation": {
@@ -2251,7 +2252,8 @@
           "type": "array",
           "description": "AdCP protocol operation names for shadow-mode verification. The verifier records missing signatures and well-formed signatures that fail verification or body binding, but MUST NOT establish verified-signer identity from a failed signature; processing continues only when an independent bearer, API-key, or mTLS authenticator succeeds. A partial or malformed Signature / Signature-Input pair always hard-rejects. Used as a bridge between supported_for and required_for. Precedence: required_for > warn_for > supported_for. An operation MUST NOT appear in both warn_for and required_for; see x-adcp-validation.",
           "items": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
           },
           "default": [],
           "x-adcp-validation": {
@@ -2264,15 +2266,18 @@
           "type": "array",
           "description": "AdCP protocol operation names for which this agent verifies signatures when present but does not require them. Under the 3.2 profile, a presented signature on a body-bearing request without content-digest coverage rejects even though an unsigned request may use configured fallback authentication. Typically a superset of required_for and warn_for.",
           "items": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
           }
         },
         "protocol_methods_supported_for": {
           "type": "array",
-          "description": "JSON-RPC protocol method names (e.g., 'tasks/cancel', 'tasks/get') for which this agent verifies signatures when present. Under the 3.2 profile, a presented signature on a body-bearing request without content-digest coverage rejects. Disjoint from supported_for, which carries AdCP tool names only. Items MUST be wire-format JSON-RPC method strings containing `/`; plain AdCP tool names belong in supported_for.",
+          "description": "JSON-RPC protocol method names for which this agent verifies signatures when present. Values MUST use exact, case-sensitive equality after JSON decoding: slash-path names such as 'tasks/cancel' and 'tasks/pushNotificationConfig/set' for A2A 0.3, or PascalCase names such as 'CancelTask' and 'CreateTaskPushNotificationConfig' for A2A 1.0. A dual-stack agent lists each supported wire name independently; implementations MUST NOT translate or normalize between protocol versions. The reserved MCP envelope method 'tools/call' is forbidden because its AdCP operation identity is params.name and belongs in supported_for. Under the 3.2 profile, a presented signature on a body-bearing request without content-digest coverage rejects. Disjoint from supported_for, which carries lower_snake_case AdCP operation names only.",
           "items": {
             "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"
+            "maxLength": 256,
+            "pattern": "^(?:[a-z][A-Za-z0-9_]*(?:/[A-Za-z][A-Za-z0-9_]*)+|[A-Z][A-Za-z0-9_]*)$",
+            "not": { "const": "tools/call" }
           },
           "default": [],
           "x-adcp-validation": {
@@ -2281,10 +2286,12 @@
         },
         "protocol_methods_warn_for": {
           "type": "array",
-          "description": "Protocol method names for shadow-mode verification, mirroring warn_for in the AdCP-tool namespace. Missing signatures and well-formed signatures that fail verification or body binding are recorded but MUST NOT establish verified-signer identity; processing continues only when an independent authenticator succeeds. A partial or malformed Signature / Signature-Input pair always hard-rejects. An item MUST NOT appear in both protocol_methods_warn_for and protocol_methods_required_for; see x-adcp-validation.",
+          "description": "Exact JSON-RPC protocol method names for shadow-mode verification, mirroring warn_for in the AdCP-operation namespace. Wire-name grammar and exact, case-sensitive matching semantics are identical to protocol_methods_supported_for. Missing signatures and well-formed signatures that fail verification or body binding are recorded but MUST NOT establish verified-signer identity; processing continues only when an independent authenticator succeeds. A partial or malformed Signature / Signature-Input pair always hard-rejects. An item MUST NOT appear in both protocol_methods_warn_for and protocol_methods_required_for; see x-adcp-validation.",
           "items": {
             "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"
+            "maxLength": 256,
+            "pattern": "^(?:[a-z][A-Za-z0-9_]*(?:/[A-Za-z][A-Za-z0-9_]*)+|[A-Z][A-Za-z0-9_]*)$",
+            "not": { "const": "tools/call" }
           },
           "default": [],
           "x-adcp-validation": {
@@ -2295,10 +2302,12 @@
         },
         "protocol_methods_required_for": {
           "type": "array",
-          "description": "JSON-RPC protocol method names for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. Separate namespace from required_for: this bucket binds against the JSON-RPC method field, not tools/call params.name. Every listed method MUST also appear in protocol_methods_supported_for; see x-adcp-validation.",
+          "description": "Exact JSON-RPC protocol method names for which this agent rejects an unsigned request with request_signature_required unless an independently valid configured fallback authenticator succeeds. Wire-name grammar and exact, case-sensitive matching semantics are identical to protocol_methods_supported_for. Separate namespace from required_for: this bucket binds against the JSON-RPC method field, not tools/call params.name. Every listed method MUST also appear in protocol_methods_supported_for; see x-adcp-validation.",
           "items": {
             "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"
+            "maxLength": 256,
+            "pattern": "^(?:[a-z][A-Za-z0-9_]*(?:/[A-Za-z][A-Za-z0-9_]*)+|[A-Z][A-Za-z0-9_]*)$",
+            "not": { "const": "tools/call" }
           },
           "default": [],
           "x-adcp-validation": {
