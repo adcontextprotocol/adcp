@@ -6089,6 +6089,55 @@ export function projectProductDiscoveryResult(
   return result;
 }
 
+function proposalLifecyclePrincipal(ctx: TrainingContext): string {
+  return ctx.proposalRefinementScope?.principal_id
+    ?? (ctx.authenticatedAgentUrl ? `agent:${ctx.authenticatedAgentUrl}` : ctx.principal)
+    ?? 'anonymous';
+}
+
+/** Stable execution owner for legacy proposal handoff. Public training
+ * credentials intentionally treat the natural account's sandbox flag as a
+ * transport assertion: the packaged legacy storyboard omits it during
+ * discovery and restores it for execution. Real principals retain an exact
+ * production/sandbox boundary. */
+function legacyProposalExecutionScope(args: ToolArgs, ctx: TrainingContext): string | undefined {
+  const account = args.account ?? ctx.resolvedAccount;
+  if (account) {
+    try {
+      const canonical = canonicalizeAccountRef(account);
+      if (canonical.kind === 'account_id') return `a:${canonical.account_id}`;
+      return `n:${JSON.stringify({
+        brand: canonical.brand,
+        operator: canonical.operator,
+        operator_unit_id: canonical.operator_unit?.id ?? null,
+        currency: canonical.currency ?? null,
+        timezone: canonical.timezone ?? null,
+        ...(!ctx.principal?.startsWith('static:') && { sandbox: canonical.sandbox }),
+      })}`;
+    } catch {
+      // Source validation normally makes this unreachable. Preserve the
+      // brand-only fallback for frozen compatibility requests.
+    }
+  }
+  const resolvedBrandDomain = ctx.resolvedAccount && 'brand' in ctx.resolvedAccount
+    ? ctx.resolvedAccount.brand?.domain
+    : undefined;
+  const domain = args.brand?.domain ?? resolvedBrandDomain;
+  return typeof domain === 'string' ? `b:${domain.toLowerCase()}` : undefined;
+}
+
+function legacyProposalOwnerMatches(
+  proposal: Proposal,
+  args: ToolArgs,
+  ctx: TrainingContext,
+): boolean {
+  const internal = proposal as unknown as Record<string, unknown>;
+  const ownerAccountScope = legacyProposalExecutionScope(args, ctx);
+  return internal.__legacy_owner_principal === proposalLifecyclePrincipal(ctx)
+    && ownerAccountScope !== undefined
+    && internal.__legacy_owner_account_scope === ownerAccountScope;
+}
+
 /** Compact proposal operations are partitioned by authenticated principal and
  * the SDK-restored account reference. */
 function productDiscoverySessionKey(args: ToolArgs, ctx: TrainingContext): string {
@@ -6100,8 +6149,7 @@ function productDiscoverySessionKey(args: ToolArgs, ctx: TrainingContext): strin
     // principal-owned SDK proposal scope, while recording the originating
     // account on each snapshot for accept_proposal authorization.
     const trustedAccountId = ctx.proposalRefinementScope?.account_id ?? 'public_sandbox';
-    const trustedPrincipal = ctx.proposalRefinementScope?.principal_id
-      ?? (ctx.authenticatedAgentUrl ? `agent:${ctx.authenticatedAgentUrl}` : ctx.principal);
+    const trustedPrincipal = proposalLifecyclePrincipal(ctx);
     if (trustedAccountId && trustedPrincipal) {
       const key = sessionKeyFromArgs(
         { account: { account_id: trustedAccountId } },
@@ -7719,6 +7767,12 @@ async function handleGetProductsUnlocked(
             const brandDomain = ((accountBrand?.brand as Record<string, unknown>)?.domain as string)
               || (typeof boundBrandDomain === 'string' ? boundBrandDomain : undefined);
             const updatedProposal = executableProposalSnapshot(proposal, brandDomain);
+            if (!compactLifecycle) {
+              const internal = updatedProposal as unknown as Record<string, unknown>;
+              const ownerAccountScope = legacyProposalExecutionScope(req, ctx);
+              internal.__legacy_owner_principal = proposalLifecyclePrincipal(ctx);
+              if (ownerAccountScope) internal.__legacy_owner_account_scope = ownerAccountScope;
+            }
             stagedProposalCommits.set(op.proposal_id, updatedProposal);
 
             refinementApplied.push({ scope: 'proposal', proposal_id: op.proposal_id, status: 'applied', notes: 'Proposal finalized — pricing committed, inventory held for 24 hours' });
@@ -10914,9 +10968,23 @@ async function handleCreateMediaBuyUnlocked(
 
   // Proposal-based creation: expand proposal allocations into packages
   if (req.proposal_id && !req.packages?.length) {
-    // Check session proposals first (may have finalized versions), then global catalog
-    let proposal = session.lastGetProductsContext?.proposals?.find(p => p.proposal_id === req.proposal_id)
-      || getProposals().find(p => p.proposal_id === req.proposal_id);
+    // Check the request account first. Legacy proposal storyboards can restore
+    // a sandbox assertion only at execution time, so their committed snapshot
+    // may live in a different account-keyed session. Recover only an exact
+    // principal + account owner match before considering the global draft.
+    const sessionProposal = session.lastGetProductsContext?.proposals?.find(
+      candidate => candidate.proposal_id === req.proposal_id,
+    );
+    const sessionProposalInternal = sessionProposal as unknown as Record<string, unknown> | undefined;
+    const sessionProposalIsCompact = typeof sessionProposalInternal?.__account_id === 'string'
+      || typeof sessionProposalInternal?.__brand_domain === 'string';
+    let proposal = sessionProposal && (
+      proposalLifecycle(sessionProposal).proposal_status !== 'committed'
+      || sessionProposalIsCompact
+      || legacyProposalOwnerMatches(sessionProposal, req, ctx)
+    )
+      ? sessionProposal
+      : undefined;
     if (!proposal) {
       // Compact proposal lifecycle calls intentionally address opaque IDs
       // under the authenticated principal instead of repeating account data.
@@ -10935,6 +11003,21 @@ async function handleCreateMediaBuyUnlocked(
         executedCompactProposalSession = proposalSession;
       }
     }
+    if (!proposal) {
+      const ownerAccountScope = legacyProposalExecutionScope(req, ctx);
+      const legacyProposalSession = ownerAccountScope
+        ? await findSessionMatching(candidateSession => (
+            candidateSession.lastGetProductsContext?.proposals?.some(candidate => {
+              if (candidate.proposal_id !== req.proposal_id) return false;
+              return legacyProposalOwnerMatches(candidate, req, ctx);
+            }) ?? false
+          ))
+        : null;
+      proposal = legacyProposalSession?.lastGetProductsContext?.proposals?.find(
+        candidate => candidate.proposal_id === req.proposal_id,
+      );
+    }
+    proposal ??= getProposals().find(p => p.proposal_id === req.proposal_id);
     if (proposal) {
       const internal = proposal as unknown as Record<string, unknown>;
       const accountRef = req.account as unknown as { account_id?: string };

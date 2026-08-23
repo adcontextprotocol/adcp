@@ -18033,6 +18033,88 @@ describe('proposal lifecycle', () => {
     expect(result.media_buy_id).toBeDefined();
   });
 
+  it('hands a committed legacy proposal to the same principal without crossing account or principal boundaries', async () => {
+    const ownerCtx: TrainingContext = {
+      mode: 'open',
+      principal: 'static:proposal-owner',
+      authenticatedAgentUrl: 'https://proposal-owner.example',
+    };
+    const otherPrincipalCtx: TrainingContext = {
+      mode: 'open',
+      principal: 'static:proposal-other',
+      authenticatedAgentUrl: 'https://proposal-other.example',
+    };
+    const ownerAccount = {
+      brand: { domain: 'proposal-handoff.example' },
+      operator: 'buyer-one.example',
+    };
+
+    const { result: initial } = await simulateCallTool(
+      createTrainingAgentServer(ownerCtx),
+      'get_products',
+      { buying_mode: 'brief', brief: 'premium video news', account: ownerAccount },
+    );
+    const draft = (initial.proposals as Array<Record<string, unknown>>).find(
+      proposal => proposal.proposal_status === 'draft',
+    );
+    expect(draft).toBeDefined();
+
+    const { result: refined } = await simulateCallTool(
+      createTrainingAgentServer(ownerCtx),
+      'get_products',
+      {
+        buying_mode: 'refine',
+        account: ownerAccount,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draft!.proposal_id }],
+      },
+    );
+    const committed = (refined.proposals as Array<Record<string, unknown>>).find(
+      proposal => proposal.proposal_id === draft!.proposal_id,
+    );
+    expect(committed).toMatchObject({ proposal_status: 'committed' });
+    const io = committed!.insertion_order as Record<string, unknown>;
+    const execution = {
+      account: { ...ownerAccount, sandbox: true },
+      brand: ownerAccount.brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: committed!.proposal_id,
+      total_budget: { amount: 75000, currency: 'USD' },
+      io_acceptance: {
+        io_id: io.io_id,
+        accepted_at: new Date().toISOString(),
+        signatory: 'proposal-owner',
+      },
+    };
+
+    const wrongPrincipal = await simulateCallTool(
+      createTrainingAgentServer(otherPrincipalCtx),
+      'create_media_buy',
+      { ...execution, account: ownerAccount },
+    );
+    expect(wrongPrincipal.isError).toBe(true);
+    expect(wrongPrincipal.result).toMatchObject({ code: 'PROPOSAL_NOT_COMMITTED' });
+
+    const wrongAccount = await simulateCallTool(
+      createTrainingAgentServer(ownerCtx),
+      'create_media_buy',
+      {
+        ...execution,
+        account: { ...execution.account, operator: 'buyer-two.example' },
+      },
+    );
+    expect(wrongAccount.isError).toBe(true);
+    expect(wrongAccount.result).toMatchObject({ code: 'PROPOSAL_NOT_COMMITTED' });
+
+    const accepted = await simulateCallTool(
+      createTrainingAgentServer(ownerCtx),
+      'create_media_buy',
+      execution,
+    );
+    expect(accepted.isError, JSON.stringify(accepted.result)).toBeFalsy();
+    expect(accepted.result.media_buy_id).toEqual(expect.any(String));
+  });
+
   it('rejects create_media_buy with mismatched io_id', async () => {
     const server1 = createTrainingAgentServer(DEFAULT_CTX);
     const { result: initial } = await simulateCallTool(server1, 'get_products', {
