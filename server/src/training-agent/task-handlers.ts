@@ -2062,20 +2062,35 @@ function hasOwnMetric(metrics: Record<string, unknown>, metricId: string): boole
   return Object.prototype.hasOwnProperty.call(metrics, metricId) && metrics[metricId] !== undefined;
 }
 
+const VIEWABILITY_METRIC_IDS = new Set([
+  'viewability',
+  'viewable_rate',
+  'viewable_impressions',
+  'measurable_impressions',
+  'viewed_seconds',
+  'viewed_seconds_percentiles',
+  'viewed_seconds_histogram',
+]);
+
 function standardMetricIsDelivered(
   metric: CommittedMetricProposalView,
   delivery: Record<string, unknown>,
 ): boolean {
   const metricId = metric.metric_id!;
   const qualifier = metric.qualifier;
-  if (qualifier && Object.keys(qualifier).length > 0) {
-    if (
-      metricId === 'viewability'
+  if (VIEWABILITY_METRIC_IDS.has(metricId) && isRecord(delivery.viewability)) {
+    const metricPresent = metricId === 'viewability'
+      ? true
+      : hasOwnMetric(delivery.viewability, metricId);
+    if (!metricPresent) return false;
+    if (!qualifier || Object.keys(qualifier).length === 0) return true;
+    return (
+      Object.keys(qualifier).length === 1
       && typeof qualifier.viewability_standard === 'string'
-      && isRecord(delivery.viewability)
-    ) {
-      return delivery.viewability.standard === qualifier.viewability_standard;
-    }
+      && delivery.viewability.standard === qualifier.viewability_standard
+    );
+  }
+  if (qualifier && Object.keys(qualifier).length > 0) {
     // A qualified commitment is satisfied only by a delivery path that makes
     // the same qualifier observable. The reference seller currently exposes
     // only viewability.standard at package grain.
@@ -12155,6 +12170,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       clicks,
       ...audioMetrics,
       ...byCreative,
+      ...(mb.packages.length === 1 && simDelivery?.viewability
+        ? { viewability: simDelivery.viewability }
+        : {}),
       ...(vendorMetricValues.length > 0 && { vendor_metric_values: vendorMetricValues }),
     };
     const missingMetrics = eligibleAuditMetrics.reduce<Array<Record<string, unknown>>>((missing, metric) => {

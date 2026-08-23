@@ -280,6 +280,18 @@ export interface ComplyDeliveryAccumulator {
     viewable_impressions?: number;
     viewable_rate?: number;
     viewed_seconds?: number;
+    viewed_seconds_percentiles?: {
+      p25: number;
+      p50: number;
+      p75: number;
+      p90: number;
+      p95: number;
+    };
+    viewed_seconds_histogram?: Array<{
+      lower_bound_seconds: number;
+      upper_bound_seconds?: number;
+      impressions: number;
+    }>;
     standard?: string;
   };
   /** vendor_metric_values injected via comply_test_controller simulate_delivery. */

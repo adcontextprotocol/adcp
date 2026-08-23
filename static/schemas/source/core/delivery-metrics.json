@@ -288,7 +288,15 @@
     },
     "viewability": {
       "type": "object",
-      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — plus optional percentile and histogram distributions over that duration; all three use the same `measurable_impressions` population and are governed by the same viewability threshold (`standard`). Sellers SHOULD include `standard` whenever measured viewability values are reported because MRC and GroupM rows are not interchangeable. The numeric leaves are addressable via the leaf metric identities `viewable_rate`, `viewable_impressions`, `measurable_impressions`, and `viewed_seconds` for declaration, commitments, aggregates, and breakdown sorting. The structured distribution carriers are addressable via `viewed_seconds_percentiles` and `viewed_seconds_histogram` for declaration and selection, but are not sortable; this object remains the canonical carrier of every value. When a buy reports under more than one standard, contract a specific standard via the `viewability_standard` qualifier on `committed_metrics`; when the package's `committed_metrics` carry a `viewability_standard` qualifier, sellers MUST populate `standard` on reported viewability objects so reconciliation can match the qualifier.",
+      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — plus optional percentile and histogram distributions over that duration; all three use the same `measurable_impressions` population and are governed by the same viewability threshold (`standard`). Sellers SHOULD include `standard` whenever measured viewability values are reported because MRC and GroupM rows are not interchangeable. The numeric leaves are addressable via the leaf metric identities `viewable_rate`, `viewable_impressions`, `measurable_impressions`, and `viewed_seconds` for declaration, commitments, aggregates, and breakdown sorting. The structured distribution carriers require explicit `viewed_seconds_percentiles` and `viewed_seconds_histogram` identities for declaration, commitment, and selection; they are not numeric aggregate rows or sort keys. This object remains the canonical carrier of every value. When a buy reports under more than one standard, contract a specific standard via the `viewability_standard` qualifier on `committed_metrics`; when the package's `committed_metrics` carry a `viewability_standard` qualifier, sellers MUST populate `standard` on reported viewability objects so reconciliation can match the qualifier.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "viewed_seconds_percentile_order": "p25 <= p50 <= p75 <= p90 <= p95",
+          "viewed_seconds_histogram_bounds": "buckets are ordered by lower_bound_seconds; each bounded bucket has upper_bound_seconds > lower_bound_seconds; buckets do not overlap; only the final bucket may omit upper_bound_seconds",
+          "viewed_seconds_histogram_population": "sum(bucket.impressions) equals measurable_impressions"
+        },
+        "spec": "docs/media-buy/media-buys/optimization-reporting.mdx#available-metrics"
+      },
       "properties": {
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",
@@ -384,6 +392,33 @@
         "viewed_seconds_percentiles": ["viewed_seconds", "measurable_impressions"],
         "viewed_seconds_histogram": ["viewed_seconds", "measurable_impressions"]
       },
+      "allOf": [
+        {
+          "if": {
+            "required": ["viewed_seconds_percentiles"]
+          },
+          "then": {
+            "properties": {
+              "measurable_impressions": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["viewed_seconds_histogram"]
+          },
+          "then": {
+            "properties": {
+              "measurable_impressions": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      ],
       "additionalProperties": true
     },
     "engagements": {

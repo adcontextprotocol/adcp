@@ -55,11 +55,13 @@ import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } fr
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
 import { getAllSignals } from './signal-providers.js';
+import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
 import {
   findAudienceInSession,
   forceAudienceStatusInSession,
   type TrainingAudienceStatus,
 } from './audience-handlers.js';
+import { validateViewedSecondsDistributionSemantics } from './delivery-metrics-semantics.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -916,9 +918,39 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       const reportedSpend = params.reported_spend;
       const typedParams = params as Record<string, unknown>;
 
+      if (typedParams.viewability !== undefined && mb.packages.length !== 1) {
+        throw new TestControllerError(
+          'INVALID_PARAMS',
+          'media-buy-scoped viewability is unambiguous only for a single-package buy',
+        );
+      }
+
       const deliveryDate = typedParams.delivery_date;
       if (deliveryDate !== undefined && !isCanonicalDeliveryDate(deliveryDate)) {
         throw new TestControllerError('INVALID_PARAMS', 'delivery_date must be a real calendar date in YYYY-MM-DD format');
+      }
+
+      if (typedParams.viewability !== undefined) {
+        const schemaResult = await validateProtocolSchema(
+          '/schemas/core/delivery-metrics.json',
+          { viewability: typedParams.viewability },
+        );
+        if (!schemaResult.valid) {
+          const first = schemaResult.errors[0];
+          throw new TestControllerError(
+            'INVALID_PARAMS',
+            `viewability schema: ${first?.instancePath || '/viewability'} ${first?.message ?? 'is invalid'}`,
+          );
+        }
+      }
+
+      const distributionViolations = validateViewedSecondsDistributionSemantics(typedParams.viewability);
+      if (distributionViolations.length > 0) {
+        const first = distributionViolations[0];
+        throw new TestControllerError(
+          'INVALID_PARAMS',
+          `${first.rule}: ${first.field} expected ${String(first.expected ?? 'valid distribution semantics')}`,
+        );
       }
 
       const existing = getDeliverySimulation(session, mediaBuyId);

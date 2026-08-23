@@ -190,6 +190,75 @@ describe("metric identity coherence", () => {
       false,
       "partial percentile summaries must be rejected"
     );
+    for (const measurable_impressions of [0, 10.5]) {
+      assert.equal(
+        validate({
+          viewability: {
+            measurable_impressions,
+            viewed_seconds: 4.25,
+            viewed_seconds_percentiles: valid.viewability.viewed_seconds_percentiles,
+          },
+        }),
+        false,
+        `distribution denominator ${measurable_impressions} must be rejected`
+      );
+    }
+    assert.equal(
+      validate({
+        viewability: {
+          measurable_impressions: 0,
+          viewed_seconds: 0,
+          viewed_seconds_histogram: [
+            { lower_bound_seconds: 0, impressions: 0 },
+          ],
+        },
+      }),
+      true,
+      JSON.stringify(validate.errors)
+    );
+    assert.equal(
+      validate({
+        viewability: {
+          measurable_impressions: 10.5,
+          viewed_seconds: 4.25,
+          viewed_seconds_histogram: valid.viewability.viewed_seconds_histogram,
+        },
+      }),
+      false,
+      "histogram with a fractional denominator must be rejected"
+    );
+
+    const verifierConstraints =
+      deliveryMetrics.properties.viewability["x-adcp-validation"]?.verifier_constraints;
+    assert.deepEqual(verifierConstraints, {
+      viewed_seconds_percentile_order: "p25 <= p50 <= p75 <= p90 <= p95",
+      viewed_seconds_histogram_bounds:
+        "buckets are ordered by lower_bound_seconds; each bounded bucket has upper_bound_seconds > lower_bound_seconds; buckets do not overlap; only the final bucket may omit upper_bound_seconds",
+      viewed_seconds_histogram_population:
+        "sum(bucket.impressions) equals measurable_impressions",
+    });
+    assert.equal(
+      deliveryMetrics.properties.viewability["x-adcp-validation"]?.spec,
+      "docs/media-buy/media-buys/optimization-reporting.mdx#available-metrics"
+    );
+  });
+
+  it("rejects structured identities from scalar metric aggregates", async () => {
+    const validate = await compile(
+      readSchema("/schemas/core/delivery-metric-aggregate.json")
+    );
+    for (const metric_id of Object.keys(STRUCTURED_IDENTITIES)) {
+      assert.equal(
+        validate({ scope: "standard", metric_id, value: 42 }),
+        false,
+        `${metric_id} must not validate as a numeric aggregate`
+      );
+    }
+    assert.equal(
+      validate({ scope: "standard", metric_id: "viewed_seconds", value: 4.25 }),
+      true,
+      JSON.stringify(validate.errors)
+    );
   });
 
   it("only conditions delivery-metric-aggregate on representable metric_ids", () => {

@@ -16,8 +16,20 @@
           "description": "Standard metric from the closed `available-metric.json` enum."
         },
         "metric_id": {
-          "$ref": "/schemas/enums/available-metric.json",
-          "description": "Identifier for the standard metric."
+          "description": "Identifier for a scalar standard metric. Structured distribution identities are committed and selected through their nested carriers, not represented as numeric aggregate rows.",
+          "allOf": [
+            {
+              "$ref": "/schemas/enums/available-metric.json"
+            },
+            {
+              "not": {
+                "enum": [
+                  "viewed_seconds_percentiles",
+                  "viewed_seconds_histogram"
+                ]
+              }
+            }
+          ]
         },
         "qualifier": {
           "type": "object",
