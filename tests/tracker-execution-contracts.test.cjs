@@ -176,6 +176,15 @@ test('pixel selector rejects invalid method, custom shape, actor, and path', () 
   assert.equal(validate(pixelSelector({ execution_actor: 'creative_agent' })), false);
   assert.equal(validate(pixelSelector({ firing_paths: [] })), false);
   assert.equal(validate(pixelSelector({ firing_paths: ['mixed'] })), false);
+
+  const pixelAsset = JSON.parse(fs.readFileSync(
+    path.join(SCHEMAS, 'core/assets/pixel-tracker-asset.json'),
+    'utf8'
+  ));
+  const customSemantics = pixelAsset.properties.custom_event_name.description;
+  assert.match(customSemantics, /complete:true/,
+    'complete contracts must override the legacy unknown-custom no-op behavior');
+  assert.match(customSemantics, /tracker_contract_mismatch/);
 });
 
 test('VAST selector enforces event, target, progress, and per-version constraints', () => {
@@ -424,4 +433,22 @@ test('tracker contract and supporting vocabularies are discoverable in the schem
   ]) {
     assert.ok(refs.includes(ref), `${ref} must be discoverable in static/schemas/source/index.json`);
   }
+});
+
+test('package task references retain contract snapshots after creative coverage', () => {
+  const createDocs = fs.readFileSync(
+    path.join(ROOT, 'docs/media-buy/task-reference/create_media_buy.mdx'),
+    'utf8'
+  );
+  const readDocs = fs.readFileSync(
+    path.join(ROOT, 'docs/media-buy/task-reference/get_media_buys.mdx'),
+    'utf8'
+  );
+  for (const docs of [createDocs, readDocs]) {
+    assert.match(docs, /PackageFormatSnapshot/);
+    assert.match(docs, /formats_to_provide/);
+    assert.match(docs, /formats_pending/);
+  }
+  assert.match(createDocs, /remains present after upload or assignment/);
+  assert.match(readDocs, /remains present after creative coverage is complete/);
 });
