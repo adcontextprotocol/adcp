@@ -25,6 +25,14 @@ export const HOSTED_COMPLIANCE_TARGET_PREFERENCE = [
 // a single hung call hold a connection for 10 minutes.
 export const HOSTED_FULL_COMPLIANCE_TIMEOUT_MS = 600_000;
 
+// Interactive full-suite runs (evaluate_agent_quality via Addie) need a higher
+// ceiling: 67 storyboards × 17s worst-case step pacing = ~1139s, plus headroom
+// for target discovery and network jitter.  The background callers (heartbeat,
+// registry refresh) keep the shared 600s constant so heartbeat lock TTLs and
+// hung-call risk stay bounded.
+// TODO(adcontextprotocol/adcp-client#2221): collapse when upstream per-call timeout is restored
+export const HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS = 1_200_000;
+
 export interface HostedComplianceTarget {
   requested: string;
   version: string;
