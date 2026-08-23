@@ -28,6 +28,7 @@ const COMPETITOR_PATTERNS: Array<{ pattern: RegExp; name: string }> = [
   { pattern: /agentic advertising management protocols/i, name: 'AAMP' },
   { pattern: /\bartf\b/i, name: 'ARTF' },
   { pattern: /agentic rtb framework/i, name: 'ARTF' },
+  { pattern: /agentic real[- ]time framework/i, name: 'ARTF' },
   { pattern: /agentic audiences/i, name: 'Agentic Audiences' },
   { pattern: /iab tech lab agent registry/i, name: 'IAB Agent Registry' },
   { pattern: /iab tech lab/i, name: 'IAB Tech Lab' },
