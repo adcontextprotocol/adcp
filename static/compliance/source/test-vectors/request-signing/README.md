@@ -4,7 +4,7 @@ Test vectors for the AdCP RFC 9421 request-signing profile. These fixtures drive
 
 Specification: [Signed Requests (Transport Layer)](https://adcontextprotocol.org/docs/building/by-layer/L1/security#signed-requests-transport-layer) in `docs/building/by-layer/L1/security.mdx`.
 
-**Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/compliance/{version}/test-vectors/request-signing/`, with `{version}` being either a specific release (e.g. `3.0.0`) or `latest` (tracks the most recent GA). Tree preserved — `keys.json`, `negative/*.json`, `profile-3.2/{positive,negative}/*.json`, and `positive/*.json` are all resolvable. SDKs SHOULD fetch from the versioned CDN path and record the version under test rather than requiring a checkout of the spec repo. Example: `https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/positive/001-basic-post.json`.
+**Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/compliance/{version}/test-vectors/request-signing/`, with `{version}` being either a specific release (e.g. `3.0.0`) or `latest` (tracks the most recent GA). Tree preserved — `keys.json`, `canonicalization.json`, `body-integrity-policy.json`, `protocol-method-names.json`, `negative/*.json`, `profile-3.2/{positive,negative}/*.json`, and `positive/*.json` are all resolvable. SDKs SHOULD fetch from the versioned CDN path and record the version under test rather than requiring a checkout of the spec repo. Example: `https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/protocol-method-names.json`.
 
 ## Scope
 
@@ -18,6 +18,7 @@ test-vectors/request-signing/
 ├── keys.json                             test keypairs (Ed25519 + ES256) in JWK format with adcp_use values
 ├── canonicalization.json                 pure URL-canonicalization cases (no crypto) — every rule from the @target-uri algorithm + malformed-authority rejections
 ├── body-integrity-policy.json            3.2 substitution, list-mode, fallback-auth, downgrade, and no-body policy matrix
+├── protocol-method-names.json            3.2 A2A 0.3/1.0 declaration grammar and exact decoded-string matching cases
 ├── negative/                             legacy 3.1 vectors that MUST fail verification
 │   ├── 001-no-signature-header.json      → request_signature_required (pre-check 0; op in required_for)
 │   ├── 002-wrong-tag.json                → request_signature_tag_invalid (step 3)

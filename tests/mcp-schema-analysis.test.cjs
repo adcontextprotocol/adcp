@@ -34,8 +34,8 @@ test("input-field weight report attributes the largest transitive schema graphs"
   const report = analyzeInputSchemaWeights(schemas);
 
   assert.equal(report.tool_count, 16);
-  assert.equal(report.definition_instances, 581);
-  assert.equal(report.unique_definitions, 151);
+  assert.equal(report.definition_instances, 582);
+  assert.equal(report.unique_definitions, 152);
   assert.equal(report.repeated_definitions, 109);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
@@ -155,7 +155,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
   });
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
-  assert.equal(Object.keys(view.dictionary.$defs).length, 151);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 152);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(

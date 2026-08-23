@@ -2463,10 +2463,9 @@ async function runTests() {
 
   // request_signing.protocol_methods_* — JSON-RPC method namespace (adcp#4318).
   // The `protocol_methods_supported_for` / `_warn_for` / `_required_for` arrays
-  // carry JSON-RPC method strings (e.g. `tasks/cancel`); plain AdCP tool names
-  // (no `/`) are wire-distinct and belong in `supported_for` / `required_for`.
-  // The schema enforces the namespace split via a `pattern: "/"` constraint on
-  // the items.
+  // carry exact JSON-RPC wire names: A2A 0.3 slash paths or A2A 1.0 PascalCase
+  // names. Lowercase snake-case AdCP operation names are wire-distinct and
+  // belong in `supported_for` / `required_for`.
   log('Get AdCP Capabilities Response (request_signing.protocol_methods_*):', 'info');
 
   await testSchemaValidation(
@@ -2479,11 +2478,21 @@ async function runTests() {
         covers_content_digest: 'either',
         required_for: ['create_media_buy'],
         supported_for: ['create_media_buy', 'update_media_buy'],
-        protocol_methods_supported_for: ['tasks/cancel', 'tasks/get'],
-        protocol_methods_required_for: ['tasks/cancel'],
+        protocol_methods_supported_for: [
+          'tasks/cancel',
+          'tasks/pushNotificationConfig/set',
+          'SendMessage',
+          'CancelTask',
+          'CreateTaskPushNotificationConfig',
+        ],
+        protocol_methods_warn_for: ['SendMessage'],
+        protocol_methods_required_for: [
+          'tasks/pushNotificationConfig/set',
+          'CancelTask',
+        ],
       },
     },
-    'Accepts protocol_methods_* with JSON-RPC method strings (`tasks/cancel`, `tasks/get`)'
+    'Accepts A2A 0.3 paths and A2A 1.0 PascalCase names in protocol_methods_*'
   );
 
   await testSchemaValidation(
@@ -2675,6 +2684,56 @@ async function runTests() {
     },
     'Rejects AdCP tool name (no `/`) in protocol_methods_required_for'
   );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: [],
+        protocol_methods_warn_for: ['sendMessage'],
+      },
+    },
+    'Rejects lowerCamelCase names that are neither A2A 0.3 paths nor A2A 1.0 methods'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: [],
+        protocol_methods_supported_for: ['tools/call'],
+      },
+    },
+    'Rejects reserved MCP tools/call from the protocol-method namespace'
+  );
+
+  for (const field of ['supported_for', 'warn_for', 'required_for']) {
+    for (const protocolMethod of ['tasks/cancel', 'CancelTask']) {
+      await testSchemaRejection(
+        '/schemas/protocol/get-adcp-capabilities-response.json',
+        {
+          ...capabilitiesBase,
+          adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+          request_signing: {
+            supported: true,
+            covers_content_digest: 'either',
+            required_for: [],
+            supported_for: [],
+            [field]: [protocolMethod],
+          },
+        },
+        `Rejects ${protocolMethod} from the AdCP-operation ${field} bucket`
+      );
+    }
+  }
 
   log('');
 
