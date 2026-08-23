@@ -1,7 +1,7 @@
 ---
 title: Recertification and protocol-change updates
 sidebarTitle: Recertification
-description: "AdCP certification recertification policy: targeted protocol-change updates, delta assessments, learner notifications, and the AdCP 3.1 canonical formats S2 rationale."
+description: "AdCP certification recertification policy: targeted protocol-change updates, delta assessments, learner notifications, and recorded AdCP 3.1 and 3.2 decisions."
 "og:title": "AdCP - Recertification and protocol-change updates"
 ---
 
@@ -18,7 +18,8 @@ This policy is IACET-aligned and CPD-aligned. It is not an assertion of current 
 
 AdCP credentials are tied to protocol competency. When the protocol changes, the certification program determines whether existing credential holders need no action, a targeted delta assessment, or full recertification.
 
-This policy documents that decision process and records the AdCP 3.1 canonical formats rationale for pre-3.1 S2 Creative specialist holders.
+This policy documents that decision process and records the AdCP 3.1 canonical
+formats rationale and the AdCP 3.2 specialist-credential decision.
 
 ## Decision levels
 
@@ -107,6 +108,59 @@ Learners are assigned full S2 recertification instead of the delta when:
 
 The delta-only window is 90 days after `delta_window_opens_at`. During that window, affected credential holders keep their S2 credential but are marked as requiring a protocol update. After the window closes, unresolved holders retain their historical S2 completion record, but their learner-facing S2 status is no longer current until they complete the current S2 module. Learner-facing messages must include the computed absolute deadline date.
 
+## AdCP 3.2 specialist decision
+
+AdCP 3.2 adds bounded competencies to three specialist credentials without
+invalidating their prior evidence. The recorded decision is therefore a
+**targeted delta assessment** for pre-3.2 holders of S1 Media Buy, S2 Creative,
+and S6 Security—not full recertification. No 3.2 learner targeting, notification,
+or credential-status change may occur during beta.
+
+Migration `550_curriculum_3_2_criteria.sql` adds stable evidence handles to the
+current module definitions so beta-path learners can demonstrate the new wire
+behavior. That curriculum instrumentation is not, by itself, a release gate or
+authorization to target prior credential holders. Evidence recorded during beta
+is provisional until program leadership maps it to the final GA artifact.
+
+| Credential | New criterion IDs | Decision rationale |
+|---|---|---|
+| S1 Media Buy | `s1_ex1_sc_compact_media_buy_lifecycle`, `s1_ex1_sc_targeting_aware_discovery`, `s1_ex1_sc_availability_and_outcome_planning` | Compact lifecycle, targeting resolution, and planning inputs extend prior discovery, proposal, purchase, and optimization evidence. |
+| S2 Creative | `s2_ex1_sc_pixel_density_and_renditions`, `s2_ex1_sc_vast_accessibility_provenance` | Pixel-density, rendition, validation, accessibility, and provenance rules narrow prior format-authoring and validation competencies. |
+| S6 Security | `s6_ex2_sc_3_2_signed_body_integrity`, `s6_ex4_sc_webhook_delivery_identity` | Body binding and binary encoding extend request-signing evidence; separating echoed `operation_id` correlation from payload `idempotency_key` deduplication extends webhook-security evidence. |
+
+For each credential, `criteria_effective_at` is the later of AdCP 3.2.0 GA and
+production deployment of `550_curriculum_3_2_criteria.sql` with the applicable
+assessment path available. `delta_window_opens_at` equals that effective point;
+`delta_window_closes_at` is 90 calendar days later at 23:59 UTC. The auditable
+record requirement is a pre-effective-date completion record for the affected
+module plus a criterion/checkpoint trail sufficient to verify its prior required
+demonstrations. A holder whose record already includes every applicable 3.2
+criterion requires no action.
+
+Assign the current full module instead of the delta when the prior record is
+missing or cannot be mapped, the learner misses the delta window, or later GA
+changes materially invalidate the beta-era mapping above. Program leadership
+must re-review this decision against the final 3.2.0 artifact before opening the
+window; if GA changes a listed competency, update the criterion and rationale
+before targeting learners.
+
+### GA activation gate
+
+The 3.2 delta is recorded but inactive during beta. Before anyone sets a 3.2
+criteria deployment timestamp or targets an existing holder, engineering and
+program leadership must verify all of the following:
+
+- the final 3.2.0 artifact still maps to the criterion IDs above;
+- each affected module has a registered delta definition and independently
+  configurable release gate—one module's window must not activate another;
+- Addie can present only the missing criteria, save criterion-level evidence,
+  and route an unmappable or late record to the full current module;
+- automated tests cover pre-GA suppression, the later-of-GA-and-deployment
+  boundary, the 90-day UTC deadline, already-complete evidence, missing records,
+  and the post-window full-recertification path; and
+- learner notification copy contains the affected credential, exact required
+  demonstrations, absolute deadline, support contact, and appeal path.
+
 ## CPD and accreditation disclosure
 
 Recommended disclosure for continuing professional development records:
@@ -131,7 +185,7 @@ Email notification:
 >
 > Complete the delta by `<computed deadline date>` to keep your credential current. After that window, the current S2 module is required for renewal. If you believe you were targeted in error, email certification@agenticadvertising.org; we acknowledge assessment and targeting review requests within 2 business days and resolve them through the complaints process.
 
-## Implementation gates
+## AdCP 3.1 implementation gates
 
 Engineering must not enable learner targeting or send learner notifications until all of the following are true:
 

@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/trusted-match/provider-identity-match-response.json",
+  "title": "Identity Match Response (Provider → Router)",
+  "description": "Provider-to-router shape of the Identity Match response. An identity agent returns eligibility, the per-package serve-window throttle, and — when it mints one — an ordered list of TMPX chunks. Each chunk pairs a provider-local `slot_id` (declared at registration in `tmpx_slots`) with an opaque URL-safe `value`. Publisher-local destination names (ad-server macros, GAM key-values, VAST URL macros, DOOH play-log fields) MUST NOT appear on this hop; the router keys chunks under the emitting `provider_id` and the publisher's deployment configuration resolves `(provider_id, slot_id)` to the local destination (see publisher-tmpx-config.json). Router-hop fields (`tmpx_providers`, `tmpx`) MUST NOT appear on this shape — a router receiving them from a provider MUST reject the response. Envelope extension fields (`context`, `ext`) are intentionally omitted to prevent data leakage across the identity privacy boundary; they are forbidden by this schema.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/protocol-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "identity_match_response",
+      "description": "Message type discriminator for deserialization. Same const as the router→publisher variant so publisher-facing decoders can key off type before dispatching on shape."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Echoed request identifier from the identity match request."
+    },
+    "eligible_package_ids": {
+      "type": "array",
+      "description": "Package IDs the user is eligible for. Packages not listed are ineligible.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "serve_window_sec": {
+      "type": "integer",
+      "description": "Per-package single-shot fcap window, in seconds. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. Not a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by the buyer's impression tracker. Maximum 300.",
+      "minimum": 1,
+      "maximum": 300
+    },
+    "tmpx_chunks": {
+      "type": "array",
+      "description": "Ordered TMPX chunk/value pairs this identity agent mints. Each entry names the provider-local `slot_id` the value fills (from the provider's registered `tmpx_slots` in provider-registration.json). Ordered-prefix invariant: a response that carries fewer chunks than the provider registered MUST emit an ordered prefix of the registered `tmpx_slots` — routers MUST NOT reorder or fill gaps. The router MUST validate this contract before forwarding: if the provider has no `tmpx_slots` registration, or if the chunk `slot_id` sequence is not an exact non-empty ordered prefix of the registered list (duplicate, reordered, sparse, or unregistered slot IDs), the router MUST drop that provider's chunks atomically and MUST NOT forward them into `tmpx_providers`. Cap of 2 chunks in v1 aligned with the GAM macro-slot budget; the cap MAY rise without a shape change. Omitted when this provider mints no TMPX (e.g. no eligible packages).",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/trusted-match/tmpx-chunk.json"
+      },
+      "minItems": 1,
+      "maxItems": 2
+    }
+  },
+  "required": [
+    "type",
+    "request_id",
+    "eligible_package_ids",
+    "serve_window_sec"
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "tmpx_providers"
+        ]
+      },
+      {
+        "required": [
+          "tmpx"
+        ]
+      },
+      {
+        "required": [
+          "tmpx_values"
+        ]
+      },
+      {
+        "required": [
+          "tmpx_macros"
+        ]
+      },
+      {
+        "required": [
+          "context"
+        ]
+      },
+      {
+        "required": [
+          "ext"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": true
+}

@@ -359,7 +359,7 @@
                     },
                     "missing_metrics": {
                       "type": "array",
-                      "description": "Metrics that the binding reporting contract declared but that are NOT populated in this report. Reconciliation source: when `package.committed_metrics` is present, `missing_metrics` is computed against entries where `committed_at < reporting_period.end` — independent of subsequent product mutations and respecting the commitment timestamp on each entry (a metric committed mid-flight is only flagged missing in reports for periods after its commitment). When `package.committed_metrics` is absent, fall back to the product's current `reporting_capabilities.available_metrics` (no timestamp filter). Empty array (or absent) indicates clean delivery against the contract. Non-empty signals an accountability breach — the seller committed to the metric but did not produce the value here. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`. Each entry uses an explicit `scope` discriminator: `standard` for entries from the closed `available-metric.json` enum, `vendor` for vendor-defined metrics anchored on a BrandRef. Symmetric with `committed_metrics`.",
+                      "description": "Metrics that the binding reporting contract declared but that are NOT populated in this report. Reconciliation source: when `package.committed_metrics` is present, `missing_metrics` is computed against entries where `committed_at < reporting_period.end` — independent of subsequent product mutations and respecting the commitment timestamp on each entry (a metric committed mid-flight is only flagged missing in reports for periods after its commitment). When `package.committed_metrics` is absent, fall back to the product's current `reporting_capabilities.available_metrics` (no timestamp filter). Empty array (or absent) indicates clean delivery against the contract. Non-empty signals an accountability breach — the seller committed to the metric but did not produce the value here. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`. Each entry uses an explicit `scope` discriminator: `standard` for entries from the closed `available-metric.json` enum, `vendor` for vendor-defined metrics anchored on a BrandRef. Symmetric with `committed_metrics`. When the request narrowed the payload via requested_metrics, sellers MUST NOT list a committed metric here solely because the buyer excluded it — missing_metrics reports delivery gaps, not request narrowing.",
                       "items": {
                         "$ref": "/schemas/core/missing-metric.json"
                       },
@@ -392,6 +392,18 @@
                       "items": {
                         "$ref": "/schemas/core/catalog-item-delivery-metrics.json"
                       }
+                    },
+                    "by_catalog_item_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_catalog_item was truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_catalog_item is present and the request included reporting_dimensions.catalog_item (false means the list is complete). When the breakdown was returned automatically without a request key, the flag is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
+                    "by_catalog_item_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_catalog_item rows. Sellers MUST return this field whenever by_catalog_item is present and the request included reporting_dimensions.catalog_item. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric. When the breakdown was returned automatically without a request key, the field is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
+                    "by_catalog_item_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_catalog_item ordering. Sellers MUST return this field whenever by_catalog_item is present and the request included reporting_dimensions.catalog_item, alongside by_catalog_item_sorted_by. When the breakdown was returned automatically without a request key, the field is RECOMMENDED but not required — automatic rows carry no completeness contract."
                     },
                     "by_creative": {
                       "type": "array",
@@ -437,12 +449,36 @@
                       "$ref": "/schemas/enums/sort-direction.json",
                       "description": "The direction actually applied to by_format ordering. Sellers MUST return this field whenever by_format is present."
                     },
+                    "by_creative_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_creative was truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_creative is present and the request included reporting_dimensions.creative (false means the list is complete). When the breakdown was returned automatically without a request key, the flag is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
+                    "by_creative_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_creative rows. Sellers MUST return this field whenever by_creative is present and the request included reporting_dimensions.creative. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric. When the breakdown was returned automatically without a request key, the field is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
+                    "by_creative_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_creative ordering. Sellers MUST return this field whenever by_creative is present and the request included reporting_dimensions.creative, alongside by_creative_sorted_by. When the breakdown was returned automatically without a request key, the field is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
                     "by_keyword": {
                       "type": "array",
                       "description": "Metrics broken down by keyword within this package. One row per (keyword, match_type) pair — the same keyword with different match types appears as separate rows. Keyword-grain only: rows reflect aggregate performance of each targeted keyword, not individual search queries. Rows may not sum to package totals when a single impression is attributed to the triggering keyword only. Available for search and retail media packages when the seller supports keyword-level reporting.",
                       "items": {
                         "$ref": "/schemas/core/keyword-delivery-metrics.json"
                       }
+                    },
+                    "by_keyword_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_keyword was truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_keyword is present and the request included reporting_dimensions.keyword (false means the list is complete). When the breakdown was returned automatically without a request key, the flag is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
+                    "by_keyword_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_keyword rows. Sellers MUST return this field whenever by_keyword is present and the request included reporting_dimensions.keyword. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric. When the breakdown was returned automatically without a request key, the field is RECOMMENDED but not required — automatic rows carry no completeness contract."
+                    },
+                    "by_keyword_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_keyword ordering. Sellers MUST return this field whenever by_keyword is present and the request included reporting_dimensions.keyword, alongside by_keyword_sorted_by. When the breakdown was returned automatically without a request key, the field is RECOMMENDED but not required — automatic rows carry no completeness contract."
                     },
                     "by_geo": {
                       "type": "array",
@@ -454,6 +490,14 @@
                     "by_geo_truncated": {
                       "type": "boolean",
                       "description": "Whether by_geo was truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_geo is present (false means the list is complete)."
+                    },
+                    "by_geo_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_geo rows. Sellers MUST return this field whenever by_geo is present. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric."
+                    },
+                    "by_geo_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_geo ordering. Sellers MUST return this field whenever by_geo is present."
                     },
                     "by_device_type": {
                       "type": "array",
@@ -484,6 +528,14 @@
                       "type": "boolean",
                       "description": "Whether by_device_type was truncated. Sellers MUST return this flag whenever by_device_type is present (false means the list is complete)."
                     },
+                    "by_device_type_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_device_type rows. Sellers MUST return this field whenever by_device_type is present. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric."
+                    },
+                    "by_device_type_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_device_type ordering. Sellers MUST return this field whenever by_device_type is present."
+                    },
                     "by_device_platform": {
                       "type": "array",
                       "description": "Delivery by operating system within this package. Available when the buyer requests device_platform breakdown via reporting_dimensions and the seller supports it. Useful for CTV campaigns where tvOS vs Roku OS vs Fire OS matters.",
@@ -512,6 +564,14 @@
                     "by_device_platform_truncated": {
                       "type": "boolean",
                       "description": "Whether by_device_platform was truncated. Sellers MUST return this flag whenever by_device_platform is present (false means the list is complete)."
+                    },
+                    "by_device_platform_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_device_platform rows. Sellers MUST return this field whenever by_device_platform is present. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric."
+                    },
+                    "by_device_platform_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_device_platform ordering. Sellers MUST return this field whenever by_device_platform is present."
                     },
                     "by_audience": {
                       "type": "array",
@@ -552,6 +612,14 @@
                       "type": "boolean",
                       "description": "Whether by_audience was truncated. Sellers MUST return this flag whenever by_audience is present (false means the list is complete)."
                     },
+                    "by_audience_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_audience rows. Sellers MUST return this field whenever by_audience is present. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric."
+                    },
+                    "by_audience_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_audience ordering. Sellers MUST return this field whenever by_audience is present."
+                    },
                     "by_demographic": {
                       "type": "array",
                       "description": "Delivery by demographic within this package. Available when the buyer requests demographic breakdown and the product declares supports_demographic_breakdown. A free-form measurement code does not prove alignment with buyer targeting. When age is present it is the authoritative machine-comparable interval; for requested age_ranges, sellers MUST echo the exact requested interval and MUST NOT substitute a wider or narrower native bucket.",
@@ -591,6 +659,14 @@
                     "by_demographic_truncated": {
                       "type": "boolean",
                       "description": "Whether non-suppressed by_demographic rows were truncated due to the requested limit or a seller-imposed maximum. Sellers MUST return this flag whenever by_demographic is present. False means every non-suppressed row is present; inspect by_demographic_suppressed separately before reconciling rows to package totals."
+                    },
+                    "by_demographic_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_demographic rows. Sellers MUST return this field whenever by_demographic is present. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric."
+                    },
+                    "by_demographic_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_demographic ordering. Sellers MUST return this field whenever by_demographic is present."
                     },
                     "by_demographic_suppressed": {
                       "type": "boolean",
@@ -634,6 +710,14 @@
                     "by_placement_truncated": {
                       "type": "boolean",
                       "description": "Whether by_placement was truncated. Sellers MUST return this flag whenever by_placement is present (false means the list is complete)."
+                    },
+                    "by_placement_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_placement rows. Sellers MUST return this field whenever by_placement is present. When the seller cannot sort by the requested sort_by metric it falls back to 'spend'; this echo makes the fallback visible instead of silently returning rows the buyer will misread as ordered by the requested metric."
+                    },
+                    "by_placement_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_placement ordering. Sellers MUST return this field whenever by_placement is present."
                     },
                     "by_spot": {
                       "type": "array",

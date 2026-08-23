@@ -26,10 +26,7 @@ type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate'
 type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
 type ProductFormatDeclaration = NonNullable<Product['format_options']>[number];
 type ProductCardImage = NonNullable<NonNullable<Product['product_card']>['image']>;
-type CollectionSelector = {
-  publisher_domain: string;
-  collection_ids: string[];
-};
+type CollectionSelector = NonNullable<Product['collections']>[number];
 type ProductCardManifest = {
   format_id: FormatID;
   manifest: {
@@ -41,11 +38,13 @@ type CanonicalFormatProjection = {
   format_kind: ProductFormatDeclaration['format_kind'];
   params: ProductFormatDeclaration['params'];
 };
-type TrainingProduct = Omit<Product, 'product_card' | 'product_card_detailed'> & {
+type TrainingProduct = Omit<Product,
+  'product_card' | 'product_card_detailed' | 'collections' | 'installments'
+> & {
   product_card?: Product['product_card'] | ProductCardManifest;
   product_card_detailed?: Product['product_card_detailed'] | ProductCardManifest;
-  collections?: CollectionSelector[];
-  installments?: Installment[];
+  collections?: Product['collections'];
+  installments?: Product['installments'];
   exclusivity?: 'exclusive' | 'category';
   collection_targeting_allowed?: boolean;
 };
@@ -199,12 +198,18 @@ function buildPricingOption(
       };
       break;
     case 'cpa':
+      if (template.eventType === 'custom' && !template.customEventName) {
+        throw new Error(`CPA pricing template ${id} requires customEventName when eventType is custom`);
+      }
       option = {
         pricing_option_id: id,
         pricing_model: 'cpa',
         currency: template.currency,
         fixed_price: template.fixedPrice ?? 0,
         event_type: template.eventType ?? 'purchase',
+        ...(template.eventType === 'custom' && template.customEventName && {
+          custom_event_name: template.customEventName,
+        }),
         ...(template.minSpendPerPackage !== undefined && { min_spend_per_package: template.minSpendPerPackage }),
       };
       break;
@@ -447,7 +452,7 @@ function formatOptionsForFormatIds(formatIds: FormatID[]): ProductFormatDeclarat
   });
 }
 
-function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]): PublisherPropertySelector[] {
+function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]): Product['publisher_properties'] {
   if (!channels) {
     return [{ publisher_domain: pub.domain, selection_type: 'all' as const }];
   }
@@ -639,7 +644,7 @@ function buildProduct(
   type SupportedMetric = NonNullable<Product['metric_optimization']>['supported_metrics'][number];
   let metricOptimization: Product['metric_optimization'];
   if (template.deliveryType === 'non_guaranteed') {
-    const metrics: SupportedMetric[] = ['clicks'];
+    const metrics: [SupportedMetric, ...SupportedMetric[]] = ['clicks'];
     if (template.channels.some(c => ['olv', 'ctv', 'social', 'gaming'].includes(c))) {
       metrics.push('views', 'completed_views');
     }
@@ -659,7 +664,7 @@ function buildProduct(
         ? ['individuals', 'households', 'devices', 'accounts']
         : undefined;
       metricOptimization = {
-        supported_metrics: metrics,
+        supported_metrics: metrics as [SupportedMetric, ...SupportedMetric[]],
         ...(supportedReachUnits && { supported_reach_units: supportedReachUnits }),
         ...(supportedViewDurations && { supported_view_durations: supportedViewDurations }),
         supported_targets: ['cost_per'],
@@ -728,9 +733,9 @@ function buildProduct(
   }
 
   // Build collection/installment associations
-  let collectionSelectors: CollectionSelector[] | undefined;
+  let collectionSelectors: Product['collections'];
   let exclusivity: 'exclusive' | 'category' | undefined;
-  let installments: Installment[] | undefined;
+  let installments: Product['installments'];
   let collectionTargetingAllowed: boolean | undefined;
   if (pub.shows?.length) {
     const matchingShows = pub.shows.filter(s =>
@@ -739,7 +744,7 @@ function buildProduct(
     if (matchingShows.length > 0) {
       collectionSelectors = [{
         publisher_domain: pub.domain,
-        collection_ids: matchingShows.map(s => s.showId),
+        collection_ids: [matchingShows[0].showId, ...matchingShows.slice(1).map(s => s.showId)],
       }];
       if (template.deliveryType === 'guaranteed') {
         exclusivity = matchingShows.length === 1 ? 'exclusive' : 'category';
@@ -762,27 +767,35 @@ function buildProduct(
         }
       }
       if (builtInstallments.length > 0) {
-        installments = builtInstallments;
+        installments = [builtInstallments[0], ...builtInstallments.slice(1)];
       }
     }
   }
 
   const formatIds = formatIdsForChannels(template.channels, agentUrl);
   const formatOptions = formatOptionsForFormatIds(formatIds);
+  const pricingOptions = effectivePricing.map((t, i) => buildPricingOption(t, productId, i));
+  if (pricingOptions.length === 0) {
+    throw new Error(`Training product ${productId} has no pricing options`);
+  }
+  const nonEmptyPricingOptions: Product['pricing_options'] = [
+    pricingOptions[0],
+    ...pricingOptions.slice(1),
+  ];
   const product: TrainingProduct = {
     product_id: productId,
     name: template.name,
     description: template.description,
-    publisher_properties: publisherPropertySelectors(pub, template.channels),
+    publisher_properties: publisherPropertySelectors(pub, template.channels) as Product['publisher_properties'],
     channels: template.channels as MediaChannel[],
     format_ids: formatIds,
-    ...(formatOptions.length > 0 ? { format_options: formatOptions } : {}),
+    ...(formatOptions.length > 0 ? { format_options: formatOptions as Product['format_options'] } : {}),
     delivery_type: template.deliveryType as DeliveryType,
     delivery_measurement: {
       provider: pub.measurementProvider,
       notes: pub.measurementNotes,
     },
-    pricing_options: effectivePricing.map((t, i) => buildPricingOption(t, productId, i)),
+    pricing_options: nonEmptyPricingOptions,
     reporting_capabilities: {
       available_reporting_frequencies: pub.reportingFrequencies as NonNullable<Product['reporting_capabilities']>['available_reporting_frequencies'],
       expected_delay_minutes: 240,
@@ -798,7 +811,7 @@ function buildProduct(
         vendor_metrics: pub.vendorMetrics,
       }),
     } as NonNullable<Product['reporting_capabilities']>,
-    ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as CatalogType[] }),
+    ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as unknown as Product['catalog_types'] }),
     ...(metricOptimization && { metric_optimization: metricOptimization }),
     // Vendor-metric optimization is a publisher/inventory capability, not
     // auction-only. Guaranteed products can still steer allocation/pacing
@@ -984,7 +997,8 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
   const proposals: Proposal[] = [];
 
   for (const def of PROPOSAL_DEFINITIONS) {
-    const allocations: Proposal['allocations'] = [];
+    type FixedAllocation = Proposal['allocations'][number] & { allocation_percentage: number };
+    const allocations: FixedAllocation[] = [];
     let valid = true;
 
     for (const alloc of def.allocations) {
@@ -1004,10 +1018,11 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
       });
     }
 
-    if (!valid) continue;
+    if (!valid || allocations.length === 0) continue;
+    const proposalAllocations = allocations as [FixedAllocation, ...FixedAllocation[]];
 
     // Proposals containing guaranteed products are drafts (indicative pricing, needs finalization)
-    const hasGuaranteed = allocations.some(alloc => {
+    const hasGuaranteed = proposalAllocations.some(alloc => {
       const cp = catalog.find(c => c.product.product_id === alloc.product_id);
       return cp?.product.delivery_type === 'guaranteed';
     });
@@ -1018,23 +1033,23 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
     const proposalPub = PUBLISHERS.find(p => p.id === def.publisherId);
 
     // Build allocation data with product names for display
-    const allocDataWithNames = allocations.map(a => {
+    const allocDataWithNames = proposalAllocations.map(a => {
       const cp = catalog.find(c => c.product.product_id === a.product_id);
       return {
         product_id: a.product_id,
         product_name: cp?.product.name,
-        allocation_percentage: a.allocation_percentage,
+        allocation_percentage: a.allocation_percentage ?? 0,
         rationale: a.rationale,
       };
     });
 
     // Estimate total delivery from budget and pricing
     const totalImpressions = def.budgetGuidance.recommended
-      ? Math.round(allocations.reduce((sum, a) => {
+      ? Math.round(proposalAllocations.reduce((sum, a) => {
           const cp = catalog.find(c => c.product.product_id === a.product_id);
           const firstPricing = cp?.product.pricing_options[0] as { fixed_price?: number; floor_price?: number } | undefined;
           const price = firstPricing?.fixed_price ?? firstPricing?.floor_price ?? 10;
-          return sum + (def.budgetGuidance.recommended * (a.allocation_percentage / 100) / price * 1000);
+          return sum + (def.budgetGuidance.recommended * ((a.allocation_percentage ?? 0) / 100) / price * 1000);
         }, 0))
       : undefined;
 
@@ -1063,7 +1078,7 @@ export function buildProposals(catalog: CatalogProduct[]): Proposal[] {
       description: def.description,
       brief_alignment: def.briefAlignment,
       total_budget_guidance: def.budgetGuidance,
-      allocations,
+      allocations: allocations as Proposal['allocations'],
       ...(hasGuaranteed && {
         proposal_status: 'draft' as const,
         expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
@@ -1205,7 +1220,7 @@ export function buildCatalog(): CatalogProduct[] {
             const { min_spend_per_package: _drop, ...rest } = basePricing as unknown as Record<string, unknown>;
             return { ...rest, pricing_option_id: pid } as typeof basePricing;
           }),
-        ]
+        ] as Product['pricing_options']
       : alias.source.product.pricing_options;
     catalog.push({
       ...alias.source,
@@ -1213,7 +1228,7 @@ export function buildCatalog(): CatalogProduct[] {
         ...alias.source.product,
         product_id: alias.id,
         name: alias.name,
-        ...(aliasedPricing && { pricing_options: aliasedPricing }),
+        ...(aliasedPricing && { pricing_options: aliasedPricing as Product['pricing_options'] }),
         ...('product_card' in alias.source.product && alias.source.product.product_card
           ? { product_card: { ...alias.source.product.product_card, title: truncateLabel(alias.name, 60) } }
           : {}),

@@ -25,6 +25,8 @@ Every transition creates a new `proposal_id`; the source snapshot remains unchan
 
 `draft` terms are indicative and do not reserve inventory. `finalize` copies an unchanged draft into a `committed` snapshot and creates a hold until `expires_at`. [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) consumes that hold and creates, updates, or cancels the MediaBuy according to `proposal_kind`.
 
+In traditional media terms, this lifecycle is the two-phase avails check. A draft is a **soft avail**: the seller answers from models or cached inventory state, forecasts carry `valid_until` freshness bounds, and nothing is reserved — another buyer can take the inventory before this one commits. `finalize` is where the **firm avail** runs: the seller hits its inventory system, re-prices if needed, and either takes the hold or fails the finalize. Draft numbers are therefore non-binding, and a finalize returning different pricing or forecast values than its source draft showed is correct behavior, not an error. Buyers that need certainty across a slow approval chain hold inventory by finalizing early — not by polling discovery for fresher snapshots.
+
 ## Discover what the seller supports
 
 Read `get_adcp_capabilities.media_buy.lifecycle_tools` before selecting the compact lifecycle. A negotiating seller includes `refine_proposals`; it may also publish `media_buy.proposal_refinement`:
@@ -109,7 +111,38 @@ Sam requests a USD 50,000 ceiling, a CPM ceiling, US/Canada criteria, a product 
 }
 ```
 
-Typed fields are hard requirements. Do not copy the legacy `get_products.refine[].budget_range` shape without changing its meaning: legacy `budget_range` is a soft discovery preference, while `constraints.total_budget` forces `partial` or `unable` when missed. Legacy `more_like_this` has no typed compact equivalent and maps only lossily to `ask`.
+Typed fields are hard proposal requirements. Do not copy legacy `get_products.filters.budget_range` into `constraints.total_budget`: the legacy field is a hard product-discovery filter, while the compact field validates the negotiated proposal's `commercial_terms.total_budget` and forces `partial` or `unable` when missed. Legacy `more_like_this` has no typed compact equivalent and maps only lossily to `ask`.
+
+### Legacy budget compatibility (normative)
+
+Budget compatibility has two distinct rules:
+
+- **Discovery range:** Initial [`request_proposals`](/docs/media-buy/task-reference/request_proposals) has no `criteria.constraints.total_budget` field. Its budget field is `request_proposals.criteria.offer_filters.budget_range`. A compatibility adapter MAY project that field to `get_products.filters.budget_range` because both are hard product-discovery filters. The adapter MUST copy every supplied numeric bound and the three-letter currency unchanged, MUST preserve inclusive `min` and `max` boundaries, MUST enforce `min <= max`, and MUST NOT perform currency conversion. If the legacy seller cannot apply the exact currency and bounds, the adapter MUST return the pre-dispatch rejection below rather than approximate the filter.
+- **Proposal-term constraint:** An adapter MUST NOT project `refine_proposals.refinements[].constraints.total_budget` to `get_products.filters.budget_range`. The compact constraint is evaluated after proposal generation against each successor's `commercial_terms.total_budget`; the legacy field filters product candidates and does not guarantee any returned proposal's aggregate total. Identical `{min,max,currency}` syntax does not make those evaluation targets equivalent. Dropping the constraint, converting currency, changing a boundary, placing it in `ask`, or returning an out-of-range proposal with a warning would all weaken the buyer's hard requirement.
+
+These rules are lifecycle-specific. The discovery projection is valid for an initial `request_proposals` compatibility call. On a revision, a present `criteria.offer_filters` replaces that entire criterion from the source proposal; it is not a subfield delta. The adapter MUST project the complete replacement object to legacy absolute `filters`, or reject before dispatch if any field cannot be represented exactly. When `criteria.offer_filters` is omitted, the adapter MUST also omit legacy `filters`, preserving each referenced proposal's bound discovery constraints. This discovery mapping is not a substitute for `constraints.total_budget` on `action: "revise"`.
+
+Compact `action: "finalize"` accepts no constraints and copies the draft's complete `commercial_terms` unchanged into a committed snapshot. Legacy `finalize` asks for firm pricing and therefore does not, by itself, prove unchanged terms. An adapter MAY project finalize only when it can guarantee that the legacy operation preserves the complete commercial terms, not merely the total budget. Otherwise it MUST reject before dispatch rather than compare or repair terms after mutation.
+
+Every unsupported compact-to-legacy case above returns the same typed local compatibility result:
+
+```typescript
+type PreMutationUnsupported = {
+  code: 'PRE_MUTATION_UNSUPPORTED';
+  unsupported_fields: Array<{
+    path: string; // RFC 6901 JSON Pointer rooted at the compact request
+    reason: 'NO_LOSSLESS_LEGACY_MAPPING';
+    lost_guarantee:
+      | 'exact_discovery_offer_filter_state'
+      | 'proposal_total_budget_constraint'
+      | 'immutable_finalize_terms';
+  }>;
+  recovery: 'USE_COMPACT_LIFECYCLE' | 'REFORMULATE_REQUEST';
+  dispatched: false;
+};
+```
+
+For example, the first refinement's hard budget constraint uses `/refinements/0/constraints/total_budget`; an unsafe finalize uses `/refinements/0/action`. `unsupported_fields` MUST contain every incompatibility detected during preflight, and any entry rejects the whole operation before a network request or mutation. `PRE_MUTATION_UNSUPPORTED` is not an AdCP wire error code. SDKs MAY express the type idiomatically in each language, but MUST preserve these discriminator values, JSON Pointer paths, lost-guarantee identifiers, recovery choices, and `dispatched: false`. An explicit caller opt-in to lossy projection does not make the mapping conformant.
 
 A fully satisfied revision returns new immutable drafts and no failure prose:
 
@@ -455,13 +488,114 @@ Record the authenticated buyer, source IDs, successor IDs, idempotency fingerpri
 
 The canonical compliance scenario is `media_buy_seller/typed_proposal_negotiation`. It exercises capability gating, satisfied and unsatisfied constraints, alternatives, immutable lineage, finalize atomicity, exact replay, acceptance, amendment, cancellation, double-finalize rejection, and multi-source ordering.
 
-The deterministic training profiles use the proposal-negotiation primitives published in `@adcp/sdk` 13.0.0-rc.26. The ordinary `/sales/mcp` route remains the backward-compatible ask-only seller. Three capability-distinct routes are available to local tests and will become public with the 3.2 beta deployment:
+The deterministic training profiles expose the exact `3.2-beta.5` proposal-negotiation wire contract. The ordinary `/sales/mcp` route remains the backward-compatible ask-only seller. Use the [public test token](/docs/quickstart#setup) with `https://test-agent.adcontextprotocol.org` and one of these capability-distinct routes:
 
 | Profile | Route | Deterministic behavior |
 | --- | --- | --- |
 | Typed negotiation | `/sales/profiles/typed-negotiation/mcp` | All typed dimensions, up to three alternatives, successful atomic finalize |
 | Constrained seller | `/sales/profiles/constrained-seller/mcp` | USD floors, product conflicts, and at most two available alternatives |
 | Finalization failure | `/sales/profiles/finalization-failure/mcp` | `hold_unavailable` plus `batch_aborted` siblings with no committed successors |
+
+Pin the beta exactly on every call. A stable `3.2` selector intentionally negotiates to the seller's stable compatibility response instead of silently opting into beta behavior. SDK 14 beta.7 accepts `wireAdcpVersion: "3.2-beta.5"` on its single- and multi-agent client configuration; raw calls remain useful for inspecting the exact envelope as below.
+
+### Run the constrained profile
+
+This live example proves the three-to-two counteroffer and the changed-request retry rule against the public seller. It first requests three alternatives and receives a deterministic `partial` result containing two. It then changes the count to two, uses a new idempotency key, and receives `revised`.
+
+```javascript test=true integration requires-env=ADCP_AUTH_TOKEN
+const endpoint = 'https://test-agent.adcontextprotocol.org/sales/profiles/constrained-seller/mcp';
+const token = process.env.ADCP_AUTH_TOKEN;
+if (!token) throw new Error('Set ADCP_AUTH_TOKEN to the public test token');
+
+function parseRpc(raw) {
+  const dataLine = raw.split(/\r?\n/).find((line) => line.startsWith('data:'));
+  return JSON.parse(dataLine ? dataLine.replace(/^data:\s*/, '') : raw);
+}
+
+async function callTool(id, name, args) {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json, text/event-stream',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id,
+      method: 'tools/call',
+      params: { name, arguments: args },
+    }),
+  });
+  const raw = await response.text();
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${raw.slice(0, 200)}`);
+  }
+  const payload = parseRpc(raw);
+  const result = payload.result?.structuredContent;
+  if (payload.error || !result || result.adcp_error) {
+    throw new Error(JSON.stringify(payload.error ?? result?.adcp_error ?? 'missing structuredContent'));
+  }
+  return result;
+}
+
+const version = {
+  adcp_version: '3.2-beta.5',
+  adcp_major_version: 3,
+};
+const nonce = crypto.randomUUID();
+
+const capabilities = await callTool(1, 'get_adcp_capabilities', version);
+if (
+  capabilities.adcp_version !== '3.2-beta.5'
+  || capabilities.media_buy?.supports_proposals !== true
+  || !capabilities.media_buy?.lifecycle_tools?.includes('refine_proposals')
+) {
+  throw new Error('The seller did not negotiate the proposal profile');
+}
+
+const requested = await callTool(2, 'request_proposals', {
+  ...version,
+  idempotency_key: `docs-request-${nonce}`,
+  brand: { domain: 'acmeoutdoor.example' },
+  brief: 'social engagement display',
+});
+const proposalId = requested.proposals?.[0]?.proposal_id;
+if (!proposalId) throw new Error('The seller returned no source proposal');
+
+const refinement = {
+  proposal_id: proposalId,
+  action: 'revise',
+  constraints: { total_budget: { currency: 'USD', max: 50000 } },
+};
+const partial = await callTool(3, 'refine_proposals', {
+  ...version,
+  idempotency_key: `docs-refine-three-${nonce}`,
+  refinements: [{ ...refinement, alternatives: { count: 3 } }],
+});
+const retried = await callTool(4, 'refine_proposals', {
+  ...version,
+  idempotency_key: `docs-refine-two-${nonce}`,
+  refinements: [{ ...refinement, alternatives: { count: 2 } }],
+});
+
+const first = partial.results?.[0];
+const second = retried.results?.[0];
+if (
+  first?.outcome !== 'partial'
+  || first.reason_code !== 'alternatives_unavailable'
+  || first.proposals?.length !== 2
+  || second?.outcome !== 'revised'
+  || second.proposals?.length !== 2
+) {
+  throw new Error('The public profile did not return the documented outcomes');
+}
+
+console.log({
+  first: { outcome: first.outcome, alternatives: first.proposals.length },
+  retry: { outcome: second.outcome, alternatives: second.proposals.length },
+});
+```
 
 The constrained route is the canonical three-to-two exercise: request a USD 50,000 cap, include and omit products, apply US/Canada criteria, and request three alternatives. Retry the returned `partial` / `alternatives_unavailable` result with two alternatives before selecting and finalizing one. Exact retries reuse the same idempotency key; a changed alternatives count is a new logical request and needs a new key.
 

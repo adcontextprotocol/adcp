@@ -68,6 +68,20 @@
         },
         "additionalProperties": true
       }
+    },
+    "warnings": {
+      "type": "array",
+      "description": "Non-blocking observations (e.g. LEAN policy advisories such as hover-triggered expansion or non-user-initiated entry into overlay anchoring) that do not affect `result_kind`. MAY be present alongside `validated_pass`, `validated_fail`, or `unvalidatable_nondeterministic`. Same item shape as `violations`.",
+      "items": {
+        "type": "object",
+        "required": ["rule", "field"],
+        "properties": {
+          "rule": { "type": "string" },
+          "expected": {},
+          "predicted": {}
+        },
+        "additionalProperties": true
+      }
     }
   },
   "allOf": [

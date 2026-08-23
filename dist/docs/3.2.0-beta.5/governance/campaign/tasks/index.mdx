@@ -1,0 +1,23 @@
+---
+title: Task reference
+description: "Task reference for AdCP campaign governance — plan synchronization, checks, outcomes, adjustments, and audit logs."
+"og:title": "AdCP — Campaign governance task reference"
+sidebarTitle: Overview
+---
+
+
+# Campaign Governance tasks
+
+Campaign Governance has five tasks.
+
+| Task | Direction | Description |
+|------|-----------|-------------|
+| [`sync_plans`](/dist/docs/3.2.0-beta.5/governance/campaign/tasks/sync_plans) | Orchestrator → Gov | Push campaign plans with budget, channels, flight dates, and authorized markets |
+| [`check_governance`](/dist/docs/3.2.0-beta.5/governance/campaign/tasks/check_governance) | Orchestrator or Seller → Gov | Universal governance check. Orchestrator sends `tool` + `payload` (intent check). Seller sends `governance_context` + `planned_delivery` (execution check). |
+| [`report_plan_outcome`](/dist/docs/3.2.0-beta.5/governance/campaign/tasks/report_plan_outcome) | Orchestrator → Gov | Post-action report: "here's what happened." Gov updates state and returns any findings |
+| [`report_plan_adjustment`](/dist/docs/3.2.0-beta.5/governance/campaign/tasks/report_plan_adjustment) | Seller or Orchestrator → Gov | Seller reports an evidence-bound adjustment; the plan owner accepts or disputes it |
+| [`get_plan_audit_logs`](/dist/docs/3.2.0-beta.5/governance/campaign/tasks/get_plan_audit_logs) | Orchestrator → Gov | Read governance state, budget burn, and audit trail |
+
+`sync_plans` configures the rules. `check_governance` is the universal governance gate and records seller delivery statements. `report_plan_outcome` closes execution and records buyer delivery observations. `report_plan_adjustment` uses a seller-report/plan-owner-review lifecycle without rewriting the outcome. `get_plan_audit_logs` exposes every attributed record and the derived accounting state.
+
+**Setup prerequisite:** [`sync_governance`](/dist/docs/3.2.0-beta.5/accounts/tasks/sync_governance) syncs governance agent endpoints to accounts. This must be done before sellers can call `check_governance`.

@@ -63,7 +63,7 @@
     },
     "canceled": {
       "type": "boolean",
-      "description": "Cancel this specific package. Cancellation is irreversible — canceled packages stop delivery and cannot be reactivated. Sellers MAY reject with NOT_CANCELLABLE.",
+      "description": "Cancel this specific package. Cancellation is irreversible — canceled packages stop delivery and cannot be reactivated. When true, package cancellation takes precedence over sibling fields on this package: the seller applies only canceled and cancellation_reason for this package and SHOULD return a structured warning naming ignored sibling fields. Root fields and other package updates still participate in the same atomic update when root canceled is absent. Sellers MAY reject with NOT_CANCELLABLE.",
       "const": true
     },
     "cancellation_reason": {

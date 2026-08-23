@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/request-proposals-request.json",
+  "title": "Request Proposals Request",
+  "description": "Ask a seller to create one or more indicative media-plan proposals from a brief. Provide exactly one brand source: either top-level brand or a natural-key account containing brand and operator. Each returned proposal_id identifies one immutable draft snapshot; revise or finalize it through refine_proposals, or decline it through decline_proposals.",
+  "x-tool-summary": "Ask a seller to create one or more draft media-plan proposals from a campaign brief.",
+  "type": "object",
+  "x-mutates-state": true,
+  "x-operation-family": "request_proposals",
+  "x-added-in": "3.2.0",
+  "x-legacy-fallback": {
+    "tool": "get_products",
+    "mode": "orchestrated"
+  },
+  "properties": {
+    "adcp_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/version-envelope.json#/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/version-envelope.json#/properties/adcp_major_version"
+    },
+    "context_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "context": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/context.json"
+        }
+      ],
+      "x-adcp-schema-uri": "/schemas/core/context.json"
+    },
+    "governance_context": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "push_notification_config": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/push-notification-config.json"
+        }
+      ],
+      "x-adcp-schema-uri": "/schemas/core/push-notification-config.json"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key required for retry-safe proposal creation.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "account": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/canonical-account-ref.json"
+        }
+      ],
+      "description": "Alternative brand source for proposal terms. Provide either this natural-key account containing brand and operator or top-level brand, not both."
+    },
+    "brand": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/brand-key.json",
+      "description": "Alternative brand source for proposal terms. Provide either top-level brand or a natural-key account containing brand and operator, not both."
+    },
+    "brief": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Campaign goal, strategy, and requirements that are not represented in structured criteria."
+    },
+    "criteria": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/product-discovery-criteria.json"
+    },
+    "opportunity": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/opportunity-context.json"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "open"
+            }
+          }
+        }
+      ],
+      "description": "Optional planning-cycle context that the seller associates with every proposal created by this request."
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "brief"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "brand"
+      ]
+    },
+    {
+      "properties": {
+        "account": {
+          "required": [
+            "brand",
+            "operator"
+          ]
+        }
+      },
+      "required": [
+        "account"
+      ]
+    }
+  ],
+  "allOf": [
+    {
+      "not": {
+        "properties": {
+          "account": {
+            "required": [
+              "brand",
+              "operator"
+            ]
+          }
+        },
+        "required": [
+          "account",
+          "brand"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

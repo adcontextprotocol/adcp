@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/tasks-get-request.json",
+  "title": "Tasks Get Request",
+  "description": "Request parameters for retrieving a specific task by ID with optional conversation history across all AdCP domains",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier of the task to retrieve",
+      "x-entity": "task"
+    },
+    "account": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/account-ref.json",
+      "description": "Account scope for the task lookup. Sellers MUST return REFERENCE_NOT_FOUND for a task_id that exists only under a different account or principal. When omitted, the seller MAY use the credential-bound singleton account, but multi-account credentials SHOULD require an explicit account."
+    },
+    "include_history": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include full conversation history for this task (may increase response size)"
+    },
+    "include_result": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include the task's canonical terminal result payload when one exists. Defaults to false for lightweight status-only polls. When true, sellers MUST include result for completed, failed, or rejected terminal tasks when that task produced a terminal artifact; canceled tasks may have no result. The legacy singular error field remains a convenience for failed tasks but does not replace the canonical terminal result."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+    }
+  },
+  "required": [
+    "task_id"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Check task status",
+      "data": {
+        "task_id": "task_456",
+        "account": {
+          "brand": {
+            "domain": "acme-corp.example"
+          },
+          "operator": "acme-corp.example",
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Get task with full conversation history",
+      "data": {
+        "task_id": "task_123",
+        "include_history": true
+      }
+    },
+    {
+      "description": "Poll for task completion including result payload",
+      "data": {
+        "task_id": "task_456",
+        "include_result": true
+      }
+    }
+  ]
+}

@@ -494,6 +494,71 @@ test('format options can be referenced by publisher domain or product-local ID',
       product_id: 'homepage_sponsorship',
       pricing_option_id: 'cpm_fixed',
       budget: 1000,
+      format_kind: 'image',
+      params: {
+        width: 300,
+        height: 250
+      }
+    }),
+    true,
+    JSON.stringify(validatePackage.errors, null, 2)
+  );
+
+  assert.equal(
+    validatePackage({
+      product_id: 'homepage_sponsorship',
+      pricing_option_id: 'cpm_fixed',
+      budget: 1000,
+      format_kind: 'image',
+      params: {
+        width: 300
+      }
+    }),
+    false,
+    'Fixed-size image selectors reject width without height'
+  );
+
+  assert.equal(
+    validatePackage({
+      product_id: 'homepage_sponsorship',
+      pricing_option_id: 'cpm_fixed',
+      budget: 1000,
+      format_kind: 'image',
+      params: {
+        height: 250
+      }
+    }),
+    false,
+    'Fixed-size image selectors reject height without width'
+  );
+
+  assert.equal(
+    validatePackage({
+      product_id: 'homepage_sponsorship',
+      pricing_option_id: 'cpm_fixed',
+      budget: 1000,
+      format_option_refs: [
+        {
+          scope: 'product',
+          format_option_id: 'seller_takeover_image'
+        }
+      ],
+      format_ids: [
+        {
+          agent_url: 'https://creative.adcontextprotocol.org/',
+          id: 'display_970x250_image'
+        }
+      ]
+    }),
+    true,
+    'Legacy and canonical selector co-presence remains schema-valid for 3.x receivers; equivalence is application-level'
+  );
+
+  assert.equal(
+    validatePackage({
+      product_id: 'homepage_sponsorship',
+      pricing_option_id: 'cpm_fixed',
+      budget: 1000,
       format_option_refs: [
         {
           scope: 'product',

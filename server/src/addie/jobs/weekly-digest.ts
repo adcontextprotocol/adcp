@@ -19,6 +19,7 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { sendChannelMessage } from '../../slack/client.js';
 import { sendTrackedBatchMarketingEmails, type TrackedBatchMarketingEmail } from '../../notifications/email.js';
 import { renderDigestEmail, renderDigestSlack, renderDigestReview, type DigestSegment } from '../templates/weekly-digest.js';
+import { withNewsletterSendLock } from '../../newsletters/send-lock.js';
 import { publishDigestAsPerspective } from '../services/digest-publisher.js';
 import { generateCoverForEdition } from '../../newsletters/cover.js';
 import { markSuggestionsIncluded } from '../../db/newsletter-suggestions-db.js';
@@ -271,6 +272,25 @@ async function sendApprovedDigest(editionDate: string, etHour: number): Promise<
  * Called from the scheduled job and from the approval handler (for late approvals).
  */
 export async function sendDigest(digest: DigestRecord): Promise<{ sent: number }> {
+  const editionDate = new Date(digest.edition_date).toISOString().split('T')[0];
+  const locked = await withNewsletterSendLock('the_prompt', digest.id, async () => {
+    // Re-read under the cross-process lock so a stale approved record cannot
+    // be delivered after a manual sender has already completed it.
+    const current = await getDigestByDate(editionDate);
+    if (!current || current.id !== digest.id || current.status !== 'approved') {
+      return { sent: 0 };
+    }
+    return deliverDigest(current);
+  });
+
+  if (!locked.acquired) {
+    logger.warn({ digestId: digest.id, editionDate }, 'The Prompt delivery already in progress');
+    return { sent: 0 };
+  }
+  return locked.value;
+}
+
+async function deliverDigest(digest: DigestRecord): Promise<{ sent: number }> {
   if (digest.status !== 'approved') {
     logger.error({ digestId: digest.id, status: digest.status }, 'sendDigest called on non-approved digest');
     return { sent: 0 };
@@ -331,7 +351,10 @@ export async function sendDigest(digest: DigestRecord): Promise<{ sent: number }
 
   // Mark as sent
   if (stats.email_count > 0 || stats.slack_count > 0) {
-    await markSent(digest.id, stats);
+    const markedSent = await markSent(digest.id, stats);
+    if (!markedSent) {
+      throw new Error(`Failed to finalize The Prompt edition ${digest.id} after delivery`);
+    }
 
     // Publish as perspective for SEO/discoverability (non-blocking)
     void (async () => {

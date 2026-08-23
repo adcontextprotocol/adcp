@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/outcome-target.json",
+  "title": "Outcome Target",
+  "description": "Reverse-forecast planning input: the buyer states the outcome needed and the seller solves for budget. The goal is a compact planning-time object — delivery metrics use the same forecastable-metric vocabulary as forecast points, and outcome events use the same event-type vocabulary — so every permitted goal has a defined answer: the seller responds with total_budget_guidance on proposals and forecasts whose points carry the goal's metric or event key in metrics, using forecast_range_unit 'clicks' or 'conversions' to structure the curve where those units apply. Execution machinery (targets, priorities, event sources, vendor bindings) belongs to the package-level optimization-goal, which shares this vocabulary; buyers carry the same metric or event name from plan to buy. A planning input, not a delivery guarantee — obligations arise only at proposal finalization. Sellers not declaring media_buy.outcome_target MUST reject the field with UNSUPPORTED_FEATURE rather than silently ignore it; declaring sellers MAY reject a goal they cannot plan against (for example 'spend', which restates budget) with INVALID_REQUEST naming criteria.outcome_target.goal.",
+  "type": "object",
+  "properties": {
+    "goal": {
+      "description": "The outcome to plan against: a seller-tracked delivery metric or an advertiser conversion event.",
+      "discriminator": {
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "Plan against a seller-tracked delivery metric. The response forecast carries this metric as a key in points' metrics.",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "metric"
+            },
+            "metric": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/forecastable-metric.json",
+              "description": "Delivery metric to plan for, in the same vocabulary forecast points report."
+            }
+          },
+          "required": [
+            "kind",
+            "metric"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "description": "Plan against an advertiser conversion event. The response forecast carries this event type as a key in points' metrics.",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "event"
+            },
+            "event_type": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/event-type.json",
+              "description": "Conversion event to plan for, in the same vocabulary forecast points report."
+            },
+            "custom_event_name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Required when event_type is 'custom'. Platform-specific name for the custom event."
+            }
+          },
+          "required": [
+            "kind",
+            "event_type"
+          ],
+          "if": {
+            "properties": {
+              "event_type": {
+                "const": "custom"
+              }
+            },
+            "required": [
+              "event_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "custom_event_name"
+            ]
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "volume": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Desired total volume of the goal's metric or event across the planned flight."
+    }
+  },
+  "required": [
+    "goal",
+    "volume"
+  ],
+  "additionalProperties": false
+}

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/sort-metric.json",
   "title": "Sort Metric",
-  "description": "Numeric delivery metrics available for sorting breakdown rows. Subset of delivery-metrics fields that are flat numeric values (excludes nested objects like quartile_data, dooh_metrics, viewability, by_event_type, by_action_source).",
+  "description": "Numeric delivery metrics available for sorting breakdown rows. Contains the flat numeric fields of `core/delivery-metrics.json` plus leaf identities that resolve to a single numeric value nested inside an object-shaped metric: `quartile_25`–`quartile_100` order rows by `quartile_data.q1_views`–`q4_views`; `viewable_rate`, `viewable_impressions`, `measurable_impressions`, and `viewed_seconds` order rows by the same-named fields of `viewability`. Sorting by a leaf identity orders on the nested value — the nested object remains the only carrier of the value in responses; no duplicate flat fields exist. Excludes object/array containers (`quartile_data`, `dooh_metrics`, `viewability`, `time_based_views`, `by_event_type`, `by_action_source`, `vendor_metric_values`) and the survey/model-based lift scalars (`incremental_sales_lift`, `brand_lift`, `foot_traffic`, `conversion_lift`, `brand_search_lift`), which are package-grain estimates rather than row-grain orderings.",
   "type": "string",
   "enum": [
     "impressions",
@@ -26,6 +26,21 @@
     "saves",
     "profile_visits",
     "engagement_rate",
-    "cost_per_click"
+    "cost_per_click",
+    "commissionable_value",
+    "plays",
+    "cost_per_completed_view",
+    "cpm",
+    "downloads",
+    "units_sold",
+    "new_to_brand_units",
+    "viewable_rate",
+    "viewable_impressions",
+    "measurable_impressions",
+    "viewed_seconds",
+    "quartile_25",
+    "quartile_50",
+    "quartile_75",
+    "quartile_100"
   ]
 }

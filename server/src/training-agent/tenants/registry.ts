@@ -37,7 +37,7 @@ import {
 } from '@adcp/sdk/server';
 import { getPool } from '../../db/client.js';
 import { getSdkIdempotencyStore, scopedPrincipal } from '../idempotency.js';
-import { emitFrameworkTaskWebhook, getWebhookSigningMaterial } from '../webhooks.js';
+import { getWebhookSigningMaterial } from '../webhooks.js';
 import { isWebhookTestOrDevelopment } from '../webhook-fetch.js';
 import { buildSignalsTenantConfig } from './signals.js';
 import { buildSalesTenantConfig } from './sales.js';
@@ -189,15 +189,11 @@ function buildDefaultServerOptions(
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
-    ...(storyboardCompat?.version === '3.0' && { adcpVersion: '3.0' }),
+    adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : '3.2-beta.5',
     idempotency: getSdkIdempotencyStore(),
     webhooks: getWebhookSigningMaterial(),
-    taskWebhookEmitter: {
-      emit: emitFrameworkTaskWebhook,
-    },
-    // SDK 13 no longer emits webhooks for terminal inline responses by
-    // default. Preserve the training agent's existing integration contract
-    // while its consumers migrate to inline-terminal handling.
+    // Preserve terminal inline callbacks when supported by the SDK; actual
+    // task handoffs always use the durable framework emitter configured above.
     autoEmitCompletionWebhooks: true,
     taskRegistry,
     taskStore: sharedTrainingTaskStore,
@@ -209,11 +205,14 @@ function buildDefaultServerOptions(
     // current-path persistence primitive.
     legacyCreativeFormatConverter: projectionAdapters.legacyFormatConverter,
     canonicalFormatLegacyResolver: projectionAdapters.canonicalFormatLegacyResolver,
-    // The repository's experimental 3.2 governance schemas intentionally lead
-    // the pinned SDK codegen. Keep MCP registration passthrough and validate in
-    // the source-aligned handlers until a compatible SDK bundle is published.
-    exposeToolSchemas: false,
-    validation: { requests: 'off', responses: 'off' },
+    exposeToolSchemas: true,
+    validation: storyboardCompat?.version === '3.0'
+      ? { requests: 'off', responses: 'off' }
+      // SDK 14 surfaces several useful legacy-response diagnostics, but a
+      // global strict gate would reject otherwise compatible non-compact
+      // tenant flows. Roll those findings down in warning mode while the new
+      // compact lifecycle keeps dedicated strict contract coverage.
+      : { requests: 'warn', responses: 'warn' },
     // F11 — accept loopback push_notification_config.url only in explicit
     // test/development environments.
     // Conformance storyboards bind a loopback HTTP receiver and supply
@@ -259,7 +258,10 @@ export interface RegistryHolder {
   get(): Promise<TenantRegistry>;
 }
 
-export function createRegistryHolder(options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): RegistryHolder {
+export function createRegistryHolder(options: {
+  storyboardCompat?: TrainingContext['storyboardCompat'];
+  proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'];
+} = {}): RegistryHolder {
   let registry: TenantRegistry | null = null;
   let pendingInit: Promise<TenantRegistry> | null = null;
 

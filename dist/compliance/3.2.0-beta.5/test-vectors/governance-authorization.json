@@ -1,0 +1,1277 @@
+{
+  "profile": "adcp/governance-authorization/v1",
+  "hash_algorithm": "base64url_no_pad(SHA-256(JCS(payload without top-level governance_context and context)))",
+  "payload_hash_cases": [
+    {
+      "id": "metadata-excluded-idempotency-bound",
+      "payload": {
+        "idempotency_key": "gov-vector-0000001",
+        "account": {
+          "account_id": "acc_1"
+        },
+        "amount": 1,
+        "governance_context": "ignored",
+        "context": {
+          "trace_id": "ignored"
+        }
+      },
+      "canonical_business_payload": "{\"account\":{\"account_id\":\"acc_1\"},\"amount\":1,\"idempotency_key\":\"gov-vector-0000001\"}",
+      "expected_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+    },
+    {
+      "id": "idempotency-change-changes-hash",
+      "payload": {
+        "idempotency_key": "gov-vector-0000002",
+        "account": {
+          "account_id": "acc_1"
+        },
+        "amount": 1
+      },
+      "canonical_business_payload": "{\"account\":{\"account_id\":\"acc_1\"},\"amount\":1,\"idempotency_key\":\"gov-vector-0000002\"}",
+      "expected_hash": "dFIQcD_8f65wLwb5TTaLWm9Utv78zTtGMkBY-m-9PGo"
+    },
+    {
+      "id": "jcs-number-and-unicode",
+      "payload": {
+        "idempotency_key": "gov-vector-0000003",
+        "value": 333333333.3333333,
+        "unicode": "é"
+      },
+      "canonical_business_payload": "{\"idempotency_key\":\"gov-vector-0000003\",\"unicode\":\"é\",\"value\":333333333.3333333}",
+      "expected_hash": "OGOCNHPETcSKiZp2x0EMVinNP2RJlM0FVBJ9CyAHtvA"
+    }
+  ],
+  "authorization_cases": [
+    {
+      "id": "exact-task-payload-zero-ceiling",
+      "task_match": true,
+      "payload_hash_match": true,
+      "authorized_amount": 0,
+      "actual_amount": 0,
+      "currency_match": true,
+      "critical_markers_complete": true,
+      "expected": "accept"
+    },
+    {
+      "id": "task-mismatch",
+      "task_match": false,
+      "payload_hash_match": true,
+      "authorized_amount": 10,
+      "actual_amount": 10,
+      "currency_match": true,
+      "critical_markers_complete": true,
+      "expected": "reject"
+    },
+    {
+      "id": "payload-mismatch",
+      "task_match": true,
+      "payload_hash_match": false,
+      "authorized_amount": 10,
+      "actual_amount": 10,
+      "currency_match": true,
+      "critical_markers_complete": true,
+      "expected": "reject"
+    },
+    {
+      "id": "amount-above-ceiling",
+      "task_match": true,
+      "payload_hash_match": true,
+      "authorized_amount": 10,
+      "actual_amount": 11,
+      "currency_match": true,
+      "critical_markers_complete": true,
+      "expected": "reject"
+    },
+    {
+      "id": "currency-mismatch",
+      "task_match": true,
+      "payload_hash_match": true,
+      "authorized_amount": 10,
+      "actual_amount": 10,
+      "currency_match": false,
+      "critical_markers_complete": true,
+      "expected": "reject"
+    },
+    {
+      "id": "claim-without-critical-marker",
+      "task_match": true,
+      "payload_hash_match": true,
+      "authorized_amount": 10,
+      "actual_amount": 10,
+      "currency_match": true,
+      "critical_markers_complete": false,
+      "expected": "reject"
+    },
+    {
+      "id": "seller-update-delta-within-ceiling",
+      "task_match": true,
+      "payload_hash_match": true,
+      "authorized_amount": 500,
+      "actual_amount": 350,
+      "currency_match": true,
+      "critical_markers_complete": true,
+      "expected": "accept"
+    }
+  ],
+  "signed_jws": {
+    "profile": "adcp/governance-authorization-jws/v1",
+    "warning": "TEST-ONLY cryptographic material. Never install this JWK as a production trust anchor and never use it to authorize real spend or other activity.",
+    "serialization": "UTF-8 JSON.stringify insertion order for the published protected_header and claims objects, followed by unpadded base64url and deterministic Ed25519 signing.",
+    "test_key": {
+      "$comment": "PUBLIC TEST KEY. The private component is published for deterministic conformance fixtures and MUST NOT be used as a production trust anchor or to authorize real activity.",
+      "kid": "test-gov-2026",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "alg": "EdDSA",
+      "use": "sig",
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "governance-signing",
+      "x": "rkUcKP5oMd7YjV4yy5mVS5S8fA3LDXcf5jk1P1_52EA",
+      "_private_d_for_test_only": "bag_KLehHhOb-giX2u8kEfm9Djo6Fldl6_dFoRiC_eE"
+    },
+    "verification_defaults": {
+      "now": 1785931200,
+      "clock_skew_seconds": 60,
+      "expected_issuer": "https://gov.example.com/governance",
+      "expected_audience": "https://seller.example.com/sales",
+      "authenticated_caller": "https://buyer.example.com",
+      "expected_task": "create_media_buy",
+      "payload": {
+        "idempotency_key": "gov-vector-0000001",
+        "account": {
+          "account_id": "acc_1"
+        },
+        "amount": 1
+      },
+      "actual_commitment": {
+        "amount": 1,
+        "currency": "USD"
+      },
+      "expected_phase": "intent"
+    },
+    "cases": [
+      {
+        "id": "valid-exact-authorization",
+        "description": "Exact task, payload, caller, audience, and commitment are accepted.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-valid-exact-authorization",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItdmFsaWQtZXhhY3QtYXV0aG9yaXphdGlvbiIsInBoYXNlIjoiaW50ZW50IiwiY2FsbGVyIjoiaHR0cHM6Ly9idXllci5leGFtcGxlLmNvbSIsImNoZWNrX2lkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwiYXV0aG9yaXplZF9jb21taXRtZW50Ijp7ImFtb3VudCI6MSwiY3VycmVuY3kiOiJVU0QifSwiYXV0aG9yaXplZF90YXNrIjoiY3JlYXRlX21lZGlhX2J1eSIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIjoiT3JjQ1p6WGZnNEMwcVBlT1FqZTc4VXhLX2NvaHpGc0wwbWR4eHZkSVVWYyJ9\u002eGUvzvQJHazi-22ZWGiXY1RTnsqQskZXdXSCTZEsut9Sj_qMYHSxrHp1h6NJSl851Xc7Yw53k15KHY8Jrz88lDQ",
+        "expected": {
+          "result": "accept",
+          "error": null
+        }
+      },
+      {
+        "id": "unknown-critical-header",
+        "description": "An unknown critical protected-header extension fails closed.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash",
+            "future_governance_constraint"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true,
+          "future_governance_constraint": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-unknown-critical-header",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIiwiZnV0dXJlX2dvdmVybmFuY2VfY29uc3RyYWludCJdLCJhdXRob3JpemVkX2NvbW1pdG1lbnQiOnRydWUsImF1dGhvcml6ZWRfdGFzayI6dHJ1ZSwiYXV0aG9yaXplZF9wYXlsb2FkX2hhc2giOnRydWUsImZ1dHVyZV9nb3Zlcm5hbmNlX2NvbnN0cmFpbnQiOnRydWV9\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItdW5rbm93bi1jcml0aWNhbC1oZWFkZXIiLCJwaGFzZSI6ImludGVudCIsImNhbGxlciI6Imh0dHBzOi8vYnV5ZXIuZXhhbXBsZS5jb20iLCJjaGVja19pZCI6ImNoa192ZWN0b3JfMDAwMSIsImF1dGhvcml6ZWRfY29tbWl0bWVudCI6eyJhbW91bnQiOjEsImN1cnJlbmN5IjoiVVNEIn0sImF1dGhvcml6ZWRfdGFzayI6ImNyZWF0ZV9tZWRpYV9idXkiLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6Ik9yY0NaelhmZzRDMHFQZU9RamU3OFV4S19jb2h6RnNMMG1keHh2ZElVVmMifQ\u002eNTnY9zIwM9mcCntlp1yXxo8ZYkI5KwNAdZv5HcswGpku54IMS8cFP8V4K0Mzl0W6NTaG3kjUwfCzM0OOr8PnBA",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_invalid"
+        }
+      },
+      {
+        "id": "claim-missing-critical-marker",
+        "description": "An authorization-changing claim without its protected marker and crit entry is rejected.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-claim-missing-critical-marker",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfdGFzayI6dHJ1ZSwiYXV0aG9yaXplZF9wYXlsb2FkX2hhc2giOnRydWV9\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItY2xhaW0tbWlzc2luZy1jcml0aWNhbC1tYXJrZXIiLCJwaGFzZSI6ImludGVudCIsImNhbGxlciI6Imh0dHBzOi8vYnV5ZXIuZXhhbXBsZS5jb20iLCJjaGVja19pZCI6ImNoa192ZWN0b3JfMDAwMSIsImF1dGhvcml6ZWRfY29tbWl0bWVudCI6eyJhbW91bnQiOjEsImN1cnJlbmN5IjoiVVNEIn0sImF1dGhvcml6ZWRfdGFzayI6ImNyZWF0ZV9tZWRpYV9idXkiLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6Ik9yY0NaelhmZzRDMHFQZU9RamU3OFV4S19jb2h6RnNMMG1keHh2ZElVVmMifQ\u002ebztakGJc2iFkYe0zQuOcwvqJ1bfMJ5SiIA6cFHdVzE-86O-UMzsJxB4lcOdtoSlz4F5ozq6b81sG-j_ZNdmnBg",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_invalid"
+        }
+      },
+      {
+        "id": "critical-marker-missing-claim",
+        "description": "A protected marker and crit entry without the matching claim is rejected.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-critical-marker-missing-claim",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItY3JpdGljYWwtbWFya2VyLW1pc3NpbmctY2xhaW0iLCJwaGFzZSI6ImludGVudCIsImNhbGxlciI6Imh0dHBzOi8vYnV5ZXIuZXhhbXBsZS5jb20iLCJjaGVja19pZCI6ImNoa192ZWN0b3JfMDAwMSIsImF1dGhvcml6ZWRfdGFzayI6ImNyZWF0ZV9tZWRpYV9idXkiLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6Ik9yY0NaelhmZzRDMHFQZU9RamU3OFV4S19jb2h6RnNMMG1keHh2ZElVVmMifQ\u002eC_y-PTMZwKAXIxsUeJhhQPilIVmeoytrqf8hkuF8pf4yrlxQE9K3IFe-a2gyu86b7PMRHha1hTyCBnTPEqjACw",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_invalid"
+        }
+      },
+      {
+        "id": "audience-missing",
+        "description": "The required audience claim is absent.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-audience-missing",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJpYXQiOjE3ODU5MzEyMDAsIm5iZiI6MTc4NTkzMTE3MCwiZXhwIjoxNzg1OTMyMTAwLCJqdGkiOiJnb3YtdmVjdG9yLWF1ZGllbmNlLW1pc3NpbmciLCJwaGFzZSI6ImludGVudCIsImNhbGxlciI6Imh0dHBzOi8vYnV5ZXIuZXhhbXBsZS5jb20iLCJjaGVja19pZCI6ImNoa192ZWN0b3JfMDAwMSIsImF1dGhvcml6ZWRfY29tbWl0bWVudCI6eyJhbW91bnQiOjEsImN1cnJlbmN5IjoiVVNEIn0sImF1dGhvcml6ZWRfdGFzayI6ImNyZWF0ZV9tZWRpYV9idXkiLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6Ik9yY0NaelhmZzRDMHFQZU9RamU3OFV4S19jb2h6RnNMMG1keHh2ZElVVmMifQ\u002eXvYPunOk8SX1OyVyJiNX1-2QQgWTeHFQt0cLCi4oDIPuTg3gS5Puw39ovOD7Z7qCLrWGeUgnJLH7YGkoCTsaAA",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_invalid"
+        }
+      },
+      {
+        "id": "audience-mismatch",
+        "description": "A valid token for another service cannot be redirected.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://other-seller.example/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-audience-mismatch",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL290aGVyLXNlbGxlci5leGFtcGxlL3NhbGVzIiwiaWF0IjoxNzg1OTMxMjAwLCJuYmYiOjE3ODU5MzExNzAsImV4cCI6MTc4NTkzMjEwMCwianRpIjoiZ292LXZlY3Rvci1hdWRpZW5jZS1taXNtYXRjaCIsInBoYXNlIjoiaW50ZW50IiwiY2FsbGVyIjoiaHR0cHM6Ly9idXllci5leGFtcGxlLmNvbSIsImNoZWNrX2lkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwiYXV0aG9yaXplZF9jb21taXRtZW50Ijp7ImFtb3VudCI6MSwiY3VycmVuY3kiOiJVU0QifSwiYXV0aG9yaXplZF90YXNrIjoiY3JlYXRlX21lZGlhX2J1eSIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIjoiT3JjQ1p6WGZnNEMwcVBlT1FqZTc4VXhLX2NvaHpGc0wwbWR4eHZkSVVWYyJ9\u002eRwlLnBDJtySSPUgdMeRoDxJ5rIIGzjr1EOnXH46pOS81Wj_vLgBDRju87VQRV0wi4QgSin8inu-LFT92-PFEBA",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_not_applicable"
+        }
+      },
+      {
+        "id": "authenticated-caller-missing",
+        "description": "The required authenticated-caller binding is absent.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-authenticated-caller-missing",
+          "phase": "intent",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItYXV0aGVudGljYXRlZC1jYWxsZXItbWlzc2luZyIsInBoYXNlIjoiaW50ZW50IiwiY2hlY2tfaWQiOiJjaGtfdmVjdG9yXzAwMDEiLCJhdXRob3JpemVkX2NvbW1pdG1lbnQiOnsiYW1vdW50IjoxLCJjdXJyZW5jeSI6IlVTRCJ9LCJhdXRob3JpemVkX3Rhc2siOiJjcmVhdGVfbWVkaWFfYnV5IiwiYXV0aG9yaXplZF9wYXlsb2FkX2hhc2giOiJPcmNDWnpYZmc0QzBxUGVPUWplNzhVeEtfY29oekZzTDBtZHh4dmRJVVZjIn0\u002ebZbFgV2DsUMMCMAPy2lQ29XTYkxe9ZUhO6-8IjKyOdX5fgX9jbGI-Mapa24g0Sp4MTOoxK8yaj58JjG5FKtZCQ",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_invalid"
+        }
+      },
+      {
+        "id": "authenticated-caller-mismatch",
+        "description": "The transport-authenticated caller must match the signed caller.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-authenticated-caller-mismatch",
+          "phase": "intent",
+          "caller": "https://other-buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItYXV0aGVudGljYXRlZC1jYWxsZXItbWlzbWF0Y2giLCJwaGFzZSI6ImludGVudCIsImNhbGxlciI6Imh0dHBzOi8vb3RoZXItYnV5ZXIuZXhhbXBsZS5jb20iLCJjaGVja19pZCI6ImNoa192ZWN0b3JfMDAwMSIsImF1dGhvcml6ZWRfY29tbWl0bWVudCI6eyJhbW91bnQiOjEsImN1cnJlbmN5IjoiVVNEIn0sImF1dGhvcml6ZWRfdGFzayI6ImNyZWF0ZV9tZWRpYV9idXkiLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6Ik9yY0NaelhmZzRDMHFQZU9RamU3OFV4S19jb2h6RnNMMG1keHh2ZElVVmMifQ\u002eiJJzPSftvu1K3AOuRTPGmaORnQKv2fPzt-f7ZMq2xTFn9OyaD3wMweoG02NW_9ei1oo-O8Eo4z6ckKJKwrzPAg",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_not_applicable"
+        }
+      },
+      {
+        "id": "authorized-task-missing",
+        "description": "An action token cannot omit its authorized task while retaining a payload binding.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-authorized-task-missing",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF9wYXlsb2FkX2hhc2giOnRydWV9\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItYXV0aG9yaXplZC10YXNrLW1pc3NpbmciLCJwaGFzZSI6ImludGVudCIsImNhbGxlciI6Imh0dHBzOi8vYnV5ZXIuZXhhbXBsZS5jb20iLCJjaGVja19pZCI6ImNoa192ZWN0b3JfMDAwMSIsImF1dGhvcml6ZWRfY29tbWl0bWVudCI6eyJhbW91bnQiOjEsImN1cnJlbmN5IjoiVVNEIn0sImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIjoiT3JjQ1p6WGZnNEMwcVBlT1FqZTc4VXhLX2NvaHpGc0wwbWR4eHZkSVVWYyJ9\u002ezh_QN2ArwkN9S6cSyeoNwdvbqrNiNSeuxOTUmsTOwgg9W5Tun459_FbkmLvFlB95fR5B_upkX1nK8_dO_sHqBw",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_invalid"
+        }
+      },
+      {
+        "id": "authorized-task-mismatch",
+        "description": "A token cannot authorize a different AdCP task.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-authorized-task-mismatch",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "update_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItYXV0aG9yaXplZC10YXNrLW1pc21hdGNoIiwicGhhc2UiOiJpbnRlbnQiLCJjYWxsZXIiOiJodHRwczovL2J1eWVyLmV4YW1wbGUuY29tIiwiY2hlY2tfaWQiOiJjaGtfdmVjdG9yXzAwMDEiLCJhdXRob3JpemVkX2NvbW1pdG1lbnQiOnsiYW1vdW50IjoxLCJjdXJyZW5jeSI6IlVTRCJ9LCJhdXRob3JpemVkX3Rhc2siOiJ1cGRhdGVfbWVkaWFfYnV5IiwiYXV0aG9yaXplZF9wYXlsb2FkX2hhc2giOiJPcmNDWnpYZmc0QzBxUGVPUWplNzhVeEtfY29oekZzTDBtZHh4dmRJVVZjIn0\u002egk5Og2ww5DGyY8eD-UYQHZvk6xtmtr_myL6ZD0zD2ND6AMKSqZ_NGrEnYO9-W_PCuRfn9VvFbjJ_5HcfojxZBw",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_not_applicable"
+        }
+      },
+      {
+        "id": "authorized-payload-hash-missing",
+        "description": "An action token cannot omit its payload hash while retaining a task binding.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-authorized-payload-hash-missing",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayJdLCJhdXRob3JpemVkX2NvbW1pdG1lbnQiOnRydWUsImF1dGhvcml6ZWRfdGFzayI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItYXV0aG9yaXplZC1wYXlsb2FkLWhhc2gtbWlzc2luZyIsInBoYXNlIjoiaW50ZW50IiwiY2FsbGVyIjoiaHR0cHM6Ly9idXllci5leGFtcGxlLmNvbSIsImNoZWNrX2lkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwiYXV0aG9yaXplZF9jb21taXRtZW50Ijp7ImFtb3VudCI6MSwiY3VycmVuY3kiOiJVU0QifSwiYXV0aG9yaXplZF90YXNrIjoiY3JlYXRlX21lZGlhX2J1eSJ9\u002eBD8KRY9g9OAQAdSj5tnpLKAWHg5hWPvjbKtUKjGa26KWwDDsFUME6AbD1X8GrzxnoTogZlJfBJATzEUFnvTFAg",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_invalid"
+        }
+      },
+      {
+        "id": "authorized-payload-hash-mismatch",
+        "description": "A token cannot be replayed over different downstream task arguments.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-authorized-payload-hash-mismatch",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "zU1xU_Jn2e2EOwAvt1-PC3WlCQeARC3Tpi6pA56wbdY"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItYXV0aG9yaXplZC1wYXlsb2FkLWhhc2gtbWlzbWF0Y2giLCJwaGFzZSI6ImludGVudCIsImNhbGxlciI6Imh0dHBzOi8vYnV5ZXIuZXhhbXBsZS5jb20iLCJjaGVja19pZCI6ImNoa192ZWN0b3JfMDAwMSIsImF1dGhvcml6ZWRfY29tbWl0bWVudCI6eyJhbW91bnQiOjEsImN1cnJlbmN5IjoiVVNEIn0sImF1dGhvcml6ZWRfdGFzayI6ImNyZWF0ZV9tZWRpYV9idXkiLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6InpVMXhVX0puMmUyRU93QXZ0MS1QQzNXbENRZUFSQzNUcGk2cEE1NndiZFkifQ\u002eEB-d3WcJsh0qS1sHuVBtH2baS-lG0rb0iJSQBe3-a_g-UYP-lHlu0v4BjFGXPdu6-9tY8VWfxR1FEvNRdIJbDw",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_not_applicable"
+        }
+      },
+      {
+        "id": "authorized-commitment-missing",
+        "description": "A monetary operation requires a signed commitment ceiling.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-authorized-commitment-missing",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfdGFzayI6dHJ1ZSwiYXV0aG9yaXplZF9wYXlsb2FkX2hhc2giOnRydWV9\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItYXV0aG9yaXplZC1jb21taXRtZW50LW1pc3NpbmciLCJwaGFzZSI6ImludGVudCIsImNhbGxlciI6Imh0dHBzOi8vYnV5ZXIuZXhhbXBsZS5jb20iLCJjaGVja19pZCI6ImNoa192ZWN0b3JfMDAwMSIsImF1dGhvcml6ZWRfdGFzayI6ImNyZWF0ZV9tZWRpYV9idXkiLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6Ik9yY0NaelhmZzRDMHFQZU9RamU3OFV4S19jb2h6RnNMMG1keHh2ZElVVmMifQ\u002eqAo_qlm-ZWg_2Nc3vscuEj_tqvqR8V87n1Pd__N-mfCxgB5fXHo8_VaHdCBQoa9epkfP6t2cnnJnOwuBePgwDg",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_not_applicable"
+        }
+      },
+      {
+        "id": "authorized-currency-missing",
+        "description": "A commitment claim without currency is malformed.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-authorized-currency-missing",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItYXV0aG9yaXplZC1jdXJyZW5jeS1taXNzaW5nIiwicGhhc2UiOiJpbnRlbnQiLCJjYWxsZXIiOiJodHRwczovL2J1eWVyLmV4YW1wbGUuY29tIiwiY2hlY2tfaWQiOiJjaGtfdmVjdG9yXzAwMDEiLCJhdXRob3JpemVkX2NvbW1pdG1lbnQiOnsiYW1vdW50IjoxfSwiYXV0aG9yaXplZF90YXNrIjoiY3JlYXRlX21lZGlhX2J1eSIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIjoiT3JjQ1p6WGZnNEMwcVBlT1FqZTc4VXhLX2NvaHpGc0wwbWR4eHZkSVVWYyJ9\u002e5tVJR_dkYYx7kMs_illFEDnvMW5A4M1M5mJ_bzqn9AcHHuet71gtLuhHC0U_CFjSnT1stIQNDtsp0VQVR7ciBw",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_invalid"
+        }
+      },
+      {
+        "id": "authorized-currency-mismatch",
+        "description": "The service-computed currency must match the signed currency.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-authorized-currency-mismatch",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "EUR"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItYXV0aG9yaXplZC1jdXJyZW5jeS1taXNtYXRjaCIsInBoYXNlIjoiaW50ZW50IiwiY2FsbGVyIjoiaHR0cHM6Ly9idXllci5leGFtcGxlLmNvbSIsImNoZWNrX2lkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwiYXV0aG9yaXplZF9jb21taXRtZW50Ijp7ImFtb3VudCI6MSwiY3VycmVuY3kiOiJFVVIifSwiYXV0aG9yaXplZF90YXNrIjoiY3JlYXRlX21lZGlhX2J1eSIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIjoiT3JjQ1p6WGZnNEMwcVBlT1FqZTc4VXhLX2NvaHpGc0wwbWR4eHZkSVVWYyJ9\u002eE9gJqTSrUfdACj4kJSLmv9PzZkNkfWcQLvKW4zu4rLg3o6yJAErJebdButWYxES7ZPU-hyfGueFqh7szl904Dw",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_not_applicable"
+        }
+      },
+      {
+        "id": "authorized-amount-missing",
+        "description": "A commitment claim without a finite non-negative amount is malformed.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-authorized-amount-missing",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItYXV0aG9yaXplZC1hbW91bnQtbWlzc2luZyIsInBoYXNlIjoiaW50ZW50IiwiY2FsbGVyIjoiaHR0cHM6Ly9idXllci5leGFtcGxlLmNvbSIsImNoZWNrX2lkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwiYXV0aG9yaXplZF9jb21taXRtZW50Ijp7ImN1cnJlbmN5IjoiVVNEIn0sImF1dGhvcml6ZWRfdGFzayI6ImNyZWF0ZV9tZWRpYV9idXkiLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6Ik9yY0NaelhmZzRDMHFQZU9RamU3OFV4S19jb2h6RnNMMG1keHh2ZElVVmMifQ\u002eUeFNtzGG3ZcYKw9hapKBHamWN2uwUbitknz-zQB2fWSt8VKkJDVN7JzwGBmEyA2P3roFLJPFbOIrl5IjMcWyBw",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_invalid"
+        }
+      },
+      {
+        "id": "actual-amount-widens-ceiling",
+        "description": "The service-computed amount cannot exceed the signed ceiling.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-actual-amount-widens-ceiling",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "verification_overrides": {
+          "actual_commitment": {
+            "amount": 1.01,
+            "currency": "USD"
+          }
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItYWN0dWFsLWFtb3VudC13aWRlbnMtY2VpbGluZyIsInBoYXNlIjoiaW50ZW50IiwiY2FsbGVyIjoiaHR0cHM6Ly9idXllci5leGFtcGxlLmNvbSIsImNoZWNrX2lkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwiYXV0aG9yaXplZF9jb21taXRtZW50Ijp7ImFtb3VudCI6MSwiY3VycmVuY3kiOiJVU0QifSwiYXV0aG9yaXplZF90YXNrIjoiY3JlYXRlX21lZGlhX2J1eSIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIjoiT3JjQ1p6WGZnNEMwcVBlT1FqZTc4VXhLX2NvaHpGc0wwbWR4eHZkSVVWYyJ9\u002eilKd-1Duqz0ryCzUGqzPB9MWeL_0JISrTJVnvV4ztrLaCm_ZuT7sU5HxB_2gtK6FpUfXDJfxxWLfMKa2DjQLDQ",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_not_applicable"
+        }
+      },
+      {
+        "id": "issued-at-in-future",
+        "description": "An iat beyond the allowed clock skew is not yet valid.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931261,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-issued-at-in-future",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTI2MSwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItaXNzdWVkLWF0LWluLWZ1dHVyZSIsInBoYXNlIjoiaW50ZW50IiwiY2FsbGVyIjoiaHR0cHM6Ly9idXllci5leGFtcGxlLmNvbSIsImNoZWNrX2lkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwiYXV0aG9yaXplZF9jb21taXRtZW50Ijp7ImFtb3VudCI6MSwiY3VycmVuY3kiOiJVU0QifSwiYXV0aG9yaXplZF90YXNrIjoiY3JlYXRlX21lZGlhX2J1eSIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIjoiT3JjQ1p6WGZnNEMwcVBlT1FqZTc4VXhLX2NvaHpGc0wwbWR4eHZkSVVWYyJ9\u002e3cMLVIsk3DepeTkVymKc3NbQIssjMOn0PhAt__Ps5QDW1wcilVrACVEFBBDn86Kfw36sYmO4uyaYy1uz54RgBw",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_not_yet_valid"
+        }
+      },
+      {
+        "id": "not-before-in-future",
+        "description": "An nbf beyond the allowed clock skew is not yet valid.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931261,
+          "exp": 1785932100,
+          "jti": "gov-vector-not-before-in-future",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMjYxLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3Itbm90LWJlZm9yZS1pbi1mdXR1cmUiLCJwaGFzZSI6ImludGVudCIsImNhbGxlciI6Imh0dHBzOi8vYnV5ZXIuZXhhbXBsZS5jb20iLCJjaGVja19pZCI6ImNoa192ZWN0b3JfMDAwMSIsImF1dGhvcml6ZWRfY29tbWl0bWVudCI6eyJhbW91bnQiOjEsImN1cnJlbmN5IjoiVVNEIn0sImF1dGhvcml6ZWRfdGFzayI6ImNyZWF0ZV9tZWRpYV9idXkiLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6Ik9yY0NaelhmZzRDMHFQZU9RamU3OFV4S19jb2h6RnNMMG1keHh2ZElVVmMifQ\u002e7Oh9qdn1XpVpWiFeVaxcmXDobDELCB8RDNB9BD3ubUsg2Yy5vnB8WhTIXt3_1sBYen8JGDUEqmOKN8Op1oRiAg",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_not_yet_valid"
+        }
+      },
+      {
+        "id": "expiration-missing",
+        "description": "The required expiration bound is absent.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "jti": "gov-vector-expiration-missing",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJqdGkiOiJnb3YtdmVjdG9yLWV4cGlyYXRpb24tbWlzc2luZyIsInBoYXNlIjoiaW50ZW50IiwiY2FsbGVyIjoiaHR0cHM6Ly9idXllci5leGFtcGxlLmNvbSIsImNoZWNrX2lkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwiYXV0aG9yaXplZF9jb21taXRtZW50Ijp7ImFtb3VudCI6MSwiY3VycmVuY3kiOiJVU0QifSwiYXV0aG9yaXplZF90YXNrIjoiY3JlYXRlX21lZGlhX2J1eSIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIjoiT3JjQ1p6WGZnNEMwcVBlT1FqZTc4VXhLX2NvaHpGc0wwbWR4eHZkSVVWYyJ9\u002e3EJY7ttHRUc7shW3kMBRnEBMPM-FvUQgeBPNMDoGu1vaR5VblUntfEVDUKCL_yXKlNQ8rt7zPpkXKGi3knbmDQ",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_invalid"
+        }
+      },
+      {
+        "id": "token-expired",
+        "description": "An expiration beyond the allowed clock skew is rejected.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785931139,
+          "jti": "gov-vector-token-expired",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzExMzksImp0aSI6Imdvdi12ZWN0b3ItdG9rZW4tZXhwaXJlZCIsInBoYXNlIjoiaW50ZW50IiwiY2FsbGVyIjoiaHR0cHM6Ly9idXllci5leGFtcGxlLmNvbSIsImNoZWNrX2lkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwiYXV0aG9yaXplZF9jb21taXRtZW50Ijp7ImFtb3VudCI6MSwiY3VycmVuY3kiOiJVU0QifSwiYXV0aG9yaXplZF90YXNrIjoiY3JlYXRlX21lZGlhX2J1eSIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIjoiT3JjQ1p6WGZnNEMwcVBlT1FqZTc4VXhLX2NvaHpGc0wwbWR4eHZkSVVWYyJ9\u002ero586w8BOBLnYCCE0Z5o44VmEOWsU6j1Rv5OjQZ3Oo0ts1KCVczkxbMhvyb351KD42loOZGI97px06v9DZbpDQ",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_expired"
+        }
+      },
+      {
+        "id": "jti-missing",
+        "description": "The required replay identifier is absent.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsInBoYXNlIjoiaW50ZW50IiwiY2FsbGVyIjoiaHR0cHM6Ly9idXllci5leGFtcGxlLmNvbSIsImNoZWNrX2lkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwiYXV0aG9yaXplZF9jb21taXRtZW50Ijp7ImFtb3VudCI6MSwiY3VycmVuY3kiOiJVU0QifSwiYXV0aG9yaXplZF90YXNrIjoiY3JlYXRlX21lZGlhX2J1eSIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIjoiT3JjQ1p6WGZnNEMwcVBlT1FqZTc4VXhLX2NvaHpGc0wwbWR4eHZkSVVWYyJ9\u002eYwIZ_VSExtfTs5mu_kP4ZzNM77PLLYgr-rnc-K_CYf_Qc8I6KOPaFoDve7vH5jwc6m8RhFYrBg3T-hAzM4M0BA",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_invalid"
+        }
+      },
+      {
+        "id": "jti-empty",
+        "description": "An empty replay identifier is invalid.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6IiIsInBoYXNlIjoiaW50ZW50IiwiY2FsbGVyIjoiaHR0cHM6Ly9idXllci5leGFtcGxlLmNvbSIsImNoZWNrX2lkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwiYXV0aG9yaXplZF9jb21taXRtZW50Ijp7ImFtb3VudCI6MSwiY3VycmVuY3kiOiJVU0QifSwiYXV0aG9yaXplZF90YXNrIjoiY3JlYXRlX21lZGlhX2J1eSIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIjoiT3JjQ1p6WGZnNEMwcVBlT1FqZTc4VXhLX2NvaHpGc0wwbWR4eHZkSVVWYyJ9\u002eeKjukyYtoe_6dx5CJXetBuK9cWR3SaKw84TrSFGQBDxgMDAZjxCFL0sG8h7V2H0HQv0dNTb6-Hos_GeljoNXAg",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_invalid"
+        }
+      },
+      {
+        "id": "jti-replayed",
+        "description": "A previously consumed (iss, aud, jti) tuple is rejected.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-jti-replayed",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "verification_overrides": {
+          "preconsumed_jti": true
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItanRpLXJlcGxheWVkIiwicGhhc2UiOiJpbnRlbnQiLCJjYWxsZXIiOiJodHRwczovL2J1eWVyLmV4YW1wbGUuY29tIiwiY2hlY2tfaWQiOiJjaGtfdmVjdG9yXzAwMDEiLCJhdXRob3JpemVkX2NvbW1pdG1lbnQiOnsiYW1vdW50IjoxLCJjdXJyZW5jeSI6IlVTRCJ9LCJhdXRob3JpemVkX3Rhc2siOiJjcmVhdGVfbWVkaWFfYnV5IiwiYXV0aG9yaXplZF9wYXlsb2FkX2hhc2giOiJPcmNDWnpYZmc0QzBxUGVPUWplNzhVeEtfY29oekZzTDBtZHh4dmRJVVZjIn0\u002eUGfnhGMVem5fum-4ZdzNIHhP98NdAAPwyMbjqGjIrBp0qlZijHYu2HnQM5OPas48-kc4cP5ug42nHGT4jhUUAA",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_replayed"
+        }
+      },
+      {
+        "id": "signature-tampered",
+        "description": "A modified compact-JWS signature is rejected.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-signature-tampered",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 1,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "OrcCZzXfg4C0qPeOQje78UxK_cohzFsL0mdxxvdIUVc"
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3Itc2lnbmF0dXJlLXRhbXBlcmVkIiwicGhhc2UiOiJpbnRlbnQiLCJjYWxsZXIiOiJodHRwczovL2J1eWVyLmV4YW1wbGUuY29tIiwiY2hlY2tfaWQiOiJjaGtfdmVjdG9yXzAwMDEiLCJhdXRob3JpemVkX2NvbW1pdG1lbnQiOnsiYW1vdW50IjoxLCJjdXJyZW5jeSI6IlVTRCJ9LCJhdXRob3JpemVkX3Rhc2siOiJjcmVhdGVfbWVkaWFfYnV5IiwiYXV0aG9yaXplZF9wYXlsb2FkX2hhc2giOiJPcmNDWnpYZmc0QzBxUGVPUWplNzhVeEtfY29oekZzTDBtZHh4dmRJVVZjIn0\u002eAeBLdXryh91hSu1g4j6CKRXnM2jhvCQwbdZ_19_smGAY4yDS_GaG_lNn8ZPzvXAvy7nmDC15SpgvRGaQWj8YDw",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_invalid"
+        }
+      },
+      {
+        "id": "zero-cost-commitment",
+        "description": "An explicit zero-cost ceiling authorizes a verified zero-cost operation.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-zero-cost-commitment",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 0,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "KjnAALDOq_sPSLVKUamfhUXwrS83-_1w12zWT228b3g"
+        },
+        "verification_overrides": {
+          "payload": {
+            "idempotency_key": "gov-vector-zero-0001",
+            "account": {
+              "account_id": "acc_1"
+            },
+            "amount": 0
+          },
+          "actual_commitment": {
+            "amount": 0,
+            "currency": "USD"
+          }
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItemVyby1jb3N0LWNvbW1pdG1lbnQiLCJwaGFzZSI6ImludGVudCIsImNhbGxlciI6Imh0dHBzOi8vYnV5ZXIuZXhhbXBsZS5jb20iLCJjaGVja19pZCI6ImNoa192ZWN0b3JfMDAwMSIsImF1dGhvcml6ZWRfY29tbWl0bWVudCI6eyJhbW91bnQiOjAsImN1cnJlbmN5IjoiVVNEIn0sImF1dGhvcml6ZWRfdGFzayI6ImNyZWF0ZV9tZWRpYV9idXkiLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6IktqbkFBTERPcV9zUFNMVktVYW1maFVYd3JTODMtXzF3MTJ6V1QyMjhiM2cifQ\u002eNoxxibPmXruDhXGuRxSlSbPG4GpYtI2fKmEKIplTrTKe4fZM-N7C6wFn_kcXKj4OJBd29Q4S4B6OyU3qWiAeBg",
+        "expected": {
+          "result": "accept",
+          "error": null
+        }
+      },
+      {
+        "id": "zero-cost-ceiling-widened",
+        "description": "A zero-cost authorization cannot be widened to a positive commitment.",
+        "protected_header": {
+          "alg": "EdDSA",
+          "kid": "test-gov-2026",
+          "typ": "adcp-gov+jws",
+          "crit": [
+            "authorized_commitment",
+            "authorized_task",
+            "authorized_payload_hash"
+          ],
+          "authorized_commitment": true,
+          "authorized_task": true,
+          "authorized_payload_hash": true
+        },
+        "claims": {
+          "iss": "https://gov.example.com/governance",
+          "sub": "gov_action_vector_0001",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "aud": "https://seller.example.com/sales",
+          "iat": 1785931200,
+          "nbf": 1785931170,
+          "exp": 1785932100,
+          "jti": "gov-vector-zero-cost-ceiling-widened",
+          "phase": "intent",
+          "caller": "https://buyer.example.com",
+          "check_id": "chk_vector_0001",
+          "authorized_commitment": {
+            "amount": 0,
+            "currency": "USD"
+          },
+          "authorized_task": "create_media_buy",
+          "authorized_payload_hash": "KjnAALDOq_sPSLVKUamfhUXwrS83-_1w12zWT228b3g"
+        },
+        "verification_overrides": {
+          "payload": {
+            "idempotency_key": "gov-vector-zero-0001",
+            "account": {
+              "account_id": "acc_1"
+            },
+            "amount": 0
+          },
+          "actual_commitment": {
+            "amount": 0.01,
+            "currency": "USD"
+          }
+        },
+        "compact_jws": "eyJhbGciOiJFZERTQSIsImtpZCI6InRlc3QtZ292LTIwMjYiLCJ0eXAiOiJhZGNwLWdvditqd3MiLCJjcml0IjpbImF1dGhvcml6ZWRfY29tbWl0bWVudCIsImF1dGhvcml6ZWRfdGFzayIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIl0sImF1dGhvcml6ZWRfY29tbWl0bWVudCI6dHJ1ZSwiYXV0aG9yaXplZF90YXNrIjp0cnVlLCJhdXRob3JpemVkX3BheWxvYWRfaGFzaCI6dHJ1ZX0\u002eeyJpc3MiOiJodHRwczovL2dvdi5leGFtcGxlLmNvbS9nb3Zlcm5hbmNlIiwic3ViIjoiZ292X2FjdGlvbl92ZWN0b3JfMDAwMSIsInBsYW5faGFzaCI6Im9SMGpGREV0emN3Z1BiTmYtT2ZkX2ZaSFlmQXlEMVRSYnpHT0ZCVkNHLWMiLCJhdWQiOiJodHRwczovL3NlbGxlci5leGFtcGxlLmNvbS9zYWxlcyIsImlhdCI6MTc4NTkzMTIwMCwibmJmIjoxNzg1OTMxMTcwLCJleHAiOjE3ODU5MzIxMDAsImp0aSI6Imdvdi12ZWN0b3ItemVyby1jb3N0LWNlaWxpbmctd2lkZW5lZCIsInBoYXNlIjoiaW50ZW50IiwiY2FsbGVyIjoiaHR0cHM6Ly9idXllci5leGFtcGxlLmNvbSIsImNoZWNrX2lkIjoiY2hrX3ZlY3Rvcl8wMDAxIiwiYXV0aG9yaXplZF9jb21taXRtZW50Ijp7ImFtb3VudCI6MCwiY3VycmVuY3kiOiJVU0QifSwiYXV0aG9yaXplZF90YXNrIjoiY3JlYXRlX21lZGlhX2J1eSIsImF1dGhvcml6ZWRfcGF5bG9hZF9oYXNoIjoiS2puQUFMRE9xX3NQU0xWS1VhbWZoVVh3clM4My1fMXcxMnpXVDIyOGIzZyJ9\u002e0Z_NfFwx7Ny3m4ymwvXt_y5AZW1I2KZ2Rn_NqvkhAZomHH4G0wyfRm8hMPzVinynLiLFXXKOE4rT_31tvismDw",
+        "expected": {
+          "result": "reject",
+          "error": "governance_token_not_applicable"
+        }
+      }
+    ]
+  }
+}

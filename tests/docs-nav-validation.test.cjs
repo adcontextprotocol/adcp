@@ -162,6 +162,34 @@ test('one release-labeled version owns the live docs tree', () => {
   }
 });
 
+test('prerelease banner links to the current versioned beta landing page', () => {
+  const betaVersion = navigation.versions.find(versionEntry =>
+    /-beta$/.test(versionEntry.version)
+  );
+  if (!betaVersion) return;
+
+  const [majorMinor] = betaVersion.version.split('-');
+  const [major, minor] = majorMinor.split('.');
+  const landingSuffix = `/reference/${major}-${minor}-beta`;
+  const landingPage = collectPages(betaVersion.groups).find(page =>
+    page.endsWith(landingSuffix)
+  );
+  if (!landingPage) {
+    throw new Error(`Version "${betaVersion.version}" has no beta landing page`);
+  }
+
+  const bannerContent = docsConfig.banner?.content || '';
+  const bannerLink = bannerContent.match(/\[[^\]]+\]\(([^)]+)\)/)?.[1];
+  if (bannerLink !== `/${landingPage}`) {
+    throw new Error(
+      `Beta banner must link to /${landingPage}; found ${bannerLink || 'no link'}`
+    );
+  }
+  if (new RegExp(`AdCP ${major}\\.${minor} beta\\.\\d+`).test(bannerContent)) {
+    throw new Error('Beta banner must not freeze a moving beta ordinal in its copy');
+  }
+});
+
 for (const versionEntry of navigation.versions) {
   const { version, groups } = versionEntry;
   log(`Version: ${version}`);
@@ -409,9 +437,14 @@ test('temporary snapshot redirects cover every available live page', () => {
   );
 
   const expectedUncoveredPages = [
+    'docs/reference/whats-new-in-3-2',
+    'docs/reference/3-2-beta',
+    'docs/reference/migration/3-1-to-3-2',
+    'docs/reference/migration/targeting-aware-discovery',
     'docs/reference/migration/asset-access',
     'docs/reference/migration/cross-role-governance-enforcement',
     'docs/protocol/language-and-localization',
+    'docs/building/by-layer/L3/async-identity-and-convergence',
     'docs/protocol/sync_agent_notification_configs',
     'docs/accounts/provisioning-walkthrough',
     'docs/media-buy/product-discovery/proposal-negotiation',
@@ -424,6 +457,7 @@ test('temporary snapshot redirects cover every available live page', () => {
     'docs/media-buy/task-reference/accept_proposal',
     'docs/media-buy/task-reference/control_media_buy',
     'docs/creative/channels/radio',
+    'docs/governance/creative/policy-backed-rejections',
     'docs/governance/campaign/tasks/report_plan_adjustment',
     'docs/brand-protocol/tasks/search_brands',
   ];

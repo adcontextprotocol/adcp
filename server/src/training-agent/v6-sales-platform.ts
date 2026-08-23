@@ -11,15 +11,18 @@
  * bodies that throw `AdcpError` directly) is a follow-up.
  */
 
+import { createHash } from 'node:crypto';
 import {
   AdcpError,
   type DecisioningPlatform,
   type SalesPlatform,
+  type MediaBuyLifecyclePlatform,
   type LegacyMediaBuyHandlers,
   type AccountStore,
   type AudiencePlatform,
   type SyncAudiencesRow,
   type AudienceStatus,
+  type CreateMediaBuyHandlerResult,
 } from '@adcp/sdk/server';
 import {
   packageRefsForFormatOptions,
@@ -27,6 +30,10 @@ import {
 } from '@adcp/sdk/v2/projection';
 import {
   executeTrainingAgentTool,
+  executeProductDiscoveryPlatformTool,
+  handleBuyProducts,
+  handleAcceptProposal,
+  handleControlMediaBuy,
   handleCreateMediaBuy,
   handleUpdateMediaBuy,
   handleGetMediaBuys,
@@ -48,8 +55,12 @@ import { handleSyncAudiences } from './audience-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
+import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
 import { sessionKeyFromArgs } from './state.js';
 import type { ToolArgs, TrainingContext } from './types.js';
+import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
+import { maybeEmitCompletionWebhook } from './webhooks.js';
+import { scopedPrincipal } from './idempotency.js';
 
 interface TrainingSalesMeta {
   brand_domain?: string;
@@ -60,6 +71,49 @@ interface TrainingSalesMeta {
 
 interface TrainingSalesConfig {
   strict: boolean;
+}
+
+const PACKAGE_SELECTOR_FIELDS = [
+  'format_option_refs',
+  'format_kind',
+  'params',
+  'format_ids',
+] as const;
+
+/**
+ * The SDK's canonical platform signature intentionally omits deprecated
+ * selector fields. During the 3.x compatibility window we still need the raw
+ * co-present routes so the receiver can resolve and equivalence-check them
+ * before canonical precedence is applied.
+ */
+export function restoreRawPackageSelectors(
+  normalized: Record<string, unknown>,
+  rawInput: unknown,
+  packageFields: readonly string[],
+): Record<string, unknown> {
+  if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) return normalized;
+  const rawRecord = rawInput as Record<string, unknown>;
+  const restored = { ...normalized };
+  for (const packageField of packageFields) {
+    const normalizedPackages = normalized[packageField];
+    const rawPackages = rawRecord[packageField];
+    if (!Array.isArray(normalizedPackages) || !Array.isArray(rawPackages)) continue;
+    restored[packageField] = normalizedPackages.map((pkg, index) => {
+      const rawPackage = rawPackages[index];
+      if (!pkg || typeof pkg !== 'object' || Array.isArray(pkg)
+        || !rawPackage || typeof rawPackage !== 'object' || Array.isArray(rawPackage)) {
+        return pkg;
+      }
+      const next = { ...(pkg as Record<string, unknown>) };
+      for (const selectorField of PACKAGE_SELECTOR_FIELDS) {
+        if (selectorField in rawPackage) {
+          next[selectorField] = (rawPackage as Record<string, unknown>)[selectorField];
+        }
+      }
+      return next;
+    });
+  }
+  return restored;
 }
 
 export const TRAINING_SALES_CAPABILITIES = {
@@ -127,8 +181,11 @@ function buildTrainingCtx(
     authInfo?: { clientId?: string };
     agent?: { agent_url: string };
     input?: unknown;
+    callerMutationScope?: Readonly<{ tenant_id: string; principal_id: string; account_id?: string }>;
+    proposalRefinementScope?: Readonly<{ tenant_id: string; principal_id: string; account_id?: string }>;
   } | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
+  proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'],
 ): TrainingContext {
   const account = ctx?.account as { authInfo?: { principal?: string } } | undefined;
   const legacySessionBrandDomain = storyboardCompat?.version === '3.0'
@@ -150,9 +207,67 @@ function buildTrainingCtx(
       ? { requestInput: ctx.input as Record<string, unknown> }
       : {}),
     ...(resolvedAccount && { resolvedAccount }),
+    ...(typeof (ctx?.account as { id?: unknown } | undefined)?.id === 'string'
+      && { resolvedAccountId: (ctx!.account as { id: string }).id }),
     ...(legacySessionBrandDomain && { legacySessionBrandDomain }),
     ...(storyboardCompat && { storyboardCompat }),
+    ...(ctx?.callerMutationScope && { callerMutationScope: ctx.callerMutationScope }),
+    ...(ctx?.proposalRefinementScope && { proposalRefinementScope: ctx.proposalRefinementScope }),
+    ...(proposalNegotiationProfile && { proposalNegotiationProfile }),
   };
+}
+
+/**
+ * Derive the delivery partition for synchronous compatibility webhooks from
+ * framework-resolved state only. Request fields are buyer-controlled and must
+ * never select another caller's durable webhook namespace.
+ */
+function trustedWebhookPrincipal(ctx: {
+  account?: unknown;
+  authInfo?: { clientId?: string };
+  callerMutationScope?: Readonly<{ tenant_id: string; principal_id: string; account_id?: string }>;
+}): string {
+  const scope = ctx.callerMutationScope;
+  if (scope) {
+    return JSON.stringify([
+      'caller',
+      scope.tenant_id,
+      scope.principal_id,
+      scope.account_id ?? null,
+    ]);
+  }
+  const account = ctx.account as {
+    id?: unknown;
+    authInfo?: { principal?: unknown };
+    ctx_metadata?: { account_ref?: unknown };
+  } | undefined;
+  const accountId = account?.id;
+  if (typeof accountId !== 'string' || accountId.length === 0) {
+    throw new Error('create_media_buy completion webhook requires a framework-resolved caller or account scope');
+  }
+  // RequestContext currently omits authInfo, but the trusted AccountStore
+  // projection retains the authenticated principal on the resolved account.
+  // Prefer a future first-class bridge when available and keep the account
+  // boundary in both cases. This mirrors the registry's scoped-principal
+  // delimiter and prevents two authenticated buyers using the same request
+  // key against one account from sharing a webhook delivery identity.
+  const authenticatedPrincipal = ctx.authInfo?.clientId ?? account?.authInfo?.principal;
+  if (typeof authenticatedPrincipal !== 'string' || authenticatedPrincipal.length === 0) {
+    throw new Error('create_media_buy completion webhook requires an authenticated principal');
+  }
+  if (authenticatedPrincipal === 'static:public' || authenticatedPrincipal === 'static:public:shared') {
+    const ref = account?.ctx_metadata?.account_ref as {
+      account_id?: unknown;
+      brand?: { domain?: unknown };
+    } | undefined;
+    const publicAccountScope = typeof ref?.account_id === 'string'
+      ? `a:${ref.account_id}`
+      : typeof ref?.brand?.domain === 'string'
+        ? `b:${ref.brand.domain.toLowerCase()}`
+        : `a:${accountId}`;
+    return scopedPrincipal(authenticatedPrincipal, publicAccountScope);
+  }
+  return scopedPrincipal(authenticatedPrincipal, `a:${accountId}`);
 }
 
 /**
@@ -222,11 +337,46 @@ function withResolvedAccountScope(
 function withCurrentAccountScope(
   input: Record<string, unknown>,
   account: unknown,
+  rawInput?: unknown,
 ): ToolArgs {
-  const accountRef = accountRefFromCtx(account);
+  const rawFields = rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
+    ? rawInput as Record<string, unknown>
+    : {};
+  let accountRef = accountRefFromCtx(account);
   const brandDomain = brandDomainFromCtx(account);
+  const principal = (account as { authInfo?: { principal?: unknown } } | undefined)?.authInfo?.principal;
+  const rawAccount = rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
+    ? (rawInput as Record<string, unknown>).account
+    : undefined;
+  const explicitlySandboxed = rawAccount !== null
+    && typeof rawAccount === 'object'
+    && !Array.isArray(rawAccount)
+    && (rawAccount as Record<string, unknown>).sandbox === true;
+  // Public training credentials address one brand-owned sandbox. The
+  // storyboard runner legitimately alternates between the buyer operator and
+  // the brand domain while preserving the same brand identity; normalize that
+  // public-only account before deriving session state so compact write/read
+  // chains do not fork. Authenticated tenant principals retain full operator
+  // isolation, and opaque account IDs are never rewritten.
+  if (
+    explicitlySandboxed
+    && typeof principal === 'string'
+    && principal.startsWith('static:')
+    && accountRef?.brand?.domain
+  ) {
+    accountRef = {
+      ...accountRef,
+      operator: accountRef.brand.domain,
+      sandbox: true,
+    };
+  }
   return {
+    // `mcpToolProfile: 'all'` exposes compatibility schemas as shallow key
+    // hints. Restore the raw wire values before the local source-schema
+    // validator runs. Explicit wire values win over framework defaults, while
+    // the normalized account and brand below remain authoritative.
     ...input,
+    ...rawFields,
     ...(accountRef && { account: accountRef }),
     ...(brandDomain && { brand: { domain: brandDomain } }),
   } as ToolArgs;
@@ -261,6 +411,30 @@ function translateV5Result<T extends object>(result: unknown, options: { allowAd
     });
   }
   return result as T;
+}
+
+/**
+ * v5 → v6 boundary for tasks whose response schema shares
+ * media-buy-commitment-response.json's status-discriminated "Commitment
+ * Error" arm (buy_products today; accept_proposal/control_media_buy share
+ * the same schema but aren't wired through this path yet).
+ *
+ * translateV5Result throws an AdcpError for a v5 `{ errors: [...] }` result,
+ * which the SDK's create-adcp-server rebuilds into a single `adcp_error`
+ * envelope — that shape has no `errors[]` array and fails this response
+ * schema's `required: ["status", "errors"]` "Commitment Error" arm. The
+ * SDK's own `isErrorArm`/`wrapErrorArm` recognize the v5 handler's bare
+ * `{ errors, ...context }` result directly (no `status` key — its presence
+ * is what disqualifies the isErrorArm match) and correctly synthesize
+ * `status: "failed"` plus a preserved `errors[]` on the wire, so this
+ * returns that bare shape unchanged instead of routing it through the throw.
+ */
+function translateV5CommitmentResult<T extends object>(result: unknown): T {
+  const resultObj = result as (Record<string, unknown> & { errors?: unknown[] }) | undefined;
+  if (Array.isArray(resultObj?.errors) && resultObj.errors.length > 0) {
+    return resultObj as T;
+  }
+  return translateV5Result<T>(result);
 }
 
 function throwGetProductsExecutionError(message: string): never {
@@ -364,6 +538,47 @@ function canonicalMediaBuyPlatformResult<T>(result: T): T {
 }
 
 /**
+ * Mirror the SDK's AdCP 3.0 create-media-buy response projection for the
+ * compatibility completion webhook. The platform consumes a canonical result,
+ * then the framework restores the selected legacy format tuple on the wire and
+ * adds the synchronous terminal status. Webhook `result` must be identical to
+ * that buyer-visible response, not either intermediate representation.
+ */
+function projectCreateMediaBuyCompatibilityWebhookResult(
+  legacyResult: Record<string, unknown>,
+  canonicalResult: Record<string, unknown>,
+): Record<string, unknown> {
+  const legacyPackages = Array.isArray(legacyResult.packages) ? legacyResult.packages : [];
+  const canonicalPackages = Array.isArray(canonicalResult.packages) ? canonicalResult.packages : [];
+  const packages = canonicalPackages.map((value, index) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const {
+      format_option_refs: _canonicalRefs,
+      __selected_legacy_format_ids: _canonicalSelected,
+      ...wirePackage
+    } = value as Record<string, unknown>;
+    const legacyPackage = legacyPackages[index];
+    const legacyRecord = legacyPackage && typeof legacyPackage === 'object' && !Array.isArray(legacyPackage)
+      ? legacyPackage as Record<string, unknown>
+      : undefined;
+    const selected = Array.isArray(legacyRecord?.__selected_legacy_format_ids)
+      ? legacyRecord.__selected_legacy_format_ids
+      : Array.isArray(legacyRecord?.format_ids)
+        ? legacyRecord.format_ids
+        : undefined;
+    return {
+      ...wirePackage,
+      ...(selected !== undefined && { format_ids: selected }),
+    };
+  });
+  return {
+    ...canonicalResult,
+    status: 'completed',
+    ...(canonicalPackages.length > 0 && { packages }),
+  };
+}
+
+/**
  * Synthetic-account constructor — same posture as the signals tenant.
  * v6 mandates `accounts.resolve()` on every request; we synthesize an
  * Account from the wire reference (or from auth for no-account tools
@@ -391,14 +606,29 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
         authInfo: { kind: 'public', ...(principal && { principal }) },
       };
     }
-    const brandDomain =
-      'brand' in ref && ref.brand && typeof ref.brand === 'object' && 'domain' in ref.brand
-        ? (ref.brand.domain as string | undefined)
-        : undefined;
-    const accountId =
-      'account_id' in ref && typeof ref.account_id === 'string' ? ref.account_id : undefined;
-    const id = accountId ?? `synthetic_${brandDomain ?? 'anon'}`;
-    const operator = 'operator' in ref && typeof ref.operator === 'string' ? ref.operator : undefined;
+    if (typeof ref !== 'object' || Array.isArray(ref)) {
+      throw new AdcpError('INVALID_REQUEST', {
+        message: 'account must be an object',
+        field: 'account',
+        recovery: 'correctable',
+      });
+    }
+    const canonical = canonicalizeAccountRef(ref);
+    const accountRef: ToolArgs['account'] = canonical.kind === 'account_id'
+      ? { account_id: canonical.account_id }
+      : {
+          brand: canonical.brand,
+          operator: canonical.operator,
+          ...(canonical.operator_unit && { operator_unit: canonical.operator_unit }),
+          ...(canonical.currency && { currency: canonical.currency }),
+          ...(canonical.timezone && { timezone: canonical.timezone }),
+          ...(canonical.sandbox && { sandbox: true }),
+        };
+    const brandDomain = canonical.kind === 'natural' ? canonical.brand.domain : undefined;
+    const operator = canonical.kind === 'natural' ? canonical.operator : undefined;
+    const id = canonical.kind === 'account_id'
+      ? canonical.account_id
+      : `synthetic_${createHash('sha256').update(accountScopeFromRef(accountRef)).digest('hex').slice(0, 32)}`;
     return {
       id,
       name: brandDomain ?? id,
@@ -407,7 +637,7 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
       ...(brandDomain != null && { brand: { domain: brandDomain } }),
       ...(operator && { operator }),
       ctx_metadata: {
-        account_ref: ref as ToolArgs['account'],
+        account_ref: accountRef,
         brand_domain: brandDomain,
         ...(operator && { operator }),
       },
@@ -527,7 +757,10 @@ export function legacyListCreativesHandler(
 export class TrainingSalesPlatform
   implements DecisioningPlatform<TrainingSalesConfig, TrainingSalesMeta>
 {
-  constructor(private readonly storyboardCompat?: TrainingContext['storyboardCompat']) {}
+  constructor(
+    private readonly storyboardCompat?: TrainingContext['storyboardCompat'],
+    private readonly proposalNegotiationProfile: NonNullable<TrainingContext['proposalNegotiationProfile']> = 'ask-only',
+  ) {}
 
   capabilities = TRAINING_SALES_CAPABILITIES;
 
@@ -535,16 +768,20 @@ export class TrainingSalesPlatform
   accounts: AccountStore<TrainingSalesMeta> = trainingSalesAccounts;
   agentRegistry = trainingBuyerAgentRegistry;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sales: SalesPlatform<TrainingSalesMeta> = {
     createMediaBuy: async (req, ctx) => {
+      const requestWithRawSelectors = restoreRawPackageSelectors(
+        req as unknown as Record<string, unknown>,
+        ctx.input,
+        ['packages'],
+      );
       const args = this.storyboardCompat?.version === '3.0'
         ? withResolvedAccountScope(
-          req as unknown as Record<string, unknown>,
+          requestWithRawSelectors,
           ctx.account,
           this.storyboardCompat,
         )
-        : withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account);
+        : withCurrentAccountScope(requestWithRawSelectors, ctx.account);
       const v5Result = await handleCreateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       // Detect the submitted-arm envelope the v5 handler returns when the
       // `force_create_media_buy_arm` test-controller directive is set.
@@ -565,13 +802,36 @@ export class TrainingSalesPlatform
       ) {
         const submitted = v5Result as { task_id: string; message?: string };
         const completionOwnerKey = sessionKeyFromArgs(args, 'open');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return ctx.handoffToTask(
           async () => await waitForForcedTaskCompletion(submitted.task_id, completionOwnerKey),
           { task_id: submitted.task_id },
-        ) as any;
+        );
       }
-      return translateV5Result(canonicalMediaBuyPlatformResult(v5Result));
+      const platformResult = translateV5Result<CreateMediaBuyHandlerResult>(
+        canonicalMediaBuyPlatformResult(v5Result),
+      );
+      // SDK 14 intentionally keeps synchronous terminal responses silent in
+      // AdCP 3.2. Released 3.0 storyboards, however, require the historical
+      // inline completion callback. Emit only on that compatibility surface,
+      // through the same signed durable outbox used by all other training-agent
+      // webhooks. Submitted task handoffs return above and remain framework-owned.
+      if (this.storyboardCompat?.version === '3.0') {
+        const webhookArgs = args as unknown as Record<string, unknown>;
+        const webhookResult = projectCreateMediaBuyCompatibilityWebhookResult(
+          v5Result as Record<string, unknown>,
+          platformResult as unknown as Record<string, unknown>,
+        );
+        maybeEmitCompletionWebhook({
+          toolName: 'create_media_buy',
+          args: webhookArgs,
+          response: webhookResult,
+          requestIdempotencyKey: typeof webhookArgs.idempotency_key === 'string'
+            ? webhookArgs.idempotency_key
+            : undefined,
+          principal: trustedWebhookPrincipal(ctx),
+        });
+      }
+      return platformResult;
     },
 
     updateMediaBuy: async (buyId, patch, ctx) => {
@@ -579,9 +839,14 @@ export class TrainingSalesPlatform
       const currentArgs = brandDomain
         ? { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
         : { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>) };
+      const requestWithRawSelectors = restoreRawPackageSelectors(
+        currentArgs,
+        ctx.input,
+        ['new_packages'],
+      );
       const args = this.storyboardCompat?.version === '3.0'
-        ? withResolvedAccountScope(currentArgs, ctx.account, this.storyboardCompat)
-        : withCurrentAccountScope(currentArgs, ctx.account);
+        ? withResolvedAccountScope(requestWithRawSelectors, ctx.account, this.storyboardCompat)
+        : withCurrentAccountScope(requestWithRawSelectors, ctx.account);
       const v5Result = await handleUpdateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(canonicalMediaBuyPlatformResult(v5Result));
     },
@@ -651,7 +916,92 @@ export class TrainingSalesPlatform
       const result = await handleLogEvent(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
-  } as SalesPlatform<TrainingSalesMeta>;
+  };
+
+  /** SDK 14's primary AdCP 3.2 surface. Legacy `sales` remains registered so
+   * 3.0/3.1 callers can invoke the deprecated tool names explicitly. */
+  get mediaBuyLifecycle(): MediaBuyLifecyclePlatform<TrainingSalesMeta> | undefined {
+    if (this.storyboardCompat?.version === '3.0') return undefined;
+    return {
+    proposalRefinement: proposalCapabilitiesForProfile(this.proposalNegotiationProfile),
+
+    listProducts: async (req, ctx) => translateV5Result(
+      await executeProductDiscoveryPlatformTool(
+        'list_products',
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+      { allowAdvisories: true },
+    ),
+
+    requestProposals: async (req, ctx) => translateV5Result(
+      await executeProductDiscoveryPlatformTool(
+        'request_proposals',
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+      { allowAdvisories: true },
+    ),
+
+    refineProposals: async (req, ctx) => {
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      return translateV5Result(
+        await executeProductDiscoveryPlatformTool(
+          'refine_proposals',
+          withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+          trainingCtx,
+        ),
+        { allowAdvisories: true },
+      );
+    },
+
+    declineProposals: async (req, ctx) => translateV5Result(
+      await executeProductDiscoveryPlatformTool(
+        'decline_proposals',
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as unknown as Record<string, unknown>,
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+      { allowAdvisories: true },
+    ),
+
+    buyProducts: async (req, ctx) => translateV5CommitmentResult(
+      await handleBuyProducts(
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleBuyProducts>[0],
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+    ),
+
+    acceptProposal: async (req, ctx) => translateV5Result(
+      await handleAcceptProposal(
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleAcceptProposal>[0],
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+    ),
+
+    controlMediaBuy: async (req, ctx) => translateV5Result(
+      await handleControlMediaBuy(
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleControlMediaBuy>[0],
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+    ),
+
+    getMediaBuys: async (req, ctx) => {
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      const result = await handleGetMediaBuys(
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input),
+        trainingCtx,
+      );
+      return translateV5Result(canonicalMediaBuyPlatformResult(result));
+    },
+
+    getMediaBuyDelivery: async (req, ctx) => translateV5Result(
+      await handleGetMediaBuyDelivery(
+        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input),
+        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
+      ),
+    ),
+    };
+  }
 
   // Audience-targeting capability is declared above; expose sync_audiences
   // so audience_buy_flow can register audiences before referencing them in

@@ -5,13 +5,54 @@ description: "Authoritative AdCP version-by-version release record with cumulati
 ---
 
 
-Authoritative version-by-version release record for AdCP, with cumulative change detail, migration guidance, and per-version adoption notes. For a curated adopter overview of the 3.1 minor release, see [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1). For a focused upgrade checklist, see [Migrating from 3.0 to 3.1](/docs/reference/migration/3-0-to-3-1). For the at-a-glance status of every published version, see [Versions & Compatibility](/docs/reference/versions). For source-level changelogs, see [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md). For version stability, schema-change scope, and the 3.x guarantees see [Versioning & Governance](/docs/reference/versioning). For v2 end-of-life see the [v2 sunset page](/docs/reference/v2-sunset).
+Authoritative version-by-version release record for AdCP, with cumulative change detail, migration guidance, and per-version adoption notes. For the 3.2 adopter overview, see [What's New in AdCP 3.2](/docs/reference/whats-new-in-3-2); for the upgrade checklist, see [Migrating from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2); and for prerelease artifact and SDK timing, see the [3.2 beta program](/docs/reference/3-2-beta). For the at-a-glance status of every published version, see [Versions & Compatibility](/docs/reference/versions). For source-level changelogs, see [CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md). For version stability, schema-change scope, and the 3.x guarantees see [Versioning & Governance](/docs/reference/versioning). For v2 end-of-life see the [v2 sunset page](/docs/reference/v2-sunset).
 
 ---
 
 ## Version 3.2.0
 
-**Status:** In development — minor release targeting the 3.2.0 milestone. Stable wire shapes remain backward compatible; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
+**Status:** Beta cycle — minor release targeting the 3.2.0 milestone. Beta.0 was the protocol-first cut used as the canonical input for SDK work. Beta.5 is the current checkpoint, with exact TypeScript support in `@adcp/sdk@14.0.0-beta.7` and exact Python schema/type parity in `adcp==8.0.0b7`. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
+
+### Beta checkpoints
+
+| Release | Purpose | SDK posture |
+|---|---|---|
+| `3.2.0-beta.0` | Publish signed schemas, compliance assets, skills, and manifest for implementation feedback | SDK support follows this cut; beta.0 is not an SDK-backed certification target |
+| `3.2.0-beta.1` | Incorporate the first round of integration corrections | Superseded by beta.2 for new beta testing |
+| `3.2.0-beta.2` | Publish the second integration checkpoint | Superseded by beta.3 for new beta testing |
+| `3.2.0-beta.3` | Corrected protocol checkpoint, superseded by beta.4 | Superseded; remains available for pinned prerelease adopters |
+| `3.2.0-beta.4` | Publish flexible-window availability, outcome_target reverse forecasting, and availability conformance | Superseded; remains available for pinned prerelease adopters |
+| `3.2.0-beta.5` | Add cross-transport async identity and convergence, policy-backed creative rejection compliance, and outcome-target conformance | Exact TypeScript support in `@adcp/sdk@14.0.0-beta.7`; exact Python schema/type parity in `adcp==8.0.0b7`; Go remains pending |
+
+Each beta is immutable. The `3.2-beta` documentation selector advances to the latest beta, while pinned protocol, schema, compliance, and documentation artifacts remain available. See the [3.2 beta program](/docs/reference/3-2-beta).
+
+### 3.2 feature index
+
+- **Media buying:** compact listing, immutable proposal negotiation, direct purchase, proposal acceptance, operational control, seller-optimized budgets and bidding, atomic total-budget changes, revenue-share pricing, creative rotation, warnings, and durable indicators.
+- **Targeting and audiences:** targeting-aware discovery, portable demographic predicates, named places, value-aware regions, browser families, property exclusions, audience evidence, and exact package readback.
+- **Creative:** canonical capability discovery, image pixel density and rendition sets, localization, async preview opt-in, audio loudness, VAST 4.3 and validation levels, accessibility detail, and synthetic depiction provenance.
+- **Security and evidence:** required body binding for 3.2 request-signing profiles, OAuth discovery grading, portable attestations, rights and signal evidence, signed brand-response verification, and safer secured asset access.
+- **Operations and measurement:** capability/account change notifications, snapshot-and-log repair, demographic and spot delivery, metric accountability, deterministic filters, fixture resolution, and capability-selected runtime projections.
+- **Experimental surfaces:** cross-role campaign governance revisions and Trusted Match authentication, routing, attribution, and creative-data cleanup under their existing experimental declarations.
+
+### Adopter action
+
+| If you are… | Before advertising or sending 3.2 |
+|---|---|
+| A buyer | Discover the exact prerelease, gate every compact tool and optional field on capabilities, and keep a 3.1 route during beta. |
+| A seller or service | Advertise and echo the exact prerelease served, emit canonical status/retry shapes, and declare only capabilities actually implemented. |
+| A signing implementation | Require `content-digest` coverage for every signed request body on a 3.2 signing endpoint. |
+| A creative implementation | Prefer canonical capability and product format discovery; isolate named-format conversion at compatibility boundaries. |
+| An SDK maintainer | Generate from the current signed beta.5 tarball, publish an exact support statement, and route accepted protocol corrections into a later beta. |
+| A compliance operator | Pair `@adcp/sdk@14.0.0-beta.7` or Python `adcp==8.0.0b7` with beta.5; do not infer missing higher-layer helpers or Go support, and do not issue a 3.2 badge from a beta checkpoint. |
+
+### Required 3.2 migrations
+
+- `create_media_buy` and `update_media_buy` success bodies use `media_buy_status`; root `status` is the task-envelope state. See [Migrating to `media_buy_status`](/docs/reference/migration/media-buy-status).
+- A 3.2 request-signing profile advertises `covers_content_digest: "required"`; every accepted signature on a body-bearing request covers the digest.
+- 3.2 request `Signature` and `Content-Digest` values use RFC 8941 padded standard Base64 `sf-binary`, not the 3.0/3.1 unpadded Base64URL override. Webhook v1 retains its separately routed legacy encoding.
+- 3.2 producers emit integer `error.retry_after` seconds.
+- A 3.2 verification claim requires release advertisement and response echo even though those fields remain schema-optional for 3.x compatibility.
 
 ### Compact product and MediaBuy lifecycle (#6115)
 
@@ -765,7 +806,7 @@ Brand schema extensions (`border_radius`, `elevation`, `spacing`, extended color
 - **Compliance paths** — Update any references to `/compliance/{v}/domains/` → `/compliance/{v}/protocols/`.
 - **Capabilities** — Remove all boolean capability checks (`features.content_standards`, `brand.identity`, `trusted_match.supported`, etc.). Test for object presence instead. See the [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades#capabilities-model-simplification) for the full field list.
 - **Products** — Ensure all products include `reporting_capabilities`. This field is now required.
-- **Media buy status** — Replace `pending_activation` with `pending_creatives` and `pending_start`. See [lifecycle states](/docs/media-buy/media-buys#lifecycle-states).
+- **Media buy status** — Replace `pending_activation` with `pending_creatives` and `pending_start`. See the [state machine](/docs/media-buy/media-buys#state-machine).
 - **update_media_buy** — Pass `account` on all calls, matching `create_media_buy` behavior.
 - **preview_creative** — Update request builders from the oneOf union to the flat schema with `request_type` discriminant.
 - **Signals** — Include `signal_id` on all signal items in `get_signals` responses.

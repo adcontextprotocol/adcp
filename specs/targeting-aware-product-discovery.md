@@ -398,6 +398,39 @@ limits such as `max_values_per_package` and `max_packages` are
 seller-response disclosures only. They do not appear in the buyer requirement
 or participate in matching.
 
+Country inclusion, country exclusion, and proximity support can disclose a
+package-local cardinality limit. Country support is either `true` or an object
+containing `max_values_per_package`. The object does not enumerate or restrict
+individual ISO 3166-1 alpha-2 values. Proximity support can add the same limit
+alongside its supported methods and transport modes. For example:
+
+```json
+{
+  "overlay_support": {
+    "geo_countries": { "max_values_per_package": 1 },
+    "geo_countries_exclude": { "max_values_per_package": 1 },
+    "geo_proximity": {
+      "radius": true,
+      "max_values_per_package": 5
+    }
+  }
+}
+```
+
+Each limit applies independently to that targeting field on one package. It is
+not a value allowlist, inventory promise, cross-package equality rule, or
+media-buy-wide constraint. A create or update that exceeds a disclosed limit
+MUST fail atomically with `UNSUPPORTED_FEATURE`, and `error.field` MUST identify
+the overflowing targeting field. Legacy support `true` remains valid and has no
+protocol-level cardinality cap.
+
+Requirement matching ignores numeric limits, but concrete targeting acceptance
+does not. A returned Product's accepted effective targeting MUST already satisfy
+every maximum it discloses. A seller MUST exclude a candidate whose concrete
+`targeting_overlay` exceeds its maximum unless it returns a distinct configured
+Product with a disclosed, compliant targeting modification. It MUST NOT return
+a configured Product that can only be purchased in an already-invalid state.
+
 This applies equally to audience and inventory dimensions. For example, a buyer
 may require the ability to select publisher-scoped placements, a property list,
 or a collection list later without knowing the eventual references during

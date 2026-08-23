@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/canonical-media-buy-action-mode.json",
+  "title": "Canonical Media Buy Action Mode",
+  "description": "How a seller honors a routed compact-lifecycle action.",
+  "type": "string",
+  "enum": [
+    "self_serve",
+    "conditional_self_serve",
+    "requires_approval"
+  ],
+  "enumDescriptions": {
+    "self_serve": "The declared task completes synchronously without approval.",
+    "conditional_self_serve": "The declared task completes synchronously inside seller tolerances and may become asynchronous outside them.",
+    "requires_approval": "The declared task uses the standard submitted, working, and input-required lifecycle before terminal completion."
+  }
+}

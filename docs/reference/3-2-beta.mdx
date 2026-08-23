@@ -1,0 +1,242 @@
+---
+title: AdCP 3.2 beta program
+sidebarTitle: 3.2 beta program
+description: "How to test the current AdCP 3.2 beta with an exactly matched SDK or signed protocol bundle and report integration feedback."
+"og:title": "AdCP — 3.2 beta program"
+---
+
+# AdCP 3.2 beta program
+
+<Warning>
+**Use the beta in development and staging, not production.** New production
+integrations should remain on AdCP 3.1 until 3.2 reaches general availability.
+Every beta is an immutable checkpoint, but later betas may change 3.2 surfaces
+before GA.
+</Warning>
+
+The 3.2 beta cycle started with a protocol-first checkpoint. The current
+TypeScript and Python SDK betas now consume the exact signed beta.5 bundle:
+
+| Checkpoint | Purpose | Who should test |
+|---|---|---|
+| `3.2.0-beta.0` | Canonical schemas, compliance assets, skills, and protocol manifest for SDK implementation | SDK maintainers, code-generator maintainers, raw-wire implementers, and agent teams that can validate without generated 3.2 SDK types |
+| `3.2.0-beta.1` | First integration-correction checkpoint | Pinned adopters comparing beta.0 and beta.1 behavior |
+| `3.2.0-beta.2` | Second integration-correction checkpoint | Pinned adopters comparing beta.1 and beta.2 behavior |
+| `3.2.0-beta.3` | Third integration-correction checkpoint | Pinned adopters comparing beta.2 and beta.3 behavior |
+| `3.2.0-beta.4` | Fourth integration checkpoint | Pinned adopters comparing beta.3 and beta.4 behavior |
+| `3.2.0-beta.5` | Current protocol checkpoint | Buyer and seller teams running end-to-end integrations |
+| SDK wave | `@adcp/sdk@14.0.0-beta.7` and Python `adcp==8.0.0b7` embed `3.2.0-beta.5`; Go remains pending | TypeScript and Python adopters, Go maintainers, and early integration teams |
+
+Earlier betas remain useful as pinned implementation checkpoints. For new
+TypeScript or Python testing, pair the packages above with protocol beta.5. Do
+not combine a newer wire pin with an SDK generated from an older bundle unless
+the SDK maintainer explicitly documents forward compatibility.
+
+## Know which version string to use
+
+The artifact version, wire pin, and documentation selector are related but not
+interchangeable:
+
+| Surface | beta.0 | beta.1 | beta.2 | beta.3 | beta.4 | beta.5 |
+|---|---|---|---|---|---|---|
+| Protocol artifact | `3.2.0-beta.0` | `3.2.0-beta.1` | `3.2.0-beta.2` | `3.2.0-beta.3` | `3.2.0-beta.4` | `3.2.0-beta.5` |
+| Git tag | `v3.2.0-beta.0` | `v3.2.0-beta.1` | `v3.2.0-beta.2` | `v3.2.0-beta.3` | `v3.2.0-beta.4` | `v3.2.0-beta.5` |
+| `adcp_version` wire pin | `"3.2-beta.0"` | `"3.2-beta.1"` | `"3.2-beta.2"` | `"3.2-beta.3"` | `"3.2-beta.4"` | `"3.2-beta.5"` |
+| Documentation selector | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` |
+
+Only send a prerelease wire pin to a peer that advertises that exact value in
+`get_adcp_capabilities.adcp.supported_versions`. Prerelease pins are exact: a
+buyer pinned to `"3.2-beta.5"` must not silently negotiate to another beta, and
+a stable `"3.2"` pin must not silently negotiate to a beta.
+
+## Use matched SDK betas
+
+The TypeScript SDK has exact beta.5 support. The npm
+`latest` tag remains on SDK 13, so opt into the preview explicitly:
+
+```bash
+npm install @adcp/sdk@14.0.0-beta.7
+```
+
+SDK 14 includes typed caller and server support for the compact media-buy
+lifecycle, the beta.5 schemas and compliance assets, version-aware request
+signing, governance plan-adjustment reporting, and agent notification
+configuration. It retains 3.0 and 3.1 adaptation for mixed-version testing.
+See [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk) for the support
+matrix and install guidance.
+
+Python `adcp==8.0.0b7` carries the same schemas and generated types. Its
+higher-level caller/server helpers remain role-dependent, so consult the SDK
+matrix before treating schema parity as complete L1–L3 coverage.
+
+## Use the beta.5 artifact directly
+
+Download the signed beta.5 protocol bundle rather
+than copying schemas from `main` or from the moving `/schemas/latest/` path:
+
+```bash
+curl -fLO https://adcontextprotocol.org/protocol/3.2.0-beta.5.tgz
+curl -fLO https://adcontextprotocol.org/protocol/3.2.0-beta.5.tgz.sha256
+shasum -a 256 -c 3.2.0-beta.5.tgz.sha256
+tar -xzf 3.2.0-beta.5.tgz
+```
+
+The extracted `adcp-3.2.0-beta.5/` directory contains:
+
+- `manifest.json` — release version, bundle contents, skills, and file count;
+- `schemas/` — source-shaped and bundled request/response schemas, including
+  `schemas/manifest.json` for the task and capability inventory;
+- `compliance/` — storyboards, test kits, vectors, and runner contracts;
+- `skills/` — role guidance for coding agents;
+- `openapi/` — published OpenAPI artifacts.
+
+Verify the Sigstore signature before using the bundle as a build input. See
+[Verifying protocol tarballs](/docs/reference/verifying-protocol-tarballs) for
+the certificate-identity and issuer checks.
+
+Useful direct-artifact tests are:
+
+1. Generate or refresh types from the pinned bundled schemas.
+2. Validate representative requests and responses for the roles you implement.
+3. Compare your advertised tools with `schemas/manifest.json`.
+4. Exercise raw MCP or A2A calls with `adcp_version: "3.2-beta.5"` against a
+   staging peer that advertises the same pin.
+5. Run the compliance assets with a source-compatible runner if you maintain
+   one. Do not weaken production authentication to accommodate a beta runner.
+
+<Note>
+**No 3.2 verification badge is currently issued for beta.5.** Treat it as an
+implementation input, not a certification target.
+</Note>
+
+## SDK support contract
+
+An SDK support claim must name all of the following:
+
+- exact SDK package version;
+- exact AdCP prerelease bundle used to generate or load schemas;
+- supported roles and transports;
+- known unsupported or raw-only surfaces;
+- install command and one tested validation command.
+
+The SDK compatibility matrix lives in [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk).
+The TypeScript and Python rows name exact beta.5 support, with different
+higher-layer coverage. Treat generated 3.2 types and validators in every other
+SDK as unavailable until its row names an exact package and protocol checkpoint.
+Raw JSON calls may still be possible, but they are not equivalent to SDK support.
+
+SDK maintainers should report protocol ambiguities against the
+[AdCP repository](https://github.com/adcontextprotocol/adcp/issues). Report
+SDK implementation bugs in the SDK's own repository. Accepted protocol fixes
+receive a changeset and ship in a later beta; published betas are never rebuilt
+in place.
+
+## Current beta.5 checkpoint
+
+Protocol beta.1 through beta.5 are published. TypeScript SDK beta.7 and Python
+SDK beta.7 embed the exact beta.5 bundle. Before treating a test result as
+beta.5 integration evidence, confirm that:
+
+- the support matrix names the exact SDK package and beta.5 protocol bundle;
+- both peers advertise `"3.2-beta.5"` before calls use that pin;
+- the integration scenarios below run against beta.5 and retain the exact
+  package and bundle versions;
+- copy/paste installation and validation commands have been executed as
+  published;
+- any unsupported Python helper or Go surface is reported as unavailable or
+  raw-only rather than inferred from schema support.
+
+Later protocol betas repeat the same protocol-tag-then-SDK-confirmation flow.
+The current SDK pairings do not make future beta ordinals compatible by default.
+
+## Required integration evidence
+
+Retain the exact protocol bundle, SDK package versions, capability responses,
+redacted requests/responses, task IDs, proposal and MediaBuy revisions,
+creative IDs, warnings, and delivery readbacks for each run.
+
+### Buyer and seller lifecycle
+
+1. Discover the exact prerelease and capability gates.
+2. Use `list_products` or the advertised proposal flow, preserving the returned
+   targeting and canonical `format_options[]` contract.
+3. Validate or preview a matching creative when the relevant capability is
+   advertised.
+4. Commit with `buy_products` or `accept_proposal`; do not put creative bodies
+   into either compact purchase call.
+5. Traffic and assign the creative through `sync_creatives` for a library-backed
+   seller, or the seller's advertised inline compatibility path.
+6. Exercise one revision-checked operational action with `control_media_buy`.
+7. Reconcile `get_media_buys`, `get_media_buy_delivery`, and, when advertised,
+   `get_creative_delivery` through a non-zero delivery result or a documented
+   no-delivery state.
+
+### Generative creative lifecycle
+
+1. Discover a build capability and, when applicable, an account-scoped
+   transformer.
+2. Run brief → `build_creative` → validation → `preview_creative`, retaining the
+   selected capability and generated manifest lineage.
+3. Run a pre-flight seller validation or dry-run sync, then purchase/accept and
+   sync the materialized creative with its package assignment.
+4. Observe the live campaign readback and fetch MediaBuy delivery plus
+   `get_creative_delivery` when the seller advertises it. Pass the served
+   `creatives[].variants[].manifest` back to `preview_creative` for a post-flight
+   re-render, retaining `creative_id`, `variant_id`, and manifest lineage. Do not
+   claim pixel-identical replay unless the renderer explicitly guarantees it.
+
+Run at least one context-rendered or conversational format and one multi-format,
+locale, or placement-eligibility mismatch. The matching path must preserve its
+preview-to-delivery identity; the mismatch path must reject before serve and
+leave auditable evidence rather than silently substituting another format.
+
+## What may still change
+
+The [3.2.0 milestone](https://github.com/adcontextprotocol/adcp/milestone/7) is
+the live scope record for work that may still land during the beta cycle.
+
+Use these maintained GitHub views instead of a copied issue list:
+
+- [Open 3.2 issues](https://github.com/adcontextprotocol/adcp/issues?q=is%3Aopen+is%3Aissue+milestone%3A3.2.0)
+- [Open 3.2 pull requests](https://github.com/adcontextprotocol/adcp/pulls?q=is%3Aopen+milestone%3A3.2.0)
+- [Closed 3.2 milestone work](https://github.com/adcontextprotocol/adcp/milestone/7?closed=1)
+
+Milestone assignment means **candidate for the 3.2 line**, not a commitment to
+the next beta or GA. A change is included in a beta only when it is merged
+before that beta's tag. Items may be deferred, split, or moved to a later
+release as working groups resolve scope and interoperability risk.
+
+## Known beta boundaries
+
+- Targeting-aware behavior may be present in schemas before every reference or
+  training agent implements it. Capability declarations remain authoritative.
+- Experimental surfaces retain their [experimental-status contract](/docs/reference/experimental-status).
+  A 3.2 beta does not graduate them to stable.
+- The `3.2-beta` documentation selector moves forward; pinned semver artifacts
+  and documentation snapshots remain immutable.
+- Stable schema aliases continue to resolve to stable releases during beta.
+  Use pinned prerelease URLs when validating beta behavior.
+
+## Report useful feedback
+
+Include this information in a beta issue:
+
+- protocol artifact version and wire pin;
+- SDK name/version, or `raw wire`;
+- buyer, seller, creative, signals, brand, measurement, or governance role;
+- transport and task name;
+- schema path or JSON Pointer involved;
+- expected and actual behavior;
+- minimal redacted payload and validation error;
+- whether the problem blocks beta.5 interoperability.
+
+Never include credentials, signed URLs, bearer tokens, private keys, or live
+customer payloads.
+
+## Related
+
+- [What's New in AdCP 3.2](/docs/reference/whats-new-in-3-2)
+- [Migrating from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2)
+- [Release Notes](/docs/reference/release-notes#version-3-2-0)
+- [Versions & Compatibility](/docs/reference/versions)
+- [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk)

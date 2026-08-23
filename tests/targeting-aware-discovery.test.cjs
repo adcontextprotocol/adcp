@@ -643,6 +643,23 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
     true,
     "requirement true must match constrained object support without comparing numeric limits"
   );
+  assert.deepEqual(
+    step("get_exact_targeted_product").sample_request.required_overlay_support
+      .geo_proximity,
+    { radius: true },
+    "discovery must require the proximity method without expressing a seller limit"
+  );
+  for (const path of [
+    "products[0].overlay_support.geo_countries.max_values_per_package",
+    "products[0].overlay_support.geo_countries_exclude.max_values_per_package",
+    "products[0].overlay_support.geo_proximity.max_values_per_package",
+  ]) {
+    assert.equal(
+      hasCheck("get_exact_targeted_product", "field_value", path, 1),
+      true,
+      `${path} must disclose the seeded per-package limit`
+    );
+  }
   assert.equal(
     hasCheck(
       "get_exact_targeted_product",
@@ -823,6 +840,22 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
       `${id} must grade persistence of the concrete platform exclusion`
     );
   }
+  assert.deepEqual(
+    step("reject_country_exclusion_cardinality_on_create").sample_request
+      .packages[0].targeting_overlay.geo_countries_exclude,
+    ["CA", "MX"],
+    "create must exercise the advertised one-value country exclusion limit"
+  );
+  assert.equal(
+    hasCheck(
+      "reject_country_exclusion_cardinality_on_create",
+      "field_value",
+      "errors[0].field",
+      "packages[0].targeting_overlay.geo_countries_exclude"
+    ),
+    true,
+    "create-time cardinality errors must identify the overflowing exclusion field"
+  );
   for (const [id, path, value] of [
     ["create_feed_package", "packages[0].targeting_overlay.browser[*]", "chrome"],
     ["create_feed_package", "packages[0].targeting_overlay.browser[*]", "safari"],
@@ -863,6 +896,109 @@ test("targeting-aware storyboard grades filters and configured targeting end to 
     ["unknown"],
     "update must exercise later package-level browser exclusion"
   );
+  assert.deepEqual(
+    step("reject_country_cardinality_overflow").sample_request.packages[0]
+      .targeting_overlay.geo_countries,
+    ["US", "CA"],
+    "the negative path must exceed the advertised one-country package limit"
+  );
+  assert.equal(
+    hasCheck(
+      "reject_country_cardinality_overflow",
+      "error_code",
+      undefined,
+      "UNSUPPORTED_FEATURE"
+    ),
+    true,
+    "a package that exceeds a disclosed country limit must be rejected"
+  );
+  assert.equal(
+    hasCheck(
+      "reject_country_cardinality_overflow",
+      "field_value",
+      "errors[0].field",
+      "packages[0].targeting_overlay.geo_countries"
+    ),
+    true,
+    "the cardinality error must identify the overflowing targeting field"
+  );
+  for (const [check, path, value] of [
+    [
+      "field_value",
+      "media_buys[0].packages[0].targeting_overlay.geo_countries[0]",
+      "US",
+    ],
+    [
+      "field_absent",
+      "media_buys[0].packages[0].targeting_overlay.geo_countries[1]",
+      undefined,
+    ],
+  ]) {
+    assert.equal(
+      hasCheck("read_after_rejected_country_overflow", check, path, value),
+      true,
+      `immediate readback must prove country rejection was atomic at ${path}`
+    );
+  }
+  assert.equal(
+    step("update_to_single_proximity").sample_request.packages[0]
+      .targeting_overlay.geo_proximity.length,
+    1,
+    "the positive path must exercise one supported proximity entry"
+  );
+  assert.equal(
+    hasCheck(
+      "update_to_single_proximity",
+      "field_absent",
+      "affected_packages[0].targeting_overlay.geo_proximity[1]"
+    ),
+    true,
+    "the accepted update must grade one-entry proximity cardinality"
+  );
+  assert.equal(
+    step("reject_proximity_cardinality_overflow").sample_request.packages[0]
+      .targeting_overlay.geo_proximity.length,
+    2,
+    "the negative path must exceed the advertised one-entry proximity limit"
+  );
+  assert.equal(
+    hasCheck(
+      "reject_proximity_cardinality_overflow",
+      "field_value",
+      "errors[0].field",
+      "packages[0].targeting_overlay.geo_proximity"
+    ),
+    true,
+    "proximity cardinality errors must identify the overflowing field"
+  );
+  for (const [check, path, value] of [
+    [
+      "field_value",
+      "media_buys[0].packages[0].targeting_overlay.geo_countries[0]",
+      "US",
+    ],
+    [
+      "field_absent",
+      "media_buys[0].packages[0].targeting_overlay.geo_countries[1]",
+      undefined,
+    ],
+    [
+      "field_value",
+      "media_buys[0].packages[0].targeting_overlay.geo_proximity[0].radius.value",
+      5,
+    ],
+    [
+      "field_absent",
+      "media_buys[0].packages[0].targeting_overlay.geo_proximity[1]",
+      undefined,
+    ],
+  ]) {
+    assert.equal(
+      hasCheck("read_updated_placement", check, path, value),
+      true,
+      `readback must prove rejected cardinality updates were atomic at ${path}`
+    );
+  }
   assert.equal(
     hasCheck(
       "reject_incompatible_browser_platform",
@@ -1033,8 +1169,9 @@ test("buyer teaching surfaces explain structured-first targeting", () => {
   }
   assert.match(skill, /fewer tokens/);
   assert.match(addieKnowledge, /No targeting-resolution echo confirms only/);
-  assert.match(certificationTools, /3\.2 targeting-aware objectives with schema fixtures/);
-  assert.match(certificationTools, /issues\/6199/);
+  assert.match(certificationTools, /exact 3\.2 beta\.5 wire pin with @adcp\/sdk@14\.0\.0-beta\.7/);
+  assert.match(certificationTools, /3\.2 targeting-aware objectives live/);
+  assert.doesNotMatch(certificationTools, /issues\/6199/);
   assert.match(
     certificationTools,
     /learning\/supplements\/buyer-briefs-and-get-products/
@@ -1223,6 +1360,51 @@ test("required overlay requirements exclude seller limit fields", async () => {
     true,
     errors(validateSupport)
   );
+
+  for (const legacyCountrySupport of [
+    { geo_countries: true },
+    { geo_countries_exclude: true },
+  ]) {
+    assert.equal(
+      validateSupport(legacyCountrySupport),
+      true,
+      errors(validateSupport)
+    );
+  }
+
+  for (const constrainedSupport of [
+    { geo_countries: { max_values_per_package: 1 } },
+    { geo_countries_exclude: { max_values_per_package: 2 } },
+    { geo_proximity: { radius: true, max_values_per_package: 3 } },
+  ]) {
+    assert.equal(
+      validateSupport(constrainedSupport),
+      true,
+      errors(validateSupport)
+    );
+    assert.equal(
+      validate(constrainedSupport),
+      false,
+      "seller cardinality limits are response-only"
+    );
+  }
+
+  for (const invalidConstrainedSupport of [
+    { geo_countries: {} },
+    { geo_countries: { ext: { vendor: "hint" } } },
+    { geo_countries: { max_values_per_package: 0 } },
+    { geo_countries: { max_values_per_package: 1, unknown: true } },
+    { geo_proximity: { radius: true, max_values_per_package: 0 } },
+    { geo_proximity: { max_values_per_package: 1 } },
+  ]) {
+    assert.equal(
+      validateSupport(invalidConstrainedSupport),
+      false,
+      `support rejects invalid cardinality declaration ${JSON.stringify(
+        invalidConstrainedSupport
+      )}`
+    );
+  }
 
   const requirements = JSON.parse(
     fs.readFileSync(

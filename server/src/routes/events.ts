@@ -41,6 +41,8 @@ import { createChannel, setChannelPurpose, sendDirectMessage } from "../slack/cl
 import { SlackDatabase } from "../db/slack-db.js";
 import { EmailPreferencesDatabase } from "../db/email-preferences-db.js";
 import { isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
+import { getWorkos } from "../auth/workos-client.js";
+import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
 
 /**
  * Validate a speakers array. Returns an error response object if invalid, or
@@ -2121,6 +2123,17 @@ export function createEventsRouter(): {
         return res.status(400).json({
           error: "Missing org_id",
           message: "Please specify which organization is sponsoring",
+        });
+      }
+
+      // org_id is caller-controlled. Bind the purchase to the user's current,
+      // active membership instead of trusting the requested organization or a
+      // historical organization claim from their session.
+      const membership = await resolveUserOrgMembership(getWorkos(), user.id, org_id);
+      if (!membership || membership.organizationId !== org_id || membership.status !== "active") {
+        return res.status(403).json({
+          error: "Organization access denied",
+          message: "You must be a current member of the sponsoring organization",
         });
       }
 

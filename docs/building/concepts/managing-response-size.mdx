@@ -1,11 +1,14 @@
 ---
 title: Managing Response Size
 sidebarTitle: Managing Response Size
-description: "How to keep AdCP responses lean: field selection, pagination, buying modes, truncation flags, and the wire-vs-context distinction that matters most."
+description: "How to keep AdCP responses lean with proposal planning, product field selection, pagination, feed versioning, and client-side projection."
 "og:title": "AdCP — Managing Response Size"
 ---
 
-When a buyer agent calls an AdCP seller, the response can range from a handful of curated products to a full wholesale catalog with detailed cards, signal metadata, and placement specs. This page covers the controls AdCP already provides to keep responses right-sized — and the architectural insight that makes most token-budget concerns a client-side problem, not a protocol problem.
+When a buyer agent calls an AdCP seller, the response can range from a few
+seller-planned proposals to a wholesale mirror containing detailed product,
+signal, and placement metadata. This page covers the controls that keep those
+responses right-sized—and the client-side projection that matters most.
 
 ## Wire response ≠ model context
 
@@ -27,35 +30,47 @@ If your agent is forwarding raw tool results into the model context unchanged, t
   **Naive-host caveat.** Some MCP hosts pass the entire `structuredContent` blob into the model context as-is. If you control the host, project before prompting. If you don't, the controls below become your primary defense against oversized context.
 </Warning>
 
-## Ask the seller to curate — don't pull the feed
+## Ask for a plan when you want curation
 
-Use `buying_mode: "brief"` with a tight `pagination.max_results` to get curated recommendations:
+Use `request_proposals` when the seller should turn a campaign brief into a
+small set of actionable plans:
 
 ```json
 {
+  "adcp_version": "3.2-beta.0",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655442001",
-  "buying_mode": "brief",
-  "brief": "Premium video placements for a CPG brand targeting US adults 25-54",
-  "pagination": { "max_results": 5 }
+  "account": { "account_id": "account_123" },
+  "brand": { "domain": "acme-outdoor.example" },
+  "brief": "Build a concise premium-video plan for Acme Outdoor's Q4 launch. Prioritize completed views.",
+  "criteria": {
+    "offer_filters": { "channels": ["olv"] },
+    "targeting_overlay": { "geo_countries": ["US"] }
+  }
 }
 ```
 
-The seller returns its best matches — ranked, priced, and ready to execute. This is the lightweight path.
+The seller returns immutable draft proposals rather than a catalog page. Use
+typed `refine_proposals` requests to narrow the plan without retransmitting the
+full source response.
 
-**Avoid `buying_mode: "wholesale"` unless you're building a catalog mirror.** Wholesale enumerates the seller's entire product feed, paginated. It exists for storefronts and feed synchronization, not for discovery. If your agent is paginating through hundreds of wholesale results to find a few good ones, switch to `brief` mode and let the seller do the filtering.
-
-Use `buying_mode: "refine"` when iterating on a previous `brief` response — adjusting budget, narrowing geography, or swapping out products. Refine operates on the seller's existing curation rather than re-running discovery from scratch.
+Use `list_products` instead when the buyer wants published offers or maintains
+a wholesale mirror. A mirror is a feed-synchronization topology, not a cheaper
+proposal mode.
 
 ## `fields` selector for lightweight discovery
 
-When you only need a subset of product data, pass `fields` to restrict the response:
+When you only need a subset of published product data, pass `fields` to
+`list_products`:
 
 ```json
 {
-  "idempotency_key": "550e8400-e29b-41d4-a716-446655442002",
-  "buying_mode": "brief",
-  "brief": "Sports streaming inventory for Q4",
-  "fields": ["product_id", "name", "pricing_options"]
+  "adcp_version": "3.2-beta.0",
+  "account": { "account_id": "account_123" },
+  "criteria": {
+    "offer_filters": { "channels": ["olv"] }
+  },
+  "fields": ["product_id", "name", "pricing_options"],
+  "max_results": 10
 }
 ```
 
@@ -68,24 +83,27 @@ Without `fields`, the seller returns the full product object — including visua
 
 ## Pagination for cardinality control
 
-All `get_products` modes support cursor-based pagination:
+`list_products` uses cursor-based pagination:
 
 | Parameter | Description |
 |---|---|
-| `pagination.max_results` | Maximum products per page (1–100, default 50) |
-| `pagination.cursor` | Opaque cursor from the previous response |
+| `max_results` | Maximum products per page |
+| `cursor` | Opaque cursor from the previous response |
 
 Response:
 
 | Field | Description |
 |---|---|
-| `pagination.has_more` | Whether additional pages exist |
-| `pagination.cursor` | Cursor for the next page |
-| `pagination.total_count` | Total products in the result set (optional) |
+| `next_cursor` | Cursor for the next page; omitted on the terminal page |
+| `feed_version` | Opaque version of the selected offer feed |
+| `pricing_version` | Optional separately versioned pricing layer |
+| `cache_scope` | Whether versions describe the public or account layer |
 
-**For brief and refine modes**, set `max_results` to the number of options your agent can actually reason about. Five curated products are more useful than fifty if the model is going to compare them anyway.
-
-**For wholesale mode**, pagination walks the feed. Pass `cursor` from each response to get the next page. If you're maintaining a mirror, check [`wholesale_feed_versioning`](/docs/media-buy/task-reference/get_products#wholesale-feed-versioning) to skip unchanged feeds entirely.
+Pass `next_cursor` into the next `list_products` request. A mirror stores
+`feed_version` with its `cache_scope` and uses account-level product webhooks
+for routine changes. Conditional reads with `if_feed_version` repair gaps or
+confirm that a selected feed is unchanged; they do not replace a healthy
+webhook stream.
 
 ## Truncation flags on delivery
 
@@ -96,21 +114,24 @@ Response:
 | `false` | All rows are present |
 | `true` | Additional rows exist beyond what was returned |
 
-When a flag is `true`, the returned rows are sorted by the requested metric descending — you have the most significant breakdowns, and the tail is omitted. This is by design: delivery breakdowns are for optimization decisions, not archival reporting. If you need the full dataset, use the seller's native reporting API.
+When a flag is `true`, the returned rows are ordered by the applied sort metric in the applied direction (descending by default — the most significant breakdowns; `sort_direction: "asc"` deliberately returns the least significant, e.g. worst performers) and the tail is omitted. The response echoes the applied sort per breakdown (`by_X_sorted_by` / `by_X_sort_direction`), so a fallback to spend is visible. This is by design: delivery breakdowns are for optimization decisions, not archival reporting. If you need the full dataset, use the seller's native reporting API.
 
 ## Putting it together
 
 A token-efficient AdCP integration follows this pattern:
 
-1. **Discover with `brief` + `fields` + tight `max_results`.** Get curated products with only the fields you need for initial comparison.
-2. **Refine with `refine` mode.** Iterate on the seller's curation rather than re-querying.
+1. **Use `request_proposals` for seller curation.** Ask for plans instead of downloading a feed and prompting a model to rediscover seller expertise.
+2. **Use typed `refine_proposals`.** Carry proposal IDs and changes, not the full prior response, into the next turn.
 3. **Store raw responses client-side.** Don't feed full product objects into the model context. Extract what matters, summarize the rest.
 4. **Read truncation flags before paginating delivery.** If `by_geo_truncated: false`, you already have everything — no need for follow-up calls.
-5. **Use wholesale only for feed sync.** If your use case is catalog mirroring, wholesale + conditional versioning is the right tool. For everything else, `brief` is cheaper.
+5. **Treat wholesale as synchronization.** Bootstrap with `list_products`, apply product webhooks, and use versioned reads for repair.
 
 <CardGroup cols={2}>
-  <Card title="get_products reference" icon="magnifying-glass" href="/docs/media-buy/task-reference/get_products">
-    Full request/response schema including `fields`, `buying_mode`, and pagination.
+  <Card title="Discovery and planning" icon="magnifying-glass" href="/docs/media-buy/product-discovery/">
+    Choose published offers, wholesale mirroring, or seller-planned proposals.
+  </Card>
+  <Card title="list_products reference" icon="list" href="/docs/media-buy/task-reference/list_products">
+    Field selection, cursor pagination, feed versions, and mirror repair.
   </Card>
   <Card title="Delivery reporting" icon="chart-line" href="/docs/media-buy/task-reference/get_media_buy_delivery">
     Breakdown arrays, truncation flags, and sort semantics.

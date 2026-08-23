@@ -28,13 +28,17 @@ import {
   type RecentArticle,
 } from '../../db/industry-feeds-db.js';
 import { fetchSingleFeed } from '../../addie/services/feed-fetcher.js';
+import { safeFetch } from '../../utils/url-security.js';
+import { readResponseTextWithLimit } from '../../utils/bounded-response.js';
 
 const logger = createLogger('admin-feeds-routes');
+const DISCOVERY_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const DISCOVERY_TIMEOUT_MS = 10_000;
 
 /**
  * Try to discover RSS feeds from a URL
  */
-async function discoverRssFeeds(url: string): Promise<{ title: string; url: string }[]> {
+export async function discoverRssFeeds(url: string): Promise<{ title: string; url: string }[]> {
   const feeds: { title: string; url: string }[] = [];
 
   try {
@@ -44,20 +48,23 @@ async function discoverRssFeeds(url: string): Promise<{ title: string; url: stri
       throw new Error('Only http and https URLs are supported');
     }
 
-    // Fetch the page
-    // CodeQL: admin-only endpoint, URL protocol validated above
-    const response = await fetch(url, { // lgtm[js/request-forgery]
+    // Admin authentication does not make the destination trustworthy. Use the
+    // SSRF-safe transport so every DNS resolution and redirect remains public.
+    const response = await safeFetch(url, {
+      maxRedirects: 3,
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; AdCP/1.0; +https://adcontextprotocol.org)',
       },
+      signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
     });
 
     if (!response.ok) {
+      response.body?.cancel().catch(() => {});
       throw new Error(`Failed to fetch URL: ${response.status}`);
     }
 
     const contentType = response.headers.get('content-type') || '';
-    const text = await response.text();
+    const text = await readResponseTextWithLimit(response, DISCOVERY_MAX_RESPONSE_BYTES);
 
     // Check if this is directly an RSS/Atom feed
     if (contentType.includes('xml') ||
@@ -113,22 +120,27 @@ async function discoverRssFeeds(url: string): Promise<{ title: string; url: stri
       for (const path of commonPaths) {
         try {
           const feedUrl = `${urlObj.origin}${path}`;
-          // CodeQL: feedUrl is constructed from urlObj.origin + hardcoded path
-          const feedResponse = await fetch(feedUrl, { // lgtm[js/request-forgery]
+          const feedResponse = await safeFetch(feedUrl, {
             method: 'HEAD',
+            maxRedirects: 3,
             headers: {
               'User-Agent': 'Mozilla/5.0 (compatible; AdCP/1.0)',
             },
+            signal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
           });
 
-          if (feedResponse.ok) {
-            const feedContentType = feedResponse.headers.get('content-type') || '';
-            if (feedContentType.includes('xml') ||
-                feedContentType.includes('rss') ||
-                feedContentType.includes('atom')) {
-              feeds.push({ title: `${urlObj.hostname} Feed`, url: feedUrl });
-              break;
+          try {
+            if (feedResponse.ok) {
+              const feedContentType = feedResponse.headers.get('content-type') || '';
+              if (feedContentType.includes('xml') ||
+                  feedContentType.includes('rss') ||
+                  feedContentType.includes('atom')) {
+                feeds.push({ title: `${urlObj.hostname} Feed`, url: feedUrl });
+                break;
+              }
             }
+          } finally {
+            feedResponse.body?.cancel().catch(() => {});
           }
         } catch {
           // Ignore errors for common path checks

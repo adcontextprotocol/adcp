@@ -1,0 +1,166 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/account-identity-change-preview.json",
+  "title": "Account Identity Change Preview",
+  "description": "Non-persisted dry-run result for a requested operator-identity change. Canonical account fields and revision remain unchanged.",
+  "definitions": {
+    "impact": {
+      "type": "object",
+      "properties": {
+        "area": {
+          "type": "string",
+          "enum": [
+            "account_id",
+            "media_buys",
+            "reporting",
+            "approval",
+            "billing",
+            "grants",
+            "other"
+          ]
+        },
+        "effect": {
+          "type": "string",
+          "enum": [
+            "preserved",
+            "revalidation_required",
+            "revoke_and_regrant",
+            "blocked"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "area",
+        "effect"
+      ],
+      "additionalProperties": false
+    },
+    "nonblocking_impacts": {
+      "type": "array",
+      "description": "Account areas the seller evaluated for continuity or reauthorization. Non-blocked outcomes cannot carry a blocked effect.",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/definitions/impact"
+          },
+          {
+            "properties": {
+              "effect": {
+                "enum": [
+                  "preserved",
+                  "revalidation_required",
+                  "revoke_and_regrant"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 16
+    },
+    "blocked_impacts": {
+      "type": "array",
+      "description": "Account areas evaluated for a blocked change. At least one impact identifies the blocking area.",
+      "items": {
+        "$ref": "#/definitions/impact"
+      },
+      "contains": {
+        "type": "object",
+        "properties": {
+          "effect": {
+            "const": "blocked"
+          }
+        },
+        "required": [
+          "effect"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 16
+    }
+  },
+  "oneOf": [
+    {
+      "title": "AccountIdentityChangeWouldApply",
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "would_apply"
+        },
+        "requested_operator_identity": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/operator-identity.json"
+        },
+        "impacts": {
+          "$ref": "#/definitions/nonblocking_impacts"
+        }
+      },
+      "required": [
+        "outcome",
+        "requested_operator_identity",
+        "impacts"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "AccountIdentityChangeWouldRequireApproval",
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "would_require_approval"
+        },
+        "requested_operator_identity": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/operator-identity.json"
+        },
+        "impacts": {
+          "$ref": "#/definitions/nonblocking_impacts"
+        }
+      },
+      "required": [
+        "outcome",
+        "requested_operator_identity",
+        "impacts"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "AccountIdentityChangeBlocked",
+      "type": "object",
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "const": "blocked"
+        },
+        "requested_operator_identity": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/operator-identity.json"
+        },
+        "impacts": {
+          "$ref": "#/definitions/blocked_impacts"
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "outcome",
+        "requested_operator_identity",
+        "impacts",
+        "blockers"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

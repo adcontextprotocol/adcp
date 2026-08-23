@@ -41,14 +41,22 @@
       "reason": "Responsive sizing alone does not make a creative responsive_creative; the buyer payload is still one image."
     },
     {
-      "id": "coordinated_multi_surface_takeover",
-      "publisher_spec": "One sold unit coordinates a masthead, two side rails, and a collapsed scroll state. The buyer supplies separate artwork for each state and a shared landing URL.",
+      "id": "seller_rendered_scroll_states",
+      "publisher_spec": "One masthead placement expands inline and later collapses into a sticky scroll state. The buyer supplies separate artwork for each state and a shared landing URL.",
       "expected": {
-        "format_kind": "custom",
-        "format_shape": "multi_state_display"
+        "format_kind": "seller_rendered_stateful_display"
       },
-      "must_not_classify_as": ["image", "responsive_creative"],
-      "reason": "The buyer deliverable has multiple coordinated states and surfaces, which cannot be represented by one current canonical payload."
+      "must_not_classify_as": ["image", "responsive_creative", "custom"],
+      "reason": "The buyer deliverable has multiple deterministic seller-rendered states, which AdCP 3.2 represents directly as seller_rendered_stateful_display."
+    },
+    {
+      "id": "coordinated_multi_placement_bundle",
+      "publisher_spec": "One manifest supplies a masthead, page skin, and preroll together. The buyer supplies component-specific artwork plus a shared video and call to action.",
+      "expected": {
+        "format_kind": "coordinated_placements"
+      },
+      "must_not_classify_as": ["image", "seller_rendered_stateful_display", "custom"],
+      "reason": "Several declared placements supplied atomically with shared assets form coordinated_placements rather than one stateful display unit. Inventory exclusivity is expressed separately on Product."
     },
     {
       "id": "buyer_html_bundle",
