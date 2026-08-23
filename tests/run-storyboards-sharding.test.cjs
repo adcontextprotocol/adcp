@@ -50,14 +50,14 @@ test('runner shards the applicable storyboard list into deterministic contiguous
   assert.match(source, /applicable\.slice\(shardStart, shardEnd\)/);
 });
 
-test('proposal lifecycle quarantine is limited to current-source runs', () => {
+test('resolved proposal lifecycle storyboards are not quarantined', () => {
   const source = fs.readFileSync(RUNNER_FILE, 'utf8');
   const currentOnlyStart = source.indexOf('const CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS');
   const commonStart = source.indexOf('const KNOWN_FAILING_STORYBOARDS', currentOnlyStart);
   const currentOnlyBlock = source.slice(currentOnlyStart, commonStart);
 
-  assert.match(currentOnlyBlock, /media_buy_seller\/proposal_finalize'/);
-  assert.match(currentOnlyBlock, /media_buy_seller\/proposal_finalize_asap_timing'/);
+  assert.doesNotMatch(currentOnlyBlock, /media_buy_seller\/proposal_finalize'/);
+  assert.doesNotMatch(currentOnlyBlock, /media_buy_seller\/proposal_finalize_asap_timing'/);
   assert.match(
     source,
     /releasedComplianceVersion === undefined && CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS\.has\(sb\.id\)/,
@@ -160,7 +160,7 @@ test('current /sales runs isolated shard jobs behind one aggregate required chec
   assert.match(workflow, /needs: sales_storyboard_shards/);
   assert.match(workflow, /SHARD_RESULT: \$\{\{ needs\.sales_storyboard_shards\.result \}\}/);
   assert.match(workflow, /MIN_CLEAN: 120/);
-  assert.match(workflow, /MIN_PASSED: 524/);
-  assert.match(matrixRunner, /"sales:120:524"/);
+  assert.match(workflow, /MIN_PASSED: 534/);
+  assert.match(matrixRunner, /"sales:120:534"/);
   assert.match(workflow, /media_buy_seller\/compact_direct_buy_lifecycle:7:0/);
 });
