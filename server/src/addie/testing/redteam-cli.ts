@@ -2,7 +2,7 @@
 /**
  * Red-team regression CLI.
  *
- * Runs all 25 hostile questions against a live Addie endpoint and reports
+ * Runs the full hostile-question suite against a live Addie endpoint and reports
  * deterministic pass/fail.
  *
  * Usage:

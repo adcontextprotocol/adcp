@@ -98,7 +98,7 @@ Yes. AdCP is open source under the [Apache 2.0 license](https://www.apache.org/l
 </Accordion>
 
 <Accordion title="How mature is the protocol?">
-AdCP **3.1.12** is the current stable release. The protocol is stable and production-ready. See [Release notes](/docs/reference/release-notes) for the full change log and [What's new in v3](/docs/reference/whats-new-in-v3) for the 2.5 → 3.0 migration summary.
+AdCP **3.1** is the current stable release line. The protocol is stable and production-ready. See the [schema registry](https://adcontextprotocol.org/schemas/) for the latest 3.1 patch, [Release notes](/docs/reference/release-notes) for the full change log, and [What's new in v3](/docs/reference/whats-new-in-v3) for the 2.5 → 3.0 migration summary.
 
 The next major version (4.0) is targeted for early 2027. Under the [release cadence policy](/docs/reference/versioning#release-cadence), majors are at least 18 months apart, the previous major receives security patches for at least 12 months after successor GA, and deprecation notices are published at least 6 months before removal. See [Versioning & Governance](/docs/reference/versioning) for the full policy and 3.x stability guarantees. AdCP 2.5 reached end of life on 2026-08-01 and no longer receives security patches — see the [v2 sunset page](/docs/reference/v2-sunset).
 </Accordion>
@@ -127,31 +127,41 @@ A platform can implement both. For example, a publisher's AdCP agent might accep
 </Accordion>
 
 <Accordion title="What is AdCP's relationship to IAB Tech Lab?">
-AdCP is maintained by AgenticAdvertising.org (AAO), an independent specification body — not a subsidiary or working group of IAB Tech Lab. The two organizations sit at different layers of the advertising stack and run on different cadences.
+AdCP is maintained by AgenticAdvertising.org (AAO), an independent specification body — not a subsidiary or working group of IAB Tech Lab. IAB Tech Lab and AAO maintain separate specifications under separate governance processes. Their work is neither identical nor cleanly divided into non-overlapping layers.
 
-- **Layer.** AdCP describes the campaign layer — the buyer/seller workflow above the impression-level auction (product discovery, media buy creation, creative, signals, governance). IAB Tech Lab's portfolio (OpenRTB, VAST, `ads.txt`/`sellers.json`, Open Measurement SDK, content taxonomy, audience taxonomy, GPP) standardizes the impression layer and the supply-chain primitives below. AdCP coexists with all of them — content taxonomy fields align with IAB content categories, audience segments can reference IAB audience taxonomy IDs, and [`adagents.json`](/docs/governance/property/adagents) extends the `ads.txt`/`sellers.json` relationship semantics rather than replacing them.
-- **Cadence.** AAO works through public RFCs and working groups on GitHub on a monthly cycle, suited to an agentic surface that is still moving. IAB Tech Lab's standardization process is built for slower, broader-consensus deliberation across a much larger membership.
+- **Established standards.** AdCP selectively incorporates or maps IAB Tech Lab standards where they already provide industry vocabulary. Examples include OpenRTB and AdCOM placement classifications, OpenRTB Native creative assets, VAST and DAAST tags, content and audience taxonomy references, GPP consent strings (and IAB Europe's TCF), and `ads.txt`/`sellers.json` relationship semantics. AdCP defines its own task and transaction model rather than adopting OpenRTB's auction wire protocol or OpenDirect's transaction model.
+- **Agentic scope.** IAB Tech Lab's [AAMP initiative](https://iabtechlab.com/standards/aamp-agentic-advertising-management-protocols/) covers both management-layer and real-time agentic workflows. This overlaps with AdCP in discovery, planning, negotiation, order and media-buy creation, audiences, governance, reporting, and execution. The frameworks use different primitives and are not wire-compatible merely because both support MCP and A2A.
+- **Organization and governance.** AAO develops AdCP through its own public schemas, conformance assets, RFCs, and working groups. IAB Tech Lab develops AAMP and its component standards in its own repositories with input from the Agentic Task Force.
 
 AdCP is Apache 2.0 — IAB Tech Lab or any other body is free to adopt, reference, or align with the specification. See [Industry landscape](/docs/building/concepts/industry-landscape) for the full picture of how AdCP, OpenRTB, MCP, and A2A relate.
 </Accordion>
 
 <Accordion title="How does AdCP compare to AAMP?">
-AAMP — [IAB Tech Lab's Agentic Advertising Management Protocols framework](https://iabtechlab.com/standards/) — is an emerging suite of agentic-advertising initiatives (including an Agent Registry and Agentic Audiences work streams). Based on AAMP materials published to date, AdCP and AAMP appear to operate at different layers of the stack and can coexist.
+AAMP — [IAB Tech Lab's Agentic Advertising Management Protocols framework](https://iabtechlab.com/standards/aamp-agentic-advertising-management-protocols/) — is an umbrella for three pillars: Agentic Foundations, Agentic Protocols, and Trust and Transparency. Its components include ARTF (Agentic Real Time Framework), Agentic Direct, Agentic Audiences, Agentic Mobile, buyer and seller reference agents, and the Agent Registry.
 
-Put simply: **AAMP is agentic bidding; AdCP is agentic buying.** AAMP's work streams, as currently described, address impression-level concerns — how agents are discovered and identified inside the programmatic auction, and how agentic audiences move across it — and sit alongside OpenRTB at the impression layer (sub-200ms, single auction). AdCP describes the campaign layer above: how a buyer agent and a seller agent negotiate, transact, and govern a media buy across product discovery, pricing, creative, signals, and governance. The layers compose — a single AdCP `create_media_buy` can spawn thousands of impression-layer events. A platform can implement both.
+AAMP and AdCP have substantial functional overlap. Both address buyer and seller agents, inventory and audience discovery, planning, pricing and negotiation, transaction creation, human approval, campaign management, reporting, and serve-time decisions. They are not separated by a simple "bidding versus buying" or "impression versus campaign" boundary.
 
-As of April 2026:
+Their main differences are architectural. The shortest summary: **AAMP is a framework; AdCP is a protocol.** AAMP packages component standards, SDKs, and reference implementations at varying maturity under one umbrella; AdCP is a single versioned specification that implementers build against independently and verify against published schemas and conformance assets.
+
+As of August 2026, based on IAB Tech Lab's published standards and compliance pages and the IABTechLab GitHub organization:
 
 | | AAMP | AdCP |
 |---|---|---|
-| **Layer** | Impression layer — agentic bidding | Campaign layer — agentic buying |
 | **Maintainer** | IAB Tech Lab | AgenticAdvertising.org |
-| **Maturity** | Emerging framework across multiple sub-initiatives | 3.0 GA (released April 2026) |
-| **Scope** | Umbrella for multiple agentic initiatives | Single specification covering media buying, creative, signals, brand governance, and execution (TMP) |
-| **Governance verification** | Being defined | Signed governance context with 15-step verification (Layer 4 of the [security model](/docs/building/concepts/security-model)) |
-| **Public schemas** | Being defined | [Published](https://adcontextprotocol.org/schemas/v3/), Apache 2.0 |
+| **Design center** | Extend established IAB Tech Lab standards to agentic workflows | A cross-channel agent task and object model, selectively mapping established standards |
+| **Packaging** | Umbrella of components, SDKs, and reference implementations | One versioned protocol with [public schemas](https://adcontextprotocol.org/schemas/v3/), task definitions, and conformance assets |
+| **Specification maturity** | ARTF 1.0 (July 2026) is the first component specification finalized under IAB Tech Lab governance; the Agentic Direct, Agentic Audiences, and Agentic Mobile components have no tagged specification release | 3.0 GA April 2026; stable 3.1 line in production (governance and TMP surfaces are experimental under the published stability-notice contract) |
+| **Conformance** | No AAMP-specific conformance program (IAB Tech Lab's compliance programs cover OM SDK, podcast measurement, and data transparency) | Storyboard conformance suite; [AAO Verified (Spec) and (Sandbox)](/docs/building/verification/aao-verified) attestations |
+| **Security model** | Agent Registry diligence and privacy-platform integrations; no security model spanning AAMP components published | Signed governance context with 15-step verification (Layer 4 of the [security model](/docs/building/concepts/security-model)) |
+| **Versioning and support policy** | Umbrella releases (most recently AAMP 2.3) alongside per-component release lines; no published support or deprecation policy | [Release cadence policy](/docs/reference/versioning): majors ≥18 months apart, ≥12-month security support, ≥6-month deprecation notice |
+| **Transaction primitives** | OpenDirect accounts, products, orders, and lines; Deals API and AdCOM/OpenRTB objects | Products, proposals, media buys, creatives, signals, and governance plans |
+| **Real-time execution** | ARTF host-executed services, OpenRTB integration, Agentic Audiences | [Trusted Match Protocol](/docs/trusted-match) context and identity matching |
+| **Discovery and trust** | IAB Tech Lab Agent Registry and diligence integrations | Domain-published `adagents.json` and `brand.json`, signing keys, and governance context |
+| **Transport** | MCP, A2A, and component-specific APIs | MCP and A2A |
 
-We do not yet publish a formal technical comparison because AAMP is still defining its normative surface. Implementers interested in both should watch both specifications as they stabilize.
+A platform can implement both, but there is currently no normative AdCP-to-AAMP crosswalk. Shared transports and reused IAB vocabulary reduce adapter work; they do not make the task names, lifecycle states, or payloads interchangeable. See IAB Tech Lab's [current AAMP scope clarification](https://iabtechlab.com/clarifying-the-aamp-scope-why-so-many-aamp-vs-adcp-comparisons-miss-the-mark/) for its description of the overlap. This table is a point-in-time snapshot; check both organizations' current publications before relying on it.
+
+Questions to ask of any agentic-advertising framework before committing production spend: normative schemas to validate against, a conformance surface you can run, a security model you can audit, a support policy you can plan around, and a public record of outside implementers filing issues and getting fixes merged.
 </Accordion>
 
 <Accordion title="How does AdCP compare to UCP and ACP?">
