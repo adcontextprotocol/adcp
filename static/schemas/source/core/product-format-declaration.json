@@ -9,12 +9,17 @@
   "properties": {
     "format_option_id": {
       "type": "string",
+      "minLength": 1,
       "description": "Stable identifier for this declaration within its namespace. REQUIRED when a product contains multiple declarations with the same format_kind and SHOULD be set on every entry. Publisher-backed options pair it with publisher_domain; product-local options omit publisher_domain. When a single declaration has a unique format_kind and no ID, buyers author canonically with format_kind plus params; they MUST NOT fall back to deprecated format_ids merely because this optional ID is absent. Examples: 'display_image_300x250', 'responsive_search', 'daily_pulse_homepage_image'."
     },
     "publisher_domain": {
       "type": "string",
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
       "description": "Namespace for `format_option_id` when this declaration references or narrows a publisher-declared format option from that publisher's adagents.json top-level `formats[]`. Product-local options omit this field and are selected by `format_option_id` within the target product."
+    },
+    "tracker_execution_contract": {
+      "$ref": "/schemas/core/tracker-execution-contract.json",
+      "description": "Seller- or publisher-authored commitment describing which first-class manifest trackers the selected format option accepts and initiates in production. The seller-returned Product declaration is binding; publisher and placement declarations are upstream inputs that the seller resolves into that effective contract. Presence requires a stable format_option_id. Creative-agent capability projections, transformer inputs, and deprecated canonical_parameters MUST reject this seller-authority field rather than copying it."
     },
     "technical_requirements_complete": {
       "type": "boolean",
@@ -71,6 +76,11 @@
     }
   },
   "allOf": [
+    {
+      "$comment": "A production tracker commitment must be durably addressable; ID-less unique-kind declarations cannot carry seller execution authority.",
+      "if": { "required": ["tracker_execution_contract"] },
+      "then": { "required": ["format_option_id"] }
+    },
     {
       "$comment": "Publisher-scoped canonical declarations are addressable only by the complete {publisher_domain, format_option_id} identity pair.",
       "if": {

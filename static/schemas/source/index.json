@@ -113,6 +113,10 @@
           "$ref": "/schemas/core/package.json",
           "description": "A specific product within a media buy (line item)"
         },
+        "package-format-snapshot": {
+          "$ref": "/schemas/core/package-format-snapshot.json",
+          "description": "Immutable package-time selected product format, placement, execution-version, and tracker-contract binding"
+        },
         "committed-metric": {
           "$ref": "/schemas/core/committed-metric.json",
           "description": "One metric in a package's binding reporting contract"
@@ -593,6 +597,22 @@
         "product-format-declaration": {
           "$ref": "/schemas/core/product-format-declaration.json",
           "description": "v2 inline format declaration on products. Keyed by canonical format name; product narrows exactly one canonical with platform-specific parameters."
+        },
+        "tracker-execution-contract": {
+          "$ref": "/schemas/core/tracker-execution-contract.json",
+          "description": "Seller production commitment for accepted first-class manifest tracker execution"
+        },
+        "tracker-execution-selector": {
+          "$ref": "/schemas/core/tracker-execution-selector.json",
+          "description": "Exact pixel, VAST, or DAAST tracker selector in a production execution contract"
+        },
+        "vast-tracker-constraints": {
+          "$ref": "/schemas/core/vast-tracker-constraints.json",
+          "description": "Shared version-aware VAST tracker event and target constraints"
+        },
+        "daast-tracker-constraints": {
+          "$ref": "/schemas/core/daast-tracker-constraints.json",
+          "description": "Shared DAAST tracker event and target constraints"
         },
         "downstream-connection-requirement": {
           "$ref": "/schemas/core/downstream-connection-requirement.json",
@@ -1176,6 +1196,18 @@
         "vast-tracking-event": {
           "$ref": "/schemas/enums/vast-tracking-event.json",
           "description": "Standard VAST tracking events for video playback and interaction"
+        },
+        "pixel-tracking-event": {
+          "$ref": "/schemas/enums/pixel-tracking-event.json",
+          "description": "Canonical first-class pixel tracker event vocabulary"
+        },
+        "tracker-execution-actor": {
+          "$ref": "/schemas/enums/tracker-execution-actor.json",
+          "description": "Actor responsible for initiating an accepted tracker"
+        },
+        "tracker-firing-path": {
+          "$ref": "/schemas/enums/tracker-firing-path.json",
+          "description": "Permitted client or server tracker initiation path"
         },
         "property-type": {
           "$ref": "/schemas/enums/property-type.json",

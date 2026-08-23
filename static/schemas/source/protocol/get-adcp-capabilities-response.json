@@ -2110,8 +2110,18 @@
                 "description": "Stable identifier for this format capability within the creative agent (e.g., 'audio_narration_30s'). The value MUST be unique across this agent's supported_formats catalog. Route the advertised operation with this ID: build_creative.target_capability_id(s) for build, preview_creative.target_capability_id for preview, or validate_input targets[] kind capability for validate. Capability IDs are agent-local routes and do not appear on portable manifests or products."
               },
               "format": {
-                "$ref": "/schemas/core/product-format-declaration.json",
-                "description": "Format declaration on which this agent can perform the listed operations. Same shape as a product's inline format_options entry: format_kind plus params and slots."
+                "description": "Format declaration on which this agent can perform the listed operations. Creative-agent capability self-description has no seller production authority, so tracker_execution_contract and tracker_execution_contract_digest are forbidden.",
+                "allOf": [
+                  { "$ref": "/schemas/core/product-format-declaration.json" },
+                  {
+                    "not": {
+                      "anyOf": [
+                        { "required": ["tracker_execution_contract"] },
+                        { "required": ["tracker_execution_contract_digest"] }
+                      ]
+                    }
+                  }
+                ]
               },
               "operations": {
                 "type": "array",

@@ -8,6 +8,7 @@
     "opportunity_id": "opportunity",
     "spot_id": "spot_airing",
     "creative_id": "creative",
+    "selector_id": "tracker_execution_selector",
     "audience_id": "audience",
     "snapshot_id": "audience_evidence_snapshot",
     "event_source_id": "event_source",

@@ -28,9 +28,15 @@
     },
     "format_options": {
       "type": "array",
-      "description": "Canonical creative contracts eligible for this package. These are the seller-resolved package options, not a global agent format list.",
-      "items": { "$ref": "/schemas/core/product-format-declaration.json" },
-      "minItems": 1
+      "description": "Immutable seller-resolved PackageFormatSnapshots eligible for this package. A sender projects this field only when the Trusted Match transport profile supports the highest AdCP release version of every field in every snapshot. It MUST NOT strip an unsupported selector or digest field from a snapshot; for an older or version-unknown provider, omit the entire contract-bearing snapshot and do not claim production-path evidence from a legacy projection.",
+      "items": { "$ref": "/schemas/core/package-format-snapshot.json" },
+      "minItems": 1,
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "protocol_version": "the Trusted Match transport profile supports the highest AdCP release version of every field in each projected snapshot",
+          "authority_stripping": "an unsupported contract-bearing snapshot is omitted whole; a sender never removes individual selectors, execution versions, or digests from an immutable snapshot"
+        }
+      }
     },
     "catalogs": {
       "type": "array",

@@ -281,6 +281,7 @@
                 },
                 "product_id": {
                   "type": "string",
+                  "minLength": 1,
                   "description": "Product identifier this package is purchased from. For packages created from an explicit create_media_buy package request, sellers MUST echo the request package's product_id on every response package object that represents that requested package.",
                   "x-entity": "product"
                 },
@@ -583,17 +584,27 @@
                 },
                 "formats_to_provide": {
                   "type": "array",
-                  "description": "The immutable canonical creative contracts established for this package at booking time. Each entry is the selected Product.format_options declaration, or the equivalent declaration normalized from a direct format_kind + params selector. Compare this full checklist with formats_pending to determine current creative readiness.",
+                  "description": "The immutable PackageFormatSnapshot checklist established for this package at booking time. Contract-bearing snapshots remain present after creative coverage is complete so readback, assignment, and serving never fall back to a mutable live Product declaration.",
                   "items": {
-                    "$ref": "/schemas/core/product-format-declaration.json"
+                    "$ref": "/schemas/core/package-format-snapshot.json"
                   },
-                  "minItems": 1
+                  "minItems": 1,
+                  "x-adcp-validation": {
+                    "verifier_constraints": {
+                      "snapshot_identity": "every present product_snapshot_digest is unique within the package; contract-bearing snapshots always carry one"
+                    }
+                  }
                 },
                 "formats_pending": {
                   "type": "array",
-                  "description": "Canonical package-time format declarations from formats_to_provide that do not yet have creative coverage through sync_creatives or inline creative assignment. Each entry preserves the full contract needed to select a compatible creative agent, including ID-less unique-kind and direct canonical selections. An empty emitted array means every formats_to_provide requirement is covered. Absence means readiness was not reported, so buyers MUST NOT infer full coverage from omission.",
+                  "description": "PackageFormatSnapshot entries from formats_to_provide that do not yet have creative coverage. Each entry MUST be canonically equal to the corresponding checklist snapshot and carry the identical product_snapshot_digest. An empty emitted array means all requirements are covered; absence means readiness was not reported.",
                   "items": {
-                    "$ref": "/schemas/core/product-format-declaration.json"
+                    "$ref": "/schemas/core/package-format-snapshot.json"
+                  },
+                  "x-adcp-validation": {
+                    "verifier_constraints": {
+                      "subset_identity": "every item equals exactly one formats_to_provide item after RFC 8785 canonicalization and carries the identical product_snapshot_digest when present"
+                    }
                   }
                 },
                 "format_ids_to_provide": {
@@ -739,10 +750,38 @@
                       }
                     }
                   }
+                },
+                {
+                  "if": {
+                    "anyOf": [
+                      {
+                        "properties": {
+                          "formats_to_provide": {
+                            "contains": { "required": ["tracker_execution_contract"] }
+                          }
+                        },
+                        "required": ["formats_to_provide"]
+                      },
+                      {
+                        "properties": {
+                          "formats_pending": {
+                            "contains": { "required": ["tracker_execution_contract"] }
+                          }
+                        },
+                        "required": ["formats_pending"]
+                      }
+                    ]
+                  },
+                  "then": { "required": ["product_id"] }
                 }
               ],
               "dependencies": {
                 "params": ["format_kind"]
+              },
+              "x-adcp-validation": {
+                "verifier_constraints": {
+                  "package_snapshot_product": "every formats_to_provide and formats_pending item product_id equals this readback package product_id; a contract-bearing snapshot requires the enclosing product_id"
+                }
               },
               "additionalProperties": true
             }

@@ -12,6 +12,7 @@
     },
     "product_id": {
       "type": "string",
+      "minLength": 1,
       "description": "ID of the product this package is based on. For packages created from an explicit create_media_buy package request, sellers MUST echo the request package's product_id on every response package object that represents that requested package.",
       "x-entity": "product"
     },
@@ -184,17 +185,27 @@
     },
     "formats_to_provide": {
       "type": "array",
-      "description": "Canonical creative contracts that the buyer must satisfy for this package. Each entry is a package-time snapshot of a selected Product.format_options declaration (or the equivalent declaration normalized from a direct format_kind + params selector) and MUST equal or narrow that product contract. Full declarations keep the requirement stable if the live product or publisher catalog later changes and remain usable when format_option_id is absent. Sellers SHOULD emit this field whenever additional creative coverage is required.",
+      "description": "Immutable canonical creative contracts established for this package. Each entry is a PackageFormatSnapshot of the selected effective Product format declaration. A package whose selected format carries tracker_execution_contract MUST retain and return this checklist even after creative coverage is complete; the live Product is never substituted for the package snapshot.",
       "items": {
-        "$ref": "/schemas/core/product-format-declaration.json"
+        "$ref": "/schemas/core/package-format-snapshot.json"
       },
-      "minItems": 1
+      "minItems": 1,
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "snapshot_identity": "every present product_snapshot_digest is unique within the package; contract-bearing snapshots always carry one"
+        }
+      }
     },
     "formats_pending": {
       "type": "array",
-      "description": "The declarations from formats_to_provide that do not yet have creative coverage through sync_creatives or inline creative assignment. An empty emitted array means every required format is covered. Absence means readiness was not reported, so buyers MUST NOT infer full coverage from omission. Sellers SHOULD emit this field with formats_to_provide when returning current package readiness.",
+      "description": "PackageFormatSnapshot entries from formats_to_provide that do not yet have creative coverage through sync_creatives or inline assignment. Every entry MUST equal its formats_to_provide snapshot after RFC 8785 canonicalization and carry the identical product_snapshot_digest. An empty emitted array means every required format is covered. Absence means readiness was not reported.",
       "items": {
-        "$ref": "/schemas/core/product-format-declaration.json"
+        "$ref": "/schemas/core/package-format-snapshot.json"
+      },
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "subset_identity": "every item equals exactly one formats_to_provide item after RFC 8785 canonicalization and carries the identical product_snapshot_digest"
+        }
       }
     },
     "format_ids_to_provide": {
@@ -322,12 +333,42 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "anyOf": [
+          {
+            "properties": {
+              "formats_to_provide": {
+                "contains": { "required": ["tracker_execution_contract"] }
+              }
+            },
+            "required": ["formats_to_provide"]
+          },
+          {
+            "properties": {
+              "formats_pending": {
+                "contains": { "required": ["tracker_execution_contract"] }
+              }
+            },
+            "required": ["formats_pending"]
+          }
+        ]
+      },
+      "then": { "required": ["product_id"] }
     }
   ],
   "dependencies": {
     "params": [
       "format_kind"
     ]
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "package_snapshot_product": "every formats_to_provide and formats_pending item product_id equals the enclosing package product_id; a contract-bearing snapshot requires the enclosing product_id",
+      "contract_snapshot_required": "a selected format carrying tracker_execution_contract requires the enclosing product_id and a retained nonempty formats_to_provide checklist even when formats_pending is empty",
+      "snapshot_immutability": "a selected format, placement set, exact execution version, or tracker contract change creates a replacement package_id rather than mutating an existing snapshot"
+    }
   },
   "additionalProperties": true
 }
