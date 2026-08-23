@@ -11,7 +11,7 @@
       "description": "Deprecated one-element alias for `daast_versions`. Producers use either the singular legacy alias or the plural 3.2 field, never both."
     },
     "daast_versions": {
-      "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/versions",
+      "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/daast_versions",
       "description": "Accepted DAAST version set for this asset requirement."
     }
   },

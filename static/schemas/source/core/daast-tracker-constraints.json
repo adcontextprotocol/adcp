@@ -5,7 +5,7 @@
   "description": "Shared DAAST TrackingEvents constraints used by tracker assets and production execution selectors. The target/event matrix is closed and progress alone carries offset.",
   "type": "object",
   "definitions": {
-    "event": {
+    "daast_event": {
       "type": "string",
       "enum": [
         "creativeView",
@@ -24,16 +24,16 @@
         "close"
       ]
     },
-    "target": {
+    "daast_target": {
       "type": "string",
       "enum": ["linear", "companion"],
       "default": "linear"
     },
-    "offset": {
+    "daast_offset": {
       "type": "string",
       "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
     },
-    "versions": {
+    "daast_versions": {
       "type": "array",
       "items": { "$ref": "/schemas/enums/daast-version.json" },
       "minItems": 1,
@@ -41,10 +41,10 @@
     }
   },
   "properties": {
-    "daast_event": { "$ref": "#/definitions/event" },
-    "target": { "$ref": "#/definitions/target" },
-    "offset": { "$ref": "#/definitions/offset" },
-    "daast_versions": { "$ref": "#/definitions/versions" }
+    "daast_event": { "$ref": "#/definitions/daast_event" },
+    "target": { "$ref": "#/definitions/daast_target" },
+    "offset": { "$ref": "#/definitions/daast_offset" },
+    "daast_versions": { "$ref": "#/definitions/daast_versions" }
   },
   "allOf": [
     {
