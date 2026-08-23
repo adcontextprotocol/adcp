@@ -13,7 +13,7 @@ description: "Every published AdCP version, its status, and its end-of-life date
 
 | Status | Versions | Wire pin | What it means |
 |---|---|---|---|
-| **Beta** | 3.2 (current prerelease: `beta.4`) | `"3.2-beta.4"` | Development and staging only. TypeScript SDK support is available in `@adcp/sdk@14.0.0-beta.5`; follow the [3.2 beta program](/docs/reference/3-2-beta). |
+| **Beta** | 3.2 (current prerelease: `beta.5`) | `"3.2-beta.5"` | Development and staging only. Exact TypeScript and Python beta packages are available; follow the [3.2 beta program](/docs/reference/3-2-beta). |
 | **Active** | 3.1 (current stable: 3.1.15) | `"3.1"` | Current production minor release. See [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1) for the feature set. |
 | **Maintained** | 3.0 (current stable: 3.0.24) | `"3.0"` | Supported previous minor for existing production integrations. Receives compatibility and security patches. |
 | **End of life** | 2.0.0, 2.1.0, 2.5.0–2.5.3 | — | No patches. Migrate to 3.0. See [v2 sunset](/docs/reference/v2-sunset). |
@@ -45,7 +45,8 @@ Supported patches don't change the wire contract. Upgrading within 3.0.x is alwa
 
 | Version | Released | Notes |
 |---|---|---|
-| **3.2.0-beta.4** | 2026-08-20 | Current prerelease. `@adcp/sdk@14.0.0-beta.5` embeds this exact checkpoint. Use `"3.2-beta.4"` only when both peers explicitly advertise it. Adds flexible-window availability discovery and the outcome_target reverse-forecast input. |
+| **3.2.0-beta.5** | 2026-08-22 | Current prerelease. `@adcp/sdk@14.0.0-beta.7` and Python `adcp==8.0.0b7` embed this exact checkpoint. Use `"3.2-beta.5"` only when both peers explicitly advertise it. |
+| 3.2.0-beta.4 | 2026-08-20 | Integration checkpoint, superseded by beta.5 for new beta testing. Adds flexible-window availability discovery and the outcome_target reverse-forecast input. |
 | 3.2.0-beta.3 | 2026-08-19 | Integration checkpoint, superseded by beta.4 for new beta testing. |
 | 3.2.0-beta.2 | 2026-08-19 | Integration checkpoint, superseded by beta.3 for new beta testing. |
 | 3.2.0-beta.1 | 2026-08-19 | Integration-correction checkpoint, superseded by beta.2 for new beta testing. |
@@ -89,8 +90,8 @@ Targeted for early 2027. 3.x is mid-cycle — see the [planned releases table](/
 | If you are… | Use |
 |---|---|
 | Building a new production integration today | **3.1**. Pin `"3.1"` on the wire. |
-| Implementing or testing 3.2 without an SDK | Use the signed **3.2 beta.3** artifacts with raw-wire or code-generation workflows. Follow the [beta program](/docs/reference/3-2-beta). |
-| Running an SDK-backed 3.2 integration test | Use `@adcp/sdk@14.0.0-beta.5` with exact wire pin `"3.2-beta.4"`, or another SDK only after its support matrix row names an exact checkpoint. |
+| Implementing or testing 3.2 without an SDK | Use the signed **3.2 beta.5** artifacts with raw-wire or code-generation workflows. Follow the [beta program](/docs/reference/3-2-beta). |
+| Running an SDK-backed 3.2 integration test | Use `@adcp/sdk@14.0.0-beta.7` or Python `adcp==8.0.0b7` with exact wire pin `"3.2-beta.5"`; use Go only after its support matrix row names an exact checkpoint. |
 | Running an existing 3.0 integration | Stay on **3.0** while you migrate, or move to **3.1** when your SDK and validation are ready. |
 | Running a 2.5.x integration | Upgrade now — out of support. Start with the [migration guide](/docs/reference/migration). |
 | Running a 2.0 or 2.1 integration | Upgrade now — out of support. |

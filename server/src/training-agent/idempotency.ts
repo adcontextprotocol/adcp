@@ -31,7 +31,6 @@ import {
   type IdempotencyCheckResult,
 } from '@adcp/sdk/server';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
-import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 
 export const REPLAY_TTL_SECONDS = 86400;
@@ -45,6 +44,7 @@ const IN_FLIGHT_RETRY_HINT_CAP_SECONDS = 30;
 const CLAIM_SAVE_SAFETY_SECONDS = 30;
 const SCOPE_SEPARATOR = '\u001F';
 const PENDING_OWNER_FIELD = '__adcp_pending_owner';
+const RETRYABLE_HASH_PREFIX = '__adcp_retryable__:';
 
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9_.:-]{16,255}$/;
 
@@ -225,12 +225,23 @@ export function createHashAwareIdempotencyStore(
 
   const isPending = (response: unknown): boolean => response === null || pendingOwner(response) !== undefined;
 
+  const retryableRequestHash = (payloadHash: string): string | undefined => {
+    if (!payloadHash.startsWith(RETRYABLE_HASH_PREFIX)) return undefined;
+    const requestHash = payloadHash.slice(RETRYABLE_HASH_PREFIX.length);
+    return /^[0-9a-f]{64}$/.test(requestHash) ? requestHash : undefined;
+  };
+
   const classify = (
     entry: Awaited<ReturnType<IdempotencyBackend['get']>>,
     expectedHash: string,
   ): Exclude<IdempotencyCheckResult, { kind: 'miss' }> | null => {
     if (!entry) return null;
     const nowSeconds = Math.floor(Date.now() / 1e3);
+    const releasedPayloadHash = retryableRequestHash(entry.payloadHash);
+    if (releasedPayloadHash !== undefined) {
+      if (entry.expiresAt + clockSkewSeconds < nowSeconds) return { kind: 'expired' };
+      return releasedPayloadHash === expectedHash ? null : { kind: 'conflict' };
+    }
     if (entry.expiresAt + clockSkewSeconds < nowSeconds) {
       return isPending(entry.response) ? null : { kind: 'expired' };
     }
@@ -256,16 +267,30 @@ export function createHashAwareIdempotencyStore(
   ): Promise<OwnedCheckResult> => {
     const cacheKey = scopedKey(principal, key, extraScope);
     const expectedHash = hashPayload(payload);
-    const cached = classify(await backend.get(cacheKey), expectedHash);
+    const cachedEntry = await backend.get(cacheKey);
+    const cached = classify(cachedEntry, expectedHash);
     if (cached) return cached;
 
     const expiresAt = Math.floor(Date.now() / 1e3) + IN_FLIGHT_TTL_SECONDS;
     const owner = randomUUID();
-    const claimed = await backend.putIfAbsent(cacheKey, {
+    const claimEntry = {
       payloadHash: expectedHash,
       response: { [PENDING_OWNER_FIELD]: owner },
       expiresAt,
-    });
+      retainUntil: expiresAt + clockSkewSeconds,
+    };
+    const nowSeconds = Math.floor(Date.now() / 1e3);
+    const releasedPayloadHash = cachedEntry
+      ? retryableRequestHash(cachedEntry.payloadHash)
+      : undefined;
+    const expiredPending = cachedEntry
+      && isPending(cachedEntry.response)
+      && cachedEntry.expiresAt + clockSkewSeconds < nowSeconds;
+    const claimed = releasedPayloadHash !== undefined
+      ? await backend.replaceIfPayloadHash(cacheKey, cachedEntry!.payloadHash, claimEntry)
+      : expiredPending
+        ? await backend.replaceIfPayloadHashAndExpired(cacheKey, cachedEntry.payloadHash, claimEntry)
+        : await backend.putIfAbsent(cacheKey, claimEntry);
     if (claimed) return { kind: 'miss', payloadHash: expectedHash, claimToken: owner };
 
     const rechecked = classify(await backend.get(cacheKey), expectedHash);
@@ -281,25 +306,48 @@ export function createHashAwareIdempotencyStore(
         ? operation()
         : withBackendKeyLock(backend, cacheKey, operation);
     },
+    async renew({ principal, key, extraScope, claimToken }) {
+      const cacheKey = scopedKey(principal, key, extraScope);
+      const expiresAt = Math.floor(Date.now() / 1e3) + IN_FLIGHT_TTL_SECONDS;
+      const renewed = await renewOwnedClaim(cacheKey, claimToken, backend, pendingOwner, {
+        payloadHash: '',
+        response: { [PENDING_OWNER_FIELD]: claimToken },
+        expiresAt,
+        retainUntil: expiresAt + clockSkewSeconds,
+      });
+      if (!renewed) throw new Error('Idempotency claim ownership was lost before its lease could be renewed.');
+    },
     async save({ principal, key, payloadHash, response, extraScope, claimToken }) {
       const cacheKey = scopedKey(principal, key, extraScope);
+      const expiresAt = Math.floor(Date.now() / 1e3) + ttlSeconds;
       const saved = await replaceOwnedClaim(cacheKey, claimToken, backend, pendingOwner, {
         payloadHash,
         response,
-        expiresAt: Math.floor(Date.now() / 1e3) + ttlSeconds,
+        expiresAt,
+        retainUntil: expiresAt + clockSkewSeconds,
       });
       if (!saved) throw new Error('Idempotency claim ownership was lost before the response could be published.');
     },
     async release({ principal, key, extraScope, claimToken }) {
       const cacheKey = scopedKey(principal, key, extraScope);
-      await deleteOwnedClaim(cacheKey, claimToken, backend, pendingOwner);
+      const released = await markOwnedClaimRetryable(
+        cacheKey,
+        claimToken,
+        backend,
+        pendingOwner,
+        ttlSeconds,
+        clockSkewSeconds,
+      );
+      if (!released) throw new Error('Idempotency claim ownership was lost before it could be released.');
     },
     async saveTransientError({ principal, key, payloadHash, response, extraScope, claimToken }) {
       const cacheKey = scopedKey(principal, key, extraScope);
+      const expiresAt = Math.floor(Date.now() / 1e3) + TRANSIENT_ERROR_TTL_SECONDS;
       const saved = await replaceOwnedClaim(cacheKey, claimToken, backend, pendingOwner, {
         payloadHash,
         response,
-        expiresAt: Math.floor(Date.now() / 1e3) + TRANSIENT_ERROR_TTL_SECONDS,
+        expiresAt,
+        retainUntil: expiresAt + clockSkewSeconds,
       });
       if (!saved) throw new Error('Idempotency claim ownership was lost before the response could be published.');
     },
@@ -320,6 +368,32 @@ export function createHashAwareIdempotencyStore(
         }
       : {}),
   };
+}
+
+async function renewOwnedClaim(
+  cacheKey: string,
+  owner: string,
+  backend: FencedIdempotencyBackend,
+  pendingOwner: (response: unknown) => string | undefined,
+  entry: Parameters<IdempotencyBackend['put']>[1],
+): Promise<boolean> {
+  const current = await backend.get(cacheKey);
+  if (!current || pendingOwner(current.response) !== owner) return false;
+  const renewedEntry = { ...entry, payloadHash: current.payloadHash };
+  if (backend.replaceIfPendingOwner) {
+    return backend.replaceIfPendingOwner(
+      cacheKey,
+      owner,
+      renewedEntry,
+      Math.floor(Date.now() / 1e3) - 1,
+    );
+  }
+  return withBackendKeyLock(backend, cacheKey, async () => {
+    const lockedCurrent = await backend.get(cacheKey);
+    if (!lockedCurrent || pendingOwner(lockedCurrent.response) !== owner) return false;
+    await backend.put(cacheKey, { ...entry, payloadHash: lockedCurrent.payloadHash });
+    return true;
+  });
 }
 
 async function replaceOwnedClaim(
@@ -344,17 +418,33 @@ async function replaceOwnedClaim(
   });
 }
 
-async function deleteOwnedClaim(
+async function markOwnedClaimRetryable(
   cacheKey: string,
   owner: string,
   backend: FencedIdempotencyBackend,
   pendingOwner: (response: unknown) => string | undefined,
+  ttlSeconds: number,
+  clockSkewSeconds: number,
 ): Promise<boolean> {
-  if (backend.deleteIfPendingOwner) return backend.deleteIfPendingOwner(cacheKey, owner);
+  const current = await backend.get(cacheKey);
+  if (!current || pendingOwner(current.response) !== owner) return false;
+  const expiresAt = Math.floor(Date.now() / 1e3) + ttlSeconds;
+  const releasedEntry = {
+    payloadHash: `${RETRYABLE_HASH_PREFIX}${current.payloadHash}`,
+    response: null,
+    expiresAt,
+    retainUntil: expiresAt + clockSkewSeconds,
+  };
+  if (backend.replaceIfPendingOwner) {
+    return backend.replaceIfPendingOwner(cacheKey, owner, releasedEntry, 0);
+  }
   return withBackendKeyLock(backend, cacheKey, async () => {
-    const current = await backend.get(cacheKey);
-    if (!current || pendingOwner(current.response) !== owner) return false;
-    await backend.delete(cacheKey);
+    const lockedCurrent = await backend.get(cacheKey);
+    if (!lockedCurrent || pendingOwner(lockedCurrent.response) !== owner) return false;
+    await backend.put(cacheKey, {
+      ...releasedEntry,
+      payloadHash: `${RETRYABLE_HASH_PREFIX}${lockedCurrent.payloadHash}`,
+    });
     return true;
   });
 }
@@ -388,11 +478,12 @@ function fencedPgBackend(): FencedIdempotencyBackend {
         `UPDATE adcp_idempotency
          SET payload_hash = $3,
              response = $4::jsonb,
-             expires_at = TO_TIMESTAMP($5)
+             expires_at = TO_TIMESTAMP($5),
+             retain_until = TO_TIMESTAMP($6)
          WHERE scoped_key = $1
            AND response ->> '__adcp_pending_owner' = $2
-           AND expires_at > TO_TIMESTAMP($6)`,
-        [cacheKey, owner, entry.payloadHash, JSON.stringify(entry.response), entry.expiresAt, minimumLeaseExpiry],
+           AND expires_at > TO_TIMESTAMP($7)`,
+        [cacheKey, owner, entry.payloadHash, JSON.stringify(entry.response), entry.expiresAt, entry.retainUntil, minimumLeaseExpiry],
       );
       return (result.rowCount ?? 0) > 0;
     },
@@ -421,60 +512,9 @@ export function getIdempotencyStore(): OwnedIdempotencyStore {
   return storeInstance;
 }
 
-const SDK_CLAIM_SEPARATOR = '.';
-const sdkClaimContext = new AsyncLocalStorage<Map<string, string>>();
-
-function sdkClaimKey(params: { principal: string; key: string; extraScope?: string }): string {
-  return `${params.principal}${SCOPE_SEPARATOR}${params.extraScope ?? ''}${SCOPE_SEPARATOR}${params.key}`;
-}
-
-function decodeSdkClaim(encoded: string): { payloadHash: string; claimToken: string } {
-  const separator = encoded.lastIndexOf(SDK_CLAIM_SEPARATOR);
-  if (separator <= 0 || separator === encoded.length - 1) {
-    throw new Error('SDK idempotency claim is missing its fencing token.');
-  }
-  return {
-    payloadHash: encoded.slice(0, separator),
-    claimToken: encoded.slice(separator + 1),
-  };
-}
-
-/** Adapt the token-aware store to the SDK's payloadHash-only claim contract. */
+/** Expose the token-aware store through the SDK beta.7 idempotency contract. */
 export function adaptOwnedIdempotencyStoreForSdk(owned: OwnedIdempotencyStore): IdempotencyStore {
-  return {
-    ...owned,
-    check(params) {
-      // enterWith must happen synchronously, before returning the Promise, so
-      // the SDK's awaiting continuation inherits this request-local claim map.
-      const claims = new Map(sdkClaimContext.getStore());
-      sdkClaimContext.enterWith(claims);
-      return owned.check(params).then(result => {
-        if (result.kind !== 'miss') return result;
-        claims.set(sdkClaimKey(params), result.claimToken);
-        return {
-          ...result,
-          payloadHash: `${result.payloadHash}${SDK_CLAIM_SEPARATOR}${result.claimToken}`,
-        };
-      });
-    },
-    async save(params) {
-      await owned.save({ ...params, ...decodeSdkClaim(params.payloadHash) });
-      sdkClaimContext.getStore()?.delete(sdkClaimKey(params));
-    },
-    async release(params) {
-      const claims = sdkClaimContext.getStore();
-      const key = sdkClaimKey(params);
-      const claimToken = claims?.get(key);
-      if (!claimToken) return;
-      await owned.release({ ...params, claimToken });
-      claims?.delete(key);
-    },
-    async saveTransientError(params) {
-      if (!owned.saveTransientError) return;
-      await owned.saveTransientError({ ...params, ...decodeSdkClaim(params.payloadHash) });
-      sdkClaimContext.getStore()?.delete(sdkClaimKey(params));
-    },
-  };
+  return owned;
 }
 
 export function getSdkIdempotencyStore(): IdempotencyStore {

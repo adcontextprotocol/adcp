@@ -72,12 +72,12 @@ Use these as a quick reference while working through the module with Addie, or t
 Call `get_products` with `buying_mode: "brief"` and a plain-English description of your campaign goals. The agent returns curated `products[]` and ready-to-execute `proposals[]`.
 
 <Note>
-This public training-agent lab continues to use the pre-3.2 brief flow. The 3.2
-structured discovery exercise will be enabled only after the beta SDKs and
-training runtime implement targeting-aware discovery; follow
-[issue #6199](https://github.com/adcontextprotocol/adcp/issues/6199). Until
-then, do not use this sandbox to test `get_products.targeting_overlay` or
-`required_overlay_support`, because the live runtime does not enforce them.
+This foundation lab intentionally uses the `get_products` compatibility facade
+so first-time learners can focus on the four-call lifecycle. The same public
+seller also supports compact 3.2 targeting-aware discovery. After this module,
+use the [buyer briefs supplement](/docs/learning/supplements/buyer-briefs-and-get-products)
+to practice `list_products`, `request_proposals`, and effective targeting
+readback with the pinned beta wire and SDK.
 </Note>
 
 ```bash
