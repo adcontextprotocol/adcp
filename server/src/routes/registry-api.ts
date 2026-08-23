@@ -8097,14 +8097,17 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   router.get("/storyboards/:id", async (req, res) => {
     try {
       const runTarget = targetFromRequestValue(req.query.compliance_target);
+      const storyboardOptions = runTarget === complianceTarget
+        ? complianceOptions
+        : hostedComplianceOptions(runTarget);
       const storyboard = runTarget === complianceTarget
         ? getStoryboard(req.params.id)
-        : getComplianceStoryboardById(req.params.id, hostedComplianceOptions(runTarget));
+        : getComplianceStoryboardById(req.params.id, storyboardOptions);
       if (!storyboard) {
         return res.status(404).json({ error: "Storyboard not found" });
       }
 
-      const testKit = getTestKitForStoryboard(req.params.id);
+      const testKit = getTestKitForStoryboard(req.params.id, storyboardOptions);
       res.json({
         requested_compliance_target: runTarget.requested,
         adcp_version: runTarget.version,
@@ -8346,11 +8349,17 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           return res.status(400).json({ error: "context too large" });
         }
 
+        // adcp#6735 — pre-populate the storyboard-declared test kit so
+        // `from_test_kit` steps run with the credential the storyboard was
+        // authored against; `withHostedAuthTestKit`'s `!nextAuth.api_key`
+        // guard then no-ops the run-auth bearer substitution.
+        const declaredTestKit = getTestKitForStoryboard(storyboard.id, runOptions);
         const result = await runStoryboardStep(
           agentUrl,
           storyboard,
           req.params.stepId,
           withSdkSafeTransport(withHostedStoryboardRunOptions({
+            ...(declaredTestKit && { test_kit: declaredTestKit }),
             ...(sdkAuth && { auth: sdkAuth }),
             ...(context && { context }),
           }, runTarget, authProbeTask)),
@@ -8462,7 +8471,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           });
         }
         const runTarget = runTargetSelection.target;
-        const storyboard = getComplianceStoryboardById(req.params.storyboardId, hostedComplianceOptions(runTarget));
+        const storyboardOptions = hostedComplianceOptions(runTarget);
+        const storyboard = getComplianceStoryboardById(req.params.storyboardId, storyboardOptions);
         if (!storyboard) {
           return res.status(404).json({ error: "Storyboard not found" });
         }
@@ -8584,7 +8594,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
           }),
         }));
 
-        const testKit = getTestKitForStoryboard(req.params.storyboardId);
+        const testKit = getTestKitForStoryboard(req.params.storyboardId, storyboardOptions);
 
         res.json({
           storyboard: {

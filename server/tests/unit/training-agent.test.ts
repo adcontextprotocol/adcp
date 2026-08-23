@@ -1701,6 +1701,84 @@ describe('get_products handler', () => {
     expect((result.products as unknown[]).length).toBeGreaterThan(0);
   });
 
+  it('warns when a custom format shape has been promoted in 3.2', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'promoted-format-shape.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    const seeded = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'legacy_coordinated_shape',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'non_guaranteed',
+          format_options: [{
+            format_option_id: 'legacy_takeover',
+            format_kind: 'custom',
+            format_shape: 'multi_placement_takeover',
+            canonical_formats_only: true,
+            format_schema: {
+              uri: 'https://ads.streamhaus.example/schemas/formats/legacy_coordinated_v1',
+              digest: `sha256:${'a'.repeat(64)}`,
+            },
+            params: {},
+          }],
+        },
+      },
+    });
+    expect(seeded.result.success).toBe(true);
+
+    const { result } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+    });
+
+    expect(result).toMatchObject({
+      code: 'FORMAT_SHAPE_PROMOTED',
+      field: expect.stringContaining('format_options'),
+      details: {
+        format_shape: 'multi_placement_takeover',
+        promoted_to: 'coordinated_placements',
+        promotion_release: '3.2',
+        transition_end: '2027-01-31',
+      },
+    });
+  });
+
+  it('skips advisories for seeded products with non-array format_options', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'malformed-format-options.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    const seeded = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'malformed_format_options',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'non_guaranteed',
+          format_options: { format_kind: 'custom' },
+        },
+      },
+    });
+    expect(seeded.result.success).toBe(true);
+
+    const { result, isError } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'wholesale',
+      account,
+    });
+
+    expect(isError).not.toBe(true);
+    expect(Array.isArray(result.products)).toBe(true);
+  });
+
   it('returns wholesale feed metadata and honors unchanged product probes', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: first } = await simulateCallTool(server, 'get_products', {
@@ -2731,6 +2809,674 @@ describe('validate_input handler', () => {
     ]);
   });
 
+  it('requires product context for coordinated placements and rejects misplaced component assets', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const coordinated = await simulateCallTool(server, 'validate_input', {
+      manifest: { format_kind: 'coordinated_placements', assets: {}, component_assets: {} },
+      targets: [{ kind: 'canonical', id: 'coordinated_placements' }],
+    });
+    expect(coordinated.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'coordinated_placements_product_context' }),
+      ]),
+    });
+
+    const unboundStateCanvas = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'seller_rendered_stateful_display',
+        assets: {
+          state_canvases: [{
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/unbound.png',
+            width: 320,
+            height: 50,
+          }],
+          landing_page_url: { asset_type: 'url', url: 'https://acme.example' },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'seller_rendered_stateful_display' }],
+    });
+    expect(unboundStateCanvas.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'state_canvas_binding_required' }),
+      ]),
+    });
+
+    const imageWithComponents = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'image',
+        assets: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/image.png',
+            width: 300,
+            height: 250,
+          },
+        },
+        component_assets: { stray: {} },
+      },
+      targets: [{ kind: 'canonical', id: 'image' }],
+    });
+    expect(imageWithComponents.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'schema' }),
+      ]),
+    });
+  });
+
+  it('validates seller-rendered state transitions, canvas coverage, and dimensions against product breakpoints', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'premium-display.example' }, operator: 'pinnacle-agency.example' };
+    const statefulFixture = {
+      channels: ['display'],
+      delivery_type: 'guaranteed',
+      format_options: [{
+        format_kind: 'seller_rendered_stateful_display',
+        format_option_id: 'sticky_leaderboard',
+        canonical_formats_only: true,
+        params: {
+          supply_mode: 'rendered_canvases',
+          initial_state_id: 'expanded',
+          states: [
+            {
+              state_id: 'expanded',
+              anchoring: 'inline',
+              close_affordance: true,
+              breakpoints: [
+                { breakpoint_id: 'desktop', width: 640, height: 210 },
+                { breakpoint_id: 'mobile', width: 320, height: 210 },
+              ],
+            },
+            {
+              state_id: 'collapsed',
+              anchoring: 'sticky_top',
+              close_affordance: true,
+              breakpoints: [
+                { breakpoint_id: 'desktop', width: 640, height: 70 },
+                { breakpoint_id: 'mobile', width: 320, height: 70 },
+              ],
+            },
+          ],
+          transitions: [
+            {
+              transition_id: 'auto_collapse',
+              from_state_id: 'expanded',
+              to_state_id: 'collapsed',
+              trigger: 'timer',
+              transition_mode: 'animated',
+              delay_ms: 5000,
+              duration_ms: 300,
+            },
+            {
+              transition_id: 'user_expand',
+              from_state_id: 'collapsed',
+              to_state_id: 'expanded',
+              trigger: 'user_action',
+              input: 'expand_control',
+              transition_mode: 'animated',
+              duration_ms: 300,
+            },
+          ],
+          user_controls: { dismissible: true, user_collapsible: true },
+          duration_ms_range: [5000, 15000],
+          aspect_ratio: '16:9',
+          containers: ['mp4'],
+        },
+      }],
+    };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'premium-display.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'validate_input_seller_rendered_stateful_display',
+        fixture: statefulFixture,
+      },
+    });
+
+    const canvases = [
+      ['expanded', 'desktop', 640, 210],
+      ['expanded', 'mobile', 320, 210],
+      ['collapsed', 'desktop', 640, 70],
+      ['collapsed', 'mobile', 320, 70],
+    ].map(([stateId, breakpointId, width, height]) => ({
+      asset_type: 'image',
+      url: `https://cdn.acme.example/${stateId}-${breakpointId}.png`,
+      state_id: stateId,
+      breakpoint_id: breakpointId,
+      width,
+      height,
+    }));
+    const manifest = {
+      format_kind: 'seller_rendered_stateful_display',
+      assets: {
+        state_canvases: canvases,
+        landing_page_url: { asset_type: 'url', url: 'https://acme.example/launch' },
+      },
+    };
+    const valid = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'validate_input_seller_rendered_stateful_display' }],
+    });
+    expect(valid.result.results).toEqual([{
+      target: { kind: 'product', id: 'validate_input_seller_rendered_stateful_display' },
+      result_kind: 'validated_pass',
+    }]);
+
+    const invalidScrollBoundsFixture = structuredClone(statefulFixture);
+    invalidScrollBoundsFixture.format_options[0].params.transitions[0] = {
+      transition_id: 'scroll_collapse',
+      from_state_id: 'expanded',
+      to_state_id: 'collapsed',
+      trigger: 'scroll_progress',
+      input: 'scroll',
+      scroll_reference: 'document_progress',
+      transition_mode: 'scroll_linked',
+      scroll_start_percent: 60,
+      scroll_end_percent: 20,
+    };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'premium-display.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'validate_input_invalid_scroll_bounds',
+        fixture: invalidScrollBoundsFixture,
+      },
+    });
+    const invalidScrollBounds = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'validate_input_invalid_scroll_bounds' }],
+    });
+    expect(invalidScrollBounds.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'scroll_progress_bounds' }),
+      ]),
+    });
+
+    const invalidDurationRangeFixture = structuredClone(statefulFixture);
+    invalidDurationRangeFixture.format_options[0].params.duration_ms_range = [15000, 5000];
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'premium-display.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'validate_input_invalid_duration_range',
+        fixture: invalidDurationRangeFixture,
+      },
+    });
+    const invalidDurationRange = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'validate_input_invalid_duration_range' }],
+    });
+    expect(invalidDurationRange.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'duration_ms_range_order', field: 'params.duration_ms_range' }),
+      ]),
+    });
+
+    const invalidOptionalVideo = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        ...manifest,
+        assets: {
+          ...manifest.assets,
+          video_main: {
+            asset_type: 'video',
+            url: 'https://cdn.acme.example/embedded.webm',
+            width: 640,
+            height: 640,
+            duration_ms: 30000,
+            container_format: 'webm',
+          },
+        },
+      },
+      targets: [{ kind: 'product', id: 'validate_input_seller_rendered_stateful_display' }],
+    });
+    expect(invalidOptionalVideo.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'seller_rendered_stateful_display_video_params', field: 'assets.video_main' }),
+      ]),
+    });
+
+    const splitVideoConstraints = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        ...manifest,
+        assets: {
+          ...manifest.assets,
+          video_main: [
+            {
+              asset_type: 'video',
+              url: 'https://cdn.acme.example/right-duration.mp4',
+              width: 640,
+              height: 640,
+              duration_ms: 10000,
+              container_format: 'mp4',
+            },
+            {
+              asset_type: 'video',
+              url: 'https://cdn.acme.example/right-ratio.webm',
+              width: 1600,
+              height: 900,
+              duration_ms: 30000,
+              container_format: 'webm',
+            },
+          ],
+        },
+      },
+      targets: [{ kind: 'product', id: 'validate_input_seller_rendered_stateful_display' }],
+    });
+    expect(splitVideoConstraints.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'seller_rendered_stateful_display_video_params' }),
+      ]),
+    });
+
+    const invalid = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        ...manifest,
+        assets: {
+          ...manifest.assets,
+          state_canvases: [{ ...canvases[0], width: 641 }, ...canvases.slice(1, -1)],
+        },
+      },
+      targets: [{ kind: 'product', id: 'validate_input_seller_rendered_stateful_display' }],
+    });
+    expect(invalid.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'state_canvas_dimensions' }),
+        expect.objectContaining({ rule: 'state_canvas_coverage' }),
+      ]),
+    });
+  });
+
+  it('rejects unresolved and nested coordinated-placement component references', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'takeover-validation.example' }, operator: 'pinnacle-agency.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain: 'takeover-validation.example' },
+      scenario: 'seed_product',
+      params: {
+        product_id: 'validate_input_coordinated_placements',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'guaranteed',
+          placements: [
+            {
+              kind: 'seller_inline',
+              placement_id: 'skin',
+              publisher_domain: 'takeover-validation.example',
+              name: 'Skin',
+              mode: 'included',
+            },
+            {
+              kind: 'seller_inline',
+              placement_id: 'masthead',
+              publisher_domain: 'takeover-validation.example',
+              name: 'Masthead',
+              mode: 'included',
+            },
+          ],
+          format_options: [{
+            format_kind: 'coordinated_placements',
+            format_option_id: 'takeover',
+            canonical_formats_only: true,
+            params: {
+              components: [
+                {
+                  component_id: 'nested',
+                  placement_ref: { publisher_domain: 'takeover-validation.example', placement_id: 'skin' },
+                  required: true,
+                  format_option_ref: { scope: 'product', format_option_id: 'takeover' },
+                },
+                {
+                  component_id: 'masthead',
+                  placement_ref: { publisher_domain: 'takeover-validation.example', placement_id: 'masthead' },
+                  required: false,
+                  format_kind: 'image',
+                  params: { width: 970, height: 250 },
+                },
+              ],
+            },
+          }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { format_kind: 'coordinated_placements', assets: {}, component_assets: {} },
+      targets: [{ kind: 'product', id: 'validate_input_coordinated_placements' }],
+    });
+    expect(result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({
+          rule: 'coordinated_component_format_kind',
+          predicted: 'coordinated_placements',
+        }),
+      ]),
+    });
+  });
+
+  it('validates coordinated-placement assets and inline canonical params', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'component-assets.example' }, operator: 'pinnacle-agency.example' };
+    const baseFixture = {
+      channels: ['display'],
+      delivery_type: 'guaranteed',
+      exclusivity: 'exclusive',
+      placements: [
+        {
+          kind: 'seller_inline',
+          placement_id: 'masthead',
+          publisher_domain: 'component-assets.example',
+          name: 'Masthead',
+          mode: 'included',
+        },
+        {
+          kind: 'seller_inline',
+          placement_id: 'skin',
+          publisher_domain: 'component-assets.example',
+          name: 'Skin',
+          mode: 'included',
+        },
+      ],
+      format_options: [
+        {
+          format_kind: 'image',
+          format_option_id: 'masthead_image',
+          canonical_formats_only: true,
+          params: { width: 970, height: 250 },
+        },
+        {
+          format_kind: 'coordinated_placements',
+          format_option_id: 'takeover',
+          canonical_formats_only: true,
+          params: {
+            components: [
+              {
+                component_id: 'masthead',
+                placement_ref: { publisher_domain: 'component-assets.example', placement_id: 'masthead' },
+                required: true,
+                format_option_ref: { scope: 'product', format_option_id: 'masthead_image' },
+              },
+              {
+                component_id: 'skin',
+                placement_ref: { publisher_domain: 'component-assets.example', placement_id: 'skin' },
+                required: true,
+                format_kind: 'image',
+                params: { width: 2560, height: 1440 },
+              },
+            ],
+            shared_slots: [{
+              asset_group_id: 'cta',
+              asset_type: 'text',
+              required: true,
+              consumed_by: ['masthead', 'skin'],
+            }],
+          },
+        },
+      ],
+    };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: { product_id: 'component_asset_takeover', fixture: baseFixture },
+    });
+
+    const manifest = {
+      format_kind: 'coordinated_placements',
+      assets: { cta: { asset_type: 'text', content: 'Watch now' } },
+      component_assets: {
+        masthead: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/masthead.png',
+            width: 970,
+            height: 250,
+          },
+        },
+        skin: {
+          image_main: {
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/skin.png',
+            width: 2560,
+            height: 1440,
+          },
+        },
+      },
+    };
+    const valid = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'component_asset_takeover' }],
+    });
+    expect(valid.result.results).toEqual([{
+      target: { kind: 'product', id: 'component_asset_takeover' },
+      result_kind: 'validated_pass',
+    }]);
+
+    const invalidInlineBuy = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: 'component_asset_takeover',
+        pricing_option_id: 'fixture_default_cpm',
+        budget: 1000,
+        bid_price: 5,
+        format_option_refs: [{ scope: 'product', format_option_id: 'takeover' }],
+        creatives: [{
+          creative_id: 'invalid_inline_coordinated',
+          format_kind: 'coordinated_placements',
+          assets: {},
+          component_assets: {},
+        }],
+      }],
+    });
+    expect(invalidInlineBuy.result).toMatchObject({ code: 'VALIDATION_ERROR' });
+
+    const { result: createdBuy } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: 'component_asset_takeover',
+        pricing_option_id: 'fixture_default_cpm',
+        budget: 1000,
+        bid_price: 5,
+        format_option_refs: [{ scope: 'product', format_option_id: 'takeover' }],
+      }],
+    });
+    const createdPackage = (createdBuy.packages as Array<Record<string, any>>)[0];
+    const invalidAssignment = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'invalid_assigned_coordinated',
+        name: 'Invalid coordinated creative',
+        format_kind: 'coordinated_placements',
+        format_option_ref: { scope: 'product', format_option_id: 'takeover' },
+        assets: {},
+        component_assets: {},
+      }],
+      assignments: [{
+        media_buy_id: createdBuy.media_buy_id,
+        package_id: createdPackage.package_id,
+        creative_id: 'invalid_assigned_coordinated',
+      }],
+    });
+    expect(invalidAssignment.result.assignments).toEqual([
+      expect.objectContaining({ status: 'error', creative_id: 'invalid_assigned_coordinated' }),
+    ]);
+
+    const validAssignment = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'assigned_coordinated',
+        name: 'Assigned coordinated creative',
+        format_kind: 'coordinated_placements',
+        format_option_ref: { scope: 'product', format_option_id: 'takeover' },
+        assets: manifest.assets,
+        component_assets: manifest.component_assets,
+      }],
+      assignments: [{
+        media_buy_id: createdBuy.media_buy_id,
+        package_id: createdPackage.package_id,
+        creative_id: 'assigned_coordinated',
+      }],
+    });
+    expect(validAssignment.result.assignments).toEqual([
+      expect.objectContaining({ status: 'assigned', creative_id: 'assigned_coordinated' }),
+    ]);
+
+    const invalidReplacement = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'assigned_coordinated',
+        name: 'Invalid replacement',
+        format_kind: 'coordinated_placements',
+        format_option_ref: { scope: 'product', format_option_id: 'takeover' },
+        assets: {},
+        component_assets: {},
+      }],
+    });
+    expect(invalidReplacement.result.creatives).toEqual([
+      expect.objectContaining({ action: 'failed', creative_id: 'assigned_coordinated' }),
+    ]);
+
+    const { result: stillReady } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: [createdBuy.media_buy_id],
+    });
+    expect((stillReady.media_buys as Array<Record<string, any>>)[0].packages[0].formats_pending).toEqual([]);
+
+    const wrongComponentDimensions = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        ...manifest,
+        component_assets: {
+          ...manifest.component_assets,
+          skin: {
+            image_main: { ...manifest.component_assets.skin.image_main, width: 2559 },
+          },
+        },
+      },
+      targets: [{ kind: 'product', id: 'component_asset_takeover' }],
+    });
+    expect(wrongComponentDimensions.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'coordinated_component_params_satisfied', field: 'component_assets.skin' }),
+      ]),
+    });
+
+    const sizedConstraintFixture = structuredClone(baseFixture);
+    const sizedTakeover = sizedConstraintFixture.format_options[1] as Record<string, any>;
+    sizedTakeover.params.components[1].params = { sizes: [{ width: 2560, height: 1440 }] };
+    sizedTakeover.params.components[1].canvas_constraints = [{
+      constraint: 'safe_area',
+      region: { unit: 'px', x: 2500, y: 0, width: 100, height: 100 },
+    }];
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: { product_id: 'sized_constraint_takeover', fixture: sizedConstraintFixture },
+    });
+    const overflowingSizedConstraint = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'sized_constraint_takeover' }],
+    });
+    expect(overflowingSizedConstraint.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'canvas_constraint_region_bounds' }),
+      ]),
+    });
+
+    const missingComponent = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        ...manifest,
+        component_assets: { masthead: manifest.component_assets.masthead },
+      },
+      targets: [{ kind: 'product', id: 'component_asset_takeover' }],
+    });
+    expect(missingComponent.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'coordinated_component_assets_required', field: 'component_assets.skin' }),
+      ]),
+    });
+
+    const incompatibleSharedFixture = structuredClone(baseFixture);
+    const incompatibleTakeover = incompatibleSharedFixture.format_options[1] as Record<string, any>;
+    incompatibleTakeover.params.shared_slots = [{
+      asset_group_id: 'video_main',
+      asset_type: 'video',
+      required: false,
+      consumed_by: ['skin'],
+    }];
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: { product_id: 'incompatible_shared_takeover', fixture: incompatibleSharedFixture },
+    });
+    const incompatibleShared = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { ...manifest, assets: {} },
+      targets: [{ kind: 'product', id: 'incompatible_shared_takeover' }],
+    });
+    expect(incompatibleShared.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'coordinated_shared_slot_compatibility' }),
+      ]),
+    });
+
+    const invalidInlineFixture = structuredClone(baseFixture);
+    const takeover = invalidInlineFixture.format_options[1] as Record<string, any>;
+    takeover.params.components[1].params = { width: 2560 };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: { product_id: 'invalid_inline_takeover', fixture: invalidInlineFixture },
+    });
+    const invalidInline = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'invalid_inline_takeover' }],
+    });
+    expect(invalidInline.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'coordinated_component_params_schema' }),
+      ]),
+    });
+  });
+
   it('returns unvalidatable_nondeterministic for a seeded product with nondeterministic synthesis', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = { brand: { domain: 'validate-input.example' }, operator: 'pinnacle-agency.example' };
@@ -3248,6 +3994,1228 @@ describe('validate_input handler', () => {
         rule: 'synthesis_nondeterministic_source_compatibility',
         predicted: 'buyer_uploaded',
       }),
+    ]);
+  });
+
+  // ── seller_rendered_stateful_display v2 semantics ──────────────────
+
+  async function seedSrsdProduct(
+    server: ReturnType<typeof createTrainingAgentServer>,
+    account: { brand: { domain: string }; operator: string },
+    productId: string,
+    params: Record<string, unknown>,
+  ) {
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: 'seller_rendered_stateful_display',
+            format_option_id: 'srsd_option',
+            canonical_formats_only: true,
+            params,
+          }],
+        },
+      },
+    });
+  }
+
+  it('rejects a components supply_mode manifest that ships state_canvases', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-supply-mode.example' }, operator: 'pinnacle-agency.example' };
+    await seedSrsdProduct(server, account, 'srsd_components_mode', {
+      initial_state_id: 'only',
+      states: [{
+        state_id: 'only',
+        anchoring: 'inline',
+        close_affordance: false,
+        breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }],
+      }],
+      user_controls: { dismissible: false, user_collapsible: false },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'seller_rendered_stateful_display',
+        assets: {
+          state_canvases: [{
+            asset_type: 'image',
+            url: 'https://cdn.acme.example/only-desktop.png',
+            state_id: 'only',
+            breakpoint_id: 'desktop',
+            width: 970,
+            height: 250,
+          }],
+          landing_page_url: { asset_type: 'url', url: 'https://acme.example' },
+        },
+      },
+      targets: [{ kind: 'product', id: 'srsd_components_mode' }],
+    });
+
+    expect(result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'supply_mode_manifest', field: 'assets.state_canvases' }),
+      ]),
+    });
+  });
+
+  it('allows a single-state declaration with no transitions and rejects one with transitions', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-single-state.example' }, operator: 'pinnacle-agency.example' };
+    const singleStateParams = {
+      initial_state_id: 'only',
+      states: [{
+        state_id: 'only',
+        anchoring: 'inline',
+        close_affordance: false,
+        breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }],
+      }],
+      user_controls: { dismissible: false, user_collapsible: false },
+    };
+    await seedSrsdProduct(server, account, 'srsd_single_state_valid', singleStateParams);
+
+    const manifest = {
+      format_kind: 'seller_rendered_stateful_display',
+      assets: {
+        landing_page_url: { asset_type: 'url', url: 'https://acme.example' },
+      },
+    };
+    const valid = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'srsd_single_state_valid' }],
+    });
+    expect(valid.result.results).toEqual([{
+      target: { kind: 'product', id: 'srsd_single_state_valid' },
+      result_kind: 'validated_pass',
+    }]);
+
+    await seedSrsdProduct(server, account, 'srsd_single_state_invalid', {
+      ...singleStateParams,
+      transitions: [{
+        transition_id: 'bogus',
+        from_state_id: 'only',
+        to_state_id: 'only',
+        trigger: 'user_action',
+        input: 'tap',
+        transition_mode: 'instant',
+      }],
+    });
+    const invalid = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'srsd_single_state_invalid' }],
+    });
+    expect(invalid.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'single_state_shape' }),
+      ]),
+    });
+  });
+
+  it('rejects a fluid breakpoint targeted by rendered_canvases supply', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-fluid-breakpoint.example' }, operator: 'pinnacle-agency.example' };
+    await seedSrsdProduct(server, account, 'srsd_fluid_breakpoint', {
+      supply_mode: 'rendered_canvases',
+      initial_state_id: 'only',
+      states: [{
+        state_id: 'only',
+        anchoring: 'inline',
+        close_affordance: false,
+        breakpoints: [{ breakpoint_id: 'desktop', width_mode: 'full_bleed', height: 100 }],
+      }],
+      user_controls: { dismissible: false, user_collapsible: false },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'seller_rendered_stateful_display',
+        assets: {
+          landing_page_url: { asset_type: 'url', url: 'https://acme.example' },
+        },
+      },
+      targets: [{ kind: 'product', id: 'srsd_fluid_breakpoint' }],
+    });
+
+    expect(result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'fluid_breakpoint_supply' }),
+      ]),
+    });
+  });
+
+  it('rejects an undismissable fullscreen_overlay state', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-dismissibility.example' }, operator: 'pinnacle-agency.example' };
+    await seedSrsdProduct(server, account, 'srsd_undismissable', {
+      initial_state_id: 'only',
+      states: [{
+        state_id: 'only',
+        anchoring: 'fullscreen_overlay',
+        close_affordance: false,
+        breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }],
+      }],
+      user_controls: { dismissible: false, user_collapsible: false },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'seller_rendered_stateful_display',
+        assets: {
+          landing_page_url: { asset_type: 'url', url: 'https://acme.example' },
+        },
+      },
+      targets: [{ kind: 'product', id: 'srsd_undismissable' }],
+    });
+
+    expect(result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'dismissibility_floor' }),
+      ]),
+    });
+  });
+
+  it('enforces the timer_cycle_floor across a two-state timer cycle', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-timer-cycle.example' }, operator: 'pinnacle-agency.example' };
+    const twoStates = [
+      { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }] },
+      { state_id: 'b', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 90 }] },
+    ];
+    const manifest = {
+      format_kind: 'seller_rendered_stateful_display',
+      assets: {
+        landing_page_url: { asset_type: 'url', url: 'https://acme.example' },
+      },
+    };
+
+    await seedSrsdProduct(server, account, 'srsd_timer_cycle_fast', {
+      initial_state_id: 'a',
+      states: twoStates,
+      transitions: [
+        { transition_id: 'auto', from_state_id: 'a', to_state_id: 'b', trigger: 'timer', delay_ms: 0, transition_mode: 'instant' },
+        { transition_id: 'back', from_state_id: 'b', to_state_id: 'a', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
+      ],
+      user_controls: { dismissible: false, user_collapsible: false },
+    });
+    const fast = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'srsd_timer_cycle_fast' }],
+    });
+    expect(fast.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'timer_cycle_floor' }),
+      ]),
+    });
+
+    await seedSrsdProduct(server, account, 'srsd_timer_cycle_slow', {
+      initial_state_id: 'a',
+      states: twoStates,
+      transitions: [
+        { transition_id: 'auto', from_state_id: 'a', to_state_id: 'b', trigger: 'timer', delay_ms: 1500, transition_mode: 'instant' },
+        { transition_id: 'back', from_state_id: 'b', to_state_id: 'a', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
+      ],
+      user_controls: { dismissible: false, user_collapsible: false },
+    });
+    const slow = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'srsd_timer_cycle_slow' }],
+    });
+    expect(slow.result.results).toEqual([{
+      target: { kind: 'product', id: 'srsd_timer_cycle_slow' },
+      result_kind: 'validated_pass',
+    }]);
+  });
+
+  it('rejects scroll_linked transition_mode on a user_action transition', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-scroll-linked.example' }, operator: 'pinnacle-agency.example' };
+    await seedSrsdProduct(server, account, 'srsd_scroll_linked_misuse', {
+      initial_state_id: 'a',
+      states: [
+        { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }] },
+        { state_id: 'b', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 90 }] },
+      ],
+      transitions: [
+        { transition_id: 'weird', from_state_id: 'a', to_state_id: 'b', trigger: 'user_action', input: 'tap', transition_mode: 'scroll_linked' },
+      ],
+      user_controls: { dismissible: false, user_collapsible: false },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'seller_rendered_stateful_display',
+        assets: {
+          landing_page_url: { asset_type: 'url', url: 'https://acme.example' },
+        },
+      },
+      targets: [{ kind: 'product', id: 'srsd_scroll_linked_misuse' }],
+    });
+
+    expect(result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'scroll_linked_binding' }),
+      ]),
+    });
+  });
+
+  it('rejects two transitions out of one state with the same cause tuple', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-exit-determinism.example' }, operator: 'pinnacle-agency.example' };
+    const threeStates = [
+      { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }] },
+      { state_id: 'b', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 90 }] },
+      { state_id: 'c', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 60 }] },
+    ];
+    await seedSrsdProduct(server, account, 'srsd_ambiguous_exits', {
+      initial_state_id: 'a',
+      states: threeStates,
+      transitions: [
+        { transition_id: 'race_one', from_state_id: 'a', to_state_id: 'b', trigger: 'timer', delay_ms: 5000, transition_mode: 'instant' },
+        { transition_id: 'race_two', from_state_id: 'a', to_state_id: 'c', trigger: 'timer', delay_ms: 5000, transition_mode: 'instant' },
+      ],
+      user_controls: { dismissible: false, user_collapsible: false },
+    });
+
+    const manifest = {
+      format_kind: 'seller_rendered_stateful_display',
+      assets: { landing_page_url: { asset_type: 'url', url: 'https://acme.example' } },
+    };
+    const ambiguous = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'srsd_ambiguous_exits' }],
+    });
+    expect(ambiguous.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'transition_exit_determinism' }),
+      ]),
+    });
+
+    await seedSrsdProduct(server, account, 'srsd_distinct_exits', {
+      initial_state_id: 'a',
+      states: threeStates,
+      transitions: [
+        { transition_id: 'auto', from_state_id: 'a', to_state_id: 'b', trigger: 'timer', delay_ms: 5000, transition_mode: 'instant' },
+        { transition_id: 'tap_open', from_state_id: 'a', to_state_id: 'c', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
+        { transition_id: 'hover_open', from_state_id: 'a', to_state_id: 'c', trigger: 'user_action', input: 'hover', transition_mode: 'instant' },
+      ],
+      user_controls: { dismissible: false, user_collapsible: false },
+    });
+    const distinct = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest,
+      targets: [{ kind: 'product', id: 'srsd_distinct_exits' }],
+    });
+    expect(distinct.result.results[0].result_kind).toBe('validated_pass');
+  });
+
+  it('pins state-graph resolution, slot bindings, and identifier uniqueness', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-graph-guards.example' }, operator: 'pinnacle-agency.example' };
+    const manifest = {
+      format_kind: 'seller_rendered_stateful_display',
+      assets: { landing_page_url: { asset_type: 'url', url: 'https://acme.example' } },
+    };
+    const baseParams = {
+      initial_state_id: 'a',
+      states: [
+        { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }] },
+        { state_id: 'b', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 90 }] },
+        { state_id: 'c', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 60 }] },
+      ],
+      transitions: [
+        { transition_id: 'a_to_b', from_state_id: 'a', to_state_id: 'b', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
+        { transition_id: 'b_to_c', from_state_id: 'b', to_state_id: 'c', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
+      ],
+      user_controls: { dismissible: false, user_collapsible: false },
+    };
+    const cases: Array<{ productId: string; rule: string; params: Record<string, unknown> }> = [];
+
+    const invalidInitial = structuredClone(baseParams);
+    invalidInitial.initial_state_id = 'missing';
+    cases.push({ productId: 'srsd_invalid_initial', rule: 'initial_state_resolution', params: invalidInitial });
+
+    const invalidTransition = structuredClone(baseParams);
+    invalidTransition.transitions[1].to_state_id = 'missing';
+    cases.push({ productId: 'srsd_invalid_transition_state', rule: 'transition_state_resolution', params: invalidTransition });
+
+    const unreachableState = structuredClone(baseParams);
+    unreachableState.transitions = [unreachableState.transitions[0]];
+    cases.push({ productId: 'srsd_unreachable_state', rule: 'state_reachability', params: unreachableState });
+
+    const invalidBinding = structuredClone(baseParams);
+    invalidBinding.states[0].slot_bindings = ['undeclared_slot'];
+    cases.push({ productId: 'srsd_invalid_slot_binding', rule: 'slot_binding_resolution', params: invalidBinding });
+
+    const duplicateState = structuredClone(baseParams);
+    duplicateState.states.push(structuredClone(duplicateState.states[2]));
+    cases.push({ productId: 'srsd_duplicate_state', rule: 'unique_state_id', params: duplicateState });
+
+    const duplicateBreakpoint = structuredClone(baseParams);
+    duplicateBreakpoint.states[0].breakpoints.push(structuredClone(duplicateBreakpoint.states[0].breakpoints[0]));
+    cases.push({ productId: 'srsd_duplicate_breakpoint', rule: 'unique_breakpoint_id', params: duplicateBreakpoint });
+
+    const duplicateTransition = structuredClone(baseParams);
+    duplicateTransition.transitions[1].transition_id = duplicateTransition.transitions[0].transition_id;
+    cases.push({ productId: 'srsd_duplicate_transition', rule: 'unique_transition_id', params: duplicateTransition });
+
+    for (const testCase of cases) {
+      await seedSrsdProduct(server, account, testCase.productId, testCase.params);
+      const { result } = await simulateCallTool(server, 'validate_input', {
+        account,
+        manifest,
+        targets: [{ kind: 'product', id: testCase.productId }],
+      });
+      expect(result.results[0]).toMatchObject({
+        result_kind: 'validated_fail',
+        violations: expect.arrayContaining([
+          expect.objectContaining({ rule: testCase.rule }),
+        ]),
+      });
+    }
+  });
+
+  it('rejects a javascript slot override on seller_rendered_stateful_display, direct and via coordinated shared_slots', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-javascript-slot.example' }, operator: 'pinnacle-agency.example' };
+    await seedSrsdProduct(server, account, 'srsd_javascript_override', {
+      initial_state_id: 'only',
+      states: [{
+        state_id: 'only',
+        anchoring: 'inline',
+        close_affordance: false,
+        breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }],
+      }],
+      user_controls: { dismissible: false, user_collapsible: false },
+      slots: [{ asset_group_id: 'evil_script', asset_type: 'javascript' }],
+    });
+
+    const direct = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { format_kind: 'seller_rendered_stateful_display', assets: {} },
+      targets: [{ kind: 'product', id: 'srsd_javascript_override' }],
+    });
+    expect(direct.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'allowed_slot_asset_types', field: 'params.slots[0].asset_type' }),
+      ]),
+    });
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'coordinated_javascript_smuggle',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'guaranteed',
+          placements: [
+            { kind: 'seller_inline', placement_id: 'masthead', publisher_domain: 'srsd-javascript-slot.example', name: 'Masthead', mode: 'included' },
+            { kind: 'seller_inline', placement_id: 'skin', publisher_domain: 'srsd-javascript-slot.example', name: 'Skin', mode: 'included' },
+          ],
+          format_options: [{
+            format_kind: 'coordinated_placements',
+            format_option_id: 'takeover',
+            canonical_formats_only: true,
+            params: {
+              components: [
+                {
+                  component_id: 'masthead',
+                  placement_ref: { publisher_domain: 'srsd-javascript-slot.example', placement_id: 'masthead' },
+                  required: true,
+                  format_kind: 'image',
+                  params: {
+                    width: 970,
+                    height: 250,
+                    slots: [{ asset_group_id: 'evil_script', asset_type: 'javascript' }],
+                  },
+                },
+                {
+                  component_id: 'skin',
+                  placement_ref: { publisher_domain: 'srsd-javascript-slot.example', placement_id: 'skin' },
+                  required: true,
+                  format_kind: 'image',
+                  params: { width: 2560, height: 1440 },
+                },
+              ],
+              shared_slots: [{
+                asset_group_id: 'evil_script',
+                asset_type: 'javascript',
+                consumed_by: ['masthead'],
+              }],
+            },
+          }],
+        },
+      },
+    });
+
+    const coordinated = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { format_kind: 'coordinated_placements', assets: {}, component_assets: {} },
+      targets: [{ kind: 'product', id: 'coordinated_javascript_smuggle' }],
+    });
+    expect(coordinated.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'allowed_slot_asset_types' }),
+        expect.objectContaining({ rule: 'coordinated_shared_slot_compatibility' }),
+      ]),
+    });
+  });
+
+  it('enforces clickthrough none and rejects a duplicate state_click_urls entry', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-clickthrough.example' }, operator: 'pinnacle-agency.example' };
+    await seedSrsdProduct(server, account, 'srsd_clickthrough_none', {
+      clickthrough: 'none',
+      initial_state_id: 'only',
+      states: [{
+        state_id: 'only',
+        anchoring: 'inline',
+        close_affordance: false,
+        breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }],
+      }],
+      user_controls: { dismissible: false, user_collapsible: false },
+    });
+    const noneWithUrl = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'seller_rendered_stateful_display',
+        assets: {
+          landing_page_url: { asset_type: 'url', url: 'https://acme.example' },
+        },
+      },
+      targets: [{ kind: 'product', id: 'srsd_clickthrough_none' }],
+    });
+    expect(noneWithUrl.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'clickthrough_policy', field: 'assets.landing_page_url' }),
+      ]),
+    });
+
+    await seedSrsdProduct(server, account, 'srsd_state_click_urls', {
+      initial_state_id: 'a',
+      states: [
+        { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }] },
+        { state_id: 'b', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 90 }] },
+      ],
+      transitions: [
+        { transition_id: 't1', from_state_id: 'a', to_state_id: 'b', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
+      ],
+      user_controls: { dismissible: false, user_collapsible: false },
+    });
+    const duplicateState = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'seller_rendered_stateful_display',
+        assets: {
+          landing_page_url: { asset_type: 'url', url: 'https://acme.example' },
+          state_click_urls: [
+            { asset_type: 'url', url: 'https://acme.example/a', state_id: 'a' },
+            { asset_type: 'url', url: 'https://acme.example/a-again', state_id: 'a' },
+          ],
+        },
+      },
+      targets: [{ kind: 'product', id: 'srsd_state_click_urls' }],
+    });
+    expect(duplicateState.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'state_click_url_resolution' }),
+      ]),
+    });
+  });
+
+  it('rejects a media_event transition when the declaration has no video_main slot', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-media-event.example' }, operator: 'pinnacle-agency.example' };
+    await seedSrsdProduct(server, account, 'srsd_media_event_no_video', {
+      initial_state_id: 'a',
+      states: [
+        { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }] },
+        { state_id: 'b', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 90 }] },
+      ],
+      transitions: [
+        { transition_id: 't1', from_state_id: 'a', to_state_id: 'b', trigger: 'media_event', media_event: 'video_complete', transition_mode: 'instant' },
+      ],
+      user_controls: { dismissible: false, user_collapsible: false },
+      slots: [{ asset_group_id: 'landing_page_url', asset_type: 'url' }],
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'seller_rendered_stateful_display',
+        assets: {
+          landing_page_url: { asset_type: 'url', url: 'https://acme.example' },
+        },
+      },
+      targets: [{ kind: 'product', id: 'srsd_media_event_no_video' }],
+    });
+
+    expect(result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'media_event_video_main_slot_required' }),
+      ]),
+    });
+  });
+
+  it('passes a hover-input transition but emits a lean_policy_warnings warning', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'srsd-hover-warning.example' }, operator: 'pinnacle-agency.example' };
+    await seedSrsdProduct(server, account, 'srsd_hover_transition', {
+      initial_state_id: 'a',
+      states: [
+        { state_id: 'a', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 250 }] },
+        { state_id: 'b', anchoring: 'inline', close_affordance: false, breakpoints: [{ breakpoint_id: 'desktop', width: 970, height: 300 }] },
+      ],
+      transitions: [
+        { transition_id: 'expand', from_state_id: 'a', to_state_id: 'b', trigger: 'user_action', input: 'hover', transition_mode: 'instant' },
+        { transition_id: 'collapse', from_state_id: 'b', to_state_id: 'a', trigger: 'user_action', input: 'tap', transition_mode: 'instant' },
+      ],
+      user_controls: { dismissible: false, user_collapsible: false },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: {
+        format_kind: 'seller_rendered_stateful_display',
+        assets: {
+          landing_page_url: { asset_type: 'url', url: 'https://acme.example' },
+        },
+      },
+      targets: [{ kind: 'product', id: 'srsd_hover_transition' }],
+    });
+
+    expect(result.results[0]).toMatchObject({
+      result_kind: 'validated_pass',
+      warnings: expect.arrayContaining([
+        expect.objectContaining({ rule: 'lean_policy_warnings', predicted: 'hover' }),
+      ]),
+    });
+  });
+
+
+  // ── coordinated_placements v2 semantics ─────────────────────────────
+
+  it('pins coordinated placement resolution and declaration uniqueness', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'coordinated-resolution.example' }, operator: 'pinnacle-agency.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'coordinated_resolution_guards',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'guaranteed',
+          placements: [
+            { kind: 'seller_inline', placement_id: 'skin', publisher_domain: 'coordinated-resolution.example', name: 'Skin', mode: 'included' },
+            { kind: 'seller_inline', placement_id: 'masthead', publisher_domain: 'coordinated-resolution.example', name: 'Masthead', mode: 'included' },
+          ],
+          format_options: [{
+            format_kind: 'coordinated_placements',
+            format_option_id: 'takeover',
+            canonical_formats_only: true,
+            params: {
+              components: [
+                {
+                  component_id: 'duplicate',
+                  placement_ref: { publisher_domain: 'coordinated-resolution.example', placement_id: 'missing' },
+                  required: true,
+                  format_kind: 'image',
+                  params: { width: 300, height: 250 },
+                },
+                {
+                  component_id: 'duplicate',
+                  placement_ref: { publisher_domain: 'coordinated-resolution.example', placement_id: 'masthead' },
+                  required: false,
+                  format_kind: 'image',
+                  params: { width: 970, height: 250 },
+                },
+              ],
+              shared_slots: [
+                { asset_group_id: 'cta', asset_type: 'text', consumed_by: ['duplicate'] },
+                { asset_group_id: 'cta', asset_type: 'text', consumed_by: ['duplicate'] },
+              ],
+            },
+          }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { format_kind: 'coordinated_placements', assets: {}, component_assets: {} },
+      targets: [{ kind: 'product', id: 'coordinated_resolution_guards' }],
+    });
+    expect(result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'coordinated_component_placement_ref' }),
+        expect.objectContaining({ rule: 'unique_component_id' }),
+        expect.objectContaining({ rule: 'coordinated_shared_slot_unique' }),
+      ]),
+    });
+  });
+
+  it('validates sequence_values contiguity, allowing ties', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'coordinated-sequence.example' }, operator: 'pinnacle-agency.example' };
+
+    async function seedSequenced(productId: string, sequences: number[]) {
+      await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            channels: ['display'],
+            delivery_type: 'guaranteed',
+            placements: sequences.map((_, index) => ({
+              kind: 'seller_inline',
+              placement_id: `slot_${index}`,
+              publisher_domain: 'coordinated-sequence.example',
+              name: `Slot ${index}`,
+              mode: 'included',
+            })),
+            format_options: [{
+              format_kind: 'coordinated_placements',
+              format_option_id: 'sequenced',
+              canonical_formats_only: true,
+              params: {
+                components: sequences.map((sequence, index) => ({
+                  component_id: `component_${index}`,
+                  placement_ref: { publisher_domain: 'coordinated-sequence.example', placement_id: `slot_${index}` },
+                  required: index === 0,
+                  sequence,
+                  format_kind: 'image',
+                  params: { width: 300, height: 250 },
+                })),
+              },
+            }],
+          },
+        },
+      });
+    }
+
+    await seedSequenced('coordinated_sequence_gap', [2, 3]);
+    const gap = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { format_kind: 'coordinated_placements', assets: {}, component_assets: {} },
+      targets: [{ kind: 'product', id: 'coordinated_sequence_gap' }],
+    });
+    expect(gap.result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'sequence_values' }),
+      ]),
+    });
+
+    await seedSequenced('coordinated_sequence_ties', [1, 1, 2]);
+    const ties = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { format_kind: 'coordinated_placements', assets: {}, component_assets: {} },
+      targets: [{ kind: 'product', id: 'coordinated_sequence_ties' }],
+    });
+    const tiesResult = ties.result.results[0] as Record<string, unknown>;
+    expect(tiesResult.violations as unknown[] ?? []).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'sequence_values' }),
+    ]));
+  });
+
+
+  it('collapses two components onto the same placement when publisher_domain spelling varies', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'coordinated-domain-case.example' }, operator: 'pinnacle-agency.example' };
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: 'coordinated_domain_case_collision',
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'guaranteed',
+          placements: [
+            { kind: 'seller_inline', placement_id: 'skin', publisher_domain: 'DomainCase.example', name: 'Skin', mode: 'included' },
+          ],
+          format_options: [{
+            format_kind: 'coordinated_placements',
+            format_option_id: 'double_supply',
+            canonical_formats_only: true,
+            params: {
+              components: [
+                {
+                  component_id: 'first',
+                  placement_ref: { publisher_domain: 'domaincase.example', placement_id: 'skin' },
+                  required: true,
+                  format_kind: 'image',
+                  params: { width: 300, height: 250 },
+                },
+                {
+                  component_id: 'second',
+                  placement_ref: { publisher_domain: 'DOMAINCASE.EXAMPLE', placement_id: 'skin' },
+                  required: false,
+                  format_kind: 'image',
+                  params: { width: 300, height: 250 },
+                },
+              ],
+            },
+          }],
+        },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account,
+      manifest: { format_kind: 'coordinated_placements', assets: {}, component_assets: {} },
+      targets: [{ kind: 'product', id: 'coordinated_domain_case_collision' }],
+    });
+
+    expect(result.results[0]).toMatchObject({
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({ rule: 'coordinated_component_placement_unique' }),
+      ]),
+    });
+  });
+});
+
+// ── validate_input handler: CTV experience profiles (spec #6428) ───
+
+describe('validate_input handler: CTV experience profiles', () => {
+  beforeEach(() => {
+    invalidateCache();
+    clearSessions();
+  });
+
+  afterEach(() => {
+    clearSessions();
+  });
+
+  let seedCounter = 0;
+
+  async function seedCtvProduct(
+    server: ReturnType<typeof createTrainingAgentServer>,
+    formatKind: string,
+    params: Record<string, unknown>,
+  ): Promise<{ account: Record<string, unknown>; productId: string; formatOptionId: string }> {
+    seedCounter += 1;
+    const domain = `ctv-experience-${seedCounter}.example`;
+    const productId = `ctv_experience_product_${seedCounter}`;
+    const formatOptionId = `ctv_experience_option_${seedCounter}`;
+    const account = { brand: { domain }, operator: 'pinnacle-agency.example' };
+    const seed = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: { domain },
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          channels: ['ctv'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_kind: formatKind,
+            format_option_id: formatOptionId,
+            params,
+          }],
+        },
+      },
+    });
+    expect(seed.result.success).toBe(true);
+    return { account, productId, formatOptionId };
+  }
+
+  const MANIFEST_ASSETS: Record<string, Record<string, unknown>> = {
+    video_vast: {
+      vast_tag: { asset_type: 'vast', delivery_type: 'url', url: 'https://cdn.acme.example/tag.xml' },
+    },
+    native_in_feed: {
+      title: { asset_type: 'text', content: 'Menu Hero' },
+      advertiser_name: { asset_type: 'text', content: 'Acme' },
+      landing_page_url: { asset_type: 'url', url: 'https://acme.example' },
+    },
+    image: {
+      image_main: { asset_type: 'image', url: 'https://cdn.acme.example/pause.png', width: 1920, height: 1080 },
+    },
+    video_hosted: {
+      video_main: { asset_type: 'video', url: 'https://cdn.acme.example/screensaver.mp4', width: 1920, height: 1080 },
+    },
+    sponsored_placement: {
+      source_catalog: { asset_type: 'catalog', type: 'product' },
+    },
+    html5: {
+      html5_bundle: { asset_type: 'zip', url: 'https://cdn.acme.example/bundle.zip' },
+    },
+  };
+
+  async function validateCtvProduct(
+    server: ReturnType<typeof createTrainingAgentServer>,
+    formatKind: string,
+    seeded: { account: Record<string, unknown>; productId: string; formatOptionId: string },
+    assetOverrides?: Record<string, unknown>,
+  ) {
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      account: seeded.account,
+      manifest: {
+        format_kind: formatKind,
+        format_option_ref: { scope: 'product', format_option_id: seeded.formatOptionId },
+        assets: { ...MANIFEST_ASSETS[formatKind], ...assetOverrides },
+      },
+      targets: [{ kind: 'product', id: seeded.productId }],
+    });
+    return result;
+  }
+
+  it('rejects menu ctv_ad_experience on video_vast (matrix only permits pause|screensaver|overlay|squeezeback|in_scene)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      ctv_ad_experience: 'menu',
+      creative_type: 'nonlinear',
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'ctv_experience_matrix', field: 'params.ctv_ad_experience', predicted: 'menu' }),
+    ]));
+  });
+
+  it('rejects pause ctv_ad_experience on native_in_feed (matrix only permits menu and overlay)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'native_in_feed', {
+      ctv_ad_experience: 'pause',
+    });
+    const result = await validateCtvProduct(server, 'native_in_feed', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'ctv_experience_matrix', field: 'params.ctv_ad_experience', predicted: 'pause' }),
+    ]));
+  });
+
+  it('accepts overlay ctv_ad_experience on native_in_feed (asset-bundle overlay contract)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'native_in_feed', {
+      ctv_ad_experience: 'overlay',
+      activation_methods: ['qr_code'],
+    });
+    const result = await validateCtvProduct(server, 'native_in_feed', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_pass');
+  });
+
+  it('accepts pause ctv_ad_experience on image (market-critical pause-frame contract)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'image', {
+      ctv_ad_experience: 'pause',
+    });
+    const result = await validateCtvProduct(server, 'image', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('accepts overlay on video_vast with creative_type nonlinear and a 15s duration', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      ctv_ad_experience: 'overlay',
+      creative_type: 'nonlinear',
+      duration_ms_exact: 15000,
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('rejects overlay on video_vast when duration is below the 10s floor', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      ctv_ad_experience: 'overlay',
+      creative_type: 'nonlinear',
+      duration_ms_exact: 5000,
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'ctv_duration_floors', field: 'params.duration_ms_exact', predicted: 5000 }),
+    ]));
+  });
+
+  it('rejects overlay on video_vast when creative_type is linear', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      ctv_ad_experience: 'overlay',
+      creative_type: 'linear',
+      duration_ms_exact: 15000,
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'ctv_experience_matrix', field: 'params.creative_type', predicted: 'linear' }),
+    ]));
+  });
+
+  it.each(['pause', 'screensaver', 'overlay', 'squeezeback', 'in_scene'])(
+    'rejects SIMID on the nonlinear %s video_vast profile',
+    async (experience) => {
+      const server = createTrainingAgentServer(DEFAULT_CTX);
+      const seeded = await seedCtvProduct(server, 'video_vast', {
+        ctv_ad_experience: experience,
+        creative_type: 'nonlinear',
+        duration_ms_exact: 15000,
+        vpaid_enabled: false,
+        simid_supported: true,
+      });
+      const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+      const results = result.results as Array<Record<string, unknown>>;
+      expect(results[0].result_kind).toBe('validated_fail');
+      expect(results[0].violations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ rule: 'ctv_nonlinear_no_simid', field: 'params.simid_supported', predicted: true }),
+      ]));
+    },
+  );
+
+  it('accepts SIMID on an ordinary linear video_vast option with no CTV experience', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      creative_type: 'linear',
+      simid_supported: true,
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('rejects linear_required: true combined with creative_type nonlinear as a contradiction', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      linear_required: true,
+      creative_type: 'nonlinear',
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'creative_type_precedence', field: 'params.creative_type', predicted: 'nonlinear' }),
+    ]));
+  });
+
+  it('accepts linear_required: true with no creative_type declared (treated as linear)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      linear_required: true,
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('rejects focus_behavior autoplay_muted on native_in_feed menu when the effective slots omit video', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'native_in_feed', {
+      ctv_ad_experience: 'menu',
+      focus_behavior: 'autoplay_muted',
+      slots: [
+        { asset_group_id: 'title', asset_type: 'text', required: true },
+        { asset_group_id: 'advertiser_name', asset_type: 'text', required: true },
+        { asset_group_id: 'landing_page_url', asset_type: 'url', required: true },
+      ],
+    });
+    const result = await validateCtvProduct(server, 'native_in_feed', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'focus_video_pairing', field: 'params.focus_behavior', predicted: 'autoplay_muted' }),
+    ]));
+  });
+
+  it('accepts focus_behavior autoplay_muted on native_in_feed menu when the default slots include video', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'native_in_feed', {
+      ctv_ad_experience: 'menu',
+      focus_behavior: 'autoplay_muted',
+    });
+    const result = await validateCtvProduct(server, 'native_in_feed', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('rejects a menu manifest video asset that is not asset_type vast (Native 1.2 vasttag)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'native_in_feed', {
+      ctv_ad_experience: 'menu',
+      focus_behavior: 'autoplay_muted',
+    });
+    const result = await validateCtvProduct(server, 'native_in_feed', seeded, {
+      video: { asset_type: 'video', url: 'https://cdn.acme.example/menu-hero.mp4', width: 1920, height: 1080 },
+    });
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'asset_type', field: 'assets.video.asset_type', expected: 'vast', predicted: 'video' }),
+    ]));
+  });
+
+  it('rejects menu_placement declared without ctv_ad_experience (schema requires it; semantic layer restates it)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'native_in_feed', {
+      menu_placement: 'tile',
+    });
+    const result = await validateCtvProduct(server, 'native_in_feed', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'menu_profile_fields', field: 'params.menu_placement' }),
+    ]));
+  });
+
+  it('accepts screensaver ctv_ad_experience on video_hosted', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_hosted', {
+      ctv_ad_experience: 'screensaver',
+    });
+    const result = await validateCtvProduct(server, 'video_hosted', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('rejects overlay ctv_ad_experience on video_hosted (matrix only permits screensaver)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_hosted', {
+      ctv_ad_experience: 'overlay',
+    });
+    const result = await validateCtvProduct(server, 'video_hosted', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'ctv_experience_matrix', field: 'params.ctv_ad_experience', predicted: 'overlay' }),
+    ]));
+  });
+
+  it('accepts squeezeback ctv_ad_experience on sponsored_placement', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'sponsored_placement', {
+      ctv_ad_experience: 'squeezeback',
+    });
+    const result = await validateCtvProduct(server, 'sponsored_placement', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('rejects full_motion motion_level on image (static canonical)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'image', {
+      motion_level: 'full_motion',
+    });
+    const result = await validateCtvProduct(server, 'image', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'motion_level_static_canonical', field: 'params.motion_level', predicted: 'full_motion' }),
+    ]));
+  });
+
+  it('rejects ctv_ad_experience on a canonical with no matrix entry (e.g. html5)', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'html5', {
+      ctv_ad_experience: 'pause',
+    });
+    const result = await validateCtvProduct(server, 'html5', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_fail');
+    expect(results[0].violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: 'ctv_experience_matrix', field: 'params.ctv_ad_experience', predicted: 'pause' }),
+    ]));
+  });
+
+  it('returns a non-blocking warning when an activation copy slot is missing', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      activation_methods: ['push_notification'],
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    const results = result.results as Array<Record<string, unknown>>;
+    expect(results[0].result_kind).toBe('validated_pass');
+    expect(results[0].violations).toBeUndefined();
+    expect(results[0].warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        rule: 'ctv_activation_copy_slots',
+        field: 'params.activation_methods',
+        predicted: ['activation_message'],
+      }),
+    ]));
+  });
+
+  it('accepts push_notification activation_methods when the activation_message copy slot is declared', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const seeded = await seedCtvProduct(server, 'video_vast', {
+      activation_methods: ['push_notification'],
+      slots: [
+        { asset_group_id: 'vast_tag', asset_type: 'vast', required: true },
+        { asset_group_id: 'activation_message', asset_type: 'text' },
+      ],
+    });
+    const result = await validateCtvProduct(server, 'video_vast', seeded);
+
+    expect(result.results).toEqual([
+      { target: { kind: 'product', id: seeded.productId }, result_kind: 'validated_pass' },
     ]);
   });
 });
@@ -6676,6 +8644,139 @@ describe('sync_creatives handler', () => {
     expect(creatives[0].action).toBe('created');
   });
 
+  it('preserves coordinated-placement component assets through creative-library readback', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'takeover-library.example' }, operator: 'takeover-library.example' };
+    const componentAssets = {
+      skin: {
+        image_main: {
+          asset_type: 'image',
+          url: 'https://cdn.takeover-library.example/skin.png',
+          width: 2560,
+          height: 1440,
+        },
+      },
+    };
+    const { result: synced } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_coordinated_library',
+        format_kind: 'coordinated_placements',
+        name: 'Takeover library creative',
+        assets: {},
+        component_assets: componentAssets,
+      }],
+    });
+    expect(synced.errors).toBeUndefined();
+
+    const { result: listed } = await simulateCallTool(server, 'list_creatives', {
+      account,
+      filters: { format_kinds: ['coordinated_placements'] },
+    });
+    expect((listed.creatives as Array<Record<string, unknown>>)[0]).toMatchObject({
+      creative_id: 'cr_coordinated_library',
+      format_kind: 'coordinated_placements',
+      component_assets: componentAssets,
+    });
+  });
+
+  it('rejects nested component assets on ordinary formats and drops stale components on identity transition', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'component-transition.example' }, operator: 'component-transition.example' };
+    const imageAsset = {
+      image_main: {
+        asset_type: 'image',
+        url: 'https://cdn.component-transition.example/image.png',
+        width: 1200,
+        height: 600,
+      },
+    };
+
+    const { result: missingManifest } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_missing_product_bound_manifest',
+        format_kind: 'coordinated_placements',
+        name: 'Missing coordinated assets',
+      }],
+    });
+    expect(missingManifest.creatives).toEqual([
+      expect.objectContaining({ creative_id: 'cr_missing_product_bound_manifest', action: 'failed' }),
+    ]);
+
+    const { result: invalidComponentTypes } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [
+        {
+          creative_id: 'cr_null_components',
+          format_kind: 'image',
+          name: 'Null component assets',
+          assets: imageAsset,
+          component_assets: null,
+        },
+        {
+          creative_id: 'cr_array_nested_components',
+          format_kind: 'image',
+          name: 'Array nested component assets',
+          assets: imageAsset,
+          manifest: { format_kind: 'image', assets: imageAsset, component_assets: [] },
+        },
+      ],
+    });
+    expect(invalidComponentTypes.creatives).toEqual([
+      expect.objectContaining({ creative_id: 'cr_null_components', action: 'failed' }),
+      expect.objectContaining({ creative_id: 'cr_array_nested_components', action: 'failed' }),
+    ]);
+
+    const { result: nestedInvalid } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_nested_components',
+        format_kind: 'image',
+        name: 'Invalid nested components',
+        assets: imageAsset,
+        manifest: {
+          format_kind: 'image',
+          assets: imageAsset,
+          component_assets: { skin: imageAsset },
+        },
+      }],
+    });
+    expect(nestedInvalid.creatives).toEqual([
+      expect.objectContaining({ creative_id: 'cr_nested_components', action: 'failed' }),
+    ]);
+
+    const { result: coordinated } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_component_transition',
+        format_kind: 'coordinated_placements',
+        name: 'Coordinated source',
+        assets: {},
+        component_assets: { skin: imageAsset },
+      }],
+    });
+    expect(coordinated.errors).toBeUndefined();
+
+    const { result: transitioned } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: 'cr_component_transition',
+        format_kind: 'image',
+        name: 'Ordinary image replacement',
+        assets: imageAsset,
+      }],
+    });
+    expect(transitioned.creatives).toEqual([
+      expect.objectContaining({ creative_id: 'cr_component_transition', action: 'updated' }),
+    ]);
+    const persisted = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode)))
+      .creatives.get('cr_component_transition');
+    expect(persisted?.formatKind).toBe('image');
+    expect(persisted?.componentAssets).toBeUndefined();
+    expect(persisted?.manifest?.component_assets).toBeUndefined();
+  });
+
   it('returns one CREATIVE_REJECTED entry per violated registry policy', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = {
@@ -8039,7 +10140,7 @@ describe('canonical creative build capabilities', () => {
       account: { brand: { domain: 'build-canonical.example' }, operator: 'build-canonical.example' },
       brand: { domain: 'build-canonical.example' },
       message: 'Create an unknown format.',
-      target_capability_id: 'unknown_takeover_generation',
+      target_capability_id: 'unknown_coordinated_generation',
     });
 
     expect(result.code).toBe('FORMAT_NOT_SUPPORTED');
