@@ -335,7 +335,7 @@ VAST (Video Ad Serving Template) tags for third-party video ad serving.
 - `tracking_events`: Array of supported tracking events. Valid values are defined by the [VAST Tracking Event](https://adcontextprotocol.org/schemas/v3/enums/vast-tracking-event.json) enum. Aligned to the IAB VAST 4.2 XSD `TrackingEvents_type/Tracking/@event` enumeration (vast_4.2.xsd lines 112–136), plus AdCP-flattened representations of `Impression`, `Error`, `VideoClicks`, and `ViewableImpression` elements:
   - **Playback**: `impression` (billing event), `creativeView`, `loaded`, `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`
   - **Interaction**: `mute`, `unmute`, `pause`, `resume`, `rewind`, `skip`, `playerExpand`, `playerCollapse`, `fullscreen` (VAST 2.x/3.x compat), `exitFullscreen` (VAST 2.x/3.x compat), `otherAdInteraction`, `interactiveStart` (SIMID)
-  - **Non-linear / companion**: `acceptInvitation`, `adExpand`, `adCollapse`, `minimize`, `overlayViewDuration`
+  - **Non-linear**: `acceptInvitation`, `adExpand`, `adCollapse`, `minimize`, `overlayViewDuration`
   - **Progress**: `progress` (for custom progress points via VAST `offset` attribute)
   - **Click & close**: `clickTracking`, `customClick`, `close`, `closeLinear`
   - **Verification**: `viewable`, `notViewable`, `viewUndetermined`, `measurableImpression` (AdCP extension), `viewableImpression`
@@ -374,7 +374,7 @@ A single URL bound to a VAST `TrackingEvents` event. Use this when the creative 
 - `vast_event`: The event this URL fires on. Any VAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, `error`, or any of `viewable` / `notViewable` / `viewUndetermined` / `measurableImpression` / `viewableImpression` — those live in dedicated VAST elements (`Impression`, `VideoClicks`, `Error`, `ViewableImpression`), not under `TrackingEvents` (see Tracker routing normative rule below). Common values: `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `pause`, `resume`, `mute`, `unmute`, `skip`, `progress`.
 - `url`: Tracker URL. Supports [AdCP universal macros](/docs/creative/universal-macros).
 - `offset`: Required for `vast_event: "progress"`. VAST 4.2 offset format (`Tracking@offset`): `HH:MM:SS` or `HH:MM:SS.mmm` (two-digit hours, minutes 00–59, seconds 00–59, exactly 3 fractional digits when present) for absolute time, or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted — the VAST 4.2 XSD pattern does not allow a leading minus.
-- `target`: Which VAST creative element scopes this tracker — `linear` (default), `non_linear`, or `companion`. VAST 4.2 places `<TrackingEvents>` under three different parents (`<Linear>`, `<NonLinearAds>`, `<CompanionAds>/<Companion>`) with different valid event sets — e.g., `acceptInvitation` is meaningful on `non_linear`/`companion`, `closeLinear` only on `linear`. Sales agents read this to place the tracker correctly during VAST assembly.
+- `target`: Which VAST creative element scopes this tracker — `linear` (default), `non_linear`, or `companion`. VAST places `<TrackingEvents>` under three different parents (`<Linear>`, `<NonLinearAds>`, `<CompanionAds>/<Companion>`) with different valid event sets: `acceptInvitation` is non-linear, `creativeView` is the only companion event in the closed AdCP matrix, and `closeLinear` is linear. Sales agents read this to place the tracker correctly during VAST assembly.
 
 **Target with non-linear event:**
 ```json

@@ -74,6 +74,7 @@
         "properties": {
           "vast_event": {
             "enum": [
+              "creativeView",
               "loaded",
               "start",
               "firstQuartile",

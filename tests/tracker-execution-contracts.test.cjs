@@ -189,6 +189,8 @@ test('pixel selector rejects invalid method, custom shape, actor, and path', () 
 
 test('VAST selector enforces event, target, progress, and per-version constraints', () => {
   const validate = ajv.getSchema('/schemas/core/tracker-execution-selector.json');
+  assert.equal(validate(vastSelector({ vast_event: 'creativeView' })), true,
+    'creativeView is valid for linear VAST execution');
   assert.equal(validate(vastSelector({ vast_event: 'progress', offset: '25%' })), true,
     JSON.stringify(validate.errors));
   assert.equal(validate(vastSelector({ vast_event: 'progress' })), false);
@@ -208,6 +210,13 @@ test('VAST selector enforces event, target, progress, and per-version constraint
     'loaded is accepted only in its ratified exact versions');
   assert.equal(validate(vastSelector({ vast_event: 'impression' })), false,
     'VAST Impression is not a TrackingEvents selector');
+
+  const validateAsset = ajv.getSchema('/schemas/core/assets/vast-tracker-asset.json');
+  assert.equal(validateAsset({
+    asset_type: 'vast_tracker',
+    vast_event: 'creativeView',
+    url: 'https://measurement.example/tracker'
+  }), true, 'default linear VAST assets accept creativeView');
 });
 
 test('DAAST selector enforces event, target, progress, and version shape', () => {
