@@ -7,11 +7,12 @@ export default defineConfig({
     root: __dirname,
     setupFiles: ['./tests/setup/revenue-tracking-env.ts'],
     testTimeout: 30000,
-    // The module-level `pool` singleton in db/index.ts is shared across all
-    // tests in a worker. Running files in parallel lets one file's
-    // `afterAll(closeDatabase)` null the pool while a sibling file is
-    // mid-query, producing "Database not initialized" 500s that look like
-    // transient Anthropic flakes.
+    // Forks give each test file its own process so module-level singletons
+    // (db pool, WorkOS client, env-cached secrets) cannot bleed between files.
+    // The root vitest config uses threads for speed; server tests need forks
+    // because dozens of files set process.env in vi.hoisted() for route and
+    // middleware init, and threads share process.env across all workers.
+    pool: 'forks',
     fileParallelism: false,
   },
 });
