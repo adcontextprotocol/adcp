@@ -7,7 +7,7 @@ Targets:
 - production tracker execution contract: AdCP 3.2;
 - preview observation capability, sessions, and tasks: AdCP 3.3.
 
-Issues: #6207, #3832
+Issues: #6207, #3832, #6782, #6784
 
 Depends on: #6767 macro declarations and resolution capabilities
 
