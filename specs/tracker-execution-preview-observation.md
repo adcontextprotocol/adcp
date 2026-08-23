@@ -23,10 +23,13 @@ None substitutes for either of the others. Preview evidence does not prove all
 production delivery, and capability matching does not prove that substitution
 or tracker initiation occurred.
 
-Every field and task proposed here applies only when the negotiated AdCP
-protocol version is 3.3 or later and the exact route advertises observation.
-A 3.2 or older receiver MUST NOT partially interpret these fields. A caller
-MUST NOT send them merely because an older schema accepts unknown properties.
+Every field and task proposed here requires negotiated AdCP 3.3 or later. Only
+the preview capability, request, session, and observation-task fields
+additionally require the exact preview route to advertise observation. A
+seller may publish a production `tracker_execution_contract` without offering
+preview observation. A 3.2 or older receiver MUST NOT partially interpret
+these fields, and a caller MUST NOT send them merely because an older schema
+accepts unknown properties.
 
 Version 1 is deliberately bounded to tracker and macro occurrences declared in
 the AdCP manifest, plus macros in a URL-delivered VAST/DAAST asset's locator
@@ -45,7 +48,7 @@ The end-to-end boundary is explicit:
 1. discovery returns a seller-authored effective product-format contract;
 2. package creation materializes an immutable snapshot of the selected format
    and execution contract;
-3. preview executes one manifest against either the named discovery snapshot
+3. preview executes one manifest against either the current discovery binding
    or, preferably, the package snapshot and records controlled evidence;
 4. serve uses the package snapshot, not a later product mutation; and
 5. reporting or attribution remains outside this RFC.
@@ -72,6 +75,18 @@ seller-returned Product value is binding. Capability projection to
 capability cannot make a seller production commitment; creative agents describe
 observation support on their preview route instead.
 
+The same authority boundary applies to every shared format projection. A
+creative route's `creative.supported_formats[].format`, a transformer's
+`input_formats[]`, and deprecated `Format.canonical_parameters` MUST reject or
+strip both `tracker_execution_contract` and its digest. Product discovery and
+publisher or placement declarations may carry the contract with the authority
+rules above. The one cross-task input allowed to echo the binding contract is
+`build_creative.representation_destination.format_option`, when it is the exact
+seller-issued option; CreativeManifest, CreativeSource, and representation
+outputs never acquire seller authority from that echo. Package and
+trusted-match package state use the immutable package snapshot defined below,
+not a mutable Product declaration.
+
 The seller resolves applicable contracts in authority order: a product cannot
 broaden its publisher declaration, and a placement cannot broaden its product
 option. The product's returned inline format option MUST contain the complete
@@ -95,6 +110,14 @@ Contract derivation is directional:
   parent constraints have been resolved into that one materialized effective
   contract.
 
+Derivation is evaluated over atomic tuples of `(non-version selector identity,
+exact version when applicable, execution_actor, firing_path)`. With a complete
+parent, every child atomic tuple MUST exist in the parent. Implementations may
+compress identical tuples back into version and path arrays only after this
+check. For example, parent commitments `4.2/client` and `4.3/server` do not
+authorize a child `[4.2, 4.3] × [client, server]`, which would invent the two
+crossed combinations.
+
 The selected format option uses the existing discriminated
 `format-option-ref.json` identity. Product-local options use
 `{scope: "product", format_option_id}`; publisher options use
@@ -102,18 +125,105 @@ The selected format option uses the existing discriminated
 production observation MUST assign a stable `format_option_id`; ID-less options
 remain previewable only without `production_path` evidence.
 
-When a package is created, each applicable
-`Package.formats_to_provide[]` selected-format snapshot MUST include the full
-effective `tracker_execution_contract` and sibling
-`tracker_execution_contract_digest`. That digest is SHA-256 over RFC 8785
-canonical JSON of the contract object alone and is immutable for the package.
+When a package is created, each applicable `Package.formats_to_provide[]` item
+is a `PackageFormatSnapshot`. Its wire shape preserves the declaration fields
+at the root for 3.x readers and adds package-only fields:
+
+```json
+{
+  "product_id": "acme_mobile_carousel",
+  "format_option_id": "mobile_carousel_interstitial",
+  "publisher_domain": "publisher.example",
+  "format_kind": "video_vast",
+  "params": { "vast_versions": ["4.2", "4.3"] },
+  "tracker_execution_contract": { "complete": true, "honored": [] },
+  "execution_vast_version": "4.3",
+  "placement_refs": [
+    {
+      "publisher_domain": "publisher.example",
+      "placement_id": "feed_interstitial"
+    }
+  ],
+  "tracker_execution_contract_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "product_snapshot_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+}
+```
+
+`product_id` and `product_snapshot_digest` are required on every snapshot
+eligible for production observation, including trusted-match projections, even
+when the enclosing Package also carries the product identity.
+`placement_refs`, when present, is a nonempty, duplicate-free array sorted by
+`publisher_domain` then `placement_id`, comparing the transmitted strings by
+ascending UTF-8 bytes without Unicode normalization. All remaining root properties through
+`tracker_execution_contract` are exactly one full
+`ProductFormatDeclaration`. `execution_vast_version` and
+`execution_daast_version` are optional package-only exact-version selections;
+the applicable one is required when a first-class tracker selector of that
+standards family is used without an exact sibling delivery document.
+`tracker_execution_contract_digest` is required if and only if the declaration
+contains a tracker contract. The package snapshot is a distinct schema used by
+package state; it is not added to every shared Product format projection.
+
+`tracker_execution_contract_digest` is SHA-256 over RFC 8785 canonical JSON of
+the contract object alone. `product_snapshot_digest` is SHA-256 over RFC 8785
+canonical JSON of this exact closed preimage:
+
+```json
+{
+  "product_id": "acme_mobile_carousel",
+  "format": {
+    "format_option_id": "mobile_carousel_interstitial",
+    "publisher_domain": "publisher.example",
+    "format_kind": "video_vast",
+    "params": { "vast_versions": ["4.2", "4.3"] },
+    "tracker_execution_contract": { "complete": true, "honored": [] }
+  },
+  "placement_refs": [
+    {
+      "publisher_domain": "publisher.example",
+      "placement_id": "feed_interstitial"
+    }
+  ],
+  "execution_vast_version": "4.3",
+  "tracker_execution_contract_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+}
+```
+
+`format` contains every field present in the flattened
+`ProductFormatDeclaration`, including unknown extension fields, but none of the
+package-only fields named above. Optional properties are omitted, not encoded
+as `null`; schema defaults are not materialized. The tracker digest property is
+omitted when there is no contract. Parsers reject duplicate JSON members before
+projection. Every digest in this RFC applies RFC 8785 to the transmitted values
+without implicit defaults and includes unknown fields unless its closed
+preimage explicitly excludes them. Both package digests are immutable.
 Later product or publisher edits do not mutate the package snapshot.
-Changing the package's selected format or tracker contract requires the
-existing replacement/refinement lifecycle; it is never an in-place silent
-change.
-For a package relying on this contract, `formats_to_provide[]` is required even
-when creative coverage is already complete; `formats_pending[]` may be empty.
-This avoids a production promise that exists only in mutable discovery state.
+The snapshot is immutable for the package lifetime. Changing the selected
+format, execution version, placement set, or tracker contract requires creation
+of a replacement package with a new `package_id`; no existing update task
+silently mutates the snapshot. Sellers retain the old snapshot for as long as
+delivery or retained served-variant replay can reference that package.
+For any package eligible for production observation, `formats_to_provide[]` is
+required even when creative coverage is already complete or the observation is
+macro-only; `formats_pending[]` may be empty. This avoids a production promise
+or macro-capability intersection that exists only in mutable discovery state.
+For a package spanning multiple placements, one snapshot's sorted
+`placement_refs[]` represents the common effective intersection. If placements
+require different contracts, the seller MUST create distinct snapshots with
+disjoint placement sets or distinct packages; it cannot serialize their union
+into one snapshot. `product_snapshot_digest` is the snapshot identity and MUST
+be unique within a package. Every `formats_pending[]` entry is equal as a parsed
+JSON value after RFC 8785 canonicalization to the corresponding
+`formats_to_provide[]` snapshot and carries the identical digest; transport
+whitespace, escaping, and member order are not identity;
+trusted-match package projections use the same snapshot identity and digest
+rules.
+
+Trusted Match may project `PackageFormatSnapshot` only when its sync
+transport/profile explicitly declares AdCP protocol version 3.3 or later.
+Older or version-unknown providers receive the legacy Product-format projection
+with all contract, execution-version, and snapshot-digest fields omitted and
+cannot produce `production_path` evidence from that projection.
 
 ### Contract shape
 
@@ -170,8 +280,12 @@ not create a cross-product between asset type, event, method, target, offset,
 slot, actor, or firing path. `selector_id` is unique within the materialized
 contract and stable for the life of its product or package snapshot. Two
 entries MUST NOT have the same structural selector identity after excluding
-`selector_id`, `execution_actor`, and `firing_paths`. One structural selector
-has exactly one execution actor in an effective format option, and the seller
+`selector_id`, `execution_actor`, and `firing_paths`. Version arrays are
+compared as order-insensitive sets for this identity check. Selectors with the
+same non-version identity MUST use either identical version sets, which are
+merged, or disjoint version sets; overlapping but unequal version sets are
+invalid because they make the overlapping version ambiguous. One structural
+selector has exactly one execution actor in an effective format option, and the seller
 combines all permitted firing paths into that entry. A seller that needs a
 different execution actor publishes a distinct format option instead of
 publishing ambiguous duplicate commitments.
@@ -208,6 +322,13 @@ initiate a buyer-supplied tracker in this version.
 contract or `complete: false` means omissions are undeclared, never unsupported;
 listed entries remain affirmative commitments.
 
+The legacy rule that an unregistered pixel `custom` event may silently no-op
+applies only when tracker execution is undeclared. On a 3.3 path with an exact
+honored custom selector, that selector is registered and carries the same
+accept-and-initiate obligation as every other honored selector. With a complete
+contract, an unlisted custom event is explicitly unsupported rather than
+silently represented as supported.
+
 V1 excludes JavaScript tracker evaluation. A `pixel_tracker` or URL selector
 with script execution semantics (`method: "js"` or
 `url_type: "tracker_script"`) MUST NOT appear in `honored`. A later version may
@@ -219,7 +340,8 @@ The schema is a closed `oneOf`. Every branch requires `selector_id`,
 `execution_actor`, and `firing_paths`:
 
 - `pixel_tracker` requires `event` and `method: img`. `event: custom`
-  additionally requires `custom_event_name`.
+  additionally requires a nonempty `custom_event_name`; every non-custom event
+  forbids that field.
 - `vast_tracker` requires `vast_versions`, `vast_event`, and `target`.
   `vast_versions` is a nonempty subset of the exact VAST versions accepted by
   the selected format option. The named event/target combination MUST be valid
@@ -228,6 +350,7 @@ The schema is a closed `oneOf`. Every branch requires `selector_id`,
   false for one version.
   `vast_event: progress` additionally requires `offset`. Its event restrictions
   and target/event compatibility are shared with `vast-tracker-asset.json`.
+  Every other event forbids `offset`.
 - `daast_tracker` requires `daast_versions`, `daast_event`, and `target`.
   `daast_versions` is a nonempty subset of the exact DAAST versions accepted by
   the selected format option. The named event/target combination MUST be valid
@@ -235,10 +358,14 @@ The schema is a closed `oneOf`. Every branch requires `selector_id`,
   selectors or format options.
   `daast_event: progress` additionally requires `offset`. Its event restrictions
   and target/event compatibility are shared with `daast-tracker-asset.json`.
+  Every other event forbids `offset`.
 - `url` requires `asset_group_id`, `url_type: tracker_pixel`,
   `event_namespace`, and `event_name`. It
   identifies an existing manifest URL slot in the selected format by
   `asset_group_id`; it does not infer an event from a URL alone.
+  `event_name: custom` additionally requires nonempty `custom_event_name`, and
+  every other event forbids it. The named slot's nested `tracker_event` uses
+  the identical field and conditional.
 
 The shared VAST target/event matrix is closed in v1: `linear` accepts
 `loaded`, `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`,
@@ -254,6 +381,28 @@ closed: `linear` accepts `start`, `firstQuartile`, `midpoint`,
 `creativeView`.
 Events outside `TrackingEvents`, including impression, click, error, and
 viewability-element children, are not smuggled into these branches.
+
+The lists above are the proposed v1 upper bounds, not substitutes for
+version-specific standards data. Before normative implementation, the working
+group MUST ratify an immutable per-version VAST and DAAST event/target matrix.
+Both the asset schemas and tracker selectors use that one matrix. A selector is
+valid only when its event/target is present in every listed exact version;
+flattened enum membership alone is insufficient.
+
+Matching first applies the existing asset defaults: omitted
+`pixel_tracker.method` is `img`, and omitted VAST/DAAST `target` is `linear`.
+Matching is membership of one exact execution version in the selector's
+version set. On a package path, that value is the snapshotted
+`execution_vast_version` or `execution_daast_version`. On a current-product
+preview it is an exact version supplied in the verification context and
+validated as a member of the selected option's acceptance set. A complete-tag
+manifest's sibling exact-version VAST/DAAST delivery asset MUST agree with that
+value. Seller-assembled/decomposed tracker manifests need no sibling tag because
+the package or verified context supplies the exact version. A route never
+guesses from a plural acceptance set. The selected format's acceptance schema
+needs VAST-style nonempty plural `daast_versions`, with the existing singular
+field retained only as a deprecated one-element alias and forbidden alongside
+the plural field.
 
 Every selector is usable only when the selected format declares at least one
 compatible first-class manifest slot for that asset type; the contract does not
@@ -271,6 +420,12 @@ sellers cannot substitute an equivalent-looking URL. IAB and vendor namespaces
 require an authority-controlled `event_namespace_uri` and immutable
 `event_namespace_revision` digest, following the source-faithful macro rule.
 AdCP event identity carries neither external URI nor revision.
+
+For v1, the `adcp` URL-event vocabulary is exactly the extracted canonical
+pixel-tracking event vocabulary used by `pixel_tracker.event`; it is not an
+open string namespace. Its `custom` member has the same nonempty qualified
+custom-name requirement. Ratification must approve that shared enum before the
+URL branch becomes normative.
 
 The `.example` registry URI and digest in this draft are placeholders, not a
 claim that an AdCP IAB registry already exists. WG ratification must identify
@@ -303,6 +458,40 @@ The lossy `substituted_macros_in_trackers[]` proposal is dropped. Preflight
 `macro_resolution_results` retain their current compatibility meaning and are
 not evidence that processing occurred.
 
+### Representation selection and package assignment
+
+#6767 resolution normalizes asset defaults and binds one exact execution
+VAST/DAAST version before comparing every first-class manifest tracker instance
+with the destination's effective tracker contract. With `complete: true`, an
+unlisted instance makes that representation incompatible and produces a typed
+`tracker_contract_mismatch` rejection carrying the representation ID, manifest
+asset JSON Pointer, normalized selector identity, and product format-option
+reference. Macro capability matching remains a separate check and separate
+rejection reason.
+
+When seller assembly needs a version that no exact sibling tag supplies,
+`representation_destination` MUST carry `execution_vast_version` or
+`execution_daast_version`, and the seller verifies it is in the destination
+acceptance intersection. `representation_selection` echoes that exact value as
+selection lineage. Later package assignment MUST use the same value; choosing a
+different package execution version requires re-resolution and ordinary
+re-review rather than silent rebinding. The execution-review identity is the
+tuple `(selected_representation_id, selected_output_digest,
+execution_vast_version-or-null, execution_daast_version-or-null)`. The selected
+output digest continues to cover only the manifest projection; changing either
+exact execution version changes the review tuple even when manifest bytes do
+not change. Sync, list readback, and retained selection lineage preserve those
+exact-version fields.
+
+The selected-output digest fingerprints the buyer's manifest tracker bytes and
+declarations; it does not absorb the seller's tracker-contract digest. The
+package snapshot pins that production contract separately. Library-only
+`sync_creatives` can validate manifest structure and preserve lineage but does
+not prove product support. Package assignment and `create_media_buy` MUST
+revalidate the selected manifest against the immutable package snapshot before
+spend. A mismatch rejects assignment; it never silently removes a tracker or
+changes the package snapshot.
+
 ## Preview observation capability
 
 Each `creative.preview.routes[]` entry may advertise:
@@ -320,9 +509,11 @@ Each `creative.preview.routes[]` entry may advertise:
       "network_interception"
     ],
     "execution_fidelities": ["production_path", "sandbox_equivalent", "agent_approximation"],
+    "value_outputs": ["full", "redacted"],
     "network_policy": "intercept_before_dispatch",
     "max_session_duration_seconds": 300,
     "max_log_entries": 5000,
+    "max_observation_sessions_per_request": 10,
     "macro_binding_capabilities": [
       {
         "authority": "seller_intersection",
@@ -342,6 +533,19 @@ Each `creative.preview.routes[]` entry may advertise:
 
 Omission means the preview route does not advertise observation. Support MUST
 NOT be inferred from ordinary preview support.
+
+Requested mode, captures, accepted fidelities, and value-output behavior MUST be
+subsets of the selected route advertisement. The request supplies a nonempty
+`accepted_execution_fidelities` set; the route returns one member and MUST NOT
+substitute an unaccepted fidelity. There is no implicit fidelity ordering.
+An unsupported request fails with
+typed `PREVIEW_OBSERVATION_UNSUPPORTED`; the provider does not silently omit a
+capture or downgrade fidelity. Protocol maxima are 300 seconds, 5000 log
+entries, and 20 observation sessions per `preview_creative` request. Advertised
+limits MUST be positive and no greater than those maxima. The number of sessions
+is the sum of all explicit or implicit observed inputs across all batch items;
+a request exceeding the route's advertised session limit is rejected before
+any disposable environment is created.
 
 Each `macro_binding_capabilities[]` entry is one exact #6767 tuple plus an
 `authority` discriminator. `creative_route` entries may bind only tuples
@@ -379,14 +583,13 @@ the bounded preview proxy, but substituting a different renderer, macro
 resolver, wrapper resolver, player callback implementation, or event bus makes
 the result `sandbox_equivalent`.
 
-Only the seller endpoint may return `production_path` by default. A different
-endpoint may do so only under a seller-signed, tenant-scoped measurement
-observation delegation that pins provider origin, route capability digest,
-product/package and format-option scope, allowed actors/captures, and expiry.
-The provider verifies that delegation on every task call. Publisher
-`preview_provider` delegation grants presentation authority only and MUST NOT
-be treated as measurement or seller-execution authority. Responses report
-presentation and measurement authority separately.
+Only the authenticated seller endpoint may return `production_path` in v1.
+Publisher `preview_provider` delegation grants presentation authority only and
+MUST NOT be treated as measurement or seller-execution authority. A future
+version may define seller-signed measurement delegation only together with a
+buyer-verifiable envelope, key profile, audience/account binding, expiry, and
+revocation semantics; an opaque delegation ID or digest is not authority.
+Responses report presentation and measurement authority separately.
 
 `sandbox_equivalent` means the seller asserts functionally equivalent rendering
 and macro-processing components in an isolated environment. `agent_approximation`
@@ -410,6 +613,7 @@ verification context:
   "observation": {
     "mode": "interactive",
     "captures": ["interactions", "creative_events", "outbound_actions", "macro_processing"],
+    "accepted_execution_fidelities": ["production_path"],
     "value_output": "full"
   },
   "verification_context": {
@@ -436,10 +640,17 @@ verification context:
 
 `verification_context` is a `oneOf`:
 
-- `binding_kind: product_snapshot` requires `product_id`, the existing
+- `binding_kind: creative_route` requires the agent-local
+  `target_capability_id`, the manifest's `format_kind`, `manifest_digest`,
+  `macro_declarations_digest`, and `route_capability_digest`; it forbids
+  product, package, placement, contract-digest, and execution-version fields,
+  can return only `sandbox_equivalent` or `agent_approximation`, and makes all
+  tracker actions `not_evaluated`;
+- `binding_kind: current_product` requires `product_id`, the existing
   `format-option-ref.json` shape, optional existing `placement-ref.json` shape,
-  and the immutable product, contract, manifest, declaration, and route digests;
-  or
+  `execution_vast_version` or `execution_daast_version` when required, and the
+  product, contract, manifest, declaration, and route digests computed from
+  current discovery state; or
 - `binding_kind: package_snapshot` additionally requires `package_id` and binds
   to the package's materialized selected-format snapshot. Once a package exists,
   this branch is required for evidence intended to compare with serving.
@@ -448,21 +659,47 @@ New observation requests always include `publisher_domain` in `placement`; the
 legacy placement-relative omission remains accepted elsewhere in 3.x but is not
 exact enough for production-path evidence.
 
+For the current-product digest projection, a supplied `placement` normalizes to
+the singleton `placement_refs: [placement]`. When placement is omitted,
+`placement_refs` is omitted and the digest binds the product option's
+product-wide/common-intersection contract; it does not silently insert every
+known placement. Placement arrays use the UTF-8 ordering rule defined for
+`PackageFormatSnapshot`.
+
 Digests use `sha256:` plus lowercase hex over RFC 8785 canonical JSON. The
 manifest digest covers the exact manifest before synthetic values are applied;
 the macro-declarations digest covers the ordered list of
 `{asset_path, declaration}` occurrences sorted by UTF-8 JSON Pointer and then
-the declaration's array index; the route capability digest covers the
-advertised route, observation, and macro-binding capability objects. The
-response echoes all verified digests. A digest mismatch is a typed terminal
-error, never a fallback to current mutable state.
+the declaration's array index. The route-capability preimage is exactly the
+complete selected `creative.preview.routes[i]` object as transmitted, including
+its nested `observation`, macro-binding capabilities, and unknown fields, with
+no exclusions or materialized defaults. The response echoes all verified
+digests. A digest mismatch is a typed terminal error, never a fallback to
+current mutable state.
 
-`product_snapshot_digest` covers a closed object containing `product_id`, the
-selected full format declaration, effective placement reference when present,
-and the tracker-contract digest. For `package_snapshot` it is the value stored
-with that package snapshot, not a recomputation from the current discovery
-response. Commercial fields unrelated to creative execution are intentionally
-outside this digest.
+`product_snapshot_digest` uses the literal closed preimage defined in
+`PackageFormatSnapshot`, including `product_id`, the selected full format
+declaration, sorted effective placement references, exact execution version
+when applicable, and optional tracker-contract digest. For `package_snapshot`
+it is the stored value, not a recomputation from current discovery. Commercial
+fields unrelated to creative execution are intentionally outside this digest.
+`current_product` is deliberately current-state-only: the
+buyer computes the digest from discovery and the seller recomputes it from
+current state. A later product mutation causes a typed digest mismatch; the
+seller need not retain historical discovery snapshots. Durable verification
+uses `package_snapshot`.
+
+`product_snapshot_digest` is required for every production verification
+context. Contract evaluation is requested exactly when `captures` contains
+`outbound_actions` and the selected verification context has a tracker
+contract. That combination requires `tracker_execution_contract_digest` and
+evaluates every manifest tracker action. When the contract is absent, the same
+capture remains useful observation but its actions are `not_evaluated`.
+Macro-only observation therefore remains valid without a tracker contract or
+digest. The exact execution VAST/DAAST
+version is supplied and verified for `current_product` whenever the matching
+rule above requires one and is read from the package snapshot for
+`package_snapshot`.
 
 For a `production_path` result, the seller MUST verify that:
 
@@ -474,12 +711,11 @@ For a `production_path` result, the seller MUST verify that:
 4. `placement`, when supplied, belongs to the publisher/product scope and is
    valid for the selected option;
 5. all supplied and computed digests match; and
-6. the endpoint is the seller or has the exact seller-scoped measurement
-   delegation described above.
+6. the endpoint is the authenticated seller.
 
 Mismatch fails the request; the route MUST NOT silently downgrade or select a
-different option. A non-seller creative agent omits `verification_context` and
-cannot return `production_path` seller evidence.
+different option. A non-seller creative agent uses `binding_kind:
+creative_route` and cannot return `production_path` seller evidence.
 
 `quality_used` remains the effective visual-quality field from preview. The
 session binds and echoes it. A draft or materially approximate renderer may
@@ -590,7 +826,7 @@ The returned human `renders[]` remain inert. Each
     "session_id": "obs_01J...",
     "state": "active",
     "controller_url": "https://preview.example/observations/obs_01J...",
-    "execution_fidelity": "sandbox_equivalent",
+    "execution_fidelity": "production_path",
     "quality_used": "production",
     "authority": {
       "presentation": { "kind": "seller" },
@@ -601,11 +837,26 @@ The returned human `renders[]` remain inert. Each
     "expires_at": "2026-08-22T20:00:00Z",
     "evidence_binding": {
       "protocol_version": "3.3",
-      "manifest_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
-      "macro_declarations_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
-      "route_capability_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
-      "product_snapshot_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-      "tracker_execution_contract_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+      "verification_context": {
+        "binding_kind": "package_snapshot",
+        "package_id": "pkg_summer_carousel",
+        "product_id": "acme_mobile_carousel",
+        "format_option_ref": {
+          "scope": "publisher",
+          "format_option_id": "mobile_carousel_interstitial",
+          "publisher_domain": "publisher.example"
+        },
+        "placement": {
+          "publisher_domain": "publisher.example",
+          "placement_id": "feed_interstitial"
+        },
+        "product_snapshot_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "tracker_execution_contract_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "manifest_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "macro_declarations_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "route_capability_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "verification_context_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
     },
     "capture_coverage": [
       {
@@ -642,17 +893,25 @@ the evidence boundary.
 `redacted` value output makes macro value verification at most `partial`.
 Coverage in an active session is provisional even when its current status is
 `complete`; only the terminal summary makes an immutable completeness claim.
+`unsupported` is permitted only for an instrumented source that becomes
+unavailable after an otherwise valid request and MUST include a runtime error
+and limitation. It is not permission to contradict an advertised capture at
+request acceptance.
 
 `session_id` is an ID-bearing cross-task field and receives
 `x-entity: preview_observation_session` everywhere it appears.
 
+`evidence_binding.verification_context` is the complete normalized context the
+seller verified, not a digest-only projection. Its digest is SHA-256 over RFC
+8785 canonical JSON of that object. The session, every observation page, and
+the terminal summary bind the same context and digest, so evidence remains
+self-describing across polling, restart, package reuse, and historical replay.
+
 Each authority member is a discriminated object. `seller` names the
 authenticated seller endpoint. A `publisher_delegate` presentation branch
-pins publisher domain and delegation digest. A `seller_scoped_delegate`
-measurement branch pins seller origin, delegation ID, signed-statement digest,
-provider origin, route capability digest, product/package and format-option
-scope, capture/actor scope, and expiry. `none` is permitted only for
-non-verifying approximate evidence. Presentation authority never implies
+pins publisher domain and delegation digest. Measurement authority is `seller`
+only for v1 `production_path`; `none` is required for non-verifying approximate
+or delegated presentation evidence. Presentation authority never implies
 measurement authority.
 
 `controller_url` is an authenticated control surface for a disposable
@@ -706,6 +965,7 @@ Repeated finish calls return the same immutable terminal response:
   "state": "completed",
   "last_sequence": 24,
   "summary_status": "final",
+  "verification_context_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
   "summary_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
   "expires_at": "2026-08-22T20:00:00Z"
 }
@@ -734,12 +994,15 @@ Request:
 }
 ```
 
-`after_sequence` is exclusive. Sequence numbers are immutable, strictly
-increasing positive integers; gaps are permitted. `elapsed_ms` uses a monotonic
+`after_sequence` is an optional nonnegative integer, defaults to `0`, and is
+exclusive. Sequence numbers are immutable, strictly increasing positive
+integers; `0` is reserved as the initial cursor and empty-log high watermark,
+and gaps above it are permitted. `elapsed_ms` uses a monotonic
 clock whose zero is the start of observed creative execution, before the first
 frame and before controller input is enabled. `limit` is 1–500 and defaults to
-100. `after_sequence` greater than the committed high watermark is valid and
-returns an empty page without decreasing the cursor.
+100. `after_sequence` greater than the committed high watermark is rejected
+with typed `PREVIEW_OBSERVATION_CURSOR_AHEAD`; a future cursor could otherwise
+skip observations that commit after the read.
 
 Response pages include:
 
@@ -747,6 +1010,7 @@ Response pages include:
 {
   "session_id": "obs_01J...",
   "state": "active",
+  "verification_context_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
   "page_high_watermark": 18,
   "observations": [],
   "next_after_sequence": 18,
@@ -756,7 +1020,7 @@ Response pages include:
 ```
 
 `page_high_watermark` is the greatest committed sequence visible when the page
-was read. `has_more` says whether additional observations at or below that
+was read, or `0` when no observation has committed. `has_more` says whether additional observations at or below that
 watermark remain after this page. A later poll may observe larger sequences
 while the session is active. Active summaries are `provisional`; a completed
 session returns one immutable `final` summary object and its digest on every
@@ -951,7 +1215,8 @@ translation.
     "kind": "manifest_asset",
     "asset_path": "/assets/click_tracker"
   },
-  "matched_contract_selector": {
+  "contract_match": {
+    "status": "matched",
     "selector_id": "display_click_pixel",
     "tracker_execution_contract_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
   },
@@ -980,27 +1245,41 @@ suppressed. `resolved_url` is the definitive full, post-processing URL when
 `value_output: full`; redacted output includes only an opaque session-local
 fingerprint and marks URL-value verification partial.
 
-`actual_path` is required for `tracker_request`, where it MUST be one of the
-matched contract selector's `firing_paths`. It is optional and informational
-for navigation and resource requests, which are outside the tracker execution
+`actual_path` is required for `tracker_request`. For a matched action it MUST be
+one of the selector's `firing_paths`; otherwise it reports the observed path
+without implying a production commitment. It is optional and informational for
+navigation and resource requests, which are outside the tracker execution
 commitment.
 
 Every `tracker_request` requires `execution_actor`, `tracker_source`,
-`matched_contract_selector`, and `cardinality`. V1 `tracker_source` is a
+`contract_match`, and `cardinality`. `contract_match` is a closed discriminator:
+
+- `matched` requires `selector_id` and
+  `tracker_execution_contract_digest`;
+- `unmatched` requires the evaluated incomplete contract's digest and a reason;
+  a complete contract rejects an unlisted manifest tracker before execution;
+  and
+- `not_evaluated` means no effective tracker contract was present (as on a
+  standalone creative-agent observation), so there is no contract digest.
+
+Only `matched` can satisfy contract cardinality. Unmatched and not-evaluated
+actions remain honest runtime evidence and may still reveal unresolved macros,
+duplicates, or unexpected emissions.
+
+V1 `tracker_source` is a
 `manifest_asset` object carrying the exact JSON Pointer of a first-class
 tracker or declared tracker-URL slot. A VAST/DAAST locator is a resource
 request, not a tracker source; its macros may be observed, but it cannot match a
 tracker selector. There is no embedded-document branch.
-`matched_contract_selector` pins both `selector_id` and
+For a matched action, `contract_match` pins both `selector_id` and
 `tracker_execution_contract_digest`. `initiation_ordinal` MUST equal 1; a second
 action with the same `{logical_event_occurrence_id, tracker_instance_path}` is
 an exactly-once violation, not ordinal 2. Repeated logical events have distinct
 event occurrence IDs.
 
 For `production_path`, outbound `execution_actor` equals the matched selector's
-actor and the actual instrumented component identity. A delegated provider
-reports both the actor and delegate component; it cannot relabel itself as the
-seller.
+actor and the actual instrumented component identity. Delegated providers are
+non-production evidence in v1 and cannot relabel themselves as the seller.
 
 A tracker action can satisfy exactly-once evidence only when
 `source_event_id` resolves to an observed logical event and the tracker source
@@ -1008,7 +1287,7 @@ resolves to one manifest instance. An intercepted but uncorrelated request is
 still logged, with a structured runtime error, but its cardinality result is
 `indeterminate`.
 
-Navigation and resource actions forbid tracker-source and matched-selector
+Navigation and resource actions forbid tracker-source and contract-match
 fields. Redacted mode replaces both template and resolved URLs with opaque
 session fingerprints and forbids URL origin, path, query, and fragment
 projections.
@@ -1023,6 +1302,7 @@ summary:
 {
   "summary": {
     "summary_status": "final",
+    "verification_context_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
     "last_sequence": 24,
     "counts": {
       "interactions": 1,
@@ -1072,7 +1352,8 @@ The terminal summary also includes:
   where applicable.
 
 `summary_digest` is computed over RFC 8785 canonical JSON of the summary without
-the digest field. `exactly_once_status` is `satisfied`, `violated`, or
+the digest field and therefore includes `verification_context_digest`.
+`exactly_once_status` is `satisfied`, `violated`, or
 `indeterminate`; incomplete or truncated action/event coverage can only produce
 `indeterminate`, never `satisfied`. Redacted summaries use identities, states,
 counts, and opaque fingerprints only.
@@ -1160,6 +1441,33 @@ migrated to these tasks or removed; no parallel observer model remains.
 - Portable scripted observation is deferred until canonical formats define
   stable action identifiers and scenario-step semantics.
 
+## Ratification gates and implementation split
+
+This draft deliberately does not authorize schemas. The working group must
+resolve and record all of the following before the production-contract PR can
+claim conformance:
+
+1. approve the 3.3 version line and a minor changeset boundary, and wait until
+   the repository's active source/release line is actually 3.3 rather than the
+   current 3.2 prerelease bundle;
+2. publish or pin immutable IAB VAST and DAAST event-vocabulary artifacts used
+   by URL event identity;
+3. ratify the shared per-version event/target matrices and the extracted AdCP
+   pixel-event vocabulary;
+4. add plural DAAST acceptance semantics with a deprecated singular singleton
+   alias; and
+5. approve the flattened package snapshot, placement binding, multi-placement
+   intersection, authority-stripping, and digest preimages defined above; and
+6. record the governance decision that supersedes DR-0005 with the narrow,
+   explicit Live Integration observation exception proposed above.
+
+After ratification, implementation remains two PRs. The first adds the
+production tracker contract, package snapshot, authority projections, shared
+event constraints, registries, and golden vectors. The second adds preview
+observation route capabilities, request/session/stream tasks, security rules,
+and Live Integration fixtures. Neither PR silently adds 3.3 fields to a 3.2
+schema or claims support based only on permissive unknown-field handling.
+
 ## Conformance plan
 
 Schema and golden-vector tests cover:
@@ -1177,9 +1485,10 @@ Schema and golden-vector tests cover:
   `oneOf`, encoding, empty values, preserved literals, omission, sentinels, and
   full redaction;
 - every observation union arm;
-- monotonic ordering, forward references, pagination, terminal summaries,
+- monotonic ordering, forward references, initial zero-cursor empty pages,
+  pagination, terminal summaries,
   idempotent bounded finish/drain, truncation, session expiry, and log TTL;
-- presentation versus measurement authority and seller-scoped delegation; and
+- presentation versus seller-only v1 measurement authority; and
 - capture-source and structured-coverage claims, including v1 exclusions for
   fetched document contents and JavaScript evaluation.
 
@@ -1199,8 +1508,10 @@ product format and equality of the instrumented and declared responsible actor.
 
 If ratified, this is additive AdCP 3.3 work. Until then, this document is a
 nonnormative design draft and no producer may claim conformance to it. All use
-is gated by negotiated protocol version, explicit product-format and
-preview-route capabilities, and the authority rules above. Omission means
+is gated by negotiated protocol version and the authority/product-format rules
+above. Preview capability, request, session, and observation-task fields are
+additionally gated by the selected route's explicit observation advertisement.
+Omission means
 undeclared or unsupported only where expressly stated; no 3.2 or
 maintenance-line backport is proposed. A later normative implementation PR
 requires a minor changeset; this discussion-only draft does not ship schemas
