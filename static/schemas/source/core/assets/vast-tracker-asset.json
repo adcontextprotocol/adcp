@@ -35,7 +35,7 @@
     },
     "target": {
       "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_target",
-      "description": "Which VAST creative element this tracker scopes to — `linear` for `<Linear>/<TrackingEvents>`, `non_linear` for `<NonLinearAds>/<TrackingEvents>`, `companion` for `<CompanionAds>/<Companion>/<TrackingEvents>`. VAST 4.2 places these under separate XML elements with separate event semantics (e.g., `acceptInvitation` is meaningful on non-linear / companion; `closeLinear` only on linear). Defaults to `linear`. Sales agents use this to place the tracker in the correct location during VAST assembly."
+      "description": "Which VAST creative element this tracker scopes to — `linear` for `<Linear>/<TrackingEvents>`, `non_linear` for `<NonLinearAds>/<TrackingEvents>`, `companion` for `<CompanionAds>/<Companion>/<TrackingEvents>`. VAST places these under separate XML elements with separate event semantics: `acceptInvitation` is non-linear, `creativeView` is the only companion event in this closed matrix, and `closeLinear` is linear. Defaults to `linear`. Sales agents use this to place the tracker in the correct location during VAST assembly."
     },
     "provenance": {
       "$ref": "/schemas/core/provenance.json",

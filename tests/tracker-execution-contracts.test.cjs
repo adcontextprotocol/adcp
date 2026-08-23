@@ -197,6 +197,10 @@ test('VAST selector enforces event, target, progress, and per-version constraint
   assert.equal(validate(vastSelector({ vast_event: 'acceptInvitation', target: 'linear' })), false);
   assert.equal(validate(vastSelector({
     vast_event: 'acceptInvitation',
+    target: 'companion'
+  })), false, 'companion trackers accept only creativeView in the closed matrix');
+  assert.equal(validate(vastSelector({
+    vast_event: 'acceptInvitation',
     target: 'non_linear',
     vast_versions: ['4.2']
   })), true, JSON.stringify(validate.errors));
