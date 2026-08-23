@@ -12,6 +12,9 @@ function collectStrings(value) {
 
 function sampleConfig() {
   return {
+    banner: {
+      content: 'AdCP 3.1 beta.0 is available — [start testing →](/docs/reference/3-1-beta)',
+    },
     navigation: {
       versions: [
         {
@@ -93,6 +96,17 @@ function sampleConfig() {
     assert.equal(allStrings.some((value) => value.startsWith('docs/')), false);
   });
 
+  test('retargets the prerelease banner when adding a beta docs version', () => {
+    const config = sampleConfig();
+
+    updateDocsConfig(config, '3.1.0-beta.0', '3.1-beta');
+
+    assert.equal(
+      config.banner.content,
+      'AdCP 3.1 beta is available — [start testing →](/dist/docs/3.1.0-beta.0/reference/3-1-beta)'
+    );
+  });
+
   test('updates an existing snapshot version without changing its position', () => {
     const config = sampleConfig();
     config.navigation.versions.splice(1, 0, {
@@ -128,6 +142,32 @@ function sampleConfig() {
     assert.equal(
       updated.groups[1].openapi.directory,
       'dist/docs/3.1.0-rc.5/registry/api-reference'
+    );
+  });
+
+  test('retargets a prerelease banner to the latest immutable beta snapshot', () => {
+    const config = sampleConfig();
+    config.banner.content =
+      'AdCP 3.1 beta is available — [start testing →](/dist/docs/3.1.0-beta.4/reference/3-1-beta)';
+    config.navigation.versions.splice(1, 0, {
+      version: '3.1-beta',
+      groups: [
+        {
+          group: 'Getting Started',
+          pages: ['dist/docs/3.1.0-beta.4/intro'],
+        },
+        {
+          group: 'Reference',
+          pages: ['dist/docs/3.1.0-beta.4/reference/3-1-beta'],
+        },
+      ],
+    });
+
+    updateDocsConfig(config, '3.1.0-beta.5', '3.1-beta');
+
+    assert.equal(
+      config.banner.content,
+      'AdCP 3.1 beta is available — [start testing →](/dist/docs/3.1.0-beta.5/reference/3-1-beta)'
     );
   });
 
