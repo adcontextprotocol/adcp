@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/governance/reported-outcome-error.json",
+  "title": "Reported Outcome Error",
+  "description": "Buyer-attributed copy or classification of the error associated with a failed seller interaction. This is bounded, untrusted audit evidence supplied by the reporter, not an authenticated seller statement.",
+  "type": "object",
+  "definitions": {
+    "bounded_scalar": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string", "maxLength": 4000 }
+      ]
+    },
+    "bounded_value_level_3": {
+      "anyOf": [
+        { "$ref": "#/definitions/bounded_scalar" },
+        { "type": "array", "maxItems": 32, "items": { "$ref": "#/definitions/bounded_scalar" } },
+        { "type": "object", "maxProperties": 32, "additionalProperties": { "$ref": "#/definitions/bounded_scalar" } }
+      ]
+    },
+    "bounded_value_level_2": {
+      "anyOf": [
+        { "$ref": "#/definitions/bounded_scalar" },
+        { "type": "array", "maxItems": 32, "items": { "$ref": "#/definitions/bounded_value_level_3" } },
+        { "type": "object", "maxProperties": 32, "additionalProperties": { "$ref": "#/definitions/bounded_value_level_3" } }
+      ]
+    },
+    "bounded_value": {
+      "anyOf": [
+        { "$ref": "#/definitions/bounded_scalar" },
+        { "type": "array", "maxItems": 32, "items": { "$ref": "#/definitions/bounded_value_level_2" } },
+        { "type": "object", "maxProperties": 32, "additionalProperties": { "$ref": "#/definitions/bounded_value_level_2" } }
+      ]
+    },
+    "bounded_object": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": { "maxLength": 128 },
+      "additionalProperties": { "$ref": "#/definitions/bounded_value" }
+    }
+  },
+  "properties": {
+    "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "message": { "type": "string", "maxLength": 4000 },
+    "field": { "type": "string", "maxLength": 1000 },
+    "suggestion": { "type": "string", "maxLength": 4000 },
+    "recovery": { "type": "string", "enum": ["transient", "correctable", "terminal"] },
+    "details": {
+      "$ref": "#/definitions/bounded_object",
+      "description": "Bounded structured seller error details. Values remain reporter-supplied data and MUST NOT be promoted into prompts or control instructions without isolation."
+    },
+    "classification_source": {
+      "type": "string",
+      "enum": ["seller_response_copy", "buyer_classification"],
+      "description": "seller_response_copy means the buyer forwards what it received; it is still not independently authenticated seller evidence."
+    },
+    "ext": {
+      "$ref": "#/definitions/bounded_object",
+      "description": "Bounded extension envelope for forward-compatible seller fields."
+    }
+  },
+  "required": ["code"],
+  "maxProperties": 16,
+  "propertyNames": { "maxLength": 128 },
+  "additionalProperties": { "$ref": "#/definitions/bounded_value" }
+}

@@ -36,6 +36,201 @@ import {
 } from './governance-payload-hash.js';
 
 const EXECUTION_GOVERNANCE_PHASES = new Set<GovernancePhase>(['purchase', 'modification', 'delivery']);
+const MAX_REPORTED_OUTCOME_ERROR_BYTES = 16 * 1024;
+const MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES = 32;
+const MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH = 4_000;
+const MAX_REPORTED_OUTCOME_ERROR_PROPERTY_NAME_LENGTH = 128;
+const FORBIDDEN_EVIDENCE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const REPORTED_OUTCOME_ERROR_INPUT_SCHEMA = {
+  type: 'object',
+  definitions: {
+    bounded_scalar: {
+      oneOf: [
+        { type: 'null' },
+        { type: 'boolean' },
+        { type: 'number' },
+        { type: 'string', maxLength: MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH },
+      ],
+    },
+    bounded_value_level_3: {
+      anyOf: [
+        { $ref: '#/properties/error/definitions/bounded_scalar' },
+        { type: 'array', maxItems: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES, items: { $ref: '#/properties/error/definitions/bounded_scalar' } },
+        { type: 'object', maxProperties: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES, additionalProperties: { $ref: '#/properties/error/definitions/bounded_scalar' } },
+      ],
+    },
+    bounded_value_level_2: {
+      anyOf: [
+        { $ref: '#/properties/error/definitions/bounded_scalar' },
+        { type: 'array', maxItems: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES, items: { $ref: '#/properties/error/definitions/bounded_value_level_3' } },
+        { type: 'object', maxProperties: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES, additionalProperties: { $ref: '#/properties/error/definitions/bounded_value_level_3' } },
+      ],
+    },
+    bounded_value: {
+      anyOf: [
+        { $ref: '#/properties/error/definitions/bounded_scalar' },
+        { type: 'array', maxItems: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES, items: { $ref: '#/properties/error/definitions/bounded_value_level_2' } },
+        { type: 'object', maxProperties: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES, additionalProperties: { $ref: '#/properties/error/definitions/bounded_value_level_2' } },
+      ],
+    },
+    bounded_object: {
+      type: 'object',
+      maxProperties: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES,
+      propertyNames: { maxLength: MAX_REPORTED_OUTCOME_ERROR_PROPERTY_NAME_LENGTH },
+      additionalProperties: { $ref: '#/properties/error/definitions/bounded_value' },
+    },
+  },
+  properties: {
+    code: { type: 'string', minLength: 1, maxLength: 128 },
+    message: { type: 'string', maxLength: MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH },
+    field: { type: 'string', maxLength: 1_000 },
+    suggestion: { type: 'string', maxLength: MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH },
+    recovery: { type: 'string', enum: ['transient', 'correctable', 'terminal'] },
+    details: { $ref: '#/properties/error/definitions/bounded_object' },
+    classification_source: { type: 'string', enum: ['seller_response_copy', 'buyer_classification'] },
+    ext: { $ref: '#/properties/error/definitions/bounded_object' },
+  },
+  required: ['code'],
+  maxProperties: 16,
+  propertyNames: { maxLength: MAX_REPORTED_OUTCOME_ERROR_PROPERTY_NAME_LENGTH },
+  additionalProperties: { $ref: '#/properties/error/definitions/bounded_value' },
+};
+
+type AuditEvidenceCloneResult =
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; reason: string };
+
+/**
+ * Clone buyer-attributed failure evidence into a deliberately bounded JSON
+ * value. This data is persisted only for audit readback; it must never be
+ * promoted into governance decisions or privileged prompt/context surfaces.
+ */
+function cloneReportedOutcomeError(value: unknown): AuditEvidenceCloneResult {
+  const seen = new Set<object>();
+
+  function cloneScalar(input: unknown): unknown {
+    if (input === null || typeof input === 'boolean') return input;
+    if (typeof input === 'string') {
+      if (input.length > MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH) {
+        throw new Error(`strings must not exceed ${MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH} characters`);
+      }
+      return input;
+    }
+    if (typeof input === 'number') {
+      if (!Number.isFinite(input)) throw new Error('must contain only finite JSON numbers');
+      return input;
+    }
+    throw new Error('must contain only JSON scalar values at this nesting level');
+  }
+
+  function cloneContainer(input: object, remainingContainerLevels: number): unknown {
+    if (seen.has(input)) throw new Error('must not contain circular references');
+    seen.add(input);
+
+    try {
+      if (Array.isArray(input)) {
+        if (input.length > MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES) {
+          throw new Error(`arrays must not contain more than ${MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES} items`);
+        }
+        if (Object.keys(input).length !== input.length) {
+          throw new Error('arrays must not be sparse or contain named properties');
+        }
+        return input.map(item => cloneBoundedValue(item, remainingContainerLevels - 1));
+      }
+
+      const prototype = Object.getPrototypeOf(input);
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new Error('must contain only plain JSON objects');
+      }
+      const keys = Object.keys(input);
+      if (keys.length > MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES) {
+        throw new Error(`objects must not contain more than ${MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES} properties`);
+      }
+      const output: Record<string, unknown> = {};
+      for (const key of keys) {
+        if (FORBIDDEN_EVIDENCE_KEYS.has(key)) throw new Error(`contains forbidden property ${key}`);
+        const descriptor = Object.getOwnPropertyDescriptor(input, key);
+        if (!descriptor || !('value' in descriptor)) throw new Error('must not contain accessor properties');
+        output[key] = cloneBoundedValue(descriptor.value, remainingContainerLevels - 1);
+      }
+      return output;
+    } finally {
+      seen.delete(input);
+    }
+  }
+
+  function cloneBoundedValue(input: unknown, remainingContainerLevels = 3): unknown {
+    if (input === null || ['string', 'boolean', 'number'].includes(typeof input)) {
+      return cloneScalar(input);
+    }
+    if (typeof input !== 'object') throw new Error('must contain only JSON values');
+    if (remainingContainerLevels <= 0) {
+      throw new Error('must not exceed 3 nested container levels');
+    }
+    return cloneContainer(input, remainingContainerLevels);
+  }
+
+  function cloneBoundedObject(input: unknown, label: string): Record<string, unknown> {
+    if (input === null || typeof input !== 'object' || Array.isArray(input)) {
+      throw new Error(`${label} must be an object`);
+    }
+    const prototype = Object.getPrototypeOf(input);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new Error(`${label} must be a plain JSON object`);
+    }
+    const keys = Object.keys(input);
+    if (keys.length > MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES) {
+      throw new Error(`${label} must not contain more than ${MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES} properties`);
+    }
+    const output: Record<string, unknown> = {};
+    for (const key of keys) {
+      if (key.length > MAX_REPORTED_OUTCOME_ERROR_PROPERTY_NAME_LENGTH) {
+        throw new Error(`${label} property names must not exceed ${MAX_REPORTED_OUTCOME_ERROR_PROPERTY_NAME_LENGTH} characters`);
+      }
+      if (FORBIDDEN_EVIDENCE_KEYS.has(key)) throw new Error(`contains forbidden property ${key}`);
+      const descriptor = Object.getOwnPropertyDescriptor(input, key);
+      if (!descriptor || !('value' in descriptor)) throw new Error('must not contain accessor properties');
+      output[key] = cloneBoundedValue(descriptor.value);
+    }
+    return output;
+  }
+
+  try {
+    const cloned = cloneBoundedObject(value, 'error');
+    if (Object.keys(cloned).length > 16) {
+      return { ok: false, reason: 'must not contain more than 16 properties' };
+    }
+    if (typeof cloned.code !== 'string' || cloned.code.length === 0 || cloned.code.length > 128) {
+      return { ok: false, reason: 'must include a code between 1 and 128 characters' };
+    }
+    const stringLimits: Array<[string, number]> = [
+      ['message', MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH],
+      ['field', 1_000],
+      ['suggestion', MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH],
+    ];
+    for (const [field, maxLength] of stringLimits) {
+      if (field in cloned && (typeof cloned[field] !== 'string' || cloned[field].length > maxLength)) {
+        return { ok: false, reason: `${field} must be a string no longer than ${maxLength} characters` };
+      }
+    }
+    if ('recovery' in cloned && !['transient', 'correctable', 'terminal'].includes(cloned.recovery as string)) {
+      return { ok: false, reason: 'recovery must be transient, correctable, or terminal' };
+    }
+    if ('classification_source' in cloned && !['seller_response_copy', 'buyer_classification'].includes(cloned.classification_source as string)) {
+      return { ok: false, reason: 'classification_source must be seller_response_copy or buyer_classification' };
+    }
+    for (const field of ['details', 'ext']) {
+      if (field in cloned) cloned[field] = cloneBoundedObject(cloned[field], field);
+    }
+    const encoded = JSON.stringify(cloned);
+    if (Buffer.byteLength(encoded, 'utf8') > MAX_REPORTED_OUTCOME_ERROR_BYTES) {
+      return { ok: false, reason: `must not exceed ${MAX_REPORTED_OUTCOME_ERROR_BYTES} UTF-8 bytes` };
+    }
+    return { ok: true, value: cloned };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : 'is not valid JSON evidence' };
+  }
+}
 
 /**
  * Map plan-level policy_ids + current check status to per-policy outcomes
@@ -717,7 +912,7 @@ export const GOVERNANCE_TOOLS = [
           },
           required: ['observation_id', 'source', 'observed_at', 'reporting_period', 'cumulative_spend', 'currency'],
         },
-        error: { type: 'object' },
+        error: REPORTED_OUTCOME_ERROR_INPUT_SCHEMA,
       },
       required: ['plan_id', 'outcome', 'idempotency_key'],
       allOf: [
@@ -2372,6 +2567,20 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     }
   }
 
+  let reportedError: Record<string, unknown> | undefined;
+  if (outcome === 'failed') {
+    const clonedError = cloneReportedOutcomeError(req.error);
+    if (!clonedError.ok) {
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `error ${clonedError.reason}.`,
+        }],
+      };
+    }
+    reportedError = clonedError.value;
+  }
+
   let requestPayloadHash: string;
   try {
     requestPayloadHash = computeGovernanceOutcomeHash(req as unknown as Record<string, unknown>);
@@ -2897,6 +3106,7 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
     requestPayloadHash,
     response,
     ...(outcome === 'delivery' && delivery ? { delivery: structuredClone(delivery) } : {}),
+    ...(reportedError ? { reportedError } : {}),
     ...(deliveryReconciliationStatus ? { deliveryReconciliationStatus } : {}),
     ...(deliveryPeriodState ? { deliveryPeriodState } : {}),
     findings,
@@ -3644,6 +3854,7 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
           ...(outcome.governanceContext && { governance_context: outcome.governanceContext }),
           ...(outcome.sellerReference && { seller_reference: outcome.sellerReference }),
           ...(outcome.delivery && { delivery: outcome.delivery }),
+          ...(outcome.reportedError && { error: structuredClone(outcome.reportedError) }),
           ...(outcome.deliveryReconciliationStatus && {
             delivery_reconciliation_status: outcome.deliveryReconciliationStatus,
           }),

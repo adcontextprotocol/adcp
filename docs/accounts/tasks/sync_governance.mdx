@@ -11,6 +11,21 @@ An account binds to one governance agent that owns the full lifecycle. Authoriza
 
 This uses **replace semantics** — each call replaces any previously registered agent on the specified accounts. Accounts not included in the request keep their existing configuration.
 
+## Seller acceptance of governance agents
+
+Sellers may publish seller-wide advisory criteria at `adcp.governance_enforcement.accepted_governance_agents` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). `any_of[]` is a typed union: a candidate is acceptable when it satisfies at least one matcher.
+
+- `agent_url` matches one explicit HTTPS endpoint.
+- `verification` requires a fresh result from the named HTTPS registry for the declared agent role, AdCP version, allowed verification modes, and maximum result age.
+
+URL matchers use the shared [AdCP URL canonicalization rules](/docs/reference/url-canonicalization), not raw string equality. They match the exact canonical endpoint; redirects, DNS aliases, and candidate assertions do not expand an allowlist. A verification matcher is satisfied only by a deterministic result from the seller-configured trusted registry. The candidate cannot nominate the registry, and its self-described role or verification state is never evidence. Registry resolution uses HTTPS, no redirects or forwarded credentials, public-network address checks, DNS pinning through connection, bounded responses, and authenticated registry records. If the registry or verification service cannot be resolved, the seller returns [`GOVERNANCE_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-governance-unavailable); it does not guess or silently turn an availability problem into rejection.
+
+The capabilities declaration is seller-wide preflight guidance. The response to `sync_governance` is authoritative for each account because account contracts, jurisdictions, and product access may narrow the criteria. Verification evidence is evaluated for freshness at binding time and pinned to the accepted binding. Later capability or registry drift does not silently revoke or redirect an existing binding; an explicit account resynchronization creates a new decision. If the submitted agent does not satisfy the applicable criteria, the account result is `failed` with [`GOVERNANCE_AGENT_NOT_ACCEPTED`](/docs/building/verification/compliance-catalog#error-code-governance-agent-not-accepted). A seller may return either opaque details (`{"disclosure":"opaque"}` plus an optional local `rejection_ref`) or disclosed details containing the parsed HTTPS origin and authoritative criteria. The disclosed arm uses `attempted_agent_origin`, never the submitted URL: userinfo, path, query, and fragment are stripped after parsing. The seller MUST NOT persist or contact a rejected endpoint and MUST NOT echo credentials or a raw candidate URL in responses, logs, or error details.
+
+Acceptance matchers MUST express objective operational, security, interoperability, or compliance requirements. A seller MUST NOT use a URL allowlist or verification criterion to exclude a functionally equivalent governance provider merely as commercial leverage. Sellers SHOULD prefer verification criteria over enumerating providers when the registry can express the requirement deterministically.
+
+Absence of `accepted_governance_agents` means the seller does not restrict governance-agent identity through this mechanism and accepts any otherwise valid binding. Adding or changing a declaration does not retroactively invalidate existing bindings; the seller applies it when a buyer next binds or replaces an agent. Account-specific criteria returned on a failed sync override the advisory capability for that attempt.
+
 **Response Time**: ~1s.
 
 **Request Schema**: [`/schemas/v3/account/sync-governance-request.json`](https://adcontextprotocol.org/schemas/v3/account/sync-governance-request.json)
@@ -130,6 +145,8 @@ Returns an `accounts` array with per-account results. Individual entries may fai
 | `status` | `"synced"` or `"failed"`. |
 | `governance_agents` | Governance agents now active on this account. Reflects persisted state. Only present when `status: "synced"`. |
 | `errors` | Per-account errors. Only present when `status: "failed"`. |
+
+For [`GOVERNANCE_AGENT_NOT_ACCEPTED`](/docs/building/verification/compliance-catalog#error-code-governance-agent-not-accepted), `errors[].details` conforms to `error-details/governance-agent-not-accepted.json`. It never contains authentication credentials.
 
 **Error response:**
 

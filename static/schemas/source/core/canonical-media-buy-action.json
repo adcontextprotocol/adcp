@@ -3,6 +3,12 @@
   "$id": "/schemas/core/canonical-media-buy-action.json",
   "title": "Canonical Media Buy Action",
   "description": "A currently available MediaBuy action with the compact-lifecycle task an SDK calls to exercise it. Deprecated coarse action values are absent.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "change_term_link": "When change_term_id is present, it resolves to the accepted proposal change term governing this action.",
+      "legacy_alias_agreement": "When both change_term_id and deprecated terms_ref are emitted as proposal-term links, their values are identical."
+    }
+  },
   "type": "object",
   "discriminator": {
     "propertyName": "task"
@@ -17,7 +23,8 @@
         },
         "mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
         "sla": { "$ref": "/schemas/core/sla-window.json" },
-        "terms_ref": { "type": "string" }
+        "change_term_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "media_buy_change_term" },
+        "terms_ref": { "type": "string", "deprecated": true, "x-deprecated-in": "3.2.0", "x-removed-in": "4.0.0", "description": "Deprecated 3.1 opaque commercial-terms pointer. Prefer change_term_id for accepted proposal-term identity." }
       },
       "required": ["task", "action", "mode"],
       "additionalProperties": false
@@ -31,7 +38,8 @@
         },
         "mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
         "sla": { "$ref": "/schemas/core/sla-window.json" },
-        "terms_ref": { "type": "string" }
+        "change_term_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "media_buy_change_term" },
+        "terms_ref": { "type": "string", "deprecated": true, "x-deprecated-in": "3.2.0", "x-removed-in": "4.0.0", "description": "Deprecated 3.1 opaque commercial-terms pointer. Prefer change_term_id for accepted proposal-term identity." }
       },
       "required": ["task", "action", "mode"],
       "additionalProperties": false
@@ -45,7 +53,8 @@
         },
         "mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
         "sla": { "$ref": "/schemas/core/sla-window.json" },
-        "terms_ref": { "type": "string" }
+        "change_term_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "media_buy_change_term" },
+        "terms_ref": { "type": "string", "deprecated": true, "x-deprecated-in": "3.2.0", "x-removed-in": "4.0.0", "description": "Deprecated 3.1 opaque commercial-terms pointer. Prefer change_term_id for accepted proposal-term identity." }
       },
       "required": ["task", "action", "mode"],
       "additionalProperties": false

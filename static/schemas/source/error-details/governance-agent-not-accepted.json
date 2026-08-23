@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/governance-agent-not-accepted.json",
+  "title": "Governance Agent Not Accepted Details",
+  "description": "Per-account rejection details for a governance-agent binding. Sellers choose either the disclosed or opaque arm; callers must not infer undisclosed criteria.",
+  "type": "object",
+  "discriminator": { "propertyName": "disclosure" },
+  "oneOf": [
+    {
+      "properties": {
+        "disclosure": { "type": "string", "const": "disclosed" },
+        "attempted_agent_origin": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[^/?#@]+$",
+          "maxLength": 2048,
+          "description": "Parsed HTTPS origin only. The seller MUST strip userinfo, path, query, and fragment and MUST NOT echo the raw candidate URL."
+        },
+        "accepted_governance_agents": { "$ref": "/schemas/governance/accepted-governance-agents.json" }
+      },
+      "required": ["disclosure", "attempted_agent_origin", "accepted_governance_agents"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "disclosure": { "type": "string", "const": "opaque" },
+        "rejection_ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "maxLength": 128,
+          "description": "Optional seller-local correlation reference. It does not identify or reveal an acceptance rule."
+        }
+      },
+      "required": ["disclosure"],
+      "additionalProperties": false
+    }
+  ]
+}

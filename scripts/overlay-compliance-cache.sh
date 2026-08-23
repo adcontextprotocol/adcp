@@ -203,11 +203,43 @@ function patchFile(file) {
   addLiteralToConstUnion('CanonicalMediaBuyActionNameSchema', 'cancel', 'update_name');
   addLiteralToConstUnion('MediaBuyValidActionSchema', 'cancel', 'update_name');
   addLiteralToFirstActionUnion('CanonicalMediaBuyActionSchema', 'cancel', 'update_name');
+  // Proposal-bound change terms add seller_managed as the externally visible
+  // async route. The installed SDK snapshot predates that enum member even
+  // after its JSON Schema cache is overlaid, so its generated Zod response
+  // validators must accept the current-source value as well.
+  addLiteralToConstUnion('CanonicalMediaBuyActionModeSchema', 'conditional_self_serve', 'seller_managed');
+  addLiteralToConstUnion('MediaBuyActionModeSchema', 'conditional_self_serve', 'seller_managed');
   fs.writeFileSync(file, text);
 }
 
 patchFile('node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js');
 patchFile('node_modules/@adcp/sdk/dist/lib/types/schemas.generated.mjs');
+
+function patchProposalVerificationFile(file) {
+  if (!fs.existsSync(file)) return;
+  const backup = `${file}.adcp-overlay-backup`;
+  if (!fs.existsSync(backup)) {
+    fs.copyFileSync(file, backup);
+  }
+  let text = fs.readFileSync(file, 'utf8');
+  // The current commercial-terms schema adds proposal-bound change_terms.
+  // The SDK snapshot's semantic verifier has its own allowlist in addition to
+  // the generated/JSON Schema validators, so current-source refinement flows
+  // need the same additive field there until the next SDK release includes it.
+  if (!text.includes('"change_terms"\n]);')) {
+    text = text.replace(
+      '  "cancellation_terms"\n]);',
+      '  "cancellation_terms",\n  "change_terms"\n]);',
+    );
+  }
+  if (!text.includes('"change_terms"\n]);')) {
+    throw new Error(`${file}: SDK proposal verifier allowlist anchor changed; current-source overlay was not applied`);
+  }
+  fs.writeFileSync(file, text);
+}
+
+patchProposalVerificationFile('node_modules/@adcp/sdk/dist/lib/negotiation/verification.js');
+patchProposalVerificationFile('node_modules/@adcp/sdk/dist/lib/negotiation/verification.mjs');
 NODE
 
   echo "Building development compliance bundle for SDK cache overlay"

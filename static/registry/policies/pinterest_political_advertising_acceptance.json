@@ -1,0 +1,57 @@
+{
+  "policy_id": "pinterest_political_advertising_acceptance",
+  "source": "registry",
+  "version": "1.1.0",
+  "name": "Pinterest Political Advertising Acceptance",
+  "description": "Pinterest prohibition on political campaigning, election influence, legislative advocacy, and political merchandise advertising.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["political_advertising"],
+  "governance_domains": ["campaign", "creative"],
+  "effective_date": "2018-01-01",
+  "source_url": "https://policy.pinterest.com/en/advertising-guidelines",
+  "source_name": "Pinterest",
+  "issuer": { "domain": "pinterest.com", "name": "Pinterest" },
+  "acceptance_profile": {
+    "profile_id": "pinterest_political_advertising_acceptance",
+    "version": "1.0.0",
+    "content_digest": "sha256:5ed360814d592d9271157912db6c19709d0090bf287d4192234df945205f1b93",
+    "policy_refs": [{ "policy_id": "pinterest_political_advertising_acceptance", "version": "1.1.0", "content_digest": "sha256:f47f6ad9d15f6576cd3db45b272de729afddc72068836077b6dd276f0127f7b6" }],
+    "coverage": "partial",
+    "scope": {
+      "subject_categories": ["political_advertising"],
+      "applies_to": ["account", "media_buy", "creative", "delivery"],
+      "all_jurisdictions": true
+    },
+    "description": "Reusable coarse profile of Pinterest's public political-advertising acceptance policy.",
+    "rules": [
+      {
+        "rule_id": "pinterest_political_prohibited",
+        "effective_at": "2018-01-01T00:00:00Z",
+        "subject_category": "political_advertising",
+        "subject_facets": ["candidate_or_party", "election_or_ballot_measure", "legislation_or_regulation", "political_merchandise"],
+        "applies_to": ["account", "media_buy", "creative", "delivery"],
+        "disposition": "prohibited",
+        "policy_ids": ["pinterest_political_advertising_acceptance"],
+        "description": "Political campaigning, election influence, legislative advocacy, referendums, and political campaign merchandise are not accepted."
+      }
+    ]
+  },
+  "policy": "Political campaigning and election advertising is prohibited, including advertising for candidates or parties, content intended to influence elections, legislation, or referendums, and political campaign merchandise. The current issuer guidelines control classification of adjacent public-issue and incidental content.",
+  "guidance": "Represent candidate_or_party, election_or_ballot_measure, legislation_or_regulation, and political_merchandise as prohibited. Evaluate issue advocacy under the current issuer definition.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A non-political retailer advertises an ordinary household product without campaign or issue messaging.",
+        "explanation": "The advertisement is outside the prohibited political categories."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A store advertises merchandise bearing a candidate campaign slogan.",
+        "explanation": "Political campaign merchandise advertising is prohibited."
+      }
+    ]
+  }
+}

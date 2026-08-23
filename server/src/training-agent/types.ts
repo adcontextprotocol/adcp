@@ -522,11 +522,12 @@ export interface MediaBuyHistoryEntry {
 export interface MediaBuyAvailableActionState {
   task?: 'control_media_buy' | 'refine_proposals' | 'sync_creatives';
   action: string;
-  mode: 'self_serve' | 'conditional_self_serve' | 'requires_approval';
+  mode: 'self_serve' | 'conditional_self_serve' | 'seller_managed' | 'requires_approval';
   sla?: {
     response_max?: string;
     completion_max?: string;
   };
+  change_term_id?: string;
   terms_ref?: string;
 }
 
@@ -538,6 +539,7 @@ export interface MediaBuyProductAllowedActionState {
     response_max?: string;
     completion_max?: string;
   };
+  constraints?: Record<string, unknown>;
   terms_ref?: string;
 }
 
@@ -944,6 +946,12 @@ export interface GovernanceOutcomeState {
   response?: Record<string, unknown>;
   /** Buyer-attributed delivery observation retained independently of seller evidence. */
   delivery?: Record<string, unknown>;
+  /**
+   * Bounded, untrusted copy of a failed seller interaction as reported by the
+   * buyer. Audit evidence only: never authorization input, seller attestation,
+   * or privileged prompt material.
+   */
+  reportedError?: Record<string, unknown>;
   deliveryReconciliationStatus?: 'consistent' | 'measurement_variance' | 'disputed' | 'unmatched' | 'closed_unresolved';
   /** Operational governance-window state; closure is not a billing settlement. */
   deliveryPeriodState?: 'open' | 'closed';

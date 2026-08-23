@@ -26,10 +26,16 @@ fi
 export ADCP_RELEASE_GIT_REF="${RELEASE_GIT_REF}"
 SDK_GENERATED_SCHEMA_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js"
 SDK_GENERATED_SCHEMA_MJS_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/types/schemas.generated.mjs"
+SDK_PROPOSAL_VERIFICATION_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/negotiation/verification.js"
+SDK_PROPOSAL_VERIFICATION_MJS_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/negotiation/verification.mjs"
 
-restore_sdk_generated_schema() {
+restore_sdk_overlays() {
   local file backup
-  for file in "${SDK_GENERATED_SCHEMA_FILE}" "${SDK_GENERATED_SCHEMA_MJS_FILE}"; do
+  for file in \
+    "${SDK_GENERATED_SCHEMA_FILE}" \
+    "${SDK_GENERATED_SCHEMA_MJS_FILE}" \
+    "${SDK_PROPOSAL_VERIFICATION_FILE}" \
+    "${SDK_PROPOSAL_VERIFICATION_MJS_FILE}"; do
     backup="${file}.adcp-overlay-backup"
     if [ -f "${backup}" ]; then
       cp "${backup}" "${file}"
@@ -224,8 +230,8 @@ if [ -n "${SCHEMA_ROOT}" ]; then
   export ADCP_SCHEMA_ROOT="${SCHEMA_ROOT}"
 fi
 
-restore_sdk_generated_schema
-trap restore_sdk_generated_schema EXIT
+restore_sdk_overlays
+trap restore_sdk_overlays EXIT
 if [ "${OVERLAY}" -eq 1 ]; then
   # Mirror CI's overlay step before running tenants: copies in-repo
   # compliance source onto the SDK's bundled cache so the runner grades

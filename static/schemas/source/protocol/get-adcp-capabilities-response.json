@@ -584,6 +584,10 @@
               },
               "minItems": 1,
               "uniqueItems": true
+            },
+            "accepted_governance_agents": {
+              "$ref": "/schemas/governance/accepted-governance-agents.json",
+              "description": "Seller-wide advisory default for governance agents this enforcing service accepts as binding counterparties. A candidate satisfying any matcher is accepted by this declaration. The per-account sync_governance response is authoritative and may apply stricter account-specific criteria. Omission means accept any, preserving legacy behavior."
             }
           },
           "required": ["tasks"],
@@ -798,6 +802,37 @@
       "type": "object",
       "description": "Media-buy protocol capabilities. Expected when media_buy is in supported_protocols. Sellers declaring media_buy should also include account with supported_billing.",
       "properties": {
+        "acceptance_policy_discovery": {
+          "type": "object",
+          "description": "Support for registry-backed seller acceptance-policy preflight. Presence means the seller accepts criteria.acceptance_context and publishes a versioned catalog. Discovery is advisory; exact task responses remain authoritative, and absent capability means support is unknown rather than unrestricted acceptance.",
+          "properties": {
+            "catalog_url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://",
+              "description": "HTTPS document that validates against acceptance-policy-catalog.json."
+            },
+            "catalog_digest": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "description": "SHA-256 digest of the exact catalog representation fetched from catalog_url."
+            },
+            "default_profile_ids": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "x-entity": "acceptance_policy_profile" },
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Local or registry-referenced catalog profiles that apply seller-wide unless a product adds further profiles. IDs MUST resolve uniquely across profiles and registry_profiles; all referenced profiles compose restrictively."
+            },
+            "acceptance_context": {
+              "type": "boolean",
+              "const": true,
+              "description": "Explicit capability flag distinguishing structured acceptance-context support from a legacy seller that does not interpret it."
+            }
+          },
+          "required": ["catalog_url", "catalog_digest", "acceptance_context"],
+          "additionalProperties": false
+        },
         "supported_pricing_models": {
           "type": "array",
           "description": "Pricing models this seller supports across its product portfolio. Buyers can use this for pre-flight filtering before querying individual products. Individual products may support a subset of these models.",

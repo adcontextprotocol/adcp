@@ -39,5 +39,24 @@
       "node_modules/@adcp/sdk/dist/lib/types/schemas.generated.mjs",
       "schemas.generated.js"
     ]
+  },
+  {
+    "id": "current-change-terms-negotiation-verifier-overlay",
+    "title": "Current change-terms field in SDK proposal verifier",
+    "kind": "node_modules_sdk_cache_mutation",
+    "status": "temporary",
+    "owner": "media-buy",
+    "upstream": "adcontextprotocol/adcp-client#2664",
+    "problem": "The pinned SDK proposal verifier has an independent commercial_terms allowlist that predates the 3.2 change_terms field, so it rejects otherwise schema-valid same-PR refinement responses.",
+    "localBehavior": "During current-source storyboard runs, add change_terms to the installed SDK verifier allowlist and restore the original verifier after the matrix.",
+    "removalCondition": "Remove when the pinned @adcp/sdk release natively validates proposal-bound change_terms through its public negotiation verifier.",
+    "paths": [
+      "scripts/overlay-compliance-cache.sh",
+      "scripts/run-storyboards-matrix.sh"
+    ],
+    "terms": [
+      "node_modules/@adcp/sdk/dist/lib/negotiation/verification.js",
+      "node_modules/@adcp/sdk/dist/lib/negotiation/verification.mjs"
+    ]
   }
 ]

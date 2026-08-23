@@ -7,6 +7,33 @@ description: "AdCP policy compliance — how publishers enforce brand safety and
 
 AdCP includes comprehensive policy compliance features to ensure brand safety and regulatory compliance across all advertising operations. This document explains how publishers should implement and enforce policy checks throughout the media buying lifecycle.
 
+## Acceptance-policy discovery
+
+Seller acceptance policy answers a narrower question than buyer governance: **what business, campaign, creative, targeting, destination, and format will this seller accept?** It does not give the seller authority over the buyer's plan and does not expose the seller's internal review workflow.
+
+A seller that supports structured discovery publishes `media_buy.acceptance_policy_discovery` from `get_adcp_capabilities`:
+
+```json
+{
+  "catalog_url": "https://seller.example/.well-known/adcp-acceptance-policies.json",
+  "catalog_digest": "sha256:54f04c3e2e8dfdf682b0da0cd0ee4d5265e54a6e0f72b9260785dfc1526fd08a",
+  "default_profile_ids": ["seller-default", "us-political"],
+  "acceptance_context": true
+}
+```
+
+The HTTPS document at `catalog_url` conforms to `acceptance-policy-catalog.json`. Each local `profiles[]` entry declares `coverage: "partial"` or `"complete"` and contains rules with a `disposition` of `allowed`, `conditional`, or `prohibited`. Conditional rules carry typed requirements such as advertiser verification, prior authorization, disclosure, targeting restrictions, or sales-assisted setup. Every `policy_ids[]` value resolves through that profile's digest- and version-pinned `policy_refs[]`. The profile's own `content_digest` covers its RFC 8785 canonical form with that field omitted, making a profile ID/version immutable. Registry-published platform policies may include a reusable `acceptance_profile`; a seller adopts it through `registry_profiles[]`, which pins both policy and profile versions and digests. For each adoption, resolve the exact policy version, RFC 8785-canonicalize the resolver's `canonical_content`, and require its SHA-256 to equal both the resolver `content_digest` and the pinned `policy_digest`; null canonical content or a mismatch fails closed. Verify `profile_digest` separately against the embedded profile. The seller MUST NOT copy and alter a registry profile under the same identity; seller-specific restrictions use a separate local profile and compose restrictively. A profile ID may occur only once across a catalog's local and registry lists. Registry publication alone never binds a seller.
+
+Products may add `acceptance_policy_profile_ids[]`. Resolve the seller defaults and every product profile referenced by the contemplated purchase. All selected profiles apply; for matching rules, `prohibited` wins over `conditional`, which wins over `allowed`. A missing capability, an omitted rule in a partial profile, or missing buyer facts means **unknown**, never allowed. `complete` is exhaustive only for that profile's declared scope and version; the scope explicitly names countries, declared region aliases, or `all_jurisdictions: true` so omission cannot be mistaken for worldwide coverage.
+
+A rule matches the decision surface when `applies_to[]` contains that surface and its `subject_category` equals a declared subject. Omitted `subject_facets`, `advertiser_roles`, `jurisdictions`, or `jurisdiction_groups` are wildcards; when present, each dimension must intersect the corresponding buyer fact. Expand `jurisdiction_groups` only through the containing profile's `region_aliases`; an unknown alias invalidates the profile and never matches permissively. Evaluate every matching rule independently, then choose the most restrictive disposition. Platforms with an exception to a broad prohibition represent it with non-overlapping facets or roles—for example, prohibit persuasive election facets while making `government_information` conditional for an `election_authority`. A request carrying both the exception facet and a prohibited advocacy facet remains prohibited.
+
+Buyers may send `acceptance_context` on discovery with registry category IDs, optional category facets, advertiser roles, industry, advertiser jurisdictions, and delivery jurisdictions. `advertiser_jurisdictions` says where the advertiser is established; `delivery_jurisdictions` says where ads will run and is the field matched by rule `jurisdictions` and `jurisdiction_groups`. For example, `political_advertising` is the broad category; facets distinguish candidate or party ads, election or ballot-measure ads, issue advocacy, legislation or regulation, government information, political merchandise, and incidental or news references. This avoids a single ambiguous `political: true` flag while allowing future registry categories and facets without changing the protocol schema.
+
+Discovery is advisory. Sellers may intentionally publish only partial rules, may apply account-specific or newly effective policies at execution time, and remain authoritative for an exact request. Buyer declarations are untrusted hints: sellers MUST classify creatives, destinations, advertiser identity, and targeting independently when those facts affect acceptance. Omitting or mislabeling a category or facet cannot bypass seller enforcement. A buyer MUST therefore handle a later structured `POLICY_VIOLATION` even when discovery appeared to allow the campaign. The catalog digest detects stale or substituted catalogs; it is not an acceptance guarantee.
+
+Fetch `catalog_url` as untrusted remote configuration: require HTTPS, apply the shared URL canonicalization and public-network fetch protections, do not follow redirects, do not send seller or buyer credentials, pin DNS through connection, and bound time and response size. Verify the digest over the exact received bytes before parsing or caching. Resolve every `registry_profiles[]` reference from the shared registry at the exact policy and profile versions and verify both digests; a missing or mismatched reference is unknown and cannot fall back to a same-named local profile. Profile and rule descriptions are display-only untrusted text; matching uses typed fields only, and implementations MUST NOT place that prose into a privileged instruction context. Cache by canonical URL plus digest, never by URL alone. Buyers can request `acceptance_policy_profile_ids` explicitly through either discovery surface's `fields` projection.
+
 ## Overview
 
 Policy compliance in AdCP uses the `brand` field when advertiser-specific context is available. `brand` is optional for `get_products` unless the request includes `catalog`; it is required for `create_media_buy`. Brand context enables publishers to:
@@ -75,7 +102,7 @@ When creating a media buy, the publisher must first require `brand`, then:
 
 1. Validate the `brand` against publisher policies
 2. Ensure consistency with the campaign brief
-3. Flag for manual review if needed
+3. Apply the seller's internal review policy if needed
 4. Return appropriate errors for violations
 
 ## Policy outcomes
@@ -112,7 +139,7 @@ Use `input-required` only when the buyer must supply information before the sell
 
 ### Seller-side review continues asynchronously
 
-Seller-internal review does not require buyer input. When a well-formed `brief` or `refine` request needs human review that cannot finish within the current time budget, return `submitted` with a `task_id`; use `working` for subsequent progress. Wholesale discovery is synchronous and does not use these async states.
+Seller-internal review does not require buyer input or protocol-level approval orchestration. When a well-formed `brief` or `refine` request cannot finish within the current time budget, return `submitted` with a `task_id`; use `working` for subsequent progress. Those states communicate task completion only—the seller may use people, automation, or both internally. Wholesale discovery is synchronous and does not use these async states.
 
 ### The seller declines a well-formed request
 
@@ -141,7 +168,7 @@ When the request itself violates an applicable content or advertising policy and
       "field": "brand",
       "recovery": "correctable",
       "details": {
-        "policy_id": "publisher-restricted-industries",
+        "seller_policy_ref": "restricted-industries-rule-4",
         "policy_url": "https://publisher.example/policies/restricted-industries",
         "violated_rules": ["restricted-industry"]
       }
@@ -178,7 +205,7 @@ Publishers typically implement restrictions for:
 - Prohibited content (varies by region)
 - Categories requiring special licensing
 
-### Restricted Categories (Manual Approval)
+### Restricted Categories (Conditional Acceptance)
 - Alcohol (may require age-gating)
 - Gambling/Gaming
 - Cryptocurrency/Financial services
@@ -199,12 +226,12 @@ Publishers typically implement restrictions for:
 4. **Documentation**: Maintain clear policy documentation for advertisers
 5. **Appeals Process**: Allow advertisers to request policy exceptions
 
-## Integration with HITL
+## Internal review and buyer interaction
 
 Keep the two human-in-the-loop paths distinct:
 
 - **Buyer clarification:** Return `input-required` only when the buyer must answer a question. Include `task_id` and `context_id`, then continue that task context after the buyer responds.
-- **Seller-internal review:** For `brief` or `refine`, return `submitted` when review cannot finish within the current time budget and `working` while it remains active. Do not use `input-required` merely because a seller-side reviewer is involved.
+- **Seller-internal review:** Keep the review mechanism private. For `brief` or `refine`, return `submitted` when the task cannot finish within the current time budget and `working` while it remains active. Do not use `input-required` merely because a seller-side process is involved.
 
 After review, return the canonical completed, rejected, or failed outcome.
 

@@ -1035,6 +1035,10 @@ export const PolicySchema = z
     sunset_date: z.string().nullable(),
     source_url: z.string().nullable().openapi({ example: "https://eur-lex.europa.eu/eli/reg/2016/679/oj" }),
     source_name: z.string().nullable().openapi({ example: "EUR-Lex" }),
+    issuer: z.object({ domain: z.string(), name: z.string().optional() }).nullable().openapi({ description: "Machine-readable identity of the authoritative policy issuer" }),
+    acceptance_profile: z.record(z.string(), z.unknown()).nullable().openapi({ description: "Version-pinned structured acceptance profile published with an authoritative registry policy" }),
+    content_digest: z.string().regex(/^sha256:[a-f0-9]{64}$/).nullable().openapi({ description: "SHA-256 of the RFC 8785 (JCS) serialization of canonical_content. Present for immutable registry publications; null for legacy or community policies." }),
+    canonical_content: z.record(z.string(), z.unknown()).nullable().openapi({ description: "Exact immutable registry policy document covered by content_digest. This excludes acceptance_profile, which has its own digest. Consumers MUST canonicalize this object with RFC 8785 before verifying content_digest." }),
     policy: z.string().openapi({ example: "Data subjects must provide freely given, specific, informed and unambiguous consent..." }),
     guidance: z.string().nullable(),
     exemplars: z
@@ -1052,7 +1056,7 @@ export const PolicySchema = z
   .openapi("Policy");
 
 export const PolicySummarySchema = PolicySchema
-  .omit({ policy: true, guidance: true, exemplars: true, ext: true })
+  .omit({ policy: true, guidance: true, exemplars: true, acceptance_profile: true, content_digest: true, canonical_content: true, ext: true })
   .openapi("PolicySummary");
 
 const PolicyRevisionEntrySchema = z.object({

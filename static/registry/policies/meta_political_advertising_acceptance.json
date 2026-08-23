@@ -1,0 +1,80 @@
+{
+  "policy_id": "meta_political_advertising_acceptance",
+  "source": "registry",
+  "version": "1.1.0",
+  "name": "Meta Political, Electoral, and Social-Issue Advertising Acceptance",
+  "description": "Meta acceptance, authorization, disclosure, archive, targeting, blackout, synthetic-content, and regional availability rules for political, electoral, and social-issue advertising.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["political_advertising"],
+  "governance_domains": ["campaign", "creative"],
+  "effective_date": "2025-10-06",
+  "source_url": "https://about.fb.com/news/2025/07/ending-political-electoral-and-social-issue-advertising-in-the-eu/",
+  "source_name": "Meta",
+  "issuer": { "domain": "meta.com", "name": "Meta" },
+  "acceptance_profile": {
+    "profile_id": "meta_political_advertising_acceptance",
+    "version": "1.0.0",
+    "content_digest": "sha256:7584e8e357a69501b43e9cff6e18ae811355d6765bd1c13b11433ccc79dc32fe",
+    "policy_refs": [{ "policy_id": "meta_political_advertising_acceptance", "version": "1.1.0", "content_digest": "sha256:a8d61d10c9fc04ae7a0af83870f65b92987b9c0a7519d5724afabbbea30b25fc" }],
+    "coverage": "partial",
+    "scope": {
+      "subject_categories": ["political_advertising"],
+      "applies_to": ["account", "media_buy", "creative", "targeting", "delivery"],
+      "all_jurisdictions": true
+    },
+    "region_aliases": {
+      "EU": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]
+    },
+    "description": "Reusable coarse profile of Meta's public political, electoral, and social-issue advertising acceptance policy.",
+    "rules": [
+      {
+        "rule_id": "meta_political_conditional",
+        "effective_at": "2025-10-06T00:00:00Z",
+        "subject_category": "political_advertising",
+        "subject_facets": ["candidate_or_party", "election_or_ballot_measure", "issue_advocacy", "legislation_or_regulation"],
+        "applies_to": ["account", "media_buy", "creative", "targeting", "delivery"],
+        "disposition": "conditional",
+        "requirements": [
+          { "kind": "category_declaration", "declaration": "political_electoral_or_social_issue" },
+          { "kind": "advertiser_verification", "verification_scheme": "meta_identity_and_location_authorization" },
+          { "kind": "disclosure", "format": "paid_for_by", "placement": "creative" },
+          { "kind": "targeting_restriction", "description": "Use only targeting permitted for the applicable political or social-issue category and market." },
+          { "kind": "creative_restriction", "description": "Disclose qualifying digitally created or altered content." },
+          { "kind": "time_restriction", "description": "Observe designated election blackout periods." },
+          { "kind": "transparency_reporting", "description": "Permit retention in the operator's public advertising archive." }
+        ],
+        "policy_ids": ["meta_political_advertising_acceptance"],
+        "description": "In supported non-prohibited markets, political, electoral, and social-issue advertising is conditional on authorization and market-specific restrictions."
+      },
+      {
+        "rule_id": "meta_eu_political_prohibited",
+        "effective_at": "2025-10-06T00:00:00Z",
+        "subject_category": "political_advertising",
+        "subject_facets": ["candidate_or_party", "election_or_ballot_measure", "issue_advocacy", "legislation_or_regulation", "political_merchandise"],
+        "jurisdiction_groups": ["EU"],
+        "applies_to": ["account", "media_buy", "creative", "targeting", "delivery"],
+        "disposition": "prohibited",
+        "policy_ids": ["meta_political_advertising_acceptance"],
+        "description": "Political, electoral, and social-issue advertising is not accepted for EU delivery."
+      }
+    ]
+  },
+  "policy": "Political, electoral, and qualifying social-issue advertising is subject to market-specific acceptance. Advertisers must declare the applicable special ad category. Where accepted, advertisers may be required to complete identity and location authorization, supply a paid-for-by disclosure, comply with restricted targeting, disclose qualifying digitally created or altered content, and allow the advertisement to be retained in a public archive. New political advertisements may be restricted during designated election blackout periods. Political, electoral, and social-issue advertisements are not accepted for delivery in the European Union under the operator policy effective 6 October 2025. Exact eligibility, targeting, disclosure, and timing rules vary by delivery market and advertiser role.",
+  "guidance": "Resolve this policy by delivery jurisdiction and political-advertising facet. Treat EU delivery as prohibited and supported non-EU markets as conditional unless a more specific current issuer policy says otherwise. Discovery does not replace the operator's authorization or creative review.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "An authorized advertiser in a supported market declares the political category, supplies the required sponsor disclosure, uses permitted targeting, and submits outside a blackout window.",
+        "explanation": "The campaign satisfies the coarse acceptance prerequisites; final operator review still applies."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "An advertiser requests delivery of a political advertisement in an EU member state after 6 October 2025.",
+        "explanation": "The operator does not accept political, electoral, or social-issue advertising for EU delivery."
+      }
+    ]
+  }
+}

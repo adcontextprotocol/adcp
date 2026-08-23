@@ -186,6 +186,7 @@ Declares cross-role enforcement of buyer governance for consequential tasks. Thi
 | Field   | Type     | Description                                                                                                                                                                                                                                                                           |
 | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tasks` | object[] | Task-scoped enforcement claims. Each entry has `task` and `modes`; the corresponding request schema defines when the operation is commitment-bearing through `x-governed-commitment`. `task` is the semantic uniqueness key: emit one entry per task and combine modes in that entry. |
+| `accepted_governance_agents` | object | Optional seller-wide advisory matchers for governance agents a buyer may bind. `any_of[]` accepts explicit canonicalized HTTPS URLs or deterministic registry-verification criteria. Omission means any otherwise-valid agent is accepted; [`sync_governance`](/docs/accounts/tasks/sync_governance) remains authoritative per account. |
 
 ```json
 {
@@ -199,7 +200,23 @@ Declares cross-role enforcement of buyer governance for consequential tasks. Thi
           "modes": ["signed_context", "online_execution_check"]
         },
         { "task": "activate_signal", "modes": ["signed_context"] }
-      ]
+      ],
+      "accepted_governance_agents": {
+        "any_of": [
+          {
+            "kind": "agent_url",
+            "agent_url": "https://governance.example/mcp"
+          },
+          {
+            "kind": "verification",
+            "registry": "https://registry.example/agents",
+            "role": "governance",
+            "adcp_version": "3.2",
+            "verification_modes": ["spec", "live"],
+            "max_age_seconds": 86400
+          }
+        ]
+      }
     }
   }
 }
@@ -423,6 +440,25 @@ See [Accounts and Agents](/docs/building/by-layer/L2/accounts-and-agents#what-se
 ### media_buy
 
 Media-buy protocol capabilities. Only present if `media_buy` is in `supported_protocols`. Sellers declaring `media_buy` should also include `account` (with `supported_billing`) and `media_buy.portfolio` — buyers need both to establish billing and understand inventory coverage. Compliance testing validates their presence.
+
+#### acceptance_policy_discovery
+
+`media_buy.acceptance_policy_discovery` advertises structured preflight for what the seller will accept. `catalog_url` identifies an HTTPS `acceptance-policy-catalog.json` document, `catalog_digest` pins its bytes, `default_profile_ids[]` selects seller-wide profiles, and `acceptance_context: true` confirms the seller evaluates the buyer's structured category/facet, role, industry, advertiser-jurisdiction, and delivery-jurisdiction facts.
+
+This capability is advisory. Missing capability or omitted rules in a partial profile are unknown, not unrestricted acceptance. Products may add profile IDs; defaults and product profiles compose restrictively. The exact task response remains authoritative and may return [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) for an account-specific or undisclosed rule.
+
+```json
+{
+  "media_buy": {
+    "acceptance_policy_discovery": {
+      "catalog_url": "https://seller.example/.well-known/adcp-acceptance-policies.json",
+      "catalog_digest": "sha256:54f04c3e2e8dfdf682b0da0cd0ee4d5265e54a6e0f72b9260785dfc1526fd08a",
+      "default_profile_ids": ["seller-default"],
+      "acceptance_context": true
+    }
+  }
+}
+```
 
 #### lifecycle_tools
 

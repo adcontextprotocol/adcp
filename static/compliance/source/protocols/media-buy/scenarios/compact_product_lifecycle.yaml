@@ -1,5 +1,5 @@
 id: media_buy_seller/compact_product_lifecycle
-version: "1.1.0"
+version: "1.2.0"
 title: "Seller completes the compact product lifecycle"
 category: media_buy_seller
 summary: "Verifies product discovery, proposal creation, finalization, acceptance, operational control, and readback through the AdCP 3.2 compact lifecycle."
@@ -59,6 +59,34 @@ fixtures:
           format_kind: "video_hosted"
           params:
             duration_ms_exact: 30000
+      allowed_actions:
+        - action: "decrease_budget"
+          modes: ["self_serve"]
+          allowed_statuses: ["pending_creatives", "pending_start", "active", "paused"]
+          constraints:
+            kind: "budget"
+            max_delta_percent: 50
+        - action: "increase_budget"
+          modes: ["seller_managed"]
+          allowed_statuses: ["active"]
+          sla:
+            response_max: "PT30M"
+            completion_max: "PT24H"
+          constraints:
+            kind: "budget"
+            max_delta_percent: 20
+          terms_ref: "https://seller.example/terms/budget-increase"
+        - action: "extend_flight"
+          modes: ["seller_managed"]
+          allowed_statuses: ["active", "paused"]
+          constraints:
+            kind: "flight"
+            max_change:
+              interval: 7
+              unit: "days"
+        - action: "resume"
+          modes: ["self_serve"]
+          allowed_statuses: ["paused"]
   pricing_options:
     - product_id: "compact_lifecycle_video"
       pricing_option_id: "compact_video_cpm"
@@ -123,7 +151,7 @@ phases:
             sandbox: true
           criteria:
             product_ids: ["compact_lifecycle_video"]
-          fields: ["product_id", "name", "pricing_options"]
+          fields: ["product_id", "name", "pricing_options", "allowed_actions"]
           max_results: 1
         context_outputs:
           - name: listed_product_id
@@ -139,6 +167,16 @@ phases:
             path: "products[0].product_id"
             value: "compact_lifecycle_video"
             description: "The requested published product is discoverable"
+          - check: field_contains
+            path: "products[0].allowed_actions[*]"
+            value:
+              action: "increase_budget"
+              modes: ["seller_managed"]
+              allowed_statuses: ["active"]
+              constraints:
+                kind: "budget"
+                max_delta_percent: 20
+            description: "Product discovery exposes an advisory status-scoped budget bound"
 
   - id: request_draft
     title: "Request a proposal for the discovered product"
@@ -182,6 +220,43 @@ phases:
             path: "proposals[0].commercial_terms.purchases[0].product_id"
             context_key: "listed_product_id"
             description: "The proposal uses the exact discovered product"
+          - check: field_contains
+            path: "proposals[0].commercial_terms.change_terms[*]"
+            value:
+              term_id: "change_decrease_budget"
+              action: "decrease_budget"
+              service_mode: "self_serve"
+              constraints:
+                kind: "budget"
+                max_delta_percent: 50
+            description: "The proposal materializes the product template as a binding decrease right"
+          - check: field_contains
+            path: "proposals[0].commercial_terms.change_terms[*]"
+            value:
+              term_id: "change_increase_budget"
+              action: "increase_budget"
+              service_mode: "seller_managed"
+              allowed_statuses: ["active"]
+              processing_sla:
+                response_max: "PT30M"
+                completion_max: "PT24H"
+              constraints:
+                kind: "budget"
+                max_delta_percent: 20
+              terms_ref: "https://seller.example/terms/budget-increase"
+            description: "The proposal binds mode, status, SLA, portable bounds, and the contract reference"
+          - check: field_contains
+            path: "proposals[0].commercial_terms.change_terms[*]"
+            value:
+              term_id: "change_extend_flight"
+              action: "extend_flight"
+              service_mode: "seller_managed"
+              constraints:
+                kind: "flight"
+                max_change:
+                  interval: 7
+                  unit: "days"
+            description: "The proposal carries a machine-readable flight-extension bound"
 
   - id: finalize_draft
     title: "Finalize the draft into an inventory hold"
@@ -222,6 +297,14 @@ phases:
             path: "results[0].proposal.parent_proposal_id"
             context_key: "draft_proposal_id"
             description: "The committed snapshot preserves proposal lineage"
+          - check: field_contains
+            path: "results[0].proposal.commercial_terms.change_terms[*]"
+            value:
+              term_id: "change_increase_budget"
+              action: "increase_budget"
+              service_mode: "seller_managed"
+              allowed_statuses: ["active"]
+            description: "Finalization preserves the exact proposal-bound change right"
 
   - id: accept_commitment
     title: "Accept the committed proposal"
@@ -280,14 +363,26 @@ phases:
               task: "control_media_buy"
               action: "decrease_budget"
               mode: "self_serve"
-            description: "The accepted MediaBuy exposes the legal decrease-only control"
+              change_term_id: "change_decrease_budget"
+            description: "The accepted MediaBuy links its legal current control to the negotiated term"
+          - check: field_contains
+            path: "accepted_proposal.commercial_terms.change_terms[*]"
+            value:
+              term_id: "change_increase_budget"
+              action: "increase_budget"
+              service_mode: "seller_managed"
+              allowed_statuses: ["active"]
+              constraints:
+                kind: "budget"
+                max_delta_percent: 20
+            description: "Acceptance preserves status-scoped rights even when they are not currently available"
 
   - id: control_accepted_buy
     title: "Apply a revision-checked operational control"
     depends_on: [accept_commitment]
     steps:
-      - id: cap_accepted_proposal_daily_budget
-        title: "Apply a lower daily budget cap"
+      - id: decrease_accepted_proposal_total_budget
+        title: "Apply a bounded total-budget decrease"
         task: control_media_buy
         schema_ref: "media-buy/control-media-buy-request.json"
         response_schema_ref: "media-buy/control-media-buy-response.json"
@@ -302,7 +397,9 @@ phases:
             sandbox: true
           media_buy_id: "$context.accepted_media_buy_id"
           revision: "$context.accepted_media_buy_revision"
-          daily_budget_cap: 100
+          total_budget:
+            amount: 750
+            currency: "USD"
         context_outputs:
           - name: proposal_controlled_media_buy_id
             path: "media_buy_id"
@@ -316,7 +413,7 @@ phases:
           - check: field_value
             path: "status"
             value: "completed"
-            description: "The prepared decrease-only control completes synchronously"
+            description: "The negotiated decrease within the 50% bound completes synchronously"
           - check: field_equals_context
             path: "media_buy_id"
             context_key: "accepted_media_buy_id"
@@ -376,9 +473,9 @@ phases:
             context_key: "proposal_controlled_revision"
             description: "The control incremented the MediaBuy revision"
           - check: field_value
-            path: "media_buys[0].daily_budget_cap"
-            value: 100
-            description: "Readback persists the decrease-only daily cap"
+            path: "media_buys[0].total_budget"
+            value: 750
+            description: "Readback persists the bounded total-budget decrease"
           - check: field_equals_context
             path: "media_buys[0].accepted_proposal_id"
             context_key: "committed_proposal_id"
@@ -395,3 +492,17 @@ phases:
             path: "media_buys[0].accepted_proposal.terms_digest"
             context_key: "committed_terms_digest"
             description: "The nested accepted snapshot preserves the finalized terms digest"
+          - check: field_contains
+            path: "media_buys[0].available_actions[*]"
+            value:
+              action: "decrease_budget"
+              mode: "self_serve"
+              change_term_id: "change_decrease_budget"
+            description: "Readback keeps the authoritative current action linked to its accepted right"
+          - check: field_contains
+            path: "media_buys[0].accepted_proposal.commercial_terms.change_terms[*]"
+            value:
+              term_id: "change_resume"
+              action: "resume"
+              allowed_statuses: ["paused"]
+            description: "Readback retains negotiated rights that are latent in the current status"

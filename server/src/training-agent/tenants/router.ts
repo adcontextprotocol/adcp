@@ -21,10 +21,14 @@ import {
   salesCapabilityProjection,
 } from '../v6-sales-platform.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
+import { TRAINING_ACCEPTED_GOVERNANCE_AGENTS } from '../account-handlers.js';
 import {
   adcpError,
   resolveServedAdcpVersion,
   supportedCanonicalFormatsCapability,
+  TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST,
+  TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH,
+  TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE,
 } from '../task-handlers.js';
 import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
@@ -127,7 +131,7 @@ const SALES_CURRENT_SCENARIOS = [
   'evaluate_distributed_brand_resolution',
 ] as const;
 
-const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.4'] as const;
+const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.4'] as const;
 const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.4';
 const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
 const PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES = [
@@ -429,11 +433,12 @@ async function tryHandleLocalComplyScenario(
   principal: string | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): Promise<boolean> {
-  if (tenantId !== 'sales') return false;
   if (req.body?.method !== 'tools/call') return false;
   if (req.body?.params?.name !== 'comply_test_controller') return false;
 
   const rawArgs = (req.body.params.arguments ?? {}) as Record<string, unknown>;
+  const isAccountGovernanceBindingProbe = rawArgs.scenario === 'query_account_governance_binding';
+  if (tenantId !== 'sales' && !isAccountGovernanceBindingProbe) return false;
   const isThreeZeroCompat = storyboardCompat?.version === '3.0';
   const isRejectedGetProductsDirective = rawArgs.scenario === 'force_get_products_arm'
     && (rawArgs.params as Record<string, unknown> | undefined)?.arm === 'rejected';
@@ -446,6 +451,7 @@ async function tryHandleLocalComplyScenario(
     && rawArgs.scenario !== 'evaluate_distributed_brand_resolution'
     && rawArgs.scenario !== 'compact_product_lifecycle_probe'
     && rawArgs.scenario !== 'compact_direct_buy_lifecycle_probe'
+    && rawArgs.scenario !== 'query_account_governance_binding'
     && rawArgs.scenario !== 'list_scenarios'
     && !isCompactLifecycleProbe
     && !isRejectedGetProductsDirective
@@ -459,6 +465,7 @@ async function tryHandleLocalComplyScenario(
       || rawArgs.scenario === 'evaluate_distributed_brand_resolution'
       || rawArgs.scenario === 'compact_product_lifecycle_probe'
       || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe'
+      || rawArgs.scenario === 'query_account_governance_binding'
       || isRejectedGetProductsDirective
     )
   ) return false;
@@ -780,7 +787,10 @@ function projectTenantCapabilities(
       if (tasks) {
         structured.adcp = {
           ...structured.adcp,
-          governance_enforcement: { tasks },
+          governance_enforcement: {
+            tasks,
+            accepted_governance_agents: TRAINING_ACCEPTED_GOVERNANCE_AGENTS,
+          },
         };
         const experimentalFeatures = Array.isArray(structured.experimental_features)
           ? structured.experimental_features.filter((feature): feature is string => typeof feature === 'string')
@@ -831,6 +841,14 @@ function projectTenantCapabilities(
       structured.media_buy = {
         ...mediaBuy,
         ...salesProjection,
+        ...(supportsGetProductsRejected(servedVersion) && {
+          acceptance_policy_discovery: {
+            catalog_url: `${getCanonicalBase()}${TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH}`,
+            catalog_digest: TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST,
+            default_profile_ids: [TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE],
+            acceptance_context: true,
+          },
+        }),
         ...(supportsGetProductsRejected(servedVersion) && {
           lifecycle_tools: [...PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES],
           // Flexible-window availability discovery: the platform parses

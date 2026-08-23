@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import Ajv from 'ajv';
 import '../../src/training-agent/task-handlers.js';
 import {
+  GOVERNANCE_TOOLS,
   handleCheckGovernance,
   handleGetPlanAuditLogs,
   handleReportPlanOutcome,
@@ -110,6 +112,153 @@ describe('report_plan_outcome authorization and ledger binding', () => {
       });
     },
   );
+
+  it('persists a detached failed-outcome error and returns it in the audit trail', async () => {
+    await runWithSessionContext(async () => {
+      const intent = await setupIntent(100);
+      const reportedError = {
+        code: 'POLICY_VIOLATION',
+        message: 'The seller declined this governed action.',
+        classification_source: 'seller_response_copy',
+        details: {
+          disposition: 'declined',
+          seller_policy_ref: 'seller-policy://restricted-category',
+          disclosed: false,
+        },
+      };
+
+      const result = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: intent.check_id,
+        governance_context: intent.governance_context,
+        idempotency_key: `outcome_${intent.check_id}_failed_0001`,
+        outcome: 'failed',
+        error: reportedError,
+      }, BUYER_CTX) as Record<string, any>;
+
+      reportedError.message = 'mutated after persistence';
+      reportedError.details.seller_policy_ref = 'seller-policy://mutated';
+      const logs = await audit();
+      const outcomeEntry = logs.plans[0].entries.find((entry: any) => entry.type === 'outcome');
+
+      expect(result).toMatchObject({ outcome_state: 'accepted' });
+      expect(logs.plans[0].budget.committed).toBe(0);
+      expect(outcomeEntry).toMatchObject({
+        outcome: 'failed',
+        error: {
+          code: 'POLICY_VIOLATION',
+          message: 'The seller declined this governed action.',
+          classification_source: 'seller_response_copy',
+          details: {
+            disposition: 'declined',
+            seller_policy_ref: 'seller-policy://restricted-category',
+            disclosed: false,
+          },
+        },
+      });
+      outcomeEntry.error.message = 'mutated audit response';
+      const rereadEntry = (await audit()).plans[0].entries.find((entry: any) => entry.type === 'outcome');
+      expect(rereadEntry.error.message).toBe('The seller declined this governed action.');
+    });
+  });
+
+  it('rejects deeply nested failed-outcome evidence without mutation', async () => {
+    await runWithSessionContext(async () => {
+      const intent = await setupIntent(100);
+      const details: Record<string, unknown> = {};
+      let cursor = details;
+      for (let index = 0; index < 10; index += 1) {
+        const next: Record<string, unknown> = {};
+        cursor.next = next;
+        cursor = next;
+      }
+
+      const result = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: intent.check_id,
+        governance_context: intent.governance_context,
+        idempotency_key: `outcome_${intent.check_id}_deep_0001`,
+        outcome: 'failed',
+        error: { code: 'SELLER_DECLINED', details },
+      }, BUYER_CTX) as Record<string, any>;
+
+      expect(result.errors?.[0]).toMatchObject({ code: 'VALIDATION_ERROR' });
+      expect(result.errors?.[0]?.message).toContain('nested container levels');
+      expect((await audit()).plans[0].summary.outcomes_reported).toBe(0);
+    });
+  });
+
+  it('rejects oversized failed-outcome evidence without mutation', async () => {
+    await runWithSessionContext(async () => {
+      const intent = await setupIntent(100);
+      const result = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: intent.check_id,
+        governance_context: intent.governance_context,
+        idempotency_key: `outcome_${intent.check_id}_large_0001`,
+        outcome: 'failed',
+        error: {
+          code: 'SELLER_DECLINED',
+          opaque_evidence: Object.fromEntries(
+            Array.from({ length: 5 }, (_, index) => [`chunk_${index}`, 'x'.repeat(4_000)]),
+          ),
+        },
+      }, BUYER_CTX) as Record<string, any>;
+
+      expect(result.errors?.[0]).toMatchObject({ code: 'VALIDATION_ERROR' });
+      expect(result.errors?.[0]?.message).toContain('UTF-8 bytes');
+      expect((await audit()).plans[0].summary.outcomes_reported).toBe(0);
+    });
+  });
+
+  it('keeps failed-outcome runtime validation aligned with the canonical evidence bounds', async () => {
+    await runWithSessionContext(async () => {
+      const invalidErrors: Array<[string, Record<string, unknown>]> = [
+        ['long message', { code: 'SELLER_DECLINED', message: 'x'.repeat(4_001) }],
+        ['wide details', {
+          code: 'SELLER_DECLINED',
+          details: Object.fromEntries(Array.from({ length: 33 }, (_, index) => [`field_${index}`, index])),
+        }],
+        ['long property name', { code: 'SELLER_DECLINED', ['x'.repeat(129)]: true }],
+        ['invalid recovery', { code: 'SELLER_DECLINED', recovery: 'retry_sometime' }],
+        ['invalid classification', { code: 'SELLER_DECLINED', classification_source: 'seller_claim' }],
+      ];
+
+      for (const [label, error] of invalidErrors) {
+        const intent = await setupIntent(100);
+        const result = await handleReportPlanOutcome({
+          plan_id: PLAN.plan_id,
+          check_id: intent.check_id,
+          governance_context: intent.governance_context,
+          idempotency_key: `outcome_${intent.check_id}_bounds_0001`,
+          outcome: 'failed',
+          error,
+        }, BUYER_CTX) as Record<string, any>;
+
+        expect(result.errors?.[0], label).toMatchObject({ code: 'VALIDATION_ERROR' });
+      }
+
+      expect((await audit()).plans[0].summary.outcomes_reported).toBe(0);
+    });
+  });
+
+  it('publishes the bounded failed-outcome evidence shape in the MCP tool schema', () => {
+    const tool = GOVERNANCE_TOOLS.find(candidate => candidate.name === 'report_plan_outcome');
+    expect(tool).toBeDefined();
+    const validate = new Ajv({ strict: false, validateFormats: false }).compile(tool!.inputSchema);
+    const input = {
+      plan_id: PLAN.plan_id,
+      check_id: 'check_schema_0001',
+      governance_context: 'opaque-context',
+      idempotency_key: 'outcome_schema_validation_0001',
+      outcome: 'failed',
+      error: { code: 'SELLER_DECLINED', classification_source: 'seller_claim' },
+    };
+
+    expect(validate(input)).toBe(false);
+    input.error.classification_source = 'seller_response_copy';
+    expect(validate(input), JSON.stringify(validate.errors)).toBe(true);
+  });
 
   it('returns the cached response for an exact idempotent replay', async () => {
     await runWithSessionContext(async () => {

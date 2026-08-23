@@ -27,6 +27,9 @@ requires_scenarios:
   - media_buy_seller/geo_region_exclusion_support
   - media_buy_seller/geo_region_targeting
   - media_buy_seller/available_actions
+  - media_buy_seller/change_rights_state_projection
+  - media_buy_seller/acceptance_policy_discovery
+  - media_buy_seller/governance_agent_binding_acceptance
   - media_buy_seller/invalid_transitions
   - media_buy_seller/creative_fate_after_cancellation
   - media_buy_seller/inline_creatives_without_sync

@@ -509,6 +509,13 @@
         "type": "string"
       }
     },
+    "acceptance_policy_profile_ids": {
+      "type": "array",
+      "description": "Acceptance-policy profiles from the seller catalog that apply to this product in addition to seller defaults. Profiles compose restrictively; the most restrictive matching disposition wins.",
+      "items": { "type": "string", "minLength": 1, "x-entity": "acceptance_policy_profile" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "trusted_match": {
       "type": "object",
       "description": "Trusted Match Protocol capabilities for this product. When present, the product supports real-time contextual and/or identity matching via TMP. Buyers use this to determine what response types the publisher can accept and whether brands can be selected dynamically at match time.",

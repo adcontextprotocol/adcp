@@ -107,6 +107,20 @@ Absence of the declaration means use the 3.x compatibility facades. Retry a
 stateful request with the same tool name, idempotency key, and payload; an
 idempotency key does not create replay identity across old and new task names.
 
+### Resolve product, proposal, and live action rights
+
+Use product `allowed_actions[]` only to select offers. Binding rights live in
+accepted `commercial_terms.change_terms[]`; the live buy's
+`available_actions[]` is the authoritative current-state subset. A 3.2 buyer
+uses `available_actions[].change_term_id` to resolve the accepted proposal
+term, including its `allowed_statuses`, constraints, mode, and processing SLA.
+
+The `available_actions[].terms_ref` field shipped in 3.1 and remains valid but
+opaque. Continue parsing it for 3.1 peers. A 3.2 seller may echo a
+`change_term_id` there for an older consumer, but new integrations emit and
+prefer `change_term_id`; if both are used as term links, they must agree.
+Remove the alias only with AdCP 4.0.
+
 ### Targeting-aware discovery
 
 Move structured delivery constraints from briefs and legacy filters into

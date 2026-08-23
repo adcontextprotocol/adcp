@@ -170,6 +170,33 @@ Commercial changes after acceptance use the same proposal lineage to create an
 amendment or negotiated cancellation. Operational changes inside the accepted
 envelope use [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy).
 
+When the seller offers post-acceptance change rights, it places them in
+`commercial_terms.change_terms[]`. Each entry names one canonical action, its
+service mode, lifecycle statuses, an optional elapsed-time processing SLA,
+portable constraints, stable conditions, and an optional contract reference.
+Because the array is inside `commercial_terms`, the proposal `terms_digest`
+binds those rights. When the array is present, an omitted action was not
+negotiated; omission of the entire array preserves the legacy
+unspecified-rights behavior.
+
+Treat the three action surfaces as a narrowing sequence:
+
+| Surface | Buyer question | Meaning |
+|---|---|---|
+| Product `allowed_actions[]` | Could this product support the change? | Advisory selection template |
+| Proposal `commercial_terms.change_terms[]` | What change rights does this deal promise? | Binding contractual ceiling |
+| MediaBuy `available_actions[]` | What can I invoke now? | Authoritative current-state projection |
+
+The proposal must restate any product constraint that becomes binding. A live
+action links back through `change_term_id`; product and change-term `terms_ref`
+remain document references, not identities or authority grants.
+
+The accepted rights bind to the resulting media buy and account, not to the
+individual agent that accepted the proposal. A delegated operator
+may exercise a right only when both gates admit the call: seller-side account
+authorization (`allowed_tasks` and any `field_scopes`) and the buyer's signed
+governance delegation. Neither gate expands the other.
+
 See [Proposal negotiation](/docs/media-buy/product-discovery/proposal-negotiation)
 for request shapes, failure planes, finalization, and recovery.
 

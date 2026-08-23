@@ -1,0 +1,131 @@
+id: media_buy_seller/acceptance_policy_discovery
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Seller exposes structured acceptance-policy discovery"
+category: media_buy_seller
+summary: "Verifies that an advertised acceptance-policy catalog is digest-pinned and that product-specific profiles are discoverable with structured buyer context."
+track: media_buy
+
+requires:
+  - controller
+
+required_tools:
+  - get_adcp_capabilities
+  - get_products
+
+requires_capability:
+  path: media_buy.acceptance_policy_discovery.acceptance_context
+  equals: true
+
+narrative: |
+  A seller that advertises structured acceptance discovery gives buyers a
+  digest-pinned catalog before they construct a buy. Seller-wide defaults and
+  product-specific profile IDs compose restrictively; an omitted capability or
+  rule remains unknown, never implicitly allowed. The task response is still
+  authoritative and may enforce undisclosed policy.
+
+  This protocol storyboard verifies the in-band discovery and projection
+  contract. Runners that dereference arbitrary HTTPS resources should
+  additionally fetch catalog_url, validate acceptance-policy-catalog.json, and
+  compare the exact response bytes with catalog_digest.
+
+agent:
+  interaction_model: stateful_preloaded
+  capabilities:
+    - sells_media
+    - acceptance_policy_discovery
+  examples:
+    - "Seller publishing preflight acceptance criteria"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The controller seeds a product that adds a product-specific policy profile to the seller defaults."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "acceptance_policy_video"
+      name: "Acceptance policy video"
+      description: "Sandbox video inventory with a product-specific acceptance profile"
+      delivery_type: "non_guaranteed"
+      channels: ["video"]
+      acceptance_policy_profile_ids:
+        - "google_political_advertising_acceptance"
+      format_options:
+        - format_option_id: "acceptance_policy_video_15s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 15000
+      pricing_options:
+        - pricing_option_id: "acceptance_policy_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 12
+
+phases:
+  - id: discover_catalog
+    title: "Discover the seller policy catalog"
+    steps:
+      - id: get_acceptance_policy_capability
+        title: "Read digest-pinned discovery metadata"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "acceptance_policy_discovery--capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_present
+            path: "media_buy.acceptance_policy_discovery.catalog_url"
+            description: "The seller publishes an HTTPS policy catalog location"
+          - check: field_present
+            path: "media_buy.acceptance_policy_discovery.catalog_digest"
+            description: "The seller pins the exact catalog representation"
+          - check: field_value
+            path: "media_buy.acceptance_policy_discovery.acceptance_context"
+            value: true
+            description: "The seller commits to interpreting structured acceptance context"
+
+  - id: discover_product_profiles
+    title: "Discover product-specific profiles"
+    depends_on: [discover_catalog]
+    steps:
+      - id: get_contextual_products
+        title: "Send structured context and request profile projections"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          buying_mode: "brief"
+          brief: "Find sandbox video inventory for a US public-policy campaign."
+          brand:
+            domain: "acmeoutdoor.example"
+          fields:
+            - "acceptance_policy_profile_ids"
+          acceptance_context:
+            subjects:
+              - subject_category: "political_advertising"
+                subject_facets: ["federal_election"]
+            advertiser_roles: ["agency"]
+            advertiser_industry: "government_nonprofit.political"
+            advertiser_jurisdictions: ["US"]
+            delivery_jurisdictions: ["US"]
+          context:
+            correlation_id: "acceptance_policy_discovery--products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_contains
+            path: "products[*].acceptance_policy_profile_ids[*]"
+            value: "google_political_advertising_acceptance"
+            description: "The product exposes the additional profile that buyers must compose with seller defaults"

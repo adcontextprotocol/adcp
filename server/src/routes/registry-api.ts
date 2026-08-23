@@ -2482,7 +2482,7 @@ registry.registerPath({
   operationId: "resolvePolicy",
   summary: "Resolve policy",
   description:
-    "Resolve a single policy by ID. Optionally pin to a specific version — returns null if the version does not match.",
+    "Resolve a single policy by ID. Optionally pin to an immutable published version. Registry publications include canonical_content and its RFC 8785 SHA-256 content_digest; a version that was never published returns not found.",
   tags: ["Policy Registry"],
   request: {
     query: z.object({

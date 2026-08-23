@@ -503,7 +503,10 @@ async function runTests() {
       return `x-governed-commitment tasks (${annotatedTasks.join(', ')}) do not match capability enum (${declaredTasks.join(', ')})`;
     }
     const enforcementSchema = capabilities.properties.adcp.properties.governance_enforcement;
-    const validateEnforcement = new Ajv({ strict: false }).compile(enforcementSchema);
+    const enforcementAjv = new Ajv({ strict: false });
+    addFormats(enforcementAjv);
+    enforcementAjv.addSchema(loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/accepted-governance-agents.json')));
+    const validateEnforcement = enforcementAjv.compile(enforcementSchema);
     if (!validateEnforcement({ tasks: [{ task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] }] })) {
       return 'valid media-buy online enforcement claim was rejected';
     }

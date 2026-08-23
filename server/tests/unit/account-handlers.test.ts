@@ -1008,7 +1008,7 @@ describe('sync_governance', () => {
       accounts: [{
         account: { brand: { domain: 'acme.com' }, operator: 'agency-one', sandbox: true },
         governance_agents: [{
-          url: 'https://governance.example.com/mcp',
+          url: 'https://governance.example/mcp',
           authentication: { schemes: ['bearer'], credentials: 'tok_123' },
         }],
       }],
@@ -1020,7 +1020,7 @@ describe('sync_governance', () => {
 
     const agents = govResult.governance_agents as Array<{ url: string }>;
     expect(agents).toHaveLength(1);
-    expect(agents[0].url).toBe('https://governance.example.com/mcp');
+    expect(agents[0].url).toBe('https://governance.example/mcp');
   });
 
   it('replaces the governance agent on second call', async () => {
@@ -1033,7 +1033,7 @@ describe('sync_governance', () => {
       accounts: [{
         account: ref,
         governance_agents: [{
-          url: 'https://gov-a.example.com/mcp',
+          url: 'https://governance.example/mcp',
           authentication: { schemes: ['bearer'], credentials: 'tok_a' },
         }],
       }],
@@ -1044,7 +1044,7 @@ describe('sync_governance', () => {
       accounts: [{
         account: ref,
         governance_agents: [{
-          url: 'https://gov-b.example.com/mcp',
+          url: 'https://test-agent.adcontextprotocol.org',
           authentication: { schemes: ['bearer'], credentials: 'tok_b' },
         }],
       }],
@@ -1054,7 +1054,7 @@ describe('sync_governance', () => {
     expect(govResult.status).toBe('synced');
     const agents = govResult.governance_agents as Array<{ url: string }>;
     expect(agents).toHaveLength(1);
-    expect(agents[0].url).toBe('https://gov-b.example.com/mcp');
+    expect(agents[0].url).toBe('https://test-agent.adcontextprotocol.org/');
   });
 
   it('rejects payloads carrying more than one governance agent at the request-shape layer (maxItems: 1)', async () => {
@@ -1093,7 +1093,7 @@ describe('sync_governance', () => {
       accounts: [{
         account: { brand: { domain: 'nonexistent.com' }, operator: 'nobody' },
         governance_agents: [{
-          url: 'https://gov.example.com/mcp',
+          url: 'https://governance.example/mcp',
           authentication: { schemes: ['bearer'], credentials: 'tok' },
         }],
       }],
@@ -1114,7 +1114,7 @@ describe('sync_governance', () => {
       accounts: [{
         account: { account_id: accountId },
         governance_agents: [{
-          url: 'https://gov.example.com/mcp',
+          url: 'https://governance.example/mcp',
           authentication: { schemes: ['bearer'], credentials: 'tok' },
         }],
       }],
@@ -1124,6 +1124,6 @@ describe('sync_governance', () => {
     expect(govResult.status).toBe('synced');
     const agents = govResult.governance_agents as Array<{ url: string }>;
     expect(agents).toHaveLength(1);
-    expect(agents[0].url).toBe('https://gov.example.com/mcp');
+    expect(agents[0].url).toBe('https://governance.example/mcp');
   });
 });

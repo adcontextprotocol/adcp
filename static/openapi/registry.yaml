@@ -2417,6 +2417,18 @@ components:
             - string
             - "null"
           example: EUR-Lex
+        issuer:
+          type:
+            - object
+            - "null"
+          properties:
+            domain:
+              type: string
+            name:
+              type: string
+          required:
+            - domain
+          description: Machine-readable identity of the authoritative policy issuer
         source_type:
           type: string
           enum:
@@ -2449,6 +2461,7 @@ components:
         - sunset_date
         - source_url
         - source_name
+        - issuer
         - source_type
         - review_status
         - created_at
@@ -2541,6 +2554,36 @@ components:
             - string
             - "null"
           example: EUR-Lex
+        issuer:
+          type:
+            - object
+            - "null"
+          properties:
+            domain:
+              type: string
+            name:
+              type: string
+          required:
+            - domain
+          description: Machine-readable identity of the authoritative policy issuer
+        acceptance_profile:
+          type:
+            - object
+            - "null"
+          additionalProperties: {}
+          description: Version-pinned structured acceptance profile published with an authoritative registry policy
+        content_digest:
+          type:
+            - string
+            - "null"
+          pattern: ^sha256:[a-f0-9]{64}$
+          description: SHA-256 of the RFC 8785 (JCS) serialization of canonical_content. Present for immutable registry publications; null for legacy or community policies.
+        canonical_content:
+          type:
+            - object
+            - "null"
+          additionalProperties: {}
+          description: Exact immutable registry policy document covered by content_digest. This excludes acceptance_profile, which has its own digest. Consumers MUST canonicalize this object with RFC 8785 before verifying content_digest.
         policy:
           type: string
           example: Data subjects must provide freely given, specific, informed and unambiguous consent...
@@ -2618,6 +2661,10 @@ components:
         - sunset_date
         - source_url
         - source_name
+        - issuer
+        - acceptance_profile
+        - content_digest
+        - canonical_content
         - policy
         - guidance
         - exemplars
@@ -8943,7 +8990,7 @@ paths:
     get:
       operationId: resolvePolicy
       summary: Resolve policy
-      description: Resolve a single policy by ID. Optionally pin to a specific version — returns null if the version does not match.
+      description: Resolve a single policy by ID. Optionally pin to an immutable published version. Registry publications include canonical_content and its RFC 8785 SHA-256 content_digest; a version that was never published returns not found.
       tags:
         - Policy Registry
       parameters:

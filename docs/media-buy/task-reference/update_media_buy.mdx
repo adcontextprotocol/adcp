@@ -58,7 +58,7 @@ must reject the field before mutation.
 
 ## Action vocabulary and field mapping
 
-Buyers express intent through actions; the seller declares the actions available on each buy via the structured `available_actions[]` field (authoritative) and the flat `valid_actions[]` field (legacy, deprecated in 4.0). When both fields are present, consumers MUST prefer `available_actions[]` — it carries the resolved `mode`, optional `sla`, and optional `terms_ref` that the flat string array cannot represent. When a buyer issues an `update_media_buy` request, the seller maps the request's fields to one or more actions and rejects with [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) (carrying `attempted_action`, `reason`, and `currently_available_actions` in `error.details`) if any mapped action is not in the buy's resolved `available_actions[]`.
+Buyers express intent through actions; the seller declares the actions available on each buy via the structured `available_actions[]` field (authoritative for current routing) and the flat `valid_actions[]` field (legacy, deprecated in 4.0). Accepted proposal `commercial_terms.change_terms[]` are the contractual ceiling: current `available_actions[]` may narrow a right because of state or a stated condition, but cannot broaden it or silently replace its mode, SLA, constraints, conditions, or contract reference. When both action fields are present, consumers MUST prefer `available_actions[]` — it carries the resolved `mode`, optional `sla`, and in 3.2 an optional `change_term_id` that the flat string array cannot represent. Deprecated 3.1 `terms_ref` remains an opaque compatibility pointer and MUST NOT be assumed to identify a proposal term. When a buyer issues an `update_media_buy` request, the seller maps the request's fields to one or more actions and rejects with [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) (carrying `attempted_action`, `reason`, and `currently_available_actions` in `error.details`) if any mapped action is not in the buy's resolved `available_actions[]`.
 
 The mapping is normative — sellers and SDKs MUST use this table to translate between request fields and action identifiers so the surface is consistent across implementations.
 
@@ -99,7 +99,8 @@ Each entry in `available_actions[]` carries a singular `mode` (resolved against 
 |------|---------|
 | `self_serve` | Seller honors the request synchronously |
 | `conditional_self_serve` | Auto-approves within tolerances, escalates outside them (programmatic guaranteed pattern) |
-| `requires_approval` | Human-in-the-loop, async, no proposal artifact; buyer SDK polls or awaits webhook |
+| `seller_managed` | Seller-controlled asynchronous handling. The buyer sees the declared SLA and completion result, not the seller's internal automation or review process. |
+| `requires_approval` | Legacy 3.x spelling for an asynchronous seller decision. New proposal terms use `seller_managed`. |
 
 Buyer SDKs MUST branch on `mode` to decide whether to expect a synchronous response, conditional handling, or an asynchronous approval callback. Requotes are not modeled as an action mode in 3.1; sellers return [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required) when a requested update exceeds the current quoted envelope.
 
@@ -371,7 +372,7 @@ For budget/pacing interaction and bidding inheritance, see [Budget & Pacing Cont
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
 | `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
 | `valid_actions` | Flat-vocabulary actions the buyer can perform after this update. Saves a round-trip to [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys). Deprecated in favor of `available_actions[]` and removed in 4.0. |
-| `available_actions` | Structured per-buy resolution of actions available after this update, each entry with action, resolved `mode`, optional `sla`, optional `terms_ref`. Authoritative — buyer SDKs SHOULD prefer this over `valid_actions` when both are present. |
+| `available_actions` | Structured per-buy resolution of actions available after this update, each entry with action, resolved `mode`, optional `sla`, and 3.2 `change_term_id`. Authoritative — buyer SDKs SHOULD prefer this over `valid_actions` when both are present. Deprecated `terms_ref` is retained as an opaque 3.1 compatibility field through 3.x. |
 | `affected_packages` | Full Package objects for every modified package, including every active package rescaled by a fixed-mode `total_budget` update. This is a state snapshot, not a sparse delta: sellers MUST NOT return `{ package_id }`-only stubs. Campaign-level updates that do not modify packages may return an empty array. |
 | `warnings` | Structured non-blocking observations. The update was still applied. Continuing conditions appear on the next `get_media_buys` snapshot. |
 

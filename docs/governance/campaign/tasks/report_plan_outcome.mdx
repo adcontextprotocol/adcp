@@ -235,12 +235,24 @@ If the seller rejected the request, report it so the governance agent can update
     "governance_context": "gc_mb_seller_456",
     "outcome": "failed",
     "error": {
-      "code": "PRODUCT_UNAVAILABLE",
-      "message": "Product premium_video_300k is no longer available."
+      "code": "POLICY_VIOLATION",
+      "message": "The requested campaign is not accepted for this inventory.",
+      "classification_source": "seller_response_copy",
+      "details": {
+        "origin": "seller",
+        "category": "political_advertising",
+        "seller_policy_ref": "restricted-category-rule-17"
+      }
     }
   }
 }
 ```
+
+The reporter preserves a structured seller decline on the existing `outcome: "failed"` path; there is no seller authority or new outcome state. `classification_source: "seller_response_copy"` attributes the record correctly: it is the buyer's copy of what the seller returned, not an independently authenticated seller statement. A buyer that inferred the classification uses `buyer_classification` instead. The governance agent stores the complete error on the outcome audit entry so an approved plan action that did not execute has an attributable reason.
+
+Every field in this error remains reporter-supplied evidence. Governance agents MUST NOT use it to authorize an action, debit or release budget, alter seller reputation, or establish that the seller made a statement. Unknown fields cannot create provenance or attestation semantics. Treat messages, suggestions, details, and extensions as untrusted display data: isolate them from privileged prompts, escape them in operator interfaces and exports, and enforce transport and storage size limits. A future seller-attested receipt can add stronger provenance without upgrading historical buyer copies retroactively.
+
+Sellers may disclose progressively. A [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) can include a registry `policy_id`, category, rule IDs, and remediation when those are publishable, or an opaque `seller_policy_ref` when disclosure would reveal enforcement controls. Use [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) when the proposed change was not a negotiated/current right. Reserve [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) for caller identity, credential, account scope, or signed-governance authorization failures.
 
 ```json
 {
@@ -282,9 +294,11 @@ If the seller rejected the request, report it so the governance agent can update
 | `delivery.seller_statement_id` | string | For seller copy | ID received with the seller statement. |
 | `delivery.seller_statement_digest` | string | For seller copy | Digest received with the seller statement. |
 | `delivery.impressions` | integer | No | Optional buyer-attributed impressions. |
-| `error` | object | No | Error details. Required when outcome is `failed`. |
-| `error.code` | string | No | Error code from the seller. |
+| `error` | object | No | Buyer-attributed structured error evidence. Required when outcome is `failed`; retained on the audit entry. |
+| `error.code` | string | Yes for failed | Error code returned by the seller or assigned by the buyer. |
 | `error.message` | string | No | Human-readable error description. |
+| `error.details` | object | No | Structured error details preserved without forcing policy disclosure. [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) details SHOULD use the standard policy-violation shape. |
+| `error.classification_source` | enum | No | `seller_response_copy` or `buyer_classification`. Omission is permitted for compatibility. Additional seller fields remain forward-compatible but are size-, width-, and depth-bounded; prefer the bounded `error.ext` envelope. |
 | `governance_context` | string | Conditional | Exact approved context paired with `check_id` and `plan_id`. Required for every outcome. |
 
 ### Response

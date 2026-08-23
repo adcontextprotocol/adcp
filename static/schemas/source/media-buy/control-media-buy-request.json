@@ -2,8 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/control-media-buy-request.json",
   "title": "Control Media Buy Request",
-  "description": "Apply operational delivery controls or non-commercial metadata changes inside the MediaBuy's accepted proposal envelope. Provide at least one control field. cancellation_reason requires canceled: true; cancellation is mutually exclusive with every other control. Sellers return REQUOTE_REQUIRED when budget, targeting, or another control would change the commercial envelope; the buyer then forks the accepted proposal through refine_proposals. Creative mutation, new products/packages, flight changes, pricing changes, and billing-term changes are not accepted here.",
-  "x-tool-summary": "Rename, pause, resume, cancel, or adjust delivery controls without changing accepted commercial terms.",
+  "description": "Apply revision-checked delivery controls or non-commercial metadata changes authorized by the MediaBuy's current available_actions[]. For a proposal-bound buy, the accepted envelope includes any applicable commercial_terms.change_terms[]: a self-serve control inside that term's typed constraints is already authorized, while a request outside the term or its bounds returns REQUOTE_REQUIRED and the buyer forks the accepted proposal through refine_proposals. Provide at least one control field. cancellation_reason requires canceled: true; cancellation is mutually exclusive with every other control. Creative mutation, new products/packages, flight changes, pricing changes, and billing-term changes are not accepted here.",
+  "x-tool-summary": "Rename, pause, resume, cancel, or adjust delivery controls within accepted proposal change rights.",
   "type": "object",
   "x-mutates-state": true,
   "x-governed-commitment": {

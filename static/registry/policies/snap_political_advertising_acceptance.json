@@ -1,0 +1,86 @@
+{
+  "policy_id": "snap_political_advertising_acceptance",
+  "source": "registry",
+  "version": "1.1.0",
+  "name": "Snap Political Advertising Acceptance",
+  "description": "Snap conditional acceptance and review requirements for election, advocacy, and issue advertising.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["political_advertising"],
+  "governance_domains": ["campaign", "creative"],
+  "effective_date": "2025-10-01",
+  "source_url": "https://www.snap.com/ad-policies/political",
+  "source_name": "Snap",
+  "issuer": { "domain": "snap.com", "name": "Snap" },
+  "acceptance_profile": {
+    "profile_id": "snap_political_advertising_acceptance",
+    "version": "1.0.0",
+    "content_digest": "sha256:06efe90e2adaded02529acc7a48be5e2e283020b3194a00a78aa0dc3e59ec0a0",
+    "policy_refs": [{ "policy_id": "snap_political_advertising_acceptance", "version": "1.1.0", "content_digest": "sha256:22160b18384dd9ad4add60b24a9d4e862c9f8d179139c27a235098f7e5f6f96d" }],
+    "coverage": "partial",
+    "scope": {
+      "subject_categories": ["political_advertising"],
+      "applies_to": ["account", "media_buy", "creative", "targeting", "delivery"],
+      "all_jurisdictions": true
+    },
+    "region_aliases": {
+      "EU": [
+        "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"
+      ]
+    },
+    "description": "Reusable coarse profile of Snap's public political-advertising acceptance policy.",
+    "rules": [
+      {
+        "rule_id": "snap_political_conditional",
+        "effective_at": "2025-10-01T00:00:00Z",
+        "subject_category": "political_advertising",
+        "subject_facets": ["candidate_or_party", "election_or_ballot_measure", "issue_advocacy", "legislation_or_regulation"],
+        "applies_to": ["account", "media_buy", "creative", "targeting", "delivery"],
+        "disposition": "conditional",
+        "requirements": [
+          { "kind": "advertiser_eligibility", "criteria": ["eligible_market_residency"], "description": "Satisfy advertiser-residency and market-specific eligibility rules." },
+          { "kind": "funding_restriction", "criteria": ["sponsor_identity_required", "market_specific_foreign_funding_rules"] },
+          { "kind": "prior_authorization", "description": "Submit for operator review and any required fact-checking." },
+          { "kind": "disclosure", "format": "paid_for_by", "placement": "creative" },
+          { "kind": "targeting_restriction", "description": "Use only targeting permitted for the delivery market and political-advertising type." },
+          { "kind": "transparency_reporting", "description": "Permit publication in the operator's political-ad transparency library." }
+        ],
+        "policy_ids": ["snap_political_advertising_acceptance"],
+        "description": "Election, advocacy, and issue advertising is accepted only after eligibility, disclosure, review, targeting, and transparency conditions are met."
+      },
+      {
+        "rule_id": "snap_eu_political_prohibited",
+        "effective_at": "2025-10-01T00:00:00Z",
+        "subject_category": "political_advertising",
+        "subject_facets": [
+          "candidate_or_party",
+          "election_or_ballot_measure",
+          "issue_advocacy",
+          "legislation_or_regulation"
+        ],
+        "jurisdiction_groups": ["EU"],
+        "applies_to": ["account", "media_buy", "creative", "targeting", "delivery"],
+        "disposition": "prohibited",
+        "policy_ids": ["snap_political_advertising_acceptance"],
+        "description": "Political advertising covered by EU Regulation 2024/900 is not accepted for EU delivery."
+      }
+    ]
+  },
+  "policy": "Election-related, advocacy, and issue advertising may be accepted subject to case-by-case review. Advertisements must include the required paid-for-by disclosure and comply with transparency-library requirements. Advertiser residency, foreign-funding, jurisdiction, targeting, and content restrictions may apply. The operator may review and fact-check political advertisements before or during delivery.",
+  "guidance": "Represent political advertising as conditional. Discovery should disclose sponsor identification, review, transparency, and market-eligibility requirement classes without promising approval.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "An eligible domestic sponsor submits an issue advertisement with the required paid-for-by disclosure for review and transparency publication.",
+        "explanation": "The submission satisfies the coarse prerequisites but remains subject to review."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "An undisclosed foreign funder attempts to run election advocacy in a market that restricts foreign-funded political advertising.",
+        "explanation": "The advertiser and funding arrangement fail the market-specific eligibility rules."
+      }
+    ]
+  }
+}

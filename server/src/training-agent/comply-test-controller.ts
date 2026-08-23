@@ -47,6 +47,7 @@ import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
 import {
   getAccountNotificationSubscribers,
+  resolveGovernanceAgentsForAccount,
   sandboxAccountRefForId,
   seedAccountFixture,
 } from './account-handlers.js';
@@ -476,6 +477,7 @@ function normalizeAvailableActions(actions: unknown): MediaBuyAvailableActionSta
     if (
       src.mode !== 'self_serve'
       && src.mode !== 'conditional_self_serve'
+      && src.mode !== 'seller_managed'
       && src.mode !== 'requires_approval'
     ) continue;
     const mode = src.mode;
@@ -491,6 +493,7 @@ function normalizeAvailableActions(actions: unknown): MediaBuyAvailableActionSta
           ...(typeof sla.completion_max === 'string' && { completion_max: sla.completion_max }),
         },
       }),
+      ...(typeof src.change_term_id === 'string' && { change_term_id: src.change_term_id }),
       ...(typeof src.terms_ref === 'string' && { terms_ref: src.terms_ref }),
     });
   }
@@ -1155,6 +1158,9 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
             .filter(pkg => pkg && typeof pkg === 'object' && !Array.isArray(pkg))
             .map(pkg => normalizeSeedPackage(pkg as Record<string, unknown>, startTime, endTime))
         : existing?.packages ?? [];
+      const acceptedProposal = isRecord(fx.accepted_proposal)
+        ? structuredClone(fx.accepted_proposal) as unknown as NonNullable<MediaBuyState['acceptedProposal']>
+        : existing?.acceptedProposal;
       session.mediaBuys.set(mediaBuyId, {
         mediaBuyId,
         accountRef:
@@ -1165,6 +1171,7 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
         status: (fx.status as string | undefined) ?? existing?.status ?? 'active',
         currency: (fx.currency as string | undefined) ?? existing?.currency ?? 'USD',
         packages,
+        ...(acceptedProposal && { acceptedProposal }),
         availableActions: normalizeAvailableActions(fx.available_actions) ?? existing?.availableActions,
         startTime,
         endTime,
@@ -1209,6 +1216,7 @@ const LOCAL_SCENARIOS = [
   'compact_product_lifecycle_probe',
   'compact_direct_buy_lifecycle_probe',
   'query_provenance_audit_observations',
+  'query_account_governance_binding',
   'evaluate_distributed_brand_resolution',
   'verify_governance_token',
 ] as const;
@@ -1362,7 +1370,7 @@ async function handleCompactLifecycleProbe(
 
 function localScenariosFor(ctx: TrainingContext): string[] {
   return ctx.storyboardCompat?.version === '3.0'
-    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations')
+    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations' && s !== 'query_account_governance_binding')
     : [...LOCAL_SCENARIOS];
 }
 
@@ -1689,6 +1697,23 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
   if (scenario === 'verify_governance_token') {
     return handleVerifyGovernanceToken(rawArgs);
+  }
+  if (scenario === 'query_account_governance_binding') {
+    const accountRef = isRecord(params.account) ? params.account as AccountRef : undefined;
+    if (!accountRef) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: 'params.account is required for query_account_governance_binding',
+      };
+    }
+    return {
+      success: true,
+      simulated: {
+        account: structuredClone(accountRef),
+        governance_agents: resolveGovernanceAgentsForAccount(sessionKey, ctx.principal, accountRef),
+      },
+    };
   }
   if (scenario === 'force_upstream_unavailable') {
     const params = (rawArgs.params ?? {}) as Record<string, unknown>;

@@ -1,0 +1,186 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/acceptance-policy-requirement.json",
+  "title": "Acceptance Policy Requirement",
+  "description": "A typed prerequisite or restriction attached to a conditional seller-acceptance rule. The kind is coarse and machine-actionable; exact obligations remain in the referenced registry policies.",
+  "type": "object",
+  "discriminator": { "propertyName": "kind" },
+  "oneOf": [
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "category_declaration" },
+        "declaration": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "advertiser_verification" },
+        "verification_scheme": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "advertiser_eligibility" },
+        "criteria": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_.:-]*$" },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Stable criteria such as domestic_entity, citizen_or_resident, official_election_authority, or eligible_agency."
+        },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind", "criteria"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "funding_restriction" },
+        "criteria": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_.:-]*$" },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Stable restrictions such as no_foreign_funding or sponsor_identity_required."
+        },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind", "criteria"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "certification" },
+        "credential": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "license" },
+        "credential": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "prior_authorization" },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "account_setup" },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "sales_assisted" },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "disclosure" },
+        "format": { "type": "string", "minLength": 1 },
+        "placement": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "targeting_restriction" },
+        "restricted_attributes": {
+          "type": "array",
+          "items": { "$ref": "/schemas/enums/restricted-attribute.json" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "creative_restriction" },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind", "description"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "destination_restriction" },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind", "description"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "format_restriction" },
+        "format_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true,
+          "deprecated": true,
+          "x-deprecated-in": "3.2.0",
+          "x-removed-in": "4.0.0",
+          "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. This named-format restriction is retained for 3.x compatibility; new policies identify canonical format options in description or an extension until a registry-stable format-option identity is standardized."
+        },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "time_restriction" },
+        "starts_at": { "type": "string", "format": "date-time" },
+        "ends_at": { "type": "string", "format": "date-time" },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "transparency_reporting" },
+        "description": { "type": "string", "minLength": 1 }
+      },
+      "required": ["kind"],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "kind": { "type": "string", "const": "custom" },
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_.:-]*$" },
+        "description": { "type": "string", "minLength": 1 },
+        "ext": { "$ref": "/schemas/core/ext.json" }
+      },
+      "required": ["kind", "id", "description"],
+      "additionalProperties": false
+    }
+  ]
+}

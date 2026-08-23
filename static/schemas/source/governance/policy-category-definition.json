@@ -7,6 +7,7 @@
   "properties": {
     "category_id": {
       "type": "string",
+      "x-entity": "governance_policy_category",
       "pattern": "^[a-z][a-z0-9_]*$",
       "description": "Unique identifier for this category. Used in plan.policy_categories, signal-definition.policy_categories, and policy-entry.policy_categories."
     },
@@ -17,6 +18,25 @@
     "description": {
       "type": "string",
       "description": "What this category covers. Defines the boundary — what campaigns or data fall under this category."
+    },
+    "facets": {
+      "type": "array",
+      "description": "Registry-defined distinctions within the category that materially affect policy applicability or seller acceptance. Facets refine a category without creating a new top-level policy category.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "facet_id": {
+            "type": "string",
+            "x-entity": "governance_policy_category_facet",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "name": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 }
+        },
+        "required": ["facet_id", "name", "description"],
+        "additionalProperties": false
+      },
+      "minItems": 1
     },
     "regulatory_frameworks": {
       "type": "array",
@@ -70,10 +90,15 @@
     },
     "related_categories": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": { "type": "string", "x-entity": "governance_policy_category" },
       "description": "Categories that frequently co-occur (e.g., 'children_directed' often appears with 'age_restricted')."
     }
   },
   "required": ["category_id", "name", "description"],
+  "x-adcp-validation": {
+    "unique_by": [
+      { "path": "facets", "field": "facet_id" }
+    ]
+  },
   "additionalProperties": false
 }

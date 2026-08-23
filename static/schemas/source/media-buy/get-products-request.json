@@ -139,6 +139,11 @@
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Brand reference for product discovery context. Resolved to full brand identity at execution time."
     },
+    "acceptance_context": {
+      "$ref": "/schemas/media-buy/acceptance-context.json",
+      "x-adcp-schema-uri": "/schemas/media-buy/acceptance-context.json",
+      "description": "Structured campaign and advertiser facts for seller acceptance-policy preflight. Sellers may infer omitted facts from brand and brief, but uncertainty never implies acceptance."
+    },
     "catalog": {
       "$ref": "/schemas/core/catalog.json",
       "description": "Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Supports all catalog types: a job catalog finds job ad products, a product catalog finds sponsored product slots. Reference a synced catalog by catalog_id, or provide inline items."
@@ -218,8 +223,9 @@
           "collections",
           "collection_targeting_allowed",
           "installments",
-          "brief_relevance",
-          "is_custom",
+        "brief_relevance",
+        "acceptance_policy_profile_ids",
+        "is_custom",
           "expires_at",
           "product_card",
           "product_card_detailed",

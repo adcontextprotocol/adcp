@@ -1,0 +1,184 @@
+id: governance/failed_outcome_audit_persistence
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Governance preserves bounded failed-outcome audit evidence"
+category: campaign_governance
+summary: "Verifies that a buyer-reported failed seller interaction is accepted without spend mutation and is emitted verbatim as untrusted audit evidence."
+track: campaign_governance
+default_agent: governance
+
+required_tools:
+  - sync_plans
+  - check_governance
+  - report_plan_outcome
+  - get_plan_audit_logs
+
+requires_capability:
+  path: experimental_features
+  contains: "governance.campaign"
+
+narrative: |
+  The buyer receives a failed seller response after governance approved the
+  proposed action. Reporting the failure closes the action binding without
+  committing budget. Governance retains a bounded clone of the buyer-attributed
+  error so the audit record can explain non-execution. The error is evidence,
+  not authority: it is not a seller attestation and its prose and details must
+  never be promoted into policy decisions or privileged prompt instructions.
+
+agent:
+  interaction_model: governance_agent
+  capabilities:
+    - campaign_governance
+  examples:
+    - "Buyer governance ledger retaining failed execution evidence"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The caller can synchronize a permissive governance plan and report the outcome of its own approved intent."
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: register_plan
+    title: "Register a permissive plan"
+    steps:
+      - id: sync_failed_outcome_plan
+        title: "Create the governance ledger"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#failed_outcome_audit_plan"
+          plans:
+            - plan_id: "failed-outcome-audit-plan"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Verify that declined seller execution remains auditable without reserving spend."
+              budget:
+                total: 10000
+                currency: "USD"
+                reallocation_threshold: 10000
+              flight:
+                start: "2020-01-01T00:00:00Z"
+                end: "2099-12-31T23:59:59Z"
+        context_outputs:
+          - name: failed_outcome_plan_id
+            path: "plans[0].plan_id"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json"
+          - check: field_value
+            path: "plans[0].plan_id"
+            value: "failed-outcome-audit-plan"
+            description: "The plan is ready for intent checking"
+
+  - id: approve_intent
+    title: "Approve the proposed seller action"
+    depends_on: [register_plan]
+    steps:
+      - id: check_failed_outcome_intent
+        title: "Authorize an action that will later fail"
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        sample_request:
+          plan_id: "$context.failed_outcome_plan_id"
+          caller: "https://pinnacle-agency.example"
+          target_agent: "https://seller.example/mcp"
+          tool: "create_media_buy"
+          purchase_type: "media_buy"
+          payload:
+            total_budget:
+              amount: 1000
+              currency: "USD"
+        context_outputs:
+          - name: failed_outcome_check_id
+            path: "check_id"
+          - name: failed_outcome_governance_context
+            path: "governance_context"
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json"
+          - check: field_value
+            path: "verdict"
+            value: "approved"
+            description: "The proposed action is valid before seller execution"
+          - check: field_present
+            path: "governance_context"
+            description: "The approved binding can be settled exactly once"
+
+  - id: report_failure
+    title: "Report the failed seller interaction"
+    depends_on: [approve_intent]
+    steps:
+      - id: report_failed_outcome
+        title: "Store untrusted failure evidence"
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        stateful: true
+        sample_request:
+          plan_id: "$context.failed_outcome_plan_id"
+          check_id: "$context.failed_outcome_check_id"
+          governance_context: "$context.failed_outcome_governance_context"
+          purchase_type: "media_buy"
+          outcome: "failed"
+          error:
+            code: "POLICY_VIOLATION"
+            message: "The seller declined this action under an undisclosed standing policy."
+            classification_source: "seller_response_copy"
+            details:
+              disposition: "declined"
+              disclosure: "opaque"
+          idempotency_key: "$generate:uuid_v4#failed_outcome_audit_report"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json"
+          - check: field_value
+            path: "outcome_state"
+            value: "accepted"
+            description: "Governance records the failed action without treating the evidence as a policy command"
+          - check: field_present
+            path: "outcome_id"
+            description: "The failed settlement receives an immutable audit identity"
+
+  - id: read_audit
+    title: "Read the persisted evidence"
+    depends_on: [report_failure]
+    steps:
+      - id: get_failed_outcome_audit
+        title: "Verify report-to-audit persistence"
+        task: get_plan_audit_logs
+        schema_ref: "governance/get-plan-audit-logs-request.json"
+        response_schema_ref: "governance/get-plan-audit-logs-response.json"
+        doc_ref: "/governance/campaign/tasks/get_plan_audit_logs"
+        stateful: false
+        sample_request:
+          plan_ids: ["$context.failed_outcome_plan_id"]
+          include_entries: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-plan-audit-logs-response.json"
+          - check: field_value
+            path: "plans[0].budget.committed"
+            value: 0
+            description: "A failed outcome does not reserve spend"
+          - check: field_contains
+            path: "plans[0].entries[*].error.code"
+            value: "POLICY_VIOLATION"
+            description: "The audit record retains the typed buyer-attributed error"
+          - check: field_contains
+            path: "plans[0].entries[*].error.classification_source"
+            value: "seller_response_copy"
+            description: "The audit preserves evidence attribution"
+          - check: field_contains
+            path: "plans[0].entries[*].error.details.disclosure"
+            value: "opaque"
+            description: "Undisclosed seller policy remains representable without inventing a registry identity"

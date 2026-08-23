@@ -2,7 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/media-buy-available-action.json",
   "title": "Media Buy Available Action",
-  "description": "An action currently available on a media buy, resolved against the buy's current status, negotiated terms, account tier, and any buy-level overrides. Authoritative per-buy capability — buyer SDKs MUST read this rather than re-deriving from the product's `allowed_actions[]`, because divergence from the product template is expected (negotiated terms and IO addenda live on the deal, not the product SKU). The containing `available_actions[]` array is uniquely keyed by `action`; sellers MUST NOT emit two entries with the same `action` value (this is a contract-level invariant — JSON Schema `uniqueItems` only catches structurally identical objects, so validators MUST enforce action-uniqueness separately). Predicate evaluators consuming dotted paths like `available_actions.extend_flight.sla.response_max` MUST index by `action` rather than by array position. The `mode` and `sla` values are advisory at the moment of emission; sellers MAY resolve to a different mode by the time the mutation arrives (state can change), in which case the request is rejected with `ACTION_NOT_ALLOWED` (`reason: mode_mismatch`).",
+  "description": "An action currently available on a media buy, resolved against the buy's current status, accepted commercial_terms.change_terms, account authorization, and applicable governance delegation. Authoritative for current availability, but not a replacement for negotiated rights: when explicit change_terms exist, this projection may temporarily omit an action because state changed, but MUST NOT silently replace its negotiated service mode, SLA, constraints, conditions, or contract reference. The containing array is uniquely keyed by action.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "change_term_link": "When change_term_id is present, it resolves to exactly one accepted_proposal.commercial_terms.change_terms[].term_id whose action, service_mode, and processing_sla agree with this projection.",
+      "legacy_alias_agreement": "When change_term_id and deprecated terms_ref are both present and terms_ref is being used as the proposal-term link, their values are identical. A 3.1 terms_ref with no accepted change term remains an opaque legacy commercial pointer and MUST NOT be reinterpreted as authority."
+    }
+  },
   "type": "object",
   "properties": {
     "action": {
@@ -22,9 +28,18 @@
       "$ref": "/schemas/core/sla-window.json",
       "description": "Optional SLA commitment for this action on this buy. Absence means no commitment, not zero commitment."
     },
+    "change_term_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "x-entity": "media_buy_change_term",
+      "description": "The accepted proposal change_terms[].term_id from which this current-state projection was derived. New 3.2 sellers use this field so SDKs can distinguish a proposal term identity from a document reference."
+    },
     "terms_ref": {
       "type": "string",
-      "description": "Optional pointer into buy-terms negotiation (forward-references the buy-terms namespace landing via separate RFC). Schema accepts any string for now and will tighten to a structured reference when the buy-terms RFC ships."
+      "deprecated": true,
+      "x-deprecated-in": "3.2.0",
+      "x-removed-in": "4.0.0",
+      "description": "Deprecated 3.1 opaque commercial-terms pointer. A 3.2 compatibility projection MAY echo change_term_id here for older buyers, but new buyers MUST prefer change_term_id and MUST NOT assume an arbitrary 3.1 value identifies an accepted change term."
     }
   },
   "required": ["action", "mode"],

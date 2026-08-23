@@ -1,0 +1,378 @@
+id: media_buy_seller/change_rights_state_projection
+version: "1.0.0"
+title: "Seller projects proposal change rights through MediaBuy state"
+category: media_buy_seller
+summary: "Verifies that accepted change terms remain binding while available_actions narrows by status, routes seller-managed work, and links with change_term_id."
+track: media_buy
+introduced_in: "3.2"
+default_agent: sales
+
+requires:
+  - controller
+
+required_tools:
+  - get_media_buys
+  - control_media_buy
+  - comply_test_controller
+
+narrative: |
+  A proposal can grant rights that are not exercisable in every MediaBuy
+  status. The accepted proposal remains the contractual record; the live
+  available_actions array is only the authoritative current-state projection.
+  This scenario starts with an active buy, verifies immediate and
+  seller-managed rights, submits seller-managed work, pauses the buy, then verifies
+  that paused-only rights become available while active-only rights become
+  latent. Every 3.2 projection links to the accepted term with change_term_id.
+
+agent:
+  interaction_model: stateful_preloaded
+  capabilities:
+    - sells_media
+  examples:
+    - "Seller exposing proposal-bound MediaBuy change rights"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The runner seeds an approved creative and an active MediaBuy carrying a complete accepted proposal snapshot."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  creatives:
+    - creative_id: "change_rights_creative"
+      status: "approved"
+      format_kind: "image"
+  media_buys:
+    - media_buy_id: "change_rights_state_buy"
+      account: &seed_account
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "acmeoutdoor.example"
+        sandbox: true
+      status: "active"
+      currency: "USD"
+      total_budget: 10000
+      start_time: "2026-01-01T00:00:00Z"
+      end_time: "2099-12-31T23:59:59Z"
+      packages:
+        - package_id: "change_rights_package"
+          product_id: "change_rights_product"
+          pricing_option_id: "change_rights_cpm"
+          budget: 10000
+          start_time: "2026-01-01T00:00:00Z"
+          end_time: "2099-12-31T23:59:59Z"
+          creative_assignments: ["change_rights_creative"]
+      accepted_proposal:
+        proposal_id: "change_rights_accepted_proposal"
+        proposal_kind: "new_media_buy"
+        proposal_status: "accepted"
+        accepted_at: "2026-01-01T00:00:00Z"
+        media_buy_id: "change_rights_state_buy"
+        name: "State-scoped change rights"
+        commercial_terms:
+          brand:
+            domain: "acmeoutdoor.example"
+          purchases:
+            - product_id: "change_rights_product"
+              pricing_option_id: "change_rights_cpm"
+              pricing:
+                pricing_option_id: "change_rights_cpm"
+                pricing_model: "cpm"
+                currency: "USD"
+                fixed_price: 12
+              budget: 10000
+              start_time: "2026-01-01T00:00:00Z"
+              end_time: "2099-12-31T23:59:59Z"
+          start_time: "2026-01-01T00:00:00Z"
+          end_time: "2099-12-31T23:59:59Z"
+          total_budget:
+            amount: 10000
+            currency: "USD"
+          change_terms:
+            - term_id: "right_pause_active"
+              action: "pause"
+              service_mode: "self_serve"
+              allowed_statuses: ["active"]
+            - term_id: "right_resume_paused"
+              action: "resume"
+              service_mode: "self_serve"
+              allowed_statuses: ["paused"]
+            - term_id: "right_increase_active"
+              action: "increase_budget"
+              service_mode: "seller_managed"
+              allowed_statuses: ["active"]
+              processing_sla:
+                response_max: "PT30M"
+                completion_max: "PT24H"
+              constraints:
+                kind: "budget"
+                max_delta_percent: 20
+              conditions: ["account_in_good_standing"]
+              terms_ref: "https://seller.example/terms/budget-increase"
+            - term_id: "right_decrease_paused"
+              action: "decrease_budget"
+              service_mode: "self_serve"
+              allowed_statuses: ["paused"]
+              constraints:
+                kind: "budget"
+                max_delta_percent: 50
+            - term_id: "right_extend_active"
+              action: "extend_flight"
+              service_mode: "self_serve"
+              allowed_statuses: ["active"]
+        terms_digest: "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+phases:
+  - id: inspect_active_rights
+    title: "Inspect active-state rights"
+    steps:
+      - id: get_active_buy
+        title: "Read the active MediaBuy"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
+            sandbox: true
+          media_buy_ids: ["change_rights_state_buy"]
+        context_outputs:
+          - name: active_revision
+            path: "media_buys[0].revision"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].status"
+            value: "active"
+            description: "The seeded buy begins active"
+          - check: field_contains
+            path: "media_buys[0].available_actions[*]"
+            value:
+              task: "control_media_buy"
+              action: "pause"
+              mode: "self_serve"
+              change_term_id: "right_pause_active"
+            description: "The active buy exposes its immediate pause right"
+          - check: field_value
+            path: "media_buys[0].available_actions"
+            value:
+              - task: "control_media_buy"
+                action: "pause"
+                mode: "self_serve"
+                change_term_id: "right_pause_active"
+              - task: "refine_proposals"
+                action: "extend_flight"
+                mode: "self_serve"
+                change_term_id: "right_extend_active"
+            description: "The reference seller omits the opaque-condition right until seller-owned evaluation makes it currently available"
+          - check: field_contains
+            path: "media_buys[0].available_actions[*]"
+            value:
+              task: "refine_proposals"
+              action: "extend_flight"
+              mode: "self_serve"
+              change_term_id: "right_extend_active"
+            description: "Non-control rights retain the task through which they can be exercised"
+          - check: field_contains
+            path: "media_buys[0].accepted_proposal.commercial_terms.change_terms[*]"
+            value:
+              term_id: "right_decrease_paused"
+              action: "decrease_budget"
+              allowed_statuses: ["paused"]
+            description: "The accepted proposal retains a paused-only latent right"
+
+  - id: enforce_active_routes
+    title: "Enforce active-state routing"
+    depends_on: [inspect_active_rights]
+    steps:
+      - id: reject_unevaluated_seller_managed_increase
+        title: "Reject a seller-managed right whose opaque condition is unevaluated"
+        task: control_media_buy
+        schema_ref: "media-buy/control-media-buy-request.json"
+        response_schema_ref: "media-buy/control-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/control_media_buy"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#change_rights_wrong_route"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
+            sandbox: true
+          media_buy_id: "change_rights_state_buy"
+          revision: "$context.active_revision"
+          total_budget:
+            amount: 11000
+            currency: "USD"
+        validations:
+          - check: error_code
+            code: "ACTION_NOT_ALLOWED"
+            description: "The reference seller fails closed rather than fabricating a non-durable async task"
+
+      - id: pause_with_negotiated_right
+        title: "Exercise the active self-serve pause right"
+        task: control_media_buy
+        schema_ref: "media-buy/control-media-buy-request.json"
+        response_schema_ref: "media-buy/control-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/control_media_buy"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#change_rights_pause"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
+            sandbox: true
+          media_buy_id: "change_rights_state_buy"
+          revision: "$context.active_revision"
+          paused: true
+        context_outputs:
+          - name: paused_revision
+            path: "revision"
+        validations:
+          - check: response_schema
+            description: "Response matches control-media-buy-response.json"
+          - check: field_value
+            path: "status"
+            value: "completed"
+            description: "The negotiated immediate pause succeeds"
+          - check: field_value
+            path: "media_buy_status"
+            value: "paused"
+            description: "Pause performs the canonical active-to-paused transition"
+          - check: field_contains
+            path: "available_actions[*]"
+            value:
+              action: "resume"
+              mode: "self_serve"
+              change_term_id: "right_resume_paused"
+            description: "The response immediately projects the paused-state resume right"
+
+  - id: inspect_paused_rights
+    title: "Inspect paused-state rights"
+    depends_on: [enforce_active_routes]
+    steps:
+      - id: get_paused_buy
+        title: "Read the paused MediaBuy"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
+            sandbox: true
+          media_buy_ids: ["change_rights_state_buy"]
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].status"
+            value: "paused"
+            description: "The buy remains paused"
+          - check: field_contains
+            path: "media_buys[0].available_actions[*]"
+            value:
+              action: "resume"
+              mode: "self_serve"
+              change_term_id: "right_resume_paused"
+            description: "The paused buy exposes the negotiated resume right"
+          - check: field_contains
+            path: "media_buys[0].available_actions[*]"
+            value:
+              action: "decrease_budget"
+              mode: "self_serve"
+              change_term_id: "right_decrease_paused"
+            description: "The paused-only budget decrease becomes available"
+          - check: field_contains
+            path: "media_buys[0].accepted_proposal.commercial_terms.change_terms[*]"
+            value:
+              term_id: "right_increase_active"
+              action: "increase_budget"
+              allowed_statuses: ["active"]
+            description: "The accepted proposal retains the now-latent active-only right"
+
+      - id: reject_active_only_change_while_paused
+        title: "Reject an active-only right in paused state"
+        task: control_media_buy
+        schema_ref: "media-buy/control-media-buy-request.json"
+        response_schema_ref: "media-buy/control-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/control_media_buy"
+        stateful: true
+        expect_error: true
+        negative_path: wrong_status
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#change_rights_wrong_status"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
+            sandbox: true
+          media_buy_id: "change_rights_state_buy"
+          revision: "$context.paused_revision"
+          total_budget:
+            amount: 11000
+            currency: "USD"
+        validations:
+          - check: error_code
+            value: "ACTION_NOT_ALLOWED"
+            description: "The seller rejects an otherwise negotiated right in the wrong status"
+          - check: field_value
+            path: "errors[0].details.reason"
+            value: "wrong_status"
+            description: "The buyer can distinguish latent rights from unnegotiated rights"
+          - check: field_contains
+            path: "errors[0].details.currently_available_actions[*]"
+            value:
+              action: "decrease_budget"
+              change_term_id: "right_decrease_paused"
+            description: "Recovery returns the currently reachable alternative"
+
+      - id: reject_out_of_bounds_decrease_while_paused
+        title: "Reject a self-serve change outside its accepted bound"
+        task: control_media_buy
+        schema_ref: "media-buy/control-media-buy-request.json"
+        response_schema_ref: "media-buy/control-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/control_media_buy"
+        stateful: true
+        expect_error: true
+        negative_path: constraint_exceeded
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#change_rights_constraint_exceeded"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
+            sandbox: true
+          media_buy_id: "change_rights_state_buy"
+          revision: "$context.paused_revision"
+          total_budget:
+            amount: 1000
+            currency: "USD"
+        validations:
+          - check: error_code
+            value: "REQUOTE_REQUIRED"
+            description: "A negotiated action does not authorize parameters outside its typed bound"
+          - check: field_value
+            path: "errors[0].details.envelope_field"
+            value: "total_budget.amount"
+            description: "The rejection identifies the parameter that left the accepted envelope"
+          - check: field_value
+            path: "errors[0].details.change_term_id"
+            value: "right_decrease_paused"
+            description: "The rejection links to the accepted right that was exceeded"
+          - check: field_value
+            path: "errors[0].details.constraint"
+            value: "max_delta_percent"
+            description: "The buyer SDK can explain which portable bound failed"

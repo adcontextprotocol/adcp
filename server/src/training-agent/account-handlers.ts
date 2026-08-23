@@ -6,6 +6,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { canonicalTargetUri } from '@adcp/sdk/signing';
 import type { TrainingContext, ToolArgs, AccountRef, OperatorUnit } from './types.js';
 import { accountScopeFromRef } from './account-scope.js';
 import { sessionKeyFromArgs } from './state.js';
@@ -29,6 +30,27 @@ import {
 // cannot amplify into thousands of signed outbound requests.
 export const MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC = 16;
 const ACCOUNT_WEBHOOK_PROOF_SYNC_DEADLINE_MS = 30_000;
+
+/**
+ * Deterministic governance-agent allowlist used by the public training seller.
+ *
+ * The first endpoint is the normative acceptance/rejection conformance fixture.
+ * The remaining endpoints are the multi-agent runner's governance service and
+ * the legacy storyboard fixture. Keeping this list explicit makes the
+ * advertised capability and binding-time decision use one source of truth.
+ */
+export const TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS = [
+  'https://governance.example/mcp',
+  'https://test-agent.adcontextprotocol.org',
+  'https://governance.pinnacle-agency.example',
+] as const;
+
+export const TRAINING_ACCEPTED_GOVERNANCE_AGENTS = {
+  any_of: TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS.map(agent_url => ({
+    kind: 'agent_url' as const,
+    agent_url,
+  })),
+};
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -1531,7 +1553,9 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
       continue;
     }
 
-    // Validate governance agent URL
+    // Validate and canonicalize before comparing. Userinfo is rejected rather
+    // than stripped because it may contain credentials; rejected endpoints are
+    // never echoed or persisted.
     const agent = input.governance_agents[0];
     if (!agent.url) {
       results.push({
@@ -1541,7 +1565,45 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
       });
       continue;
     }
-    const validAgents: GovernanceAgentEntry[] = [{ url: agent.url }];
+    let parsedAgentUrl: URL;
+    let canonicalAgentUrl: string;
+    try {
+      parsedAgentUrl = new URL(agent.url);
+      if (parsedAgentUrl.protocol !== 'https:' || parsedAgentUrl.username || parsedAgentUrl.password) {
+        throw new TypeError('governance agent endpoints require HTTPS without userinfo');
+      }
+      canonicalAgentUrl = canonicalTargetUri(agent.url);
+    } catch {
+      results.push({
+        account: acctRef,
+        status: 'failed',
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'governance_agents[].url must be a canonicalizable HTTPS endpoint without userinfo',
+        }],
+      });
+      continue;
+    }
+
+    const acceptedUrls = new Set(
+      TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS.map(url => canonicalTargetUri(url)),
+    );
+    if (!acceptedUrls.has(canonicalAgentUrl)) {
+      results.push({
+        account: acctRef,
+        status: 'failed',
+        errors: [{
+          code: 'GOVERNANCE_AGENT_NOT_ACCEPTED',
+          message: 'The proposed governance agent does not satisfy this account\'s seller policy',
+          // The reference seller deliberately exercises progressive disclosure:
+          // neither the private allowlist nor the rejected URL is reflected.
+          details: { disclosure: 'opaque' },
+        }],
+      });
+      continue;
+    }
+
+    const validAgents: GovernanceAgentEntry[] = [{ url: canonicalAgentUrl }];
 
     // Replace semantics — overwrite previous governance agents
     acct.governanceAgents = validAgents;

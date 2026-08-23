@@ -1555,6 +1555,38 @@
     "media-buy": {
       "description": "Media buy task request/response schemas",
       "supporting-schemas": {
+        "acceptance-context": {
+          "$ref": "/schemas/media-buy/acceptance-context.json",
+          "description": "Buyer-declared facts for coarse seller acceptance-policy matching"
+        },
+        "acceptance-policy-catalog": {
+          "$ref": "/schemas/media-buy/acceptance-policy-catalog.json",
+          "description": "Versioned seller-hosted acceptance-policy catalog referenced from capabilities"
+        },
+        "acceptance-policy-profile": {
+          "$ref": "/schemas/media-buy/acceptance-policy-profile.json",
+          "description": "Composable seller acceptance profile selected by products and seller defaults"
+        },
+        "acceptance-policy-profile-ref": {
+          "$ref": "/schemas/media-buy/acceptance-policy-profile-ref.json",
+          "description": "Version-pinned reference to a reusable registry acceptance profile"
+        },
+        "acceptance-policy-rule": {
+          "$ref": "/schemas/media-buy/acceptance-policy-rule.json",
+          "description": "Machine-readable allowed, conditional, or prohibited seller acceptance rule"
+        },
+        "acceptance-policy-requirement": {
+          "$ref": "/schemas/media-buy/acceptance-policy-requirement.json",
+          "description": "Typed prerequisite or restriction attached to a conditional acceptance rule"
+        },
+        "change-term": {
+          "$ref": "/schemas/media-buy/change-term.json",
+          "description": "Proposal-bound buyer change right covered by the commercial terms digest"
+        },
+        "change-term-constraints": {
+          "$ref": "/schemas/media-buy/change-term-constraints.json",
+          "description": "Portable budget, flight, package-count, or effective-timing bounds on a product action or proposal change right"
+        },
         "product-discovery-criteria": {
           "$ref": "/schemas/media-buy/product-discovery-criteria.json",
           "description": "Structured offer, catalog, and policy criteria shared by compact discovery tools"
@@ -1930,6 +1962,14 @@
     "governance": {
       "description": "Governance protocol for property governance, brand standards, content standards, and compliance",
       "supporting-schemas": {
+        "accepted-governance-agents": {
+          "$ref": "/schemas/governance/accepted-governance-agents.json",
+          "description": "Seller acceptance matchers for buyer-selected governance agents"
+        },
+        "reported-outcome-error": {
+          "$ref": "/schemas/governance/reported-outcome-error.json",
+          "description": "Buyer-attributed structured error evidence for a failed governed action"
+        },
         "property-feature-definition": {
           "$ref": "/schemas/property/property-feature-definition.json",
           "description": "Definition of a feature that a governance agent can evaluate"

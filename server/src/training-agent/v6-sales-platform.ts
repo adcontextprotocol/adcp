@@ -296,12 +296,16 @@ function withCurrentAccountScope(
     && typeof rawAccount === 'object'
     && !Array.isArray(rawAccount)
     && (rawAccount as Record<string, unknown>).sandbox === true;
-  // Public training credentials address one brand-owned sandbox. The
+  // Public training credentials address one brand-owned task partition. The
   // storyboard runner legitimately alternates between the buyer operator and
-  // the brand domain while preserving the same brand identity; normalize that
-  // public-only account before deriving session state so compact write/read
-  // chains do not fork. Authenticated tenant principals retain full operator
-  // isolation, and opaque account IDs are never rewritten.
+  // the brand domain while preserving the same brand identity, and current
+  // runners also retain their controller-only `sandbox: true` assertion on
+  // ordinary task calls. Normalize both details before deriving session state
+  // so controller-seeded entities and task write/read chains do not fork. The
+  // trusted resolved Account in ctx remains sandboxed for authority checks;
+  // this internal false value only selects the ordinary task-state partition.
+  // Authenticated tenant principals retain full operator isolation, and opaque
+  // account IDs are never rewritten.
   if (
     explicitlySandboxed
     && typeof principal === 'string'
@@ -311,7 +315,7 @@ function withCurrentAccountScope(
     accountRef = {
       ...accountRef,
       operator: accountRef.brand.domain,
-      sandbox: true,
+      sandbox: false,
     };
   }
   return {

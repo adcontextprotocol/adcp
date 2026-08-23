@@ -5,7 +5,7 @@ description: "Apply operational delivery controls within accepted MediaBuy terms
 testable: true
 ---
 
-`control_media_buy` applies operational changes that remain inside the immutable commercial envelope accepted for the MediaBuy. It requires the current `revision` for optimistic concurrency.
+`control_media_buy` applies operational changes authorized by the terms currently accepted for the MediaBuy. It requires the current `revision` for optimistic concurrency. The accepted envelope includes proposal-bound `commercial_terms.change_terms[]`: when the current `available_actions[]` projection links a `self_serve` or `conditional_self_serve` action through `change_term_id`, a request inside that term's typed constraints is already authorized even if it changes the original numeric value. The accepted term is the authority; product `allowed_actions[]` is only advisory.
 
 Supported controls include:
 
@@ -79,7 +79,7 @@ pause atomically with purchase, or author an exact initial
 
 Daily-cap changes apply immediately and atomically with spend already incurred in the current cap day counted. Lowering a cap below current-day spend pauses further applicable delivery without reversing prior spend. `null` removes an aggregate or package cap. A media-buy `budget_cap_timezone` change starts at the next boundary under the previously effective timezone; package controls never carry their own timezone.
 
-When an otherwise valid control would exceed the accepted budget, targeting, or delivery envelope, the seller returns [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required). The buyer reads `accepted_proposal_id` from [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), passes it to [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) to create a draft amendment, finalizes that draft into a committed hold, and applies it through [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal). This pointer survives SDK restart and moves atomically after each accepted amendment.
+When an otherwise valid control has no current accepted change right, or exceeds that right's typed constraints, the seller returns [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required). The buyer reads `accepted_proposal_id` from [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), passes it to [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) to create a draft amendment, finalizes that draft into a committed hold, and applies it through [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal). This pointer survives SDK restart and moves atomically after each accepted amendment.
 
 A completed in-envelope control MAY include `warnings[]` for non-blocking observations, such as a material inventory shortfall forecast observed after the applied control. A continuing condition is also readable as an indicator through `get_media_buys`. Failed and submitted controls never carry this warning surface. Flight-date changes are not controls; a `flight_change_creates_pacing_risk` warning belongs on the completed `accept_proposal` response that applies the amendment.
 

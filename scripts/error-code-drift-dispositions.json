@@ -286,6 +286,11 @@
       "target_version": "3.1",
       "note": "From sync_accounts polymorphic-key refactor (#2261). Returned per-entry when the seller does not implement the entry's `sync_accounts` mode — settings-update sellers (explicit-account platforms) reject natural-key entries; provisioning-only sellers reject AccountRef-keyed entries. Wire change — held for 3.1."
     },
+    "GOVERNANCE_AGENT_NOT_ACCEPTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Seller acceptance criteria for sync_governance bindings (#6758). New per-account rejection on the experimental governance.campaign surface; held for 3.2."
+    },
     "INVALID_PRICING_OPTION": {
       "disposition": "held-for-next-minor",
       "target_version": "3.2",

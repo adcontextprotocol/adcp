@@ -16,6 +16,10 @@ export interface Policy {
   sunset_date: string | null;
   source_url: string | null;
   source_name: string | null;
+  issuer: { domain: string; name?: string } | null;
+  acceptance_profile: Record<string, unknown> | null;
+  content_digest?: string | null;
+  canonical_content?: Record<string, unknown> | null;
   policy: string;
   guidance: string | null;
   exemplars: { pass?: Array<{ scenario: string; explanation: string }>; fail?: Array<{ scenario: string; explanation: string }> } | null;
@@ -88,10 +92,54 @@ function deserializePolicy(row: any): Policy {
     channels: row.channels == null ? null : (typeof row.channels === 'string' ? JSON.parse(row.channels) : row.channels),
     governance_domains: typeof row.governance_domains === 'string' ? JSON.parse(row.governance_domains) : (row.governance_domains || []),
     exemplars: row.exemplars == null ? null : (typeof row.exemplars === 'string' ? JSON.parse(row.exemplars) : row.exemplars),
+    issuer: row.issuer == null ? null : (typeof row.issuer === 'string' ? JSON.parse(row.issuer) : row.issuer),
+    acceptance_profile: row.acceptance_profile == null ? null : (typeof row.acceptance_profile === 'string' ? JSON.parse(row.acceptance_profile) : row.acceptance_profile),
+    ...(row.content_digest !== undefined ? { content_digest: row.content_digest } : {}),
+    ...(row.canonical_content !== undefined ? {
+      canonical_content: row.canonical_content == null
+        ? null
+        : (typeof row.canonical_content === 'string' ? JSON.parse(row.canonical_content) : row.canonical_content),
+    } : {}),
     ext: row.ext == null ? null : (typeof row.ext === 'string' ? JSON.parse(row.ext) : row.ext),
     created_at: new Date(row.created_at),
     updated_at: new Date(row.updated_at),
   };
+}
+
+function deserializePublishedPolicy(row: any): Policy {
+  const canonical = typeof row.canonical_content === 'string'
+    ? JSON.parse(row.canonical_content)
+    : row.canonical_content;
+  const publishedAt = new Date(row.published_at);
+  return deserializePolicy({
+    policy_id: canonical.policy_id,
+    version: canonical.version,
+    name: canonical.name,
+    description: canonical.description ?? null,
+    category: canonical.category,
+    enforcement: canonical.enforcement,
+    jurisdictions: canonical.jurisdictions ?? [],
+    region_aliases: canonical.region_aliases ?? {},
+    policy_categories: canonical.policy_categories ?? [],
+    channels: canonical.channels ?? null,
+    governance_domains: canonical.governance_domains ?? [],
+    effective_date: canonical.effective_date ?? null,
+    sunset_date: canonical.sunset_date ?? null,
+    source_url: canonical.source_url ?? null,
+    source_name: canonical.source_name ?? null,
+    issuer: canonical.issuer ?? null,
+    acceptance_profile: row.acceptance_profile ?? null,
+    policy: canonical.policy,
+    guidance: canonical.guidance ?? null,
+    exemplars: canonical.exemplars ?? null,
+    ext: canonical.ext ?? null,
+    source_type: 'registry',
+    review_status: 'approved',
+    content_digest: row.content_digest,
+    canonical_content: canonical,
+    created_at: publishedAt,
+    updated_at: publishedAt,
+  });
 }
 
 function deserializeRevision(row: any): PolicyRevision {
@@ -149,7 +197,7 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
       `SELECT policy_id, version, name, description, category, enforcement,
               jurisdictions, region_aliases, policy_categories, channels,
               governance_domains, effective_date, sunset_date,
-              source_url, source_name, source_type, review_status,
+              source_url, source_name, issuer, source_type, review_status,
               created_at, updated_at
        FROM policies ${where} ORDER BY category, name LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
       [...values, limit, offset]
@@ -176,8 +224,23 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
  * Resolve a single policy by ID, optionally pinned to a version.
  */
 export async function resolvePolicy(policyId: string, version?: string): Promise<Policy | null> {
+  if (version) {
+    const publication = await query<any>(
+      `SELECT policy_id, version, content_digest, canonical_content,
+              acceptance_profile, published_at
+       FROM policy_publications
+       WHERE policy_id = $1 AND version = $2`,
+      [policyId, version]
+    );
+    if (publication.rows.length > 0) return deserializePublishedPolicy(publication.rows[0]);
+  }
   const result = await query<any>(
-    'SELECT * FROM policies WHERE policy_id = $1',
+    `SELECT policy.*, publication.content_digest, publication.canonical_content
+     FROM policies policy
+     LEFT JOIN policy_publications publication
+       ON publication.policy_id = policy.policy_id
+      AND publication.version = policy.version
+     WHERE policy.policy_id = $1`,
     [policyId]
   );
   if (result.rows.length === 0) return null;
@@ -192,7 +255,12 @@ export async function resolvePolicy(policyId: string, version?: string): Promise
 export async function bulkResolve(policyIds: string[]): Promise<Record<string, Policy | null>> {
   if (policyIds.length === 0) return {};
   const result = await query<any>(
-    'SELECT * FROM policies WHERE policy_id = ANY($1)',
+    `SELECT policy.*, publication.content_digest, publication.canonical_content
+     FROM policies policy
+     LEFT JOIN policy_publications publication
+       ON publication.policy_id = policy.policy_id
+      AND publication.version = policy.version
+     WHERE policy.policy_id = ANY($1)`,
     [policyIds]
   );
   const map: Record<string, Policy | null> = Object.create(null);

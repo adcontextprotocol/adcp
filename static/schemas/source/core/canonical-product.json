@@ -74,6 +74,13 @@
       "items": { "$ref": "/schemas/core/canonical-product-action.json" },
       "uniqueItems": true
     },
+    "acceptance_policy_profile_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "x-entity": "acceptance_policy_profile" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Acceptance-policy profiles from the seller catalog that apply to this product in addition to seller defaults. Profiles compose restrictively."
+    },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["product_id", "name"],

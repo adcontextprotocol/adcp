@@ -1,0 +1,76 @@
+{
+  "policy_id": "tiktok_political_advertising_acceptance",
+  "source": "registry",
+  "version": "1.1.0",
+  "name": "TikTok Politics, Government, and Elections Advertising Acceptance",
+  "description": "TikTok prohibition on paid political advertising and controlled exceptions for eligible government and election-authority information.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["political_advertising"],
+  "governance_domains": ["campaign", "creative"],
+  "effective_date": "2026-07-01",
+  "source_url": "https://ads.tiktok.com/help/article/tiktok-ads-policy-politics-government-and-elections",
+  "source_name": "TikTok",
+  "issuer": { "domain": "tiktok.com", "name": "TikTok" },
+  "acceptance_profile": {
+    "profile_id": "tiktok_political_advertising_acceptance",
+    "version": "1.0.0",
+    "content_digest": "sha256:7445c38199ee65a6a7f5689e5718c4f843d6a3c28bc61040511135fde30c8f19",
+    "policy_refs": [{ "policy_id": "tiktok_political_advertising_acceptance", "version": "1.1.0", "content_digest": "sha256:abd3a1b39a93c2a03c43843efe9e01dd13870c9a7633d7e1e2732a9d9a511e3f" }],
+    "coverage": "partial",
+    "scope": {
+      "subject_categories": ["political_advertising"],
+      "applies_to": ["account", "media_buy", "creative", "landing_page", "targeting", "delivery"],
+      "all_jurisdictions": true
+    },
+    "description": "Reusable coarse profile of TikTok's public politics, government, and elections acceptance policy.",
+    "rules": [
+      {
+        "rule_id": "tiktok_paid_political_prohibited",
+        "effective_at": "2026-07-01T00:00:00Z",
+        "subject_category": "political_advertising",
+        "subject_facets": ["candidate_or_party", "election_or_ballot_measure", "issue_advocacy", "legislation_or_regulation", "political_merchandise"],
+        "advertiser_roles": ["political_actor", "commercial_advertiser"],
+        "applies_to": ["account", "media_buy", "creative", "delivery"],
+        "disposition": "prohibited",
+        "policy_ids": ["tiktok_political_advertising_acceptance"],
+        "description": "Paid political advertising and advertising by political figures or political entities is not accepted."
+      },
+      {
+        "rule_id": "tiktok_government_information_conditional",
+        "effective_at": "2026-07-01T00:00:00Z",
+        "subject_category": "political_advertising",
+        "subject_facets": ["government_information"],
+        "advertiser_roles": ["government_entity", "election_authority", "intergovernmental_organization"],
+        "applies_to": ["account", "media_buy", "creative", "landing_page", "targeting", "delivery"],
+        "disposition": "conditional",
+        "requirements": [
+          { "kind": "advertiser_verification", "verification_scheme": "tiktok_government_account_verification" },
+          { "kind": "account_setup", "description": "Use an operator-approved government or election-authority account." },
+          { "kind": "prior_authorization", "description": "Complete the controlled onboarding and certification process before submission." },
+          { "kind": "creative_restriction", "description": "Content must be factual participation or public-service information and must not advocate a political outcome." },
+          { "kind": "targeting_restriction", "description": "Use only targeting permitted for the approved exception and market." }
+        ],
+        "policy_ids": ["tiktok_political_advertising_acceptance"],
+        "description": "Verified government and election-authority information may qualify only through the controlled exception process."
+      }
+    ]
+  },
+  "policy": "Paid political advertising and advertising by political figures or political entities is prohibited. Eligible government, intergovernmental, and election-authority advertisers may advertise only through the operator's controlled onboarding and certification process. Permitted election-authority advertising must be factual and limited to participation information rather than persuasion. Additional market, targeting, age, gender, landing-page, and account restrictions apply to an accepted exception.",
+  "guidance": "Default political_actor, candidate_or_party, election_or_ballot_measure, issue_advocacy, and legislation_or_regulation advertising to prohibited. Evaluate government_information only as a conditional exception with the required advertiser role and onboarding.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A verified election authority uses an approved account to publish factual voting-location and participation information without advocating an outcome.",
+        "explanation": "Official election participation information can qualify for the controlled government-information exception."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A candidate campaign attempts to purchase a video advertisement asking viewers to vote for the candidate.",
+        "explanation": "Paid candidate and campaign advertising is prohibited."
+      }
+    ]
+  }
+}
