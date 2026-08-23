@@ -687,7 +687,7 @@
     },
     "reported_metrics": {
       "type": "array",
-      "description": "Metrics this format can produce in delivery reporting. Buyers receive the intersection of format reported_metrics and product available_metrics. The intersection is evaluated under the container-subsumption rule in `enums/available-metric.json` — a container token (e.g. `viewability`) matches its leaf identities (e.g. `viewable_rate`), so mixed container/leaf declarations do not produce an empty intersection. If omitted, the format defers entirely to product-level metric declarations.",
+      "description": "Metrics this format can produce in delivery reporting. Buyers receive the intersection of format reported_metrics and product available_metrics. The intersection is evaluated under the container-subsumption rule in `enums/available-metric.json` — a container token (e.g. `viewability`) matches its nested identities (e.g. numeric `viewable_rate` or structured `viewed_seconds_histogram`), so mixed container/nested declarations do not produce an empty intersection. If omitted, the format defers entirely to product-level metric declarations.",
       "items": {
         "$ref": "/schemas/enums/available-metric.json"
       },

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/available-metric.json",
   "title": "Available Metric",
-  "description": "Standard delivery and performance metrics available for reporting. Most values name flat numeric fields of `core/delivery-metrics.json`. Leaf identities address a single numeric value nested inside an object-shaped metric so it can be declared, committed, aggregated, and sorted individually: `quartile_25`/`quartile_50`/`quartile_75`/`quartile_100` resolve to `quartile_data.q1_views`–`q4_views`, and `viewable_rate`/`viewable_impressions`/`measurable_impressions`/`viewed_seconds` resolve to the same-named fields of `viewability`. The nested object remains the canonical carrier of the reported value — leaf identities never introduce duplicate flat response fields. The object-shaped tokens (`viewability`, `quartile_data`, `dooh_metrics`) declare the whole nested surface at once. **Container subsumption**: in every set operation over this enum — capability declaration, `required_metrics` filtering, format `reported_metrics` intersection, and `requested_metrics` selection — a container token subsumes its leaf identities: declaring `viewability` satisfies a requirement or request for `viewable_rate`, and requesting a leaf identity selects its canonical carrier object in the response (never a flat duplicate). A leaf declaration does not imply sibling leaves or the carrier's non-numeric fields.",
+  "description": "Standard delivery and performance metrics available for reporting. Most values name flat numeric fields of `core/delivery-metrics.json`. Leaf identities address a single numeric value nested inside an object-shaped metric so it can be declared, committed, aggregated, and sorted individually: `quartile_25`/`quartile_50`/`quartile_75`/`quartile_100` resolve to `quartile_data.q1_views`–`q4_views`, and `viewable_rate`/`viewable_impressions`/`measurable_impressions`/`viewed_seconds` resolve to the same-named fields of `viewability`. Structured nested identities `viewed_seconds_percentiles` and `viewed_seconds_histogram` make the corresponding optional distribution carriers discoverable and requestable, but not sortable. The nested object or array remains the canonical carrier — nested identities never introduce duplicate flat response fields. The object-shaped tokens (`viewability`, `quartile_data`, `dooh_metrics`) declare the whole nested surface at once. **Container subsumption**: in every set operation over this enum — capability declaration, `required_metrics` filtering, format `reported_metrics` intersection, and `requested_metrics` selection — a container token subsumes its nested identities: declaring `viewability` satisfies a requirement or request for `viewable_rate`, `viewed_seconds_percentiles`, or `viewed_seconds_histogram`, and requesting a nested identity selects its canonical carrier in the response (never a flat duplicate). A nested identity declaration does not imply sibling values or the carrier's non-metric fields.",
   "type": "string",
   "enum": [
     "impressions",
@@ -32,6 +32,8 @@
     "viewable_impressions",
     "measurable_impressions",
     "viewed_seconds",
+    "viewed_seconds_percentiles",
+    "viewed_seconds_histogram",
     "quartile_data",
     "quartile_25",
     "quartile_50",

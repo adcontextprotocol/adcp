@@ -39,6 +39,11 @@ const LEAF_IDENTITIES = {
   viewed_seconds: ["viewability", "viewed_seconds"],
 };
 
+const STRUCTURED_IDENTITIES = {
+  viewed_seconds_percentiles: ["viewability", "viewed_seconds_percentiles", "object"],
+  viewed_seconds_histogram: ["viewability", "viewed_seconds_histogram", "array"],
+};
+
 // Package-grain survey/model-based estimates: reportable and committable,
 // but excluded from row sorting per sort-metric.json's description.
 const SORT_EXCLUDED_LIFT_METRICS = [
@@ -115,6 +120,76 @@ describe("metric identity coherence", () => {
         `${leaf} must not exist as a flat delivery-metrics field`
       );
     }
+  });
+
+  it("resolves structured identities without making them sortable or flat", () => {
+    for (const [identity, [container, field, type]] of Object.entries(STRUCTURED_IDENTITIES)) {
+      assert.ok(availableMetrics.has(identity), `${identity} missing from available-metric.json`);
+      assert.ok(!sortMetrics.has(identity), `${identity} must not be sortable`);
+      const target = deliveryMetrics.properties[container]?.properties?.[field];
+      assert.equal(target?.type, type, `${container}.${field} must be a nested ${type}`);
+      assert.equal(
+        deliveryMetrics.properties[identity],
+        undefined,
+        `${identity} must not exist as a flat delivery-metrics field`
+      );
+    }
+  });
+
+  it("validates viewed-seconds distributions at the same reporting grain", async () => {
+    const validate = await compile(deliveryMetrics);
+    const valid = {
+      viewability: {
+        measurable_impressions: 100,
+        viewed_seconds: 4.25,
+        viewed_seconds_percentiles: {
+          p25: 1,
+          p50: 2.5,
+          p75: 5,
+          p90: 9,
+          p95: 12,
+        },
+        viewed_seconds_histogram: [
+          { lower_bound_seconds: 0, upper_bound_seconds: 1, impressions: 20 },
+          { lower_bound_seconds: 1, upper_bound_seconds: 5, impressions: 55 },
+          { lower_bound_seconds: 5, impressions: 25 },
+        ],
+        standard: "mrc",
+      },
+    };
+    assert.equal(validate(valid), true, JSON.stringify(validate.errors));
+
+    assert.equal(
+      validate({
+        viewability: {
+          measurable_impressions: 100,
+          viewed_seconds_percentiles: valid.viewability.viewed_seconds_percentiles,
+        },
+      }),
+      false,
+      "percentiles without viewed_seconds must be rejected"
+    );
+    assert.equal(
+      validate({
+        viewability: {
+          viewed_seconds: 4.25,
+          viewed_seconds_histogram: valid.viewability.viewed_seconds_histogram,
+        },
+      }),
+      false,
+      "histogram without measurable_impressions must be rejected"
+    );
+    assert.equal(
+      validate({
+        viewability: {
+          measurable_impressions: 100,
+          viewed_seconds: 4.25,
+          viewed_seconds_percentiles: { p25: 1, p50: 2.5, p75: 5, p90: 9 },
+        },
+      }),
+      false,
+      "partial percentile summaries must be rejected"
+    );
   });
 
   it("only conditions delivery-metric-aggregate on representable metric_ids", () => {
