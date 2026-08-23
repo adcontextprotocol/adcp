@@ -5,6 +5,7 @@
  *   TRAINING_AGENT_PORT=4444 npx tsx server/tests/manual/run-storyboards.ts --filter signal-marketplace
  *   TRAINING_AGENT_PORT=4444 npx tsx server/tests/manual/run-storyboards.ts --filter governance --verbose
  *   TENANT_PATH=sales npx tsx server/tests/manual/run-storyboards.ts --shard-index 0 --shard-count 4
+ *   TENANT_PATH=sales node scripts/run-storyboards-isolated.mjs
  *
  * Expects a training agent already running at `http://127.0.0.1:${PORT}/api/training-agent/mcp`.
  * Start one in a separate terminal with:
@@ -63,6 +64,15 @@ const { getPublicJwks } = await import('../../src/training-agent/webhooks.js');
 const args = process.argv.slice(2);
 const verbose = args.includes('--verbose');
 const filter = args.includes('--filter') ? args[args.indexOf('--filter') + 1] : undefined;
+const storyboardId = args.includes('--storyboard-id') ? args[args.indexOf('--storyboard-id') + 1] : undefined;
+const listApplicableJson = args.includes('--list-applicable-json');
+const emitResultEnvelope = args.includes('--emit-result-envelope');
+if (args.includes('--storyboard-id') && !storyboardId) {
+  throw new Error('--storyboard-id requires a value');
+}
+if (emitResultEnvelope && !storyboardId) {
+  throw new Error('--emit-result-envelope requires --storyboard-id');
+}
 
 function optionalIntegerArg(name: string): number | undefined {
   const argIndex = args.indexOf(name);
@@ -506,6 +516,7 @@ function patchStoryboardForLocalRunner(sb: Storyboard): Storyboard {
 }
 
 function isApplicable(sb: Storyboard): boolean {
+  if (storyboardId && sb.id !== storyboardId) return false;
   if (filter && !sb.id.includes(filter) && !(sb.category ?? '').includes(filter)) return false;
   if (KNOWN_FAILING_STORYBOARDS.has(sb.id)) return false;
   if (releasedComplianceVersion === undefined && CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS.has(sb.id)) return false;
@@ -641,14 +652,29 @@ function summarize(sb: Storyboard, result: StoryboardResult | { error: string })
 }
 
 async function main() {
+  const everything = listAllComplianceStoryboards(complianceOptions);
+  const applicable = everything.filter(isApplicable);
+  if (storyboardId && applicable.length !== 1) {
+    throw new Error(`Storyboard ${storyboardId} is missing, filtered out, or on the known-failing list`);
+  }
+  if (listApplicableJson) {
+    // The long-lived orchestrator parses this envelope but never imports the
+    // SDK itself. Flush before exiting so discovery is deterministic even if
+    // the SDK has installed background handles during module initialization.
+    console.log(`ADCP_STORYBOARD_LIST ${JSON.stringify({
+      version: 1,
+      storyboard_ids: applicable.map(sb => sb.id),
+    })}`);
+    await new Promise<void>(resolve => process.stdout.write('', resolve));
+    process.exit(0);
+  }
+
   const { url: agentUrl, baseUrl: localAgentBaseUrl, close } = await startLocalAgent();
   // eslint-disable-next-line no-console
   console.log(`\nTraining agent running at ${agentUrl}`);
   // eslint-disable-next-line no-console
   console.log(`Filter: ${filter ?? '(all storyboards)'}\n`);
 
-  const everything = listAllComplianceStoryboards(complianceOptions);
-  const applicable = everything.filter(isApplicable);
   // Shard only after all applicability decisions so every unsharded run and
   // every union of shards execute the same storyboard set. The compliance
   // index has stable ordering. Balanced contiguous ranges preserve the
@@ -663,6 +689,7 @@ async function main() {
   }
   const skippedKnownFailing = everything
     .filter(sb => knownFailingReason(sb.id) !== undefined)
+    .filter(sb => !storyboardId || sb.id === storyboardId)
     .filter(sb => !filter || sb.id.includes(filter) || (sb.category ?? '').includes(filter));
   if (skippedKnownFailing.length > 0) {
     // eslint-disable-next-line no-console
@@ -674,10 +701,13 @@ async function main() {
     // eslint-disable-next-line no-console
     console.log('');
   }
-  if (KNOWN_FAILING_STEPS.size > 0) {
+  const relevantKnownFailingSteps = storyboardId
+    ? [...KNOWN_FAILING_STEPS].filter(([key]) => key.startsWith(`${storyboardId}/`))
+    : [...KNOWN_FAILING_STEPS];
+  if (relevantKnownFailingSteps.length > 0) {
     // eslint-disable-next-line no-console
     console.log('Skipping individual steps on the known-failing list:');
-    for (const [key, reason] of KNOWN_FAILING_STEPS) {
+    for (const [key, reason] of relevantKnownFailingSteps) {
       // eslint-disable-next-line no-console
       console.log(`  - ${key}: ${reason}`);
     }
@@ -904,6 +934,31 @@ async function main() {
   console.log(`  storyboards: ${results.length - failing.length}/${results.length} clean`);
   // eslint-disable-next-line no-console
   console.log(`  steps: ${totals.passed} passed | ${totals.failed} failed | ${totals.skipped} skipped | ${totals.not_applicable} not applicable`);
+
+  if (emitResultEnvelope) {
+    // The parent persists this complete envelope before terminating our
+    // process group, so correctness never depends on graceful SDK/V8 disposal.
+    console.log(`ADCP_STORYBOARD_RESULT ${JSON.stringify({
+      version: 1,
+      storyboard_id: storyboardId,
+      // Persist counts and status only. Full validation details can contain
+      // synthetic request/response values and belong in the bounded CI log,
+      // not the longer-lived machine-readable result artifact.
+      summaries: results.map(result => ({
+        id: result.id,
+        passed: result.passed,
+        failed: result.failed,
+        skipped: result.skipped,
+        not_applicable: result.not_applicable,
+        has_error: result.error !== undefined,
+      })),
+      totals: {
+        clean: results.length - failing.length,
+        total: results.length,
+        ...totals,
+      },
+    })}`);
+  }
 
   await close();
   const exitCode = totals.failed > 0 || failing.some(r => r.error) ? 1 : 0;

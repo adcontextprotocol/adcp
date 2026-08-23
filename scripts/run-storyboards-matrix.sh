@@ -366,19 +366,21 @@ for entry in "${TENANTS[@]}"; do
   echo "──────────────────────────────────────────────"
 
   log=$(mktemp -t "storyboards-${tenant}.XXXXXX.log")
+  orchestrator_failure=0
 
   if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; then
     TENANT_PATH="${tenant}" \
       PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \
-      bash scripts/run-storyboards-sharded.sh --shard-count 4 > "${log}" 2>&1 || true
+      bash scripts/run-storyboards-isolated-shards.sh \
+        --shard-count 8 --max-parallel 4 > "${log}" 2>&1 || orchestrator_failure=1
   else
     TENANT_PATH="${tenant}" \
       PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \
       npx tsx server/tests/manual/run-storyboards.ts > "${log}" 2>&1 || true
   fi
 
-  clean=$(grep -oE 'storyboards: [0-9]+/[0-9]+' "${log}" | tail -1 | grep -oE '^storyboards: [0-9]+' | grep -oE '[0-9]+$' || echo "")
-  passed=$(grep -oE 'steps: [0-9]+ passed' "${log}" | tail -1 | grep -oE '[0-9]+' || echo "")
+  clean=$(sed -nE 's/^[[:space:]]*storyboards: ([0-9]+)\/[0-9]+ clean$/\1/p' "${log}" | tail -1)
+  passed=$(sed -nE 's/^[[:space:]]*steps: ([0-9]+) passed .*/\1/p' "${log}" | tail -1)
 
   if [ -z "${clean}" ] || [ -z "${passed}" ]; then
     echo "::error::Failed to parse storyboard counts from runner output for /${tenant}."
@@ -391,6 +393,10 @@ for entry in "${TENANTS[@]}"; do
 
   status="✓"
   failed_floor=""
+  if [ "${orchestrator_failure}" -ne 0 ]; then
+    status="✗"
+    failed_floor="one or more isolated orchestrators failed"
+  fi
   if [ "${clean}" -lt "${min_clean}" ]; then
     status="✗"
     failed_floor="clean storyboards ${clean} < ${min_clean}"

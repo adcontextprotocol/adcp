@@ -11,6 +11,7 @@ on:
       - 'package-lock.json'
       - 'scripts/build-compliance.cjs'
       - 'scripts/overlay-compliance-cache.sh'
+      - 'scripts/run-storyboards-isolated.mjs'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-sharded.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
@@ -30,6 +31,7 @@ on:
       - 'package-lock.json'
       - 'scripts/build-compliance.cjs'
       - 'scripts/overlay-compliance-cache.sh'
+      - 'scripts/run-storyboards-isolated.mjs'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-sharded.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
@@ -60,9 +62,9 @@ jobs:
         # are the frozen latest dist/compliance/3.0.x bundle baseline.
         # Rising is fine; regressing fails CI.
         tenant: [signals, sales, governance, creative, creative-builder, brand, si]
-        # Current /sales is large enough to exceed a hosted runner's resource envelope
-        # when its shards run sequentially. Dedicated shard jobs below keep
-        # each process isolated while preserving one aggregate required check.
+        # Current /sales uses the isolated orchestrators below so each
+        # storyboard gets a fresh process while one aggregate required check
+        # preserves the established branch-protection contract.
         exclude:
           - surface: current
             tenant: sales
@@ -420,17 +422,22 @@ jobs:
             fi
           done
 
-  sales_storyboard_shards:
-    name: Sales storyboard shard (${{ matrix.shard }}/48)
+  sales_storyboard_orchestrators:
+    name: Sales storyboard orchestrator (${{ matrix.orchestrator }}/8)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       max-parallel: 4
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47]
+        orchestrator: [0, 1, 2, 3, 4, 5, 6, 7]
     env:
-      SALES_SHARD_COUNT: 48
+      SALES_ORCHESTRATOR_COUNT: 8
+      # A 20-storyboard /sales calibration slice peaked at 2.06 GiB RSS and
+      # 28.7 seconds. These limits leave roughly 2x RSS and 4x time headroom
+      # while killing the observed 8–17 GiB pathologies before exhaustion.
+      STORYBOARD_RSS_LIMIT_MB: 4096
+      STORYBOARD_TIMEOUT_MS: 120000
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -448,62 +455,67 @@ jobs:
       - name: Overlay in-repo compliance source onto SDK cache
         run: bash scripts/overlay-compliance-cache.sh
 
-      - name: Run /sales storyboard shard
+      - name: Run isolated /sales storyboards
         env:
           TENANT_PATH: sales
           PUBLIC_TEST_AGENT_TOKEN: storyboard-ci-token
         run: |
-          set -uo pipefail
-          log="/tmp/storyboards-sales-${{ matrix.shard }}.log"
-          npx tsx server/tests/manual/run-storyboards.ts \
-            --shard-index "${{ matrix.shard }}" \
-            --shard-count "${SALES_SHARD_COUNT}" 2>&1 | tee "${log}" || true
-          set -e
+          set -euo pipefail
+          log="/tmp/storyboards-sales-${{ matrix.orchestrator }}.log"
+          node scripts/run-storyboards-isolated.mjs \
+            --shard-index "${{ matrix.orchestrator }}" \
+            --shard-count "${SALES_ORCHESTRATOR_COUNT}" \
+            --telemetry-file "/tmp/storyboards-sales-${{ matrix.orchestrator }}.telemetry.jsonl" \
+            --results-file "/tmp/storyboards-sales-${{ matrix.orchestrator }}.results.jsonl" \
+            2>&1 | tee "${log}"
           if ! grep -Eq '^[[:space:]]*storyboards: [0-9]+/[0-9]+ clean$' "${log}" ||
              ! grep -Eq '^[[:space:]]*steps: [0-9]+ passed \| [0-9]+ failed \| [0-9]+ skipped \| [0-9]+ not applicable$' "${log}"; then
-            echo "::error::Storyboard shard ${{ matrix.shard }}/${SALES_SHARD_COUNT} did not emit a complete totals block"
+            echo "::error::Storyboard orchestrator ${{ matrix.orchestrator }}/${SALES_ORCHESTRATOR_COUNT} did not emit a complete totals block"
             exit 1
           fi
 
-      - name: Upload /sales shard log
+      - name: Upload /sales orchestrator artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: storyboards-current-sales-shard-${{ matrix.shard }}
-          path: /tmp/storyboards-sales-${{ matrix.shard }}.log
+          name: storyboards-current-sales-orchestrator-${{ matrix.orchestrator }}
+          path: |
+            /tmp/storyboards-sales-${{ matrix.orchestrator }}.log
+            /tmp/storyboards-sales-${{ matrix.orchestrator }}.telemetry.jsonl
+            /tmp/storyboards-sales-${{ matrix.orchestrator }}.results.jsonl
           retention-days: 14
           if-no-files-found: error
 
   sales_storyboards:
     name: Storyboards (current /sales)
     if: always()
-    needs: sales_storyboard_shards
+    needs: sales_storyboard_orchestrators
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Download /sales shard logs
+      - name: Download /sales orchestrator artifacts
         uses: actions/download-artifact@v7
         with:
-          pattern: storyboards-current-sales-shard-*
-          path: /tmp/storyboards-sales-shards
+          pattern: storyboards-current-sales-orchestrator-*
+          path: /tmp/storyboards-sales-orchestrators
           merge-multiple: true
 
       - name: Aggregate /sales storyboard results
         id: aggregate
         env:
-          SHARD_RESULT: ${{ needs.sales_storyboard_shards.result }}
-          SALES_SHARD_COUNT: 48
+          ORCHESTRATOR_RESULT: ${{ needs.sales_storyboard_orchestrators.result }}
+          SALES_ORCHESTRATOR_COUNT: 8
         run: |
           set -euo pipefail
-          if [ "${SHARD_RESULT}" != "success" ]; then
-            echo "::error::At least one /sales storyboard shard failed: ${SHARD_RESULT}"
+          if [ "${ORCHESTRATOR_RESULT}" != "success" ]; then
+            echo "::error::At least one /sales storyboard orchestrator failed: ${ORCHESTRATOR_RESULT}"
             exit 1
           fi
 
           shopt -s nullglob
-          logs=(/tmp/storyboards-sales-shards/storyboards-sales-*.log)
-          if [ "${#logs[@]}" -ne "${SALES_SHARD_COUNT}" ]; then
-            echo "::error::Expected ${SALES_SHARD_COUNT} /sales shard logs, found ${#logs[@]}"
+          logs=(/tmp/storyboards-sales-orchestrators/storyboards-sales-*.log)
+          if [ "${#logs[@]}" -ne "${SALES_ORCHESTRATOR_COUNT}" ]; then
+            echo "::error::Expected ${SALES_ORCHESTRATOR_COUNT} /sales orchestrator logs, found ${#logs[@]}"
             exit 1
           fi
 
