@@ -2,9 +2,12 @@
 
 Status: **Nonnormative draft for working-group discussion; not implementable authority**
 
-Target: AdCP 3.3
+Targets:
 
-Issues: #6207, #3832
+- production tracker execution contract: AdCP 3.2;
+- preview observation capability, sessions, and tasks: AdCP 3.3.
+
+Issues: #6207, #3832, #6782, #6784
 
 Depends on: #6767 macro declarations and resolution capabilities
 
@@ -23,17 +26,21 @@ None substitutes for either of the others. Preview evidence does not prove all
 production delivery, and capability matching does not prove that substitution
 or tracker initiation occurred.
 
-Every field and task proposed here requires negotiated AdCP 3.3 or later. Only
-the preview capability, request, session, and observation-task fields
-additionally require the exact preview route to advertise observation. A
-seller may publish a production `tracker_execution_contract` without offering
-preview observation. A 3.2 or older receiver MUST NOT partially interpret
-these fields, and a caller MUST NOT send them merely because an older schema
-accepts unknown properties.
+Production-contract, package-snapshot, and first-class tracker-selector fields
+require negotiated AdCP 3.2 or later. URL-event-selector fields require AdCP
+3.3 or later. Preview capability, request, session, observation-task, and
+runtime-evidence fields require AdCP 3.3 or later and the exact preview route
+to advertise observation. A seller may publish a
+production `tracker_execution_contract` without offering preview observation.
+A receiver below the field's release version MUST NOT partially interpret it,
+and a caller MUST NOT send it merely because an older schema accepts unknown
+properties.
 
-Version 1 is deliberately bounded to tracker and macro occurrences declared in
-the AdCP manifest, plus macros in a URL-delivered VAST/DAAST asset's locator
-URL. It does not inspect, declare, bind, or make production promises about
+The 3.2 production slice is deliberately bounded to first-class
+`pixel_tracker`, `vast_tracker`, and `daast_tracker` occurrences declared in
+the AdCP manifest. The 3.3 observation slice may additionally inspect macro
+processing in a URL-delivered VAST/DAAST asset's locator URL. Neither slice
+inspects, declares, binds, or makes production promises about
 tracker or macro occurrences discovered inside fetched VAST/DAAST documents,
 wrapper documents, JavaScript responses, or other remotely fetched bodies.
 Those require a future document-site identity and provenance model.
@@ -122,8 +129,10 @@ The selected format option uses the existing discriminated
 `format-option-ref.json` identity. Product-local options use
 `{scope: "product", format_option_id}`; publisher options use
 `{scope: "publisher", publisher_domain, format_option_id}`. A seller offering
-production observation MUST assign a stable `format_option_id`; ID-less options
-remain previewable only without `production_path` evidence.
+a `tracker_execution_contract` MUST assign a stable `format_option_id`. A
+seller offering production observation MUST also assign one even when the
+selected option has no tracker contract. Other ID-less options remain
+previewable only without `production_path` evidence.
 
 When a package is created, each applicable `Package.formats_to_provide[]` item
 is a `PackageFormatSnapshot`. Its wire shape preserves the declaration fields
@@ -149,9 +158,11 @@ at the root for 3.x readers and adds package-only fields:
 }
 ```
 
-`product_id` and `product_snapshot_digest` are required on every snapshot
-eligible for production observation, including trusted-match projections, even
-when the enclosing Package also carries the product identity.
+`product_id` and `product_snapshot_digest` are required on every snapshot that
+contains a `tracker_execution_contract`, independent of preview or observation
+support. They are also required on every snapshot eligible for production
+observation, including macro-only and trusted-match projections, even when the
+enclosing Package also carries the product identity.
 `placement_refs`, when present, is a nonempty, duplicate-free array sorted by
 `publisher_domain` then `placement_id`, comparing the transmitted strings by
 ascending UTF-8 bytes without Unicode normalization. All remaining root properties through
@@ -203,10 +214,12 @@ format, execution version, placement set, or tracker contract requires creation
 of a replacement package with a new `package_id`; no existing update task
 silently mutates the snapshot. Sellers retain the old snapshot for as long as
 delivery or retained served-variant replay can reference that package.
-For any package eligible for production observation, `formats_to_provide[]` is
-required even when creative coverage is already complete or the observation is
-macro-only; `formats_pending[]` may be empty. This avoids a production promise
-or macro-capability intersection that exists only in mutable discovery state.
+For any package whose selected format contains a
+`tracker_execution_contract`, `formats_to_provide[]` is required even when
+creative coverage is already complete; `formats_pending[]` may be empty. The
+same requirement applies to every package eligible for production observation,
+including a macro-only observation. This avoids a production promise or
+macro-capability intersection that exists only in mutable discovery state.
 For a package spanning multiple placements, one snapshot's sorted
 `placement_refs[]` represents the common effective intersection. If placements
 require different contracts, the seller MUST create distinct snapshots with
@@ -220,10 +233,14 @@ trusted-match package projections use the same snapshot identity and digest
 rules.
 
 Trusted Match may project `PackageFormatSnapshot` only when its sync
-transport/profile explicitly declares AdCP protocol version 3.3 or later.
-Older or version-unknown providers receive the legacy Product-format projection
-with all contract, execution-version, and snapshot-digest fields omitted and
-cannot produce `production_path` evidence from that projection.
+transport/profile supports the highest release version of every field in that
+snapshot. The three-branch first-class tracker contract requires AdCP 3.2 or
+later; a snapshot containing the URL-selector extension requires AdCP 3.3 or
+later. An older or version-unknown provider receives the legacy Product-format
+projection with the entire contract-bearing snapshot, including its execution
+versions and digests, omitted. A sender MUST NOT strip only an unsupported
+selector because doing so would mutate the immutable contract and snapshot
+digests. A legacy projection cannot produce `production_path` evidence.
 
 ### Contract shape
 
@@ -254,18 +271,6 @@ cannot produce `production_path` evidence from that projection.
         "vast_versions": ["4.2", "4.3"],
         "vast_event": "start",
         "target": "linear",
-        "execution_actor": "request_executor",
-        "firing_paths": ["client", "server"]
-      },
-      {
-        "selector_id": "declared_impression_url",
-        "asset_type": "url",
-        "asset_group_id": "impression_tracker",
-        "url_type": "tracker_pixel",
-        "event_namespace": "iab_vast",
-        "event_namespace_uri": "https://registry.adcp.example/iab-vast-events/sha256-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.json",
-        "event_namespace_revision": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-        "event_name": "impression",
         "execution_actor": "request_executor",
         "firing_paths": ["client", "server"]
       }
@@ -323,7 +328,7 @@ contract or `complete: false` means omissions are undeclared, never unsupported;
 listed entries remain affirmative commitments.
 
 The legacy rule that an unregistered pixel `custom` event may silently no-op
-applies only when tracker execution is undeclared. On a 3.3 path with an exact
+applies only when tracker execution is undeclared. On a 3.2 path with an exact
 honored custom selector, that selector is registered and carries the same
 accept-and-initiate obligation as every other honored selector. With a complete
 contract, an unlisted custom event is explicitly unsupported rather than
@@ -336,8 +341,9 @@ define safe script-response execution and its distinct evidence boundary.
 
 ### Exact selector union
 
-The schema is a closed `oneOf`. Every branch requires `selector_id`,
-`execution_actor`, and `firing_paths`:
+The AdCP 3.2 schema is a closed `oneOf` over the three first-class tracker
+branches below. Every branch requires `selector_id`, `execution_actor`, and
+`firing_paths`:
 
 - `pixel_tracker` requires `event` and `method: img`. `event: custom`
   additionally requires a nonempty `custom_event_name`; every non-custom event
@@ -359,13 +365,6 @@ The schema is a closed `oneOf`. Every branch requires `selector_id`,
   `daast_event: progress` additionally requires `offset`. Its event restrictions
   and target/event compatibility are shared with `daast-tracker-asset.json`.
   Every other event forbids `offset`.
-- `url` requires `asset_group_id`, `url_type: tracker_pixel`,
-  `event_namespace`, and `event_name`. It
-  identifies an existing manifest URL slot in the selected format by
-  `asset_group_id`; it does not infer an event from a URL alone.
-  `event_name: custom` additionally requires nonempty `custom_event_name`, and
-  every other event forbids it. The named slot's nested `tracker_event` uses
-  the identical field and conditional.
 
 The shared VAST target/event matrix is closed in v1: `linear` accepts
 `loaded`, `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`,
@@ -410,6 +409,16 @@ add a slot to the format. The manifest instance must occupy such a slot and
 satisfy its constraints. This means an ordinary `video_vast` option whose only
 tracking is embedded in `vast_tag` cannot claim `vast_tracker` support in v1;
 it must add a distinct first-class tracker slot or leave support undeclared.
+
+### AdCP 3.3 URL-selector extension
+
+AdCP 3.3 may add a fourth `url` selector branch after the immutable event
+registries below are ratified. It requires `asset_group_id`, `url_type:
+tracker_pixel`, `event_namespace`, and `event_name`, and identifies an existing
+manifest URL slot by `asset_group_id`; it never infers an event from a URL
+alone. `event_name: custom` additionally requires nonempty
+`custom_event_name`, and every other event forbids it. The named slot's nested
+`tracker_event` uses the identical field and conditional.
 
 The URL selector may claim only the exact event semantic declared by the
 selected format's named slot under `adcp`, `iab_vast`, `iab_daast`, or a
@@ -1443,43 +1452,52 @@ migrated to these tasks or removed; no parallel observer model remains.
 
 ## Ratification gates and implementation split
 
-This draft deliberately does not authorize schemas. The working group must
-resolve and record all of the following before the production-contract PR can
-claim conformance:
+The production contract is additive 3.2 beta work and lands independently of
+preview observation. Its implementation PR must:
 
-1. approve the 3.3 version line and a minor changeset boundary, and wait until
-   the repository's active source/release line is actually 3.3 rather than the
-   current 3.2 prerelease bundle;
-2. publish or pin immutable IAB VAST and DAAST event-vocabulary artifacts used
-   by URL event identity;
-3. ratify the shared per-version event/target matrices and the extracted AdCP
-   pixel-event vocabulary;
-4. add plural DAAST acceptance semantics with a deprecated singular singleton
+1. ratify the shared per-version VAST/DAAST event-target matrices and extracted
+   AdCP pixel-event vocabulary;
+2. add plural DAAST acceptance semantics with a deprecated singular singleton
    alias; and
-5. approve the flattened package snapshot, placement binding, multi-placement
-   intersection, authority-stripping, and digest preimages defined above; and
-6. record the governance decision that supersedes DR-0005 with the narrow,
-   explicit Live Integration observation exception proposed above.
+3. approve the package snapshot, placement binding, multi-placement
+   intersection, authority-stripping, and digest preimages defined above.
 
-After ratification, implementation remains two PRs. The first adds the
-production tracker contract, package snapshot, authority projections, shared
-event constraints, registries, and golden vectors. The second adds preview
-observation route capabilities, request/session/stream tasks, security rules,
-and Live Integration fixtures. Neither PR silently adds 3.3 fields to a 3.2
-schema or claims support based only on permissive unknown-field handling.
+The 3.2 PR adds the first-class `pixel_tracker`, `vast_tracker`, and
+`daast_tracker` production contract, package snapshot, authority projections,
+shared event constraints, and golden vectors. It does not add URL selectors,
+preview capabilities, sessions, tasks, or runtime observation claims.
+
+The independent 3.3 URL-selector production extension requires immutable IAB
+event-vocabulary artifacts for URL identity. It does not require preview-route
+support or the preview governance exception.
+
+The separate 3.3 preview-observation PR tracked by #6782 requires a recorded
+governance decision superseding DR-0005 with the narrow Live Integration
+observation exception. It adds preview route capabilities,
+request/session/stream tasks, security rules, and Live Integration fixtures.
+These two 3.3 units may share a physical PR only if their conformance claims and
+gates remain independent. No implementation claims support based only on
+permissive unknown-field handling.
 
 ## Conformance plan
 
-Schema and golden-vector tests cover:
+AdCP 3.2 schema and golden-vector tests cover:
 
-- every exact tracker selector branch, including URL-slot selectors;
+- every first-class pixel, VAST, and DAAST tracker-selector branch;
 - custom/progress conditional requirements and forbidden VAST/DAAST event
   combinations;
 - parent-complete subset, parent-undeclared affirmative refinement, semantic
   selector uniqueness, firing-path subset, per-instance exactly-once, and
   package snapshot semantics;
-- exact existing format-option/placement references and immutable manifest,
-  declaration, capability, product/package, and contract digests;
+- exact existing format-option/placement references and immutable
+  product/package and contract digests;
+- package snapshot and assignment behavior.
+
+AdCP 3.3 schema, golden-vector, and Live Integration tests additionally cover:
+
+- URL-slot selectors and immutable event-registry identity;
+- immutable manifest, declaration, route-capability, and verification-context
+  digests;
 - macro-binding eligibility, actor ownership, translation-chain linkage,
   seller-intersection versus creative-route authority, strict value/availability
   `oneOf`, encoding, empty values, preserved literals, omission, sentinels, and
@@ -1506,13 +1524,13 @@ product format and equality of the instrumented and declared responsible actor.
 
 ## Versioning
 
-If ratified, this is additive AdCP 3.3 work. Until then, this document is a
-nonnormative design draft and no producer may claim conformance to it. All use
-is gated by negotiated protocol version and the authority/product-format rules
-above. Preview capability, request, session, and observation-task fields are
-additionally gated by the selected route's explicit observation advertisement.
-Omission means
-undeclared or unsupported only where expressly stated; no 3.2 or
-maintenance-line backport is proposed. A later normative implementation PR
-requires a minor changeset; this discussion-only draft does not ship schemas
-and therefore carries no release changeset.
+The production tracker contract is additive AdCP 3.2 beta work and requires a
+minor changeset. The URL-selector production extension is additive AdCP 3.3
+work but does not depend on preview support. Preview capability, session,
+observation-task, and Live Integration fields are also additive AdCP 3.3 work
+and require their own minor changeset plus the selected route's explicit
+observation advertisement.
+No stable maintenance-line backport is proposed. Until the applicable
+implementation and governance gates above land, this document remains a
+nonnormative design and no producer may claim conformance merely because an
+older schema accepts unknown fields.
