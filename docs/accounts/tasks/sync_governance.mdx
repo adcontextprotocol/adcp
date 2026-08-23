@@ -20,7 +20,7 @@ Sellers may publish seller-wide advisory criteria at `adcp.governance_enforcemen
 
 URL matchers use the shared [AdCP URL canonicalization rules](/docs/reference/url-canonicalization), not raw string equality. They match the exact canonical endpoint; redirects, DNS aliases, and candidate assertions do not expand an allowlist. A verification matcher is satisfied only by a deterministic result from the seller-configured trusted registry. The candidate cannot nominate the registry, and its self-described role or verification state is never evidence. Registry resolution uses HTTPS, no redirects or forwarded credentials, public-network address checks, DNS pinning through connection, bounded responses, and authenticated registry records. If the registry or verification service cannot be resolved, the seller returns [`GOVERNANCE_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-governance-unavailable); it does not guess or silently turn an availability problem into rejection.
 
-The capabilities declaration is seller-wide preflight guidance. The response to `sync_governance` is authoritative for each account because account contracts, jurisdictions, and product access may narrow the criteria. Verification evidence is evaluated for freshness at binding time and pinned to the accepted binding. Later capability or registry drift does not silently revoke or redirect an existing binding; an explicit account resynchronization creates a new decision. If the submitted agent does not satisfy the applicable criteria, the account result is `failed` with [`GOVERNANCE_AGENT_NOT_ACCEPTED`](/docs/building/verification/compliance-catalog#error-code-governance-agent-not-accepted). A seller may return either opaque details (`{"disclosure":"opaque"}` plus an optional local `rejection_ref`) or disclosed details containing the parsed HTTPS origin and authoritative criteria. The disclosed arm uses `attempted_agent_origin`, never the submitted URL: userinfo, path, query, and fragment are stripped after parsing. The seller MUST NOT persist or contact a rejected endpoint and MUST NOT echo credentials or a raw candidate URL in responses, logs, or error details.
+The capabilities declaration is seller-wide preflight guidance. The response to `sync_governance` is authoritative for each account because account contracts, jurisdictions, and product access may narrow the criteria. Verification evidence is evaluated for freshness at binding time and pinned to the accepted binding. Later capability or registry drift does not silently revoke or redirect an existing binding; an explicit account resynchronization creates a new decision. If the submitted agent does not satisfy the applicable criteria, the account result is `failed` with [`GOVERNANCE_AGENT_NOT_ACCEPTED`](/docs/building/verification/compliance-catalog#error-code-governance-agent-not-accepted). A seller may return either opaque details (`{"disclosure":"opaque"}` plus an optional local `rejection_ref`) or disclosed details containing the parsed HTTPS origin and authoritative criteria. The disclosed arm uses `attempted_agent_origin`, never the submitted URL: userinfo, path, query, and fragment are stripped after parsing. Buyers reconciling a disclosed rejection against their `any_of[]` matcher list should compare full matcher entries, not origins — an `agent_url` matcher may include a path and therefore be narrower than the disclosed origin. The seller MUST NOT persist or contact a rejected endpoint and MUST NOT echo credentials or a raw candidate URL in responses, logs, or error details.
 
 Acceptance matchers MUST express objective operational, security, interoperability, or compliance requirements. A seller MUST NOT use a URL allowlist or verification criterion to exclude a functionally equivalent governance provider merely as commercial leverage. Sellers SHOULD prefer verification criteria over enumerating providers when the registry can express the requirement deterministically.
 
@@ -116,20 +116,20 @@ asyncio.run(main())
 ## Request Parameters
 
 | Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
+|-----------|------|----------|--------------|
 | `accounts` | array | Yes | Per-account governance agent entries. Each pairs an account reference with governance agents for that account. |
 
 **Each account entry:**
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+|-------|------|----------|--------------|
 | `account` | object | Yes | [Account reference](/docs/building/by-layer/L2/accounts-and-agents#account-references): `{account_id}` for account-id namespaces or `{brand, operator}` for buyer-declared accounts. |
 | `governance_agents` | array | Yes | Governance agent endpoint for this account. Array with exactly one entry (`minItems: 1`, `maxItems: 1`). |
 
 **The governance agent:**
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+|-------|------|----------|--------------|
 | `url` | string | Yes | HTTPS endpoint URL for the governance agent. |
 | `authentication` | object | Yes | Credentials the seller presents when calling this agent. Contains `schemes` (array with one auth scheme) and `credentials` (token, min 32 characters). |
 
