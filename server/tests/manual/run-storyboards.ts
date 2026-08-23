@@ -203,14 +203,6 @@ const CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = ne
     'wholesale_feed_products_scope_isolation',
     'adcontextprotocol/adcp-client#2654: the packaged storyboard path projects the reserved account-overlay request as cache_scope public rather than account and retains excessive memory. Direct training-agent account-overlay coverage remains green. Remove when the packaged runner preserves the account scope.',
   ],
-  [
-    'media_buy_seller/proposal_finalize',
-    'adcontextprotocol/adcp#6776: the legacy get_products finalize response is committed, but create_media_buy resolves the catalog draft from a different session and fails PROPOSAL_NOT_COMMITTED; the combined packaged run also exhausts hosted-runner memory. Remove when committed proposal state is executable with bounded memory.',
-  ],
-  [
-    'media_buy_seller/proposal_finalize_asap_timing',
-    'adcontextprotocol/adcp#6776: the legacy get_products finalize response is committed, but create_media_buy resolves the catalog draft from a different session and fails PROPOSAL_NOT_COMMITTED; the combined packaged run also exhausts hosted-runner memory. Remove when committed proposal state is executable with bounded memory.',
-  ],
 ]);
 
 const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([

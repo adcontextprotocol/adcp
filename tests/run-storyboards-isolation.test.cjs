@@ -13,7 +13,7 @@ const REPO_ROOT = path.join(__dirname, '..');
 const ORCHESTRATOR = path.join(REPO_ROOT, 'scripts', 'run-storyboards-isolated.mjs');
 const FIXTURE = path.join(REPO_ROOT, 'tests', 'fixtures', 'storyboard-isolation-runner.cjs');
 
-function runFixture(t, storyboardIds, extraArgs = []) {
+function runFixture(t, storyboardIds, extraArgs = [], extraEnv = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-isolation-test-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const telemetryFile = path.join(directory, 'telemetry.jsonl');
@@ -37,6 +37,7 @@ function runFixture(t, storyboardIds, extraArgs = []) {
       STORYBOARD_RUNNER_BIN: FIXTURE,
       FIXTURE_STORYBOARDS: storyboardIds.join(','),
       FIXTURE_DESCENDANT_PID_FILE: descendantPidFile,
+      ...extraEnv,
     },
   });
   assert.ok(fs.existsSync(telemetryFile), result.stderr || result.stdout);
@@ -80,6 +81,13 @@ test('orchestrator does not load the training agent or SDK', () => {
   assert.doesNotMatch(source, /server\/src\/training-agent/);
   assert.match(source, /detached: true/);
   assert.match(source, /process\.platform === 'win32' \? pid : -pid/);
+});
+
+test('child V8 heap is bounded without discarding caller Node options', (t) => {
+  const { result } = runFixture(t, ['node_options'], [], { NODE_OPTIONS: '--trace-warnings' });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /NODE_OPTIONS=--trace-warnings --max-old-space-size=2048/);
 });
 
 test('a timed-out child group is reported without losing successful siblings', async (t) => {
