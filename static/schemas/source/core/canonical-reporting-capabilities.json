@@ -26,6 +26,7 @@
       }
     },
     "supports_creative_breakdown": { "type": "boolean" },
+    "supports_format_breakdown": { "type": "boolean" },
     "supports_keyword_breakdown": { "type": "boolean" },
     "supports_geo_breakdown": { "$ref": "/schemas/core/geo-breakdown-support.json" },
     "supports_device_type_breakdown": { "type": "boolean" },
