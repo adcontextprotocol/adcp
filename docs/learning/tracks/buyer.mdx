@@ -75,6 +75,7 @@ How buyer agents orchestrate across multiple sales agents simultaneously: discov
 - **Version negotiation** — declare `adcp_major_version` on every request; handle `VERSION_UNSUPPORTED` by selecting a compatible seller or downgrading the payload
 - **Pricing selection** — products return `pricing_options[]`; buyer selects one via `pricing_option_id` in `create_media_buy`
 - **Structured-first discovery** — use `filters` to decide which offers may be returned, `targeting_overlay` to constrain delivery, and `required_overlay_support` for dimensions selected on packages later
+- **Two optional discovery surfaces** — the 3.2 wholesale feed (`list_products`) is the self-serve, lower-resolution surface; a brief (`request_proposals`, or `get_products` with a brief) is the higher-resolution one. Query both where the seller advertises them; a thin or absent feed is not a capability assessment
 - **Resolution acceptance** — no resolution means an exact structured overlay; review `modifications` and brief-derived targeting before selecting an opaque configured `product_id`
 - **Negotiated accountability** — for guaranteed buys, propose `measurement_terms` / `performance_standards`; seller accepts, adjusts, or returns `TERMS_REJECTED`. S1 covers the recovery patterns
 - **Account required on updates** — `update_media_buy` takes `account` + `media_buy_id`; omitting `account` is a protocol error

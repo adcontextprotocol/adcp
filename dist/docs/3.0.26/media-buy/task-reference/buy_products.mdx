@@ -1,0 +1,44 @@
+---
+title: buy_products
+description: "Buy published product offers directly without proposals or inline creatives."
+"og:title": "AdCP buy_products Task"
+testable: true
+---
+
+`buy_products` is the buyer-composed purchase path. It creates a MediaBuy from canonical product selections returned by [`list_products`](/dist/docs/3.0.26/media-buy/task-reference/list_products), accepting the published commercial terms as-is.
+
+Creative objects and assignments are deliberately absent. Use the creative lifecycle after the MediaBuy has been created. If the buyer needs different commercial terms, request or refine a proposal instead.
+
+Per-purchase flight dates, `measurement_terms`, and `performance_standards` may be omitted to inherit the published offer. The accepted snapshot resolves and preserves those terms. If this purchase ends a tracked planning cycle, `opportunity` closes it with `accepted_with_seller`.
+
+**Request schema:** [`/schemas/3.0.26/media-buy/buy-products-request.json`](https://adcontextprotocol.org/schemas/3.0.26/media-buy/buy-products-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441010",
+  "account": { "account_id": "account_123" },
+  "brand": { "domain": "acmeoutdoor.example" },
+  "feed_version": "products-2027-06-01T12:00:00Z",
+  "pricing_version": "pricing-42",
+  "daily_budget_cap": 5000,
+  "budget_cap_timezone": "America/New_York",
+  "purchases": [
+    {
+      "product_id": "product_display_standard",
+      "pricing_option_id": "cpm_usd",
+      "budget": 50000,
+      "daily_budget_cap": 3000
+    }
+  ],
+  "start_time": "asap",
+  "end_time": "2027-07-01T00:00:00Z"
+}
+```
+
+The media-buy `daily_budget_cap` is a hard aggregate ceiling and does not allocate its value among purchases. A purchase-level cap is an optional subordinate ceiling, not a reservation. Every cap shares the accepted media-buy `budget_cap_timezone`; sellers reject undeclared scopes with [`UNSUPPORTED_FEATURE`](/dist/docs/3.0.26/building/verification/compliance-catalog#error-code-unsupported-feature).
+
+Success returns the MediaBuy identity and an `accepted_proposal` snapshot. Its typed `commercial_terms` preserve the exact feed and pricing versions, product and format selections, catalogs, budgets, targeting, flight, billing, and reporting commitments; `terms_digest` binds that envelope for governance and audit. The separate `purchase_bindings[]` maps each zero-based purchase position to its seller-assigned `package_id`, which SDKs use for later creative assignment without placing execution IDs inside the immutable digest. The seller creates this snapshot even though the buyer did not negotiate first, giving every MediaBuy the same commercial history for later [`refine_proposals`](/dist/docs/3.0.26/media-buy/task-reference/refine_proposals).
+
+A completed purchase MAY include `warnings[]` for non-blocking observations at commitment, such as a material inventory shortfall forecast. Each warning identifies its package through the returned `media_buy_id` and `purchase_bindings[].package_id`; a continuing condition is also readable as an indicator through [`get_media_buys`](/dist/docs/3.0.26/media-buy/task-reference/get_media_buys). The seller may instead return `input-required` before commitment. Warnings never appear on failed or submitted arms.
+
+The accepted snapshot records the published terms the buyer purchased. It does not imply that every direct product is non-guaranteed: discovery mode, buyer composition, and delivery guarantee are independent dimensions.

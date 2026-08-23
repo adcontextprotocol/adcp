@@ -11,9 +11,12 @@ describe('sanitizeCreativeCapabilities', () => {
     format: { format_kind: 'image', params: { width: 300, height: 250 } },
     operations: ['build', 'preview'],
   };
+  const preview = {
+    routes: [{ capability_id: 'image_300x250', rendering_origin: 'agent_approximation' }],
+  } as const;
 
   it('validates complete canonical declarations', async () => {
-    await expect(sanitizeCreativeCapabilities({ supported_formats: [validEntry] }))
+    await expect(sanitizeCreativeCapabilities({ supported_formats: [validEntry], preview }))
       .resolves.toMatchObject({
         supported_formats: [validEntry],
         can_generate: true,
@@ -26,6 +29,7 @@ describe('sanitizeCreativeCapabilities', () => {
     await expect(sanitizeCreativeCapabilities({
       supports_generation: true,
       supported_formats: [{ ...validEntry, operations: ['preview'] }],
+      preview,
     })).resolves.toMatchObject({
       can_generate: true,
       can_preview: true,
@@ -56,6 +60,24 @@ describe('sanitizeCreativeCapabilities', () => {
     await expect(sanitizeCreativeCapabilities({
       supported_formats: [{ ...validEntry, operations: ['build', 'build'] }],
     })).rejects.toThrow('unique non-empty');
+  });
+
+  it('rejects routable preview operations without route metadata', async () => {
+    await expect(sanitizeCreativeCapabilities({ supported_formats: [validEntry] }))
+      .rejects.toThrow('creative.preview');
+  });
+
+  it('rejects preview declarations that do not match the operation catalog', async () => {
+    await expect(sanitizeCreativeCapabilities({
+      supported_formats: [validEntry],
+      preview: { routes: [{ capability_id: 'another_preview', rendering_origin: 'agent_approximation' }] },
+    })).rejects.toThrow('must equal advertised routable preview capability IDs');
+  });
+
+  it('accepts a legacy unrouteable preview entry without capability metadata', async () => {
+    await expect(sanitizeCreativeCapabilities({
+      supported_formats: [{ format: validEntry.format, operations: ['preview'] }],
+    })).resolves.toMatchObject({ can_preview: true });
   });
 });
 

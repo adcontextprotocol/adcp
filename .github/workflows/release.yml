@@ -59,7 +59,7 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
-          if grep -Eq '^(\.changeset/|package(-lock)?[.]json$|dist/(schemas|compliance|protocol)/|static/(schemas|compliance)/source/|server/src/training-agent/|scripts/(build-schemas[.]cjs|build-compliance[.]cjs|build-protocol-tarball[.]cjs|sign-protocol-tarball[.]sh|run-storyboards-[^/]+[.]sh|run-storyboards-matrix[.]sh|stage-sdk-schema-bundle[.]sh|overlay-compliance-cache[.]sh)|[.]github/workflows/(release|training-agent-storyboards)[.]yml$)' <<< "${changed_files}"; then
+          if grep -Eq '^(\.changeset/|package(-lock)?[.]json$|dist/(schemas|compliance|protocol)/|static/(schemas|compliance)/source/|server/src/training-agent/|scripts/(build-schemas[.]cjs|build-compliance[.]cjs|build-protocol-tarball[.]cjs|sign-protocol-tarball[.]sh|run-storyboards-([^/]+[.]sh|isolated[.]mjs)|stage-sdk-schema-bundle[.]sh|overlay-compliance-cache[.]sh)|[.]github/workflows/(release|training-agent-storyboards)[.]yml$)' <<< "${changed_files}"; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
             echo "Release-relevant files changed."
             exit 0
@@ -110,18 +110,69 @@ jobs:
             echo "No committed release artifacts detected for ${VERSION}."
           fi
 
+      # Branch rules can be bypassed by repository administrators and GitHub
+      # Apps. Before publishing committed artifacts, independently verify that
+      # the merged release PR received a human approval on its final head SHA.
+      - name: Require human approval for committed release artifacts
+        if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          pulls="$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls")"
+          pr_number="$(jq -r \
+            --arg base "${GITHUB_REF_NAME}" \
+            '[.[] | select(.merged_at != null and .base.ref == $base)] | sort_by(.merged_at) | last | .number // empty' \
+            <<< "${pulls}")"
+
+          if [ -z "${pr_number}" ]; then
+            echo "::error::Release artifact commit ${GITHUB_SHA} is not associated with a merged PR targeting ${GITHUB_REF_NAME}."
+            exit 1
+          fi
+
+          pr="$(gh api "/repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"
+          head_sha="$(jq -r '.head.sha' <<< "${pr}")"
+          author="$(jq -r '.user.login' <<< "${pr}")"
+          reviews="$(gh api --paginate "/repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/reviews" | jq -s 'add')"
+          approved_count="$(jq \
+            --arg head "${head_sha}" \
+            '[.[] | select(.user.type == "User")]
+            | sort_by(.user.login, .submitted_at)
+            | group_by(.user.login)
+            | map(last)
+            | map(select(.state == "APPROVED" and .commit_id == $head))
+            | length' \
+            <<< "${reviews}")"
+
+          if [ "${approved_count}" -lt 1 ]; then
+            echo "::error::Release PR #${pr_number} by ${author} has no human approval on final head ${head_sha}. Refusing to publish artifacts."
+            exit 1
+          fi
+
+          echo "Release PR #${pr_number} has ${approved_count} human approval(s) on final head ${head_sha}."
+
       - name: Create Release Pull Request or Tag Release
         if: steps.release-relevance.outputs.relevant == 'true' && steps.release-artifacts.outputs.has_release_artifacts != 'true'
         id: changesets
-        uses: changesets/action@v1
+        # v2 understands the Changesets v3 `.changeset/pre/` archive. This is
+        # v2.1.0, pinned to the contract verified at:
+        # https://github.com/changesets/action/blob/198f833dd7d863100ea6e28967bc9a9fdefadb0a/action.yml
+        # Its implementation reads push-with-git-cli at src/index.ts:37.
+        # Keep git CLI pushing enabled because beta-scale generated schema and
+        # compliance artifacts exceed GitHub's API payload limit.
+        uses: changesets/action@198f833dd7d863100ea6e28967bc9a9fdefadb0a # v2.1.0
         with:
-          version: npm run version
-          publish: npx --no-install changeset tag
-          commit: 'Version Packages'
-          title: 'Version Packages'
-          createGithubReleases: true
+          github-token: ${{ steps.app-token.outputs.token }}
+          version-script: npm run version
+          publish-script: npx --no-install changeset git-tag
+          commit-message: 'Version Packages'
+          pr-title: 'Version Packages'
+          create-github-releases: true
+          push-with-git-cli: true
         env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           HUSKY: '0'
 
       - name: Sign local protocol tarball if needed

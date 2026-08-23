@@ -7,6 +7,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { createHash } from "node:crypto";
 import { createLogger } from "../logger.js";
 import { requireAuth } from "../middleware/auth.js";
 import {
@@ -30,6 +31,14 @@ import {
   type ActiveSubscriptionBlock,
 } from "../billing/active-subscription-guard.js";
 import { withOrgIntakeLock } from "../billing/org-intake-lock.js";
+import {
+  claimMembershipCheckoutAttempt,
+  clearMembershipCheckoutAttempt,
+  completeMembershipCheckoutAttempt,
+  hasPendingMembershipCheckoutAttempt,
+  fingerprintMembershipCheckoutPayload,
+  isDefinitiveCheckoutFailure,
+} from "../billing/membership-checkout-attempt.js";
 import {
   OrganizationDatabase,
   type CompanyType,
@@ -59,6 +68,21 @@ const logger = createLogger("billing-public-routes");
 const orgDb = new OrganizationDatabase();
 const usersDb = new UsersDatabase();
 const MAX_ESCALATION_NOTE_LENGTH = 2_000;
+
+function canManageMembershipBilling(role: string): boolean {
+  return role === 'owner' || role === 'admin';
+}
+
+function referralCouponIdempotencyKey(
+  organizationId: string,
+  referralCode: string,
+  discountPercent: number,
+): string {
+  const digest = createHash('sha256')
+    .update(`${organizationId}\0${referralCode}\0${discountPercent}`)
+    .digest('hex');
+  return `aao:membership-referral-coupon:${digest}`;
+}
 
 // Initialize WorkOS client only if authentication is enabled
 const AUTH_ENABLED = !!(
@@ -297,14 +321,20 @@ export function createPublicBillingRouter(): Router {
 
       // Refuse if the org already has an active subscription. Tier changes go
       // through the Stripe Customer Portal, not this intake route. The
-      // Ordinary members may still request an invoice, but only an active
-      // owner/admin membership may receive a billing-management portal URL.
+      // Existing members may inspect the active-subscription response, but a
+      // new financial obligation requires an owner/admin below.
       const activeBlock = await blockIfActiveSubscription(orgId, orgDb, {
         customerPortalReturnUrl: `${req.protocol}://${req.get('host')}/dashboard/membership`,
         requesterMembership: membership,
       });
       if (activeBlock) {
         return res.status(activeBlock.status).json(activeBlock.body);
+      }
+      if (!canManageMembershipBilling(membership.role)) {
+        return res.status(403).json({
+          error: 'Billing administrator required',
+          message: 'Only an organization owner or admin can request a membership invoice.',
+        });
       }
 
       // Product must be eligible for this org type (individual → personal
@@ -388,7 +418,11 @@ export function createPublicBillingRouter(): Router {
             duration: 'once',
             max_redemptions: 1,
             metadata: { referral_code: validatedInvoiceReferralCode.code },
-          });
+          }, referralCouponIdempotencyKey(
+            orgId,
+            validatedInvoiceReferralCode.code,
+            validatedInvoiceReferralCode.discount_percent,
+          ));
           if (coupon) {
             invoiceCouponId = coupon.coupon_id;
           }
@@ -418,6 +452,7 @@ export function createPublicBillingRouter(): Router {
       const intake = await withOrgIntakeLock<
         | { kind: 'block'; block: ActiveSubscriptionBlock }
         | { kind: 'forbidden' }
+        | { kind: 'pendingCheckout' }
         | { kind: 'invoiceFailed' }
         | { kind: 'success'; invoiceResult: NonNullable<Awaited<ReturnType<typeof createAndSendInvoice>>> }
       >(orgId, async () => {
@@ -431,6 +466,10 @@ export function createPublicBillingRouter(): Router {
           requesterMembership: currentMembership,
         });
         if (racedBlock) return { kind: 'block', block: racedBlock };
+        if (!canManageMembershipBilling(currentMembership.role)) return { kind: 'forbidden' };
+        if (await hasPendingMembershipCheckoutAttempt(orgId)) {
+          return { kind: 'pendingCheckout' };
+        }
         const invoiceResult = await createAndSendInvoice(invoiceData);
         if (!invoiceResult) return { kind: 'invoiceFailed' };
         return { kind: 'success', invoiceResult };
@@ -443,6 +482,12 @@ export function createPublicBillingRouter(): Router {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are no longer a member of this organization',
+        });
+      }
+      if (intake.kind === 'pendingCheckout') {
+        return res.status(409).json({
+          error: 'Checkout already in progress',
+          message: 'Finish or wait for the current membership checkout before requesting an invoice.',
         });
       }
       if (intake.kind === 'invoiceFailed') {
@@ -536,7 +581,7 @@ export function createPublicBillingRouter(): Router {
         }
 
         // Product discovery can call Stripe, so authorize the exact active org
-        // membership first. Ordinary members remain eligible for checkout.
+        // membership first. Owner/admin authority is required before intake.
         const customerType = org.is_personal ? 'individual' : 'company';
         const eligibleProducts = await getProductsForCustomer({
           customerType,
@@ -576,6 +621,12 @@ export function createPublicBillingRouter(): Router {
         if (activeBlock) {
           return res.status(activeBlock.status).json(activeBlock.body);
         }
+        if (!canManageMembershipBilling(currentMembership.role)) {
+          return res.status(403).json({
+            error: 'Billing administrator required',
+            message: 'Only an organization owner or admin can start membership checkout.',
+          });
+        }
 
         // Determine referral discount to apply at checkout.
         // Priority 1: accepted referral (prospect already accepted invitation — use that discount)
@@ -603,7 +654,11 @@ export function createPublicBillingRouter(): Router {
               duration: 'once',
               max_redemptions: 1,
               metadata: { referral_code: acceptedReferral.referral_code },
-            });
+            }, referralCouponIdempotencyKey(
+              orgId,
+              acceptedReferral.referral_code,
+              acceptedReferral.discount_percent,
+            ));
             if (coupon) {
               referralCouponId = coupon.coupon_id;
             }
@@ -631,7 +686,11 @@ export function createPublicBillingRouter(): Router {
               duration: 'once',
               max_redemptions: 1,
               metadata: { referral_code: validatedReferralCode.code },
-            });
+            }, referralCouponIdempotencyKey(
+              orgId,
+              validatedReferralCode.code,
+              validatedReferralCode.discount_percent,
+            ));
             if (coupon) {
               referralCouponId = coupon.coupon_id;
             }
@@ -652,26 +711,92 @@ export function createPublicBillingRouter(): Router {
           promotionCode: !org.stripe_coupon_id && !referralCouponId ? (org.stripe_promotion_code || undefined) : undefined,
         };
 
-        const result = await createCheckoutSession(checkoutData);
+        const intake = await withOrgIntakeLock<
+          | { kind: 'block'; block: ActiveSubscriptionBlock }
+          | { kind: 'forbidden' }
+          | { kind: 'conflict' }
+          | { kind: 'replay'; result: NonNullable<Awaited<ReturnType<typeof createCheckoutSession>>> }
+          | { kind: 'create'; idempotencyKey: string }
+        >(orgId, async () => {
+          // Recheck mutable authority and Stripe state after acquiring the
+          // per-org lock, then persist an immutable checkout attempt before
+          // performing the Stripe write outside the database transaction.
+          const lockedMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+          if (!lockedMembership) return { kind: 'forbidden' };
+          const racedBlock = await blockIfActiveSubscription(orgId, orgDb, {
+            customerPortalReturnUrl: `${baseUrl}/dashboard/membership`,
+            requesterMembership: lockedMembership,
+          });
+          if (racedBlock) return { kind: 'block', block: racedBlock };
+          if (!canManageMembershipBilling(lockedMembership.role)) return { kind: 'forbidden' };
+          const claim = await claimMembershipCheckoutAttempt({
+            organizationId: orgId,
+            userId: user.id,
+            payloadFingerprint: fingerprintMembershipCheckoutPayload(checkoutData),
+          });
+          if (claim.kind === 'conflict') return { kind: 'conflict' };
+          if (claim.kind === 'replay') return { kind: 'replay', result: claim };
+          return { kind: 'create', idempotencyKey: claim.idempotencyKey };
+        });
+
+        if (intake.kind === 'block') {
+          return res.status(intake.block.status).json(intake.block.body);
+        }
+        if (intake.kind === 'forbidden') {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are no longer a member of this organization',
+          });
+        }
+        if (intake.kind === 'conflict') {
+          return res.status(409).json({
+            error: 'Checkout already in progress',
+            message: 'Finish or wait for the current membership checkout before choosing a different membership option.',
+          });
+        }
+        let result: NonNullable<Awaited<ReturnType<typeof createCheckoutSession>>>;
+        let shouldConsumeReferral = false;
+        if (intake.kind === 'replay') {
+          result = intake.result;
+        } else {
+          let created: Awaited<ReturnType<typeof createCheckoutSession>>;
+          try {
+            created = await createCheckoutSession({
+              ...checkoutData,
+              idempotencyKey: intake.idempotencyKey,
+            });
+          } catch (error) {
+            if (isDefinitiveCheckoutFailure(error)) {
+              await clearMembershipCheckoutAttempt(orgId, intake.idempotencyKey);
+            }
+            throw error;
+          }
+          if (!created) {
+            return res.status(500).json({
+              error: "Failed to create checkout session",
+              message: "Stripe is not configured. Please contact support.",
+            });
+          }
+          shouldConsumeReferral = await completeMembershipCheckoutAttempt({
+            organizationId: orgId,
+            idempotencyKey: intake.idempotencyKey,
+            sessionId: created.sessionId,
+            url: created.url,
+          });
+          result = created;
+        }
 
         // For the fallback code path (user entered a code at checkout rather than accepting
         // on the landing page), consume the code now. This increments used_count before
         // payment completes — the same tradeoff as the original invoice flow. A user who
         // abandons checkout will have consumed a single-use code. The pre-accepted path
         // (above) avoids this because the code is consumed at /join/:code accept time.
-        if (validatedReferralCode && result) {
+        if (validatedReferralCode && shouldConsumeReferral) {
           try {
             await referralDb.acceptReferralCode(validatedReferralCode.code, orgId, user.id);
           } catch (err) {
             logger.warn({ err, referral_code, orgId }, 'Failed to record referral at checkout — continuing');
           }
-        }
-
-        if (!result) {
-          return res.status(500).json({
-            error: "Failed to create checkout session",
-            message: "Stripe is not configured. Please contact support.",
-          });
         }
 
         logger.info(

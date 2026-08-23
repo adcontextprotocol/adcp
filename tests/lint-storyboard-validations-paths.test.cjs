@@ -566,6 +566,7 @@ test('PATH_BEARING_CHECKS is the documented set', () => {
   assert.ok(PATH_BEARING_CHECKS.has('field_absent'));
   assert.ok(PATH_BEARING_CHECKS.has('field_pattern'));
   assert.ok(PATH_BEARING_CHECKS.has('field_contains'));
+  assert.ok(PATH_BEARING_CHECKS.has('array_length'));
   assert.ok(PATH_BEARING_CHECKS.has('all_fields_in_context_array'));
   assert.ok(PATH_BEARING_CHECKS.has('envelope_field_present'));
   assert.ok(PATH_BEARING_CHECKS.has('envelope_field_absent'));

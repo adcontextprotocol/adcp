@@ -1,614 +1,238 @@
 ---
-title: Media Buy Lifecycle
-description: "AdCP media buy lifecycle — create, update, monitor, and optimize campaigns across sellers using create_media_buy, update_media_buy, and get_media_buys tasks."
-"og:title": "AdCP — Media Buy Lifecycle"
+title: MediaBuy lifecycle
+description: "Create, operate, reconcile, amend, and complete AdCP 3.2 MediaBuys through explicit commercial and operational lifecycles."
+"og:title": "AdCP — MediaBuy lifecycle"
 ---
 
+A MediaBuy is the operational resource created from accepted commercial terms.
+AdCP 3.2 keeps three concerns separate:
 
-Media buys represent the complete lifecycle of advertising campaigns in AdCP. The AdCP:Buy protocol provides a unified interface for managing media buys across multiple advertising platforms, from initial campaign creation through ongoing optimization and updates.
+1. **Commercial formation** chooses or negotiates the terms.
+2. **Creative supply** attaches approved assets to the resulting packages.
+3. **Operational control** changes delivery inside the accepted envelope.
 
-## Overview
+That separation gives buyers and sellers an immutable commercial record while
+allowing normal campaign operations to remain fast and revision-safe.
 
-AdCP's media buy management provides a unified interface for:
+## Form the commercial commitment
 
-- **Campaign Creation** from discovered products and packages
-- **Lifecycle Management** through all campaign states  
-- **Budget and Targeting Updates** for ongoing optimization
-- **Cross-Platform Orchestration** with consistent operations
-- **Asynchronous Operations** with human-in-the-loop support
+Read `get_adcp_capabilities.media_buy.lifecycle_tools`, then choose an
+advertised path:
 
-## The Media Buy Lifecycle Phases
+| Path | Formation | Commitment |
+|---|---|---|
+| Published offer | `list_products` returns versioned seller offers | `buy_products` accepts selected offer terms and feed versions |
+| Seller-planned | `request_proposals` and `refine_proposals` create immutable drafts | Finalize a draft into a committed hold, then call `accept_proposal` |
 
-### 1. Creation Phase
-Transform discovered products into active advertising campaigns using [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy):
+Both paths produce a MediaBuy with seller-issued `media_buy_id`, packages,
+commercial readback, lifecycle status, and revision.
 
-- **Package Configuration**: Combine products with formats, targeting, and budget
-- **Campaign Setup**: Define timing, overall budget, and brand context
-- **Execution Policy**: Define media-buy bidding defaults and explicit package overrides separately from optimization goals
-- **Validation & Approval**: Automated checks with optional human approval
-- **Platform Deployment**: Campaign creation across advertising platforms
+```mermaid
+flowchart LR
+  L[list_products] --> B[buy_products]
+  R[request_proposals] --> V[refine_proposals]
+  V --> F[finalize]
+  F --> A[accept_proposal]
+  B --> M[MediaBuy]
+  A --> M
+```
 
-This phase may involve:
-- Immediate creation with `active` status (instant activation)
-- Held creation with `paused` status when the buyer passes top-level `paused: true` and activation prerequisites are otherwise satisfied
-- Deferred creation with `pending_creatives` status (awaiting creative assignment) or `pending_start` status (ready to serve, waiting for flight date)
-- Human approval workflow via `pending_manual` task status (see [Asynchronous Operations](#asynchronous-operations-and-human-in-the-loop))
-- Permission requirements via `pending_permission` task status (see [Asynchronous Operations](#asynchronous-operations-and-human-in-the-loop))
+Use [Product discovery and planning](/docs/media-buy/product-discovery/) to
+choose a path, and [Proposal negotiation](/docs/media-buy/product-discovery/proposal-negotiation)
+for immutable revision and hold semantics.
 
-<Note>
-`pending_manual` and `pending_permission` are **task-level** statuses from the human-in-the-loop queue — they describe whether the *operation* requires approval, not the media buy's lifecycle state. The media buy itself enters `pending_creatives`, `pending_start`, `active`, or `paused` once the operation completes.
-</Note>
+## MediaBuy and package model
 
-**Platform Mapping:**
-- **Google Ad Manager**: Creates an Order with LineItems
-- **Kevel**: Creates a Campaign with Flights
-- **Triton Digital**: Creates a Campaign with Flights
+A MediaBuy contains:
 
-### 2. Creative Supply Phase
-Once created, the media buy requires creative assets through the path the seller advertises: [`sync_creatives`](/docs/creative/task-reference/sync_creatives) for library-backed sellers, or inline `packages[].creatives` on [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) for inline-only sellers.
+- the accepted commercial snapshot and digest when formed from a proposal;
+- aggregate budget, pacing, bidding, and daily-cap policy;
+- one or more packages representing purchased products and their executable
+  targeting, flight, pricing, and creative requirements;
+- operational status, health, indicators, and revision history;
+- correlation context and reporting configuration; and
+- `revision`, `valid_actions`, and `available_actions` for safe routing.
 
-- **Platform-specific format support** (video, audio, display, custom)
-- **Validation and policy review** for creative compliance
-- **Assignment to specific packages** for targeted delivery
+Packages preserve the seller-confirmed execution contract. Important fields
+include:
 
-### 3. Activation & Delivery Phase
-Monitor and manage active campaigns:
+| Field | Meaning |
+|---|---|
+| `product_id` | Published or proposal-bound product that produced the package |
+| `targeting_overlay` | Complete effective targeting, including seller resolution |
+| `start_time` / `end_time` | Executable package flight |
+| `budget` / `daily_budget_cap` | Package-level spend constraints when applicable |
+| `formats_pending` | Canonical creative requirements that still lack coverage |
+| `creative_approvals[]` | Current assignment review state |
+| `indicators[]` | Current seller observations such as pacing or inventory risk |
 
-- **Status Tracking**: Campaign transitions from `pending_creatives` to `pending_start` to `active`, or to `paused` when created with delivery held
-- **Creative Assignment**: Attach assets from the creative library
-- **Delivery Monitoring**: Track pacing and performance metrics with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
-- **Issue Resolution**: Handle approval delays and platform issues
+The buyer does not reconstruct package state from its original request. Read
+the current seller snapshot through [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys).
 
-### 4. Optimization & Reporting Phase
-Ongoing performance monitoring and data-driven campaign optimization using AdCP's comprehensive reporting tools.
+## State machine
 
-Key activities include:
-- **Performance monitoring** with real-time and historical analytics
-- **Campaign optimization** through budget reallocation and targeting refinement
-- **Dimensional reporting** using the same targeting dimensions for consistent analysis
-- **AI-driven insights** through performance feedback loops
+| State | Meaning | Terminal? |
+|---|---|---|
+| `pending_creatives` | Commercially accepted; required creative coverage is missing | No |
+| `pending_start` | Ready to serve; waiting for the flight to begin | No |
+| `active` | Eligible to deliver | No |
+| `paused` | Delivery is intentionally held | No |
+| `completed` | Flight ended, goal completed, or budget exhausted | Yes |
+| `rejected` | Seller declined before activation | Yes |
+| `canceled` | Buyer or seller terminated the buy | Yes |
 
-For complete details on optimization strategies, performance monitoring, standard metrics, and best practices, see **[Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting)**.
+```mermaid
+stateDiagram-v2
+  [*] --> pending_creatives : commitment lacks creative coverage
+  [*] --> pending_start : commitment ready, flight future
+  [*] --> active : commitment ready, flight started
+  [*] --> paused : direct purchase created held
+  pending_creatives --> pending_start : creative assignments complete
+  pending_start --> active : flight starts
+  active --> paused : control_media_buy pause
+  paused --> active : control_media_buy resume
+  active --> completed : flight, goal, or budget completes
+  paused --> completed : flight, goal, or budget completes
+  pending_creatives --> canceled : accepted cancellation path
+  pending_start --> canceled : accepted cancellation path
+  active --> canceled : accepted cancellation path
+  paused --> canceled : accepted cancellation path
+  pending_creatives --> rejected : seller decline
+  pending_start --> rejected : seller decline
+  completed --> [*]
+  rejected --> [*]
+  canceled --> [*]
+```
 
-## Key Concepts
+Task status is separate. `buy_products`, `accept_proposal`, and
+`control_media_buy` may return `submitted`, `working`, or `input-required`
+while an operation awaits systems or human review. The MediaBuy changes only
+when that task completes. See [Task lifecycle](/docs/building/by-layer/L3/task-lifecycle).
 
-### Media Buy Structure
-A media buy contains:
-- **Campaign metadata** (buyer reference, brand, timing)
-- **Overall budget** with currency and pacing preferences
-- **Bidding policy** at media-buy scope, with optional complete package overrides and authored-scope-preserving readback
-- **Multiple packages** representing different targeting/creative combinations
-- **Status tracking** through creation, approval, and execution phases
+## Supply and assign creatives
 
-
-### Package types
-
-Three distinct types represent a package at different lifecycle stages:
-
-| Type | Schema | Used in | Purpose |
-|------|--------|---------|---------|
-| `PackageRequest` | `media-buy/package-request.json` | `create_media_buy` request | What the buyer sends to create a package |
-| `Package` | `core/package.json` | `create_media_buy` success response | What the seller returns after creation (confirmed state) |
-| `PackageStatus` | inline in `media-buy/get-media-buys-response.json` | `get_media_buys` response | Delivery/reporting view — includes creative approvals and optional snapshot |
-
-When implementing `create_media_buy`, send a `PackageRequest`. The response returns `Package` objects. When calling `get_media_buys` to check status or delivery, the response contains `PackageStatus` items with delivery-specific fields.
-
-### Package model
-Packages are the building blocks of media buys:
-- **Single product** selection from discovery results - when you buy a product, you buy the entire product (unless using property targeting)
-- **Creative formats** to be provided for this package
-- **Targeting overlays** for refinements including geo restrictions, frequency caps, and property targeting
-- **Budget controls** as an independent fixed budget or a cap/soft minimum within seller-optimized allocation
-- **Pricing option** selection from product's available pricing models
-- **Pacing strategy** for budget delivery (even, asap, or front_loaded)
-- **Bid price** for auction-based pricing models (when applicable)
-- **Flight scheduling** with optional `start_time` and `end_time` per package
-- **[Accountability terms](/docs/media-buy/advanced-topics/accountability)** for guaranteed buys — `performance_standards`, `measurement_terms`, and `cancellation_policy`
-
-### Flight scheduling
-
-Packages can have independent flight dates within a media buy. This enables weekly (or any cadence) flight patterns where the same product appears as multiple packages with different date windows and budgets.
-
-- **Inheritance**: When `start_time` or `end_time` is omitted on a package, the package inherits the media buy's dates. Each field inherits independently — a package may specify `start_time` while inheriting the media buy's `end_time`, or vice versa.
-- **Validation**: Package dates must fall within the parent media buy's date range. Sellers SHOULD reject packages where `start_time` is equal to or after `end_time`.
-- **Overlapping flights**: Multiple packages for the same product may have overlapping date ranges. In fixed mode each package maintains an independent budget; in seller-optimized mode the packages draw from the shared total within their constraints.
-- **Format**: Plain ISO 8601 date-time — packages do not support `"asap"`
-
-**Weekly flights example:**
-
-A display campaign running March 1-31, broken into weekly $2,000 flights with a dark period for lift measurement (abbreviated — see [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) for the full request shape):
+Compact purchase calls do not carry creative bodies. Use
+[`sync_creatives`](/docs/creative/task-reference/sync_creatives) to create or
+update library assets, then use `assignment_operations` to assign, unassign, or
+replace package creatives.
 
 ```json
 {
-  "start_time": "2026-03-01T00:00:00Z",
-  "end_time": "2026-03-31T23:59:59Z",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441050",
+  "account": { "account_id": "account_123" },
+  "assignment_operations": [
+    {
+      "operation": "assign",
+      "creative_id": "creative_trail_video_30",
+      "package_id": "package_streamhaus_video"
+    }
+  ]
+}
+```
+
+Package-level `creative_deadline` takes precedence over the MediaBuy-level
+deadline. After the deadline, the seller rejects new or replacement creative
+assignments for that package. Creative library state and package assignment
+state remain distinct: ending a buy releases assignments but does not delete a
+reusable library creative.
+
+## Control delivery inside accepted terms
+
+Use [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) for
+operational changes already permitted by the accepted commercial envelope:
+
+- pause or resume delivery;
+- exercise an accepted unilateral cancellation right;
+- change total, aggregate-daily, or package budget controls;
+- update allocation, pacing, bidding, targeting, catalog references, keywords,
+  impression controls, or optimization goals; and
+- change reporting-webhook configuration.
+
+Every control includes the latest `revision` from `get_media_buys`:
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441051",
+  "account": { "account_id": "account_123" },
+  "media_buy_id": "media_buy_789",
+  "revision": 4,
   "packages": [
     {
-      "product_id": "prod_premium_display",
-      "pricing_option_id": "cpm_usd_fixed",
-      "budget": 2000,
-      "start_time": "2026-03-01T00:00:00Z",
-      "end_time": "2026-03-07T23:59:59Z"
-    },
-    {
-      "product_id": "prod_premium_display",
-      "pricing_option_id": "cpm_usd_fixed",
-      "budget": 2000,
-      "start_time": "2026-03-08T00:00:00Z",
-      "end_time": "2026-03-14T23:59:59Z"
-    },
-    {
-      "product_id": "prod_premium_display",
-      "pricing_option_id": "cpm_usd_fixed",
-      "budget": 2000,
-      "start_time": "2026-03-22T00:00:00Z",
-      "end_time": "2026-03-28T23:59:59Z"
+      "package_id": "package_streamhaus_video",
+      "paused": true
     }
   ]
 }
 ```
 
-Week 3 is intentionally omitted — a dark period for lift measurement. Each flight gets its own budget, so pacing and spend are controlled per week. To adjust mid-campaign, update individual package budgets without affecting other flights.
-
-### Creative Assignment and Placement Routing
-
-When a product defines multiple buyer-targetable placements, buyers can assign different creatives to those placements while still purchasing the product as a package. Creative placement refs route creatives inside the package inventory; they do not narrow the inventory purchased by the package.
-
-**Key Points:**
-- **Packages buy the product** - product-level `placements[].mode` says which publisher-scoped placements are buyer-targetable
-- **Placement identity is publisher-scoped** - publisher-referenced placements resolve as `{publisher_domain, placement_id}` against the publisher's `adagents.json`
-- **Inline placements are still allowed** - if there is no public publisher placement declaration, the sales agent may define an inline placement with `name`, formats, and public buyer-facing detail; its `placement_id` is still interpreted in the named publisher namespace, or in the seller agent's own publisher namespace when `publisher_domain` is omitted in a single-publisher legacy context
-- Package inventory scope comes from the selected product, product refinement, or a seller-supported package targeting surface. `creative_assignments[].placement_refs` only routes creatives among placements already in scope
-- Creatives without `placement_refs` or `placement_ids` run on all buyer-targetable placements in the package
-- If both `placement_refs` and legacy `placement_ids` are present, `placement_refs` wins and sellers ignore `placement_ids`
-- Placements with `mode: "included"` are part of the product's public composition and cannot be referenced in `creative_assignments[].placement_refs`
-- Use `placement_refs` for multi-publisher products. `placement_ids` remains a legacy shorthand only when the placement namespace is unambiguous.
-- Publishers can authorize agents for specific placements using `authorized_agents[].placement_ids` or governed `placement_tags` in `adagents.json`; the seller should only return publisher-referenced placements it is authorized to sell
-
-**Example Workflow:**
-
-1. **Product returns targetable placements:**
-```json
-{
-  "product_id": "network_premium",
-  "placements": [
-    {
-      "kind": "publisher_ref",
-      "publisher_domain": "daily-pulse.example",
-      "placement_id": "homepage_banner",
-      "name": "Homepage Banner",
-      "mode": "targetable",
-      "format_option_refs": [{ "scope": "product", "format_option_id": "display_728x90" }]
-    },
-    {
-      "kind": "publisher_ref",
-      "publisher_domain": "metro-report.example",
-      "placement_id": "homepage_banner",
-      "name": "Homepage Banner",
-      "mode": "targetable",
-      "format_option_refs": [{ "scope": "product", "format_option_id": "display_728x90" }]
-    },
-    {
-      "kind": "seller_inline",
-      "publisher_domain": "daily-pulse.example",
-      "placement_id": "article_sidebar",
-      "name": "Article Sidebar",
-      "mode": "targetable",
-      "format_option_refs": [{ "scope": "product", "format_option_id": "display_300x250" }]
-    },
-    {
-      "kind": "seller_inline",
-      "publisher_domain": "daily-pulse.example",
-      "placement_id": "sponsorship_lockup",
-      "name": "Sponsorship lockup",
-      "mode": "included"
-    }
-  ]
-}
-```
-
-The first two placements both use `placement_id: "homepage_banner"`, but they are distinct because each is scoped by a different `publisher_domain`. The third placement is inline because it has no catalog reference; it still carries `publisher_domain` because this product spans multiple publisher namespaces.
-
-2. **Buyer creates package (buys entire product) and assigns different creatives to each placement:**
-```json
-{
-  "product_id": "network_premium",
-  "creative_assignments": [
-    {
-      "creative_id": "creative_daily_pulse",
-      "placement_refs": [
-        {
-          "publisher_domain": "daily-pulse.example",
-          "placement_id": "homepage_banner"
-        }
-      ]
-    },
-    {
-      "creative_id": "creative_metro_report",
-      "placement_refs": [
-        {
-          "publisher_domain": "metro-report.example",
-          "placement_id": "homepage_banner"
-        }
-      ]
-    }
-  ]
-}
-```
-
-3. **Or assign one creative to all targetable placements (omit placement_refs and placement_ids):**
-```json
-{
-  "product_id": "network_premium",
-  "creative_assignments": [
-    {
-      "creative_id": "creative_universal"
-    }
-  ]
-}
-```
-
-Omitting both `placement_refs` and legacy `placement_ids` means the creative runs on all buyer-targetable placements in the package.
-
-**Use Cases:**
-- **Format-specific placements**: Homepage takes 728x90, sidebar takes 300x250
-- **A/B testing**: Test different creatives on different placements
-- **Geo-targeting**: Different creatives for different DOOH screen locations
-- **Dayparting**: Different creatives for morning vs evening placements
-
-See [Media Products - Placements](/docs/media-buy/product-discovery/media-products.mdx#placements) for complete placement documentation.
-
-### Property Targeting
-
-For products with `property_targeting_allowed: true`, buyers can specify which properties to target using `property_list` in the `targeting_overlay`:
-
-```json
-{
-  "product_id": "flexible_news_network",
-  "targeting_overlay": {
-    "property_list": {
-      "agent_url": "https://governance.example.com",
-      "list_id": "pl_brand_safe_2024"
-    }
-  },
-  "budget": 50000
-}
-```
-
-**Key Points:**
-- Only valid for products with `property_targeting_allowed: true`
-- The package runs on the intersection of the product's `publisher_properties` and the `property_list`
-- If omitted, the package runs on all of the product's properties
-- If provided for a product with `property_targeting_allowed: false`, the seller SHOULD return a validation error
-
-See [Media Products - Property Targeting](/docs/media-buy/product-discovery/media-products#property-targeting) for more on how products declare targeting flexibility.
-
-### Lifecycle States
-
-Media buys progress through defined states with explicit transition rules:
-
-```
-create_media_buy ──┬──▶ pending_creatives ──▶ pending_start ──▶ active
-                   ├──▶ active ──(pause)──▶ paused
-                   └──▶ paused (when created with paused: true)
-
-paused ──(resume)──▶ active
-active ─────────────▶ completed (terminal)
-paused ─────────────▶ completed (terminal)
-
-pending_creatives ──▶ rejected (terminal)  — seller rejects during setup
-pending_start ──────▶ rejected (terminal)  — seller rejects during setup
-
-Any non-terminal ──── update(canceled: true) ──▶ canceled (terminal)
-```
-
-- **`pending_creatives`**: Approved but no creatives assigned — **buyer-side action required** (use `sync_creatives` for library-backed sellers, or inline `packages[].creatives` for inline-only sellers). Not a publisher- or governance-side approval queue: the seller has already accepted the buy; only the buyer's creative submission is missing.
-- **`pending_start`**: Ready to serve, waiting for flight date
-
-The `pending_X` naming convention names the lifecycle phase that is next required, NOT a state of waiting on seller/operator approval — `pending_creatives` means "creatives are the next phase," `pending_start` means "the flight date start is the next phase." Both are post-seller-acceptance states.
-- **`active`**: Running and delivering impressions
-- **`paused`**: Temporarily stopped by buyer or seller. A buy may also be created directly into `paused` with top-level `paused: true` when it otherwise satisfies activation prerequisites; setup blockers such as missing creatives or future flight dates still surface as `pending_creatives` or `pending_start` until cleared, then the create-time hold becomes visible as `paused`.
-- **`completed`**: Finished — flight ended, goal met, or budget exhausted
-- **`rejected`**: Declined by the seller (terminal)
-- **`canceled`**: Terminated before natural completion. Check `cancellation.canceled_by` to determine whether the buyer or seller initiated.
-
-<Note>
-**Display collapsing.** `pending_creatives` and `pending_start` are granular to support downstream gating — conditional UI, task routing, readiness checks. Buyer applications MAY render both as a single `pending` label for end users, but MUST preserve the raw status value on the wire (API responses, webhooks, persisted records, logs) so logic that depends on the distinction keeps working. Treat the raw enum as the source of truth and derive display labels from it. Where possible, drive UI affordances from `valid_actions` rather than from the status value directly.
-</Note>
-
-**Effect on creatives**: A media buy reaching `rejected`, `canceled`, or `completed` releases its creative assignments but does not modify the creatives themselves. Assigned creatives remain in the library with their existing review status and are available for assignment to other media buys. See [creative state and assignment state](/docs/creative/creative-libraries#creative-state-and-assignment-state-are-separate).
-
-**Order confirmation**: A committed `create_media_buy` response constitutes order confirmation. The response includes `confirmed_at` with the seller's commitment timestamp. Deferred/manual approval flows may expose `confirmed_at: null` until the seller commits; once populated, the timestamp remains stable through later lifecycle changes. See [revision and confirmation semantics](/docs/media-buy/specification#revision-and-confirmation-semantics).
-
-**Terminal states**: `completed`, `rejected`, and `canceled` are terminal — no transitions out. Sellers MUST reject updates to terminal-state media buys with error code `INVALID_STATE`.
-
-**Create-time holds.** Top-level `paused: true` on `create_media_buy` is a latent delivery hold when setup blockers exist. Buyers still see the blocker state first (`pending_creatives` or `pending_start`) because that is the next required phase. Once creatives are present and the flight can start, the buy enters `paused` instead of `active`. Buyers may clear the hold before blockers clear with `update_media_buy` and `paused: false`; the visible status stays `pending_creatives` or `pending_start` until the blocker clears, then proceeds to `active`.
-
-**Seller implementation requirement — persist status, never recompute from dates**: `status` MUST be stored as an explicit field and mutated only by protocol events. Flight-date arithmetic cannot represent `paused`, `canceled`, or `rejected` — those are driven by explicit commands, not the clock. Sellers that recompute `status` from `start_time`/`end_time` at request time will silently drop these states, breaking `valid_actions` for every buyer reading the media buy. The correct approach: date comparison sets the initial status at `create_media_buy` time (`pending_creatives`, `pending_start`, `active`, or `paused`); after that, the state machine owns the field.
-
-**Discovering valid actions**: The `get_media_buys` response includes `valid_actions` for each media buy — a list of actions the buyer can perform in the current state. Agents SHOULD use this instead of hardcoding the state machine:
-
-```json
-{
-  "media_buys": [{
-    "media_buy_id": "mb_12345",
-    "status": "active",
-    "revision": 3,
-    "valid_actions": ["pause", "cancel", "update_budget", "update_dates", "update_packages", "add_packages", "sync_creatives"],
-    "packages": [...]
-  }]
-}
-```
-
-**Revision tracking**: Each media buy carries a `revision` number that increments on every mutating change. Pass `revision` in `update_media_buy` for optimistic concurrency — the seller rejects with `CONFLICT` if the revision has changed since you last read it. Sellers must enforce this check atomically with the write; application-level read/compare/write logic can race concurrent updates.
-
-
-## Core Operations
-
-### Creating Media Buys
-The creation process handles:
-- **Product validation** ensuring discovered products are still available
-- **Format compatibility** checking creative requirements across packages
-- **Budget distribution** allocating spend across multiple packages
-- **Platform coordination** creating campaigns across multiple ad servers
-
-### Updating Media Buys
-
-The operation type for each package is structurally explicit — determined by where it appears in the request:
-
-| Operation | Request field | Example |
-|-----------|--------------|---------|
-| **New** | `new_packages[]` | Add a line item mid-flight |
-| **Changed** | `packages[]` | Adjust budget, targeting, dates, creatives |
-| **Canceled** | `packages[]` with `canceled: true` | Cancel a line item (irreversible) |
-
-Campaign-level modifications include:
-- **Budget adjustments** for increased/decreased spend
-- **Targeting updates** to refine audience parameters
-- **Schedule changes** for extended or shortened campaign timing
-- **Pause/resume** for campaign-level delivery control
-
-### Canceling Media Buys
-
-Cancel a media buy or individual package using [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) with `canceled: true`:
-
-```json
-{
-  "media_buy_id": "mb_12345",
-  "canceled": true,
-  "cancellation_reason": "Campaign strategy changed"
-}
-```
-
-Cancel a single package within an active media buy:
-
-```json
-{
-  "media_buy_id": "mb_12345",
-  "packages": [
-    {
-      "package_id": "pkg_67890",
-      "canceled": true,
-      "cancellation_reason": "Underperforming — reallocating budget"
-    }
-  ]
-}
-```
-
-- Cancellation is **irreversible** — canceled media buys and packages cannot be reactivated
-- Sellers MAY reject cancellation with error code `NOT_CANCELLABLE` (e.g., contractual obligations, in-production print orders)
-- A canceled package does not affect other packages in the same media buy. When all packages are canceled, sellers that support `add_packages` allow the buyer to add new packages via `new_packages` in `update_media_buy`. Otherwise, the buyer SHOULD explicitly cancel the media buy.
-- Sellers MAY cancel media buys or packages (e.g., policy violation, inventory withdrawal). Seller-initiated cancellations set `cancellation.canceled_by: "seller"` and MUST be recoverable through `get_media_buys`. AdCP 3.x does not define a durable resource-scoped status webhook; sellers may expose an implementation extension until the 4.0 notification contract lands.
-
-### Package Lifecycle
-
-Packages follow the same pause/cancel pattern as media buys, with additional creative deadline enforcement:
-
-- **`paused`**: Temporarily stopped — can be resumed with `paused: false`
-- **`canceled`**: Permanently stopped — irreversible
-- **`creative_deadline`**: Per-package deadline for creative uploads or changes. After this deadline, creative changes are rejected with `CREATIVE_REJECTED`.
-
-When `creative_deadline` is absent on a package, the media buy's `creative_deadline` applies. This is important for mixed-channel orders — a print package may have an earlier material deadline than a digital package in the same media buy.
-
-### Status Management
-Campaign state transitions:
-- **Activation requests** to start pending campaigns
-- **Pause/resume operations** for campaign control
-- **Cancellation** for buyer-initiated termination
-- **Completion handling** for successful campaign closure
-- **Error recovery** for failed operations
-
-## Response Times
-
-Media buy operations use a unified status system with predictable timing:
-
-- **[`create_media_buy`](/docs/media-buy/task-reference/create_media_buy)**: Instant to days
-  - `completed`: Simple campaigns created immediately  
-  - `working`: Processing within 120 seconds (validation, setup)
-  - `submitted`: Complex campaigns requiring hours to days (human approval)
-  
-- **[`update_media_buy`](/docs/media-buy/task-reference/update_media_buy)**: Instant to days
-  - `completed`: Budget changes applied immediately
-  - `working`: Targeting updates within 120 seconds
-  - `submitted`: Package modifications requiring approval (hours to days)
-
-- **[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)**: ~60 seconds (data aggregation)
-- **Performance analysis**: ~1 second (cached metrics)
-
-**Status Meanings:**
-- **`completed`**: Operation finished, process results immediately
-- **`working`**: Processing, expect completion within 120 seconds  
-- **`submitted`**: Long-running operation, provide webhook or poll with `tasks/get`
-
-## Best Practices
-
-### Campaign Planning
-- **Start with clear objectives** defined in your product discovery brief
-- **Plan package structure** around distinct audience/creative combinations
-- **Set realistic budgets** based on product pricing guidance
-- **Allow time for approval** in publisher workflows
-
-### Ongoing Management
-- **Monitor daily pacing** to ensure delivery against targets
-- **Review performance weekly** for optimization opportunities
-- **Update targeting gradually** to avoid disrupting delivery
-- **Refresh creatives regularly** to prevent audience fatigue
-
-### Budget Management
-- **Allocate conservatively** initially, then increase based on performance
-- **Reserve budget** for high-performing packages
-- **Plan for seasonality** in audience availability and pricing
-- **Monitor spend efficiency** across different targeting approaches
-- **Budget Management**: The system automatically recalculates impressions based on CPM when budgets are updated
-
-### Technical Implementation
-- **Pause/Resume Strategy**: Use campaign-level controls for maintenance, package-level for optimization
-- **Performance Monitoring**: Regular status checks and delivery reports ensure campaigns stay on track
-- **Asynchronous Design**: Design orchestrators to handle long-running operations gracefully
-- **Task Tracking**: Maintain persistent storage for pending task IDs
-- **Webhook Integration**: Implement webhooks for real-time updates
-- **User Communication**: Clearly communicate pending states to end users
-
-## Error Handling
-
-For comprehensive error handling guidance including pending vs error states, response patterns, and recovery strategies, see [Error Handling](/docs/building/by-layer/L3/error-handling).
-
-Media buy specific error codes are documented in each task specification and the [Error Handling Reference](/docs/building/by-layer/L3/error-handling).
-
-## Asynchronous Operations and Human-in-the-Loop
-
-The AdCP:Buy protocol is designed for asynchronous operations as a core principle. Orchestrators MUST handle pending states gracefully.
-
-### Human-in-the-Loop (HITL) Operations
-
-Many publishers require manual approval for automated operations. The protocol supports this through the HITL task queue:
-
-1. **Operation Request**: Orchestrator calls any modification task
-2. **Pending Response**: Server returns `pending_manual` status with task ID
-3. **Task Monitoring**: Orchestrator polls or receives webhooks
-4. **Human Review**: Publisher reviews and approves/rejects
-5. **Completion**: Original operation executes upon approval
-
-### HITL Task States
-
-```
-pending → assigned → in_progress → completed/failed
-                  ↓
-              escalated
-```
-
-### Orchestrator Requirements
-
-Orchestrators MUST:
-1. Handle `pending_manual` and `pending_permission` as normal states
-2. Store task IDs for tracking pending operations
-3. Implement retry logic with exponential backoff
-4. Handle eventual rejection of operations gracefully
-5. Support webhook callbacks for real-time updates (recommended)
-
-## Standard Metrics
-
-All platforms must support these core metrics:
-
-- **impressions**: Number of ad views
-- **spend**: Amount spent in currency
-- **clicks**: Number of clicks (if applicable)
-- **ctr**: Click-through rate (clicks/impressions)
-
-Optional standard metrics:
-
-- **conversions**: Post-click/view conversions
-- **viewability**: Percentage of viewable impressions
-- **completion_rate**: Video/audio completion percentage
-- **engagement_rate**: Platform-specific engagement metric
-
-## Platform-Specific Considerations
-
-Different platforms offer varying reporting and optimization capabilities:
-
-### Google Ad Manager
-- Orders can contain multiple LineItems
-- LineItems map 1:1 with packages
-- Sophisticated targeting and frequency capping
-- Requires creative approval process
-- **Reporting**: Comprehensive dimensional reporting, real-time and historical data, advanced viewability metrics
-
-### Kevel
-- Campaigns contain Flights
-- Flights map 1:1 with packages
-- Real-time decisioning engine
-- Supports custom creative templates
-- **Reporting**: Real-time reporting API, custom metric support, flexible aggregation options
-
-### Triton Digital
-- Optimized for audio advertising
-- Campaigns contain Flights for different dayparts
-- Strong station/stream targeting capabilities
-- Audio-only creative support
-- **Reporting**: Audio-specific metrics (completion rates, skip rates), station-level performance data, daypart analysis
-
-## Advanced Analytics
-
-### Cross-Campaign Analysis
-- **Portfolio performance** across multiple campaigns
-- **Audience overlap** and frequency management
-- **Budget allocation** optimization across campaigns
-
-### Predictive Insights
-- **Performance forecasting** based on historical data
-- **Optimization recommendations** from AI analysis
-- **Trend prediction** for proactive adjustments
-
-## Integration Patterns
-
-### Discovery to Media Buy
-Seamless flow from product discovery to campaign creation:
-1. Use [`get_products`](/docs/media-buy/task-reference/get_products) to find inventory
-2. Select products that align with campaign objectives
-3. Configure packages with appropriate targeting and formats
-4. Create media buy with [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy)
-
-### Creative Integration
-Coordinate with creative management:
-1. Understand format requirements from selected products
-2. Prepare assets using [Creative Management](/docs/media-buy/creatives/)
-3. Assign creatives during campaign creation or via updates
-4. Monitor creative performance and refresh as needed
-
-### Performance Optimization
-Data-driven campaign improvement leveraging comprehensive analytics:
-
-1. **Track delivery** with [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
-   - Monitor real-time delivery metrics and pacing analysis
-   - Get package-level performance breakdown for optimization opportunities
-   - Track performance across different targeting approaches
-
-2. **Analyze performance** across packages and targeting
-   - Use dimensional reporting for granular insights
-   - Monitor performance index scores for AI-driven optimization
-   - Identify high and low performing segments
-
-3. **Update campaigns** with [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy)
-   - Reallocate budgets between high and low performing packages
-   - Adjust targeting based on performance data
-   - Pause underperforming packages and scale successful ones
-
-4. **Iterate** based on performance data and business outcomes
-   - Feed performance data back into optimization algorithms
-   - Continuously refine targeting and creative assignments
-   - Scale successful strategies across similar campaigns
-
-#### Optimization Best Practices
-1. **Report Frequently**: Regular reporting improves optimization opportunities
-2. **Track Pacing**: Monitor delivery against targets to avoid under/over-delivery
-3. **Analyze Patterns**: Look for performance trends across dimensions
-4. **Consider Latency**: Some metrics may have attribution delays
-5. **Normalize Metrics**: Use consistent baselines for performance comparison
-
-## Related Documentation
-
-- **[Product Discovery](/docs/media-buy/product-discovery/)** - Finding inventory for media buys
-- **[Task Reference](/docs/media-buy/task-reference/)** - Complete API documentation
-- **[Creatives](/docs/media-buy/creatives/)** - Creative asset management
-- **[Indicators and Warnings](/docs/media-buy/media-buys/indicators)** - Immediate success warnings, durable seller indicators, and change invalidations
-- **[Orchestrator Design Guide](/docs/building/operating/orchestrator-design)** - Implementation best practices
+The seller atomically rejects a stale revision with `CONFLICT`. Re-read the
+snapshot, reconcile the prior operation, and decide whether the original intent
+still applies before retrying.
+
+## Amend commercial terms
+
+`control_media_buy` does not add products, change negotiated pricing or billing
+terms, attach creatives, or move a flight outside the accepted envelope. When
+an otherwise valid control requires new terms, the seller returns
+`REQUOTE_REQUIRED`.
+
+The buyer then:
+
+1. reads `accepted_proposal_id` and the current terms from `get_media_buys`;
+2. calls `refine_proposals` with `change_kind: "amendment"`;
+3. verifies the immutable successor draft;
+4. finalizes it into a committed hold; and
+5. calls `accept_proposal` to apply the amendment atomically.
+
+A cancellation requiring counterparty agreement uses the same lifecycle with
+`change_kind: "cancellation"`. A cancellation right already granted in the
+accepted terms can use `control_media_buy` directly.
+
+## Read, reconcile, and report
+
+Use the surfaces for their intended consistency level:
+
+| Surface | Use |
+|---|---|
+| `get_media_buys` | Operational snapshot: state, revision, accepted proposal, packages, approvals, health, and optional near-real-time delivery |
+| `get_media_buy_delivery` | Billing-grade delivery and dimensional reporting |
+| Reporting webhooks | Push hints that delivery or health changed; repair from snapshots after gaps |
+| Revision history | Append-only audit context for accepted operational changes |
+
+Webhook arrival order is not resource order. Treat the snapshot as the repair
+surface and compare resource revisions rather than transport timestamps. See
+[Snapshot and log contract](/docs/protocol/snapshot-and-log).
+
+## Seller implementation invariants
+
+Sellers implementing the lifecycle should preserve these properties:
+
+- Store MediaBuy status explicitly; do not recompute paused, canceled, or
+  rejected state from flight dates.
+- Enforce the revision comparison atomically with every control.
+- Return the accepted proposal ID, digest, and complete snapshot for
+  proposal-formed buys so restarted clients can amend safely.
+- Keep creative assignment mutations separate from commercial controls.
+- Persist account-scoped buys regardless of whether they were created through
+  AdCP or another seller surface.
+- Expose current routing through `available_actions` rather than requiring
+  buyers to infer it from status.
+
+## Compatibility boundary
+
+Sellers without `media_buy.lifecycle_tools` continue to use the 3.x
+`get_products`, `create_media_buy`, and `update_media_buy` facade. Keep that
+translation in a version-adaptation layer. New business logic should reason in
+terms of published offers, immutable proposals, accepted terms, and
+revision-checked controls.
+
+See [Migrating from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2) for the
+mapping and [Media buy lifecycle flow](/docs/media-buy/media-buys/lifecycle) for
+the detailed state and dependency reference.
+
+## Continue
+
+- [Optimization and reporting](/docs/media-buy/media-buys/optimization-reporting)
+- [Indicators and warnings](/docs/media-buy/media-buys/indicators)
+- [Accountability](/docs/media-buy/advanced-topics/accountability)
+- [Policy compliance](/docs/media-buy/media-buys/policy-compliance)

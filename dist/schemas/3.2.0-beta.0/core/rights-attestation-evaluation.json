@@ -1,0 +1,140 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/rights-attestation-evaluation.json",
+  "title": "Rights Attestation Evaluation",
+  "description": "Seller-produced readback for one rights-grant presentation and its verifier-of-record evaluation. Buyers carry AttestationReference values in rights constraints but MUST NOT author this object or assert outcome verified. A seller trusts verified readback only when it retrieves the byte-identical result from its own local evaluation store; evaluated_by is descriptive and is not proof of provenance.",
+  "type": "object",
+  "properties": {
+    "rights_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Rights grant identifier. MUST equal reference.subject.id and evaluation.action_binding.action_id.",
+      "x-entity": "rights_grant"
+    },
+    "content_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Digest of the exact rights constraint evaluated. MUST equal reference.subject.content_digest and evaluation.action_binding.action_digest."
+    },
+    "reference": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/attestation-reference.json"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "issuer": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "brand"
+                },
+                "brand": {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/brand-ref.json"
+                }
+              },
+              "required": [
+                "type",
+                "brand"
+              ]
+            },
+            "claim_type": {
+              "type": "string",
+              "const": "https://adcontextprotocol.org/claims/rights/grant"
+            },
+            "subject": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "const": "resource"
+                },
+                "resource_type": {
+                  "type": "string",
+                  "const": "https://adcontextprotocol.org/claims/subjects/rights-grant"
+                }
+              },
+              "required": [
+                "type",
+                "resource_type",
+                "namespace",
+                "id",
+                "content_digest"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "evaluation": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/attestation-evaluation.json"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action_binding": {
+              "type": "object",
+              "properties": {
+                "action_type": {
+                  "type": "string",
+                  "const": "https://adcontextprotocol.org/actions/rights-grant-evaluation"
+                }
+              },
+              "required": [
+                "action_type",
+                "action_id",
+                "action_digest"
+              ]
+            }
+          },
+          "required": [
+            "action_binding"
+          ]
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "verified"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "required": [
+              "revocation_checked_at",
+              "valid_until"
+            ]
+          }
+        }
+      ]
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "rights_id",
+    "content_digest",
+    "reference",
+    "evaluation"
+  ],
+  "x-adcp-validation": {
+    "cross_field_equality": [
+      "reference.subject.id == rights_id",
+      "reference.subject.content_digest == content_digest",
+      "evaluation.reference_digest == sha256(JCS(reference))",
+      "evaluation.action_binding.action_id == rights_id",
+      "evaluation.action_binding.action_digest == content_digest"
+    ],
+    "scope": "Reusable evaluation of one exact rights grant by evaluation.evaluated_by. It is not a serving authorization and does not cover creative, media buy, use, country, delivery scope, or cap state.",
+    "local_provenance": "A consumer MUST require outcome == verified and retrieve the byte-identical evaluation from its own local store keyed by (evaluation.evaluated_by, evaluation.reference_digest). It MUST reject buyer-authored, foreign-evaluator, missing-store, or locally mismatched readback even when evaluated_by names the consumer."
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/package-targeting-resolution.json",
+  "title": "Package Targeting Resolution",
+  "description": "Execution details for targeting accepted on a booked Package. Product discovery modifications and response-level brief interpretation are not valid here. Additional execution dimensions may be added in future minor versions.",
+  "type": "object",
+  "properties": {
+    "demographics": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/demographic-targeting-resolution.json",
+      "description": "Canonical demographic predicate and exact seller execution details. Include whenever demographic targeting was requested or applied."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "demographics"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,354 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/mcp/2026-07-28/governance/report-plan-adjustment-request.json",
+  "title": "Report Plan Adjustment Request",
+  "description": "Two-party append-only adjustment lifecycle. The authenticated seller reports commercial evidence; the authenticated plan owner later accepts or disputes that exact record. Reporting alone never changes net cost or headroom.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "report"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "then": {
+        "required": [
+          "outcome_id",
+          "seller_reference",
+          "seller_adjustment_id",
+          "adjustment_type",
+          "amount",
+          "reason",
+          "effective_at",
+          "evidence"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "review"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "then": {
+        "required": [
+          "adjustment_id",
+          "decision"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "review"
+          },
+          "decision": {
+            "const": "dispute"
+          }
+        },
+        "required": [
+          "action",
+          "decision"
+        ]
+      },
+      "then": {
+        "required": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "adjustment_type": {
+            "const": "decommitment"
+          }
+        },
+        "required": [
+          "adjustment_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "properties": {
+              "evidence_type": {
+                "const": "decommitment_agreement"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "adjustment_type": {
+            "const": "refund"
+          }
+        },
+        "required": [
+          "adjustment_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "properties": {
+              "evidence_type": {
+                "const": "refund_settlement"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "adjustment_type": {
+            "const": "credit"
+          }
+        },
+        "required": [
+          "adjustment_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "properties": {
+              "evidence_type": {
+                "const": "credit_note"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "adjustment_type": {
+            "const": "makegood"
+          }
+        },
+        "required": [
+          "adjustment_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "properties": {
+              "evidence_type": {
+                "const": "makegood_agreement"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "x-status": "experimental",
+  "x-mutates-state": true,
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "report",
+        "review"
+      ],
+      "description": "report is seller-authenticated and creates a non-authoritative record; review is plan-owner-authenticated and accepts or disputes it."
+    },
+    "plan_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Plan containing the source outcome.",
+      "x-entity": "governance_plan"
+    },
+    "outcome_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Completed outcome whose authoritative commitment is being adjusted.",
+      "x-entity": "governance_outcome"
+    },
+    "adjustment_id": {
+      "type": "string",
+      "description": "Adjustment to accept or dispute. Required for review.",
+      "x-entity": "governance_adjustment"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "accept",
+        "dispute"
+      ],
+      "description": "Buyer review decision. Acceptance is blocked while delivery evidence for the governed action is disputed in an open governance period; a historical closed_unresolved period is audit evidence, not a billing determination."
+    },
+    "seller_reference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Seller resource identifier. Must exactly match the reference retained on the source outcome."
+    },
+    "seller_adjustment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Stable identifier of the adjustment in the authenticated seller's system.",
+      "x-entity": "seller_adjustment"
+    },
+    "adjustment_type": {
+      "type": "string",
+      "enum": [
+        "decommitment",
+        "refund",
+        "credit",
+        "makegood"
+      ],
+      "description": "Commercial meaning. Verified decommitments restore headroom in every mode; verified refunds and credits restore it only in verified_net_cost mode; makegoods never restore cash headroom."
+    },
+    "amount": {
+      "type": "object",
+      "description": "Positive adjustment amount in the plan currency.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Finite positive amount. Cumulative adjustments for an outcome cannot exceed its authoritative commitment."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Three-letter uppercase currency code matching the plan currency."
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000,
+      "description": "Human-readable reason retained in the audit trail."
+    },
+    "effective_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller's adjustment became effective."
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Integrity-bound commercial source record supplied by the seller. Its evidence_type must correspond to adjustment_type.",
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Immutable identifier in the authenticated seller's namespace. Reuse with different adjustment evidence is a conflict.",
+          "x-entity": "governance_adjustment_evidence"
+        },
+        "evidence_type": {
+          "type": "string",
+          "enum": [
+            "decommitment_agreement",
+            "refund_settlement",
+            "credit_note",
+            "makegood_agreement"
+          ]
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "issued_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "evidence_type",
+        "digest",
+        "issued_at"
+      ],
+      "additionalProperties": false
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "description": "Caller-generated retry key. Exact replays return the original report or review; reuse with another payload is rejected."
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "action",
+    "plan_id",
+    "idempotency_key"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "title": "AdCP Version Envelope",
+      "description": "Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into every AdCP request and response schema so the version semantics live in exactly one place. Distinct from `core/protocol-envelope.json`, which wraps responses at the transport layer (context_id / task_id / status / payload). This envelope is part of the payload itself.",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "examples": [
+            "3.0",
+            "3.1",
+            "3.1-beta",
+            "3.1-rc.1"
+          ]
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/context.json": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

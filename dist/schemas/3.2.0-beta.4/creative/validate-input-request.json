@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/creative/validate-input-request.json",
+  "title": "Validate Input Request",
+  "description": "Request payload for the validate_input task. Lets buyers preflight a creative manifest against canonical formats and/or specific products before committing to a render or other expensive creative-production step. It validates manifest structure and target format constraints only: slot counts, asset types, parameter ranges, and format-shape constraints. It does not rehearse a seller's library mutation, creative_id upsert semantics, package assignments, account authorization, active-delivery protections, or other trafficking-time gates. When the question is final seller acceptance for a creative that is ready to traffic, call sync_creatives directly; use dry_run: true for a non-mutating rehearsal of that operation. Used by build_creative internally to validate inputs before producing output. For genuinely nondeterministic generative systems where predictive validation is impossible, the platform's own post-synthesis QA loop applies — validate_input is the predictable-case primitive.\n\nThe `targets[]` array is a discriminated list of validation targets, mirroring the response shape on `validate-input-result.json#target`. Each entry has a `kind` (canonical | product | third_party_format | capability) plus a kind-specific identifier. The capability kind is the canonical agent-local route for an advertised supported_formats entry whose operations contains validate; the other target kinds remain portable contract identifiers. Discriminated-by-kind on both sides eliminates a wire-shape mismatch: a previous draft used `format_ids: string[]` for canonical names alongside `product_ids: string[]`, which collided with `Product.format_ids: FormatId[]` ({agent_url, id}) — codegen would emit the same field name with two different types. Discriminated `targets[]` makes the intent explicit and codegen-clean.",
+  "x-tool-summary": "Preflight a creative manifest against canonical formats, products, third-party formats, or agent capabilities.",
+  "type": "object",
+  "required": [
+    "manifest"
+  ],
+  "properties": {
+    "account": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/account-ref.json",
+      "description": "Optional account scope for seller-specific product validation. Required by sellers that route product declarations by buyer account."
+    },
+    "brand": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/brand-ref.json",
+      "description": "Optional brand scope when account is omitted or the seller keys sandbox validation by brand identity."
+    },
+    "manifest": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/creative-manifest.json",
+      "description": "Creative manifest to validate."
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "description": "Discriminated list of validation targets. Each entry mirrors the `target` shape on `validate-input-result.json` so the request/response wire shapes match exactly. Multi-target requests enable universal-creative scenarios where one manifest targets multiple sellers' format declarations in a single round-trip; the response carries one result per target in the same order.",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "id"
+        ],
+        "discriminator": {
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "title": "Canonical Format Target",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "canonical"
+              },
+              "id": {
+                "type": "string",
+                "description": "Canonical format name from `canonical-format-kind.json` (e.g., `image`, `video_hosted`, `audio_daast`). Validators check the manifest against the canonical's parameter schema."
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          },
+          {
+            "title": "Product Target",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "product"
+              },
+              "id": {
+                "type": "string",
+                "description": "Product ID. Validators check the manifest against the product's inline `ProductFormatDeclaration` narrowing of the canonical (parameter constraints, slot requirements, platform extensions)."
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          },
+          {
+            "title": "Third-Party Format Target",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "third_party_format"
+              },
+              "id": {
+                "type": "string",
+                "format": "uri",
+                "description": "URI-form format identifier referencing a third-party format definition (e.g., `https://creativevendor.example/formats/image_300x250@sha256:...`). Validators fetch the definition (digest-pinned, cached) and validate the manifest against it."
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          },
+          {
+            "title": "Creative Capability Target",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "capability"
+              },
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "description": "Agent-local capability_id from get_adcp_capabilities creative.supported_formats. The selected entry MUST include validate in operations; unknown IDs or entries without validate are rejected with FORMAT_NOT_SUPPORTED."
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Preflight a video manifest against canonical video_hosted and a fictional publisher product in one round-trip",
+      "data": {
+        "manifest": {
+          "format_kind": "video_hosted",
+          "assets": {
+            "video_main": {
+              "asset_type": "video",
+              "url": "https://cdn.acme.example/spring-30s.mp4",
+              "duration_ms": 30000,
+              "width": 1080,
+              "height": 1920
+            }
+          },
+          "brand": {
+            "domain": "acme.example"
+          }
+        },
+        "targets": [
+          {
+            "kind": "canonical",
+            "id": "video_hosted"
+          },
+          {
+            "kind": "product",
+            "id": "streamhaus_vertical_video_us"
+          }
+        ]
+      }
+    }
+  ]
+}

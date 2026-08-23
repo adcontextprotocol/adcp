@@ -53,7 +53,11 @@ function pathsFromNameStatus(output) {
 }
 
 function stagedFiles() {
-  const output = execFileSync('git', ['diff', '--cached', '--name-status', '--diff-filter=ACMRD', '-z']);
+  // Merge commits with main can stage tens of thousands of dist/ files;
+  // Node's default 1 MB maxBuffer overflows (ENOBUFS) on the -z listing.
+  const output = execFileSync('git', ['diff', '--cached', '--name-status', '--diff-filter=ACMRD', '-z'], {
+    maxBuffer: 64 * 1024 * 1024,
+  });
   return pathsFromNameStatus(output);
 }
 

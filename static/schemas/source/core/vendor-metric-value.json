@@ -27,6 +27,28 @@
       "description": "Number of impressions in this reporting period that the vendor was able to measure. Coverage denominator — buyers compute coverage rate as `measurable_impressions / impressions`. When absent, coverage is unspecified — buyers MUST NOT compute a coverage rate or assume full coverage. When the vendor measured zero impressions but is integrated, set to 0 explicitly. When the entry is omitted from `vendor_metric_values` entirely, the buyer infers no measurement happened (no integration). This pattern parallels `viewability.measurable_impressions` (`delivery-metrics.json#/properties/viewability`), which has handled vendor coverage in the IAS/DV/MRC ecosystem for over a decade — same convention: absence is unknown, not full.",
       "minimum": 0
     },
+    "qualifier": {
+      "type": "object",
+      "description": "Optional qualifier disambiguating this row from sibling rows for the same (vendor, metric_id) — e.g., the same vendor outcome metric reported under 7-day and 30-day attribution windows. Same closed key set as `committed-metric`. When the matching `committed_metrics` entry carries a qualifier, this row MUST carry the identical qualifier so reconciliation joins on `(vendor, metric_id, qualifier)`.",
+      "properties": {
+        "viewability_standard": {
+          "$ref": "/schemas/enums/viewability-standard.json"
+        },
+        "completion_source": {
+          "$ref": "/schemas/enums/completion-source.json"
+        },
+        "attribution_methodology": {
+          "$ref": "/schemas/enums/attribution-methodology.json"
+        },
+        "attribution_window": {
+          "$ref": "/schemas/core/duration.json"
+        },
+        "lift_dimension": {
+          "$ref": "/schemas/enums/lift-dimension.json"
+        }
+      },
+      "additionalProperties": false
+    },
     "breakdown": {
       "type": "object",
       "description": "Optional structured payload for vendor metrics that don't fit a single scalar — panel demographic breakouts, co-view audience composition, incremental reach + frequency + lift decompositions. Free-form; the keys and value semantics are defined by the vendor (see the vendor's `brand.json` measurement-agent docs). Buyers MUST treat this object as opaque without consulting the vendor's documentation. Vendors place any fields beyond the standard envelope (e.g., confidence intervals, panel sizes) inside this object rather than at the top level.",

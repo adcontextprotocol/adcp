@@ -10,7 +10,7 @@ import {
 } from '../v6-creative-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildCreativeComplyConfig } from './comply.js';
-import { listAccountsTool } from './account-tools.js';
+import { listAccountsTool, syncGovernanceTool } from './account-tools.js';
 import { reportUsageTool } from './report-usage-tool.js';
 import { validateInputTool } from './validate-input-tool.js';
 import { listTransformersTool } from './list-transformers-tool.js';
@@ -42,6 +42,7 @@ export function buildCreativeTenantConfig(host: string, options: { storyboardCom
           list_accounts: listAccountsTool(options.storyboardCompat),
           report_usage: reportUsageTool({ creativeBillsThroughAdcp: false }),
           ...(options.storyboardCompat?.version === '3.0' ? {} : {
+            sync_governance: syncGovernanceTool(options.storyboardCompat),
             validate_input: validateInputTool({
               tenantId: TENANT_ID,
               creativeBillsThroughAdcp: false,

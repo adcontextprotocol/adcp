@@ -1,0 +1,65 @@
+name: Changesets
+description: A GitHub action to automate releases with Changesets
+runs:
+  using: "node24"
+  main: "dist/index.js"
+inputs:
+  github-token:
+    description: >
+      The GitHub token to use for authentication. Defaults to the GitHub-provided token.
+      To use a custom token, pass it explicitly to this input.
+    required: false
+    default: ${{ github.token }}
+  publish-script:
+    description: "The command to use to build and publish packages"
+    required: false
+  version-script:
+    description: "The command to update version, edit CHANGELOG, read and delete changesets. Default to `changeset version` if not provided"
+    required: false
+  commit-message:
+    description: "The commit message. Default to `Version Packages`"
+    required: false
+    default: "Version Packages"
+  pr-title:
+    description: "The pull request title. Default to `Version Packages`"
+    required: false
+    default: "Version Packages"
+  pr-draft:
+    description: "Controls draft PR behavior. Use 'create' to create new version PRs as draft, or 'always' to also convert existing version PRs back to draft when updating them."
+    required: false
+  pr-base-branch:
+    description: "Sets the base branch of the PR. Defaults to `github.ref_name`."
+    required: false
+  create-github-releases:
+    description: "Whether to create Github releases after publish"
+    required: false
+    default: true
+  push-git-tags:
+    description: >
+      Whether to create git tags after publish. If `create-github-releases` is set to `true`,
+      this option will also always be `true`.
+    required: false
+    default: true
+  push-with-git-cli:
+    description: >
+      Whether to use the Git CLI instead of the GitHub API to push release commits and tags.
+      Defaults to `false`. When using the GitHub API, commits and tags are signed using
+      GitHub's GPG key and attributed to the user or app that owns the `github-token`.
+    required: false
+    default: false
+  cwd:
+    description: "The working directory to execute Changesets in. Defaults to the root of the repository."
+    required: false
+outputs:
+  published:
+    description: A "true" or "false" string value to indicate whether a publishing is happened or not
+  published-packages:
+    description: >
+      A JSON array to present the published packages. The format is `[{"name": "@xx/xx", "version": "1.2.0"}, {"name": "@xx/xy", "version": "0.8.9"}]`
+  has-changesets:
+    description: A "true" or "false" string value about whether there were changesets. Useful if you want to create your own publishing functionality.
+  pr-number:
+    description: The pull request number that was created or updated
+branding:
+  icon: "package"
+  color: "blue"

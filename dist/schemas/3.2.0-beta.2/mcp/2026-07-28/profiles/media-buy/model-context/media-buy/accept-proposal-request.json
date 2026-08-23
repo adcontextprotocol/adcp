@@ -1,0 +1,501 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "account": {
+      "$ref": "#/$defs/external:core~1canonical-account-ref.json"
+    },
+    "proposal_id": {
+      "type": "string"
+    },
+    "proposal_terms_digest": {
+      "type": "string"
+    },
+    "total_budget": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "number"
+        },
+        "currency": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ]
+    },
+    "daily_budget_cap": {
+      "type": "number"
+    },
+    "budget_cap_timezone": {
+      "type": "string"
+    },
+    "io_acceptance": {
+      "type": "object",
+      "properties": {
+        "io_id": {
+          "type": "string"
+        },
+        "accepted_at": {
+          "type": "string"
+        },
+        "signatory": {
+          "type": "string"
+        },
+        "signature_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "io_id",
+        "accepted_at",
+        "signatory"
+      ]
+    },
+    "purchase_order_ref": {
+      "type": "string"
+    },
+    "governance_context": {
+      "type": "string"
+    },
+    "push_notification_config": {
+      "$ref": "#/$defs/external:core~1push-notification-config.json"
+    },
+    "reporting_webhook": {
+      "$ref": "#/$defs/external:core~1reporting-webhook.json"
+    },
+    "opportunity": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1opportunity-context.json"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "closed"
+            }
+          },
+          "if": {
+            "properties": {
+              "status": {
+                "const": "closed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "close_reason": {
+                "const": "accepted_with_seller"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "account",
+    "proposal_id",
+    "proposal_terms_digest"
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "packages"
+        ]
+      },
+      {
+        "required": [
+          "purchases"
+        ]
+      },
+      {
+        "required": [
+          "creatives"
+        ]
+      },
+      {
+        "required": [
+          "creative_assignments"
+        ]
+      }
+    ]
+  },
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string"
+        },
+        "adcp_major_version": {
+          "type": "integer"
+        }
+      }
+    },
+    "external:core/canonical-account-ref.json": {
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "account_id"
+          ]
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string"
+            },
+            "timezone": {
+              "type": "string"
+            },
+            "sandbox": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ]
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "domain"
+      ]
+    },
+    "external:core/brand-id.json": {
+      "type": "string"
+    },
+    "external:core/operator-unit.json": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "external:core/push-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        },
+        "authentication": {
+          "type": "object",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              }
+            },
+            "credentials": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ]
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:core/reporting-webhook.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        },
+        "authentication": {
+          "type": "object",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              }
+            },
+            "credentials": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ]
+        },
+        "reporting_frequency": {
+          "type": "string",
+          "enum": [
+            "hourly",
+            "daily",
+            "monthly"
+          ]
+        },
+        "requested_metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1available-metric.json"
+          }
+        }
+      },
+      "required": [
+        "url",
+        "authentication",
+        "reporting_frequency"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/available-metric.json": {
+      "type": "string",
+      "enum": [
+        "impressions",
+        "spend",
+        "clicks",
+        "ctr",
+        "views",
+        "completed_views",
+        "completion_rate",
+        "conversions",
+        "conversion_value",
+        "commissionable_value",
+        "roas",
+        "cost_per_acquisition",
+        "new_to_brand_rate",
+        "leads",
+        "reach",
+        "frequency",
+        "grps",
+        "engagements",
+        "engagement_rate",
+        "follows",
+        "saves",
+        "profile_visits",
+        "viewability",
+        "quartile_data",
+        "dooh_metrics",
+        "cost_per_click",
+        "cost_per_completed_view",
+        "cpm",
+        "downloads",
+        "units_sold",
+        "new_to_brand_units",
+        "plays",
+        "incremental_sales_lift",
+        "brand_lift",
+        "foot_traffic",
+        "conversion_lift",
+        "brand_search_lift"
+      ]
+    },
+    "external:core/opportunity-context.json": {
+      "type": "object",
+      "properties": {
+        "opportunity_id": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "exploratory",
+            "planning",
+            "active_sourcing"
+          ]
+        },
+        "intent": {
+          "type": "string",
+          "enum": [
+            "test",
+            "speculative",
+            "planning",
+            "live_rfp"
+          ]
+        },
+        "planning_horizon": {
+          "$ref": "#/$defs/external:core~1date-range.json"
+        },
+        "response_deadline": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "closed"
+          ]
+        },
+        "close_reason": {
+          "type": "string",
+          "enum": [
+            "accepted_with_seller",
+            "purchased_elsewhere",
+            "selected_alternative",
+            "not_pursued",
+            "budget_changed",
+            "timing_changed",
+            "other"
+          ]
+        },
+        "close_detail": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "opportunity_id"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "closed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "close_reason"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "close_reason"
+                  ]
+                },
+                {
+                  "required": [
+                    "close_detail"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "close_reason": {
+                "const": "other"
+              }
+            },
+            "required": [
+              "close_reason"
+            ]
+          },
+          "then": {
+            "required": [
+              "close_detail"
+            ]
+          }
+        }
+      ]
+    },
+    "external:core/date-range.json": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string"
+        },
+        "end": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

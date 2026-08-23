@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/media-buy/product-fields.json",
+  "title": "Product Response Fields",
+  "description": "Canonical product fields a buyer requests from list_products. Required product_id and name fields are always returned. Legacy named-format fields remain available only through get_products.",
+  "type": "array",
+  "minItems": 1,
+  "uniqueItems": true,
+  "items": {
+    "type": "string",
+    "enum": [
+      "product_id",
+      "name",
+      "description",
+      "publisher_properties",
+      "channels",
+      "video_placement_types",
+      "audio_distribution_types",
+      "sponsored_placement_types",
+      "social_placement_surfaces",
+      "format_options",
+      "placements",
+      "delivery_type",
+      "exclusivity",
+      "pricing_options",
+      "forecast",
+      "reporting_capabilities",
+      "measurement_terms",
+      "performance_standards",
+      "catalog_types",
+      "signal_targeting_allowed",
+      "signal_targeting_rules",
+      "demographic_targeting",
+      "audience_evidence",
+      "audience_evidence_selections",
+      "max_optimization_goals",
+      "catalog_match",
+      "brief_relevance",
+      "expires_at",
+      "allowed_actions"
+    ]
+  }
+}

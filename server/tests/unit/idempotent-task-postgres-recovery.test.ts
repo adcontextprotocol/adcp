@@ -37,8 +37,8 @@ class ExpiryAwareTaskDb implements PgQueryable {
     rows: Record<string, unknown>[];
     rowCount: number;
   }> {
-    const taskId = String(values[0]);
     if (text.includes('SELECT *') && text.includes('WHERE task_id = $1')) {
+      const taskId = String(values[0]);
       const row = this.rows.get(taskId);
       return {
         rows: row && !this.expiredIds.has(taskId) ? [row] : [],
@@ -46,6 +46,7 @@ class ExpiryAwareTaskDb implements PgQueryable {
       };
     }
     if (text.includes('INSERT INTO')) {
+      const taskId = String(values[1]);
       if (this.rows.has(taskId)) {
         throw Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' });
       }
@@ -72,7 +73,7 @@ describe('Postgres idempotent task receipt generations', () => {
     db.rows.set(gen0, taskRow(gen0, 'completed'));
     db.expiredIds.add(gen0);
     db.rows.set(gen1, taskRow(gen1, 'completed'));
-    const store = new PostgresTaskStore(db);
+    const store = new PostgresTaskStore(db, { allowUnscopedAccess: true });
 
     await expect(getIdempotentTask(store, naturalKey))
       .resolves.toMatchObject({ taskId: gen1, status: 'completed' });
@@ -88,7 +89,7 @@ describe('Postgres idempotent task receipt generations', () => {
     const db = new ExpiryAwareTaskDb();
     db.rows.set(gen0, taskRow(gen0, 'completed'));
     db.expiredIds.add(gen0);
-    const store = new PostgresTaskStore(db);
+    const store = new PostgresTaskStore(db, { allowUnscopedAccess: true });
 
     await expect(createOrReuseIdempotentTask(store, naturalKey, 60_000, request))
       .resolves.toMatchObject({ taskId: gen1, status: 'working' });

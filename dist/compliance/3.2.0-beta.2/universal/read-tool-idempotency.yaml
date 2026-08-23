@@ -1,0 +1,314 @@
+id: read_tool_idempotency
+version: "1.0.0"
+introduced_in: "3.1"
+title: "Read-tool idempotency_key tolerance"
+category: idempotency
+summary: "Validates that read-only AdCP tasks and the 3.x get_products compatibility facade accept an optional idempotency_key without strict wrapper rejection."
+track: core
+required_tools: []  # protocol-level baseline; read-tool probes gate themselves per step
+
+narrative: |
+  AdCP 3.1 extends the `idempotency_key` request envelope from mutating
+  operations to every task request, including read-only tools. Sellers MUST
+  tolerate the field on reads in 3.1. Tool wrappers must pass it through their
+  envelope normalization layer instead of rejecting it as an unknown
+  task-specific input.
+
+  This storyboard focuses on the 3.1 read-side contract. It sends
+  `idempotency_key`, `context`, and `ext` on representative read tools and
+  verifies that the agent still returns schema-valid responses with context
+  echo intact. The existing `idempotency` storyboard continues to cover
+  mutating replay semantics, conflict detection, TTL declaration, and
+  `replayed: true`.
+
+  The final phase intentionally omits `idempotency_key` on
+  `get_adcp_capabilities`. Sellers MUST accept this bootstrap request without a
+  key because it is how buyers discover the seller's idempotency declaration.
+  AdCP 3.2 split product-discovery mutations require the key in their own
+  request schemas; legacy `get_products` remains key-optional throughout 3.x.
+
+agent:
+  interaction_model: "*"  # applies to every agent regardless of protocol or specialism
+  examples:
+    - "Any AdCP agent that exposes read-only tools"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    No special seed state is required. Tool-specific read probes are skipped
+    when the agent does not advertise the corresponding tool.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: read_requests_accept_idempotency_key
+    title: "Read requests accept idempotency_key"
+    narrative: |
+      Send representative read requests with the full 3.1 request envelope:
+      `idempotency_key`, `context`, and `ext`. Passing these probes confirms
+      that task wrappers do not treat read request schemas as closed
+      task-specific payloads.
+
+    steps:
+      - id: get_capabilities_with_idempotency_key
+        title: "Capabilities read accepts idempotency_key"
+        narrative: |
+          `get_adcp_capabilities` is the protocol-level read that every agent
+          exposes. The request carries a caller-minted `idempotency_key` plus
+          `context` and `ext`. The agent must accept the envelope and return a
+          normal capabilities response.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: read_tool_idempotency
+        stateful: false
+        expected: |
+          Return capabilities normally. The read wrapper MUST tolerate the
+          3.1 every-request envelope fields and echo context unchanged.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#read_tools_3_1_capabilities"
+          context:
+            correlation_id: "read_tool_idempotency--get_capabilities_with_key"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--get_capabilities_with_key"
+            description: "Context correlation_id returned unchanged"
+
+      - id: get_products_with_idempotency_key
+        title: "Product discovery read accepts idempotency_key"
+        narrative: |
+          This brief-mode `get_products` probe resolves synchronously as a read,
+          but the tool is polymorphic: other calls may create a task or finalize
+          a proposal. Its request schema therefore declares `idempotency_key`,
+          and sellers must apply the same replay contract to this read result.
+        task: get_products
+        requires_tool: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: read_tool_idempotency
+        stateful: false
+        expected: |
+          Return product discovery results normally. The presence of
+          `idempotency_key` and `ext` must not trigger strict request-wrapper
+          validation failure.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#read_tools_3_1_get_products"
+          buying_mode: "brief"
+          brief: "Show available advertising products for an outdoor lifestyle campaign."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "read_tool_idempotency--get_products_with_key"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "get_products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains a products array"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--get_products_with_key"
+            description: "Context correlation_id returned unchanged"
+
+      - id: list_accounts_with_idempotency_key
+        title: "Account listing read accepts idempotency_key"
+        narrative: |
+          `list_accounts` is a read-only account discovery surface. The 3.1
+          request envelope applies here too; account wrappers must not reject
+          `idempotency_key`, `context`, or `ext` as unknown fields.
+        task: list_accounts
+        requires_tool: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: read_tool_idempotency
+        stateful: false
+        expected: |
+          Return account discovery results normally with a schema-valid
+          accounts array and unchanged context echo.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#read_tools_3_1_list_accounts"
+          sandbox: true
+          pagination:
+            max_results: 10
+          context:
+            correlation_id: "read_tool_idempotency--list_accounts_with_key"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "list_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches list-accounts-response.json schema"
+          - check: field_present
+            path: "accounts"
+            description: "Response contains an accounts array"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--list_accounts_with_key"
+            description: "Context correlation_id returned unchanged"
+
+      - id: list_creative_formats_with_idempotency_key
+        title: "Deprecated creative-format compatibility read accepts idempotency_key"
+        narrative: |
+          When an agent voluntarily exposes the deprecated `list_creative_formats`
+          compatibility task, its wrapper must accept the 3.x envelope without
+          rejecting the read request before it reaches the handler. Canonical
+          discovery is tested through `get_adcp_capabilities` and `get_products`.
+        task: list_creative_formats
+        requires_tool: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: read_tool_idempotency
+        stateful: false
+        expected: |
+          Return creative formats normally. The presence of `idempotency_key`,
+          `context`, and `ext` must not trigger wrapper validation failure.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#read_tools_3_1_list_formats"
+          type: "display"
+          pagination:
+            max_results: 10
+          context:
+            correlation_id: "read_tool_idempotency--list_formats_with_key"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "list_creative_formats"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats"
+            description: "Response contains a formats array"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--list_formats_with_key"
+            description: "Context correlation_id returned unchanged"
+
+      - id: list_creatives_with_idempotency_key
+        title: "Creative library read accepts idempotency_key"
+        narrative: |
+          `list_creatives` covers the creative-library read path. Agents that
+          expose it must accept 3.1 envelope fields on the request even when the
+          task-specific filters are otherwise empty.
+        task: list_creatives
+        requires_tool: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: read_tool_idempotency
+        stateful: false
+        expected: |
+          Return creative library results normally with a schema-valid
+          response and unchanged context echo.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#read_tools_3_1_list_creatives"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          include_snapshot: false
+          pagination:
+            max_results: 10
+          context:
+            correlation_id: "read_tool_idempotency--list_creatives_with_key"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "list_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_present
+            path: "creatives"
+            description: "Response contains a creatives array"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--list_creatives_with_key"
+            description: "Context correlation_id returned unchanged"
+
+  - id: capabilities_bootstrap_without_key
+    title: "Capabilities bootstrap accepts an omitted idempotency_key"
+    narrative: |
+      Exercise the intentional omission vector on `get_adcp_capabilities`.
+      This bootstrap read is how the buyer learns the seller's idempotency
+      declaration, so sellers MUST accept it without a key.
+
+    steps:
+      - id: get_capabilities_without_idempotency_key
+        title: "Capabilities read without idempotency_key succeeds"
+        narrative: |
+          The request intentionally omits `idempotency_key` and sets
+          `omit_idempotency_key: true` so future runners that auto-inject keys
+          preserve the bootstrap vector. The seller must return capabilities
+          normally rather than deadlock discovery behind the declaration being
+          discovered.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: read_tool_idempotency
+        omit_idempotency_key: true
+        stateful: false
+        expected: |
+          Return capabilities normally without requiring `idempotency_key`.
+
+        sample_request:
+          context:
+            correlation_id: "read_tool_idempotency--capabilities_without_key"
+          ext:
+            adcp:
+              storyboard: "read_tool_idempotency"
+              probe: "capabilities_without_key"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json without an idempotency_key"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "read_tool_idempotency--capabilities_without_key"
+            description: "Context correlation_id returned unchanged"

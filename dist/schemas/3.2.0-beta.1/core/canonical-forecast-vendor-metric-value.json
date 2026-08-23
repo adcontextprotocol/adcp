@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/canonical-forecast-vendor-metric-value.json",
+  "title": "Canonical Forecast Vendor Metric Value",
+  "description": "Compact forecasted vendor metric with a BrandKey vendor pointer and no embedded brand assets.",
+  "type": "object",
+  "properties": {
+    "vendor": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/brand-key.json"
+    },
+    "metric_id": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/vendor-metric-id.json"
+    },
+    "value": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/forecast-range.json"
+    },
+    "unit": {
+      "type": "string"
+    },
+    "measurable_impressions": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/forecast-range.json"
+    },
+    "breakdown": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "vendor",
+    "metric_id",
+    "value"
+  ],
+  "additionalProperties": false
+}

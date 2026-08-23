@@ -213,6 +213,35 @@
         }
       }
     },
+    "time_based_views": {
+      "type": "array",
+      "description": "Time-threshold video view counts. Each entry reports views that met a continuous duration threshold under a stated basis, rather than a completion percentage (percentage-based completion is quartile_data). Thresholds of 2 and 6 seconds are RECOMMENDED cross-platform reporting points; any seller-defined threshold is permitted. One entry per (threshold_seconds, basis) pair per reporting period — sellers MUST de-duplicate before emission and MUST NOT emit the same pair twice; buyers MAY treat duplicate pairs as a seller-side conformance bug. Entries under different bases are different metrics and MUST NOT be summed (see view-threshold-basis). Primarily an autoplay/skippable-video metric (social, olv, in-feed video); completion metrics remain the currency for lean-back CTV/cinema inventory. Distinct from `views` (the single billable-threshold scalar) and from `viewability.viewed_seconds` (average in-view duration, not a threshold count). Array entries are not individually sortable in breakdown sort_by. Disclosure-grade surface: (threshold_seconds, basis) is not part of the committed-metric qualifier vocabulary, so a `committed_metrics` entry for `time_based_views` contracts the array's presence, not specific thresholds.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "threshold_seconds": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Continuous duration threshold in seconds an impression must meet to count as a view in this entry."
+          },
+          "basis": {
+            "$ref": "/schemas/enums/view-threshold-basis.json",
+            "description": "Whether the threshold clock runs on playback time or in-view time. Required because play-time and in-view counts at the same threshold are materially different numbers."
+          },
+          "views": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Count of views meeting this entry's threshold and basis."
+          },
+          "standard": {
+            "$ref": "/schemas/enums/viewability-standard.json",
+            "description": "Viewability standard governing the in-view clock for this entry. RECOMMENDED when basis is 'in_view' (MRC and GroupM thresholds differ); not applicable to play_time entries."
+          }
+        },
+        "required": ["threshold_seconds", "basis", "views"],
+        "additionalProperties": true
+      }
+    },
     "dooh_metrics": {
       "type": "object",
       "description": "DOOH-specific metrics (only included for DOOH campaigns)",
@@ -412,7 +441,7 @@
     },
     "vendor_metric_values": {
       "type": "array",
-      "description": "Reported values for vendor-defined metrics that the product's `reporting_capabilities.vendor_metrics` declared. Each entry carries the vendor (BrandRef), the metric identifier within the vendor's vocabulary, the value, optional unit, and `measurable_impressions` as the coverage denominator — vendor measurement is rarely 100% of delivered impressions, since vendors only score impressions where their SDK fires or their panel matches. When a declared vendor metric is omitted from this array, buyers infer no measurement happened (no integration). One row per `(vendor.domain, vendor.brand_id, metric_id)` per reporting period — sellers MUST de-duplicate before emission and MUST NOT emit the same vendor metric twice; buyers MAY treat duplicate rows as a seller-side conformance bug. The structured `vendor_metric_values` array is the recommended path for vendor metrics; `additionalProperties: true` on this parent object is preserved so existing free-form vendor emissions remain conformant during migration.",
+      "description": "Reported values for vendor-defined metrics that the product's `reporting_capabilities.vendor_metrics` declared. Each entry carries the vendor (BrandRef), the metric identifier within the vendor's vocabulary, the value, optional unit, and `measurable_impressions` as the coverage denominator — vendor measurement is rarely 100% of delivered impressions, since vendors only score impressions where their SDK fires or their panel matches. When a declared vendor metric is omitted from this array, buyers infer no measurement happened (no integration). One row per `(vendor.domain, vendor.brand_id, metric_id, qualifier)` per reporting period — the same vendor metric MAY appear in multiple rows only when each carries a distinct qualifier (e.g., 7-day and 30-day attribution windows); sellers MUST de-duplicate before emission and MUST NOT emit two rows with the same tuple; buyers MAY treat duplicate rows as a seller-side conformance bug. The structured `vendor_metric_values` array is the recommended path for vendor metrics; `additionalProperties: true` on this parent object is preserved so existing free-form vendor emissions remain conformant during migration.",
       "items": {
         "$ref": "/schemas/core/vendor-metric-value.json"
       }

@@ -1,0 +1,232 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/proposal-refinement.json",
+  "title": "Proposal Refinement",
+  "description": "Fork an immutable proposal or finalize a draft into a held committed snapshot. Revising with structured criteria, typed boundaries, product changes, requested alternatives, and/or a semantic ask creates one or more new drafts; finalizing changes no terms. Refining an accepted proposal creates a draft amendment or cancellation proposal against its MediaBuy; the source remains accepted and unchanged.",
+  "type": "object",
+  "properties": {
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "proposal"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "revise",
+        "finalize"
+      ],
+      "description": "revise creates a new draft snapshot with changed commercial terms. finalize MUST target a draft; it creates a new committed snapshot without changing terms and reserves inventory until its expires_at."
+    },
+    "change_kind": {
+      "type": "string",
+      "enum": [
+        "amendment",
+        "cancellation"
+      ],
+      "default": "amendment",
+      "description": "Desired successor proposal. cancellation is valid only when the source proposal is accepted and attached to a non-terminal MediaBuy."
+    },
+    "constraints": {
+      "type": "object",
+      "description": "Hard requirements for every revised proposal. Keys are echoed in unsatisfied_constraints on partial or unable results. A draft that fails any present constraint MUST NOT be returned as revised: the result is partial or unable with reason_code constraint_unsatisfiable — which takes precedence over every other reason code — and the failing keys in unsatisfied_constraints.",
+      "properties": {
+        "total_budget": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/proposal-budget-constraint.json",
+          "description": "Inclusive bounds checked against commercial_terms.total_budget. Satisfied only when commercial_terms.total_budget is present, its currency matches, and its amount falls within every supplied bound."
+        },
+        "cpm": {
+          "type": "object",
+          "description": "Hard ceiling on fixed CPM rates. Satisfied only when every entry of commercial_terms.purchases carries pricing with pricing_model cpm or vcpm, a matching currency, and a fixed_price no greater than max. Auction-priced, missing, or non-CPM pricing on any purchase leaves the constraint unsatisfied.",
+          "properties": {
+            "max": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          "required": [
+            "max",
+            "currency"
+          ],
+          "additionalProperties": false
+        },
+        "impressions": {
+          "type": "object",
+          "description": "Hard minimum contracted impression volume. Satisfied only when every entry of commercial_terms.purchases carries impressions and their sum is at least min.",
+          "properties": {
+            "min": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "min"
+          ],
+          "additionalProperties": false
+        },
+        "flight": {
+          "type": "object",
+          "description": "Hard flight-window bounds checked against commercial_terms.start_time and end_time. start_no_later_than is satisfied only by a concrete start_time at or before the bound; an asap start is unverifiable and therefore unsatisfied. end_no_earlier_than is satisfied only by an end_time at or after the bound.",
+          "properties": {
+            "start_no_later_than": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end_no_earlier_than": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "start_no_later_than"
+              ]
+            },
+            {
+              "required": [
+                "end_no_earlier_than"
+              ]
+            }
+          ],
+          "additionalProperties": false
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "product_changes": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/product-change-map.json",
+      "description": "Product IDs mapped to membership actions checked against commercial_terms.purchases. include requires presence; omit requires absence. The verbs match legacy get_products refinement."
+    },
+    "alternatives": {
+      "type": "object",
+      "description": "Request drafts with distinct commercial terms by count. Every returned alternative MUST carry distinct commercial_terms and therefore a unique terms_digest; diversity preferences remain in ask.",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 10,
+          "description": "Number of draft alternatives requested. The protocol maximum is 10. Buyers MUST NOT exceed a seller's lower advertised proposal_refinement.max_alternatives; sellers reject an excessive count at task level with VALIDATION_ERROR rather than clamping it."
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "additionalProperties": false
+    },
+    "ask": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What the buyer is asking for on this proposal, or the cancellation reason for action revise. The seller returns a new draft proposal snapshot; this text never directly mutates the source proposal or MediaBuy."
+    },
+    "criteria": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/product-discovery-criteria.json",
+      "description": "Structured discovery changes for action revise. Each present field replaces that criterion from the source proposal; omitted fields inherit. Concrete targeting, future targeting support, and offer filters belong here rather than being repeated in ask."
+    }
+  },
+  "required": [
+    "proposal_id"
+  ],
+  "oneOf": [
+    {
+      "properties": {
+        "action": {
+          "type": "string",
+          "const": "finalize"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "change_kind"
+            ]
+          },
+          {
+            "required": [
+              "constraints"
+            ]
+          },
+          {
+            "required": [
+              "product_changes"
+            ]
+          },
+          {
+            "required": [
+              "alternatives"
+            ]
+          },
+          {
+            "required": [
+              "ask"
+            ]
+          },
+          {
+            "required": [
+              "criteria"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "properties": {
+        "action": {
+          "type": "string",
+          "const": "revise"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "constraints"
+          ]
+        },
+        {
+          "required": [
+            "product_changes"
+          ]
+        },
+        {
+          "required": [
+            "alternatives"
+          ]
+        },
+        {
+          "required": [
+            "ask"
+          ]
+        },
+        {
+          "required": [
+            "criteria"
+          ]
+        },
+        {
+          "properties": {
+            "change_kind": {
+              "type": "string",
+              "const": "cancellation"
+            }
+          },
+          "required": [
+            "change_kind"
+          ]
+        }
+      ]
+    }
+  ],
+  "additionalProperties": false
+}

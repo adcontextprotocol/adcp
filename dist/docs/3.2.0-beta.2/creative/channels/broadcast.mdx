@@ -1,0 +1,43 @@
+---
+title: Broadcast Creative
+description: "Canonical hosted video and audio contracts for linear television and radio."
+"og:title": "AdCP — Broadcast Creative"
+---
+
+Linear television uses `video_hosted`; radio uses `audio_hosted`. Spot duration, codec, loudness, frame rate, and delivery-file constraints narrow the canonical. Network, station, daypart, rotation, clearance, and audience measurement remain media-buy facts.
+
+```json
+{
+  "format_option_id": "broadcast_tv_30s",
+  "format_kind": "video_hosted",
+  "params": {
+    "duration_ms_exact": 30000,
+    "width": 1920,
+    "height": 1080,
+    "containers": ["mxf"],
+    "slots": [{ "asset_group_id": "video_main", "asset_type": "video", "required": true }]
+  }
+}
+```
+
+```json
+{
+  "format_kind": "video_hosted",
+  "assets": {
+    "video_main": {
+      "asset_type": "video",
+      "url": "https://cdn.acmeoutdoor.example/trail-pro-tv-30.mxf",
+      "duration_ms": 30000,
+      "width": 1920,
+      "height": 1080
+    }
+  },
+  "industry_identifiers": [
+    { "type": "ad_id", "value": "ABCD1234000" }
+  ]
+}
+```
+
+Broadcast systems generally do not fire web trackers. Reconciliation uses traffic logs, affidavits, and audience currencies declared on the product/package. Each cut should carry its own traffic identifier.
+
+See [Video](/dist/docs/3.2.0-beta.2/creative/channels/video), [Audio](/dist/docs/3.2.0-beta.2/creative/channels/audio), and [Creative manifests](/dist/docs/3.2.0-beta.2/creative/creative-manifests).

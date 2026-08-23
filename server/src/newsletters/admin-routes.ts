@@ -322,13 +322,29 @@ export function createNewsletterAdminRoutes(config: NewsletterConfig): Router {
       const id = parseInt(req.params.id, 10);
       if (isNaN(id)) return res.status(400).json({ error: 'Invalid edition ID' });
 
-      const edition = await config.db.getCurrent();
+      let edition = await config.db.getCurrent();
       if (!edition || edition.id !== id) return res.status(404).json({ error: 'Edition not found' });
-      if (edition.status !== 'approved') {
-        return res.status(400).json({ error: 'Only approved editions can be sent. Approve the draft first.' });
+      if (edition.status === 'draft') {
+        const approvedBy = req.user?.email || 'admin';
+        const approved = await config.db.approve(id, approvedBy);
+        if (!approved) {
+          return res.status(409).json({ error: 'Edition status changed. Refresh and try again.' });
+        }
+        edition = approved;
+      } else if (edition.status !== 'approved') {
+        return res.status(400).json({ error: 'Only draft or approved editions can be sent.' });
       }
 
       const result = await sendNewsletter(config, edition);
+      if (result.outcome === 'busy') {
+        return res.status(409).json({ error: 'This edition is already being sent.' });
+      }
+      if (result.outcome === 'not_sendable') {
+        return res.status(409).json({ error: 'Edition status changed. Refresh and try again.' });
+      }
+      if (result.outcome === 'failed') {
+        return res.status(502).json({ error: 'No newsletter deliveries succeeded. The edition remains approved for review.' });
+      }
       const updated = await config.db.getCurrent();
       const digest = updated && updated.id === id ? updated : edition;
       const subject = config.generateSubject(digest.content);

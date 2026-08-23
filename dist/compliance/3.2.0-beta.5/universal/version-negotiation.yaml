@@ -1,0 +1,128 @@
+id: version_negotiation
+version: "1.0.0"
+title: "Release-precision version negotiation"
+category: version_negotiation
+summary: "Sellers advertise supported releases on capabilities and echo the served release on every response."
+track: core
+required_tools: []  # protocol-level: get_adcp_capabilities is mandatory for all agents
+
+narrative: |
+  AdCP 3.1 introduces release-precision (VERSION.RELEASE, e.g. "3.1") version
+  negotiation alongside the legacy major-precision (`adcp_major_version` integer)
+  carried since 3.0. Both directions remain SHOULD-level in the protocol through
+  3.x and graduate to MUST at 4.0. Beginning with the 3.2 compliance bundle,
+  however, both are certification requirements: without release-precision
+  advertisement and echo, buyers cannot safely distinguish 3.2 targeting-aware
+  discovery from a 3.1 seller that may ignore unknown request fields.
+
+  Two checks ride on a single get_adcp_capabilities call:
+
+  1. **Seller advertises** `adcp.supported_versions` — an array of release-precision
+     strings the seller speaks. Authoritative for buyer-side pinning; the legacy
+     `adcp.major_versions` integer array remains required through 3.x for
+     backwards compatibility.
+
+  2. **Seller echoes** `adcp_version` at the envelope root — the release the seller
+     actually served. Buyers SHOULD validate the response against the echoed
+     release's schema, not against their own pin. Legacy 3.0 sellers that don't
+     read the field omit the echo (`additionalProperties: true` makes the field
+     invisible to them) — buyers fall back to their constructor pin.
+
+  Per the [migration table](/docs/reference/versioning#migration-timeline), both
+  surfaces were advisory in the released 3.1 compliance bundles and are blocking
+  in this 3.2 source bundle. Released bundles remain immutable.
+
+  Scope: protocol envelope and capabilities advertisement only. The
+  `VERSION_UNSUPPORTED` error path (buyer pins a release outside the seller's
+  `supported_versions`) is exercised separately by error_compliance — running it
+  here requires the runner to send a deliberately-mismatched pin and is left to
+  follow-up.
+
+agent:
+  interaction_model: "*"  # applies to every agent regardless of protocol or specialism
+  examples:
+    - "Any AdCP agent (seller, signals, creative, retail media, SI, governance)"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    No test-kit credentials required. get_adcp_capabilities is a public operation
+    that every AdCP agent must expose without authentication.
+
+phases:
+  - id: capabilities_advertise_and_echo
+    title: "Capabilities advertise supported_versions; response echoes adcp_version"
+    narrative: |
+      Call get_adcp_capabilities. The single response carries both halves of the
+      negotiation contract — `adcp.supported_versions` in the body (seller's
+      advertisement) and `adcp_version` on the envelope (seller's echo of what
+      it served). The protocol fields remain SHOULD-level through 3.x, but the
+      3.2 grader requires both so mixed-version dispatch is mechanically safe.
+
+    steps:
+      - id: get_capabilities_with_version
+        title: "Verify seller advertises supported_versions and echoes adcp_version"
+        narrative: |
+          The runner emits `adcp_version` on the request envelope based on its
+          configured pin (the SDK's release-precision constructor option). The
+          seller honors the pin within the resolution algorithm in
+          docs/reference/versioning.mdx, echoes the served release on the response
+          envelope, and lists every release it speaks under
+          `adcp.supported_versions` in the response body.
+
+          A seller seeking 3.2 certification must advertise and echo release
+          precision. Legacy 3.0 and 3.1 sellers continue to use their immutable
+          released compliance bundles, where these checks retain their
+          historical severity.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: version_negotiation
+        stateful: false
+        expected: |
+          Response carries both halves of the negotiation contract:
+          - Body: adcp.supported_versions (array of release-precision strings, e.g.
+            ["3.0", "3.1"]) declaring every release the seller speaks. Authoritative
+            for buyer-side pinning. Required for 3.2 certification.
+          - Envelope: adcp_version (release-precision string) echoing the release
+            the seller actually served. Required for 3.2 certification. Buyers
+            SHOULD validate the response against the echoed release's schema.
+
+          Legacy `adcp.major_versions` (integer array) remains required through 3.x.
+
+        sample_request:
+          context:
+            correlation_id: "version_negotiation--get_capabilities_with_version"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+
+          - check: field_present
+            path: "adcp.major_versions"
+            description: "Legacy major-precision advertisement present (required through 3.x)"
+
+          - check: field_present
+            path: "adcp.supported_versions"
+            description: "Seller advertises release-precision supported_versions (required for 3.2 certification)"
+
+          - check: envelope_field_present
+            path: "adcp_version"
+            description: "Seller echoes adcp_version on the response envelope (required for 3.2 certification)"
+
+          - check: envelope_field_pattern
+            path: "adcp_version"
+            pattern: "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+            description: "Seller echoes a valid release-precision adcp_version string on the response envelope"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "version_negotiation--get_capabilities_with_version"
+            description: "Context correlation_id returned unchanged"

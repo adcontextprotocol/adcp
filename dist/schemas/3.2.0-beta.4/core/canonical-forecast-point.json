@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-forecast-point.json",
+  "title": "Canonical Forecast Point",
+  "description": "Compact forecast row with numeric ranges and identity-only measurement-vendor references.",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "budget": {
+      "type": "number",
+      "minimum": 0
+    },
+    "product_id": {
+      "type": "string",
+      "x-entity": "product"
+    },
+    "dimensions": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/forecast-point-dimensions.json"
+    },
+    "availability_status": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/availability-status.json"
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/forecast-range.json"
+      }
+    },
+    "viewability": {
+      "type": "object",
+      "properties": {
+        "vendor": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/brand-key.json"
+        },
+        "measurable_impressions": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/forecast-range.json"
+        },
+        "viewable_impressions": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/forecast-range.json"
+        },
+        "viewable_rate": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/forecast-range.json"
+        },
+        "viewed_seconds": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/forecast-range.json"
+        },
+        "standard": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/viewability-standard.json"
+        }
+      },
+      "additionalProperties": false
+    },
+    "vendor_metric_values": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-forecast-vendor-metric-value.json"
+      }
+    }
+  },
+  "required": [
+    "metrics"
+  ],
+  "additionalProperties": false
+}

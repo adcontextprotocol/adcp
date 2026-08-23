@@ -21,7 +21,7 @@ request.
      `.changeset/*.md` files instead of adding empty ones.
    - If a changeset is present, stage it because the CLI ignores untracked
      files, then run:
-     `git add .changeset/<name>.md && node scripts/check-changeset-protocol-scope.cjs origin/main && npx --yes @changesets/cli@^2.31.0 status --since=origin/main`.
+     `git add .changeset/<name>.md && node scripts/check-changeset-protocol-scope.cjs origin/main && npx --yes @changesets/cli@^3.0.0 status --since=origin/main`.
    - If no changeset is expected, run:
      `node scripts/check-changeset-protocol-scope.cjs origin/main`.
 5. Run code review and address the findings.

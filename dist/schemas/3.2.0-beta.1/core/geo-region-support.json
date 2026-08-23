@@ -1,0 +1,90 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/geo-region-support.json",
+  "title": "Geographic Region Support",
+  "description": "Country- and value-aware support for selecting canonical ISO 3166-2 subdivisions. all_values is exhaustive for the values active in the seller's support snapshot when the declaration is issued; it does not automatically include values introduced by a later catalog revision. values is an exact finite subset. In seller-wide capabilities, each declared value is individually supported within the response scope, but the declaration does not promise that values are jointly composable or available through the same execution route or account. In Product.overlay_support, the declared values form the binding set of executable targeting permissions for that Product, subject to its declared limits; support does not itself guarantee inventory for every selection.",
+  "type": "object",
+  "properties": {
+    "countries": {
+      "type": "object",
+      "description": "Selectable ISO subdivision values keyed by ISO 3166-1 alpha-2 country.",
+      "propertyNames": {
+        "pattern": "^[A-Z]{2}$"
+      },
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "all_values": {
+                "type": "boolean",
+                "const": true,
+                "description": "Every protocol-valid ISO 3166-2 subdivision active in this declaration's support snapshot is selectable. Values introduced by a later catalog revision are not included automatically."
+              }
+            },
+            "required": [
+              "all_values"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "values": {
+                "type": "array",
+                "description": "Exact finite selectable subset of ISO 3166-2 identifiers for this country.",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "values"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minProperties": 1
+    },
+    "catalog_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional opaque ISO subdivision catalog or seller-mapping version that identifies the support snapshot. It is provenance, not part of subdivision identity."
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date",
+      "description": "Optional date on which the seller last validated this support declaration."
+    },
+    "max_values_per_package": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Optional maximum number of region values selectable on one package."
+    },
+    "max_packages": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Optional maximum number of independently region-targeted packages created from this configured product."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/ext.json"
+    }
+  },
+  "required": [
+    "countries"
+  ],
+  "additionalProperties": false,
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "country_prefix_matches_map_key": {
+        "map_field": "countries",
+        "values_field": "values"
+      }
+    },
+    "spec": "docs/media-buy/advanced-topics/targeting.mdx#geo_regions"
+  }
+}

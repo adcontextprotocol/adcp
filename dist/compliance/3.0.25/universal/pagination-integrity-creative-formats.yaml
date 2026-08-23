@@ -1,0 +1,258 @@
+id: pagination_integrity_creative_formats
+version: "1.0.0"
+title: "Pagination cursor integrity — list_creative_formats"
+category: schema_validation
+summary: "Validates the cursor↔has_more invariant on list_creative_formats by seeding two formats and walking pages with max_results=1."
+track: core
+required_tools:
+  - list_creative_formats
+
+narrative: |
+  Pagination is cursor-based across AdCP. Every response carrying a
+  `pagination` block satisfies one invariant: when `has_more` is true the
+  `cursor` MUST be present; when `has_more` is false the `cursor` MUST be
+  absent. This storyboard exercises both sides of the invariant on
+  `list_creative_formats`, mirroring the approach used by
+  `pagination-integrity.yaml` for `list_creatives`.
+
+  The runner seeds two creative formats into the agent's session ahead of
+  time so the result set has a knowable size at storyboard-author time. A
+  request with `max_results=1` MUST trigger a continuation page on the
+  first call (`has_more=true` with a cursor). Following that cursor MUST
+  produce a terminal page (`has_more=false` with no cursor).
+
+  The `list-creative-formats-response.json` schema does not define a
+  `query_summary` field, so this storyboard only asserts the
+  `pagination` block fields (`has_more`, `cursor`, `total_count`).
+
+agent:
+  interaction_model: stateful_preloaded
+  capabilities:
+    - has_creative_formats
+  examples:
+    - "Any AdCP agent that exposes a paginated list_creative_formats"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The runner seeds two creative formats ahead of time so a max_results=1
+    request reliably triggers a continuation page on the first call.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  creative_formats:
+    - format_id: "pagination_integrity_format_1"
+      fixture:
+        name: "Pagination Integrity Format A"
+        type: "display"
+    - format_id: "pagination_integrity_format_2"
+      fixture:
+        name: "Pagination Integrity Format B"
+        type: "display"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      Confirm the agent supports list_creative_formats before exercising
+      pagination.
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares creative in supported_protocols
+          before driving paginated list_creative_formats.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring creative in supported_protocols.
+
+        sample_request:
+          context:
+            correlation_id: "pagination_integrity_creative_formats--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pagination_integrity_creative_formats--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: seed_formats
+    title: "Seed two creative formats"
+    narrative: |
+      Pre-populate exactly two creative formats via comply_test_controller
+      so the result set has a knowable size for the pagination walk.
+    steps:
+      - id: seed_format_1
+        title: "Seed first format fixture"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: seed_creative_format
+        stateful: true
+        expected: |
+          Return success: true.
+        sample_request:
+          account:
+            account_id: "acct_pagination_integrity_formats"
+          scenario: "seed_creative_format"
+          params:
+            format_id: "pagination_integrity_format_1"
+            fixture:
+              name: "Pagination Integrity Format A"
+              type: "display"
+          context:
+            correlation_id: "pagination_integrity_creative_formats--seed_1"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Seed acknowledged"
+
+      - id: seed_format_2
+        title: "Seed second format fixture"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: seed_creative_format
+        stateful: true
+        expected: |
+          Return success: true.
+        sample_request:
+          account:
+            account_id: "acct_pagination_integrity_formats"
+          scenario: "seed_creative_format"
+          params:
+            format_id: "pagination_integrity_format_2"
+            fixture:
+              name: "Pagination Integrity Format B"
+              type: "display"
+          context:
+            correlation_id: "pagination_integrity_creative_formats--seed_2"
+        validations:
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Seed acknowledged"
+
+  - id: pagination_walk
+    title: "Walk pages with max_results=1"
+    narrative: |
+      With two formats seeded and `max_results: 1`, the first call MUST
+      return a continuation page (has_more=true with a cursor). The runner
+      then follows the cursor; the second call MUST return a terminal page
+      (has_more=false with no cursor).
+
+    steps:
+      - id: first_page
+        title: "Request the first page with max_results=1"
+        narrative: |
+          The buyer asks for one format at a time. The agent has two seeded
+          formats, so the first page is non-terminal. The runner captures
+          `pagination.cursor` for the follow-up step.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: pagination_integrity
+        stateful: true
+        context_outputs:
+          - name: next_cursor
+            path: "pagination.cursor"
+        expected: |
+          Return one format with:
+          - pagination.has_more = true
+          - pagination.cursor present (an opaque continuation token)
+
+        sample_request:
+          account:
+            account_id: "acct_pagination_integrity_formats"
+          pagination:
+            max_results: 1
+          context:
+            correlation_id: "pagination_integrity_creative_formats--first_page"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_value
+            path: "pagination.has_more"
+            value: true
+            description: "Two formats seeded with max_results=1 → first page is non-terminal"
+          - check: field_present
+            path: "pagination.cursor"
+            description: "has_more=true requires a cursor — without one the caller cannot continue"
+          - check: field_value_or_absent
+            path: "pagination.total_count"
+            allowed_values: [2]
+            description: "If volunteered, total_count MUST equal the seeded set size of two"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pagination_integrity_creative_formats--first_page"
+            description: "Context correlation_id returned unchanged"
+
+      - id: terminal_page
+        title: "Follow the cursor to the terminal page"
+        narrative: |
+          The buyer follows the captured cursor. With one format remaining
+          the agent MUST return a terminal page: `has_more=false` with no
+          `cursor` field. A cursor on `has_more=false` is a stale token
+          that invites callers to follow it past the end of results.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: pagination_integrity
+        stateful: true
+        expected: |
+          Return the remaining format with:
+          - pagination.has_more = false
+          - pagination.cursor absent
+
+        sample_request:
+          account:
+            account_id: "acct_pagination_integrity_formats"
+          pagination:
+            cursor: "$context.next_cursor"
+            max_results: 1
+          context:
+            correlation_id: "pagination_integrity_creative_formats--terminal_page"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_value
+            path: "pagination.has_more"
+            value: false
+            description: "After two pages of one item the seeded set is exhausted"
+          - check: field_value_or_absent
+            path: "pagination.cursor"
+            allowed_values: [null]
+            description: "Terminal page MUST omit cursor (null also accepted for clients that explicitly clear the field)"
+          - check: field_value_or_absent
+            path: "pagination.total_count"
+            allowed_values: [2]
+            description: "total_count (when volunteered) MUST stay stable across pages and equal the seeded set size"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pagination_integrity_creative_formats--terminal_page"
+            description: "Context correlation_id returned unchanged"

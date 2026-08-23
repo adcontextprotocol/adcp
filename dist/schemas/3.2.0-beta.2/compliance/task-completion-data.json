@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/compliance/task-completion-data.json",
+  "title": "Compliance Task Completion Data",
+  "description": "Bounded completion union for the legacy async tasks supported by force_task_completion. Polling and production task-result resolution use the originating task's manifest response schema rather than embedding the global async union.",
+  "anyOf": [
+    {
+      "title": "GetProductsCompletion",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/get-products-response.json"
+    },
+    {
+      "title": "GetSignalsCompletion",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/signals/get-signals-response.json"
+    },
+    {
+      "title": "CreateMediaBuyCompletion",
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/create-media-buy-response.json#/oneOf/0"
+    }
+  ]
+}

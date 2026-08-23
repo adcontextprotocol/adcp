@@ -1,0 +1,206 @@
+{
+  "mcp_protocol_version": "2026-07-28",
+  "schema_dialect": "https://json-schema.org/draft/2020-12/schema",
+  "source_schema_dialect": "http://json-schema.org/draft-07/schema#",
+  "compatibility": "semantics-preserving projection; no 4.0 strictness rules applied",
+  "delivery": "active 3.2 role-filtered validation artifacts; not a complete 3.x tools/list registration",
+  "annotation_mode": "structural",
+  "schema_fields": [
+    "inputSchema",
+    "outputSchema"
+  ],
+  "task_result_resolution": {
+    "discriminator_field": "task_type",
+    "terminal_schema_pointer_template": "/tools/{task_type}/outputSchema",
+    "terminal_schema_overrides": {
+      "media_buy_delivery": "media-buy/media-buy-delivery-webhook-result.json"
+    }
+  },
+  "profile": "media-buy",
+  "profile_kind": "active-role-catalog",
+  "surface_version": "3.2.0",
+  "compatibility_scope": "active-3.2-only",
+  "filters": {
+    "include_tools": [
+      "accept_proposal",
+      "buy_products",
+      "control_media_buy",
+      "decline_proposals",
+      "get_account_financials",
+      "get_adcp_capabilities",
+      "get_media_buy_delivery",
+      "get_media_buys",
+      "get_task_status",
+      "list_accounts",
+      "list_creatives",
+      "list_products",
+      "list_tasks",
+      "log_event",
+      "provide_performance_feedback",
+      "refine_proposals",
+      "report_usage",
+      "request_proposals",
+      "sync_accounts",
+      "sync_agent_notification_configs",
+      "sync_audiences",
+      "sync_catalogs",
+      "sync_creatives",
+      "sync_event_sources",
+      "sync_governance"
+    ],
+    "exclude_deprecated": true
+  },
+  "canonical_projection": "../../manifest.json",
+  "tools": {
+    "accept_proposal": {
+      "protocol": "media-buy",
+      "summary": "Accept a committed proposal to create or amend a media buy, or apply a negotiated cancellation.",
+      "inputSchema": "media-buy/accept-proposal-request.json",
+      "outputSchema": "media-buy/accept-proposal-response.json"
+    },
+    "buy_products": {
+      "protocol": "media-buy",
+      "summary": "Create a media buy directly from published seller products and record its accepted commercial snapshot.",
+      "inputSchema": "media-buy/buy-products-request.json",
+      "outputSchema": "media-buy/buy-products-response.json"
+    },
+    "control_media_buy": {
+      "protocol": "media-buy",
+      "summary": "Pause, resume, cancel, or adjust delivery controls without changing accepted commercial terms.",
+      "inputSchema": "media-buy/control-media-buy-request.json",
+      "outputSchema": "media-buy/control-media-buy-response.json"
+    },
+    "decline_proposals": {
+      "protocol": "media-buy",
+      "summary": "Terminally decline one or more proposals and record the buyer's reason.",
+      "inputSchema": "media-buy/decline-proposals-request.json",
+      "outputSchema": "media-buy/decline-proposals-response.json"
+    },
+    "get_account_financials": {
+      "protocol": "account",
+      "summary": "Retrieve spend, credit or balance status, and invoice history for an operator-billed account.",
+      "inputSchema": "account/get-account-financials-request.json",
+      "outputSchema": "account/get-account-financials-response.json"
+    },
+    "get_adcp_capabilities": {
+      "protocol": "protocol",
+      "summary": "Discover the AdCP protocols and feature sets supported by this agent.",
+      "inputSchema": "protocol/get-adcp-capabilities-request.json",
+      "outputSchema": "protocol/get-adcp-capabilities-response.json"
+    },
+    "get_media_buy_delivery": {
+      "protocol": "media-buy",
+      "summary": "Retrieve media-buy delivery metrics with optional date, package, window, attribution, and dimension breakdowns.",
+      "inputSchema": "media-buy/get-media-buy-delivery-request.json",
+      "outputSchema": "media-buy/get-media-buy-delivery-response.json"
+    },
+    "get_media_buys": {
+      "protocol": "media-buy",
+      "summary": "List media buys with current status, creative approval state, and optional delivery snapshots.",
+      "inputSchema": "media-buy/get-media-buys-request.json",
+      "outputSchema": "media-buy/get-media-buys-response.json"
+    },
+    "get_task_status": {
+      "protocol": "protocol",
+      "summary": "Retrieve an AdCP asynchronous task, its conversation history, and terminal result by task ID.",
+      "inputSchema": "protocol/get-task-status-request.json",
+      "outputSchema": "protocol/get-task-status-response.json"
+    },
+    "list_accounts": {
+      "protocol": "account",
+      "summary": "List accounts accessible to the caller and recover their canonical account references.",
+      "inputSchema": "account/list-accounts-request.json",
+      "outputSchema": "account/list-accounts-response.json"
+    },
+    "list_creatives": {
+      "protocol": "creative",
+      "summary": "List creative-library assets with filtering, sorting, and pagination.",
+      "inputSchema": "creative/list-creatives-request.json",
+      "outputSchema": "creative/list-creatives-response.json"
+    },
+    "list_products": {
+      "protocol": "media-buy",
+      "summary": "List seller products that match structured discovery criteria.",
+      "inputSchema": "media-buy/list-products-request.json",
+      "outputSchema": "media-buy/list-products-response.json"
+    },
+    "list_tasks": {
+      "protocol": "protocol",
+      "summary": "List and filter AdCP asynchronous tasks for state reconciliation.",
+      "inputSchema": "protocol/list-tasks-request.json",
+      "outputSchema": "protocol/list-tasks-response.json"
+    },
+    "log_event": {
+      "protocol": "media-buy",
+      "summary": "Log batches of marketing events against a configured event source for measurement and attribution.",
+      "inputSchema": "media-buy/log-event-request.json",
+      "outputSchema": "media-buy/log-event-response.json"
+    },
+    "provide_performance_feedback": {
+      "protocol": "media-buy",
+      "summary": "Submit an optimizer-ready performance assertion for validation and forwarding to a seller.",
+      "inputSchema": "media-buy/provide-performance-feedback-request.json",
+      "outputSchema": "media-buy/provide-performance-feedback-response.json"
+    },
+    "refine_proposals": {
+      "protocol": "media-buy",
+      "summary": "Revise draft proposals or finalize them into committed, inventory-held snapshots.",
+      "inputSchema": "media-buy/refine-proposals-request.json",
+      "outputSchema": "media-buy/refine-proposals-response.json"
+    },
+    "report_usage": {
+      "protocol": "account",
+      "summary": "Report vendor-service consumption and final measurements for revenue tracking and billing reconciliation.",
+      "inputSchema": "account/report-usage-request.json",
+      "outputSchema": "account/report-usage-response.json"
+    },
+    "request_proposals": {
+      "protocol": "media-buy",
+      "summary": "Ask a seller to create one or more draft media-plan proposals from a campaign brief.",
+      "inputSchema": "media-buy/request-proposals-request.json",
+      "outputSchema": "media-buy/request-proposals-response.json"
+    },
+    "sync_accounts": {
+      "protocol": "account",
+      "summary": "Provision advertiser accounts or update settings for existing accounts through declarative synchronization.",
+      "inputSchema": "account/sync-accounts-request.json",
+      "outputSchema": "account/sync-accounts-response.json"
+    },
+    "sync_agent_notification_configs": {
+      "protocol": "protocol",
+      "summary": "Register, replace, pause, or clear caller-scoped webhooks for agent-level notifications.",
+      "inputSchema": "protocol/sync-agent-notification-configs-request.json",
+      "outputSchema": "protocol/sync-agent-notification-configs-response.json"
+    },
+    "sync_audiences": {
+      "protocol": "media-buy",
+      "summary": "List or synchronize account audiences with upsert, member-delta, and optional replacement semantics.",
+      "inputSchema": "media-buy/sync-audiences-request.json",
+      "outputSchema": "media-buy/sync-audiences-response.json"
+    },
+    "sync_catalogs": {
+      "protocol": "media-buy",
+      "summary": "List or synchronize buyer-managed account catalog feeds, suppress or restore specific items, and read current availability state.",
+      "inputSchema": "media-buy/sync-catalogs-request.json",
+      "outputSchema": "media-buy/sync-catalogs-response.json"
+    },
+    "sync_creatives": {
+      "protocol": "creative",
+      "summary": "List or synchronize creative assets, scoped updates, and media-buy assignments.",
+      "inputSchema": "creative/sync-creatives-request.json",
+      "outputSchema": "creative/sync-creatives-response.json"
+    },
+    "sync_event_sources": {
+      "protocol": "media-buy",
+      "summary": "List or synchronize account event sources with upsert and optional replacement semantics.",
+      "inputSchema": "media-buy/sync-event-sources-request.json",
+      "outputSchema": "media-buy/sync-event-sources-response.json"
+    },
+    "sync_governance": {
+      "protocol": "account",
+      "summary": "Bind or replace the governance agent used for approval across specific advertiser accounts.",
+      "inputSchema": "account/sync-governance-request.json",
+      "outputSchema": "account/sync-governance-response.json"
+    }
+  }
+}
