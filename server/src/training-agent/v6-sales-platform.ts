@@ -22,6 +22,7 @@ import {
   type AudiencePlatform,
   type SyncAudiencesRow,
   type AudienceStatus,
+  type CreateMediaBuyHandlerResult,
 } from '@adcp/sdk/server';
 import {
   packageRefsForFormatOptions,
@@ -58,6 +59,8 @@ import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.
 import { sessionKeyFromArgs } from './state.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
+import { maybeEmitCompletionWebhook } from './webhooks.js';
+import { scopedPrincipal } from './idempotency.js';
 
 interface TrainingSalesMeta {
   brand_domain?: string;
@@ -212,6 +215,59 @@ function buildTrainingCtx(
     ...(ctx?.proposalRefinementScope && { proposalRefinementScope: ctx.proposalRefinementScope }),
     ...(proposalNegotiationProfile && { proposalNegotiationProfile }),
   };
+}
+
+/**
+ * Derive the delivery partition for synchronous compatibility webhooks from
+ * framework-resolved state only. Request fields are buyer-controlled and must
+ * never select another caller's durable webhook namespace.
+ */
+function trustedWebhookPrincipal(ctx: {
+  account?: unknown;
+  authInfo?: { clientId?: string };
+  callerMutationScope?: Readonly<{ tenant_id: string; principal_id: string; account_id?: string }>;
+}): string {
+  const scope = ctx.callerMutationScope;
+  if (scope) {
+    return JSON.stringify([
+      'caller',
+      scope.tenant_id,
+      scope.principal_id,
+      scope.account_id ?? null,
+    ]);
+  }
+  const account = ctx.account as {
+    id?: unknown;
+    authInfo?: { principal?: unknown };
+    ctx_metadata?: { account_ref?: unknown };
+  } | undefined;
+  const accountId = account?.id;
+  if (typeof accountId !== 'string' || accountId.length === 0) {
+    throw new Error('create_media_buy completion webhook requires a framework-resolved caller or account scope');
+  }
+  // RequestContext currently omits authInfo, but the trusted AccountStore
+  // projection retains the authenticated principal on the resolved account.
+  // Prefer a future first-class bridge when available and keep the account
+  // boundary in both cases. This mirrors the registry's scoped-principal
+  // delimiter and prevents two authenticated buyers using the same request
+  // key against one account from sharing a webhook delivery identity.
+  const authenticatedPrincipal = ctx.authInfo?.clientId ?? account?.authInfo?.principal;
+  if (typeof authenticatedPrincipal !== 'string' || authenticatedPrincipal.length === 0) {
+    throw new Error('create_media_buy completion webhook requires an authenticated principal');
+  }
+  if (authenticatedPrincipal === 'static:public' || authenticatedPrincipal === 'static:public:shared') {
+    const ref = account?.ctx_metadata?.account_ref as {
+      account_id?: unknown;
+      brand?: { domain?: unknown };
+    } | undefined;
+    const publicAccountScope = typeof ref?.account_id === 'string'
+      ? `a:${ref.account_id}`
+      : typeof ref?.brand?.domain === 'string'
+        ? `b:${ref.brand.domain.toLowerCase()}`
+        : `a:${accountId}`;
+    return scopedPrincipal(authenticatedPrincipal, publicAccountScope);
+  }
+  return scopedPrincipal(authenticatedPrincipal, `a:${accountId}`);
 }
 
 /**
@@ -482,6 +538,47 @@ function canonicalMediaBuyPlatformResult<T>(result: T): T {
 }
 
 /**
+ * Mirror the SDK's AdCP 3.0 create-media-buy response projection for the
+ * compatibility completion webhook. The platform consumes a canonical result,
+ * then the framework restores the selected legacy format tuple on the wire and
+ * adds the synchronous terminal status. Webhook `result` must be identical to
+ * that buyer-visible response, not either intermediate representation.
+ */
+function projectCreateMediaBuyCompatibilityWebhookResult(
+  legacyResult: Record<string, unknown>,
+  canonicalResult: Record<string, unknown>,
+): Record<string, unknown> {
+  const legacyPackages = Array.isArray(legacyResult.packages) ? legacyResult.packages : [];
+  const canonicalPackages = Array.isArray(canonicalResult.packages) ? canonicalResult.packages : [];
+  const packages = canonicalPackages.map((value, index) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const {
+      format_option_refs: _canonicalRefs,
+      __selected_legacy_format_ids: _canonicalSelected,
+      ...wirePackage
+    } = value as Record<string, unknown>;
+    const legacyPackage = legacyPackages[index];
+    const legacyRecord = legacyPackage && typeof legacyPackage === 'object' && !Array.isArray(legacyPackage)
+      ? legacyPackage as Record<string, unknown>
+      : undefined;
+    const selected = Array.isArray(legacyRecord?.__selected_legacy_format_ids)
+      ? legacyRecord.__selected_legacy_format_ids
+      : Array.isArray(legacyRecord?.format_ids)
+        ? legacyRecord.format_ids
+        : undefined;
+    return {
+      ...wirePackage,
+      ...(selected !== undefined && { format_ids: selected }),
+    };
+  });
+  return {
+    ...canonicalResult,
+    status: 'completed',
+    ...(canonicalPackages.length > 0 && { packages }),
+  };
+}
+
+/**
  * Synthetic-account constructor — same posture as the signals tenant.
  * v6 mandates `accounts.resolve()` on every request; we synthesize an
  * Account from the wire reference (or from auth for no-account tools
@@ -710,7 +807,31 @@ export class TrainingSalesPlatform
           { task_id: submitted.task_id },
         );
       }
-      return translateV5Result(canonicalMediaBuyPlatformResult(v5Result));
+      const platformResult = translateV5Result<CreateMediaBuyHandlerResult>(
+        canonicalMediaBuyPlatformResult(v5Result),
+      );
+      // SDK 14 intentionally keeps synchronous terminal responses silent in
+      // AdCP 3.2. Released 3.0 storyboards, however, require the historical
+      // inline completion callback. Emit only on that compatibility surface,
+      // through the same signed durable outbox used by all other training-agent
+      // webhooks. Submitted task handoffs return above and remain framework-owned.
+      if (this.storyboardCompat?.version === '3.0') {
+        const webhookArgs = args as unknown as Record<string, unknown>;
+        const webhookResult = projectCreateMediaBuyCompatibilityWebhookResult(
+          v5Result as Record<string, unknown>,
+          platformResult as unknown as Record<string, unknown>,
+        );
+        maybeEmitCompletionWebhook({
+          toolName: 'create_media_buy',
+          args: webhookArgs,
+          response: webhookResult,
+          requestIdempotencyKey: typeof webhookArgs.idempotency_key === 'string'
+            ? webhookArgs.idempotency_key
+            : undefined,
+          principal: trustedWebhookPrincipal(ctx),
+        });
+      }
+      return platformResult;
     },
 
     updateMediaBuy: async (buyId, patch, ctx) => {

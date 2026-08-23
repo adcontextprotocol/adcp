@@ -27,7 +27,7 @@
     "deploy:cdn-artifacts-cutover:dry-run": "wrangler deploy --config workers/artifact-cdn/wrangler.cutover.toml --dry-run",
     "verify:cdn-artifacts-cutover": "node scripts/verify-cdn-artifacts-cutover.mjs",
     "typecheck": "tsc --project server/tsconfig.json --noEmit",
-    "test:schemas": "node tests/schema-validation.test.cjs && node --test tests/outcome-target.test.cjs tests/trusted-match-offer-creative-data.test.cjs tests/accessibility-violation-details.test.cjs tests/portfolio-routing-scope.test.cjs tests/catalog-item-availability-updates.test.cjs tests/compact-product-lifecycle-storyboards.test.cjs tests/timezone-resolution-storyboards.test.cjs tests/schema-deprecation-metadata.test.cjs tests/products-only-brief-compatibility.test.cjs tests/async-identity-convergence.test.cjs tests/creative-rotation.test.cjs tests/metric-identity-coherence.test.cjs tests/sort-contract-delivery-reporting.test.cjs tests/time-based-views-contract.test.cjs tests/metric-qualifier-parity.test.cjs tests/requested-metrics-contract.test.cjs tests/lint-schema-enum-drift.test.cjs tests/synthetic-depiction.test.cjs tests/creative-rendering-authority.test.cjs && npm run test:premium-display-formats && npm run test:geo-region-targeting",
+    "test:schemas": "node tests/schema-validation.test.cjs && node --test tests/outcome-target.test.cjs tests/trusted-match-offer-creative-data.test.cjs tests/accessibility-violation-details.test.cjs tests/portfolio-routing-scope.test.cjs tests/catalog-item-availability-updates.test.cjs tests/compact-product-lifecycle-storyboards.test.cjs tests/timezone-resolution-storyboards.test.cjs tests/schema-deprecation-metadata.test.cjs tests/products-only-brief-compatibility.test.cjs tests/async-identity-convergence.test.cjs tests/creative-rotation.test.cjs tests/metric-identity-coherence.test.cjs tests/sort-contract-delivery-reporting.test.cjs tests/time-based-views-contract.test.cjs tests/metric-qualifier-parity.test.cjs tests/requested-metrics-contract.test.cjs tests/auto-breakdown-negotiation-contract.test.cjs tests/lint-schema-enum-drift.test.cjs tests/synthetic-depiction.test.cjs tests/creative-rendering-authority.test.cjs && npm run test:premium-display-formats && npm run test:geo-region-targeting",
     "test:performance-feedback": "node --test --test-force-exit --test-timeout=30000 tests/performance-feedback-contract.test.cjs",
     "test:dist-schema-version-ids": "node --test --test-force-exit --test-timeout=30000 tests/dist-schema-version-ids.test.cjs",
     "test:examples": "node tests/example-validation-simple.test.cjs && npm run test:tmp-context-merge",
@@ -114,7 +114,8 @@
     "test:error-code-drift": "node scripts/lint-error-code-drift.cjs",
     "test:language-tag-refs": "node --test --test-force-exit --test-timeout=30000 tests/lint-language-tag-refs.test.cjs && node scripts/lint-language-tag-refs.cjs",
     "test:compliance-snippets": "node --test --test-force-exit --test-timeout=30000 tests/generate-compliance-snippets.node.mjs tests/link-compliance-symbols.node.mjs && npm run build:compliance -- --check",
-    "test:doc-compliance-drift": "node --test --test-force-exit --test-timeout=30000 tests/lint-doc-compliance-drift.test.cjs",
+    "test:doc-compliance-drift": "node --test --test-force-exit --test-timeout=30000 tests/lint-doc-compliance-drift.test.cjs && npm run test:release-instrumentation",
+    "test:release-instrumentation": "node --test --test-force-exit --test-timeout=30000 tests/release-instrumentation.test.cjs",
     "test:substitution-vector-names": "node scripts/lint-substitution-vector-names.cjs && node --test --test-force-exit --test-timeout=30000 tests/universal-macro-translation-vectors.test.cjs",
     "test:unit": "npm run test:canonical-pixel-ratio && npm run test:governance-jws-vectors && vitest run --dir tests/ --pool=threads",
     "test:redteam": "tsx server/src/addie/testing/redteam-cli.ts",
@@ -162,7 +163,7 @@
     "docs:json-field-audit": "node scripts/docs-json-field-audit.cjs"
   },
   "dependencies": {
-    "@adcp/sdk": "14.0.0-beta.5",
+    "@adcp/sdk": "14.0.0-beta.7",
     "@anthropic-ai/sdk": "^0.117.1",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.8.3",

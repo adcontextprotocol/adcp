@@ -37,7 +37,7 @@ import {
 } from '@adcp/sdk/server';
 import { getPool } from '../../db/client.js';
 import { getSdkIdempotencyStore, scopedPrincipal } from '../idempotency.js';
-import { emitFrameworkTaskWebhook, getWebhookSigningMaterial } from '../webhooks.js';
+import { getWebhookSigningMaterial } from '../webhooks.js';
 import { isWebhookTestOrDevelopment } from '../webhook-fetch.js';
 import { buildSignalsTenantConfig } from './signals.js';
 import { buildSalesTenantConfig } from './sales.js';
@@ -189,15 +189,11 @@ function buildDefaultServerOptions(
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
-    adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : '3.2-beta.4',
+    adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : '3.2-beta.5',
     idempotency: getSdkIdempotencyStore(),
     webhooks: getWebhookSigningMaterial(),
-    taskWebhookEmitter: {
-      emit: emitFrameworkTaskWebhook,
-    },
-    // The SDK no longer emits webhooks for terminal inline responses by
-    // default. Preserve the training agent's existing integration contract
-    // while its consumers migrate to inline-terminal handling.
+    // Preserve terminal inline callbacks when supported by the SDK; actual
+    // task handoffs always use the durable framework emitter configured above.
     autoEmitCompletionWebhooks: true,
     taskRegistry,
     taskStore: sharedTrainingTaskStore,
