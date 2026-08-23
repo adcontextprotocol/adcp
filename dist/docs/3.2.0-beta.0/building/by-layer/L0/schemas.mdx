@@ -1,0 +1,459 @@
+---
+title: Schemas
+sidebarTitle: Schemas
+description: "AdCP JSON schemas: where to fetch them, the protocol tarball, schema versioning, bundled vs $ref-resolving variants, and how to verify supply-chain provenance via Sigstore."
+"og:title": "AdCP — Schemas"
+---
+
+The L0 wire layer is JSON-over-HTTP framed by published JSON Schemas. This page is the reference for getting the schemas — where they live, how to pin a version, how to verify supply-chain provenance, and the directory shape inside a release. If you're picking an SDK rather than the schemas themselves, see [Choose your SDK](/dist/docs/3.2.0-beta.0/building/by-layer/L4/choose-your-sdk).
+
+## Schema access
+
+AdCP schemas are available from two sources:
+
+| Source | URL | Best For |
+|--------|-----|----------|
+| Website | `https://adcontextprotocol.org/schemas/3.2.0-beta.0/` | Runtime fetching, version aliases |
+| GitHub | `https://github.com/adcontextprotocol/adcp/tree/main/dist/schemas` | Offline access, CI/CD pipelines |
+
+Both sources contain identical schemas. The GitHub repository includes all released versions with bundled schemas committed directly to the codebase.
+
+### Schema identity and offline resolution
+
+The `latest` tree and releases cut after this behavior was introduced use canonical HTTPS URIs for root `$id` values and external `$ref` values, for example `https://adcontextprotocol.org/schemas/{version}/core/product.json`. These URIs are stable schema identifiers; a validator does not have to fetch them over the network. Older release directories are immutable and retain their original `/schemas/...` references; for offline use of those releases, select their `bundled/` schemas.
+
+When using the modular schema tree from a downloaded tarball, configure the validator or code generator to map the canonical `https://adcontextprotocol.org/schemas/{version}/` prefix to the extracted `schemas/` directory. Tools that cannot register URI-to-file mappings should use the corresponding `schemas/bundled/` artifact, which has external `$ref` values resolved inline.
+
+For Python's `jsonschema`, the `referencing` registry can perform that mapping without network access:
+
+```python
+import json
+from pathlib import Path
+
+from jsonschema import Draft7Validator
+from referencing import Registry, Resource
+from referencing.exceptions import NoSuchResource
+
+VERSION = "3.2.0"
+SCHEMA_ROOT = Path(f"adcp-{VERSION}/schemas")
+CANONICAL_PREFIX = f"https://adcontextprotocol.org/schemas/{VERSION}/"
+
+def retrieve_local_schema(uri: str) -> Resource:
+    if not uri.startswith(CANONICAL_PREFIX):
+        raise NoSuchResource(ref=uri)
+    relative_path = uri.removeprefix(CANONICAL_PREFIX)
+    contents = json.loads((SCHEMA_ROOT / relative_path).read_text())
+    return Resource.from_contents(contents)
+
+root = json.loads(
+    (SCHEMA_ROOT / "media-buy/get-products-response.json").read_text()
+)
+validator = Draft7Validator(
+    root,
+    registry=Registry(retrieve=retrieve_local_schema),
+)
+```
+
+## One-shot protocol bundle
+
+Syncing hundreds of individual schema files adds up. Every AdCP release also publishes a single gzipped tarball containing the complete protocol — schemas, compliance storyboards, and the OpenAPI registry — so clients can pull one artifact instead of crawling the tree.
+
+| Path | Contents | Notes |
+|------|----------|-------|
+| `https://adcontextprotocol.org/protocol/latest.tgz` | Current development bundle | Changes with every merge |
+| `https://adcontextprotocol.org/protocol/{version}.tgz` | Pinned release bundle | Immutable once published |
+| `https://adcontextprotocol.org/protocol/{version}.tgz.sha256` | SHA-256 checksum | Use to verify download integrity |
+| `https://adcontextprotocol.org/protocol/{version}.tgz.sig` | Sigstore detached signature | Use to verify publisher identity. Present only when the release was cut via the `release.yml` workflow — absent for out-of-band republishes. |
+| `https://adcontextprotocol.org/protocol/{version}.tgz.crt` | Fulcio-issued signing certificate | Pairs with `.sig` for `cosign verify-blob`. Present only when the release was cut via the `release.yml` workflow — absent for out-of-band republishes. |
+
+Every tarball extracts into a single `adcp-{version}/` directory (safe extraction, no tarbomb). Inside:
+
+```
+adcp-{version}/
+  README.md               # quickstart + links
+  CHANGELOG.md            # release notes
+  manifest.json           # version, generated_at, contents summary
+  schemas/                # full JSON schema tree (same as /schemas/{version}/)
+  compliance/             # protocols/, specialisms/, universal/, test-kits/, index.json
+  openapi/registry.yaml   # OpenAPI description
+```
+
+Verify the checksum before extracting:
+
+```bash
+curl -OL https://adcontextprotocol.org/protocol/3.1.0.tgz
+curl -OL https://adcontextprotocol.org/protocol/3.1.0.tgz.sha256
+shasum -a 256 -c 3.1.0.tgz.sha256
+tar xzf 3.1.0.tgz
+cd adcp-3.1.0
+```
+
+Pull it once per version, cache by SHA, and you have everything needed to validate requests, run storyboards, and render documentation offline. The `@adcp/sdk` `sync-schemas` command uses this under the hood.
+
+Available tarballs are also listed at [`/protocol/`](https://adcontextprotocol.org/protocol/).
+
+### Verifying protocol bundle signatures
+
+The SHA-256 sidecar lives on the same origin as the tarball, so it only protects against in-transit tampering. For supply-chain protection — proving the bundle came from the AdCP release workflow and was not swapped for a malicious one even if the host were compromised — every released `{version}.tgz` is also published with a Sigstore detached signature.
+
+The signature is produced by the GitHub Actions release workflow using keyless OIDC: there is no long-lived AdCP signing key to leak. The certificate binds the signature to the workflow identity that issued it.
+
+```bash
+# Pull the tarball and the two signature sidecars
+curl -OL https://adcontextprotocol.org/protocol/3.1.0.tgz
+curl -OL https://adcontextprotocol.org/protocol/3.1.0.tgz.sig
+curl -OL https://adcontextprotocol.org/protocol/3.1.0.tgz.crt
+
+# Verify (requires cosign 2.x — `brew install cosign`)
+cosign verify-blob \
+  --signature 3.1.0.tgz.sig \
+  --certificate 3.1.0.tgz.crt \
+  --certificate-identity-regexp '^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/(heads|tags)/.*$' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  3.1.0.tgz
+```
+
+`cosign verify-blob` exits non-zero if the signature was made by anything other than the AdCP release workflow, even if the SHA matches and TLS is valid. Use this in any pipeline that ingests the protocol bundle as an enforcement source. The `@adcp/sdk`, `adcp-client-python`, and `adcp-go` SDKs perform this verification automatically when the sidecars are present.
+
+The `refs/(heads|tags)/.*` wildcard is intentional — releases sign during the push-triggered workflow run, so the cert subject names the release branch (e.g. `refs/heads/3.0.x` for v3.0.1+, `refs/heads/main` for v3.0.0). The trust gate is upstream `release.yml`'s `on.push.branches` allowlist, not the consumer's regex. Literal-allowlist regexes (`(main|2\.6\.x)`-style) silently break every time a new maintenance branch is added — see [Verifying protocol tarballs](/dist/docs/3.2.0-beta.0/reference/verifying-protocol-tarballs) for the full trust model and the cert-subject-by-release lookup.
+
+Older releases that predate signing, and versions republished out of band (bypassing the signing workflow), remain checksum-only — clients should treat missing sidecars as a "checksum-only" trust level rather than a verification failure.
+
+## Compliance storyboards
+
+Storyboards live alongside schemas at `/compliance/{version}/`. They define the test scenarios AAO runs to verify an agent's capability claims.
+
+| Path | Purpose |
+|------|---------|
+| `/compliance/{version}/universal/` | Required for every agent (capability discovery, error handling, schema validation) |
+| `/compliance/{version}/protocols/{protocol}/` | Baseline required to claim a protocol (`media-buy`, `creative`, `signals`, `governance`, `brand`, `sponsored-intelligence`) |
+| `/compliance/{version}/specialisms/{id}/` | Optional specialization claims (e.g. `sales-guaranteed`, `sales-broadcast-tv`) |
+| `/compliance/{version}/index.json` | Enumerates available protocols, specialisms, and universal storyboards |
+
+Declare `supported_protocols` (for protocol baselines) and `specialisms` (for narrow capability claims) in `get_adcp_capabilities` — the compliance runner executes the matching bundles to verify. See the full [Compliance Catalog](/dist/docs/3.2.0-beta.0/building/verification/compliance-catalog) for every protocol and specialism an agent can claim.
+
+## Common schemas
+
+| Schema | URL |
+|--------|-----|
+| Product | `https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/product.json` |
+| Media Buy | `https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/media-buy.json` |
+| Creative Format | `https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/format.json` |
+| Schema Registry | `https://adcontextprotocol.org/schemas/3.2.0-beta.0/index.json` |
+
+<Tip>
+**For AI coding agents:** point your coding agent to **[https://docs.adcontextprotocol.org/mcp](https://docs.adcontextprotocol.org/mcp)** for MCP integration documentation.
+</Tip>
+
+## Schema versioning
+
+AdCP uses semantic versioning. Choose the right path for your use case:
+
+| Path | Example | Best For |
+|------|---------|----------|
+| Exact version | `/schemas/3.0.0/`, `/compliance/3.0.0/`, `/protocol/3.0.0.tgz` | Production, SDK generation |
+| Major version | `/schemas/3.2.0-beta.0/`, `/compliance/v3/` | Development, documentation |
+| Minor version | `/schemas/v3.0/`, `/compliance/v3.0/` | Stable development (patch updates only) |
+
+The same version semantics apply to `/schemas`, `/compliance`, and `/protocol/{version}.tgz` — one release cuts all three.
+
+### Production (recommended)
+
+Pin to an exact version for stability:
+
+```javascript
+const SCHEMA_VERSION = '3.0.0';
+const schema = await fetch(
+  `https://adcontextprotocol.org/schemas/${SCHEMA_VERSION}/core/product.json`
+);
+```
+
+### Development
+
+Use the major version alias to stay current with backward-compatible updates:
+
+```javascript
+const schema = await fetch(
+  'https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/product.json'
+);
+```
+
+### SDK type generation
+
+```bash
+# TypeScript
+npx json-schema-to-typescript \
+  https://adcontextprotocol.org/schemas/3.0.0/core/product.json \
+  --output types/product.d.ts
+
+# Python
+datamodel-codegen \
+  --url https://adcontextprotocol.org/schemas/3.0.0/core/product.json \
+  --output models/product.py
+```
+
+## Bundled schemas
+
+For tools that don't support `$ref` resolution, use bundled schemas with all references resolved inline. Bundled schemas are available from both the website and GitHub:
+
+### MCP 2026 tool-schema projection
+
+Beginning with AdCP 3.2, every release also includes a self-contained JSON
+Schema 2020-12 projection for MCP `2026-07-28` tool discovery:
+
+```
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/manifest.json
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/media-buy/get-products-request.json
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/media-buy/get-products-response.json
+```
+
+The projection manifest maps every AdCP tool to downloadable `inputSchema` and
+`outputSchema` files. Servers can select and embed these schemas when building
+their `tools/list` response; publishing the artifacts does not automatically
+change a server's MCP registration. MCP disables automatic network
+dereferencing by default, so each projected schema is a compact, self-contained
+document containing only local fragment references.
+
+The 3.2 projection changes schema syntax, not the AdCP payload contract. It is
+generated from the canonical draft-07 schemas and MUST preserve the same
+validation outcomes. In particular, it does not add
+`unevaluatedProperties: false` or otherwise close extension points. The build
+tests inspect every projected schema for dialect, local-reference integrity,
+and self-containment; enforce AdCP-defined defensive depth, schema-object, and
+compact-serialization byte bounds following MCP guidance; compile
+representative schemas from every protocol; and compare the source and
+projected dialects across representative instances. Repeated shared schemas are
+stored once under `$defs` rather than recursively inlined.
+
+#### Production surface profile
+
+The MCP projection also publishes a filtered production profile:
+
+```
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/profiles/production/manifest.json
+```
+
+For AdCP 3.2, this is the clean active structural catalog: it excludes the
+compliance-only controller and tools deprecated by 3.2, including the
+`get_products` and `list_creative_formats` compatibility facades. Its schemas
+remove only presentation annotations (`description`, `enumDescriptions`,
+`title`, `examples`, and `$comment`), so validation semantics are identical to
+the full MCP projection.
+Each manifest tool retains its `protocol` classification for deterministic
+selection.
+
+The profile is not a recommendation to load all active AdCP tools into one
+agent context. It currently spans 66 tools across the protocol families. A
+production host MUST expose only the protocols and tools it implements and
+SHOULD further select the smallest capability-appropriate subset for each
+agent session. Use the full projection for documentation, compatibility, and
+conformance; use this profile as the filtered catalog and structural validation
+source from which a host builds that subset. Removing descriptions makes the
+artifacts smaller, but does not by itself solve `tools/list` context cost.
+
+#### Active role catalogs
+
+Hosts and clients can use one of two role-filtered catalogs instead of selecting
+active tools from the entire production profile:
+
+```
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/profiles/media-buy/manifest.json
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/profiles/creative/manifest.json
+```
+
+The `media-buy` catalog covers active 3.2 operations for a seller-hosted
+product-to-delivery role. It includes product discovery, proposals, purchase,
+control, reporting, audiences, catalogs, event sources, accounts, governance,
+and separately synchronized creatives. These operations are one production
+lifecycle rather than separate "sales" and "sales lifecycle" surfaces.
+Creative construction is deliberately excluded.
+
+The `creative` catalog covers creative construction, transformation, preview,
+validation, catalog inputs, library synchronization, delivery, accounts,
+governance, usage, and task management. Shared account, catalog, and
+creative-trafficking tools intentionally appear in both catalogs; they describe
+role-oriented active surfaces, not mutually exclusive protocol ownership.
+
+These are active-3.2 catalogs, not complete 3.x server registrations. A server
+that supports callers using the deprecated 3.x compatibility facades must also
+advertise the applicable `get_products`, `create_media_buy`, and
+`update_media_buy` definitions from the full projection. Cross-agent buyer
+orchestration can additionally require signals, brand, external governance,
+property, or content-standard services that are intentionally outside the
+seller-hosted role catalog.
+Clients that combine compatibility facades with an active role catalog use the
+full projection's `task_result_resolution`, because the role-scoped resolver
+intentionally covers only task types present in that active catalog.
+
+Each role also publishes an input-only client prompt view:
+
+```
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/profiles/media-buy/model-context/manifest.json
+https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/profiles/creative/model-context/manifest.json
+```
+
+Model-context manifests contain only structural `inputSchema` entries. They are
+client-side prompt projections, not standalone MCP `tools/list` registrations:
+servers SHOULD continue advertising `outputSchema`, and clients SHOULD validate
+structured results with the parent role catalog. A controlled client can omit
+the output schema only when assembling its model prompt while retaining the
+parent response schemas and task-result resolution metadata out of band.
+
+Structural schemas deliberately omit descriptions. To support tool selection,
+clients combine the model-context inputs with each live MCP tool's concise
+`name` and `description`; the downloadable model-context manifest is not a
+description catalog by itself. Every tool in the published active Media Buy
+and Creative role catalogs carries a concise manifest `summary` that a host can
+use as that live description.
+
+#### Capability-selected runtime projection
+
+AdCP 3.2 hosts MUST derive a live MCP tool surface from the release manifest
+and the tools the endpoint can actually dispatch. A runtime projection is a
+selection of the generated per-tool bundles, not another schema profile and
+not a second hand-maintained tool catalog.
+
+The deterministic selection algorithm is:
+
+1. Build `implemented_tools` from the endpoint's dispatch registry. Every name
+   MUST exist in the canonical release manifest. Do not infer implementation
+   from documentation, a role profile, or a protocol claim.
+2. If the session has no narrower capability scope, select
+   `implemented_tools`. Otherwise, select the implemented tools whose manifest
+   `protocol` is enabled, unioned with exact enabled tool names. Convert
+   `supported_protocols` snake case to manifest kebab case (`media_buy` →
+   `media-buy`) before comparing. Exact tool claims that are not implemented
+   are configuration errors; hosts MUST fail closed rather than advertise
+   them.
+3. Treat `protocol` as ownership metadata, not dependency closure. Shared task,
+   account, or discovery tools are included only when the host adds their exact
+   names. Selection never pulls in neighboring tools implicitly.
+4. Production projections MUST exclude the `compliance` protocol. Deprecated
+   compatibility facades are included only when the endpoint really implements
+   and advertises them; deprecation alone is not a runtime filter.
+5. Sort selected names lexicographically. For each selected name, emit one MCP
+   `tools/list` entry containing `name`, the optional manifest `summary` as the
+   live `description`, and the corresponding self-contained `inputSchema` from
+   the MCP projection. Do not emit unselected tools or load response schemas
+   into the model-facing list.
+6. Keep the release manifest and response bundles available outside model
+   context. SDKs validate a direct result through that tool's `response_schema`;
+   they resolve terminal polling results through `task_result_resolution`.
+
+The coarse protocol set normally comes from `supported_protocols`. Exact names
+come from the active capability blocks (for example `lifecycle_tools`,
+`repair_tasks`, and `projection_tasks`) plus shared tools the host exposes for
+that session. The implementation registry remains the upper bound in every
+case. Unknown protocol or tool names, duplicate selector inputs, and production
+attempts to expose compliance tools are errors.
+
+For caller-side version adaptation, the live discovery result is authoritative.
+An SDK calls a current split 3.2 tool when that name is present. If it is absent,
+the SDK checks the current tool's `legacy_fallback` manifest entry and may use
+the named legacy tool only when that name is live: `direct` is a one-call
+translation, `orchestrated` must preserve the current operation's state and
+idempotency semantics across the sequence, and `none` is unsupported. SDKs
+MUST NOT infer a fallback from a shared protocol classification.
+
+The checked-in `production`, `media-buy`, and `creative` profiles remain useful
+catalogs and role-oriented starting points. They are not mandatory runtime
+combinations. The complete canonical projection remains the authority for
+documentation, conformance, compatibility analysis, code generation, and lazy
+response validation.
+
+AdCP 4.0 will make JSON Schema 2020-12 the canonical source dialect. That
+major-version migration is where the protocol may selectively use
+`unevaluatedProperties`, `dependentRequired`, `dependentSchemas`, and other
+2020-12 semantics to tighten contracts. Published v3 schemas remain draft-07
+for their support lifetime.
+
+### Website access
+
+```
+https://adcontextprotocol.org/schemas/3.0.0/bundled/media-buy/create-media-buy-request.json
+```
+
+### GitHub access
+
+Bundled schemas are committed to the repository at `dist/schemas/{VERSION}/bundled/`:
+
+```bash
+# Clone and access locally
+git clone https://github.com/adcontextprotocol/adcp.git
+ls adcp/dist/schemas/3.0.0/bundled/media-buy/
+
+# Or fetch directly via GitHub raw
+curl https://raw.githubusercontent.com/adcontextprotocol/adcp/main/dist/schemas/3.0.0/bundled/media-buy/get-products-request.json
+```
+
+### Directory structure
+
+```
+dist/schemas/{VERSION}/
+├── bundled/                      # Fully dereferenced schemas
+│   ├── media-buy/                # Media buying tasks
+│   ├── creative/                 # Creative tasks
+│   ├── signals/                  # Signal protocol tasks
+│   ├── property/                 # Property/governance tasks
+│   ├── content-standards/        # Content standards tasks
+│   ├── sponsored-intelligence/   # Sponsored intelligence tasks
+│   ├── protocol/                 # Protocol tasks
+│   └── core/                     # Core shared schemas and legacy task lifecycle schemas
+├── mcp/2026-07-28/               # Self-contained JSON Schema 2020-12 tool projections
+│   └── profiles/
+│       ├── production/           # Active, non-compliance structural catalog
+│       ├── media-buy/            # Active seller media-buy catalog + prompt view
+│       └── creative/             # Active creative catalog + prompt view
+├── core/                         # Modular schemas with $ref
+├── trusted-match/                # Serve-time Context Match and Identity Match schemas
+├── media-buy/
+└── index.json                    # Schema registry
+```
+
+`index.json` is the directory authority. It declares the bundle's `published_version`, stability metadata, and `protocol_layers`: the negotiation layer (`media-buy`, `creative`, `signals`, `account`, `governance`, `brand`, `sponsored-intelligence`) and the decisioning/serving layer (`trusted-match`).
+
+### Bundled schema categories
+
+All request/response task schemas are bundled:
+
+| Category | Tasks |
+|----------|-------|
+| `bundled/media-buy/` | get-products, create-media-buy, update-media-buy, list-creative-formats, sync-creatives, build-creative, list-creatives, get-media-buy-delivery, list-authorized-properties, provide-performance-feedback |
+| `bundled/creative/` | list-creative-formats, preview-creative |
+| `bundled/signals/` | get-signals, activate-signal |
+| `bundled/property/` | create-property-list, get-property-list, list-property-lists, update-property-list, delete-property-list, validate-property-delivery |
+| `bundled/content-standards/` | create-content-standards, get-content-standards, list-content-standards, update-content-standards, calibrate-content, validate-content-delivery, get-media-buy-artifacts |
+| `bundled/sponsored-intelligence/` | si-get-offering, si-initiate-session, si-send-message, si-terminate-session |
+| `bundled/protocol/` | get-adcp-capabilities, get-task-status, list-tasks |
+| `bundled/core/` | tasks-get, tasks-list |
+
+See the [schema registry](https://adcontextprotocol.org/schemas/3.2.0-beta.0/index.json) for all available schemas.
+
+## Version discovery
+
+```bash
+# Get the canonical stable schema bundle and registry URL.
+curl https://adcontextprotocol.org/schemas/latest.json | jq '{version: .latest_stable, index}'
+
+# Or read the full file-based discovery index.
+curl https://adcontextprotocol.org/schemas/index.json | jq '.aliases'
+
+# The versioned registry also carries the full semver of its bundle.
+# (Note: `published_version` carries full semver including patch.
+# It's distinct from the per-request/response wire `adcp_version`
+# field defined in core/version-envelope.json, which uses
+# release-precision — never send `published_version` on the wire.)
+curl https://adcontextprotocol.org/schemas/3.2.0-beta.0/index.json | jq '.published_version'
+```
+
+Do not infer the canonical version from directory order or `versions[0]`; pre-release artifacts remain discoverable for pinned historical builds. Use `latest_stable` or the `aliases` map for canonical stable selection.
+
+Check [Release Notes](/dist/docs/3.2.0-beta.0/reference/release-notes) for version history and migration guides.
+
+## Registry API
+
+The AgenticAdvertising.org registry provides a public REST API for brand resolution, property resolution, agent discovery, and authorization validation. No authentication required.
+
+<Card title="Registry API Reference" icon="server" href="/dist/docs/3.2.0-beta.0/registry/index">
+  Resolve brands, discover agents, and validate authorization via REST.
+</Card>

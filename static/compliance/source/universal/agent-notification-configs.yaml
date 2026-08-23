@@ -5,7 +5,6 @@ category: schema_validation
 summary: "Validates the 3.2 agent-level capabilities.changed registration surface: advertised revision fencing, NO_AUTH rejection, and dry-run clear semantics."
 track: core
 required_tools:
-  - get_adcp_capabilities
   - sync_agent_notification_configs
 
 narrative: |

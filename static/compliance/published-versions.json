@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "description": "Compliance bundles available from a published @adcp/sdk npm package. Hosted grading must use published_versions; package_only_versions are SDK opt-in surfaces that are not hosted protocol releases.",
-  "npm_tags": ["adcp-3.0", "latest", "rc"],
-  "package_only_versions": ["3.2.0"],
+  "npm_tags": ["adcp-3.0", "latest", "rc", "beta"],
+  "package_only_versions": ["3.0.24", "3.1.15", "3.2.0"],
   "published_versions": [
     "3.0.0",
     "3.0.1",
@@ -15,6 +15,7 @@
     "3.0.11",
     "3.0.12",
     "3.0.18",
+    "3.0.25",
     "3.1.0-beta.2",
     "3.1.0-beta.3",
     "3.1.0-beta.5",
@@ -35,6 +36,11 @@
     "3.1.8",
     "3.1.10",
     "3.1.11",
-    "3.1.13"
+    "3.1.13",
+    "3.1.18",
+    "3.2.0-beta.2",
+    "3.2.0-beta.3",
+    "3.2.0-beta.4",
+    "3.2.0-beta.5"
   ]
 }

@@ -129,34 +129,36 @@ if (adcpResponse.status === "submitted") {
 ```
 
 ### A2A Async Pattern
-```javascript
-// Initial response carries an AdCP payload inside A2A task/artifact transport
+
+The AdCP v3 profile returns an AdCP Submitted result inside a completed A2A
+Task. The two IDs remain independent:
+
+```json
 {
-  "status": "submitted",
-  "task_id": "adcp-task-456",
-  "contextId": "ctx-123",
-  "estimatedCompletionTime": "2025-01-23T10:00:00Z"
-}
-
-// Real-time updates via SSE
-const events = new EventSource(`/tasks/${response.taskId}/events`);
-events.onmessage = (event) => {
-  const update = JSON.parse(event.data);
-  console.log(`Status: ${update.status}, Message: ${update.message}`);
-};
-
-// Native webhook support
-await a2a.send({
-  message: { /* skill invocation */ },
-  push_notification_config: {
-    webhook_url: "https://buyer.com/webhooks",
-    authentication: {
-      schemes: ["Bearer"],
-      credentials: "secret_token_min_32_chars"
-    }
+  "task": {
+    "id": "a2a-task-456",
+    "contextId": "ctx-123",
+    "status": { "state": "TASK_STATE_COMPLETED" },
+    "artifacts": [{
+      "artifactId": "adcp-result",
+      "parts": [{
+        "data": {
+          "status": "submitted",
+          "task_id": "adcp-task-456"
+        }
+      }]
+    }]
   }
-});
+}
 ```
+
+Poll the durable operation with a fresh activated `{ skill:
+"get_task_status", input: { task_id: "adcp-task-456" } }` invocation. Do not
+poll `a2a-task-456`. For transport progress while a handler is executing, use
+the official A2A `SendStreamingMessage` or `SubscribeToTask` operations and
+consume their `StreamResponse` SSE frames. Durable AdCP webhooks are registered
+as `push_notification_config` inside the typed task input; A2A
+`configuration.taskPushNotificationConfig` tracks only the transport Task.
 
 ## Context Management
 
@@ -176,13 +178,31 @@ async function callAdcp(request) {
 }
 ```
 
-### A2A: Automatic Context
+### A2A: Message Context
 ```javascript
-// A2A manages context automatically
-const response1 = await a2a.send({ message: "Find video products" });
+// The server assigns contextId on the first typed invocation.
+const response1 = await a2a.send({
+  message: {
+    messageId: crypto.randomUUID(),
+    role: "ROLE_USER",
+    parts: [{ data: {
+      skill: "get_products",
+      input: { buying_mode: "brief", brief: "Find video products" }
+    } }]
+  }
+});
+
+// The next Message explicitly carries the returned contextId.
 const response2 = await a2a.send({
-  contextId: response1.contextId, // Optional - A2A tracks this
-  message: "Focus on premium inventory"
+  message: {
+    messageId: crypto.randomUUID(),
+    contextId: response1.contextId,
+    role: "ROLE_USER",
+    parts: [{ data: {
+      skill: "get_products",
+      input: { buying_mode: "brief", brief: "Focus on premium video inventory" }
+    } }]
+  }
 });
 ```
 

@@ -1,7 +1,7 @@
 "$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
 
 [scripts]
-setup = "SETUP_NVM_SCRIPT=\"${NVM_DIR:-$HOME/.nvm}/nvm.sh\"; if [ -s \"$SETUP_NVM_SCRIPT\" ]; then . \"$SETUP_NVM_SCRIPT\" && nvm install 24.19.0 && nvm use 24.19.0; fi && node -e 'if (process.versions.node !== `24.19.0`) { console.error(`Node 24.19.0 is required; found ${process.versions.node}`); process.exit(1) }' && git config core.hooksPath .husky && npx --yes npm@10.9.4 ci && uv sync --frozen"
+setup = "sh scripts/configure-git-hooks.sh && SETUP_NVM_SCRIPT=\"${NVM_DIR:-$HOME/.nvm}/nvm.sh\"; if [ -s \"$SETUP_NVM_SCRIPT\" ]; then . \"$SETUP_NVM_SCRIPT\" && nvm install 24.19.0 && nvm use 24.19.0; fi && node -e 'if (process.versions.node !== `24.19.0`) { console.error(`Node 24.19.0 is required; found ${process.versions.node}`); process.exit(1) }' && npx --yes npm@10.9.4 ci && uv sync --frozen"
 run_mode = "concurrent"
 
 [scripts.run.run]

@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/positive-postal-area-support.json",
+  "title": "Positive Postal Area Support",
+  "description": "Non-vacuous postal capability used for hard targeting requirements and product overlay support. At least one native system array or true-valued deprecated alias is required. The general seller-capabilities postal schema remains permissive for backward compatibility, but an empty or false-only map cannot satisfy a hard discovery requirement.",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/postal-area-support.json"
+    },
+    {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "us_zip": {
+          "const": true
+        },
+        "us_zip_plus_four": {
+          "const": true
+        },
+        "gb_outward": {
+          "const": true
+        },
+        "gb_full": {
+          "const": true
+        },
+        "ca_fsa": {
+          "const": true
+        },
+        "ca_full": {
+          "const": true
+        },
+        "de_plz": {
+          "const": true
+        },
+        "fr_code_postal": {
+          "const": true
+        },
+        "au_postcode": {
+          "const": true
+        },
+        "ch_plz": {
+          "const": true
+        },
+        "at_plz": {
+          "const": true
+        }
+      }
+    }
+  ]
+}

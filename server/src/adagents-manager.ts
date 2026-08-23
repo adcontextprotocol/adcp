@@ -10,6 +10,59 @@ const ADS_TXT_MAX_REDIRECTS = 5;
 // apex→www hosting resolves. Cross-domain hops are refused — see
 // docs/governance/property/managed-networks#why-not-http-redirects.
 const ADAGENTS_WELL_KNOWN_MAX_REDIRECTS = 3;
+const AGENT_CARD_VALIDATION_CONCURRENCY = 4;
+const AGENT_CARD_VALIDATION_MAX_WAITERS = 32;
+const AGENT_CARD_VALIDATION_QUEUE_TIMEOUT_MS = 10_000;
+let activeAgentCardValidations = 0;
+interface AgentCardValidationWaiter {
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+const agentCardValidationWaiters: AgentCardValidationWaiter[] = [];
+
+export class AgentCardValidationCapacityError extends Error {
+  constructor(message = 'Agent-card validation capacity is exhausted') {
+    super(message);
+    this.name = 'AgentCardValidationCapacityError';
+  }
+}
+
+async function withAgentCardValidationSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (activeAgentCardValidations >= AGENT_CARD_VALIDATION_CONCURRENCY) {
+    if (agentCardValidationWaiters.length >= AGENT_CARD_VALIDATION_MAX_WAITERS) {
+      throw new AgentCardValidationCapacityError();
+    }
+    // A released caller transfers its slot directly to this waiter; the
+    // waiter must not increment the active count again when it wakes.
+    await new Promise<void>((resolve, reject) => {
+      const waiter: AgentCardValidationWaiter = {
+        resolve,
+        reject,
+        timer: setTimeout(() => {
+          const index = agentCardValidationWaiters.indexOf(waiter);
+          if (index >= 0) agentCardValidationWaiters.splice(index, 1);
+          reject(new AgentCardValidationCapacityError('Timed out waiting for agent-card validation capacity'));
+        }, AGENT_CARD_VALIDATION_QUEUE_TIMEOUT_MS),
+      };
+      agentCardValidationWaiters.push(waiter);
+    });
+  } else {
+    activeAgentCardValidations++;
+  }
+
+  try {
+    return await fn();
+  } finally {
+    const next = agentCardValidationWaiters.shift();
+    if (next) {
+      clearTimeout(next.timer);
+      next.resolve();
+    }
+    else activeAgentCardValidations--;
+  }
+}
+
 const MCP_PREFLIGHT_INITIALIZE_BODY = {
   jsonrpc: '2.0',
   method: 'initialize',
@@ -168,6 +221,7 @@ export interface AdAgentsJsonInline {
     tag_id?: string;
   };
   catalog_etag?: string;
+  catalog_role?: 'community_format_registry';
   last_updated?: string;
 }
 
@@ -208,6 +262,7 @@ export interface CreateAdAgentsJsonOptions {
   placementTags?: Record<string, { name: string; description: string }>;
   formats?: FormatDefinition[];
   catalogEtag?: string;
+  catalogRole?: 'community_format_registry';
   signals?: SignalDefinition[];
   signalTags?: Record<string, { name: string; description: string }>;
 }
@@ -662,6 +717,38 @@ export class AdAgentsManager {
         field: 'catalog_etag',
         message: 'catalog_etag must be a string',
         severity: 'error'
+      });
+    }
+
+    const rendererFormats = Array.isArray(data.formats)
+      ? data.formats
+        .map((format: any, index: number) => ({ format, index }))
+        .filter(({ format }: { format: any }) => format?.reference_renderer !== undefined)
+      : [];
+    if (rendererFormats.length > 0) {
+      if (typeof data.catalog_etag !== 'string' || data.catalog_etag.length === 0) {
+        result.errors.push({
+          field: 'catalog_etag',
+          message: 'catalog_etag is required when a format declares reference_renderer',
+          severity: 'error'
+        });
+      }
+      if (data.catalog_role !== 'community_format_registry') {
+        result.errors.push({
+          field: 'catalog_role',
+          message: 'catalog_role must be community_format_registry when a format declares reference_renderer',
+          severity: 'error'
+        });
+      }
+      rendererFormats.forEach(({ format, index }: { format: any; index: number }) => {
+        if (typeof format.format_revision !== 'string'
+          || format.reference_renderer?.format_revision !== format.format_revision) {
+          result.errors.push({
+            field: `formats[${index}].reference_renderer.format_revision`,
+            message: 'reference_renderer.format_revision must equal the enclosing format_revision',
+            severity: 'error'
+          });
+        }
       });
     }
 
@@ -1502,6 +1589,7 @@ export class AdAgentsManager {
           });
         }
 
+        const placementFormatOptionIds = new Set<string>();
         if (placement.format_options && Array.isArray(placement.format_options)) {
           placement.format_options.forEach((formatOption: any, formatIndex: number) => {
             if (formatOption?.capability_id !== undefined) {
@@ -1523,6 +1611,32 @@ export class AdAgentsManager {
                 message: `Placement references unknown format_option_id "${formatOption.format_option_id}"`,
                 severity: 'error'
               });
+            }
+            if (typeof formatOption?.format_option_id === 'string') {
+              placementFormatOptionIds.add(formatOption.format_option_id);
+            }
+          });
+
+        }
+
+        const previewProvider = placement.preview_provider;
+        if (previewProvider?.routes && Array.isArray(previewProvider.routes)) {
+          const delegatedFormatIds = new Set<string>();
+          previewProvider.routes.forEach((route: any, routeIndex: number) => {
+            if (typeof route?.format_option_id !== 'string' || !placementFormatOptionIds.has(route.format_option_id)) {
+              result.errors.push({
+                field: `placements[${index}].preview_provider.routes[${routeIndex}].format_option_id`,
+                message: `Preview provider route references format_option_id "${String(route?.format_option_id ?? '')}" that is not listed on this placement`,
+                severity: 'error'
+              });
+            } else if (delegatedFormatIds.has(route.format_option_id)) {
+              result.errors.push({
+                field: `placements[${index}].preview_provider.routes[${routeIndex}].format_option_id`,
+                message: `Duplicate preview provider route for format_option_id "${route.format_option_id}"`,
+                severity: 'error'
+              });
+            } else {
+              delegatedFormatIds.add(route.format_option_id);
             }
           });
         }
@@ -1559,9 +1673,12 @@ export class AdAgentsManager {
    */
   async validateAgentCards(agents: AuthorizedAgent[]): Promise<AgentCardValidationResult[]> {
     const results: AgentCardValidationResult[] = [];
-    
-    // Validate each agent in parallel
-    const validationPromises = agents.map(agent => this.validateSingleAgentCard(agent.url));
+
+    // The public route caps cardinality, and this shared semaphore also caps
+    // outbound work across concurrent callers and internal call sites.
+    const validationPromises = agents.map(agent => withAgentCardValidationSlot(
+      () => this.validateSingleAgentCard(agent.url),
+    ));
     const validationResults = await Promise.allSettled(validationPromises);
     
     validationResults.forEach((result, index) => {
@@ -1828,6 +1945,9 @@ export class AdAgentsManager {
     if (opts.catalogEtag) {
       adagents.catalog_etag = opts.catalogEtag;
     }
+    if (opts.catalogRole) {
+      adagents.catalog_role = opts.catalogRole;
+    }
 
     if (opts.formats && opts.formats.length > 0) {
       adagents.formats = opts.formats;
@@ -1873,6 +1993,7 @@ export class AdAgentsManager {
       authorized_agents: opts.agents,
       ...(opts.properties && opts.properties.length > 0 ? { properties: opts.properties } : {}),
       ...(opts.catalogEtag ? { catalog_etag: opts.catalogEtag } : {}),
+      ...(opts.catalogRole ? { catalog_role: opts.catalogRole } : {}),
       ...(opts.formats && opts.formats.length > 0 ? { formats: opts.formats } : {}),
       ...(opts.placements && opts.placements.length > 0 ? { placements: opts.placements } : {}),
       ...(opts.placementTags && Object.keys(opts.placementTags).length > 0 ? { placement_tags: opts.placementTags } : {}),

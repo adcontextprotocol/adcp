@@ -744,6 +744,28 @@ Geographic targeting supports both inclusion (restrict to) and exclusion (exclud
 - **Examples**: `["RU", "CN"]`
 - **Use cases**: Regulatory compliance, sanctions
 
+Country inclusion and exclusion support are declared independently on each
+Product. A buyer uses `required_overlay_support.geo_countries: true` or
+`required_overlay_support.geo_countries_exclude: true` to require future
+package-level selection. The matching Product can return either legacy `true`
+or structured support such as
+`{ "max_values_per_package": 1 }`. The structured form supports
+protocol-valid country codes but caps how many values may appear in that field
+on one package; it is not a country allowlist and does not guarantee inventory
+for every country.
+
+Numeric seller limits do not participate in requirement matching. A seller
+MUST reject a create or update that exceeds the disclosed limit with
+`UNSUPPORTED_FEATURE`, identify the overflowing targeting field, and leave
+existing state unchanged. Legacy `true` remains valid and declares positive
+support without a protocol-level cardinality cap.
+
+Numeric limits are ignored only when matching future-support requirements.
+Concrete targeting is still bound by them: every returned Product's accepted
+effective targeting MUST satisfy its disclosed maximum. A seller MUST exclude
+an over-limit candidate unless it returns a distinct configured Product with a
+disclosed, compliant targeting modification.
+
 ### geo_regions
 - **Description**: Restrict delivery to canonical ISO 3166-2 subdivisions, including states, provinces, regions, departments, and overseas subdivisions
 - **Format**: ISO 3166-2 subdivision codes
@@ -1132,7 +1154,7 @@ For travel time entries, the platform resolves the isochrone to a geographic bou
 
 For campaigns targeting 10+ locations, consider using `store_catchments` with a location catalog instead, which supports ongoing management and per-location reporting. `geo_proximity` does not have an exclusion variant — this is by design, as excluding "everyone near a point" is rarely a meaningful targeting constraint.
 
-Sellers SHOULD enforce minimum area thresholds consistent with their privacy policies and applicable regulations. The seller must declare `geo_proximity` support in `get_adcp_capabilities`, specifying which methods (`radius`, `travel_time`, `geometry`) and transport modes are supported.
+Sellers SHOULD enforce minimum area thresholds consistent with their privacy policies and applicable regulations. The seller must declare `geo_proximity` support in `get_adcp_capabilities`, specifying which methods (`radius`, `travel_time`, `geometry`) and transport modes are supported. Product `overlay_support.geo_proximity` is the binding package-level contract and may also include `max_values_per_package`. Buyers request the needed methods and transport modes in `required_overlay_support.geo_proximity`; the response-only numeric limit does not participate in matching. Because multiple proximity entries use OR, a create or update with more entries than the disclosed limit MUST be rejected with `UNSUPPORTED_FEATURE` before any mutation is applied.
 
 Validated examples:
 

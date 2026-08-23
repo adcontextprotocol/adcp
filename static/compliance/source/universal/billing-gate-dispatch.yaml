@@ -5,7 +5,6 @@ category: error_compliance
 summary: "Validates that account.supported_billing is declared and honored by sync_accounts, including out-of-set BILLING_NOT_SUPPORTED rejection, recovery-value consistency, and the distinct per-buyer-agent BILLING_NOT_PERMITTED_FOR_AGENT gate."
 track: error_handling
 required_tools:
-  - get_adcp_capabilities
   - sync_accounts
 
 narrative: |

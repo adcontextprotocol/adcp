@@ -6,7 +6,6 @@ summary: "Verifies capability discovery, materialized localized sync, explicit d
 track: creative
 introduced_in: "3.2"
 required_tools:
-  - get_adcp_capabilities
   - sync_creatives
   - list_creatives
 

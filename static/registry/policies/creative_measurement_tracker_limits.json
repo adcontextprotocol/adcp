@@ -1,0 +1,27 @@
+{
+  "policy_id": "creative_measurement_tracker_limits",
+  "source": "registry",
+  "version": "1.0.0",
+  "name": "Creative measurement tracker limits",
+  "description": "Limits creative tracker count, redirect depth, and measurement waterfall depth to published seller thresholds.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["measurement_privacy"],
+  "governance_domains": ["creative"],
+  "effective_date": "2026-08-21",
+  "source_url": "https://docs.adcontextprotocol.org/docs/governance/creative/policy-backed-rejections#initial-registry-policies",
+  "source_name": "AgenticAdvertising.org",
+  "policy": "An advertising creative's number of measurement trackers, nested measurement dependencies, and redirect or waterfall depth must remain within the limits published by the enforcing seller or its governance agent for the selected product and evaluation profile. The evaluator must publish the applied limits and, on failure, report the exceeded metric and observed value. A seller must not reject under this policy without an applicable published limit. A creative that exceeds an applicable limit must be rejected with this policy.",
+  "guidance": "Count nested and dynamically loaded measurement calls, not only top-level declarations. Buyer remediation: remove redundant trackers, consolidate measurement providers, and shorten redirect and waterfall chains.",
+  "exemplars": {
+    "pass": [{
+      "scenario": "A creative loads three trackers with one redirect hop where the seller's published limits allow five trackers and two hops.",
+      "explanation": "The observed tracker count and redirect depth remain within both applicable limits."
+    }],
+    "fail": [{
+      "scenario": "A creative loads nine trackers where the seller's published product limit is five, and the detailed report lists the observed count.",
+      "explanation": "The observed tracker count exceeds a disclosed applicable threshold."
+    }]
+  }
+}

@@ -64,7 +64,13 @@ Creative agents MUST declare Creative Protocol support via `get_adcp_capabilitie
           "params": { "width": 300, "height": 250 }
         }
       }
-    ]
+    ],
+    "preview": {
+      "routes": [{
+        "capability_id": "display_image_transform",
+        "rendering_origin": "agent_approximation"
+      }]
+    }
   }
 }
 ```

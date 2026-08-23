@@ -10,7 +10,6 @@ requires_capability:
   equals: true
 
 required_tools:
-  - get_adcp_capabilities
   - get_products
   - comply_test_controller
 

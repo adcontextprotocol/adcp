@@ -2,271 +2,309 @@
 title: Media buy protocol
 sidebarTitle: Overview
 "og:image": /images/walkthrough/media-buy-01-sams-desk.png
-description: "AdCP media buy protocol walkthrough — follow a campaign from brief to delivery across CTV, display, and audio using one unified workflow."
+description: "AdCP 3.2 media buy walkthrough — follow a seller-planned campaign from brief through proposal acceptance, creative supply, control, and delivery."
 "og:title": "AdCP — Media buy protocol"
 ---
 
-<img src="/images/walkthrough/media-buy-01-sams-desk.png" alt="A media buyer sits at a desk surrounded by four different platform dashboards, each showing different data formats and interfaces" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+<img src="/images/walkthrough/media-buy-01-sams-desk.png" alt="Sam Adeyemi, a media buyer with close-cropped hair and rolled sleeves, sits at a desk surrounded by four incompatible platform dashboards" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
 
-Sam is a media buyer at Pinnacle Agency. His client just greenlit a $50,000 Q2 campaign for Acme Outdoor's Trail Pro 3000 — premium video and display across sports and outdoor lifestyle publishers. Three sellers to evaluate. Creatives to match. A governance review before anything goes live.
+Sam Adeyemi is a senior media buyer at Pinnacle Agency. His client just
+greenlit a USD 50,000 Q2 campaign for Acme Outdoor—premium video and display
+across sports and outdoor lifestyle publishers. Three sellers to evaluate.
+Creatives to match. A governance review before anything goes live.
 
-Last time he ran a campaign this size, it took two weeks. Four dashboards. Four logins. A spreadsheet to compare proposals that were never in the same format. He entered the same flight dates into four different systems.
+Last time he ran a campaign this size, it took two weeks, four dashboards, and
+a spreadsheet to compare plans that were never in the same format. This
+walkthrough follows the same campaign through the AdCP 3.2 proposal lifecycle.
 
-This walkthrough follows Sam through the same campaign on AdCP — one protocol that replaces four platform-specific workflows.
+## First choose the buying path
 
-## Step 1: Write the brief
+Sam's agent reads `get_adcp_capabilities.media_buy.lifecycle_tools` before
+planning. AdCP 3.2 exposes two distinct commercial paths:
 
-Sam starts with what he knows: the campaign objectives.
+| Path | Use it when | Lifecycle |
+|---|---|---|
+| Published offer | The buyer can select and price a seller's published products directly | `list_products` → `buy_products` |
+| Seller-planned proposal | The seller should curate, price, or negotiate a plan from the brief | `request_proposals` → `refine_proposals` → finalize → `accept_proposal` |
 
-<img src="/images/walkthrough/media-buy-02-brief-radiates.png" alt="Sam's brief glows on screen and radiates outward as clean teal rays to three seller agent robots, each standing at their own podium examining the incoming request" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+Wholesale mirrors use the published-offer path: `list_products` bootstraps and
+repairs the feed, while account-level product webhooks keep it current. They are
+not proposal conversations. See [Product discovery and planning](/docs/media-buy/product-discovery/)
+for both paths.
 
-In AdCP, Sam sends one `get_products` request to every seller. He uses the brief for goals and semantic intent, while AdCP's structured fields carry exact constraints without requiring him to learn each publisher's targeting taxonomy:
+StreamHaus advertises the proposal lifecycle, so Sam asks its sales agent—built
+by Priya Nair's ad products team—to plan the campaign.
+
+## Step 1: Request proposals
+
+<img src="/images/walkthrough/media-buy-02-brief-radiates.png" alt="Sam's campaign brief radiates to three seller agents, each evaluating the same structured requirements" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Sam keeps strategy and goals in the brief. Exact commercial filters and
+delivery constraints use structured criteria:
 
 ```javascript
-const products = await Promise.all(
-  sellers.map(seller => seller.getProducts({
-    idempotency_key: "550e8400-e29b-41d4-a716-446655442037",
-    buying_mode: "brief",
-    brief: "Premium video on trusted sports and outdoor lifestyle publishers. Q2 flight, $50K budget.",
-    filters: {
-      channels: ["olv"],
-      pricing_currencies: ["USD"]
-    },
-    targeting_overlay: {
-      geo_countries: ["US", "CA"],
-      demographics: {
-        age: { min: 25, max: 54, include_unknown: false }
-      }
-    },
-    brand: { domain: "acmeoutdoor.com" },
-    account: { brand: { domain: "acmeoutdoor.com" }, operator: "pinnacle-agency.com" }
-  }))
+const proposals = await Promise.all(
+  sellers.map((seller) =>
+    seller.requestProposals({
+      adcp_version: '3.2-beta.4',
+      idempotency_key: 'acme-q2-proposals-001',
+      account: { account_id: 'account_123' },
+      brand: { domain: 'acme-outdoor.example' },
+      brief:
+        'Premium video and display on trusted sports and outdoor lifestyle properties for the Acme Outdoor Q2 launch. Prioritize reach within a USD 50,000 ceiling.',
+      criteria: {
+        offer_filters: {
+          channels: ['olv', 'display'],
+          pricing_currencies: ['USD'],
+        },
+        targeting_overlay: {
+          geo_countries: ['US', 'CA'],
+          demographics: {
+            age: { min: 25, max: 54, include_unknown: false },
+          },
+        },
+      },
+    })
+  )
 );
 ```
 
-One request. Three sellers. Same structured constraints and response model.
+One brief. Three sellers. The same structured constraints, proposal shape, and
+task lifecycle everywhere.
 
-<Accordion title="Agency language → protocol terms">
+<Accordion title="Agency language → AdCP 3.2 terms">
 
 | What Sam says | What the protocol calls it |
 |---|---|
-| Campaign brief | `brief` field on `get_products` |
-| Exact audience or inventory constraint | `targeting_overlay` on `get_products` |
-| Targeting dimension chosen later | `required_overlay_support` on `get_products` |
-| Media plan | Products returned from `get_products` |
-| IO / insertion order | `create_media_buy` |
-| Trafficking creatives | `sync_creatives` for library-backed sellers, or inline `packages[].creatives` for inline-only sellers |
-| Campaign report | `get_media_buy_delivery` across agents |
-| Flight dates | `start_time` / `end_time` on the media buy or packages |
-| Viewability / IVT / completion SLAs | `performance_standards` on packages — see [Accountability](/docs/media-buy/advanced-topics/accountability) |
-| Makegoods | `makegood_policy` in `measurement_terms` — see [Accountability](/docs/media-buy/advanced-topics/accountability) |
+| Campaign brief | `brief` on `request_proposals` |
+| Exact product constraint | `criteria.offer_filters` |
+| Exact delivery targeting | `criteria.targeting_overlay` |
+| Targeting dimension chosen later | `criteria.required_overlay_support` |
+| Seller-authored media plan | Immutable proposal snapshot |
+| Inventory reservation | Committed proposal with `expires_at` |
+| IO / insertion order | `accept_proposal`, optionally with `io_acceptance` |
+| Operational campaign change | `control_media_buy` inside accepted terms |
+| Commercial amendment | Revise the accepted proposal, finalize, then accept |
+| Campaign report | `get_media_buy_delivery` |
 
 </Accordion>
 
-## Step 2: Compare proposals
+## Step 2: Compare and refine
 
-<img src="/images/walkthrough/media-buy-03-proposals.png" alt="Three seller robots present their offerings — a video slate, a display banner, and a podcast waveform — while Sam reviews them side by side on a single clean screen, looking pleased" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+<img src="/images/walkthrough/media-buy-03-proposals.png" alt="Three seller agents present video, display, and audio plans while Sam compares them in one view" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-Products come back in a standard format. For the first time, Sam sees pricing, delivery forecasts, targeting options, and creative requirements — all side by side:
+Draft proposals return priced purchases, flight dates, forecasts, targeting
+resolution, and canonical creative format options. Sam can compare them without
+normalizing seller-specific spreadsheets.
 
-| Seller | Product | CPM | Forecast | Format |
+| Seller | Plan | CPM | Forecast | Format |
 |---|---|---|---|---|
-| StreamHaus | CTV sports pre-roll | $28 | 890K impressions | SSAI 30s video |
-| OutdoorNet | Adventure lifestyle display | $12 | 2.1M impressions | 300x250, 728x90 |
-| PodTrail | Outdoor podcast mid-roll | $22 | 340K impressions | Audio 30s + companion |
+| StreamHaus | Premium sports video | $28 | 890K impressions | SSAI 30s video |
+| OutdoorNet | Adventure display | $12 | 2.1M impressions | 300x250, 728x90 |
+| PodTrail | Outdoor podcast | $22 | 340K impressions | Audio 30s + companion |
 
-No CSVs. No spreadsheets. No manual data entry. The products are comparable because every seller returns the same schema.
-
-Sam wants to narrow down. He switches to `refine` mode, telling each agent exactly how to adjust:
+Sam wants guaranteed delivery and a lower CPM ceiling. He creates a successor
+draft with typed constraints:
 
 ```javascript
-const refined = await seller.getProducts({
-  idempotency_key: "550e8400-e29b-41d4-a716-446655442038",
-  buying_mode: "refine",
-  refine: [
+const refined = await streamHaus.refineProposals({
+  adcp_version: '3.2-beta.4',
+  idempotency_key: 'acme-q2-refine-001',
+  refinements: [
     {
-      scope: "request",
-      ask: "Only guaranteed packages. Must include completion rate SLA above 80%."
-    }
+      proposal_id: 'proposal_streamhaus_001',
+      action: 'revise',
+      constraints: {
+        total_budget: { max: 50000, currency: 'USD' },
+        cpm: { max: 25, currency: 'USD' },
+      },
+      ask: 'Keep guaranteed delivery and prioritize completed video views.',
+    },
   ],
-  brand: { domain: "acmeoutdoor.com" },
-  account: { brand: { domain: "acmeoutdoor.com" }, operator: "pinnacle-agency.com" }
 });
 ```
 
-The `refine` array lets Sam layer constraints without starting over. Each refinement narrows the previous result set.
+Typed constraints are mechanically testable. Subjective commercial guidance
+stays in `ask`. Each transition creates a new `proposal_id`; the source
+snapshot never changes. Sam branches on each result's `outcome` and verifies
+any `partial` result before continuing.
 
-## Step 3: Match creatives
+## Step 3: Check creative requirements
 
-<img src="/images/walkthrough/media-buy-04-creatives.png" alt="Creative format templates — a 16:9 video frame, a 300x250 banner, and an audio waveform with companion — snap together with actual ad assets like puzzle pieces, assisted by a small robot" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+<img src="/images/walkthrough/media-buy-04-creatives.png" alt="Canonical video, display, and audio format requirements align with Sam's creative assets" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-Each product has creative requirements. Sam's platform reads each returned product's canonical `format_options[]` to understand exactly what it accepts:
+Every proposed product declares canonical `format_options[]`. Sam's platform
+can therefore validate or produce assets before accepting commercial terms:
 
-- **StreamHaus** needs SSAI-compatible 30s video (MP4, specific codecs)
-- **OutdoorNet** needs display banners (300x250 and 728x90)
-- **PodTrail** needs 30s audio plus a 300x250 companion banner
+- StreamHaus needs SSAI-compatible 30-second video.
+- OutdoorNet needs 300x250 and 728x90 images.
+- PodTrail needs 30-second audio plus a companion image.
 
-Sam's creative team already has assets in their library. The platform matches existing manifests to each seller's format requirements and flags the gap — PodTrail needs an audio cut that doesn't exist yet.
+Sam's creative team already has the video and display assets. The platform
+flags the missing audio cut early, while the proposal is still negotiable.
+Creative bodies do not belong in `buy_products` or `accept_proposal`; they are
+supplied through the seller's advertised creative workflow after commitment.
+
+## Step 4: Finalize and accept
+
+<img src="/images/walkthrough/media-buy-05-launch.png" alt="Sam reviews a committed campaign plan before accepting its expiring inventory hold" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Once the terms are right, Sam finalizes the selected draft. Finalization
+creates a committed successor and an inventory hold:
 
 ```javascript
-const result = await seller.syncCreatives({
-  account: { brand: { domain: "acmeoutdoor.com" }, operator: "pinnacle-agency.com" },
+const finalized = await streamHaus.refineProposals({
+  adcp_version: '3.2-beta.4',
+  idempotency_key: 'acme-q2-finalize-001',
+  refinements: [
+    {
+      proposal_id: 'proposal_streamhaus_002',
+      action: 'finalize',
+    },
+  ],
+});
+```
+
+Sam verifies the committed proposal's `terms_digest` and `expires_at`, then
+accepts that exact snapshot:
+
+```javascript
+const buy = await streamHaus.acceptProposal({
+  adcp_version: '3.2-beta.4',
+  idempotency_key: 'acme-q2-accept-001',
+  account: { account_id: 'account_123' },
+  proposal_id: 'proposal_streamhaus_003',
+  proposal_terms_digest: 'sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E',
+});
+```
+
+The ID and digest bind acceptance to the reviewed terms. If the task enters
+`submitted`, `working`, or `input-required`, Sam follows the standard task
+lifecycle until the completion artifact returns the `media_buy_id`.
+
+## Step 5: Governance and creative supply
+
+<img src="/images/walkthrough/media-buy-06-governance.png" alt="Jordan Ochoa's governance agent checks Sam's campaign budget, publisher, targeting, and creative provenance" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Pinnacle registers the campaign plan with `sync_plans` and checks the proposed
+acceptance against Jordan Ochoa's governance policy. Budget, approved sellers,
+targeting rules, and creative provenance are evaluated before money moves.
+Seller-side governance can independently validate the committed action against
+the same plan context.
+
+After acceptance, Sam supplies the assets through `sync_creatives` and assigns
+them to the returned packages. The buy remains `pending_creatives` until every
+required format has coverage, then moves to `pending_start` or `active`.
+
+<Accordion title="A library-backed creative sync">
+
+```javascript
+await streamHaus.syncCreatives({
+  adcp_version: '3.2-beta.4',
+  idempotency_key: 'acme-q2-creatives-001',
+  account: { account_id: 'account_123' },
   creatives: [
     {
-      creative_id: "video_30s_trail_pro",
-      name: "Trail Pro 3000 - 30s CTV Spot",
-      format_kind: "video_hosted",
-      assets: { video: { url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4", mime_type: "video/mp4" } }
+      creative_id: 'video_30s_trail_pro',
+      name: 'Trail Pro 3000 — 30s CTV spot',
+      format_kind: 'video_hosted',
+      assets: {
+        video_main: {
+          asset_type: 'video',
+          url: 'https://cdn.pinnacle-agency.example/trail-pro-30s.mp4',
+          width: 1920,
+          height: 1080,
+          duration_ms: 30000,
+          container_format: 'mp4',
+          codec: 'h264',
+        },
+      },
     },
+  ],
+  assignment_operations: [
     {
-      creative_id: "display_trail_pro_300x250",
-      name: "Trail Pro 3000 - Display 300x250",
-      format_kind: "image",
-      assets: { image: { url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png", mime_type: "image/png" } }
-    }
-  ]
+      operation: 'assign',
+      creative_id: 'video_30s_trail_pro',
+      package_id: buy.packages[0].package_id,
+    },
+  ],
 });
-if (result.errors) {
-  console.error('Sync failed:', result.errors);
-} else {
-  console.log(`Synced ${result.creatives.length} creatives`);
-}
-```
-
-## Step 4: Launch the campaign
-
-<img src="/images/walkthrough/media-buy-05-launch.png" alt="Sam presses a glowing launch button and a holographic campaign blueprint materializes above his desk, showing three branches — CTV, display, and audio — with budget amounts flowing along each branch" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
-
-Sam creates the media buy. One call per seller, same structure everywhere:
-
-```javascript
-const buy = await seller.createMediaBuy({
-  account: { brand: { domain: "acmeoutdoor.com" }, operator: "pinnacle-agency.com" },
-  brand: { domain: "acmeoutdoor.com" },
-  start_time: "2026-04-01T00:00:00Z",
-  end_time: "2026-06-30T23:59:59Z",
-  packages: [{
-    product_id: "streamhaus_sports_preroll_q2",
-    budget: 25000,
-    pricing_option_id: "cpm_standard",
-    creative_assignments: [{ creative_id: "video_30s_trail_pro" }]
-  }]
-});
-```
-
-The seller validates the creatives and either approves the buy or sends it through review. Sam doesn't log into any dashboard — the protocol handles status updates.
-
-## Step 5: Governance checks
-
-<img src="/images/walkthrough/media-buy-06-governance.png" alt="The campaign blueprint passes through a security checkpoint staffed by a governance robot who scans each branch, stamping three green checkmarks for budget, brand safety, and targeting compliance" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
-
-Before any money moves, Sam's governance agent validates the buy:
-
-- **Budget**: $25K is within Sam's authorized spending limit
-- **Brand safety**: StreamHaus is on Acme Outdoor's approved publisher list
-- **Compliance**: Targeting parameters meet regulatory requirements for US and Canada
-- **Creative**: All creatives carry required provenance metadata
-
-If the buy exceeds Sam's authority — say, if the total across all sellers hit $75K — the governance agent escalates to his manager. The `create_media_buy` task sits in `submitted` (or `input-required`) at the task layer until a human signs off; only once approved does the task complete and the media buy get its `media_buy_id`.
-
-Campaign governance requires the orchestrator to register the campaign plan via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) before any governance checks. The plan defines authorized parameters — budget limits, channels, flight dates, and compliance policies — against which all subsequent actions are validated. The full governance sequence is `sync_plans` → `check_governance` (proposed) → `create_media_buy` → `check_governance` (committed by seller). See [Campaign Governance](/docs/governance/campaign/index) for the complete specification.
-
-<Accordion title="What governance looks like in the protocol">
-
-```javascript
-// Step 1: Register the campaign plan with the governance agent
-const plan = await governance.syncPlans({
-  plans: [{
-    plan_id: "acme-q2-trail-pro",
-    brand: { domain: "acmeoutdoor.com" },
-    objectives: "Q2 Trail Pro 3000 launch across sports and outdoor lifestyle publishers",
-    budget: { total: 50000, currency: "USD", reallocation_threshold: 5000 },
-    flight: { start: "2026-04-01T00:00:00Z", end: "2026-06-30T23:59:59Z" },
-    countries: ["US", "CA"]
-  }]
-});
-
-// Step 2: Check governance before sending to seller (intent check)
-const check = await governance.checkGovernance({
-  plan_id: "acme-q2-trail-pro",
-  caller: "https://orchestrator.pinnacle-agency.example",
-  tool: "create_media_buy",
-  payload: buy
-});
-
-if (check.status === "denied") {
-  // Don't proceed — governance rejected the plan
-}
-
-// Step 3: Send the buy to the seller with governance_context attached
-const governanceContext = check.governance_context;
-const mediaBuy = await seller.createMediaBuy({ ...buy, governance_context: governanceContext });
-
-// Step 4: The seller independently calls check_governance with media_buy_id +
-// planned_delivery before confirming — validating against the same plan
 ```
 
 </Accordion>
 
 ## Step 6: Match at serve time
 
-The campaign is approved and live. When a user loads a StreamHaus page, opens OutdoorNet's app, or asks an AI assistant a question, the publisher's TMP Router evaluates which of Sam's packages should activate.
+When a user loads a StreamHaus surface, its Trusted Match router can evaluate
+which packages should activate. Context Match asks whether the content fits
+the package; Identity Match asks whether the user is eligible. The publisher
+joins the two responses locally, so Sam's buyer agent does not receive identity
+and page context together.
 
-Two operations run separately — Context Match asks "does this content fit the package's targeting?" while Identity Match asks "is this user eligible?" The publisher joins both responses locally. Sam's buyer agent never sees user identity and content context together — the structural separation is built into the protocol.
+See [Trusted Match Protocol](/docs/trusted-match) for the privacy architecture
+and surface-specific flows.
 
-The same flow works on every surface. Sam didn't write surface-specific activation code for CTV versus web versus AI. TMP handles all of them.
+## Step 7: Monitor and control delivery
 
-<Accordion title="How TMP activates a package">
+<img src="/images/walkthrough/media-buy-07-delivery.png" alt="Sam reviews unified delivery charts from all three sellers in a single view" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-When a user visits a StreamHaus article about hiking gear:
-
-1. StreamHaus sends a Context Match request with the article's content signals and Sam's available packages
-2. Sam's buyer agent responds: "Activate pkg-outdoor-display — this hiking content matches the targeting"
-3. StreamHaus sends a separate Identity Match request with a user token and ALL of Sam's active packages
-4. Sam's buyer agent responds: "This user is eligible for pkg-outdoor-display (intent_score: 0.82)"
-5. StreamHaus joins the results locally and activates the line item
-
-See the [Trusted Match Protocol](/docs/trusted-match) for the full specification.
-
-</Accordion>
-
-## Step 7: Monitor delivery
-
-<img src="/images/walkthrough/media-buy-07-delivery.png" alt="Sam leans back at his desk, relaxed, with a single clean dashboard showing unified performance charts from all three sellers — bar charts rising, line graphs converging, all in teal" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
-
-The campaign is running. Sam monitors through a single view — his platform calls `get_media_buy_delivery` on each seller and merges the results:
+Sam reads operational state and the current revision from `get_media_buys`, and
+uses billing-grade `get_media_buy_delivery` for reporting. If he needs to pause
+a package or adjust a budget inside the accepted commercial envelope, he uses
+`control_media_buy` with the latest revision:
 
 ```javascript
-const delivery = await seller.getMediaBuyDelivery({
-  account: { brand: { domain: "acmeoutdoor.com" }, operator: "pinnacle-agency.com" },
-  media_buy_ids: [buy.media_buy_id],
-  include_package_daily_breakdown: true
+const controlled = await streamHaus.controlMediaBuy({
+  adcp_version: '3.2-beta.4',
+  idempotency_key: 'acme-q2-control-001',
+  account: { account_id: 'account_123' },
+  media_buy_id: buy.media_buy_id,
+  revision: current.revision,
+  packages: [
+    {
+      package_id: current.packages[0].package_id,
+      paused: true,
+    },
+  ],
 });
 ```
 
-Every seller reports in the same format: impressions, clicks, spend, completion rates. Sam sees one dashboard instead of four. When StreamHaus underdelivers on the CTV package, he reallocates budget to OutdoorNet — one `update_media_buy` call instead of logging into two platforms.
+If a requested change falls outside accepted terms, the seller returns
+`REQUOTE_REQUIRED`. Sam starts an amendment from `accepted_proposal_id`, then
+repeats revise → finalize → accept. Operational state and commercial agreement
+remain separate and auditable.
 
 ## The full picture
 
-<img src="/images/concepts/media-buy-lifecycle.png" alt="A horizontal pipeline showing the five stages of a media buy: Discovery (magnifying glass), Planning (blueprint), Execution (rocket launch), Optimization (adjusting dials), and Reporting (clean dashboard)" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+```mermaid
+flowchart LR
+  C[Capabilities] --> P{Buying path}
+  P -->|Published offers| L[list_products]
+  L --> B[buy_products]
+  P -->|Seller-planned| R[request_proposals]
+  R --> F[refine_proposals]
+  F --> H[Finalize hold]
+  H --> A[accept_proposal]
+  B --> M[MediaBuy]
+  A --> M
+  M --> S[sync_creatives]
+  S --> G[get_media_buys and delivery]
+  G --> O[control_media_buy]
+  O -->|Outside terms| F
+```
 
-Sam went from four dashboards to one protocol. The same tasks that bought CTV inventory also bought display and audio — no platform-specific code, no manual data translation, no spreadsheet reconciliation.
+Sam still gets one protocol and one operational view across sellers, but 3.2
+makes the commercial intent explicit: published offers are purchased directly;
+seller-planned terms move through immutable proposals; live delivery is changed
+with revision-checked controls.
 
-| Before AdCP | With AdCP |
-|---|---|
-| 4 dashboards, 4 logins | 1 protocol, 1 view |
-| Manual CSV comparison | Standardized product proposals |
-| Product-specific creative specs | `get_products` → `Product.format_options[]` |
-| 4 campaign setup workflows | `create_media_buy` everywhere |
-| Manual reporting reconciliation | `get_media_buy_delivery` aggregated |
-| Per-surface activation ad-ops | TMP matches packages on any surface automatically |
+## Continue
 
-## Go deeper
-
-- **Product discovery**: [How `get_products` works](/docs/media-buy/product-discovery/media-products) — briefs, real targeting overlays, later-selectable targeting support, wholesale mode, proposals, and refinement
-- **Campaign lifecycle**: [Managing media buys](/docs/media-buy/media-buys/index) — status transitions, updates, and approvals
-- **Optimization**: [Delivery and reporting](/docs/media-buy/media-buys/optimization-reporting) — metrics, dimensional breakdowns, and feedback loops
-- **Governance**: [Campaign governance](/docs/governance/overview) — how the three-party trust model protects Sam's spend
-- **Creative**: [Creative walkthrough](/docs/creative/index) — how Maya builds the creatives Sam uses
-- **Real-time matching**: [Trusted Match Protocol](/docs/trusted-match) — how packages activate at serve time via Context Match and Identity Match
-- **Get certified**: The [Buyer track](/docs/learning/tracks/buyer) teaches the full media buy workflow through interactive modules
+- [Product discovery and planning](/docs/media-buy/product-discovery/) — choose
+  published offers, wholesale mirroring, or proposals
+- [Proposal negotiation](/docs/media-buy/product-discovery/proposal-negotiation)
+  — implement immutable revisions and holds
+- [Media buy lifecycle](/docs/media-buy/media-buys/lifecycle) — state,
+  creatives, controls, and delivery
+- [3.1 → 3.2 migration](/docs/reference/migration/3-1-to-3-2) — isolate the
+  compatibility facade behind capability-driven adaptation

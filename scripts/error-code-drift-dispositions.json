@@ -21,6 +21,11 @@
       "target_version": "3.2",
       "note": "Canonical 3.2 bidding-policy migration guard. Returned when a package combines the new bidding block with legacy bid_price or legacy monetary optimization targets, leaving execution policy ambiguous. New wire code — held for 3.2."
     },
+    "CONFLICTING_SELECTORS": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Canonical 3.2 PackageRequest migration guard. Returned when multiple resolvable format selector routes select different product format contracts. New wire code — held for 3.2."
+    },
     "BIDDING_PLACEMENT_CONFLICT": {
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
@@ -220,6 +225,11 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
       "note": "Canonical-formats dual-emission divergence advisory (#3307). Non-fatal; surfaces when a product carries both format_ids (v1) and format_options (v2) that disagree after projection. Wire change — held for 3.1."
+    },
+    "FORMAT_SHAPE_PROMOTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Canonical-format promotion advisory for legacy custom declarations after seller_rendered_stateful_display and coordinated_placements become first-class in 3.2. Additive wire code — held for 3.2."
     },
     "FORMAT_DECLARATION_V1_AMBIGUOUS": {
       "disposition": "held-for-next-minor",

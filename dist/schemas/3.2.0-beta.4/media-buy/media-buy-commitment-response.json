@@ -1,0 +1,254 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/media-buy/media-buy-commitment-response.json",
+  "title": "Media Buy Commitment Response",
+  "description": "Shared result for clean product purchase and proposal acceptance. A successful result returns the MediaBuy identity and the immutable accepted commercial snapshot without embedding creative or package graphs. Optional warnings report non-blocking observations at the commitment boundary; continuing conditions remain readable as indicators through get_media_buys.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "status"
+  },
+  "oneOf": [
+    {
+      "title": "Committed Media Buy",
+      "type": "object",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "accepted_proposal_binding": {
+            "media_buy_id": "equals_accepted_proposal.media_buy_id",
+            "proposal_status": "accepted",
+            "on_violation": "reject_response"
+          }
+        }
+      },
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "completed"
+        },
+        "media_buy_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "media_buy"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "media_buy_status": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/media-buy-status.json"
+        },
+        "confirmed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "accepted_proposal": {
+          "allOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-proposal.json"
+            },
+            {
+              "properties": {
+                "proposal_status": {
+                  "type": "string",
+                  "const": "accepted"
+                },
+                "media_buy_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-entity": "media_buy"
+                }
+              },
+              "required": [
+                "proposal_status",
+                "media_buy_id",
+                "accepted_at",
+                "commercial_terms",
+                "terms_digest"
+              ]
+            }
+          ]
+        },
+        "purchase_bindings": {
+          "type": "array",
+          "description": "Execution identities assigned to the immutable purchases. purchase_index is the zero-based position in accepted_proposal.commercial_terms.purchases and disambiguates repeated product IDs.",
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "complete_purchase_bijection": {
+                "binding_count": "equals_accepted_proposal.commercial_terms.purchases.length",
+                "purchase_indexes": "unique_contiguous_zero_based_range",
+                "product_id": "equals_indexed_purchase.product_id",
+                "package_ids": "unique",
+                "on_violation": "reject_response"
+              }
+            }
+          },
+          "items": {
+            "type": "object",
+            "properties": {
+              "purchase_index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "product_id": {
+                "type": "string",
+                "minLength": 1,
+                "x-entity": "product"
+              },
+              "package_id": {
+                "type": "string",
+                "minLength": 1,
+                "x-entity": "package"
+              }
+            },
+            "required": [
+              "purchase_index",
+              "product_id",
+              "package_id"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "available_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-media-buy-action.json"
+          },
+          "uniqueItems": true
+        },
+        "warnings": {
+          "type": "array",
+          "description": "Non-blocking observations about this completed commitment. The MediaBuy was still created or amended exactly as represented. Continuing conditions also appear as indicators on get_media_buys.",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/warning.json"
+              },
+              {
+                "properties": {
+                  "code": {
+                    "enum": [
+                      "inventory_shortfall_forecast",
+                      "flight_change_creates_pacing_risk"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+        },
+        "replayed": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "status",
+        "media_buy_id",
+        "revision",
+        "accepted_proposal",
+        "purchase_bindings",
+        "available_actions"
+      ],
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "title": "Commitment Error",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "failed"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+        },
+        "replayed": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "status",
+        "errors"
+      ],
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "media_buy_id"
+        ]
+      }
+    },
+    {
+      "title": "Commitment Submitted",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/error.json"
+          }
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+        },
+        "replayed": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "media_buy_id"
+        ]
+      }
+    }
+  ]
+}

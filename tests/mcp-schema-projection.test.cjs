@@ -31,6 +31,7 @@ const {
   compactDraft07Schema,
   measureSchema,
   projectDraft07Node,
+  projectMcpDiscoveryInputSchema,
   selectRuntimeToolNames,
   stripPresentationAnnotations,
   stripModelContextAnnotations,
@@ -309,6 +310,119 @@ test('draft-07 and 2020-12 validators preserve high-risk conversion boundaries',
   }
 });
 
+test('MCP discovery inputs inline version fields and drop only root constraints', () => {
+  const versionRef = '#/$defs/external:core~1version-envelope.json';
+  const source = {
+    type: 'object',
+    properties: {
+      packages: {
+        type: 'array',
+        description: 'Provide packages or proposal_id, not both.',
+        items: {
+          oneOf: [{ type: 'string' }, { type: 'number' }],
+        },
+      },
+      proposal_id: {
+        type: 'string',
+        description: 'Provide proposal_id or packages, not both.',
+      },
+    },
+    allOf: [
+      { $ref: versionRef },
+      {
+        type: 'object',
+        properties: { account: { type: 'string' } },
+        required: ['account'],
+      },
+      { not: { required: ['packages', 'proposal_id'] } },
+      { if: { required: ['proposal_id'] }, then: { required: ['total_budget'] } },
+    ],
+    anyOf: [{ required: ['packages'] }, { required: ['proposal_id'] }],
+    discriminator: { propertyName: 'mode' },
+    not: { required: ['legacy_field'] },
+    $defs: {
+      'external:core/version-envelope.json': {
+        type: 'object',
+        properties: {
+          adcp_version: { type: 'string', description: 'Optional release pin.' },
+          adcp_major_version: { type: 'integer', description: 'Optional legacy major pin.' },
+        },
+      },
+    },
+  };
+
+  const projected = projectMcpDiscoveryInputSchema(source);
+  assert.equal(projected.type, 'object');
+  assert.deepEqual(
+    Object.keys(projected.properties).slice(0, 2),
+    ['adcp_version', 'adcp_major_version']
+  );
+  assert.ok(!projected.required?.includes('adcp_version'));
+  assert.ok(!projected.required?.includes('adcp_major_version'));
+  assert.equal(projected.properties.account.type, 'string');
+  assert.ok(projected.required.includes('account'));
+  for (const keyword of ['allOf', 'anyOf', 'oneOf', 'not', 'if', 'then', 'else']) {
+    assert.equal(projected[keyword], undefined, `root ${keyword} must be omitted`);
+  }
+  assert.equal(projected.discriminator, undefined);
+  assert.deepEqual(projected.properties.packages.items.oneOf, [
+    { type: 'string' },
+    { type: 'number' },
+  ]);
+});
+
+test('MCP discovery recurses through allOf and remains permissive across union branches', () => {
+  const canonical = {
+    type: 'object',
+    allOf: [{
+      allOf: [{
+        properties: { nested_value: { type: 'string' } },
+        required: ['nested_value'],
+      }],
+    }],
+    anyOf: [{
+      properties: { choice_a: { type: 'string' } },
+      required: ['choice_a'],
+    }, {
+      properties: { choice_b: { type: 'number' } },
+      required: ['choice_b'],
+    }],
+  };
+  const projected = projectMcpDiscoveryInputSchema(canonical);
+  const canonicalValidMixedBranch = {
+    nested_value: 'present',
+    choice_a: 7,
+    choice_b: 1,
+  };
+
+  assert.equal(projected.properties.nested_value.type, 'string');
+  assert.ok(projected.required.includes('nested_value'));
+  assert.deepEqual(projected.properties.choice_a.anyOf, [{ type: 'string' }, {}]);
+  assert.deepEqual(projected.properties.choice_b.anyOf, [{}, { type: 'number' }]);
+  assert.equal(createValidator(AjvDraft07).compile(canonical)(canonicalValidMixedBranch), true);
+  assert.equal(createValidator(Ajv2020).compile(projected)(canonicalValidMixedBranch), true);
+});
+
+test('MCP discovery defers omitted root constraints to canonical call validation', () => {
+  const profileDir = path.join(PROJECTION_DIR, 'profiles', 'media-buy');
+  const manifest = readJson(path.join(profileDir, 'manifest.json'));
+  const projected = readJson(path.join(
+    profileDir,
+    manifest.tools.request_proposals.inputSchema
+  ));
+  const sourcePath = path.join(SOURCE_DIR, 'media-buy', 'request-proposals-request.json');
+  const canonical = compactDraft07Schema(readJson(sourcePath), sourcePath, SOURCE_DIR);
+  const discoveryValidCanonicalInvalid = {
+    idempotency_key: 'discovery-root-deferral-0001',
+    brief: 'Reach relevant buyers',
+  };
+
+  const validateDiscovery = createValidator(Ajv2020).compile(projected);
+  const validateCanonical = createValidator(AjvDraft07).compile(canonical);
+  assert.equal(validateDiscovery(discoveryValidCanonicalInvalid), true);
+  assert.equal(validateCanonical(discoveryValidCanonicalInvalid), false);
+});
+
 test('projection rewrites only definitions keyword segments in local refs', () => {
   const projected = projectDraft07Node({
     $schema: 'http://json-schema.org/draft-07/schema#',
@@ -428,7 +542,9 @@ test('compact lifecycle routes every operational control and declares cross-item
     .properties.action.enum);
   const controlRequest = readJson(path.join(SOURCE_DIR, 'media-buy', 'control-media-buy-request.json'));
   const packageControl = readJson(path.join(SOURCE_DIR, 'media-buy', 'package-control.json'));
+  const legacyUpdate = readJson(path.join(SOURCE_DIR, 'media-buy', 'update-media-buy-request.json'));
   const fieldRoutes = {
+    name: ['update_name'],
     paused: ['pause', 'resume'],
     canceled: ['cancel'],
     total_budget: ['increase_budget', 'decrease_budget'],
@@ -451,6 +567,11 @@ test('compact lifecycle routes every operational control and declares cross-item
     assert.ok(controlRequest.properties[field] || packageControl.properties[field], `${field} is not a control field`);
     for (const action of actions) assert.ok(controlActions.has(action), `${field} lacks routed action ${action}`);
   }
+  assert.deepEqual(legacyUpdate['x-superseded-by'], [
+    'control_media_buy',
+    'refine_proposals',
+    'sync_creatives',
+  ]);
   assert.equal(
     controlRequest.properties.packages['x-adcp-validation'].verifier_constraints.unique_package_ids.key,
     'package_id'
@@ -500,6 +621,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   assert.equal(projectionManifest.mcp_protocol_version, MCP_PROTOCOL_VERSION);
   assert.equal(projectionManifest.schema_dialect, JSON_SCHEMA_2020_12);
   assert.equal(projectionManifest.annotation_mode, 'full');
+  assert.equal(projectionManifest.canonical_wire_manifest, '../../manifest.json');
   assert.deepEqual(projectionManifest.schema_fields, ['inputSchema', 'outputSchema']);
   assert.match(projectionManifest.delivery, /downloadable schema artifacts/);
   assert.deepEqual(canonicalManifest.task_result_resolution, {
@@ -553,6 +675,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   assert.deepEqual(canonicalManifest.tools.update_media_buy.superseded_by, [
     'control_media_buy',
     'refine_proposals',
+    'sync_creatives',
   ]);
   for (const toolName of [
     'request_proposals',
@@ -613,6 +736,31 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
       undefined,
       `${compatibilityTool} must be absent from the clean 3.2 production profile`
     );
+  }
+  const createMediaBuyInput = readJson(path.join(
+    PROJECTION_DIR,
+    projectionManifest.tools.create_media_buy.inputSchema
+  ));
+  assert.match(createMediaBuyInput.properties.packages.description, /Mutually exclusive.*packages or proposal_id/);
+  assert.match(createMediaBuyInput.properties.proposal_id.description, /Mutually exclusive.*packages or proposal_id/);
+  const verifyBrandClaimInput = readJson(path.join(
+    PRODUCTION_PROFILE_DIR,
+    productionManifest.tools.verify_brand_claim.inputSchema
+  ));
+  assert.deepEqual(
+    Object.keys(verifyBrandClaimInput.properties).sort(),
+    ['adcp_major_version', 'adcp_version', 'claim', 'claim_type']
+  );
+  assert.deepEqual(verifyBrandClaimInput.required, ['claim_type', 'claim']);
+  assert.equal(verifyBrandClaimInput.properties.claim_type.anyOf.length, 4);
+  assert.equal(verifyBrandClaimInput.properties.claim.anyOf.length, 4);
+  const performanceFeedbackInput = readJson(path.join(
+    PRODUCTION_PROFILE_DIR,
+    productionManifest.tools.provide_performance_feedback.inputSchema
+  ));
+  for (const property of ['media_buy_id', 'measurement_period', 'performance_index']) {
+    assert.ok(performanceFeedbackInput.properties[property], property);
+    assert.ok(performanceFeedbackInput.required.includes(property), property);
   }
 
   const projectedListProductsOutput = readJson(path.join(
@@ -691,6 +839,13 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
 
       if (field === 'inputSchema') {
         assert.equal(projectedSchema.type, 'object', `${toolName} inputSchema must have an object root`);
+        for (const keyword of ['allOf', 'anyOf', 'oneOf']) {
+          assert.equal(
+            projectedSchema[keyword],
+            undefined,
+            `${toolName} inputSchema must not expose root ${keyword}`
+          );
+        }
       }
 
       const fixtures = storyboardFixtures.get(relativePath);
@@ -783,6 +938,8 @@ test('generated production profile exposes the active 3.2 surface without compli
   assert.equal(profile.profile, 'production');
   assert.equal(profile.surface_version, '3.2.0');
   assert.equal(profile.annotation_mode, 'structural');
+  assert.equal(profile.complete_discovery_projection, '../../manifest.json');
+  assert.equal(profile.canonical_wire_manifest, '../../../../manifest.json');
   assert.deepEqual(profile.filters, {
     exclude_protocols: ['compliance'],
     exclude_deprecated: true,
@@ -883,6 +1040,9 @@ test('representative capability-selected media-buy runtime exposes only selected
     assert.equal(tool.outputSchema, undefined);
     assert.equal(tool.inputSchema.$schema, JSON_SCHEMA_2020_12);
     assert.deepEqual(collectExternalRefs(tool.inputSchema), []);
+    for (const keyword of ['allOf', 'anyOf', 'oneOf']) {
+      assert.equal(tool.inputSchema[keyword], undefined, `${tool.name} exposes root ${keyword}`);
+    }
   }
 
   const storyboardFixtures = collectStoryboardRequestFixtures();
@@ -911,7 +1071,7 @@ test('representative capability-selected media-buy runtime exposes only selected
   assert.ok(parityCases >= 25, `expected at least 25 selected-schema parity cases, saw ${parityCases}`);
 });
 
-test('generated role profiles are active validation catalogs with bounded model-context views', () => {
+test('generated role profiles are host-compatible discovery catalogs with bounded model-context views', () => {
   const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
 
   for (const [profileName, expectedTools] of Object.entries(MCP_ROLE_PROFILE_TOOLS)) {
@@ -930,16 +1090,20 @@ test('generated role profiles are active validation catalogs with bounded model-
       include_tools: expectedTools,
       exclude_deprecated: true,
     });
+    assert.equal(profile.complete_discovery_projection, '../../manifest.json');
+    assert.equal(profile.canonical_wire_manifest, '../../../../manifest.json');
     assert.deepEqual(Object.keys(profile.tools).sort(), [...expectedTools].sort());
 
     assert.equal(modelContext.profile, profileName);
     assert.equal(modelContext.view, 'client-prompt-inputs');
     assert.equal(modelContext.annotation_mode, 'model-context');
-    assert.equal(modelContext.validation_profile, '../manifest.json');
+    assert.equal(modelContext.discovery_profile, '../manifest.json');
     assert.equal(
-      path.resolve(modelContextDir, modelContext.validation_profile),
+      path.resolve(modelContextDir, modelContext.discovery_profile),
       path.join(profileDir, 'manifest.json')
     );
+    assert.equal(modelContext.complete_discovery_projection, '../../../manifest.json');
+    assert.equal(modelContext.canonical_wire_manifest, '../../../../../manifest.json');
     assert.deepEqual(modelContext.schema_fields, ['inputSchema']);
     assert.deepEqual(Object.keys(modelContext.tools).sort(), [...expectedTools].sort());
 
@@ -976,13 +1140,21 @@ test('generated role profiles are active validation catalogs with bounded model-
       assert.equal(modelTool.outputSchema, undefined);
       assert.ok(fs.existsSync(path.join(profileDir, fullTool.inputSchema)));
       assert.ok(fs.existsSync(path.join(profileDir, fullTool.outputSchema)));
+      const discoveryInput = readJson(path.join(profileDir, fullTool.inputSchema));
+      for (const keyword of ['allOf', 'anyOf', 'oneOf']) {
+        assert.equal(discoveryInput[keyword], undefined, `${profileName}.${toolName} exposes root ${keyword}`);
+      }
       const modelInputPath = path.join(modelContextDir, modelTool.inputSchema);
       assert.ok(fs.existsSync(modelInputPath));
       modelContextBytes += Buffer.byteLength(JSON.stringify(readJson(modelInputPath)));
     }
+    // Budget raised from 384 KiB: main reached 139 bytes of headroom within a
+    // day of the budget landing (each schema-bearing feature costs ~1-2 KiB of
+    // inlined model context). 400 KiB buys room until the shared-dictionary
+    // projection graduates and collapses per-tool inlining.
     assert.ok(
-      modelContextBytes < 388 * 1024,
-      `${profileName} model-context inputs exceed 388 KiB: ${modelContextBytes}`
+      modelContextBytes < 400 * 1024,
+      `${profileName} model-context inputs exceed 400 KiB: ${modelContextBytes}`
     );
   }
 
