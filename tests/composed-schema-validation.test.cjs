@@ -6917,18 +6917,19 @@ async function runTests() {
   await testSchemaValidation(
     '/schemas/core/creative-variant.json',
     { variant_id: 'served_4821', locale_variant_id: 'loc_es_es' },
-    'Delivery variants can attribute the localized assets that served'
+    'Served variants can attribute the localized assets that served'
   );
   testValidationAnnotation(
     '/schemas/core/creative-variant.json',
     {
       localized_parent: {
         required_field: 'locale_variant_id',
-        member_of: 'list_creatives.localization.variants[].locale_variant_id',
+        member_of: 'accepted_source_revision.localization.variants[].locale_variant_id',
+        current_list_localization_not_required: true,
         applies_to_default_fallback: true
       }
     },
-    'Delivery variants expose machine-readable localized attribution rules'
+    'Served variants expose machine-readable historical localization attribution rules'
   );
 
   const localizedCanonicalListItem = structuredClone(localizedListItem);
