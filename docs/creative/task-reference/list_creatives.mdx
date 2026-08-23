@@ -177,6 +177,7 @@ The response provides creative data with optional enrichment:
   "creatives": [
     {
       "creative_id": "ft_88201",
+      "revision_id": "rev_2026_08_23_01",
       "name": "Holiday Sale - Medium Rectangle",
       "format_kind": "image",
       "status": "approved",
@@ -204,11 +205,17 @@ The response provides creative data with optional enrichment:
 }
 ```
 
+When the seller advertises `creative.supports_revisions: true`, `revision_id`
+is the current buyer-authored input revision for that creative. It is exact
+readback of the value accepted by [`sync_creatives`](/docs/creative/task-reference/sync_creatives), not a seller processing or
+transcode version. Older creatives without revision identity may omit it.
+
 ### Per-creative fields
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `creative_id` | string | Unique creative identifier |
+| `revision_id` | string | Current buyer-authored input revision when the current content is revision-bound. Omitted for legacy/unversioned current content. |
 | `name` | string | Human-readable name |
 | `format_kind` | string | Canonical format kind |
 | `format_option_ref` | object | Optional exact publisher/product option reference |

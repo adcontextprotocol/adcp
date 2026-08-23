@@ -67,6 +67,21 @@
             "description": "Unique identifier for the creative",
             "x-entity": "creative"
           },
+          "revision_id": {
+            "$ref": "/schemas/core/creative-revision-id.json",
+            "description": "Current buyer-authored input revision for this creative. Present when the current effective content has revision identity and the seller advertises creative.supports_revisions; omitted after an accepted content-bearing legacy update without revision_id.",
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "revision_readback": {
+                  "required_capability": "creative.supports_revisions",
+                  "required_when_current_revision_is_bound": true,
+                  "must_equal": "last_accepted_current_buyer_revision",
+                  "omit_when_current_content_is_unversioned": true
+                }
+              },
+              "spec": "docs/creative/task-reference/list_creatives.mdx#per-creative-fields"
+            }
+          },
           "account": {
             "$ref": "/schemas/core/account.json",
             "description": "Account that owns this creative"

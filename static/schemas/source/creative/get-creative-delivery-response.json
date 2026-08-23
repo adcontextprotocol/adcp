@@ -88,14 +88,29 @@
           },
           "variant_count": {
             "type": "integer",
-            "description": "Total number of variants for this creative. When max_variants was specified in the request, this may exceed the number of items in the variants array.",
+            "description": "Total number of agent-unique variant_id rows for this creative. When max_variants was specified in the request, this may exceed the number of items in the variants array.",
             "minimum": 0
           },
           "variants": {
             "type": "array",
-            "description": "Variant-level delivery breakdown. Each variant includes the rendered manifest and delivery metrics. For standard creatives, contains a single variant. For asset group optimization, one per combination. For generative creative, one per generated execution. Empty when a creative has no variants yet.",
+            "description": "Variant-level delivery breakdown. Each agent-unique variant_id identifies one immutable served execution and each row includes metrics from exactly one source revision and, for localized delivery, exactly one locale variant. A distinct revision, locale, or rendered manifest receives a distinct variant_id; metrics MUST NOT cross those boundaries. For standard creatives, contains one row per source revision and locale represented in the reporting period. For asset group optimization, one per combination, source revision, and locale. For generative creative, one per generated execution, source revision, and locale. Empty when a creative has no variants yet.",
             "items": {
               "$ref": "/schemas/core/creative-variant.json"
+            },
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "revision_homogeneous_rows": {
+                  "row_key": ["variant_id"],
+                  "row_key_unique": true,
+                  "variant_id_scope": "agent_unique_and_unambiguous_for_variant_preview_when_supported",
+                  "native_identifier_reuse": "map_each_distinct_revision_locale_or_rendered_execution_to_a_distinct_adcp_variant_id",
+                  "metrics_must_not_cross_revision_boundary": true,
+                  "metrics_must_not_cross_locale_boundary": true,
+                  "locale_variant_membership": "source_revision_localization_topology",
+                  "variant_count": "count_distinct_row_keys_before_max_variants_limit"
+                }
+              },
+              "spec": "docs/creative/task-reference/get_creative_delivery.mdx#revision-attribution"
             }
           }
         },

@@ -33,6 +33,10 @@
                 "description": "Creative ID from the request",
                 "x-entity": "creative"
               },
+              "revision_id": {
+                "$ref": "/schemas/core/creative-revision-id.json",
+                "description": "Exact revision_id from the matching request creative. Required for accepted created, updated, or unchanged items when the request supplied revision_id; forbidden on failed or deleted items."
+              },
               "account": {
                 "$ref": "/schemas/core/account.json",
                 "description": "Account that owns this creative"
@@ -148,7 +152,8 @@
                   "not": {
                     "anyOf": [
                       { "required": ["status"] },
-                      { "required": ["localization"] }
+                      { "required": ["localization"] },
+                      { "required": ["revision_id"] }
                     ]
                   }
                 }
@@ -159,6 +164,21 @@
                 },
                 "then": {
                   "required": ["status"]
+                }
+              },
+              {
+                "x-adcp-validation": {
+                  "verifier_constraints": {
+                    "revision_echo": {
+                      "request_match_key": "creative_id",
+                      "request_field": "revision_id",
+                      "accepted_actions": ["created", "updated", "unchanged"],
+                      "required_when_request_field_present": true,
+                      "must_equal_request": true,
+                      "forbidden_actions": ["failed", "deleted"]
+                    }
+                  },
+                  "spec": "docs/creative/task-reference/sync_creatives.mdx#creative-revisions"
                 }
               }
             ]

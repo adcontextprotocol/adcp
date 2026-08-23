@@ -68,6 +68,7 @@ The endpoint may expose both facts, but they remain independent:
 |---|---|
 | `media_buy.inline_creative_management: true` | Package-scoped creative bodies are accepted on create/update media-buy operations |
 | `creative.has_creative_library: true` | The agent exposes reusable library operations such as `sync_creatives` and `list_creatives` |
+| `creative.supports_revisions: true` | The library accepts immutable buyer `revision_id` values and preserves them through sync, review, readback, and delivery. Requires `has_creative_library: true`; does not imply staging or rollback. |
 | `creative.supported_formats[]` | The endpoint exposes canonical build, validation, or preview operations |
 
 An endpoint may support any applicable combination. Inline management does not imply a reusable library; a library does not imply generation.

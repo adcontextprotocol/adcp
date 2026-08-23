@@ -51,6 +51,11 @@
       "target_version": "3.1",
       "note": "Native creative-localization assignment rejection when a package's effective format locale_policy has no eligible materialized variant. New 3.1 creative surface; wire change — held for 3.1."
     },
+    "CREATIVE_REVISION_CONTENT_MISMATCH": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Creative revision identity rejects reuse of one buyer revision_id for different input content under the same creative_id. Additive 3.2 creative-library vocabulary; held for 3.2."
+    },
     "FEED_FETCH_FAILED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",

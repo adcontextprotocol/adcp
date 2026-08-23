@@ -298,6 +298,141 @@ the normal lifecycle webhook. Sellers may reject new or replacement
 localization, but MUST still allow explicit `localization: null` cleanup when it
 does not violate an active assignment.
 
+### Creative revision identity
+
+Buyers may send an optional buyer-assigned `revision_id` on each
+`sync_creatives.creatives[]` item. Agents that advertise
+`creative.supports_revisions: true` commit to the revision guarantees below. A
+`creative_id` identifies the durable logical creative; `revision_id` identifies
+one immutable buyer-authored input state beneath it. Revision support is an
+identity and correlation contract, not a revision-history API: it does not add
+staging, activation, rollback, or enumeration of prior revisions.
+
+Without that capability, a receiver may ignore `revision_id` and the buyer MUST
+NOT rely on immutability, echo, readback, review correlation, or delivery
+attribution. This capability gates reliance, not whether the open 3.2 request
+shape may carry the field.
+
+Revision identity is scoped to `(creative_id, revision_id)`. On first
+acceptance, the seller binds that identity to the creative's canonical revision
+content before any seller transcoding, URL rewriting, normalization, or
+delivery-representation production. Reusing the same identity with the same
+content is idempotently acceptable across requests. Reusing it with different
+content makes that creative item fail with
+`CREATIVE_REVISION_CONTENT_MISMATCH`; its prior library state remains unchanged
+while other items in the best-effort batch may still process. The failed result
+omits `revision_id`; typed error details carry the rejected tuple.
+
+Canonical revision content includes every buyer creative-input field, including
+unknown future content fields, except `creative_id`, `revision_id`, and the
+explicit operational/metadata fields `name`, `tags`, `status`, `weight`,
+`placement_refs`, and `placement_ids`. Format identity, assets,
+`component_assets`, inputs, localization, provenance, rights, and industry
+identifiers are therefore revision-bearing. This fail-closed rule prevents a
+new content field from silently escaping revision identity. The exclusions
+apply only to those exact top-level properties on the sync item; a nested field
+with the same name remains content.
+
+For comparison, first apply the existing sync mutation semantics to the prior
+buyer-authored state. In particular, an allowed omission of `localization`
+means preserve the prior localization topology before comparison; it does not
+make an otherwise identical revision mismatch. `localization: null` is a
+mutation sentinel: consume it by removing localization from the effective state
+before comparison, so a later omission represents the same unlocalized state.
+Then remove those exact top-level excluded fields and encode the effective
+buyer-authored state with RFC 8785 JSON Canonicalization Scheme (JCS). Receivers
+MUST reject duplicate JSON object member names before this comparison. Do not
+materialize schema defaults or perform seller normalization. Object member
+order is therefore irrelevant while array order, unknown fields, and omission
+or explicit `null` remain significant where that field's sync semantics treat
+them as content. URL strings and any supplied content digests are part of the
+input; revision identity does not prove that mutable bytes later served from
+the same URL stayed unchanged. Buyers needing byte-level identity use immutable
+URLs or digest-bound asset forms where available.
+
+A request's
+`idempotency_key` is checked first and protects one request replay window;
+revision identity is then checked across requests. A supporting seller retains
+each revision ID-to-fingerprint binding for the lifetime of the creative and,
+after a soft purge, for the creative tombstone lifetime. It need not retain or
+expose historical payloads. A hard purge removes the binding; reusing the same
+creative ID after its prior lifecycle has been purged begins a new creative
+incarnation.
+
+Accepted sync results echo the exact `revision_id`; `list_creatives` returns
+the creative's current revision; `creative.status_changed` identifies the
+revision reviewed; and every delivered execution derived from a revision
+returns it in `get_creative_delivery.variants[].revision_id`. Seller-generated
+transcodes, normalized tags, or alternate delivery representations remain
+derived from that revision and never mint a buyer revision.
+
+Historical delivery rows identify the revision that actually served. They need
+not equal the revision currently returned by `list_creatives`; a report window
+can span the promotion or replacement of one revision by another.
+
+Submitting a different `revision_id` with content canonically identical to the
+current effective content updates the current revision identity, returns
+`action: "updated"`, and preserves the current review state because no content
+changed. If review is in flight, the seller atomically rebinds that review to
+the new current revision so its eventual result and webhook name the new ID.
+Repeating the current revision and content may return `unchanged`; a
+metadata-only mutation may still return `updated`. Re-submitting a previously
+bound historical revision first must match its retained fingerprint; if its
+content differs from current content, accepting it makes it current and sends
+it through ordinary review. A different revision with different content
+becomes current only if the ordinary update is accepted and must enter review.
+
+When an existing unversioned creative adopts revision identity, canonically
+identical effective content is accepted as `updated`, binds the supplied
+`revision_id`, and preserves review state. If content also changes, the seller
+binds that revision only if the ordinary update is accepted, and the changed
+content enters review.
+
+When a supporting seller receives an update without `revision_id`, omission
+preserves the current revision only if effective canonical content is unchanged
+(for example, a metadata-only update). If accepted effective content changes,
+the seller applies its legacy update rules and clears current revision identity;
+it MUST NOT mint a seller-owned revision. `list_creatives`, subsequent status
+webhooks, and new delivery rows then omit `revision_id` until a buyer supplies
+one. Prior approval does not transfer: an accepted content-bearing unversioned
+update enters the ordinary review lifecycle, subject to the same active-update
+and deadline rules. Historical fingerprint bindings and historical delivery
+attribution remain intact.
+
+Approval never transfers across changed revision content. A revision-aware
+changed-content update uses a new `revision_id` and enters the seller's existing review/update
+lifecycle. Existing active-delivery and deadline rules still decide whether the
+update is accepted, paused, or rejected; revision support does not create a
+staged inactive revision beside the current one.
+
+`revision_id` is correlation identity, not a compare-and-swap token or ordering
+counter. Buyers MUST serialize writes to one creative. Sellers apply ordinary
+last-accepted-update ordering. Except for an identical-content review explicitly
+rebound to a new revision as described above, if a review result for an older revision arrives
+after a newer revision became current, that stale result MUST NOT mutate the
+current revision or its status and MUST NOT emit a status webhook as though it
+applied to the current revision.
+
+When an accepted buyer update moves an approved creative into processing or
+review, that buyer-initiated transition is acknowledged by the
+`sync_creatives` result and does not fire `creative.status_changed`. A later
+seller/system review approval or rejection uses the existing webhook contract.
+This minimal revision contract does not
+keep the prior approved revision serving during review; that behavior belongs
+to the separately deferred staged-activation RFC.
+
+`dry_run: true` evaluates the candidate against existing revision bindings and
+may echo a simulated revision result, but it MUST NOT create or update a
+fingerprint binding or tombstone, change the current revision, or change review
+state.
+
+For ordinary `sync_creatives` items, the effective-state projection above is
+the complete revision preimage. A composed protocol container that carries a
+set of equivalent delivery representations must define its own deterministic
+projection over the complete set; comparing only one selected representation
+is not sufficient to establish revision identity. The representation-set work
+uses this extension point rather than minting a revision per representation.
+
 ### Universal macros
 
 AdCP defines universal macros for cross-platform tracking. Creative agents MUST support these macros in tracking URLs:
@@ -338,6 +473,7 @@ archived ── buyer unarchives ──▶ approved (or pending_review when re-r
 - `processing` → `rejected`: automatic when processing fails (corrupt file, unsupported codec, constraint violation)
 - `pending_review` → `approved`: seller approves after content policy review
 - `pending_review` → `rejected`: seller rejects with `rejection_reason`
+- `approved` → `processing` or `pending_review` (buyer-initiated revision update): accepted only under the seller's ordinary active-delivery and deadline rules; acknowledged on `sync_creatives`, never via `creative.status_changed`. Changed revision content cannot inherit the prior approval.
 - `approved` → `suspended`: seller detects a recoverable dependency/authorization loss, such as `identity_authorization_revoked`, `identity_authorization_expired`, or `source_private` for a `published_post` reference. Sellers MUST surface a corresponding `impairment` on affected active buys.
 - `suspended` → `approved`: seller observes that the dependency is restored and any required re-review passes.
 - `suspended` → `rejected`: seller determines that a previously recoverable dependency/authorization loss cannot be restored for this creative, or that replacement/resubmission is required. Example: a revoked identity/post authorization for a `published_post` reference cannot be reauthorized. Sellers MUST keep affected active buys impaired until the creative is replaced, reassigned, or the package/buy is otherwise remediated.

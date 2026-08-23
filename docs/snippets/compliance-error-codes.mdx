@@ -49,6 +49,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `CREATIVE_LOCALE_NOT_ACCEPTED` | correctable | supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default |
 | `CREATIVE_NOT_FOUND` | correctable | verify creative_id via list_creatives, or sync_creatives to register it |
 | `CREATIVE_REJECTED` | correctable | revise the creative according to the applicable advertising policy or validated accessibility criteria |
+| `CREATIVE_REVISION_CONTENT_MISMATCH` | correctable | resend the exact content previously bound to this revision_id, or mint a new revision_id for changed content |
 | `CREATIVE_VALUE_NOT_ALLOWED` | correctable | pick a value from error.details.allowed_values (or re-fetch the format) and resubmit |
 | `CREDENTIAL_IN_ARGS` | terminal | do NOT auto-retry — auto-retry re-logs the credential on each attempt. Move authentication material or caller-supplied trust material out of request args (top-level, <code>{"context"}</code>, <code>{"ext"}</code>, any nested location) onto the relevant transport authentication/trust channel or account provisioning path (Authorization: Bearer, RFC 9421 signature/JWKS, mTLS, MCP/A2A authentication framing); rotate any leaked credential, then resubmit |
 | `EVALUATOR_AGENT_NOT_ACCEPTED` | correctable | replace the evaluator agent_url (evaluator.feature_agent.agent_url or the evaluator agent-form agent_url) with one from the seller's published accepted_verifiers, or drop the evaluator agent pointer to fall back to seller-default ranking |
@@ -457,6 +458,15 @@ Referenced creative does not exist in the agent's creative library. Recovery: co
 **Suggested action:** revise the creative according to the applicable advertising policy or validated accessibility criteria
 
 Creative failed content-policy, brand-safety, or accessibility review. For deadline violations, see CREATIVE_DEADLINE_EXCEEDED. Accessibility failures SHOULD use structured details conforming to error-details/accessibility-violation.json. Recovery: correctable (revise the creative according to the applicable policy or validated accessibility criteria).
+
+</Accordion>
+<a id="error-code-creative-revision-content-mismatch"></a>
+
+<Accordion title="CREATIVE_REVISION_CONTENT_MISMATCH — correctable">
+
+**Suggested action:** resend the exact content previously bound to this revision_id, or mint a new revision_id for changed content
+
+A sync_creatives item reused a revision_id for different canonical revision content under the same creative_id. Revision identity is scoped to the parent creative and immutable after first acceptance. Sellers MUST evaluate the buyer input before transcoding or normalization, MUST leave the prior creative state unchanged, and SHOULD return details conforming to error-details/creative-revision-content-mismatch.json. Distinct from IDEMPOTENCY_CONFLICT: idempotency_key protects one request replay window, while revision identity protects creative content across requests and retention. Recovery: correctable (resend the exact content previously bound to this revision_id, or mint a new revision_id for the changed content).
 
 </Accordion>
 <a id="error-code-creative-value-not-allowed"></a>

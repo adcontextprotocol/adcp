@@ -51,6 +51,10 @@
           {
             "type": "object",
             "properties": {
+              "revision_id": {
+                "$ref": "/schemas/core/creative-revision-id.json",
+                "description": "Optional buyer-assigned identity for this exact input-content state. Buyers may send it to any 3.2 peer; creative.supports_revisions gates reliance on immutability, echo, readback, and delivery correlation, not whether the open request shape may carry the field. Within a supporting seller, a revision_id is immutable under one creative_id: reusing it with different canonical revision content MUST fail with CREATIVE_REVISION_CONTENT_MISMATCH. Metadata and assignment fields excluded from revision content may change without minting a new revision."
+              },
               "localization": {
                 "description": "Sync-only materialized-localization mutation. The top-level assets are the source variant; optional locale_fallbacks declare buyer-approved language-family substitutions, and default_locale_variant_id selects the final serving fallback. An object transactionally replaces the source assets and complete locale set, omission preserves existing localization only when the top-level source assets are unchanged, and null removes localization. This field never requests translation or generation. Receivers MUST advertise get_adcp_capabilities creative.localization before accepting it.",
                 "anyOf": [
@@ -59,7 +63,63 @@
                 ]
               }
             },
-            "additionalProperties": true
+            "additionalProperties": true,
+            "x-adcp-validation": {
+              "verifier_constraints": {
+                "revision_identity": {
+                  "reliance_gate": "creative.supports_revisions",
+                  "without_capability": "receiver_may_ignore_revision_id_and_buyer_must_not_rely_on_revision_guarantees",
+                  "scope": ["creative_id", "revision_id"],
+                  "check_order": ["idempotency_key", "revision_content"],
+                  "canonical_content": {
+                    "included": "all effective buyer-authored creative fields, including unknown future content fields",
+                    "mutation_projection": "apply_existing_sync_field_semantics_to_prior_buyer_state_before_comparison",
+                    "localization_omitted": "preserve_prior_localization_before_comparison_when_existing_localized_source_upsert_allows_omission",
+                    "localization_null": "remove_localization_property_from_effective_state_before_comparison",
+                    "canonicalization": "RFC_8785_JCS_of_effective_buyer_state_after_removing_exact_top_level_excluded_fields",
+                    "defaults": "must_not_be_materialized_before_comparison",
+                    "duplicate_json_members": "reject_request_before_comparison",
+                    "excluded": [
+                      "creative_id",
+                      "revision_id",
+                      "name",
+                      "tags",
+                      "status",
+                      "weight",
+                      "placement_refs",
+                      "placement_ids"
+                    ],
+                    "exclusion_scope": "top_level_creative_item_only",
+                    "evaluated_before": "seller_transcoding_or_normalization"
+                  },
+                  "same_revision_same_content": "unchanged_unless_metadata_changed",
+                  "same_revision_different_content": "CREATIVE_REVISION_CONTENT_MISMATCH",
+                  "first_revision_on_unversioned_creative": {
+                    "same_effective_content": "accept_as_updated_bind_revision_and_preserve_review_state",
+                    "different_effective_content": "bind_only_on_accepted_update_and_require_review"
+                  },
+                  "different_revision_same_current_content": "accept_as_updated_make_current_preserve_review_state_and_rebind_inflight_review",
+                  "previously_bound_revision_matching_historical_content": "accept_as_updated; require_review_if_content_differs_from_current",
+                  "different_revision_different_content": "accept_as_updated_make_current_and_require_review",
+                  "revision_omitted_with_current_revision": {
+                    "same_effective_content": "preserve_current_revision_identity",
+                    "different_effective_content": "accept_under_legacy_update_rules_and_clear_current_revision_identity",
+                    "different_effective_content_review": "prior_approval_must_not_transfer_and_update_enters_ordinary_review",
+                    "must_not_mint_seller_revision": true,
+                    "historical_fingerprint_bindings": "retain"
+                  },
+                  "content_change_review": "prior_approval_must_not_transfer",
+                  "write_order": "last_accepted_sync_wins_callers_must_serialize_revision_writes",
+                  "stale_review_result": {
+                    "different_fingerprint_or_not_rebound": "must_not_mutate_current_revision_or_current_status",
+                    "identical_content_rebound": "apply_to_current_revision_and_attribute_result_and_webhook_to_current_revision_id"
+                  },
+                  "dry_run": "evaluate_against_existing_bindings_and_echo_simulated_result_but_do_not_create_or_update_bindings_tombstones_current_revision_or_review_state",
+                  "fingerprint_retention": "retain_for_creative_lifetime_and_soft_purge_tombstone_lifetime; hard_purge_removes_binding"
+                }
+              },
+              "spec": "docs/creative/task-reference/sync_creatives.mdx#creative-revisions"
+            }
           }
         ],
         "x-adcp-validation": {
@@ -85,7 +145,11 @@
         }
       },
       "minItems": 1,
-      "maxItems": 100
+      "maxItems": 100,
+      "x-adcp-validation": {
+        "unique_item_properties": ["creative_id"],
+        "spec": "docs/creative/task-reference/sync_creatives.mdx#request-parameters"
+      }
     },
     "creative_ids": {
       "type": "array",

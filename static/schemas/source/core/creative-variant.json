@@ -2,12 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-variant.json",
   "title": "Creative Variant",
-  "description": "A specific execution variant of a creative with delivery metrics. For catalog-driven packages, each catalog item rendered as a distinct ad execution is a variant — the variant's manifest includes the catalog reference with the specific item rendered. For asset group optimization, represents one combination of assets the platform selected. For generative creative, represents a platform-generated variant. For standard creatives, maps 1:1 with the creative itself.",
+  "description": "A revision- and locale-homogeneous execution-variant breakdown row with delivery metrics. For catalog-driven packages, each catalog item rendered as a distinct ad execution is a variant — the variant's manifest includes the catalog reference with the specific item rendered. For asset group optimization, represents one combination of assets the platform selected. For generative creative, represents a platform-generated variant. For standard creatives, maps 1:1 with the creative within one source revision and locale. A distinct source revision, locale, or rendered execution receives a distinct agent-unique AdCP variant_id, which is an unambiguous lookup key when the agent supports variant preview.",
   "x-adcp-validation": {
     "verifier_constraints": {
       "localized_parent": {
         "required_field": "locale_variant_id",
-        "member_of": "list_creatives.localization.variants[].locale_variant_id",
+        "member_of": "accepted_source_revision.localization.variants[].locale_variant_id",
+        "current_list_localization_not_required": true,
         "applies_to_default_fallback": true
       }
     },
@@ -22,7 +23,22 @@
       "properties": {
         "variant_id": {
           "type": "string",
-          "description": "Platform-assigned identifier for this variant"
+          "description": "Agent-assigned identifier that uniquely and immutably identifies this served execution on the agent. It MUST NOT be reused for another source revision, locale, or rendered manifest. An adapter whose native platform reuses an identifier maps each distinct execution to a distinct AdCP variant_id and may retain the native identifier in ext. When the agent supports variant preview, this ID is its unambiguous lookup key.",
+          "x-entity": "served_variant"
+        },
+        "revision_id": {
+          "$ref": "/schemas/core/creative-revision-id.json",
+          "description": "Buyer-authored input revision from which this served execution was derived. Required when that execution derives from a revision-aware creative. Historical reporting may legitimately return an older revision after list_creatives shows a newer current revision. Delivery optimization, generation, transcoding, or representation selection does not mint a revision.",
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "revision_attribution": {
+                "must_equal": "accepted_source_revision_for_this_execution",
+                "current_list_revision_not_required": true,
+                "row_metrics_revision_homogeneous": true
+              }
+            },
+            "spec": "docs/creative/task-reference/get_creative_delivery.mdx#revision-attribution"
+          }
         },
         "locale_variant_id": {
           "type": "string",

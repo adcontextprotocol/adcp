@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/creative-revision-content-mismatch.json",
+  "title": "Creative Revision Content Mismatch Details",
+  "description": "Typed details for CREATIVE_REVISION_CONTENT_MISMATCH. Identifies the scoped revision without echoing creative content or seller-side fingerprints.",
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "creative"
+    },
+    "revision_id": {
+      "$ref": "/schemas/core/creative-revision-id.json"
+    }
+  },
+  "required": ["creative_id", "revision_id"],
+  "additionalProperties": false
+}

@@ -284,7 +284,8 @@
         },
         "variant_id": {
           "type": "string",
-          "description": "Platform-assigned variant identifier"
+          "description": "Agent-assigned, agent-unique AdCP served-execution identifier",
+          "x-entity": "served_variant"
         },
         "creative_id": {
           "type": "string",

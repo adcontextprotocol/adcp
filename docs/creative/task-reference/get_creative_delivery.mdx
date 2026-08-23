@@ -47,7 +47,7 @@ At least one scoping filter (`media_buy_ids` or `creative_ids`) is required.
 | `media_buy_id` | Seller's media buy identifier (present when the request spanned multiple media buys) |
 | `format_kind` | Canonical format of this creative |
 | `totals` | Aggregate delivery metrics across all variants — see [Delivery metrics fields](#delivery-metrics-fields) below |
-| `variant_count` | Total number of variants (may exceed `variants` array length when `max_variants` is used) |
+| `variant_count` | Total number of agent-unique `variant_id` rows (may exceed `variants` array length when `max_variants` is used). |
 | `variants` | Array of variant-level delivery data (empty if creative has no variants yet) |
 
 ### Delivery metrics fields
@@ -94,24 +94,57 @@ Fields available on both `creative.totals` and each `variant` entry. Commonly-us
 
 ### Variant Object
 
-Each variant represents a specific execution: a fixed creative (Tier 1), an asset combination the platform selected (Tier 2), or a generated variant (Tier 3). For catalog-driven packages, each catalog item rendered as a distinct ad execution is a variant — the variant's manifest includes the catalog reference with the specific item rendered.
+Each variant row represents a specific execution within one source revision: a fixed creative (Tier 1), an asset combination the platform selected (Tier 2), or a generated variant (Tier 3). For catalog-driven packages, each catalog item rendered as a distinct ad execution is a variant — the variant's manifest includes the catalog reference with the specific item rendered.
 
 | Field | Description |
 |-------|-------------|
-| `variant_id` | Platform-assigned variant identifier |
+| `variant_id` | Agent-assigned identifier that uniquely and immutably identifies this served execution on the agent. It is the unambiguous lookup key when the agent supports variant preview. |
+| `revision_id` | Buyer-authored input revision from which this execution was derived. Historical rows may name an older revision than the creative currently returned by [`list_creatives`](/docs/creative/task-reference/list_creatives). |
 | `locale_variant_id` | Buyer-assigned localized variant that supplied the served assets. Required for delivered variants of a localized creative, including default fallback; omitted for unlocalized creatives. |
 | `manifest` | (Optional) The rendered canonical creative manifest—the actual output served, with `format_kind` and resolved assets. |
 | `generation_context` | (Optional, Tier 3) Input signals that triggered generation — e.g., page topic, conversation theme, query category. Platforms provide summarized/anonymized signals, not raw user input. When content context is managed through AdCP content standards, includes an `artifact` reference linking to the specific content artifact. Supports `ext` for vendor-specific context structures. |
 | `ext` | (Optional) Platform-specific data. Social platforms use this for engagement metrics (upvotes, comments, shares) that vary by platform. |
 | Standard metrics | All [Delivery metrics fields](#delivery-metrics-fields) — same shape as `creative.totals` |
 
-`creative_id` and `variant_id` are separate namespaces. The canonical build-to-delivery join is `build_creative.variants[].build_variant_id` → promoted `creative_id` → delivery `creative_id`. `variant_id` remains the platform's served execution variant id.
+`creative_id`, `revision_id`, and `variant_id` are separate namespaces. The
+canonical build-to-delivery join is `build_creative.variants[].build_variant_id`
+→ promoted `creative_id` → delivery `creative_id`. `revision_id` identifies the
+immutable buyer-authored input state beneath that creative; `variant_id` remains
+the agent's unique AdCP served-execution identity. Every execution derived from
+a revision carries that revision even when the seller transcodes or chooses
+another equivalent delivery representation.
+
+### Revision attribution
+
+Do not compare every row to the creative's current `list_creatives.revision_id`.
+A reporting window may contain executions from several accepted revisions; each
+row carries the source revision that actually produced that execution.
+
+Every row is revision-homogeneous: all of its metrics come from exactly one
+source revision and, when localized, one locale. `variant_id` is agent-unique
+and MUST NOT be reused for a different revision, locale, or rendered manifest;
+this keeps [`preview_creative`](/docs/creative/task-reference/preview_creative) replay by `variant_id` unambiguous when variant
+preview is supported. An adapter
+whose native ad platform reuses an identifier maps each distinct execution to
+a distinct AdCP `variant_id` and may retain the native identifier in `ext`.
+`variant_count` counts distinct `variant_id` values before applying
+`max_variants`. Tier 1 therefore has one row per revision and locale represented
+in the requested period, not necessarily one row for the whole period. A seller
+that cannot partition delivery this way cannot advertise
+`creative.supports_revisions: true`.
+
+For localized delivery, `locale_variant_id` is checked against the source
+revision's accepted localization topology, not only the current
+`list_creatives` topology.
 
 ### Localized delivery attribution
 
 For a localized creative, every returned execution MUST include
-`locale_variant_id` and that value MUST exist in the creative's authoritative
-`list_creatives.localization.variants[]` set. This identifies the assets that
+`locale_variant_id` and that value MUST exist in the accepted localization
+topology of the row's source revision. When that revision is current, the value
+therefore also exists in `list_creatives.localization.variants[]`; historical
+rows are checked against buyer-retained sync state rather than a newer current
+topology. This identifies the assets that
 actually served after strict RFC 4647 Lookup, an explicit locale fallback, or
 the default action and is required for every such path. When the selected
 product format carries `locale_policy`, this value MUST also identify a variant
@@ -125,7 +158,10 @@ Derived metrics like `ctr`, `completion_rate`, `roas`, and `cost_per_click` are 
 
 ### Tier 1: Standard Creatives
 
-One creative maps 1:1 to one variant. The variant metrics match the creative totals.
+Within one source revision and locale, a standard creative maps 1:1 to one
+variant. A report spanning revision or locale boundaries contains distinct
+variant rows; a row's metrics match the creative totals only when it is the
+sole row in the reporting period.
 
 ```json
 {
@@ -375,7 +411,7 @@ When a sales agent implements both protocols, both tasks are available on the sa
 When running campaigns across multiple sellers, call `get_creative_delivery` on each agent separately and correlate results:
 
 - **Join key**: Use `creative_id` (buyer-assigned) to correlate the same creative across agents. If you used `concept_id` during upload, filter by concept to group related creatives.
-- **`variant_id` scope**: Variant IDs are unique within an agent and creative, not globally. Two agents may generate variants with the same `variant_id` value. Prefix with the agent URL when building aggregated dashboards.
+- **Variant row scope**: `variant_id` is unique and replayable within an agent. Use the structured tuple `(agent_url, media_buy_id-or-null, creative_id, variant_id)` as the globally scoped row key; `revision_id` and `locale_variant_id` are immutable attribution fields, not extensions of variant identity.
 - **Timezone handling**: Each agent may report in its own timezone via `reporting_period.timezone`. Normalize to a common timezone before aggregating metrics.
 - **`max_variants` selection**: Agents choose which variants to return when `max_variants` limits the result set. Most agents prioritize by impression volume (most-served first). For representative sampling, make multiple calls with different time ranges rather than relying on a single large `max_variants` value.
 
@@ -389,7 +425,7 @@ When aggregating delivery data from multiple agents into a unified view, follow 
 
 3. **Merge by `creative_id`**: Group results by `creative_id` across agents. Sum `totals` (impressions, spend, clicks). Do not average derived metrics like `ctr` — recompute them from the summed components.
 
-4. **Prefix `variant_id`**: Create globally unique variant keys by combining `agent_url + variant_id` (e.g., `https://sales.pinnaclemedia-example.com/var_a1b2c3`). This prevents collisions when two agents assign the same variant ID independently.
+4. **Build a variant-row key**: Serialize the structured tuple `agent_url + media_buy_id-or-null + creative_id + variant_id`. Use actual `null`, not string sentinels, so legitimate IDs cannot collide with absence. Distinct revisions and locales already have distinct agent-assigned `variant_id` values.
 
 5. **Group by `concept_id`**: For campaign-level roll-ups, use `concept_id` to group related creatives across sizes and sellers. Pull the concept-to-creative mapping from [`list_creatives`](/docs/creative/task-reference/list_creatives) on each agent.
 
@@ -418,7 +454,12 @@ for (const [i, result] of results.entries()) {
     for (const v of creative.variants || []) {
       merged[key].variants.push({
         ...v,
-        variant_id: `${agents[i].url}/${v.variant_id}`, // globally unique
+        variant_row_id: JSON.stringify([
+          agents[i].url,
+          creative.media_buy_id ?? result.media_buy_id ?? null,
+          creative.creative_id,
+          v.variant_id,
+        ]),
       });
     }
   }
@@ -437,7 +478,8 @@ Agents that support this task expose `get_creative_delivery` in their tool surfa
 {
   "supported_protocols": ["creative"],
   "creative": {
-    "has_creative_library": true
+    "has_creative_library": true,
+    "supports_revisions": true
   }
 }
 ```

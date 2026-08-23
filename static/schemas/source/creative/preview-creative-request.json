@@ -256,7 +256,8 @@
     },
     "variant_id": {
       "type": "string",
-      "description": "Platform-assigned variant identifier from get_creative_delivery response. Required when request_type is 'variant'."
+      "description": "Agent-assigned, agent-unique AdCP served-execution identifier from get_creative_delivery. Required when request_type is 'variant'.",
+      "x-entity": "served_variant"
     },
     "creative_id": {
       "type": "string",
