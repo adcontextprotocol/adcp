@@ -5,6 +5,7 @@ import {
   createTrainingAgentServer,
   invalidateCache,
   clearTaskStore,
+  narrowDeliveryMetricObject,
 } from '../../src/training-agent/task-handlers.js';
 import {
   clearSessions,
@@ -2316,6 +2317,135 @@ describe('comply_test_controller', () => {
       );
       const session = await getSession(sessionKey);
       expect(session.complyExtensions.deliverySimulations.has(mediaBuyId)).toBe(false);
+    });
+
+    it('narrows metrics inside automatically emitted creative breakdowns', async () => {
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        params: {
+          product_id: 'creative-breakdown-product',
+          fixture: {
+            delivery_type: 'non_guaranteed',
+            channels: ['display'],
+            reporting_capabilities: {
+              available_metrics: ['impressions', 'spend', 'conversions'],
+            },
+          },
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: 'creative-breakdown-product',
+          pricing_option_id: 'creative-breakdown-product-cpm',
+          fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 5 },
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        start_time: 'asap',
+        end_time: '2099-07-01T00:00:00Z',
+        packages: [{
+          product_id: 'creative-breakdown-product',
+          pricing_option_id: 'creative-breakdown-product-cpm',
+          budget: 1000,
+          bid_price: 5,
+        }],
+      });
+      const mediaBuyId = created.media_buy_id as string;
+      const creativeId = await syncCreative(server);
+      const { result: buys } = await simulateCallTool(server, 'get_media_buys', {
+        account: ACCOUNT,
+        brand: BRAND,
+        status_filter: ['pending_creatives'],
+      });
+      const buy = (buys.media_buys as Array<{
+        media_buy_id: string;
+        packages: Array<{ package_id: string }>;
+      }>).find(candidate => candidate.media_buy_id === mediaBuyId);
+      const packageId = buy!.packages[0]!.package_id;
+      await simulateCallTool(server, 'sync_creatives', {
+        account: ACCOUNT,
+        brand: BRAND,
+        creatives: [{ creative_id: creativeId, name: 'Test Creative', format_kind: 'image', assets: {} }],
+        assignments: [{ creative_id: creativeId, package_id: packageId, media_buy_id: mediaBuyId }],
+      });
+
+      const { result: simulated } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: { media_buy_id: mediaBuyId, impressions: 100, clicks: 12, conversions: 8 },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(simulated.success).toBe(true);
+
+      const getCreativeRows = (result: Record<string, unknown>) => (
+        result.media_buy_deliveries as Array<{
+          by_package: Array<{ by_creative: Array<Record<string, unknown>> }>;
+        }>
+      )[0]!.by_package[0]!.by_creative;
+
+      const { result: impressionsOnly } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: [mediaBuyId],
+        end_date: '2099-01-01',
+        requested_metrics: ['impressions'],
+      });
+      const impressionRows = getCreativeRows(impressionsOnly);
+      expect(impressionRows).toHaveLength(1);
+      expect(impressionRows[0]).toMatchObject({
+        creative_id: expect.any(String),
+        impressions: 100,
+        spend: 0,
+      });
+      expect(impressionRows[0]).not.toHaveProperty('conversions');
+
+      const { result: conversionsOnly } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: [mediaBuyId],
+        end_date: '2099-01-01',
+        requested_metrics: ['conversions'],
+      });
+      const conversionRows = getCreativeRows(conversionsOnly);
+      expect(conversionRows).toHaveLength(1);
+      expect(conversionRows[0]).toMatchObject({
+        creative_id: impressionRows[0]!.creative_id,
+        impressions: 100,
+        spend: 0,
+        conversions: 8,
+      });
+    });
+
+    it('narrows metrics inside nested window totals and package rows', () => {
+      const narrowed = narrowDeliveryMetricObject({
+        impressions: 100,
+        spend: 5,
+        clicks: 12,
+        windows: [{
+          start: '2026-08-01T00:00:00Z',
+          end: '2026-08-08T00:00:00Z',
+          totals: { impressions: 60, spend: 3, clicks: 7, conversions: 4 },
+          by_package: [{ package_id: 'pkg-1', impressions: 60, spend: 3, clicks: 7, conversions: 4 }],
+        }],
+      }, new Set(['conversions']));
+
+      expect(narrowed).toEqual({
+        impressions: 100,
+        spend: 5,
+        windows: [{
+          start: '2026-08-01T00:00:00Z',
+          end: '2026-08-08T00:00:00Z',
+          totals: { impressions: 60, spend: 3, conversions: 4 },
+          by_package: [{ package_id: 'pkg-1', impressions: 60, spend: 3, conversions: 4 }],
+        }],
+      });
     });
 
     it('reconciles committed viewed-seconds distributions at package grain', async () => {

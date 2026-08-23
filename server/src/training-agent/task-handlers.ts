@@ -2158,7 +2158,7 @@ function narrowQuartileData(
   return Object.keys(narrowed).length > 0 ? narrowed : undefined;
 }
 
-function narrowDeliveryMetricObject(
+export function narrowDeliveryMetricObject(
   source: Record<string, unknown>,
   requested: ReadonlySet<string>,
 ): Record<string, unknown> {
@@ -2170,6 +2170,10 @@ function narrowDeliveryMetricObject(
     if (key === 'viewability' || key === 'quartile_data') continue;
     if (Array.isArray(value) && (key.startsWith('by_') || key === 'daily_breakdown' || key === 'windows')) {
       narrowed[key] = value.map(row => isRecord(row) ? narrowDeliveryMetricObject(row, requested) : row);
+      continue;
+    }
+    if (key === 'totals' && isRecord(value)) {
+      narrowed.totals = narrowDeliveryMetricObject(value, requested);
       continue;
     }
     narrowed[key] = value;
