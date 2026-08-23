@@ -25,31 +25,47 @@ async function gh(route) {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`${API}${route}`, { headers });
+  if (res.status === 404) return null;
   if (!res.ok) {
     throw new Error(`GitHub API ${route} -> HTTP ${res.status}`);
   }
   return res.json();
 }
 
+// A missing repo (renamed or removed) changes the org's shape, which is
+// itself drift the snapshot's claims depend on — report it, don't error.
+async function tagNames(repo) {
+  const tags = await gh(`/repos/${snapshot.org}/${repo}/tags?per_page=100`);
+  return tags === null ? null : tags.map((t) => t.name);
+}
+
 async function main() {
   const drift = [];
 
   for (const repo of snapshot.expectNoTags) {
-    const tags = await gh(`/repos/${snapshot.org}/${repo}/tags?per_page=5`);
-    if (tags.length > 0) {
-      const names = tags.map((t) => t.name).join(', ');
+    const names = await tagNames(repo);
+    if (names === null) {
       drift.push(
-        `- \`${snapshot.org}/${repo}\` now has tags (${names}); the "no tagged specification release" claim is stale.`
+        `- \`${snapshot.org}/${repo}\` was not found (renamed or removed); re-verify the snapshot's component claims.`
+      );
+    } else if (names.length > 0) {
+      drift.push(
+        `- \`${snapshot.org}/${repo}\` now has tags (${names.join(', ')}); the "no tagged specification release" claim is stale.`
       );
     }
   }
 
+  // Tag-list order is not guaranteed by the API, so compare the tag SET to
+  // the single expected tag instead of trusting element 0 to be newest.
   for (const [repo, expected] of Object.entries(snapshot.expectLatestTag)) {
-    const tags = await gh(`/repos/${snapshot.org}/${repo}/tags?per_page=5`);
-    const latest = tags[0]?.name;
-    if (latest !== expected) {
+    const names = await tagNames(repo);
+    if (names === null) {
       drift.push(
-        `- \`${snapshot.org}/${repo}\` latest tag is \`${latest ?? 'none'}\` (snapshot expected \`${expected}\`).`
+        `- \`${snapshot.org}/${repo}\` was not found (renamed or removed); re-verify the snapshot's component claims.`
+      );
+    } else if (names.length !== 1 || names[0] !== expected) {
+      drift.push(
+        `- \`${snapshot.org}/${repo}\` tags are now [${names.join(', ') || 'none'}] (snapshot expected exactly \`${expected}\`).`
       );
     }
   }
