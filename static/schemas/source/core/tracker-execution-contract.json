@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/tracker-execution-contract.json",
+  "title": "Tracker Execution Contract",
+  "description": "Seller-authored production commitment for first-class buyer-supplied tracker occurrences accepted by one effective product format option. Listed selectors are affirmative commitments. When complete is true, every unlisted combination is explicitly unsupported; when false, omissions are undeclared.",
+  "type": "object",
+  "properties": {
+    "complete": {
+      "type": "boolean",
+      "description": "Whether honored is the complete set. complete:true with an empty honored array explicitly supports no buyer-supplied trackers."
+    },
+    "honored": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/tracker-execution-selector.json" },
+      "uniqueItems": true,
+      "description": "Exact tracker/event selectors the seller accepts and initiates once per manifest instance for each logical event occurrence. selector_id and structural selector identity are each unique within this array."
+    }
+  },
+  "required": ["complete", "honored"],
+  "x-adcp-validation": {
+    "selector_id_unique": true,
+    "structural_selector_identity_unique": true,
+    "version_sets": "For one non-version selector identity, version sets must be identical or disjoint; overlapping unequal sets are invalid.",
+    "cardinality": "Each accepted manifest tracker instance is initiated exactly once in total for each logical event occurrence; identical URLs are not deduplicated."
+  },
+  "additionalProperties": false
+}

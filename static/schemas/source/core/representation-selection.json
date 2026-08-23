@@ -17,7 +17,8 @@
         "canonical_content": "RFC 8785 JCS of the manifest projection after removing exactly top-level $schema, representation_selection, creative_id, revision_id, name, tags, status, weight, placement_refs, placement_ids, and inputs properties; every other field, including unknown delivery fields, is included",
         "shared_projection": "apply the same exclusion list to the returned CreativeManifest and to its later CreativeAsset sync wrapper so library metadata never changes the digest",
         "selected_output_digest": "must equal lowercase-hex SHA-256 of derived-output canonical content before receiving-seller normalization",
-        "review_identity": "the receiving seller tracks selected_representation_id plus selected_output_digest separately from the source revision; changing either is an updated execution that follows ordinary re-review without minting a buyer revision"
+        "review_identity": "the receiving seller tracks (selected_representation_id, selected_output_digest, execution_vast_version-or-null, execution_daast_version-or-null) separately from the source revision; changing any member is an updated execution that follows ordinary re-review without minting a buyer revision",
+        "execution_version": "each execution version MUST equal the verified representation destination and later immutable package snapshot; a package mismatch requires re-resolution and ordinary re-review rather than silent rebinding"
       }
     },
     "spec": "docs/creative/representation-sets.mdx#deterministic-resolution"
@@ -44,6 +45,14 @@
       "type": "string",
       "pattern": "^sha256:[a-f0-9]{64}$",
       "description": "Digest of the derived seller-bound manifest projection, computed with RFC 8785 JCS after removing exactly top-level `$schema`, `representation_selection`, `creative_id`, `revision_id`, `name`, `tags`, `status`, `weight`, `placement_refs`, `placement_ids`, and `inputs`. Every other field, including unknown delivery fields, is included. The identical exclusion list applies to the returned CreativeManifest and its later CreativeAsset sync wrapper. A selected sync item cannot carry localization in this version. This is the review/execution fingerprint for the projection, distinct from revision_content_digest, which binds the complete source set."
+    },
+    "execution_vast_version": {
+      "$ref": "/schemas/enums/vast-version.json",
+      "description": "Exact VAST version verified for seller-assembled first-class VAST trackers. This is selection lineage and part of the execution review identity; it is not included in selected_output_digest."
+    },
+    "execution_daast_version": {
+      "$ref": "/schemas/enums/daast-version.json",
+      "description": "Exact DAAST version verified for seller-assembled first-class DAAST trackers. This is selection lineage and part of the execution review identity; it is not included in selected_output_digest."
     },
     "resolved_by": {
       "type": "string",

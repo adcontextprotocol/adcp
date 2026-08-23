@@ -1,0 +1,164 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/tracker-execution-selector.json",
+  "title": "Tracker Execution Selector",
+  "description": "One exact first-class manifest tracker selector in a seller production execution contract. AdCP 3.2 supports pixel_tracker, vast_tracker, and daast_tracker only; URL-slot selectors are not part of this union.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "selector_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "tracker_execution_selector",
+          "description": "Stable identifier unique within the materialized execution contract."
+        },
+        "asset_type": {
+          "type": "string",
+          "const": "pixel_tracker"
+        },
+        "event": { "$ref": "/schemas/enums/pixel-tracking-event.json" },
+        "method": {
+          "type": "string",
+          "const": "img",
+          "description": "AdCP 3.2 execution contracts cover image-pixel initiation only; JavaScript response evaluation is outside this contract version."
+        },
+        "custom_event_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required only when event is custom."
+        },
+        "execution_actor": {
+          "$ref": "/schemas/enums/tracker-execution-actor.json"
+        },
+        "firing_paths": {
+          "type": "array",
+          "items": { "$ref": "/schemas/enums/tracker-firing-path.json" },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Complete set of permitted initiation environments. Exactly one path is selected for each logical event occurrence."
+        }
+      },
+      "required": [
+        "selector_id",
+        "asset_type",
+        "event",
+        "method",
+        "execution_actor",
+        "firing_paths"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "event": { "const": "custom" } },
+            "required": ["event"]
+          },
+          "then": { "required": ["custom_event_name"] },
+          "else": { "not": { "required": ["custom_event_name"] } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "selector_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "tracker_execution_selector",
+          "description": "Stable identifier unique within the materialized execution contract."
+        },
+        "asset_type": {
+          "type": "string",
+          "const": "vast_tracker"
+        },
+        "vast_versions": {
+          "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/versions"
+        },
+        "vast_event": {
+          "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/event"
+        },
+        "target": {
+          "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/target"
+        },
+        "offset": {
+          "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/offset"
+        },
+        "execution_actor": {
+          "$ref": "/schemas/enums/tracker-execution-actor.json"
+        },
+        "firing_paths": {
+          "type": "array",
+          "items": { "$ref": "/schemas/enums/tracker-firing-path.json" },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Complete set of permitted initiation environments. Exactly one path is selected for each logical event occurrence."
+        }
+      },
+      "required": [
+        "selector_id",
+        "asset_type",
+        "vast_versions",
+        "vast_event",
+        "target",
+        "execution_actor",
+        "firing_paths"
+      ],
+      "allOf": [
+        { "$ref": "/schemas/core/vast-tracker-constraints.json" }
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "selector_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "tracker_execution_selector",
+          "description": "Stable identifier unique within the materialized execution contract."
+        },
+        "asset_type": {
+          "type": "string",
+          "const": "daast_tracker"
+        },
+        "daast_versions": {
+          "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/versions"
+        },
+        "daast_event": {
+          "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/event"
+        },
+        "target": {
+          "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/target"
+        },
+        "offset": {
+          "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/offset"
+        },
+        "execution_actor": {
+          "$ref": "/schemas/enums/tracker-execution-actor.json"
+        },
+        "firing_paths": {
+          "type": "array",
+          "items": { "$ref": "/schemas/enums/tracker-firing-path.json" },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Complete set of permitted initiation environments. Exactly one path is selected for each logical event occurrence."
+        }
+      },
+      "required": [
+        "selector_id",
+        "asset_type",
+        "daast_versions",
+        "daast_event",
+        "target",
+        "execution_actor",
+        "firing_paths"
+      ],
+      "allOf": [
+        { "$ref": "/schemas/core/daast-tracker-constraints.json" }
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "discriminator": { "propertyName": "asset_type" }
+}

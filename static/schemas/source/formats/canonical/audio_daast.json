@@ -13,8 +13,13 @@
       "description": "Default slots for audio_daast canonical. Buyer ships a DAAST tag (URL or inline XML, 1.0 or 1.1) plus an optional clickthrough URL. Tracking events are inherent to DAAST and don't require explicit slots."
     },
     "daast_version": {
-      "type": "string",
-      "enum": ["1.0", "1.1"]
+      "$ref": "/schemas/enums/daast-version.json",
+      "deprecated": true,
+      "description": "Deprecated one-element alias for `daast_versions`. Producers use either the singular legacy alias or the plural 3.2 field, never both."
+    },
+    "daast_versions": {
+      "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/versions",
+      "description": "Accepted DAAST versions for this format option. A tracker execution selector's daast_versions must be a nonempty subset of this set."
     },
     "duration_ms_range": {
       "type": "array",
@@ -42,5 +47,6 @@
       "type": "boolean"
     }
   },
+  "not": { "required": ["daast_version", "daast_versions"] },
   "additionalProperties": true
 }

@@ -1,0 +1,241 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/vast-tracker-constraints.json",
+  "title": "VAST Tracker Constraints",
+  "description": "Shared VAST TrackingEvents constraints used by tracker assets and production execution selectors. The target/event matrix is closed, progress alone carries offset, and selector version arrays may contain only versions in which the event exists.",
+  "type": "object",
+  "definitions": {
+    "event": {
+      "type": "string",
+      "enum": [
+        "creativeView",
+        "loaded",
+        "start",
+        "firstQuartile",
+        "midpoint",
+        "thirdQuartile",
+        "complete",
+        "mute",
+        "unmute",
+        "pause",
+        "resume",
+        "rewind",
+        "skip",
+        "playerExpand",
+        "playerCollapse",
+        "fullscreen",
+        "exitFullscreen",
+        "progress",
+        "acceptInvitation",
+        "adExpand",
+        "adCollapse",
+        "minimize",
+        "overlayViewDuration",
+        "otherAdInteraction",
+        "interactiveStart",
+        "close",
+        "closeLinear"
+      ]
+    },
+    "target": {
+      "type": "string",
+      "enum": ["linear", "non_linear", "companion"],
+      "default": "linear"
+    },
+    "offset": {
+      "type": "string",
+      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
+    },
+    "versions": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/vast-version.json" },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "properties": {
+    "vast_event": { "$ref": "#/definitions/event" },
+    "target": { "$ref": "#/definitions/target" },
+    "offset": { "$ref": "#/definitions/offset" },
+    "vast_versions": { "$ref": "#/definitions/versions" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "anyOf": [
+          { "not": { "required": ["target"] } },
+          {
+            "properties": { "target": { "const": "linear" } },
+            "required": ["target"]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "vast_event": {
+            "enum": [
+              "loaded",
+              "start",
+              "firstQuartile",
+              "midpoint",
+              "thirdQuartile",
+              "complete",
+              "mute",
+              "unmute",
+              "pause",
+              "resume",
+              "rewind",
+              "skip",
+              "playerExpand",
+              "playerCollapse",
+              "fullscreen",
+              "exitFullscreen",
+              "progress",
+              "otherAdInteraction",
+              "interactiveStart",
+              "closeLinear"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "target": { "const": "non_linear" } },
+        "required": ["target"]
+      },
+      "then": {
+        "properties": {
+          "vast_event": {
+            "enum": [
+              "creativeView",
+              "acceptInvitation",
+              "adExpand",
+              "adCollapse",
+              "minimize",
+              "overlayViewDuration",
+              "otherAdInteraction",
+              "close"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "target": { "const": "companion" } },
+        "required": ["target"]
+      },
+      "then": {
+        "properties": { "vast_event": { "const": "creativeView" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "vast_event": { "const": "progress" } },
+        "required": ["vast_event"]
+      },
+      "then": { "required": ["offset"] },
+      "else": { "not": { "required": ["offset"] } }
+    },
+    {
+      "if": {
+        "properties": {
+          "vast_event": { "enum": ["skip", "progress"] }
+        },
+        "required": ["vast_event"]
+      },
+      "then": {
+        "properties": {
+          "vast_versions": {
+            "items": { "enum": ["3.0", "4.0", "4.1", "4.2", "4.3"] }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "vast_event": { "const": "fullscreen" }
+        },
+        "required": ["vast_event"]
+      },
+      "then": {
+        "properties": {
+          "vast_versions": { "items": { "enum": ["2.0", "3.0"] } }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "vast_event": { "const": "exitFullscreen" } },
+        "required": ["vast_event"]
+      },
+      "then": {
+        "properties": {
+          "vast_versions": { "items": { "const": "3.0" } }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "vast_event": {
+            "enum": [
+              "playerExpand",
+              "playerCollapse",
+              "adExpand",
+              "adCollapse",
+              "minimize",
+              "overlayViewDuration",
+              "otherAdInteraction"
+            ]
+          }
+        },
+        "required": ["vast_event"]
+      },
+      "then": {
+        "properties": {
+          "vast_versions": {
+            "items": { "enum": ["4.0", "4.1", "4.2", "4.3"] }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "vast_event": { "const": "loaded" } },
+        "required": ["vast_event"]
+      },
+      "then": {
+        "properties": {
+          "vast_versions": { "items": { "enum": ["4.1", "4.2", "4.3"] } }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "vast_event": { "const": "interactiveStart" } },
+        "required": ["vast_event"]
+      },
+      "then": {
+        "properties": {
+          "vast_versions": { "items": { "enum": ["4.2", "4.3"] } }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "vast_event": { "const": "closeLinear" } },
+        "required": ["vast_event"]
+      },
+      "then": {
+        "properties": {
+          "vast_versions": {
+            "items": { "enum": ["3.0", "4.1", "4.2", "4.3"] }
+          }
+        }
+      }
+    }
+  ]
+}

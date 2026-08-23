@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/daast-tracker-constraints.json",
+  "title": "DAAST Tracker Constraints",
+  "description": "Shared DAAST TrackingEvents constraints used by tracker assets and production execution selectors. The target/event matrix is closed and progress alone carries offset.",
+  "type": "object",
+  "definitions": {
+    "event": {
+      "type": "string",
+      "enum": [
+        "creativeView",
+        "start",
+        "firstQuartile",
+        "midpoint",
+        "thirdQuartile",
+        "complete",
+        "mute",
+        "unmute",
+        "pause",
+        "resume",
+        "rewind",
+        "skip",
+        "progress",
+        "close"
+      ]
+    },
+    "target": {
+      "type": "string",
+      "enum": ["linear", "companion"],
+      "default": "linear"
+    },
+    "offset": {
+      "type": "string",
+      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
+    },
+    "versions": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/daast-version.json" },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "properties": {
+    "daast_event": { "$ref": "#/definitions/event" },
+    "target": { "$ref": "#/definitions/target" },
+    "offset": { "$ref": "#/definitions/offset" },
+    "daast_versions": { "$ref": "#/definitions/versions" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "anyOf": [
+          { "not": { "required": ["target"] } },
+          {
+            "properties": { "target": { "const": "linear" } },
+            "required": ["target"]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "daast_event": {
+            "enum": [
+              "creativeView",
+              "start",
+              "firstQuartile",
+              "midpoint",
+              "thirdQuartile",
+              "complete",
+              "mute",
+              "unmute",
+              "pause",
+              "resume",
+              "rewind",
+              "skip",
+              "progress",
+              "close"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "target": { "const": "companion" } },
+        "required": ["target"]
+      },
+      "then": {
+        "properties": { "daast_event": { "const": "creativeView" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "daast_event": { "const": "progress" } },
+        "required": ["daast_event"]
+      },
+      "then": { "required": ["offset"] },
+      "else": { "not": { "required": ["offset"] } }
+    }
+  ]
+}

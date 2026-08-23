@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/pixel-tracking-event.json",
+  "title": "Pixel Tracking Event",
+  "description": "Closed AdCP event vocabulary for renderer-fired pixel trackers. The viewability values mirror IAB OpenRTB Native event tracker types; `click` represents Native click trackers and `custom` is the explicit adopter-defined extension point.",
+  "type": "string",
+  "enum": [
+    "impression",
+    "viewable_mrc_50",
+    "viewable_mrc_100",
+    "viewable_video_50",
+    "audible_video_complete",
+    "click",
+    "custom"
+  ]
+}
