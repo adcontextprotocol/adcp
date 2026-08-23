@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/geo-place-support.json",
+  "title": "Geographic Place System Support",
+  "description": "Declares exact country-to-place-type support plus catalog resolution and version metadata for one place identifier system. The country map avoids falsely implying a Cartesian product of countries and types.",
+  "type": "object",
+  "properties": {
+    "countries": {
+      "type": "object",
+      "description": "Supported place types keyed by ISO 3166-1 alpha-2 country. Only explicitly listed country/type pairs are supported.",
+      "propertyNames": {
+        "pattern": "^[A-Z]{2}$"
+      },
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/geo-place-type.json"
+        },
+        "minItems": 1,
+        "uniqueItems": true
+      },
+      "minProperties": 1
+    },
+    "catalog": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/geo-place-catalog-capability.json"
+    }
+  },
+  "required": [
+    "countries",
+    "catalog"
+  ],
+  "additionalProperties": false
+}

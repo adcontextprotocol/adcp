@@ -260,6 +260,22 @@ place-type and catalog-version arrays must be subsets of the corresponding
 product support arrays. Unrequested object fields and numeric seller limits do
 not participate. Missing or unknown requirements do not match.
 
+For country inclusion, country exclusion, and proximity targeting, Product
+support may disclose `max_values_per_package`. Country support uses either
+legacy `true` or `{ "max_values_per_package": N }`; proximity support places
+the limit alongside its supported methods and transport modes. The numeric
+limit never belongs in `required_overlay_support`. It applies independently to
+one targeting field on one package and is not a value allowlist,
+media-buy-wide constraint, or inventory promise. A create or update that
+exceeds the limit fails atomically with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) and identifies
+the overflowing targeting field.
+
+Although numeric limits do not participate in requirement matching, every
+returned Product's accepted effective targeting must satisfy the limits it
+discloses. A candidate whose concrete `targeting_overlay` exceeds a maximum is
+excluded unless the seller returns a distinct configured Product with a
+disclosed, compliant targeting modification.
+
 Support guarantees the ability to select a value subject to disclosed limits;
 it does not guarantee inventory or forecast every possible value. Forecasts
 returned when only future support was requested describe the product's
@@ -1541,12 +1557,11 @@ The rejection arm carries no `products`, `proposals`, `incomplete`, `filter_diag
 
 ```json
 {
-  "status": { "state": "completed" },
+  "status": { "state": "TASK_STATE_COMPLETED" },
   "artifacts": [
     {
       "parts": [
         {
-          "kind": "data",
           "data": {
             "status": "rejected",
             "reason": "The requested budget is below the minimum for this inventory."
@@ -1822,17 +1837,17 @@ Response (200 OK):
 
 #### Immediate Completion (Most Common)
 
-```json
-POST /api/a2a
+Send the profile URI in `A2A-Extensions` and use the structured invocation body:
 
+```json
 {
   "message": {
-    "role": "user",
+    "messageId": "msg-get-products-001",
+    "role": "ROLE_USER",
     "parts": [{
-      "kind": "data",
       "data": {
         "skill": "get_products",
-        "parameters": {
+        "input": {
           "idempotency_key": "550e8400-e29b-41d4-a716-446655441034",
           "buying_mode": "brief",
           "brief": "CTV inventory for sports audience",
@@ -1842,23 +1857,24 @@ POST /api/a2a
     }]
   }
 }
+```
 
-Response (200 OK):
+The non-streaming `SendMessage` response selects its `task` branch. The Task is
+completed and carries the direct AdCP response in its artifact:
+
+```json
 {
-  "id": "task_123",
-  "contextId": "ctx_456",
-  "artifact": {
-    "kind": "data",
-    "data": {
-      "products": [...]
-    }
-  },
-  "status": {
-    "state": "completed",
-    "message": {
-      "role": "agent",
-      "parts": [{ "text": "Found 3 products matching your requirements" }]
-    }
+  "task": {
+    "id": "a2a-task-123",
+    "contextId": "ctx_456",
+    "status": { "state": "TASK_STATE_COMPLETED" },
+    "artifacts": [{
+      "artifactId": "adcp-result",
+      "parts": [
+        { "text": "Found 3 products matching your requirements" },
+        { "data": { "status": "completed", "cache_scope": "account", "products": [] } }
+      ]
+    }]
   }
 }
 ```
@@ -1868,134 +1884,142 @@ Response (200 OK):
 Real-time updates via SSE when clarification is needed:
 
 ```json
-// Initial response
 {
-  "id": "task_789",
-  "contextId": "ctx_123",
-  "status": {
-    "state": "input-required",
-    "message": {
-      "role": "agent",
-      "parts": [
-        { "text": "I need a bit more information. What's your budget range and campaign duration?" },
-        {
-          "data": {
-            "reason": "CLARIFICATION_NEEDED",
-            "suggestions": ["$50K-$100K", "1 month", "Q1 2024"]
+  "task": {
+    "id": "task_789",
+    "contextId": "ctx_123",
+    "status": {
+      "state": "TASK_STATE_INPUT_REQUIRED",
+      "message": {
+        "messageId": "msg-clarification-001",
+        "taskId": "task_789",
+        "contextId": "ctx_123",
+        "role": "ROLE_AGENT",
+        "parts": [
+          { "text": "I need a bit more information. What's your budget range and campaign duration?" },
+          {
+            "data": {
+              "reason": "CLARIFICATION_NEEDED",
+              "suggestions": ["$50K-$100K", "1 month", "Q1 2024"]
+            }
           }
-        }
-      ]
-    }
-  }
-}
-
-// Send follow-up
-POST /api/a2a
-
-{
-  "contextId": "ctx_123",
-  "message": {
-    "role": "user",
-    "parts": [{ "text": "Budget is $75K for a 3-week campaign in March" }]
-  }
-}
-
-// SSE update: task completed
-{
-  "id": "task_789",
-  "contextId": "ctx_123",
-  "artifact": {
-    "kind": "data",
-    "data": { "products": [...] }
-  },
-  "status": {
-    "state": "completed",
-    "message": {
-      "role": "agent",
-      "parts": [{ "text": "Perfect! Found 5 products within your budget" }]
+        ]
+      }
     }
   }
 }
 ```
 
-#### Complex Search (With Webhook and Polling)
-
-For A2A, push notifications use the transport-level `configuration.pushNotificationConfig` field. Do not put snake_case `push_notification_config` inside the skill parameters. The A2A task id remains valid for task polling.
+Send a new activated profile invocation in the same context, with the refined typed request:
 
 ```json
-POST /api/a2a
-
 {
   "message": {
-    "role": "user",
+    "messageId": "msg-get-products-002",
+    "taskId": "task_789",
+    "contextId": "ctx_123",
+    "role": "ROLE_USER",
     "parts": [{
-      "kind": "data",
       "data": {
         "skill": "get_products",
-        "parameters": {
+        "input": {
+          "buying_mode": "brief",
+          "brief": "CTV sports inventory with a $75K budget for three weeks in March"
+        }
+      }
+    }]
+  }
+}
+```
+
+The resulting Task uses the same completed-artifact mapping as the immediate response:
+
+```json
+{
+  "task": {
+    "id": "task_789",
+    "contextId": "ctx_123",
+    "status": { "state": "TASK_STATE_COMPLETED" },
+    "artifacts": [{
+      "artifactId": "adcp-result",
+      "parts": [
+        { "text": "Found 5 products within your budget" },
+        { "data": { "status": "completed", "cache_scope": "account", "products": [] } }
+      ]
+    }]
+  }
+}
+```
+
+#### Complex Search (AdCP Submitted and Polling)
+
+Activate the [AdCP A2A Profile Extension v3](/docs/building/by-layer/L0/a2a-profile-extension) on the request:
+
+```http
+POST /api/a2a HTTP/1.1
+A2A-Version: 1.0
+A2A-Extensions: https://adcontextprotocol.org/extensions/adcp/v3
+Content-Type: application/json
+```
+
+```json
+{
+  "message": {
+    "messageId": "msg-get-products-003",
+    "role": "ROLE_USER",
+    "parts": [{
+      "data": {
+        "skill": "get_products",
+        "input": {
           "idempotency_key": "550e8400-e29b-41d4-a716-446655441035",
           "buying_mode": "brief",
-          "brief": "Premium inventory across all formats for luxury automotive brand",
+          "brief": "Premium inventory across all formats for a luxury automotive brand",
           "brand": { "domain": "acmecorp.com" }
         }
       }
     }]
-  },
-  "configuration": {
-    "pushNotificationConfig": {
-      "url": "https://buyer.com/webhooks/a2a/get_products",
-      "authentication": {
-        "schemes": ["bearer"],
-        "credentials": "secret_token_32_chars"
+  }
+}
+```
+
+If custom curation is queued, the A2A invocation is still complete. The AdCP Submitted response and its durable handle are inside the artifact DataPart:
+
+```json
+{
+  "task": {
+    "id": "a2a-task-456",
+    "contextId": "ctx_789",
+    "status": { "state": "TASK_STATE_COMPLETED" },
+    "artifacts": [{
+      "artifactId": "adcp-result",
+      "parts": [{
+        "data": {
+          "status": "submitted",
+          "task_id": "adcp-task-789",
+          "message": "Custom curation queued; typical turnaround 10-30 minutes"
+        }
+      }]
+    }]
+  }
+}
+```
+
+Later, send a fresh activated invocation of `get_task_status`. Do not poll `a2a-task-456`; it identifies the already-completed transport invocation.
+
+```json
+{
+  "message": {
+    "messageId": "msg-get-products-poll-001",
+    "role": "ROLE_USER",
+    "parts": [{
+      "data": {
+        "skill": "get_task_status",
+        "input": {
+          "task_id": "adcp-task-789",
+          "include_result": true
+        }
       }
-    }
-  }
-}
-
-Response (200 OK):
-{
-  "id": "task_456",
-  "contextId": "ctx_789",
-  "status": {
-    "state": "submitted",
-    "message": {
-      "role": "agent",
-      "parts": [
-        { "text": "Custom curation queued; typical turnaround 10-30 minutes" },
-        {
-          "data": {
-            "estimated_completion": "2025-01-22T10:30:00Z"
-          }
-        }
-      ]
-    }
-  }
-}
-
-// Later, poll the A2A task, or receive webhook POST to https://buyer.com/webhooks/a2a/get_products
-{
-  "id": "task_456",
-  "contextId": "ctx_789",
-  "artifact": {
-    "kind": "data",
-    "data": {
-      "products": [...]
-    }
-  },
-  "status": {
-    "state": "completed",
-    "message": {
-      "role": "agent",
-      "parts": [
-        { "text": "Found 12 premium products across all formats" },
-        {
-          "data": {
-            "products": [...]
-          }
-        }
-      ]
-    },
-    "timestamp": "2025-01-22T10:30:00Z"
+    }]
   }
 }
 ```
@@ -2010,7 +2034,7 @@ Response (200 OK):
 | `completed` | Search finished successfully | Process the product results |
 | `input-required` | Need clarification on the brief | Answer the question and continue |
 | `working` | Searching across multiple sources | Wait on the open connection / transport progress stream |
-| `submitted` | Custom curation queued | Poll `get_task_status` (legacy `tasks/get`) with `task_id`; also wait for webhook notification if `push_notification_config` / A2A `configuration.pushNotificationConfig` was accepted |
+| `submitted` | Custom curation queued | Poll `get_task_status` with the AdCP `task_id`; on MCP, the seller may advertise the legacy AdCP `tasks/get` alias |
 | `rejected` | Seller understood the brief but deliberately declined it | Read the sanitized reason; revise and resubmit only when `suggestions[]` offers a recovery path |
 | `failed` | Search couldn't complete | Check error message, adjust brief |
 

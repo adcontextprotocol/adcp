@@ -1,0 +1,100 @@
+---
+title: Audio Ads
+description: "Canonical hosted-audio and DAAST creative contracts for AdCP 3.2."
+"og:title": "AdCP — Audio Ads"
+testable: true
+---
+
+AdCP separates hosted audio bytes (`audio_hosted`) from DAAST tag delivery (`audio_daast`). Streaming, podcast, host-read, and broadcast products narrow these canonicals with production, duration, and slot parameters.
+
+## Hosted audio
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/product-format-declaration.json",
+  "format_option_id": "streaming_audio_30s",
+  "format_kind": "audio_hosted",
+  "params": {
+    "duration_ms_exact": 30000,
+    "audio_codecs": ["mp3", "aac"],
+    "min_bitrate_kbps": 128,
+    "loudness_lufs": -16,
+    "loudness_tolerance_db": 2,
+    "true_peak_dbfs": -2,
+    "asset_source": "buyer_uploaded",
+    "slots": [
+      { "asset_group_id": "audio_main", "asset_type": "audio", "required": true },
+      { "asset_group_id": "companion_image", "asset_type": "image", "required": false },
+      { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+    ]
+  }
+}
+```
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/creative-manifest.json",
+  "format_kind": "audio_hosted",
+  "assets": {
+    "audio_main": {
+      "asset_type": "audio",
+      "url": "https://cdn.acmeoutdoor.example/trail-pro-30s.mp3",
+      "duration_ms": 30000,
+      "container_format": "mp3",
+      "bitrate_kbps": 192,
+      "loudness_lufs": -16,
+      "true_peak_dbfs": -2
+    }
+  }
+}
+```
+
+## Host-read or synthesized audio
+
+When the publisher or seller produces the final audio, declare the source and the input slots explicitly:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/product-format-declaration.json",
+  "format_kind": "audio_hosted",
+  "params": {
+    "duration_ms_exact": 60000,
+    "asset_source": "publisher_host_recorded",
+    "buyer_asset_acceptance": "rejected",
+    "slots": [
+      { "asset_group_id": "script", "asset_type": "text", "required": true },
+      { "asset_group_id": "creative_brief", "asset_type": "brief", "required": false }
+    ]
+  }
+}
+```
+
+The seller/publisher production runtime may render later. If it exposes a pre-build or preview operation, it advertises a matching creative capability.
+
+## Loudness requirements
+
+Loudness constraints describe the source asset a buyer supplies. AdCP's practical reference profile for audio advertisements and interstitials is **-16 LUFS with a ±2 dB tolerance**, based on operator guidance for reusable radio and streaming assets. A format or publisher may declare a different target for its distribution chain, and that declared target is authoritative.
+
+| Distribution context | Integrated loudness | Tolerance | Guidance |
+|---|---:|---:|---|
+| Audio advertisement source asset | -16 LUFS | ±2 dB | AdCP reference profile based on operator guidance |
+| Assorted online content and interstitial distribution | -18 LUFS | Use the published profile | AES TD1008 distribution recommendation |
+| Publisher- or platform-specific audio | Declared by the format | Declared by the format | Use the product's accepted distribution target |
+| European broadcast chain | Declared by the broadcaster | Declared by the broadcaster | EBU R128 may prescribe a different programme target and additional normalization practices |
+
+[AES TD1008](https://aes.org/wp-content/uploads/2024/01/20210924_TD1008_v3.13.pdf) recommends -18 LUFS for assorted online content and interstitial distribution; it does not define AdCP's -16 LUFS ±2 dB source-production profile. LUFS and LKFS are identical units under ITU-R BS.1770, so a value written in LKFS does not need conversion before comparison with `loudness_lufs`. This unit equivalence does not make AES TD1008 and EBU R128 the same delivery profile; the applicable format or publisher target still governs.
+
+The same constraints can appear in two protocol shapes:
+
+- Canonical `audio_hosted` declarations use `params.loudness_lufs`, `params.loudness_tolerance_db`, and `params.true_peak_dbfs`.
+- Legacy named formats put the corresponding fields in the audio slot's `requirements` object.
+
+If both shapes describe the same accepted format, the canonical format parameter governs for each duplicated loudness constraint. Producers should keep the projection aligned, and consumers should not combine the two targets into a wider range. If dual-emitted legacy requirements conflict with the canonical parameters, SDKs MUST prefer the canonical declaration, surface `FORMAT_DECLARATION_DIVERGENT` in the response `errors[]`, and MUST NOT silently discard the conflict. The manifest asset's `loudness_lufs` and `true_peak_dbfs` report the delivered file's measured properties; they do not override the product requirements.
+
+Platform normalization happens after source-asset validation. Digital streaming and SSAI platforms may normalize or gain-adjust audio during insertion, but that does not waive the declared source requirement. Terrestrial broadcast chains commonly apply automatic gain control or other playout normalization; there, the declared loudness remains production guidance and the broadcaster's distribution target remains authoritative.
+
+## DAAST
+
+Use `audio_daast` with a required `daast` asset slot for third-party tag delivery. DAAST event tracking belongs in the tag; non-DAAST companion or impression trackers use declared canonical slots.
+
+See [Canonical formats](/dist/docs/3.2.0-beta.3/creative/canonical-formats), [Radio](/dist/docs/3.2.0-beta.3/creative/channels/radio), [Broadcast](/dist/docs/3.2.0-beta.3/creative/channels/broadcast), and [`list_transformers`](/dist/docs/3.2.0-beta.3/creative/task-reference/list_transformers).

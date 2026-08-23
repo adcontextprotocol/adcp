@@ -1,0 +1,415 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/targeting-overlay-support.json",
+  "title": "Targeting Overlay Support",
+  "description": "Product-scoped package targeting dimensions that may be supplied or changed after discovery. This is the seller response shape and may disclose seller limits such as max_values_per_package and max_packages. Product.overlay_support is the binding selectable-targeting contract: presence means the seller can apply protocol-valid values within the declared systems, countries, values, types, versions, and limits. Inherent product coverage alone does not satisfy a future-support requirement. Support does not guarantee inventory or a value-specific forecast before values are supplied; fixed prices and floors remain binding for supported selections. geo_regions and geo_regions_exclude are independent: structured support either exhaustively declares every value active in the seller's support snapshot for a country or lists the exact finite selectable subset. Buyer minimums use targeting-overlay-requirements.json. A requirement value of true matches true or any valid support object; an object requirement matches true or a containing support object. Every valid structured support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Unrequested object fields and numeric seller limits do not participate in matching.",
+  "type": "object",
+  "definitions": {
+    "supported": {
+      "type": "boolean",
+      "const": true
+    },
+    "metroSupport": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/supported"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "systems": {
+              "type": "array",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/metro-system.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "max_values_per_package": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_packages": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Optional maximum number of independently targeted packages the seller will create from this configured product."
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+            }
+          },
+          "required": [
+            "systems"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "placeCatalogSupport": {
+      "type": "object",
+      "description": "Selectable country/type pairs and catalog versions for one identifier system.",
+      "properties": {
+        "countries": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Z]{2}$"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/geo-place-type.json"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "minProperties": 1
+        },
+        "current_version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Version applied when a later package overlay omits system_version. Must be present in system_versions."
+        },
+        "system_versions": {
+          "type": "array",
+          "description": "Exact catalog versions selectable on later package overlays.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+        }
+      },
+      "required": [
+        "countries",
+        "current_version",
+        "system_versions"
+      ],
+      "additionalProperties": false,
+      "x-adcp-validation": {
+        "member_of": {
+          "field": "current_version",
+          "array_field": "system_versions"
+        },
+        "description": "JSON Schema draft-07 cannot express scalar membership in a sibling array; conformance tooling MUST verify current_version is present in system_versions."
+      }
+    },
+    "placeSupport": {
+      "type": "object",
+      "description": "Binding permission to select named-place values later, keyed first by identifier system and then by country to avoid namespace and place-type collisions.",
+      "properties": {
+        "systems": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/geo-place-system.json"
+          },
+          "additionalProperties": {
+            "$ref": "#/definitions/placeCatalogSupport"
+          },
+          "minProperties": 1
+        },
+        "max_values_per_package": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_packages": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional maximum number of independently place-targeted packages the seller will create from this configured product."
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+        }
+      },
+      "required": [
+        "systems"
+      ],
+      "additionalProperties": false
+    },
+    "keywordSupport": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/supported"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "supported_match_types": {
+              "type": "array",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/match-type.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+            }
+          },
+          "required": [
+            "supported_match_types"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "browserSupport": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/supported"
+        },
+        {
+          "type": "object",
+          "description": "Canonical browser families that may be selected on packages later. This is executable targeting capability, not a guarantee of inventory for every family.",
+          "properties": {
+            "families": {
+              "type": "array",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/browser-family.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+            }
+          },
+          "required": [
+            "families"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "properties": {
+    "geo_countries": {
+      "$ref": "#/definitions/supported"
+    },
+    "geo_countries_exclude": {
+      "$ref": "#/definitions/supported"
+    },
+    "geo_regions": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/supported"
+        },
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/geo-region-support.json"
+        }
+      ]
+    },
+    "geo_regions_exclude": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/supported"
+        },
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/geo-region-support.json"
+        }
+      ]
+    },
+    "geo_metros": {
+      "$ref": "#/definitions/metroSupport"
+    },
+    "geo_metros_exclude": {
+      "$ref": "#/definitions/metroSupport"
+    },
+    "geo_places": {
+      "$ref": "#/definitions/placeSupport"
+    },
+    "geo_places_exclude": {
+      "$ref": "#/definitions/placeSupport"
+    },
+    "geo_postal_areas": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/supported"
+        },
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/positive-postal-area-support.json"
+        }
+      ]
+    },
+    "geo_postal_areas_exclude": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/supported"
+        },
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/positive-postal-area-support.json"
+        }
+      ]
+    },
+    "geo_proximity": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/supported"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "radius": {
+              "$ref": "#/definitions/supported"
+            },
+            "travel_time": {
+              "$ref": "#/definitions/supported"
+            },
+            "geometry": {
+              "$ref": "#/definitions/supported"
+            },
+            "transport_modes": {
+              "type": "array",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/transport-mode.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "radius"
+              ]
+            },
+            {
+              "required": [
+                "travel_time"
+              ]
+            },
+            {
+              "required": [
+                "geometry"
+              ]
+            },
+            {
+              "required": [
+                "transport_modes"
+              ]
+            }
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "daypart_targets": {
+      "$ref": "#/definitions/supported"
+    },
+    "audience_include": {
+      "$ref": "#/definitions/supported"
+    },
+    "audience_exclude": {
+      "$ref": "#/definitions/supported"
+    },
+    "signal_targeting_groups": {
+      "$ref": "#/definitions/supported"
+    },
+    "demographics": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/supported"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "age": {
+              "$ref": "#/definitions/supported"
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+            }
+          },
+          "required": [
+            "age"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "frequency_cap": {
+      "$ref": "#/definitions/supported"
+    },
+    "property_list": {
+      "$ref": "#/definitions/supported"
+    },
+    "property_list_exclude": {
+      "$ref": "#/definitions/supported"
+    },
+    "collection_list": {
+      "$ref": "#/definitions/supported"
+    },
+    "collection_list_exclude": {
+      "$ref": "#/definitions/supported"
+    },
+    "placement_selection": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/supported"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "max_values_per_package": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_packages": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+            }
+          },
+          "minProperties": 1,
+          "additionalProperties": false
+        }
+      ]
+    },
+    "age_restriction": {
+      "$ref": "#/definitions/supported"
+    },
+    "device_platform": {
+      "$ref": "#/definitions/supported"
+    },
+    "device_platform_exclude": {
+      "$ref": "#/definitions/supported"
+    },
+    "device_type": {
+      "$ref": "#/definitions/supported"
+    },
+    "device_type_exclude": {
+      "$ref": "#/definitions/supported"
+    },
+    "browser": {
+      "$ref": "#/definitions/browserSupport"
+    },
+    "browser_exclude": {
+      "$ref": "#/definitions/browserSupport"
+    },
+    "store_catchments": {
+      "$ref": "#/definitions/supported"
+    },
+    "language": {
+      "$ref": "#/definitions/supported"
+    },
+    "keyword_targets": {
+      "$ref": "#/definitions/keywordSupport"
+    },
+    "negative_keywords": {
+      "$ref": "#/definitions/keywordSupport"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+    }
+  },
+  "minProperties": 1,
+  "additionalProperties": true
+}

@@ -1,0 +1,310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/mcp/2026-07-28/media-buy/list-creative-formats-request.json",
+  "title": "List Creative Formats Request",
+  "deprecated": true,
+  "x-deprecated-in": "3.2.0",
+  "description": "**DEPRECATED in 3.2.** Compatibility request for legacy named-format discovery. Sales agents expose purchasable canonical declarations on get_products `Product.format_options[]`; publisher acceptance comes from adagents.json `formats[]`; creative agents advertise build/validation/preview capabilities on get_adcp_capabilities `creative.supported_formats[]`.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    }
+  ],
+  "properties": {
+    "format_ids": {
+      "type": "array",
+      "deprecated": true,
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Return only these specific named-format IDs (for example, from a 3.x get_products response). Use canonical-format discovery in 4.0.",
+      "items": {
+        "$ref": "#/$defs/external:core~1format-id.json"
+      },
+      "minItems": 1
+    },
+    "asset_types": {
+      "type": "array",
+      "description": "Filter to formats that include these asset types. For third-party tags, search for 'html' or 'javascript'. For published-post reference formats, search for 'published_post'. E.g., ['image', 'text'] returns formats with images and text, ['javascript'] returns formats accepting JavaScript tags.",
+      "items": {
+        "$ref": "#/$defs/external:enums~1asset-content-type.json"
+      },
+      "minItems": 1
+    },
+    "max_width": {
+      "type": "integer",
+      "description": "Maximum width in pixels (inclusive). Returns formats where ANY render has width <= this value. For multi-render formats, matches if at least one render fits."
+    },
+    "max_height": {
+      "type": "integer",
+      "description": "Maximum height in pixels (inclusive). Returns formats where ANY render has height <= this value. For multi-render formats, matches if at least one render fits."
+    },
+    "min_width": {
+      "type": "integer",
+      "description": "Minimum width in pixels (inclusive). Returns formats where ANY render has width >= this value."
+    },
+    "min_height": {
+      "type": "integer",
+      "description": "Minimum height in pixels (inclusive). Returns formats where ANY render has height >= this value."
+    },
+    "is_responsive": {
+      "type": "boolean",
+      "description": "Filter for responsive formats that adapt to container size. When true, returns formats without fixed dimensions."
+    },
+    "name_search": {
+      "type": "string",
+      "description": "Search for formats by name (case-insensitive partial match)"
+    },
+    "publisher_domain": {
+      "type": "string",
+      "deprecated": true,
+      "description": "Deprecated compatibility filter for older 3.x callers. A compatibility implementation MAY project publisher-origin or community-catalog declarations obtained through the registry publisher lookup, but MUST NOT synthesize a publisher catalog from seller products. New callers use `GET /api/registry/publisher?domain=...` for publisher acceptance and `get_products` for this seller's deliverability. The pattern below is a syntactic floor, not an SSRF guard.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "property_id": {
+      "$ref": "#/$defs/external:core~1property-id.json",
+      "description": "Filter to formats supported on the named property within the publisher's catalog. Resolves to a property in the publisher's `adagents.json` `properties[]`; the agent returns only `formats[]` entries whose `applies_to_property_ids` includes this property (or entries with no scope, which apply to all properties). Typically used in combination with `publisher_domain`."
+    },
+    "wcag_level": {
+      "$ref": "#/$defs/external:enums~1wcag-level.json",
+      "description": "Filter to formats that meet at least this WCAG conformance level (A < AA < AAA)"
+    },
+    "disclosure_positions": {
+      "type": "array",
+      "description": "Filter to formats that support all of these disclosure positions. When a format has disclosure_capabilities, match against those positions. Otherwise fall back to supported_disclosure_positions. Use to find formats compatible with a brief's compliance requirements.",
+      "items": {
+        "$ref": "#/$defs/external:enums~1disclosure-position.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "disclosure_persistence": {
+      "type": "array",
+      "description": "Filter to formats where each requested persistence mode is supported by at least one position in disclosure_capabilities. Different positions may satisfy different modes. Use to find formats compatible with jurisdiction-specific persistence requirements (e.g., continuous for EU AI Act).",
+      "items": {
+        "$ref": "#/$defs/external:enums~1disclosure-persistence.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "output_format_ids": {
+      "type": "array",
+      "description": "Filter to formats whose output_format_ids includes any of these format IDs. Returns formats that can produce these outputs — inspect each result's input_format_ids to see what inputs they accept.",
+      "items": {
+        "$ref": "#/$defs/external:core~1format-id.json"
+      },
+      "minItems": 1
+    },
+    "input_format_ids": {
+      "type": "array",
+      "description": "Filter to formats whose input_format_ids includes any of these format IDs. Returns formats that accept these creatives as input — inspect each result's output_format_ids to see what they can produce.",
+      "items": {
+        "$ref": "#/$defs/external:core~1format-id.json"
+      },
+      "minItems": 1
+    },
+    "pagination": {
+      "$ref": "#/$defs/external:core~1pagination-request.json"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "title": "AdCP Version Envelope",
+      "description": "Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into every AdCP request and response schema so the version semantics live in exactly one place. Distinct from `core/protocol-envelope.json`, which wraps responses at the transport layer (context_id / task_id / status / payload). This envelope is part of the payload itself.",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "examples": [
+            "3.0",
+            "3.1",
+            "3.1-beta",
+            "3.1-rc.1"
+          ]
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/format-id.json": {
+      "title": "Format Reference (Structured Object)",
+      "deprecated": true,
+      "description": "**DEPRECATED in 3.2.** Legacy named-format reference retained for 3.x compatibility. This JSON object — never a plain string — identifies a format by its declaring agent and local slug, and may carry legacy logical dimensions, pixel ratio, or duration parameters. New products and manifests use canonical `format_options`, `format_kind`, and `format_option_ref`; creative-agent build routing uses `creative.supported_formats[].capability_id`.",
+      "x-entity": "creative_format",
+      "type": "object",
+      "properties": {
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL of the agent that defines this format (e.g., 'https://creative.adcontextprotocol.org' for standard formats, or 'https://publisher.com/.well-known/adcp/sales' for custom formats). Callers comparing two `format-id` values MUST canonicalize `agent_url` per the AdCP URL canonicalization rules before treating two formats as the same. See docs/reference/url-canonicalization."
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Format identifier within the agent's namespace (e.g., 'display_static', 'video_hosted', 'audio_standard'). When used alone, references a template format. When combined with dimension/duration fields, creates a parameterized format ID for a specific variant."
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Width in pixels for visual formats. When specified, height must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Height in pixels for visual formats. When specified, width must also be specified. Both fields together create a parameterized format ID for dimension-specific variants."
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 1,
+          "description": "Duration in milliseconds for time-based formats (video, audio). When specified, creates a parameterized format ID. Omit to reference a template format without parameters."
+        },
+        "pixel_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Required intrinsic-pixel density for a parameterized visual format, expressed as intrinsic pixels per logical pixel. Requires `width` and `height`. Example: `{id: \"display_image\", width: 300, height: 250, pixel_ratio: 2}` identifies a 300×250 logical render supplied by a 600×500 image. Omit for the backward-compatible 1x variant."
+        }
+      },
+      "required": [
+        "agent_url",
+        "id"
+      ],
+      "additionalProperties": true,
+      "dependentRequired": {
+        "width": [
+          "height"
+        ],
+        "height": [
+          "width"
+        ],
+        "pixel_ratio": [
+          "width",
+          "height"
+        ]
+      }
+    },
+    "external:enums/asset-content-type.json": {
+      "title": "Asset Content Type",
+      "description": "Types of content that can be used as creative assets. Describes what KIND of content an asset contains (image, video, code, etc.), not where it displays.",
+      "type": "string",
+      "enum": [
+        "image",
+        "video",
+        "audio",
+        "text",
+        "markdown",
+        "html",
+        "css",
+        "javascript",
+        "zip",
+        "vast",
+        "daast",
+        "url",
+        "webhook",
+        "brief",
+        "catalog",
+        "published_post"
+      ]
+    },
+    "external:core/property-id.json": {
+      "title": "Property ID",
+      "description": "Identifier for a publisher property. Must be lowercase alphanumeric with underscores only.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "property",
+      "examples": [
+        "cnn_ctv_app",
+        "homepage",
+        "mobile_ios",
+        "instagram"
+      ]
+    },
+    "external:enums/wcag-level.json": {
+      "title": "WCAG Level",
+      "description": "Web Content Accessibility Guidelines conformance level",
+      "type": "string",
+      "enum": [
+        "A",
+        "AA",
+        "AAA"
+      ],
+      "enumDescriptions": {
+        "A": "Minimum level of conformance. Addresses the most basic accessibility barriers.",
+        "AA": "Addresses the most common barriers for disabled users. Required by most accessibility regulations.",
+        "AAA": "Highest level of conformance. Addresses the widest range of accessibility barriers."
+      }
+    },
+    "external:enums/disclosure-position.json": {
+      "title": "Disclosure Position",
+      "description": "Where a required disclosure should appear within a creative. Used by creative briefs to specify disclosure placement and by formats to declare which positions they can render.",
+      "type": "string",
+      "enum": [
+        "prominent",
+        "footer",
+        "audio",
+        "subtitle",
+        "overlay",
+        "end_card",
+        "pre_roll",
+        "companion"
+      ]
+    },
+    "external:enums/disclosure-persistence.json": {
+      "title": "Disclosure Persistence",
+      "description": "How long a disclosure must persist during content playback or display. Different jurisdictions and regulations require different persistence behaviors for AI-generated content labels. When multiple sources specify persistence for the same jurisdiction (e.g., brief and provenance), the most restrictive mode applies: continuous > initial > flexible.",
+      "type": "string",
+      "enum": [
+        "continuous",
+        "initial",
+        "flexible"
+      ],
+      "enumDescriptions": {
+        "continuous": "Disclosure must remain visible or audible throughout the entire content display duration. For video and audio, this means the full playback duration. For static formats (display, DOOH), this means the full display slot. For DOOH specifically, 'content duration' means the ad's display slot within the rotation, not the screen's full rotation cycle.",
+        "initial": "Disclosure must appear at the start of content for a minimum duration before it may be removed. Pair with min_duration_ms in render_guidance or creative brief to specify the required duration.",
+        "flexible": "Disclosure presence is sufficient; placement timing and duration are at the publisher's discretion"
+      }
+    },
+    "external:core/pagination-request.json": {
+      "title": "Pagination Request",
+      "description": "Standard cursor-based pagination parameters for list operations",
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Maximum number of items to return per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor from a previous response to fetch the next page"
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:core/context.json": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

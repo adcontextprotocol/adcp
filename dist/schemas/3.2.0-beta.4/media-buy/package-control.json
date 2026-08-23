@@ -1,0 +1,375 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/media-buy/package-control.json",
+  "title": "Package Control",
+  "description": "Operational controls for an existing package that remain inside its accepted commercial envelope. targeting_overlay is a complete replacement; keyword add/remove arrays are incremental, and the same keyword MUST NOT appear in both directions. Creative mutation, flight changes, new products, pricing changes, and billing-term changes require their dedicated lifecycle or a refined proposal.",
+  "type": "object",
+  "properties": {
+    "package_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "package"
+    },
+    "budget": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "daily_budget_cap": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "Replace this package's subordinate hard daily cap; null removes it. Numeric changes apply immediately with package spend already incurred in the shared current cap day counted."
+    },
+    "min_spend_target": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "impressions": {
+      "type": "number",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/pacing.json"
+    },
+    "bidding": {
+      "anyOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/bidding-policy.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "paused": {
+      "type": "boolean"
+    },
+    "canceled": {
+      "type": "boolean",
+      "const": true,
+      "description": "Exercise an already-accepted unilateral package cancellation right. If seller agreement is required, refine the accepted proposal with change_kind amendment; cancellation proposals terminate the whole MediaBuy."
+    },
+    "cancellation_reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "targeting_overlay": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/targeting.json",
+      "description": "Complete replacement for the package's prior targeting overlay, not a merge patch."
+    },
+    "catalog_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "x-entity": "catalog"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Replace the package's promoted catalogs with references previously managed through sync_catalogs."
+    },
+    "keyword_targets_add": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/keyword-target.json"
+      },
+      "minItems": 1
+    },
+    "keyword_targets_remove": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/keyword-target.json"
+      },
+      "minItems": 1
+    },
+    "negative_keywords_add": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/keyword-target.json"
+      },
+      "minItems": 1
+    },
+    "negative_keywords_remove": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/keyword-target.json"
+      },
+      "minItems": 1
+    },
+    "optimization_goals": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-optimization-goal.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "package_id"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "budget"
+      ]
+    },
+    {
+      "required": [
+        "daily_budget_cap"
+      ]
+    },
+    {
+      "required": [
+        "min_spend_target"
+      ]
+    },
+    {
+      "required": [
+        "impressions"
+      ]
+    },
+    {
+      "required": [
+        "pacing"
+      ]
+    },
+    {
+      "required": [
+        "bidding"
+      ]
+    },
+    {
+      "required": [
+        "paused"
+      ]
+    },
+    {
+      "required": [
+        "canceled"
+      ]
+    },
+    {
+      "required": [
+        "targeting_overlay"
+      ]
+    },
+    {
+      "required": [
+        "catalog_ids"
+      ]
+    },
+    {
+      "required": [
+        "keyword_targets_add"
+      ]
+    },
+    {
+      "required": [
+        "keyword_targets_remove"
+      ]
+    },
+    {
+      "required": [
+        "negative_keywords_add"
+      ]
+    },
+    {
+      "required": [
+        "negative_keywords_remove"
+      ]
+    },
+    {
+      "required": [
+        "optimization_goals"
+      ]
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "targeting_overlay"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "keyword_targets_add"
+              ]
+            },
+            {
+              "required": [
+                "keyword_targets_remove"
+              ]
+            },
+            {
+              "required": [
+                "negative_keywords_add"
+              ]
+            },
+            {
+              "required": [
+                "negative_keywords_remove"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "cancellation_reason"
+        ]
+      },
+      "then": {
+        "required": [
+          "canceled"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "canceled"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "budget"
+              ]
+            },
+            {
+              "required": [
+                "daily_budget_cap"
+              ]
+            },
+            {
+              "required": [
+                "min_spend_target"
+              ]
+            },
+            {
+              "required": [
+                "impressions"
+              ]
+            },
+            {
+              "required": [
+                "pacing"
+              ]
+            },
+            {
+              "required": [
+                "bidding"
+              ]
+            },
+            {
+              "required": [
+                "paused"
+              ]
+            },
+            {
+              "required": [
+                "targeting_overlay"
+              ]
+            },
+            {
+              "required": [
+                "catalog_ids"
+              ]
+            },
+            {
+              "required": [
+                "keyword_targets_add"
+              ]
+            },
+            {
+              "required": [
+                "keyword_targets_remove"
+              ]
+            },
+            {
+              "required": [
+                "negative_keywords_add"
+              ]
+            },
+            {
+              "required": [
+                "negative_keywords_remove"
+              ]
+            },
+            {
+              "required": [
+                "optimization_goals"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "keyword_identity_sets": {
+        "positive_add_remove": "disjoint_by_normalized_keyword_and_match_type",
+        "negative_add_remove": "disjoint_by_normalized_keyword_and_match_type",
+        "on_violation": "reject_before_mutation"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "creatives"
+        ]
+      },
+      {
+        "required": [
+          "creative_assignments"
+        ]
+      },
+      {
+        "required": [
+          "start_time"
+        ]
+      },
+      {
+        "required": [
+          "end_time"
+        ]
+      },
+      {
+        "required": [
+          "product_id"
+        ]
+      },
+      {
+        "required": [
+          "pricing_option_id"
+        ]
+      },
+      {
+        "required": [
+          "catalogs"
+        ]
+      }
+    ]
+  }
+}

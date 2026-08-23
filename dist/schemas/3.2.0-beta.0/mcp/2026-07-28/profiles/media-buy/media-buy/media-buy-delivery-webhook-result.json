@@ -1,0 +1,1366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/mcp/2026-07-28/profiles/media-buy/media-buy/media-buy-delivery-webhook-result.json",
+  "type": "object",
+  "properties": {
+    "notification_type": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "final",
+        "delayed",
+        "adjusted",
+        "window_update"
+      ]
+    },
+    "partial_data": {
+      "type": "boolean"
+    },
+    "unavailable_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "next_expected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reporting_period": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "attribution_window": {
+      "$ref": "#/$defs/external:core~1attribution-window.json"
+    },
+    "media_buy_deliveries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "media_buy_id": {
+            "type": "string",
+            "x-entity": "media_buy"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending_creatives",
+              "pending_start",
+              "pending",
+              "active",
+              "paused",
+              "completed",
+              "rejected",
+              "canceled",
+              "failed",
+              "reporting_delayed"
+            ]
+          },
+          "expected_availability": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "is_adjusted": {
+            "type": "boolean"
+          },
+          "is_final": {
+            "type": "boolean"
+          },
+          "finalized_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pricing_model": {
+            "$ref": "#/$defs/external:enums~1pricing-model.json"
+          },
+          "pacing_index": {
+            "type": "number",
+            "minimum": 0
+          },
+          "totals": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/external:core~1delivery-metrics.json"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "effective_rate": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "spend"
+                ],
+                "additionalProperties": true
+              }
+            ]
+          },
+          "by_package": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/external:core~1delivery-metrics.json"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "package_id": {
+                      "type": "string",
+                      "x-entity": "package"
+                    },
+                    "pacing_index": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "pricing_model": {
+                      "$ref": "#/$defs/external:enums~1pricing-model.json"
+                    },
+                    "rate": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "currency": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{3}$"
+                    },
+                    "delivery_status": {
+                      "$ref": "#/$defs/external:enums~1delivery-status.json"
+                    },
+                    "paused": {
+                      "type": "boolean"
+                    },
+                    "is_final": {
+                      "type": "boolean"
+                    },
+                    "finalized_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "measurement_window": {
+                      "type": "string",
+                      "maxLength": 50
+                    },
+                    "supersedes_window": {
+                      "type": "string",
+                      "maxLength": 50
+                    }
+                  },
+                  "required": [
+                    "spend"
+                  ],
+                  "additionalProperties": true
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "media_buy_id",
+          "status",
+          "totals",
+          "by_package"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:core~1error.json"
+      }
+    },
+    "sandbox": {
+      "type": "boolean"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "notification_type",
+    "reporting_period",
+    "currency",
+    "media_buy_deliveries"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/attribution-window.json": {
+      "type": "object",
+      "properties": {
+        "post_click": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1duration.json"
+            }
+          ]
+        },
+        "post_view": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1duration.json"
+            }
+          ]
+        },
+        "model": {
+          "$ref": "#/$defs/external:enums~1attribution-model.json"
+        }
+      },
+      "additionalProperties": true
+    },
+    "external:core/duration.json": {
+      "type": "object",
+      "properties": {
+        "interval": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "seconds",
+            "minutes",
+            "hours",
+            "days",
+            "campaign"
+          ]
+        }
+      },
+      "required": [
+        "interval",
+        "unit"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/attribution-model.json": {
+      "type": "string",
+      "enum": [
+        "last_touch",
+        "first_touch",
+        "linear",
+        "time_decay",
+        "data_driven"
+      ]
+    },
+    "external:enums/pricing-model.json": {
+      "type": "string",
+      "enum": [
+        "cpm",
+        "vcpm",
+        "cpc",
+        "cpcv",
+        "cpv",
+        "cpp",
+        "cpa",
+        "revenue_share",
+        "flat_rate",
+        "time"
+      ]
+    },
+    "external:core/delivery-metrics.json": {
+      "type": "object",
+      "properties": {
+        "impressions": {
+          "type": "number",
+          "minimum": 0
+        },
+        "spend": {
+          "type": "number",
+          "minimum": 0
+        },
+        "clicks": {
+          "type": "number",
+          "minimum": 0
+        },
+        "ctr": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "views": {
+          "type": "number",
+          "minimum": 0
+        },
+        "completed_views": {
+          "type": "number",
+          "minimum": 0
+        },
+        "completion_rate": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "conversions": {
+          "type": "number",
+          "minimum": 0
+        },
+        "conversion_value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "commissionable_value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "roas": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cost_per_acquisition": {
+          "type": "number",
+          "minimum": 0
+        },
+        "new_to_brand_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "leads": {
+          "type": "number",
+          "minimum": 0
+        },
+        "incremental_sales_lift": {
+          "type": "number",
+          "minimum": 0
+        },
+        "brand_lift": {
+          "type": "number",
+          "minimum": 0
+        },
+        "foot_traffic": {
+          "type": "number",
+          "minimum": 0
+        },
+        "conversion_lift": {
+          "type": "number",
+          "minimum": 0
+        },
+        "brand_search_lift": {
+          "type": "number",
+          "minimum": 0
+        },
+        "plays": {
+          "type": "number",
+          "minimum": 0
+        },
+        "by_event_type": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "event_type": {
+                "$ref": "#/$defs/external:enums~1event-type.json"
+              },
+              "event_source_id": {
+                "type": "string"
+              },
+              "count": {
+                "type": "number",
+                "minimum": 0
+              },
+              "value": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "event_type",
+              "count"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "grps": {
+          "type": "number",
+          "minimum": 0
+        },
+        "reach": {
+          "type": "number",
+          "minimum": 0
+        },
+        "reach_unit": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:enums~1reach-unit.json"
+            }
+          ]
+        },
+        "reach_window": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "cumulative",
+                "period",
+                "rolling"
+              ]
+            },
+            "period": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/external:core~1duration.json"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "period",
+                      "rolling"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "then": {
+                "required": [
+                  "period"
+                ]
+              }
+            }
+          ],
+          "additionalProperties": true
+        },
+        "frequency": {
+          "type": "number",
+          "minimum": 0
+        },
+        "quartile_data": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "q1_views": {
+              "type": "number",
+              "minimum": 0
+            },
+            "q2_views": {
+              "type": "number",
+              "minimum": 0
+            },
+            "q3_views": {
+              "type": "number",
+              "minimum": 0
+            },
+            "q4_views": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "dooh_metrics": {
+          "type": "object",
+          "properties": {
+            "loop_plays": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "screens_used": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "screen_time_seconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sov_achieved": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "calculation_notes": {
+              "type": "string"
+            },
+            "venue_breakdown": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "venue_id": {
+                    "type": "string"
+                  },
+                  "venue_name": {
+                    "type": "string"
+                  },
+                  "venue_type": {
+                    "type": "string"
+                  },
+                  "impressions": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "loop_plays": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "screens_used": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "venue_id",
+                  "impressions"
+                ],
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "viewability": {
+          "type": "object",
+          "properties": {
+            "vendor": {
+              "$ref": "#/$defs/external:core~1brand-ref.json"
+            },
+            "measurable_impressions": {
+              "type": "number",
+              "minimum": 0
+            },
+            "viewable_impressions": {
+              "type": "number",
+              "minimum": 0
+            },
+            "viewable_rate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "viewed_seconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "standard": {
+              "$ref": "#/$defs/external:enums~1viewability-standard.json"
+            }
+          },
+          "additionalProperties": true
+        },
+        "engagements": {
+          "type": "number",
+          "minimum": 0
+        },
+        "follows": {
+          "type": "number",
+          "minimum": 0
+        },
+        "saves": {
+          "type": "number",
+          "minimum": 0
+        },
+        "profile_visits": {
+          "type": "number",
+          "minimum": 0
+        },
+        "engagement_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cost_per_click": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cost_per_completed_view": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cpm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "downloads": {
+          "type": "number",
+          "minimum": 0
+        },
+        "units_sold": {
+          "type": "number",
+          "minimum": 0
+        },
+        "new_to_brand_units": {
+          "type": "number",
+          "minimum": 0
+        },
+        "by_action_source": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action_source": {
+                "$ref": "#/$defs/external:enums~1action-source.json"
+              },
+              "event_source_id": {
+                "type": "string"
+              },
+              "count": {
+                "type": "number",
+                "minimum": 0
+              },
+              "value": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "action_source",
+              "count"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "vendor_metric_values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1vendor-metric-value.json"
+          }
+        }
+      },
+      "additionalProperties": true,
+      "dependentRequired": {
+        "reach": [
+          "reach_unit"
+        ]
+      }
+    },
+    "external:enums/event-type.json": {
+      "type": "string",
+      "enum": [
+        "page_view",
+        "view_content",
+        "select_content",
+        "select_item",
+        "search",
+        "share",
+        "add_to_cart",
+        "remove_from_cart",
+        "viewed_cart",
+        "add_to_wishlist",
+        "initiate_checkout",
+        "add_payment_info",
+        "purchase",
+        "refund",
+        "lead",
+        "qualify_lead",
+        "close_convert_lead",
+        "disqualify_lead",
+        "complete_registration",
+        "subscribe",
+        "follow",
+        "content_view",
+        "watch_milestone",
+        "start_trial",
+        "app_install",
+        "app_launch",
+        "contact",
+        "schedule",
+        "donate",
+        "submit_application",
+        "custom"
+      ]
+    },
+    "external:enums/reach-unit.json": {
+      "type": "string",
+      "enum": [
+        "individuals",
+        "households",
+        "devices",
+        "accounts",
+        "cookies",
+        "custom"
+      ]
+    },
+    "external:core/brand-ref.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "industries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data_subject_contestation": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "email"
+              ]
+            }
+          ],
+          "additionalProperties": false
+        },
+        "brand_kit_override": {
+          "type": "object",
+          "properties": {
+            "logo": {
+              "$ref": "#/$defs/external:core~1assets~1image-asset.json"
+            },
+            "colors": {
+              "type": "object",
+              "properties": {
+                "primary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "secondary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "accent": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                }
+              },
+              "additionalProperties": true
+            },
+            "voice": {
+              "type": "string"
+            },
+            "tagline": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand"
+    },
+    "external:core/assets/image-asset.json": {
+      "type": "object",
+      "properties": {
+        "asset_type": {
+          "type": "string",
+          "const": "image"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pixel_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "format": {
+          "type": "string"
+        },
+        "alt_text": {
+          "type": "string",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "#/$defs/external:core~1provenance.json"
+        }
+      },
+      "required": [
+        "asset_type",
+        "url",
+        "width",
+        "height"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/provenance.json": {
+      "type": "object",
+      "properties": {
+        "digital_source_type": {
+          "$ref": "#/$defs/external:enums~1digital-source-type.json"
+        },
+        "synthetic_depiction": {
+          "type": "boolean"
+        },
+        "ai_tool": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "human_oversight": {
+          "type": "string",
+          "enum": [
+            "none",
+            "prompt_only",
+            "selected",
+            "edited",
+            "directed"
+          ]
+        },
+        "declared_by": {
+          "type": "object",
+          "properties": {
+            "agent_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "creator",
+                "advertiser",
+                "agency",
+                "platform",
+                "tool"
+              ]
+            }
+          },
+          "required": [
+            "role"
+          ]
+        },
+        "declared_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "created_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "c2pa": {
+          "type": "object",
+          "properties": {
+            "manifest_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": [
+            "manifest_url"
+          ]
+        },
+        "embedded_provenance": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "$ref": "#/$defs/external:enums~1embedded-provenance-method.json"
+              },
+              "standard": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "verify_agent": {
+                "type": "object",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  "feature_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "method",
+              "provider"
+            ]
+          }
+        },
+        "watermarks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "media_type": {
+                "$ref": "#/$defs/external:enums~1watermark-media-type.json"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "verify_agent": {
+                "type": "object",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  "feature_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "c2pa_action": {
+                "$ref": "#/$defs/external:enums~1c2pa-watermark-action.json"
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "media_type",
+              "provider"
+            ]
+          }
+        },
+        "disclosure": {
+          "type": "object",
+          "properties": {
+            "required": {
+              "type": "boolean"
+            },
+            "jurisdictions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "country": {
+                    "type": "string"
+                  },
+                  "region": {
+                    "type": "string"
+                  },
+                  "regulation": {
+                    "type": "string"
+                  },
+                  "label_text": {
+                    "type": "string"
+                  },
+                  "render_guidance": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "properties": {
+                      "persistence": {
+                        "$ref": "#/$defs/external:enums~1disclosure-persistence.json"
+                      },
+                      "min_duration_ms": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "positions": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/external:enums~1disclosure-position.json"
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      },
+                      "ext": {
+                        "$ref": "#/$defs/external:core~1ext.json"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "country",
+                  "regulation"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "required"
+          ]
+        },
+        "verification": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "verified_by": {
+                "type": "string"
+              },
+              "verified_time": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "authentic",
+                  "ai_generated",
+                  "ai_modified",
+                  "inconclusive"
+                ]
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "details_url": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "required": [
+              "verified_by",
+              "result"
+            ]
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      }
+    },
+    "external:enums/digital-source-type.json": {
+      "type": "string",
+      "enum": [
+        "digital_capture",
+        "digital_creation",
+        "trained_algorithmic_media",
+        "composite_with_trained_algorithmic_media",
+        "algorithmic_media",
+        "composite_capture",
+        "composite_synthetic",
+        "human_edits",
+        "data_driven_media"
+      ]
+    },
+    "external:enums/embedded-provenance-method.json": {
+      "type": "string",
+      "enum": [
+        "manifest_wrapper",
+        "provenance_markers"
+      ]
+    },
+    "external:enums/watermark-media-type.json": {
+      "type": "string",
+      "enum": [
+        "audio",
+        "image",
+        "video",
+        "text"
+      ]
+    },
+    "external:enums/c2pa-watermark-action.json": {
+      "type": "string",
+      "enum": [
+        "c2pa.watermarked.bound",
+        "c2pa.watermarked.unbound"
+      ]
+    },
+    "external:enums/disclosure-persistence.json": {
+      "type": "string",
+      "enum": [
+        "continuous",
+        "initial",
+        "flexible"
+      ]
+    },
+    "external:enums/disclosure-position.json": {
+      "type": "string",
+      "enum": [
+        "prominent",
+        "footer",
+        "audio",
+        "subtitle",
+        "overlay",
+        "end_card",
+        "pre_roll",
+        "companion"
+      ]
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:enums/viewability-standard.json": {
+      "type": "string",
+      "enum": [
+        "mrc",
+        "groupm"
+      ]
+    },
+    "external:enums/action-source.json": {
+      "type": "string",
+      "enum": [
+        "website",
+        "app",
+        "offline",
+        "phone_call",
+        "chat",
+        "email",
+        "in_store",
+        "system_generated",
+        "other"
+      ]
+    },
+    "external:core/vendor-metric-value.json": {
+      "type": "object",
+      "properties": {
+        "vendor": {
+          "$ref": "#/$defs/external:core~1brand-ref.json"
+        },
+        "metric_id": {
+          "$ref": "#/$defs/external:core~1vendor-metric-id.json"
+        },
+        "value": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "measurable_impressions": {
+          "type": "number",
+          "minimum": 0
+        },
+        "breakdown": {
+          "type": "object",
+          "x-adcp-open-payload": true,
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "vendor",
+        "metric_id",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/vendor-metric-id.json": {
+      "type": "string",
+      "x-entity": "vendor_metric",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "external:enums/delivery-status.json": {
+      "type": "string",
+      "enum": [
+        "delivering",
+        "not_delivering",
+        "completed",
+        "budget_exhausted",
+        "flight_ended",
+        "goal_met"
+      ]
+    },
+    "external:core/error.json": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "keyword": {
+                "type": "string"
+              },
+              "schemaPath": {
+                "type": "string"
+              },
+              "schema_id": {
+                "type": "string"
+              },
+              "discriminator": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "property_name": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "property_name",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "pointer",
+              "message",
+              "keyword"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "recovery": {
+          "type": "string",
+          "enum": [
+            "transient",
+            "correctable",
+            "terminal"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "producer",
+            "sdk"
+          ]
+        },
+        "sdk_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

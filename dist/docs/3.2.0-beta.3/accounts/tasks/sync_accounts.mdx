@@ -1,0 +1,682 @@
+---
+title: sync_accounts
+description: "sync_accounts provisions buyer-declared accounts or updates settings on existing accounts with an AdCP seller agent."
+"og:title": "AdCP — sync_accounts"
+testable: false
+---
+
+Sync advertiser accounts with a seller for one or more advertiser/operator relationships, or update settings on existing accounts when the seller exposes that mode. A buyer-declared account's natural key describes the advertiser object the seller should provision: a brand, the countries where that advertiser identity applies, the operator, an optional operator-owned unit, an optional fixed currency, an optional buyer-selected immutable timezone, and whether the account is a sandbox.
+
+`sync_accounts` is used across all seller protocols: media buy agents, signals agents, governance agents, and creative agents. In provisioning mode it declares the buyer's intent — the seller provisions or links accounts internally. Use provisioning mode for buyer-declared accounts (`require_operator_auth: false`) and use natural keys (`brand` + `operator`) on subsequent requests. Sellers MAY echo an `account_id` as an internal handle, but they MUST continue accepting the natural-key `AccountRef` for accounts provisioned this way. For account-id namespaces, discover seller-assigned account IDs via [`list_accounts`](/dist/docs/3.2.0-beta.3/accounts/tasks/list_accounts) or out-of-band onboarding; `sync_accounts` provisioning for account-id namespaces is out of scope unless a future explicit capability declares that mode. If such a seller exposes `sync_accounts` today, use only settings-update mode keyed by `account_id`.
+
+For a complete `pending_approval` flow — capability discovery, human setup, durable status notification, authoritative repair, and first spend — see [Provision a seller-mediated account](/dist/docs/3.2.0-beta.3/accounts/provisioning-walkthrough).
+
+**Response Time**: ~1s. Account provisioning is synchronous; credit and legal review may require human action (indicated by `status: "pending_approval"` with a `setup.url`).
+
+**Request Schema**: [`/schemas/3.2.0-beta.3/account/sync-accounts-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/account/sync-accounts-request.json)
+**Response Schema**: [`/schemas/3.2.0-beta.3/account/sync-accounts-response.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/account/sync-accounts-response.json)
+
+## Quick start
+
+Sync a single advertiser account and check the resulting status:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncAccountsResponseSchema } from "@adcp/sdk";
+
+const result = await testAgent.syncAccounts({
+  accounts: [
+    {
+      brand: { domain: "acme-corp.com" },
+      operator: "acme-corp.com",
+      billing: "operator",
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAccountsResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+for (const account of validated.accounts) {
+  console.log(`${account.brand.domain}: ${account.status}`);
+  if (account.status === "pending_approval" && account.setup?.url) {
+    console.log(`  Complete setup at: ${account.setup.url}`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_accounts(
+        accounts=[
+            {
+                "brand": {"domain": "acme-corp.com"},
+                "operator": "acme-corp.com",
+                "billing": "operator",
+            },
+        ],
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for account in result.accounts:
+        print(f"{account.brand['domain']}: {account.status}")
+        if account.status == 'pending_approval' and hasattr(account, 'setup') and account.setup:
+            print(f"  Complete setup at: {account.setup.url}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Request parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `accounts` | array | Yes | Array of account entries to sync (see below). |
+| `delete_missing` | boolean | No | When true, accounts previously synced by this agent but not in this request are deactivated. Scoped to the authenticated agent. Default: `false`. |
+| `dry_run` | boolean | No | When true, preview what would change without applying. Default: `false`. |
+| `push_notification_config` | object | No | Webhook for async notifications when account status changes (e.g., `pending_approval` transitions to `active`). |
+
+**Account entry fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `account` | object | Settings update | Existing account to update, selected by `account_id` or its current natural key. Its presence selects settings-update mode and prevents provisioning side effects. |
+| `revision` | integer | With `operator_identity` | Expected current account revision in settings-update mode. It is required for identity changes and optional for existing non-identity settings updates. Sellers reject stale revisions atomically with [`CONFLICT`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-conflict). Obtain it from [`list_accounts`](/dist/docs/3.2.0-beta.3/accounts/tasks/list_accounts) or the latest `sync_accounts` result. |
+| `operator_identity` | object | No | Complete desired operator identity in settings-update mode. Requires `account.identity_updates.supported: true`. Omit this field to leave identity unchanged; include it without `operator_unit` to remove the current unit. |
+| `destination_billing_entity` | object | Operator-billed domain handoff | Complete staged billing identity for the destination operator. Required when changing `operator` on an account with `billing: "operator"`; otherwise absent. It is write-only while approval is pending and does not replace the canonical `billing_entity` until the handoff applies. |
+| `brand` | object | Provisioning | Brand reference identifying the advertiser. Only its BrandKey fields — `domain`, optional `brand_id`, and the canonicalized ISO 3166-1 alpha-2 `countries[]` set — participate in account identity. Countries qualify commercial identity; they do not target delivery. The existing 3.x task still accepts broader BrandRef fields for compatibility, but mutable/per-call fields such as `industries`, `data_subject_contestation`, and `brand_kit_override` never affect lookup or upsert identity. New producers should send only BrandKey fields. |
+| `operator` | string | Provisioning | Domain of the entity operating on the brand's behalf (e.g. `pinnacle-media.com`). When the brand operates directly, set to the brand's domain. Verified against the brand's `authorized_operators` in brand.json. |
+| `operator_unit` | object | No | Operator-owned business unit, agency seat, or buying-platform account. `id` is the stable operator-assigned identifier and participates in the natural key; optional `name` is mutable display metadata and does not. This is not the seller's `account_id`. |
+| `currency` | string | No | Immutable ISO 4217 transaction currency when the seller's advertiser object is currency-bound. Check `account.supported_account_currency_modes`: include `currency` for `fixed`; omit it for `per_media_buy`. If an older 3.x seller omits that capability, its currency model is not discoverable and must be established out of band. A supplied currency participates in the natural key and every media buy on the account must use it. |
+| `timezone` | string | Conditional | Immutable operational timezone. Check `get_adcp_capabilities.account.timezone`: include one of `supported_timezones` when mode is `account_fixed` and selection is `buyer_selected`; omit it for `seller_fixed` or `seller_assigned`. A supplied timezone participates in the natural key. The seller echoes the effective timezone on `sync_accounts` and `list_accounts`. |
+| `billing` | string | Provisioning | Who the seller invoices for this buyer–storefront account relationship: `operator`, `agent`, or `advertiser`. Check [`get_adcp_capabilities`](/dist/docs/3.2.0-beta.3/protocol/get_adcp_capabilities) for `supported_billing`. The seller must accept the requested invoiced party exactly or reject the request. This field does not choose a payment rail, clearing intermediary, or per-media-buy settlement route; AdCP payment and settlement remain out of protocol. Sellers MAY additionally reject a seller-wide supported value when the calling buyer agent's commercial relationship does not permit it. See [`BILLING_NOT_SUPPORTED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-billing-not-supported), [`BILLING_NOT_PERMITTED_FOR_AGENT`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-billing-not-permitted-for-agent), [Buyer-agent identity](/dist/docs/3.2.0-beta.3/building/by-layer/L2/accounts-and-agents#buyer-agent-identity), and [Billing and Account Setup](/dist/docs/3.2.0-beta.3/building/by-layer/L3/error-handling#billing-and-account-setup). |
+| `billing_entity` | object | No | Structured business entity details for the account's current invoiced party. Contains `legal_name` (required), plus optional `vat_id`, `tax_id`, `registration_number`, `address`, `contacts`, and `bank`. Bank details are write-only — included in requests but never echoed in responses. Do not use this field to stage a destination operator during a handoff; use `destination_billing_entity`. See [billing entity and invoice recipient](/dist/docs/3.2.0-beta.3/building/by-layer/L2/accounts-and-agents#billing-entity-and-invoice-recipient). |
+| `payment_terms` | string | No | Payment terms for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. The seller must either accept these terms or reject the account — terms are never silently remapped. When omitted, the seller applies its default terms. |
+| `sandbox` | boolean | No | When true, set up a sandbox account with no real platform calls or billing. Only applicable to buyer-declared accounts (`require_operator_auth: false`). For account-id namespaces, sandbox accounts are pre-existing test accounts discovered via [`list_accounts`](/dist/docs/3.2.0-beta.3/accounts/tasks/list_accounts) or supplied out-of-band. |
+| `notification_configs` | array | No | Account-level webhook subscribers for events that outlive any single media buy: creative lifecycle notifications, account status changes, and wholesale feed change webhooks. Omit to leave existing subscribers unchanged; send `[]` to remove all subscribers; send a full array to replace. Entries are keyed by account-scoped `subscriber_id`; an existing `subscriber_id` is upserted, and persisted IDs absent from the sent array are removed. |
+
+**Natural key**: The tuple `(brand, operator, operator_unit.id, currency, timezone, sandbox)` identifies the advertiser object in the seller system, with `currency` present only for fixed-currency accounts and `timezone` present only for buyer-selected account-fixed timezones. Within `brand`, only `domain`, `brand_id`, and canonicalized `countries[]` participate. Country order has no semantic meaning; send unique uppercase codes in lexical order for stable keys and signatures. `operator_unit.name` and all mutable BrandRef fields are outside identity, so changing display or per-call metadata does not create a new account.
+
+For example, the following key identifies Nova's NL/DE advertiser object, operated through Pinnacle's EMEA seat and fixed to EUR. Adding `sandbox: true` identifies a separate test account.
+
+```json
+{
+  "brand": {
+    "domain": "nova-athletics.example",
+    "countries": ["DE", "NL"]
+  },
+  "operator": "pinnacle-media.example",
+  "operator_unit": {
+    "id": "seat_emea_01",
+    "name": "EMEA"
+  },
+  "currency": "EUR"
+}
+```
+
+The natural key is the buyer-declared account reference. A numeric or opaque `account_id` is instead a seller/storefront identifier: discover it with `list_accounts` (or receive it out of band) and do not substitute an operator's buying-platform account ID into that field.
+
+### Reconciling operator identity
+
+When a buyer discovers that an existing account has the wrong operator domain or operator unit, it MUST identify the existing account through settings-update mode. Sending the corrected natural key as a new provisioning entry does not communicate replacement intent and can legitimately identify a second account.
+
+`operator_identity` is a complete desired value, not a patch:
+
+- Omit `operator_identity` to leave the operator identity unchanged.
+- Include the same `operator` and `operator_unit.id` with a different `name` to update display metadata.
+- Omit `operator_unit` inside `operator_identity` to remove the current unit.
+- Change `operator_unit.id`, add a unit, or remove one to rekey the same account within the operator.
+- Change `operator` to request an inter-entity operator-domain handoff. The seller MUST place this transition into approval; it cannot apply directly from buyer assertion alone. Before applying it, the seller MUST verify that the authenticated caller can administer the current account, obtain verified brand authorization for the destination operator, and confirm that the destination operator accepts the handoff. A passive or caller-supplied `authorized_operators` value is not sufficient without the seller's normal verification of the brand-controlled source.
+
+```json
+{
+  "idempotency_key": "identity-update-018f24c0-65d1-7c3a",
+  "accounts": [
+    {
+      "account": { "account_id": "acc_nova_pinnacle" },
+      "revision": 7,
+      "operator_identity": {
+        "operator": "pinnacle-media.example",
+        "operator_unit": {
+          "id": "east-coast",
+          "name": "East Coast"
+        }
+      }
+    }
+  ]
+}
+```
+
+Identity reconciliation changes the same advertiser account; it is never provisioning or merging. The seller MUST resolve exactly one existing account, reject a target-key collision with [`ACCOUNT_IDENTITY_CONFLICT`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-account-identity-conflict), preserve `account_id`, historical media buys, reporting continuity, and other account-scoped history, and apply no identity change if it cannot preserve that continuity. `currency`, `sandbox`, and brand identity remain immutable through this field.
+
+An intra-operator unit change stays within the existing account authority boundary. An operator-domain handoff crosses that boundary and therefore has additional rules:
+
+- The canonical operator, billing, and grants remain unchanged while approval is pending.
+- When `billing: "operator"`, the request MUST include a complete `destination_billing_entity`. This staged value is write-only while approval is pending; the account response continues to return the current canonical `billing_entity`. The seller MUST re-run its commercial approval for the destination entity, payment terms, and credit state, then switch canonical operator and billing identity together. It MUST NOT expose or apply the destination billing identity early or silently associate the former operator's billing identity with the destination.
+- At the atomic switch, grants scoped to the former operator MUST be revoked unless independently authorized for the continuing principal. The destination operator receives only explicitly approved grants. Brand- or buyer-agent grants that remain independently valid MAY be preserved.
+- A seller that cannot complete those transitions without breaking account or resource continuity MUST reject or keep the request pending; it MUST NOT partially rekey the account.
+
+Every persisted account mutation increments its integer `revision`. Buyers MUST pass the latest observed `revision` with `operator_identity`; the seller MUST compare it atomically with the write and return `CONFLICT` without side effects on mismatch. Dry runs, validation failures, reads, and exact idempotency replays do not increment it.
+
+An immediately applied intra-operator update returns the new canonical `operator` and `operator_unit`. An operator-domain change always returns the current canonical fields plus `identity_change.status: "pending_approval"`; `list_accounts` exposes the same state. Approval atomically performs the authorized identity, billing, and grant transition and clears `identity_change`. Rejection retains the canonical fields, discards the staged destination billing identity, and exposes `identity_change.status: "rejected"` with a reason. Each disposition increments `revision`.
+
+A new `operator_identity` request submitted with the current revision replaces an earlier pending or rejected request and increments the revision. To cancel a pending request without changing the canonical identity, submit the current canonical `operator_identity` with the current revision; the seller clears `identity_change`, discards any staged destination billing identity, and increments the revision. A stale request returns `CONFLICT` without replacing or clearing the existing state. Exact idempotency replays return the original result without another revision increment.
+
+After a rekey, the seller MUST tombstone the former natural key while the account or any account-scoped historical resource is retained. An authorized caller using that former key receives [`ACCOUNT_MOVED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-account-moved) with `details.current_account`; the seller MUST NOT provision a second account from it. Callers without access to the current account receive [`ACCOUNT_NOT_FOUND`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-account-not-found) so the redirect does not become a cross-tenant existence oracle.
+
+With `dry_run: true`, the seller performs the same account resolution, revision, collision, authorization, and continuity checks but persists nothing and leaves the revision unchanged. Each identity-update result includes `identity_change_preview`:
+
+- `would_apply` means an intra-operator update can apply immediately.
+- `would_require_approval` means an operator-domain handoff would enter approval.
+- `blocked` identifies continuity, authorization, billing, grant, or active-resource blockers in `blockers`.
+
+The preview's `impacts[]` records whether account ID, media buys, reporting, approval, billing, and grants would be preserved, revalidated, revoked and regranted, or block the change. A natural-key collision returns `ACCOUNT_IDENTITY_CONFLICT` and a blocked preview. Dry-run results may use `action: "updated"` to describe the change that would occur or `action: "failed"` for a blocker; the top-level `dry_run: true` and `identity_change_preview` make clear that no mutation occurred. Dry runs MUST NOT return a persisted `identity_change`.
+
+## Response
+
+**Success response:**
+
+Returns an `accounts` array with per-account results. Individual accounts may be pending, rejected, or failed even when the operation succeeds.
+
+**Error response:**
+
+- `errors` -- Array of operation-level errors (auth failure, service unavailable). No `accounts` array is present.
+
+**Note:** Responses use discriminated unions -- you get either `accounts` OR `errors`, never both.
+
+**Per-account fields:**
+
+| Field | Description |
+|-------|-------------|
+| `brand` | Current canonical brand. Object with `domain`, optional `brand_id`, and optional `countries[]`. |
+| `operator` | Current canonical operator domain. While an identity change is pending or rejected, this remains the current value. |
+| `operator_unit` | Current canonical operator unit. `id` is stable identity; `name` is display metadata. |
+| `revision` | Current optimistic-concurrency revision. Return it from identity-update-capable sellers and pass it on the next settings update. |
+| `identity_change` | Pending or rejected desired operator identity. Canonical identity remains in `operator` and `operator_unit`. |
+| `identity_change_preview` | Dry-run-only disposition and resource-impact preview. Canonical identity and revision remain unchanged. |
+| `currency` | Fixed account currency, echoed when supplied. |
+| `name` | Seller's display name for the account. |
+| `action` | What happened: `created`, `updated`, `unchanged`, or `failed`. |
+| `status` | Current state of the account (see [Account status](#account-status)). |
+| `billing` | Billing model applied. Matches the requested value. |
+| `billing_entity` | Current canonical business entity for the invoiced party. During a pending operator-domain handoff, this remains the current entity; the staged `destination_billing_entity` is write-only. Sellers may add verified fields, but bank details are always omitted. |
+| `account_scope` | How the seller scoped this account: `operator` (shared across brands for this operator), `brand` (shared across operators for this brand), `operator_brand` (dedicated to this operator+brand pair), or `agent` (agent-scoped account shared across declared brand/operator pairs). See [account scope](/dist/docs/3.2.0-beta.3/building/by-layer/L2/accounts-and-agents#account-scope). |
+| `setup` | Present when `status: "pending_approval"`. Contains `url` for completing credit or legal setup, `message` explaining what's needed, and optional `expires_at`. |
+| `rate_card` | Seller-assigned rate card identifier (when applicable). |
+| `payment_terms` | Payment terms agreed for this account: `net_15`, `net_30`, `net_45`, `net_60`, `net_90`, or `prepay`. When the account is active, these are the binding terms for all invoices. |
+| `credit_limit` | Maximum outstanding balance as `{amount, currency}`. |
+| `errors` | Per-account errors (only present when `action: "failed"`). |
+| `warnings` | Non-fatal notices. |
+| `sandbox` | Whether this is a sandbox account, echoed from the request. Only present for buyer-declared accounts. |
+| `notification_configs` | Optional. Current persisted account-level webhook subscribers after applying the request. Present on `created`, `updated`, and `unchanged` results when the request included `notification_configs` or the account already has persisted subscribers. Each entry carries `subscriber_id`, `url`, `event_types[]`, and `active`; `authentication.credentials` is omitted (write-only). |
+| `authorization` | Optional. The calling agent's scope grant for this account — `allowed_tasks`, `field_scopes`, `scope_name`, `read_only`. Applies to every vendor agent type (media-buy, signals, governance, creative, brand) — the Accounts Protocol surface is shared. Present on `created`, `updated`, and `unchanged` results; omitted on `failed` results. Vendor agents that support scope introspection SHOULD populate this; media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Absence means the vendor agent does not advertise introspectable scope; callers MUST NOT infer access from absence. See [Caller authorization](/dist/docs/3.2.0-beta.3/accounts/overview#caller-authorization) for the full shape. |
+
+### Account status
+
+| Status | Meaning | Next step |
+|--------|---------|-----------|
+| `active` | Ready to use | Use [account reference](/dist/docs/3.2.0-beta.3/building/by-layer/L2/accounts-and-agents#account-references) in protocol operations |
+| `pending_approval` | Seller reviewing | Human may need to visit `setup.url` to complete credit or legal process. Poll [`list_accounts`](/dist/docs/3.2.0-beta.3/accounts/tasks/list_accounts) for updates. |
+| `rejected` | Seller declined the request | Review rejection reason in `warnings`, adjust and retry, or contact seller |
+| `payment_required` | Credit limit reached or funds depleted | Add funds or increase credit limit. Route spend to other accounts. |
+| `suspended` | Was active, now paused | Contact seller to resolve |
+| `closed` | Was active, now terminated | -- |
+
+### Async notifications
+
+When `push_notification_config` is provided and the seller returns `pending_approval`, the seller sends a webhook notification when the account status changes (e.g., approved → `active`, declined → `rejected`).
+
+For provisioning requests, the notification payload includes the `(brand, operator)` natural key so the buyer can correlate it to the original sync request. When the seller also returns a seller-assigned `account_id`, the notification includes it as a convenience handle; buyers still follow the seller's declared account-reference model for subsequent calls.
+
+```json
+{
+  "brand": { "domain": "nova-brands.com", "brand_id": "glow" },
+  "operator": "pinnacle-media.com",
+  "status": "active",
+  "account_id": "acc_glow_001"
+}
+```
+
+If the buyer did not provide `push_notification_config`, poll [`list_accounts`](/dist/docs/3.2.0-beta.3/accounts/tasks/list_accounts) to check for status changes.
+
+## Two modes: provisioning vs. settings-update
+
+Each per-account entry uses one of two key shapes, never both:
+
+- **Provisioning mode** — flat `brand` + `operator` + `billing` at the entry root. The seller provisions or upserts accounts. Used for buyer-declared accounts (`require_operator_auth: false`). This is the shape AdCP 3.0 shipped with. Sellers MAY echo an `account_id`, but the natural-key `AccountRef` remains valid for subsequent calls.
+- **Settings-update mode** — `account` (an [AccountRef](/dist/docs/3.2.0-beta.3/building/by-layer/L2/accounts-and-agents#account-references)) at the entry root, with `brand`/`operator`/`billing` absent. The seller updates the account's settable state — no provisioning side effects. Used for account-id namespaces only when the seller exposes settings updates through this task; upstream-managed accounts are discovered via [`list_accounts`](/dist/docs/3.2.0-beta.3/accounts/tasks/list_accounts), while seller-defined account IDs may be supplied out-of-band. Buyer-declared account sellers MAY also accept this mode for settings updates against accounts they previously provisioned.
+
+Schema enforces the exclusivity via `oneOf` — sending both shapes on the same entry is a validation error. Sellers that don't implement settings-update mode reject `account`-keyed entries with [`UNSUPPORTED_PROVISIONING`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-unsupported-provisioning); sellers that don't provision through `sync_accounts`, including account-id namespaces, reject natural-key provisioning entries with the same code.
+
+## Account-level webhook subscriptions
+
+`notification_configs[]` carries account-level webhook subscribers for creative lifecycle and assignment changes, `indicators.changed`, account status, wholesale feed changes, and future account-anchored events.
+
+Indicator and assignment subscriptions are prospective: activation or reactivation does not replay conditions that were already current. After activation, buyers establish a complete baseline through [`get_media_buys`](/dist/docs/3.2.0-beta.3/media-buy/task-reference/get_media_buys) before relying on later invalidations: enumerate known media-buy IDs or request every media-buy status and follow pagination to exhaustion, without an indicator filter. The optional bounded [`list_creatives`](/dist/docs/3.2.0-beta.3/creative/task-reference/list_creatives) projection is not sufficient to prove complete state.
+
+`account.status_changed` is the durable account lifecycle event. Use it for status transitions after the initial `sync_accounts` result, such as `pending_approval → active`, `pending_approval → rejected`, `active → payment_required`, `active → suspended`, recovery back to `active`, or terminal `closed`. It is not a replacement for the one-shot `push_notification_config` on this task: that channel can report the async result of the original provisioning operation, while `notification_configs[]` subscribers outlive the task.
+
+Before relying on durable account lifecycle webhooks, read `get_adcp_capabilities.account.notifications`. Sellers that declare `supported: true` accept `account.status_changed` registrations here, name `sync_accounts` as the registration task, and name [`list_accounts`](/dist/docs/3.2.0-beta.3/accounts/tasks/list_accounts) as the repair read. Sellers that omit the capability or declare `supported: false` MUST reject `account.status_changed` registrations instead of silently storing a subscriber that will never fire.
+
+For these event types, "wholesale feed" means the seller's buyable wholesale product and signals feeds returned by [`get_products`](/dist/docs/3.2.0-beta.3/media-buy/task-reference/get_products) or [`get_signals`](/dist/docs/3.2.0-beta.3/signals/tasks/get_signals); it is not the buyer-provided feeds managed by [`sync_catalogs`](/dist/docs/3.2.0-beta.3/media-buy/task-reference/sync_catalogs).
+
+Permitted in **both** provisioning and settings-update modes. Declarative semantics:
+
+- Omit `notification_configs` to leave the account's existing subscribers unchanged.
+- Send `notification_configs: []` to remove every subscriber on that account.
+- Send a non-empty array to replace the account's current set with the submitted set.
+
+Within one account, `subscriber_id` is the stable logical key. Re-sending an existing `(account_id, subscriber_id)` with a different `url`, `event_types`, `authentication`, or `active` value replaces that subscriber's active config rather than creating a duplicate. The seller MUST NOT merge the submitted array with persisted state: persisted subscribers whose `subscriber_id` does not appear in the sent array are removed. Paused entries (`active: false`) are subject to the same replacement semantics; to preserve a paused subscription, re-include it with `active: false` in the sent array. Duplicate `subscriber_id` values within the same submitted array are invalid. The replacement is account-scoped; the same `subscriber_id` MAY be reused on a different account.
+
+If any entry in the submitted replacement set fails validation or activation proof, the seller rejects that account entry with `action: "failed"` and leaves the account's previous `notification_configs[]` set unchanged. Sellers MUST NOT partially apply a replacement set and silently drop only the failed subscriber.
+
+Each entry has:
+
+- `subscriber_id` — buyer-supplied identifier, unique within the account; echoed on every fire so multi-subscriber accounts can route by endpoint
+- `url` — HTTPS endpoint URL. Sellers MUST complete an endpoint activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active.
+- `event_types[]` — types the subscriber wants. Only account-anchored types are permitted (today: `creative.status_changed`, `creative.assignment_changed`, `indicators.changed`, `creative.purged`, `account.status_changed`, `product.created`, `product.updated`, `product.priced`, `product.removed`, `signal.created`, `signal.updated`, `signal.priced`, `signal.removed`, `wholesale_feed.bulk_change`). Sellers MUST reject any media-buy-anchored type (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`) or agent-anchored type (`capabilities.changed`) as a per-account validation failure with [`INVALID_REQUEST`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-invalid-request) or [`VALIDATION_ERROR`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-validation-error) in `accounts[].errors[]`, and `error.field` MUST point at the invalid `event_types` entry.
+- `product_payload_view` — `canonical` for a [`list_products`](/dist/docs/3.2.0-beta.3/media-buy/task-reference/list_products) mirror or `legacy` for the 3.x `get_products` shape. Omission defaults to `legacy`; valid only when a product event is selected.
+- `authentication` (optional) — legacy Bearer or HMAC-SHA256. Omit to use the default RFC 9421 webhook profile. When present, the same signed-registration downgrade-resistance rules as `push_notification_config.authentication` apply. Credentials are write-only — sellers omit them on reads.
+- `active` (default `true`) — set `false` to pause a subscriber without removing the registration. Sellers MAY skip only the outbound proof challenge while `active: false`; they MUST still enforce HTTPS parsing, hostname normalization, and reserved-range rejection on write. Paused subscribers MUST NOT receive fires until reactivated. Reactivation MUST repeat full SSRF validation with connect pinning plus proof-of-control for any tuple without current valid proof.
+
+### Endpoint proof of control
+
+Before persisting or echoing an entry as `active: true`, the seller MUST validate the URL, apply the SSRF rules in [Webhook URL validation](/dist/docs/3.2.0-beta.3/building/by-layer/L1/security#webhook-url-validation-ssrf), and prove that the receiver controls the endpoint.
+
+Proof is required when there is no current valid proof for the tuple `(account_id, subscriber_id, normalized url, authentication mode/credential binding, normalized event_types)`. Changing the subscriber ID, normalized URL, authentication mode/credential binding, or `event_types[]` requires fresh proof before the new set can become active. The challenge POST itself MUST be signed with the seller's RFC 9421 webhook profile key even when the candidate config selects legacy delivery auth. New signers use `adcp_use: "request-signing"`; deprecated `webhook-signing` keys remain accepted during the compatibility window. The receiver MUST verify the RFC 9421 signature and MUST reject the challenge unless `account_id`, `subscriber_id`, `seller_agent_url`, `delivery_auth`, and `event_types` match the pending registration. The signature's covered `@target-uri` MUST equal the exact normalized candidate URL, and its `expires` parameter binds the challenge expiry.
+
+The standard challenge is an HTTPS POST to the candidate `url` with a JSON body containing `type`, `challenge`, `account_id`, `subscriber_id`, `seller_agent_url`, `delivery_auth`, and `event_types`. The canonical schemas are [`webhook-challenge.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/webhook-challenge.json) and [`webhook-challenge-response.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/webhook-challenge-response.json).
+
+```json
+{
+  "type": "webhook.challenge",
+  "challenge": "example-challenge-token-000000000000",
+  "account_id": "acct_123",
+  "subscriber_id": "buyer-primary",
+  "seller_agent_url": "https://seller.example/adcp",
+  "delivery_auth": { "mode": "rfc9421" },
+  "event_types": ["creative.status_changed"]
+}
+```
+
+The receiver proves control by returning HTTP `2xx` with a JSON body containing exactly one echo field:
+
+```json
+{ "challenge": "example-challenge-token-000000000000" }
+```
+
+Sellers MUST also accept the backward-compatible alias:
+
+```json
+{ "token": "example-challenge-token-000000000000" }
+```
+
+The challenge value MUST be cryptographically random, single-use, and scoped to the registration tuple. The RFC 9421 `expires` parameter is the challenge expiry; receivers MUST reject expired challenges, and sellers MUST reject echoes received after that instant. A failed, non-`2xx`, malformed, mismatched, expired, replayed, or timed-out challenge means proof failed. Sellers SHOULD use the same outbound fetch caps as SSRF validation (10 second connect and 10 second read) and SHOULD make at most one initial challenge POST on the `sync_accounts` critical path. A seller MAY retry one transient network failure before returning if it uses the same challenge value and still completes within its request budget; otherwise the buyer retries by re-sending `sync_accounts`.
+
+On proof failure, the seller returns a per-account failure with `action: "failed"`, `errors[].code: "VALIDATION_ERROR"` (or `INVALID_REQUEST` for malformed URLs), and `error.field` pointing at `accounts[i].notification_configs[j].url`. The previous persisted subscriber set remains unchanged. `dry_run: true` MUST NOT send network challenges; an `active: true` echo in a dry-run result previews the requested post-proof state and does not assert that proof already exists.
+
+### Account status payload
+
+When an account's lifecycle status changes after the initial `sync_accounts` response, sellers fire `account.status_changed` to active subscribers whose `event_types[]` includes that value.
+
+```json
+{
+  "idempotency_key": "whk_01K18GM0Z7J3Q6WBH7DYK2R4VM",
+  "notification_id": "acctchg_acc_glow_20260719T100712Z",
+  "notification_type": "account.status_changed",
+  "fired_at": "2026-07-19T10:07:15Z",
+  "subscriber_id": "account-lifecycle",
+  "account_id": "acc_glow_pending",
+  "previous_status": "pending_approval",
+  "status": "payment_required",
+  "observed_at": "2026-07-19T10:07:12Z",
+  "reason_code": "setup_required",
+  "setup": {
+    "message": "Complete advertiser billing setup.",
+    "expires_at": "2026-07-30T00:00:00Z"
+  }
+}
+```
+
+The payload is an invalidation signal. It intentionally omits the full account document and `setup.url`; setup URLs are often single-use or sensitive and should not be fanned out to every subscriber. Receivers SHOULD re-run [`list_accounts`](/dist/docs/3.2.0-beta.3/accounts/tasks/list_accounts) for `account_id` and reconcile from the fresh account snapshot.
+
+`notification_id` is stable per `(account_id, previous_status, status, observed_at)`. Retries and re-emissions of the same transition reuse it under a new `idempotency_key`; a later transition cycle receives a new `notification_id`.
+
+Example — register a buyer-side endpoint plus an audit bus on an account-id namespace account:
+
+```json
+{
+  "idempotency_key": "f2c4b7d9-6789-49bc-defa-2345678901bc",
+  "accounts": [
+    {
+      "account": { "account_id": "acc_acme_pinnacle" },
+      "notification_configs": [
+        {
+          "subscriber_id": "buyer-primary",
+          "url": "https://buyer.example/webhooks/adcp/creative",
+          "event_types": ["creative.status_changed", "creative.purged"],
+          "active": true
+        },
+        {
+          "subscriber_id": "audit-bus",
+          "url": "https://audit.buyer.example/adcp/ingest",
+          "event_types": ["creative.status_changed", "creative.purged"],
+          "active": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+Example — register a wholesale feed mirror subscriber for wholesale product and signal changes:
+
+```json
+{
+  "idempotency_key": "a8af8cf1-89bd-41f3-b27d-7ee7e9f8d2e4",
+  "accounts": [
+    {
+      "account": { "account_id": "acc_acme_pinnacle" },
+      "notification_configs": [
+        {
+          "subscriber_id": "wholesale-feed-sync",
+          "url": "https://buyer.example/webhooks/adcp/wholesale-feed",
+          "event_types": [
+            "product.created",
+            "product.updated",
+            "product.priced",
+            "product.removed",
+            "signal.created",
+            "signal.updated",
+            "signal.priced",
+            "signal.removed",
+            "wholesale_feed.bulk_change"
+          ],
+          "active": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+Example — register an account lifecycle subscriber:
+
+```json
+{
+  "idempotency_key": "ee1343bb-7449-4d33-a2c1-c9cc0c75d0f4",
+  "accounts": [
+    {
+      "account": { "account_id": "acc_acme_pinnacle" },
+      "notification_configs": [
+        {
+          "subscriber_id": "account-lifecycle",
+          "url": "https://buyer.example/webhooks/adcp/accounts",
+          "event_types": ["account.status_changed"],
+          "active": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+Governance agents registered via [`sync_governance`](/dist/docs/3.2.0-beta.3/accounts/tasks/sync_governance) are **not** implicitly subscribed to these webhooks. If your governance agent should also receive creative-lifecycle fires, register its URL as a separate `notification_configs[]` entry — explicit, auditable, with its own `event_types[]` filter.
+
+Verify applied state via [`list_accounts`](/dist/docs/3.2.0-beta.3/accounts/tasks/list_accounts) — the response carries the current persisted `notification_configs[]` per account with credentials redacted. `sync_accounts` also echoes the current sanitized set on `created`, `updated`, and `unchanged` results when the request included `notification_configs` or any persisted subscribers already exist.
+
+Wholesale feed notifications are registered here, not through a separate subscription task. The webhook body is [`wholesale-feed-webhook.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/wholesale-feed-webhook.json): it carries a canonical product replacement for `list_products` subscribers (or the legacy Product view for `get_products` subscribers), signal changes, or a bulk-change summary plus the post-change `wholesale_feed_version`. Sellers MUST apply the same per-subscriber authorization and scope predicate used by the corresponding wholesale read before emitting each webhook. For a detected gap, repair with the mirror's last applied version; for uncertain or bulk state, omit the conditional token and replace from `list_products` / `get_signals`. See [wholesale_feed_webhooks](/dist/docs/3.2.0-beta.3/protocol/get_adcp_capabilities#wholesale_feed_webhooks) for capability declaration and event semantics.
+
+## Common scenarios
+
+### Agency syncing multiple brands
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncAccountsResponseSchema } from "@adcp/sdk";
+
+const result = await testAgent.syncAccounts({
+  accounts: [
+    {
+      brand: { domain: "nova-brands.com", brand_id: "spark" },
+      operator: "pinnacle-media.com",
+      billing: "operator",
+    },
+    {
+      brand: { domain: "nova-brands.com", brand_id: "glow" },
+      operator: "pinnacle-media.com",
+      billing: "operator",
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAccountsResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+for (const account of validated.accounts) {
+  if (account.status === "active") {
+    console.log(`Ready: ${account.brand.domain}/${account.brand.brand_id} → ${account.status}`);
+  } else if (account.status === "pending_approval") {
+    console.log(`Setup required for ${account.brand.brand_id}: ${account.setup?.url}`);
+    // Poll list_accounts until status becomes active
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_accounts(
+        accounts=[
+            {
+                "brand": {"domain": "nova-brands.com", "brand_id": "spark"},
+                "operator": "pinnacle-media.com",
+                "billing": "operator",
+            },
+            {
+                "brand": {"domain": "nova-brands.com", "brand_id": "glow"},
+                "operator": "pinnacle-media.com",
+                "billing": "operator",
+            },
+        ],
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for account in result.accounts:
+        if account.status == 'active':
+            print(f"Ready: {account.brand['domain']}/{account.brand.get('brand_id')} → {account.status}")
+        elif account.status == 'pending_approval':
+            print(f"Setup required for {account.brand.get('brand_id')}: {account.setup.url}")
+            # Poll list_accounts until status becomes active
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Direct brand purchase
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncAccountsResponseSchema } from "@adcp/sdk";
+
+const result = await testAgent.syncAccounts({
+  accounts: [
+    {
+      brand: { domain: "acme-corp.com" },
+      operator: "acme-corp.com",
+      billing: "operator",
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAccountsResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+const account = validated.accounts[0];
+if (account.status === "active") {
+  console.log(`Ready: ${account.brand.domain} — ${account.status}`);
+} else if (account.status === "pending_approval") {
+  console.log(`Setup required: ${account.setup?.url}`);
+  // Poll list_accounts until status becomes active
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_accounts(
+        accounts=[
+            {
+                "brand": {"domain": "acme-corp.com"},
+                "operator": "acme-corp.com",
+                "billing": "operator",
+            },
+        ],
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    account = result.accounts[0]
+    if account.status == 'active':
+        print(f"Ready: {account.brand['domain']} — {account.status}")
+    elif account.status == 'pending_approval':
+        print(f"Setup required: {account.setup.url}")
+        # Poll list_accounts until status becomes active
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Handling rejection
+
+When a seller declines a request, the account entry has `status: "rejected"`:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncAccountsResponseSchema } from "@adcp/sdk";
+
+const result = await testAgent.syncAccounts({
+  accounts: [
+    {
+      brand: { domain: "acme-corp.com", brand_id: "clearance" },
+      operator: "acme-corp.com",
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncAccountsResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+for (const account of validated.accounts) {
+  if (account.status === "rejected") {
+    console.log("Account request was rejected");
+    if (account.warnings?.length) {
+      console.log(`Reason: ${account.warnings.join(", ")}`);
+    }
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_accounts(
+        accounts=[
+            {
+                "brand": {"domain": "acme-corp.com", "brand_id": "clearance"},
+                "operator": "acme-corp.com",
+            },
+        ],
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for account in result.accounts:
+        if account.status == 'rejected':
+            print("Account request was rejected")
+            warnings = getattr(account, 'warnings', None)
+            if warnings:
+                print(f"Reason: {', '.join(warnings)}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Error handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| [`ACCOUNT_NOT_FOUND`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-account-not-found) | Referenced account does not exist or is not accessible | Check `account_id` or re-sync |
+| [`ACCOUNT_MOVED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-account-moved) | A former natural key was used after the account was rekeyed | Replace the stale reference with `error.details.current_account`, refresh through [`list_accounts`](/dist/docs/3.2.0-beta.3/accounts/tasks/list_accounts), and retry with a fresh idempotency key |
+| [`CONFLICT`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-conflict) | Submitted `revision` is stale | Re-read `list_accounts`, reconcile, and retry with the current revision |
+| [`ACCOUNT_IDENTITY_CONFLICT`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-account-identity-conflict) | Desired natural key already belongs to another account | Choose a different operator identity or retain the current identity; do not retry the same desired identity unchanged |
+| [`UNSUPPORTED_FEATURE`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-unsupported-feature) | Seller does not advertise the requested identity change in `account.identity_updates.supported_changes` | Leave identity unchanged or use a seller-supported transition |
+| [`BILLING_NOT_SUPPORTED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-billing-not-supported) | Seller-wide capability gate (`supported_billing` does not include the value) or per-account-relationship gate; see [Billing and Account Setup](/dist/docs/3.2.0-beta.3/building/by-layer/L3/error-handling#billing-and-account-setup) | Check [`get_adcp_capabilities`](/dist/docs/3.2.0-beta.3/protocol/get_adcp_capabilities) for `supported_billing`, adjust or omit `billing`; inspect `error.details.scope` to disambiguate capability vs account scope |
+| [`BILLING_NOT_PERMITTED_FOR_AGENT`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-billing-not-permitted-for-agent) | Seller-wide capability accepts the value, but the calling buyer agent's commercial relationship does not (e.g., passthrough-only — no payments relationship); see [Buyer-agent identity](/dist/docs/3.2.0-beta.3/building/by-layer/L2/accounts-and-agents#buyer-agent-identity) | Retry with `error.details.suggested_billing` (typically `operator`) when present; when absent, surface to a human — the agent cannot extend its own commercial relationship |
+| [`PAYMENT_TERMS_NOT_SUPPORTED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-payment-terms-not-supported) | Seller does not accept the requested payment terms | Omit `payment_terms` to accept the seller's default, or negotiate offline |
+| [`ACCOUNT_PAYMENT_REQUIRED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-account-payment-required) | Account has an outstanding balance requiring payment | Resolve outstanding balance or route to another account |
+| [`ACCOUNT_SUSPENDED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-account-suspended) | Account is suspended | Contact seller to resolve |
+| [`BRAND_REQUIRED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-brand-required) | Billable operation attempted without brand reference | Include `brand` in the request |
+
+## Next steps
+
+- [list_accounts](/dist/docs/3.2.0-beta.3/accounts/tasks/list_accounts) -- Poll for status changes on pending accounts
+- [sync_governance](/dist/docs/3.2.0-beta.3/accounts/tasks/sync_governance) -- Sync governance agents to accounts
+- [Accounts and agents](/dist/docs/3.2.0-beta.3/building/by-layer/L2/accounts-and-agents) -- Billing models, trust models, and authorized operators
+- [Brand protocol](/dist/docs/3.2.0-beta.3/brand-protocol/brand-json) -- How seller agents resolve brand identity from the `brand.domain`
+- [get_adcp_capabilities](/dist/docs/3.2.0-beta.3/protocol/get_adcp_capabilities) -- Discover `supported_billing` and `require_operator_auth` before syncing accounts

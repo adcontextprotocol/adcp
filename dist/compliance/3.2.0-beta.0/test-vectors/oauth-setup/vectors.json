@@ -1,0 +1,957 @@
+{
+  "title": "OAuth setup metadata-graph conformance vectors",
+  "description": "Deterministic network fixtures for runner implementations of the oauth_metadata_graph check. Hosts and organizations are fictional. No request may escape the fixture response map.",
+  "fixture_contract": {
+    "responses": "Exact METHOD URL keys. A request missing from the map fails closed; token endpoint probes use credential-free GET under the passive transport-reachability policy from the runner contract.",
+    "dns": "Optional hostname fixtures declare all resolved addresses, lookup sequences, or the connected peer address. Implementations must inject these values rather than consult live DNS. When fixture_address_classes is present, it is index-aligned with addresses and is the authoritative test-double classification: globally_routable_fixture_only must pass pre-connect address classification, while named blocked classes (for example private) must fail it. The literal address remains documentation-safe and must not be reclassified from the live IANA registry in that case.",
+    "redirects": "A fixture response may carry headers.location. Redirect targets are validated before lookup or request and consume graph budgets.",
+    "network": "No live network access is permitted while executing this corpus."
+  },
+  "evaluation_order": [
+    "protected_resource_document",
+    "resource_identifier",
+    "authorization_servers_shape",
+    "authorization_server_document_in_array_order",
+    "issuer_self_consistency",
+    "rfc8414_required_and_conditional_fields",
+    "endpoint_url_shape",
+    "authorization_endpoint_reachability",
+    "token_endpoint_reachability",
+    "jwks_document"
+  ],
+  "positive": [
+    {
+      "id": "001-same-origin-complete",
+      "coverage": ["complete_graph", "same_origin_authorization_server", "advertised_jwks"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://agent.example.com"],
+            "bearer_methods_supported": ["header"]
+          }
+        },
+        "GET https://agent.example.com/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://agent.example.com",
+            "authorization_endpoint": "https://agent.example.com/authorize",
+            "token_endpoint": "https://agent.example.com/token",
+            "jwks_uri": "https://agent.example.com/jwks.json",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code"],
+            "scopes_supported": ["openid", "adcp"]
+          }
+        },
+        "GET https://agent.example.com/authorize": {
+          "status": 302,
+          "content_type": "text/html"
+        },
+        "GET https://agent.example.com/token": {
+          "status": 400,
+          "content_type": "application/json"
+        },
+        "GET https://agent.example.com/jwks.json": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": { "keys": [] }
+        }
+      },
+      "expected_outcome": { "success": true }
+    },
+    {
+      "id": "002-off-origin-explicit-authorization-server",
+      "coverage": ["off_origin_authorization_server", "explicit_structural_reference"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://identity.example.net/tenant/pinnacle"]
+          }
+        },
+        "GET https://identity.example.net/.well-known/oauth-authorization-server/tenant/pinnacle": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://identity.example.net/tenant/pinnacle",
+            "authorization_endpoint": "https://identity.example.net/tenant/pinnacle/authorize",
+            "token_endpoint": "https://identity.example.net/tenant/pinnacle/token",
+            "registration_endpoint": "https://identity.example.net/tenant/pinnacle/register",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code"]
+          }
+        },
+        "GET https://identity.example.net/tenant/pinnacle/authorize": {
+          "status": 400,
+          "content_type": "application/json"
+        },
+        "GET https://identity.example.net/tenant/pinnacle/token": {
+          "status": 400,
+          "content_type": "application/json"
+        }
+      },
+      "expected_outcome": { "success": true }
+    },
+    {
+      "id": "003-client-credentials-only",
+      "coverage": ["client_credentials_only", "response_types_omitted", "passive_token_reachability"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://machine-identity.example.net"]
+          }
+        },
+        "GET https://machine-identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://machine-identity.example.net",
+            "token_endpoint": "https://machine-identity.example.net/token",
+            "grant_types_supported": ["client_credentials"]
+          }
+        },
+        "GET https://machine-identity.example.net/token": {
+          "status": 400,
+          "content_type": "application/json",
+          "json": { "error": "unsupported_grant_type" }
+        }
+      },
+      "expected_outcome": { "success": true }
+    },
+    {
+      "id": "004-implicit-only",
+      "coverage": ["implicit_only", "token_endpoint_omitted"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://browser-identity.example.net"]
+          }
+        },
+        "GET https://browser-identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://browser-identity.example.net",
+            "authorization_endpoint": "https://browser-identity.example.net/authorize",
+            "response_types_supported": ["token"],
+            "grant_types_supported": ["implicit"]
+          }
+        },
+        "GET https://browser-identity.example.net/authorize": {
+          "status": 302,
+          "content_type": "text/html"
+        }
+      },
+      "expected_outcome": { "success": true }
+    },
+    {
+      "id": "005-rfc8414-default-grants",
+      "coverage": ["grant_types_default", "authorization_endpoint", "passive_token_reachability"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://default-grants.example.net"]
+          }
+        },
+        "GET https://default-grants.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://default-grants.example.net",
+            "authorization_endpoint": "https://default-grants.example.net/authorize",
+            "token_endpoint": "https://default-grants.example.net/oauth2/access",
+            "response_types_supported": ["code"]
+          }
+        },
+        "GET https://default-grants.example.net/authorize": {
+          "status": 302,
+          "content_type": "text/html"
+        },
+        "GET https://default-grants.example.net/oauth2/access": {
+          "status": 405,
+          "content_type": "application/json"
+        }
+      },
+      "expected_outcome": { "success": true }
+    },
+    {
+      "id": "006-resource-default-port-normalizes",
+      "coverage": ["resource_normalization", "host_case_normalization", "default_port_elision"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://AGENT.EXAMPLE.COM:443/mcp",
+            "authorization_servers": ["https://machine-identity.example.net"]
+          }
+        },
+        "GET https://machine-identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://machine-identity.example.net",
+            "token_endpoint": "https://machine-identity.example.net/token",
+            "grant_types_supported": ["client_credentials"]
+          }
+        },
+        "GET https://machine-identity.example.net/token": {
+          "status": 405,
+          "content_type": "application/json"
+        }
+      },
+      "expected_outcome": { "success": true }
+    }
+  ],
+  "negative": [
+    {
+      "id": "101-protected-resource-metadata-missing",
+      "coverage": ["missing_metadata"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 404,
+          "content_type": "application/json",
+          "json": { "error": "not_found" }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_protected_resource_metadata_unavailable"
+      }
+    },
+    {
+      "id": "102-resource-mismatch",
+      "coverage": ["mismatched_resource"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com",
+            "authorization_servers": ["https://identity.example.net"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_resource_mismatch"
+      }
+    },
+    {
+      "id": "103-authorization-servers-empty",
+      "coverage": ["empty_authorization_servers"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": []
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_authorization_servers_empty"
+      }
+    },
+    {
+      "id": "104-authorization-server-document-unreachable",
+      "coverage": ["unreachable_document"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://identity.example.net"]
+          }
+        },
+        "GET https://identity.example.net/.well-known/oauth-authorization-server": {
+          "network_error": "connection_refused"
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_authorization_server_metadata_unavailable"
+      }
+    },
+    {
+      "id": "105-issuer-mismatch",
+      "coverage": ["mismatched_issuer"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://identity.example.net"]
+          }
+        },
+        "GET https://identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://other-identity.example.org",
+            "authorization_endpoint": "https://identity.example.net/authorize",
+            "token_endpoint": "https://identity.example.net/token",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_issuer_mismatch"
+      }
+    },
+    {
+      "id": "106-required-metadata-field-missing",
+      "coverage": ["missing_required_field", "response_types_supported"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://identity.example.net"]
+          }
+        },
+        "GET https://identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://identity.example.net",
+            "authorization_endpoint": "https://identity.example.net/authorize",
+            "token_endpoint": "https://identity.example.net/token",
+            "grant_types_supported": ["authorization_code"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_authorization_server_metadata_invalid"
+      }
+    },
+    {
+      "id": "107-token-endpoint-unreachable",
+      "coverage": ["unreachable_endpoint", "token_endpoint"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://identity.example.net"]
+          }
+        },
+        "GET https://identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://identity.example.net",
+            "authorization_endpoint": "https://identity.example.net/authorize",
+            "token_endpoint": "https://identity.example.net/token",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code"]
+          }
+        },
+        "GET https://identity.example.net/authorize": {
+          "status": 302,
+          "content_type": "text/html"
+        },
+        "GET https://identity.example.net/token": {
+          "status": 503,
+          "content_type": "application/json"
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_endpoint_unreachable"
+      }
+    },
+    {
+      "id": "108-advertised-jwks-unavailable",
+      "coverage": ["unreachable_document", "jwks_uri"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://identity.example.net"]
+          }
+        },
+        "GET https://identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://identity.example.net",
+            "authorization_endpoint": "https://identity.example.net/authorize",
+            "token_endpoint": "https://identity.example.net/token",
+            "jwks_uri": "https://identity.example.net/jwks.json",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code"]
+          }
+        },
+        "GET https://identity.example.net/authorize": {
+          "status": 302,
+          "content_type": "text/html"
+        },
+        "GET https://identity.example.net/token": {
+          "status": 405,
+          "content_type": "application/json"
+        },
+        "GET https://identity.example.net/jwks.json": {
+          "status": 404,
+          "content_type": "application/json",
+          "json": { "error": "not_found" }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_jwks_unavailable"
+      }
+    },
+    {
+      "id": "109-second-authorization-server-unreachable",
+      "coverage": ["every_authorization_server", "unreachable_document"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": [
+              "https://identity-one.example.net",
+              "https://identity-two.example.org"
+            ]
+          }
+        },
+        "GET https://identity-one.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://identity-one.example.net",
+            "authorization_endpoint": "https://identity-one.example.net/authorize",
+            "token_endpoint": "https://identity-one.example.net/token",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code"]
+          }
+        },
+        "GET https://identity-one.example.net/authorize": {
+          "status": 302,
+          "content_type": "text/html"
+        },
+        "GET https://identity-one.example.net/token": {
+          "status": 405,
+          "content_type": "application/json"
+        },
+        "GET https://identity-two.example.org/.well-known/oauth-authorization-server": {
+          "status": 404,
+          "content_type": "application/json",
+          "json": { "error": "not_found" }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_authorization_server_metadata_unavailable"
+      }
+    },
+    {
+      "id": "110-resource-normalization-near-miss",
+      "coverage": ["mismatched_resource", "normalization_near_miss"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp/",
+            "authorization_servers": ["https://identity.example.net"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_resource_mismatch"
+      }
+    },
+    {
+      "id": "111-direct-private-issuer-blocked",
+      "coverage": ["ssrf", "private_ip", "direct_target"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://127.0.0.1"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_fetch_blocked"
+      }
+    },
+    {
+      "id": "112-metadata-redirect-to-link-local-blocked",
+      "coverage": ["ssrf", "redirect", "link_local"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://identity.example.net"]
+          }
+        },
+        "GET https://identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 302,
+          "content_type": "text/html",
+          "headers": {
+            "location": "https://169.254.169.254/latest/meta-data/"
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_fetch_blocked"
+      }
+    },
+    {
+      "id": "113-mixed-public-private-dns-blocked",
+      "coverage": ["ssrf", "mixed_dns_answers", "private_ip"],
+      "agent_url": "https://agent.example.com/mcp",
+      "dns": {
+        "mixed-dns.example.net": {
+          "addresses": ["203.0.113.10", "10.0.0.7"],
+          "fixture_address_classes": ["globally_routable_fixture_only", "private"]
+        }
+      },
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://mixed-dns.example.net"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_fetch_blocked"
+      }
+    },
+    {
+      "id": "114-connected-peer-rebinding-blocked",
+      "coverage": ["ssrf", "dns_rebinding", "connected_peer_validation"],
+      "agent_url": "https://agent.example.com/mcp",
+      "dns": {
+        "rebind.example.net": {
+          "addresses": ["203.0.113.11"],
+          "fixture_address_classes": ["globally_routable_fixture_only"]
+        }
+      },
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://rebind.example.net"]
+          }
+        },
+        "GET https://rebind.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "connected_peer_address": "127.0.0.1",
+          "json": {
+            "issuer": "https://rebind.example.net",
+            "authorization_endpoint": "https://rebind.example.net/authorize",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_fetch_blocked"
+      }
+    },
+    {
+      "id": "115-issuer-url-credentials-rejected",
+      "coverage": ["invalid_issuer_url", "url_credentials"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://user:password@identity.example.net"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_authorization_server_url_invalid"
+      }
+    },
+    {
+      "id": "116-https-to-http-redirect-blocked",
+      "coverage": ["ssrf", "redirect", "scheme_downgrade"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://identity.example.net"]
+          }
+        },
+        "GET https://identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 302,
+          "content_type": "text/html",
+          "headers": {
+            "location": "http://identity.example.net/oauth-metadata"
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_fetch_blocked"
+      }
+    },
+    {
+      "id": "117-authorization-server-graph-limit",
+      "coverage": ["graph_budget", "authorization_server_limit"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": [
+              "https://identity-01.example.net",
+              "https://identity-02.example.net",
+              "https://identity-03.example.net",
+              "https://identity-04.example.net",
+              "https://identity-05.example.net",
+              "https://identity-06.example.net",
+              "https://identity-07.example.net",
+              "https://identity-08.example.net",
+              "https://identity-09.example.net",
+              "https://identity-10.example.net",
+              "https://identity-11.example.net",
+              "https://identity-12.example.net",
+              "https://identity-13.example.net",
+              "https://identity-14.example.net",
+              "https://identity-15.example.net",
+              "https://identity-16.example.net",
+              "https://identity-17.example.net"
+            ]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_graph_limit_exceeded"
+      }
+    },
+    {
+      "id": "118-authorization-endpoint-condition-missing",
+      "coverage": ["missing_conditional_field", "authorization_endpoint"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://identity.example.net"]
+          }
+        },
+        "GET https://identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://identity.example.net",
+            "token_endpoint": "https://identity.example.net/token",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_authorization_server_metadata_invalid"
+      }
+    },
+    {
+      "id": "119-issuer-query-rejected",
+      "coverage": ["invalid_issuer_url", "issuer_query"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://identity.example.net?tenant=pinnacle"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_authorization_server_url_invalid"
+      }
+    },
+    {
+      "id": "120-token-endpoint-condition-missing",
+      "coverage": ["missing_conditional_field", "token_endpoint"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://machine-identity.example.net"]
+          }
+        },
+        "GET https://machine-identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://machine-identity.example.net",
+            "grant_types_supported": ["client_credentials"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_authorization_server_metadata_invalid"
+      }
+    },
+    {
+      "id": "121-authorization-server-document-non-json",
+      "coverage": ["invalid_document", "non_json"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://identity.example.net"]
+          }
+        },
+        "GET https://identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "body": "not-json"
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_authorization_server_metadata_invalid"
+      }
+    },
+    {
+      "id": "122-ipv4-mapped-loopback-blocked",
+      "coverage": ["ssrf", "ipv4_mapped_ipv6", "loopback"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://[::ffff:127.0.0.1]"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_fetch_blocked"
+      }
+    },
+    {
+      "id": "123-protected-resource-document-non-json",
+      "coverage": ["invalid_document", "protected_resource_non_json"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "body": "not-json"
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_protected_resource_metadata_invalid"
+      }
+    },
+    {
+      "id": "124-authorization-endpoint-url-invalid",
+      "coverage": ["invalid_endpoint_url", "authorization_endpoint"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://identity.example.net"]
+          }
+        },
+        "GET https://identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://identity.example.net",
+            "authorization_endpoint": "http://identity.example.net/authorize",
+            "token_endpoint": "https://identity.example.net/token",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_endpoint_url_invalid"
+      }
+    },
+    {
+      "id": "125-token-only-empty-response-types-rejected",
+      "coverage": ["client_credentials_only", "response_types_empty_rejected"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://machine-identity.example.net"]
+          }
+        },
+        "GET https://machine-identity.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://machine-identity.example.net",
+            "token_endpoint": "https://machine-identity.example.net/token",
+            "response_types_supported": [],
+            "grant_types_supported": ["client_credentials"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_authorization_server_metadata_invalid"
+      }
+    },
+    {
+      "id": "126-alternate-ipv4-loopback-blocked",
+      "coverage": ["ssrf", "alternate_ipv4_notation", "loopback"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://2130706433"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_fetch_blocked"
+      }
+    },
+    {
+      "id": "127-benchmarking-range-blocked",
+      "coverage": ["ssrf", "special_use_range", "benchmarking_range"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://198.18.0.1"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_fetch_blocked"
+      }
+    },
+    {
+      "id": "128-default-grants-token-endpoint-missing",
+      "coverage": ["grant_types_default", "missing_conditional_field", "token_endpoint"],
+      "agent_url": "https://agent.example.com/mcp",
+      "responses": {
+        "GET https://agent.example.com/.well-known/oauth-protected-resource/mcp": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "resource": "https://agent.example.com/mcp",
+            "authorization_servers": ["https://default-grants.example.net"]
+          }
+        },
+        "GET https://default-grants.example.net/.well-known/oauth-authorization-server": {
+          "status": 200,
+          "content_type": "application/json",
+          "json": {
+            "issuer": "https://default-grants.example.net",
+            "authorization_endpoint": "https://default-grants.example.net/authorize",
+            "response_types_supported": ["code"]
+          }
+        }
+      },
+      "expected_outcome": {
+        "success": false,
+        "error_code": "oauth_authorization_server_metadata_invalid"
+      }
+    }
+  ]
+}

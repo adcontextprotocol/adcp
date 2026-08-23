@@ -1,0 +1,38 @@
+---
+title: Digital Out-of-Home
+description: "Canonical image and hosted-video contracts for DOOH screens and venue networks."
+"og:title": "AdCP — Digital Out-of-Home"
+---
+
+DOOH uses `image` or `video_hosted`, narrowed to the screen's pixel dimensions, duration, file limits, and operational constraints. Venue, screen network, loop position, scheduling, and audience currency are inventory facts rather than creative format IDs.
+
+```json
+{
+  "format_option_id": "station_landscape_1920x1080",
+  "format_kind": "image",
+  "params": {
+    "width": 1920,
+    "height": 1080,
+    "max_file_size_kb": 10240,
+    "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true }]
+  }
+}
+```
+
+```json
+{
+  "format_kind": "video_hosted",
+  "params": {
+    "width": 1080,
+    "height": 1920,
+    "duration_ms_exact": 10000,
+    "containers": ["mp4"],
+    "video_codecs": ["h264"],
+    "slots": [{ "asset_group_id": "video_main", "asset_type": "video", "required": true }]
+  }
+}
+```
+
+Most DOOH renderers cannot fire browser pixels or accept clickthrough interaction. Declare only slots and macros the runtime can actually support. Delivery and measurement come from screen logs, venue counts, panels, or other sources on the product/package.
+
+See [Canonical formats](/dist/docs/3.2.0-beta.0/creative/canonical-formats), [Accessibility](/dist/docs/3.2.0-beta.0/creative/accessibility), and [Media products](/dist/docs/3.2.0-beta.0/media-buy/product-discovery/media-products).

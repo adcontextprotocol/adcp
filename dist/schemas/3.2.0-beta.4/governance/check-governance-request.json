@@ -1,0 +1,766 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/governance/check-governance-request.json",
+  "title": "Check Governance Request",
+  "description": "Universal governance check for campaign actions. The governance agent infers the check type from the fields present: tool+payload = intent check (proposed, orchestrator-side); planned_delivery or delivery_metrics with governance_context = execution or lifecycle check (committed, service-side). Proposal acceptance supplies the immutable proposal separately so governance can inspect its typed commercial terms while payload remains the exact downstream arguments. MediaBuy controls use buyer-proposed and seller-computed positive-delta ceilings. The first check is addressed by plan_id. Subsequent service-side checks use the opaque governance_context as the authoritative plan binding.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/version-envelope.json"
+    },
+    {
+      "anyOf": [
+        {
+          "required": [
+            "plan_id"
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "required": [
+                "governance_context"
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "required": [
+                    "planned_delivery"
+                  ]
+                },
+                {
+                  "required": [
+                    "delivery_metrics"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "if": {
+        "required": [
+          "tool"
+        ]
+      },
+      "then": {
+        "required": [
+          "plan_id",
+          "payload",
+          "target_agent"
+        ],
+        "not": {
+          "required": [
+            "governance_context"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "payload"
+        ]
+      },
+      "then": {
+        "required": [
+          "plan_id",
+          "tool",
+          "target_agent"
+        ],
+        "not": {
+          "required": [
+            "governance_context"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "consultation_context"
+        ]
+      },
+      "then": {
+        "required": [
+          "plan_id",
+          "tool",
+          "payload"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "governance_context"
+              ]
+            },
+            {
+              "required": [
+                "planned_delivery"
+              ]
+            },
+            {
+              "required": [
+                "delivery_metrics"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "proposed_commitment"
+        ]
+      },
+      "then": {
+        "required": [
+          "plan_id",
+          "tool",
+          "payload"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "governance_context"
+              ]
+            },
+            {
+              "required": [
+                "planned_delivery"
+              ]
+            },
+            {
+              "required": [
+                "delivery_metrics"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "proposal"
+        ]
+      },
+      "then": {
+        "required": [
+          "plan_id",
+          "tool",
+          "payload",
+          "target_agent"
+        ],
+        "properties": {
+          "tool": {
+            "const": "accept_proposal"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "execution_commitment"
+        ]
+      },
+      "then": {
+        "required": [
+          "governance_context",
+          "planned_delivery"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "tool"
+              ]
+            },
+            {
+              "required": [
+                "payload"
+              ]
+            },
+            {
+              "required": [
+                "proposed_commitment"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tool": {
+            "enum": [
+              "update_media_buy",
+              "buy_products",
+              "accept_proposal",
+              "control_media_buy",
+              "acquire_rights",
+              "update_rights",
+              "activate_signal",
+              "build_creative"
+            ]
+          }
+        },
+        "required": [
+          "tool",
+          "payload"
+        ]
+      },
+      "then": {
+        "required": [
+          "proposed_commitment"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tool": {
+            "const": "accept_proposal"
+          }
+        },
+        "required": [
+          "tool",
+          "payload"
+        ]
+      },
+      "then": {
+        "required": [
+          "proposal"
+        ]
+      }
+    },
+    {
+      "if": {
+        "anyOf": [
+          {
+            "required": [
+              "planned_delivery"
+            ]
+          },
+          {
+            "required": [
+              "delivery_metrics"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "required": [
+          "governance_context"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "planned_delivery": {
+            "required": [
+              "total_budget"
+            ]
+          }
+        },
+        "required": [
+          "planned_delivery"
+        ]
+      },
+      "then": {
+        "properties": {
+          "planned_delivery": {
+            "required": [
+              "currency"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "delivery_metrics"
+        ]
+      },
+      "then": {
+        "required": [
+          "governance_context",
+          "planned_delivery"
+        ]
+      }
+    },
+    {
+      "if": {
+        "allOf": [
+          {
+            "required": [
+              "planned_delivery"
+            ]
+          },
+          {
+            "anyOf": [
+              {
+                "properties": {
+                  "phase": {
+                    "enum": [
+                      "modification",
+                      "delivery"
+                    ]
+                  }
+                },
+                "required": [
+                  "phase"
+                ]
+              },
+              {
+                "properties": {
+                  "governance_phase": {
+                    "enum": [
+                      "modification",
+                      "delivery"
+                    ]
+                  }
+                },
+                "required": [
+                  "governance_phase"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "planned_delivery": {
+            "required": [
+              "media_buy_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "anyOf": [
+          {
+            "properties": {
+              "phase": {
+                "const": "delivery"
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          {
+            "properties": {
+              "governance_phase": {
+                "const": "delivery"
+              }
+            },
+            "required": [
+              "governance_phase"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "required": [
+          "governance_context",
+          "planned_delivery",
+          "delivery_metrics"
+        ],
+        "properties": {
+          "delivery_metrics": {
+            "required": [
+              "statement_id",
+              "statement_digest",
+              "sequence",
+              "issued_at",
+              "reporting_period",
+              "cumulative_spend",
+              "currency"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "not": {
+        "allOf": [
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "tool"
+                ]
+              },
+              {
+                "required": [
+                  "payload"
+                ]
+              }
+            ]
+          },
+          {
+            "anyOf": [
+              {
+                "required": [
+                  "planned_delivery"
+                ]
+              },
+              {
+                "required": [
+                  "delivery_metrics"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "runtime_attestations"
+        ]
+      },
+      "then": {
+        "properties": {
+          "purchase_type": {
+            "type": "string",
+            "const": "signal_activation"
+          },
+          "tool": {
+            "type": "string",
+            "const": "activate_signal"
+          },
+          "payload": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "activate"
+              }
+            }
+          }
+        },
+        "required": [
+          "purchase_type",
+          "tool",
+          "payload"
+        ]
+      }
+    }
+  ],
+  "x-status": "experimental",
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "description": "Campaign governance plan identifier. Required on the initial intent or availability check, before a governance_context exists. Optional on subsequent checks: the governance agent derives the plan from its own signed governance_context. If both are present, the governance agent MUST reject the request when plan_id does not match the token's plan binding. Services MUST treat governance_context as authoritative and MUST NOT require a buyer to disclose plan_id. A plan is owned by the authenticated buyer principal that synchronized it; plan_id is an identifier, not an account credential.",
+      "x-entity": "governance_plan"
+    },
+    "caller": {
+      "type": "string",
+      "format": "uri",
+      "description": "Claimed URL of the agent making the request. The transport credential MUST resolve to an agent URL; the governance agent requires an exact match and uses only that resolved URL for authorization, audit, and signed context issuance. On intent checks the authenticated buyer must be the plan owner or hold an active delegation, while approved_sellers is evaluated against the target service that becomes the token audience. On execution checks the authenticated caller MUST equal that preserved audience. An unresolved body assertion never grants plan access or authorization."
+    },
+    "purchase_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/purchase-type.json",
+      "description": "The type of financial commitment being checked. Determines which budget allocation (if any) to validate against. Defaults to 'media_buy' when omitted.",
+      "default": "media_buy"
+    },
+    "target_agent": {
+      "type": "string",
+      "format": "uri",
+      "description": "Exact agent URL of the downstream service that will receive the governed task. Required on intent checks and copied byte-for-byte into the signed governance_context aud claim. This routing and authorization field is not part of payload: payload remains exactly the downstream task arguments. A consultation re-check MUST use the same target_agent."
+    },
+    "proposed_commitment": {
+      "type": "object",
+      "description": "Task-neutral monetary amount the intent would authorize. For update_media_buy and control_media_buy this is the buyer-computed positive incremental commitment, not the post-update total. For accept_proposal it is derived from the supplied proposal commercial_terms; for buy_products it is derived from the purchase payload. Amount 0 explicitly represents a verified no-cost action. The governance agent persists this value as authoritative check state.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "execution_commitment": {
+      "type": "object",
+      "description": "Seller-computed positive incremental commitment for a MediaBuy execution check. The seller MUST derive this atomically from its authoritative proposal or current revision and the requested operation, and the governance agent MUST reject it when it exceeds the prior intent ceiling or uses another currency.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "tool": {
+      "type": "string",
+      "description": "The AdCP tool being checked (e.g., 'create_media_buy', 'acquire_rights', 'activate_signal'). Present on intent checks (orchestrator). The governance agent uses the presence of tool+payload to identify an intent check."
+    },
+    "payload": {
+      "type": "object",
+      "description": "The full downstream tool arguments exactly as they will be sent to target_agent. Present on intent checks. Governance routing metadata is carried by target_agent, never injected into this object. The governance agent can inspect any field to validate against the plan.",
+      "x-adcp-open-payload": true,
+      "additionalProperties": true
+    },
+    "proposal": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-proposal.json",
+      "description": "Exact committed proposal being authorized for accept_proposal. The governance agent verifies proposal.terms_digest against commercial_terms and binds that digest into its decision state; the downstream payload carries the same digest without repeating the terms."
+    },
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque authorization context from a prior approved check_governance response. Services pass it verbatim on execution and lifecycle checks; the issuing governance agent derives the plan and prior decision from the token. Intermediaries MUST NOT parse it for business logic. Governance agents MUST emit a compact JWS per the AdCP JWS profile.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
+    "consultation_context": {
+      "type": "string",
+      "description": "Opaque, non-authorizing handle returned with an intent conditions verdict. Pass it only when re-checking the adjusted intent so the governance agent can correlate negotiation attempts. The governance agent MUST resolve it under the authenticated principal and reject the re-check unless principal, caller, plan_id, tool, purchase_type, and target audience match the original conditions check. Services MUST NOT receive or accept this value as authorization.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "phase": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/governance-phase.json",
+      "description": "The phase of an execution-shaped governed action. Ignored for intent-shaped tool+payload requests. 'purchase': initial commitment; 'modification': update to an existing commitment; 'delivery': periodic delivery reporting. Defaults to purchase if omitted. planned_delivery.media_buy_id is optional for purchase and required for modification/delivery.",
+      "default": "purchase"
+    },
+    "planned_delivery": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/planned-delivery.json",
+      "description": "What the seller will actually deliver. Present on execution checks."
+    },
+    "delivery_metrics": {
+      "type": "object",
+      "description": "Seller-attributed canonical delivery statement. MUST be present for 'delivery' phase. The authenticated seller binds one immutable statement_id and digest to a monotonically increasing sequence; the buyer can later submit the copy it received or an independent observation through report_plan_outcome.",
+      "properties": {
+        "statement_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Stable seller-issued identifier for this immutable delivery statement.",
+          "x-entity": "governance_delivery_statement"
+        },
+        "statement_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "SHA-256 digest of RFC 8785 JCS over {seller_reference, delivery_metrics}, excluding statement_digest itself. The authenticated submission binds the seller to this digest."
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Monotonically increasing sequence for this governed action. A statement ID or sequence cannot be reused with different content."
+        },
+        "issued_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the seller issued the canonical statement."
+        },
+        "reporting_period": {
+          "type": "object",
+          "description": "Start and end timestamps for the reporting window.",
+          "properties": {
+            "start": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": false
+        },
+        "spend": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total spend during the reporting period."
+        },
+        "cumulative_spend": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total spend since the governed action started."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Currency of spend fields; must match the plan and planned delivery."
+        },
+        "impressions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Impressions delivered during the reporting period."
+        },
+        "cumulative_impressions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total impressions since the governed action started."
+        },
+        "geo_distribution": {
+          "type": "object",
+          "description": "Actual geographic distribution. Keys are ISO 3166-1 alpha-2 codes, values are percentages.",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "channel_distribution": {
+          "type": "object",
+          "description": "Actual channel distribution. Keys are channel enum values, values are percentages.",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "pacing": {
+          "type": "string",
+          "enum": [
+            "ahead",
+            "on_track",
+            "behind"
+          ],
+          "description": "Whether delivery is ahead of, on track with, or behind the planned pace."
+        },
+        "audience_distribution": {
+          "type": "object",
+          "description": "Actual audience composition during the reporting period. Enables mid-flight drift detection when actual delivery skews from planned audience targeting.",
+          "properties": {
+            "baseline": {
+              "type": "string",
+              "enum": [
+                "census",
+                "platform",
+                "custom"
+              ],
+              "description": "Population baseline used for index calculation. 'census': national census or equivalent population data. 'platform': the seller's active user base. 'custom': a custom baseline defined by the seller (describe in baseline_description)."
+            },
+            "baseline_description": {
+              "type": "string",
+              "description": "Description of the baseline when baseline is 'custom' (e.g., 'US adults 18+ with broadband access')."
+            },
+            "indices": {
+              "type": "object",
+              "description": "Audience index values for the current reporting period. Keys are seller-defined dimension:value strings (e.g., 'age:25-34', 'gender:female', 'income:high'). The protocol does not mandate a taxonomy — dimensions and value labels vary by seller. Values are index relative to the declared baseline (1.0 = at parity, >1.0 = over-indexed, <1.0 = under-indexed).",
+              "propertyNames": {
+                "pattern": "^[a-z_]+:.+$"
+              },
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "cumulative_indices": {
+              "type": "object",
+              "description": "Cumulative audience index values since the governed action started. Same key format as indices (dimension:value). Use for detecting sustained bias drift that may not appear in a single reporting period.",
+              "propertyNames": {
+                "pattern": "^[a-z_]+:.+$"
+              },
+              "additionalProperties": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          "required": [
+            "baseline",
+            "indices"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "reporting_period"
+      ],
+      "additionalProperties": false
+    },
+    "modification_summary": {
+      "type": "string",
+      "description": "Human-readable summary of what changed. SHOULD be present for 'modification' phase.",
+      "maxLength": 1000
+    },
+    "runtime_attestations": {
+      "type": "array",
+      "description": "Optional independently issued runtime evidence for an activate_signal intent check whose payload action is activate (or omitted, which defaults to activate). It MUST NOT be supplied for deactivate. Each item is the shared portable AttestationReference from the core #4529 contract; it carries no authoritative buyer-supplied decision or confidence. The governance agent MUST evaluate every item under adcp.attestations plus governance.runtime_attestations capability policy, preserve input order in response runtime_attestation_evaluations[], and reject off-policy issuers, resolvers, credential origins, and verifier nominations without network access. This field is per-check evidence outside the synced plan and therefore outside the plan_hash preimage. Other tools and purchase types cannot carry this field.",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/attestation-reference.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "subject": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "resource"
+                  },
+                  "resource_type": {
+                    "type": "string",
+                    "const": "https://adcontextprotocol.org/claims/subjects/signal"
+                  }
+                },
+                "required": [
+                  "type",
+                  "resource_type"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 10
+    },
+    "invoice_recipient": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/business-entity.json",
+      "description": "Invoice recipient from the purchase request. MUST be present when the tool payload includes invoice_recipient, so the governance agent can validate billing changes."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+    }
+  },
+  "required": [
+    "caller"
+  ],
+  "additionalProperties": true
+}

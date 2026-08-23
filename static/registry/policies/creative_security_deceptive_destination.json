@@ -1,0 +1,27 @@
+{
+  "policy_id": "creative_security_deceptive_destination",
+  "source": "registry",
+  "version": "1.0.0",
+  "name": "Creative deceptive-destination prohibition",
+  "description": "Prohibits fake downloads, impersonation, and materially deceptive landing experiences.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["security", "brand_safety"],
+  "governance_domains": ["creative"],
+  "effective_date": "2026-08-21",
+  "source_url": "https://docs.adcontextprotocol.org/docs/governance/creative/policy-backed-rejections#initial-registry-policies",
+  "source_name": "AgenticAdvertising.org",
+  "policy": "An advertising creative must not route users to a destination that materially misrepresents its identity, purpose, product, or requested action. Prohibited experiences include fake software or security updates, counterfeit system dialogs, undisclosed impersonation, and landing pages whose material offer or identity contradicts the creative. Credential harvesting is evaluated separately under creative_security_credential_harvest. A seller that detects a deceptive destination must reject the creative and identify this policy.",
+  "guidance": "Follow the complete redirect chain and compare the rendered destination with the creative's identity and claims. Buyer remediation: replace the destination, remove impersonating interface elements, and align the creative's claims with the actual service or offer.",
+  "exemplars": {
+    "pass": [{
+      "scenario": "A creative advertising a fictional photo editor links to the same advertiser's domain and accurately describes the available application download.",
+      "explanation": "The destination identity and offer match the advertising claim."
+    }],
+    "fail": [{
+      "scenario": "A banner designed as an operating-system warning says the device is infected and links to an unrelated executable download.",
+      "explanation": "The creative uses a counterfeit system message to induce a deceptive download."
+    }]
+  }
+}

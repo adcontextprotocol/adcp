@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/indicator-type.json",
+  "title": "Indicator Type",
+  "description": "A seller-asserted material risk or optimization opportunity that currently warrants buyer attention on an AdCP resource relationship. AdCP standardizes the broad meaning of each value for the protocol release; it does not standardize or version the seller's detection methodology or prescribe a universal remedy.",
+  "type": "string",
+  "enum": [
+    "creative_fatigue",
+    "creative_quality_opportunity",
+    "creative_diversity_low",
+    "audience_saturation",
+    "inventory_shortfall_forecast",
+    "pacing_risk",
+    "budget_constrained"
+  ],
+  "enumDescriptions": {
+    "creative_fatigue": "Package–creative assignment only. The seller currently attributes material audience saturation or objective-relevant performance degradation to repeated delivery of this creative in the enclosing package and optional publisher/placement scope, such that the buyer should consider changing it. Ordinary underperformance without an asserted repeated-exposure relationship is not creative fatigue.",
+    "creative_quality_opportunity": "Package–creative assignment only. The creative remains accepted and usable, but the seller currently judges that a material format, asset, composition, or quality improvement could improve delivery or objective-relevant performance. Rejected or ineligible creative remains approval state, not this indicator.",
+    "creative_diversity_low": "Package only. The seller currently judges that the package has too few meaningfully distinct eligible creatives for effective rotation, learning, reach, or fatigue resistance. This is package state rather than a defect on any one creative.",
+    "audience_saturation": "Package only. The seller currently judges that the package's reachable audience is materially saturated independent of any single creative, such that targeting, frequency, or reach strategy may need adjustment.",
+    "inventory_shortfall_forecast": "Package only. The seller's current forecast is materially below the package's requested delivery goal, although the package remains accepted and may still deliver partially. Forecast method, horizon, requested value, and projected value belong in ext.",
+    "pacing_risk": "Package only. The seller currently projects material over- or under-delivery by the end of the package flight absent intervention. Current factual delivery remains in snapshot/reporting; this type is the seller's forward-looking interpretation.",
+    "budget_constrained": "Media-buy or package. The seller currently judges that budget or a spend cap is materially limiting otherwise eligible delivery. Normal exhaustion at a completed flight is lifecycle/delivery state rather than this indicator."
+  }
+}

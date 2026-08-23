@@ -72,6 +72,7 @@ import {
 } from '@adcp/sdk/testing';
 import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
+import { getTestKitForStoryboard } from '../../services/storyboards.js';
 import {
   hostedComplianceTarget,
   hostedComplianceOptions,
@@ -1011,6 +1012,7 @@ const GITHUB_BODY_MAX_CHARS = 4000;
 const GITHUB_COMMENT_MAX_CHARS = 1000;
 const GITHUB_MAX_COMMENTS = 10;
 const GITHUB_DIFF_MAX_CHARS = 12000;
+const GITHUB_TOKEN_REPOS = new Set(['adcontextprotocol/adcp']);
 // Keep generated issue links below a conservative cross-client URL ceiling.
 // This reduces the risk of Slack splitting a query string or GitHub clearing
 // an oversized prefill. Longer drafts still get a complete copyable preview
@@ -1032,23 +1034,88 @@ function parseAllowedRepo(input: string | undefined): ParsedRepo {
   return { ok: true, org, repo };
 }
 
-function githubHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { 'Accept': 'application/vnd.github.v3+json' };
+function githubHeaders(org: string, repo: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Accept': 'application/vnd.github.v3+json',
+    'User-Agent': 'adcp-addie/1.0',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
   const token = process.env.GITHUB_TOKEN;
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (token && GITHUB_TOKEN_REPOS.has(`${org}/${repo}`.toLowerCase())) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   return headers;
 }
 
-function githubErrorMessage(response: Response, action: string): string {
+interface GitHubErrorDetails {
+  requestId?: string;
+  errorCodes: string[];
+}
+
+/**
+ * Extract diagnostics that are safe to place in logs and user-facing errors.
+ * GitHub's free-form error message can echo query text, so never persist it.
+ */
+async function readGitHubErrorDetails(response: Response): Promise<GitHubErrorDetails> {
+  const rawRequestId = response.headers.get('X-GitHub-Request-Id');
+  const requestId = rawRequestId && /^[A-Za-z0-9:-]{1,120}$/.test(rawRequestId)
+    ? rawRequestId
+    : undefined;
+  const errorCodes: string[] = [];
+
+  try {
+    const body = await response.json() as { errors?: unknown };
+    if (Array.isArray(body.errors)) {
+      for (const rawError of body.errors.slice(0, 10)) {
+        if (!rawError || typeof rawError !== 'object') continue;
+        const code = (rawError as { code?: unknown }).code;
+        if (typeof code === 'string' && /^[a-z][a-z0-9_]{0,40}$/.test(code)) {
+          errorCodes.push(code);
+        }
+      }
+    }
+  } catch {
+    // Some GitHub failures have an empty or non-JSON body. Status and request
+    // ID still provide enough correlation for a production investigation.
+  }
+
+  return {
+    ...(requestId && { requestId }),
+    errorCodes: [...new Set(errorCodes)],
+  };
+}
+
+async function githubErrorMessage(
+  response: Response,
+  action: string,
+  context: Record<string, string | number>,
+): Promise<string> {
+  const details = await readGitHubErrorDetails(response);
+  logger.warn(
+    {
+      status: response.status,
+      ...context,
+      ...(details.requestId && { githubRequestId: details.requestId }),
+      ...(details.errorCodes.length > 0 && { githubErrorCodes: details.errorCodes }),
+    },
+    `GitHub API error while trying to ${action}`,
+  );
+
+  const requestIdSuffix = details.requestId
+    ? ` GitHub request ID: ${details.requestId}.`
+    : '';
   if (response.status === 403 && response.headers.get('X-RateLimit-Remaining') === '0') {
     const reset = response.headers.get('X-RateLimit-Reset');
     const resetAt = reset ? new Date(Number(reset) * 1000).toISOString() : 'soon';
-    return `GitHub rate limit hit while trying to ${action}. Retry after ${resetAt}.`;
+    return `GitHub rate limit hit while trying to ${action}. Retry after ${resetAt}.${requestIdSuffix}`;
   }
   if (response.status === 401 || response.status === 403) {
-    return `GitHub auth failed (${response.status}) while trying to ${action}. GITHUB_TOKEN may be missing or invalid.`;
+    return `GitHub authentication is unavailable (${response.status}) while trying to ${action}.${requestIdSuffix}`;
   }
-  return `Failed to ${action} (${response.status}).`;
+  if (response.status === 422) {
+    return `GitHub rejected the request while trying to ${action} (422).${requestIdSuffix}`;
+  }
+  return `Failed to ${action} (${response.status}).${requestIdSuffix}`;
 }
 
 function truncate(text: string, max: number): string {
@@ -5308,10 +5375,16 @@ export function createMemberToolHandlers(
 
     try {
       const authProbeTask = await inferHostedAuthProbeTask(resolved.resolvedUrl, authOption, runTarget);
+      // adcp#6735 — pre-populate the storyboard-declared test kit so
+      // `from_test_kit` steps run with the credential the storyboard was
+      // authored against; the run-auth bearer substitution no-ops when the
+      // kit already carries auth.
+      const declaredTestKit = getTestKitForStoryboard(storyboardId, runOptions);
       const result = await runStoryboard(
         resolved.resolvedUrl,
         sb,
         withSdkSafeTransport(withHostedStoryboardRunOptions({
+          ...(declaredTestKit && { test_kit: declaredTestKit }),
           ...(authOption && { auth: authOption }),
         }, runTarget, authProbeTask)),
       );
@@ -5525,11 +5598,14 @@ export function createMemberToolHandlers(
 
     try {
       const authProbeTask = await inferHostedAuthProbeTask(resolved.resolvedUrl, authOption, runTarget);
+      // adcp#6735 — same declared-kit pre-population as run_storyboard.
+      const declaredStepTestKit = getTestKitForStoryboard(storyboardId, runOptions);
       const result: StoryboardStepResult = await runStoryboardStep(
         resolved.resolvedUrl,
         sb,
         resolvedStepId,
         withSdkSafeTransport(withHostedStoryboardRunOptions({
+          ...(declaredStepTestKit && { test_kit: declaredStepTestKit }),
           context,
           ...(authOption && { auth: authOption }),
         }, runTarget, authProbeTask)),
@@ -6820,7 +6896,7 @@ export function createMemberToolHandlers(
     const { org, repo } = parsed;
     const includeComments = Boolean(input.include_comments);
     const includeDiff = Boolean(input.include_diff);
-    const headers = githubHeaders();
+    const headers = githubHeaders(org, repo);
 
     try {
       const response = await fetch(
@@ -6831,8 +6907,7 @@ export function createMemberToolHandlers(
         if (response.status === 404) {
           return `Issue #${issueNumber} not found in ${org}/${repo}.`;
         }
-        logger.warn({ status: response.status, repo, issueNumber }, 'get_github_issue: GitHub API error');
-        return githubErrorMessage(response, `read issue #${issueNumber}`);
+        return githubErrorMessage(response, `read issue #${issueNumber}`, { repo, issueNumber });
       }
       const issue = await response.json() as {
         html_url: string;
@@ -6930,14 +7005,18 @@ export function createMemberToolHandlers(
       return 'Label names cannot contain quotes or newlines.';
     }
 
-    const headers = githubHeaders();
+    const headers = githubHeaders(org, repo);
 
     let apiUrl: string;
     if (query) {
-      const qualifiers = [`repo:${org}/${repo}`, `state:${state}`];
+      const qualifiers = [`repo:${org}/${repo}`];
+      // GitHub search has no `state:all` value. Omitting the qualifier searches
+      // both open and closed issues; the repository-list endpoint below does
+      // accept `state=all`, so its behavior remains unchanged.
+      if (state !== 'all') qualifiers.push(`state:${state}`);
       for (const label of labels) qualifiers.push(`label:"${label}"`);
       const q = `${query} ${qualifiers.join(' ')}`;
-      apiUrl = `https://api.github.com/search/issues?q=${encodeURIComponent(q)}&per_page=${limit}`;
+      apiUrl = `https://api.github.com/search/issues?q=${encodeURIComponent(q)}&per_page=${limit}&advanced_search=true`;
     } else {
       const params = new URLSearchParams({ state, per_page: String(limit) });
       if (labels.length > 0) params.set('labels', labels.join(','));
@@ -6947,8 +7026,7 @@ export function createMemberToolHandlers(
     try {
       const response = await fetch(apiUrl, { headers });
       if (!response.ok) {
-        logger.warn({ status: response.status, repo }, 'list_github_issues: GitHub API error');
-        return githubErrorMessage(response, 'list issues');
+        return githubErrorMessage(response, 'list issues', { repo });
       }
       const data = await response.json() as {
         items?: Array<unknown>;
@@ -6977,8 +7055,8 @@ export function createMemberToolHandlers(
       });
       const out = `## GitHub Issues in ${org}/${repo} (${items.length})\n\n`;
       return out + wrapUntrusted(`github:list:${org}/${repo}`, lines.join('\n')) + '\n';
-    } catch (error) {
-      logger.error({ error, repo }, 'list_github_issues: Failed to list issues');
+    } catch {
+      logger.error({ repo }, 'list_github_issues: Failed to list issues');
       return `Failed to list issues due to a network error.`;
     }
   });

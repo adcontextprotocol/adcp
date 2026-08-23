@@ -1848,6 +1848,69 @@ async function runTests() {
 
   log('');
 
+  log('Get AdCP Capabilities Response (webhook delivery retry horizon):', 'info');
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      webhook_signing: {
+        supported: true,
+        delivery_retry_horizon_seconds: 86400
+      }
+    },
+    'Webhook signing accepts the 24h delivery retry horizon floor'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      webhook_signing: { supported: true }
+    },
+    'Existing 3.x webhook signing remains schema-valid without the additive retry horizon'
+  );
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      webhook_signing: { supported: false }
+    },
+    'Webhook signing supported=false does not require a retry horizon'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      webhook_signing: {
+        supported: true,
+        delivery_retry_horizon_seconds: 86399
+      }
+    },
+    'Webhook delivery retry horizon rejects values below 24h'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false } },
+      webhook_signing: {
+        supported: true,
+        delivery_retry_horizon_seconds: 604801
+      }
+    },
+    'Webhook delivery retry horizon rejects values above 7d'
+  );
+
+  log('');
+
   log('Get AdCP Capabilities Response (adcp.capability_changes.notifications oneOf discriminator):', 'info');
 
   await testSchemaValidation(
@@ -2400,10 +2463,9 @@ async function runTests() {
 
   // request_signing.protocol_methods_* — JSON-RPC method namespace (adcp#4318).
   // The `protocol_methods_supported_for` / `_warn_for` / `_required_for` arrays
-  // carry JSON-RPC method strings (e.g. `tasks/cancel`); plain AdCP tool names
-  // (no `/`) are wire-distinct and belong in `supported_for` / `required_for`.
-  // The schema enforces the namespace split via a `pattern: "/"` constraint on
-  // the items.
+  // carry exact JSON-RPC wire names: A2A 0.3 slash paths or A2A 1.0 PascalCase
+  // names. Lowercase snake-case AdCP operation names are wire-distinct and
+  // belong in `supported_for` / `required_for`.
   log('Get AdCP Capabilities Response (request_signing.protocol_methods_*):', 'info');
 
   await testSchemaValidation(
@@ -2416,11 +2478,21 @@ async function runTests() {
         covers_content_digest: 'either',
         required_for: ['create_media_buy'],
         supported_for: ['create_media_buy', 'update_media_buy'],
-        protocol_methods_supported_for: ['tasks/cancel', 'tasks/get'],
-        protocol_methods_required_for: ['tasks/cancel'],
+        protocol_methods_supported_for: [
+          'tasks/cancel',
+          'tasks/pushNotificationConfig/set',
+          'SendMessage',
+          'CancelTask',
+          'CreateTaskPushNotificationConfig',
+        ],
+        protocol_methods_warn_for: ['SendMessage'],
+        protocol_methods_required_for: [
+          'tasks/pushNotificationConfig/set',
+          'CancelTask',
+        ],
       },
     },
-    'Accepts protocol_methods_* with JSON-RPC method strings (`tasks/cancel`, `tasks/get`)'
+    'Accepts A2A 0.3 paths and A2A 1.0 PascalCase names in protocol_methods_*'
   );
 
   await testSchemaValidation(
@@ -2612,6 +2684,56 @@ async function runTests() {
     },
     'Rejects AdCP tool name (no `/`) in protocol_methods_required_for'
   );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: [],
+        protocol_methods_warn_for: ['sendMessage'],
+      },
+    },
+    'Rejects lowerCamelCase names that are neither A2A 0.3 paths nor A2A 1.0 methods'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: [],
+        protocol_methods_supported_for: ['tools/call'],
+      },
+    },
+    'Rejects reserved MCP tools/call from the protocol-method namespace'
+  );
+
+  for (const field of ['supported_for', 'warn_for', 'required_for']) {
+    for (const protocolMethod of ['tasks/cancel', 'CancelTask']) {
+      await testSchemaRejection(
+        '/schemas/protocol/get-adcp-capabilities-response.json',
+        {
+          ...capabilitiesBase,
+          adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+          request_signing: {
+            supported: true,
+            covers_content_digest: 'either',
+            required_for: [],
+            supported_for: [],
+            [field]: [protocolMethod],
+          },
+        },
+        `Rejects ${protocolMethod} from the AdCP-operation ${field} bucket`
+      );
+    }
+  }
 
   log('');
 
@@ -3965,6 +4087,28 @@ async function runTests() {
     cleanControl,
     'control_media_buy accepts operational controls inside accepted terms'
   );
+  const nameControl = {
+    idempotency_key: 'control-media-buy-name-0001',
+    account: { account_id: 'account-clean-1' },
+    media_buy_id: 'media-buy-1',
+    revision: 4,
+    name: 'Acme autumn campaign'
+  };
+  await testSchemaValidation(
+    '/schemas/media-buy/control-media-buy-request.json',
+    nameControl,
+    'control_media_buy accepts a revision-checked MediaBuy name change'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/control-media-buy-request.json',
+    { ...nameControl, canceled: true },
+    'control_media_buy keeps cancellation mutually exclusive with a name change'
+  );
+  await testSchemaValidation(
+    '/schemas/core/canonical-media-buy-action.json',
+    { task: 'control_media_buy', action: 'update_name', mode: 'self_serve' },
+    'canonical MediaBuy actions route name changes through control_media_buy'
+  );
   await testSchemaValidation(
     '/schemas/creative/sync-creatives-request.json',
     {
@@ -4396,7 +4540,95 @@ async function runTests() {
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',
     { products: [] },
-    'request_proposals cannot return products without a proposal'
+    'request_proposals products-only compatibility requires an explicit outcome and continuation'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'products_available',
+      products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
+      incomplete: [{
+        scope: 'proposals',
+        description: 'The established seller returned products but did not construct a proposal.'
+      }],
+      purchase_continuation: {
+        kind: 'legacy_create',
+        continuation_token: 'products-only-composed-token-01',
+        continuation_expires_at: '2027-01-01T00:05:00Z',
+        product_ids: ['brief-composed-video'],
+        source_adcp_version: '3.1',
+        losses: ['feed_version_not_atomic', 'pricing_version_not_atomic'],
+        requires_explicit_acceptance: true
+      }
+    },
+    'request_proposals preserves a products-only established result without fabricating proposal terms'
+  );
+  await testSchemaValidation(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'products_available',
+      products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
+      purchase_continuation: {
+        kind: 'listed_purchase',
+        product_ids: ['brief-composed-video'],
+        cache_scope: 'account',
+        feed_version: 'account-feed-v17',
+        pricing_version: 'account-pricing-v9'
+      }
+    },
+    'request_proposals can direct an adapter to obtain a real account-scoped listing fence'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'products_available',
+      products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
+      incomplete: [{
+        scope: 'pricing',
+        description: 'The established seller did not return complete pricing.'
+      }],
+      purchase_continuation: {
+        kind: 'listed_purchase',
+        product_ids: ['brief-composed-video'],
+        cache_scope: 'account',
+        feed_version: 'account-feed-v17',
+        pricing_version: 'account-pricing-v9'
+      }
+    },
+    'listed purchase cannot claim an atomic fence when pricing is incomplete'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'products_available',
+      products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
+      proposals: [{ proposal_id: 'synthetic-proposal' }],
+      purchase_continuation: {
+        kind: 'legacy_create',
+        continuation_token: 'products-only-composed-token-01',
+        continuation_expires_at: '2027-01-01T00:05:00Z',
+        product_ids: ['brief-composed-video'],
+        losses: ['feed_version_not_atomic', 'pricing_version_not_atomic'],
+        requires_explicit_acceptance: true
+      }
+    },
+    'products_available cannot carry a synthetic proposal or terms digest'
+  );
+  await testSchemaRejection(
+    '/schemas/media-buy/request-proposals-response.json',
+    {
+      outcome: 'products_available',
+      products: [{ ...canonicalProductBase, product_id: 'brief-composed-video' }],
+      purchase_continuation: {
+        kind: 'legacy_create',
+        continuation_token: 'products-only-composed-token-01',
+        continuation_expires_at: '2027-01-01T00:05:00Z',
+        product_ids: ['brief-composed-video'],
+        losses: ['feed_version_not_atomic'],
+        requires_explicit_acceptance: true
+      }
+    },
+    'legacy products-only continuation names every lost fence and fails closed'
   );
   await testSchemaRejection(
     '/schemas/media-buy/request-proposals-response.json',

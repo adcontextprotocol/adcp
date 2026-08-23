@@ -1,0 +1,374 @@
+---
+title: get_plan_audit_logs
+description: "get_plan_audit_logs retrieves governance state, budget tracking, and a complete audit trail for AdCP campaign plans or portfolios."
+"og:title": "AdCP — get_plan_audit_logs"
+---
+
+
+# get_plan_audit_logs
+
+<Note>
+**Experimental.** Campaign governance ([`sync_plans`](/dist/docs/3.2.0-beta.0/governance/campaign/tasks/sync_plans), [`check_governance`](/dist/docs/3.2.0-beta.0/governance/campaign/tasks/check_governance), [`report_plan_outcome`](/dist/docs/3.2.0-beta.0/governance/campaign/tasks/report_plan_outcome), [`report_plan_adjustment`](/dist/docs/3.2.0-beta.0/governance/campaign/tasks/report_plan_adjustment), `get_plan_audit_logs`) is part of AdCP 3.0 as an experimental surface — it may change between 3.x releases with at least 6 weeks' notice. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/dist/docs/3.2.0-beta.0/reference/experimental-status) for the full contract.
+</Note>
+
+Retrieve governance state and audit trail for a plan, multiple plans, or an entire portfolio. Returns budget tracking, validation history, and compliance summary.
+
+Budget state separates `gross_committed`, `adjustments_reported`, `adjustments_verified`, economic `net_cost`, `headroom_restored`, and `ledger_committed`. The legacy `committed` and `net_committed` fields remain 3.x aliases for the current ledger value. Adjustment entries are append-only; they never rewrite the source outcome or decrement the trailing aggregate used for fragmentation defense.
+
+## Request
+
+```json
+{
+  "tool": "get_plan_audit_logs",
+  "arguments": {
+    "plan_ids": ["plan_q1_2026_launch"],
+    "include_entries": true
+  }
+}
+```
+
+Results are joined by the governance agent's stable opaque action binding. The exposed `governance_context` is the original intent context for correlation; later lifecycle checks have freshly signed context strings but remain part of the same action.
+
+**Multiple plans** -- retrieve specific plans in one call:
+
+```json
+{
+  "tool": "get_plan_audit_logs",
+  "arguments": {
+    "plan_ids": ["plan_q1_2026_launch", "plan_q1_2026_emea"],
+    "include_entries": false
+  }
+}
+```
+
+**Portfolio query** -- retrieve combined audit data for all member plans in one or more portfolios:
+
+```json
+{
+  "tool": "get_plan_audit_logs",
+  "arguments": {
+    "portfolio_plan_ids": ["portfolio_nova_brands_2026"],
+    "include_entries": true
+  }
+}
+```
+
+You can combine `plan_ids` and `portfolio_plan_ids` to query both specific plans and portfolios in a single call.
+
+## Response
+
+```json
+{
+  "plans": [
+    {
+      "plan_id": "plan_q1_2026_launch",
+      "plan_version": 1,
+      "status": "active",
+      "budget": {
+        "authorized": 500000,
+        "accounting_mode": "gross_commitment",
+        "gross_committed": 425000,
+        "adjustments_reported": 25000,
+        "adjustments_verified": 25000,
+        "net_cost": 400000,
+        "headroom_restored": 25000,
+        "ledger_committed": 400000,
+        "net_committed": 400000,
+        "committed": 400000,
+        "remaining": 100000,
+        "utilization_pct": 80
+      },
+      "channel_allocation": {
+        "olv": { "committed": 275000, "pct": 55 },
+        "display": { "committed": 150000, "pct": 30 }
+      },
+      "governed_actions": [
+        {
+          "governance_context": "gc_mb_seller_456",
+          "purchase_type": "media_buy",
+          "status": "active",
+          "committed": 275000,
+          "adjustments_reported": 25000,
+          "adjustments_verified": 25000,
+          "net_cost": 250000,
+          "headroom_restored": 25000,
+          "net_committed": 250000,
+          "seller_reported_spend": 200000,
+          "buyer_observed_spend": 200000,
+          "delivery_reporting_period": {
+            "start": "2026-03-01T00:00:00Z",
+            "end": "2026-04-01T00:00:00Z"
+          },
+          "conservative_exposure": 200000,
+          "delivery_reconciliation_status": "consistent",
+          "delivery_period_state": "open",
+          "check_count": 8
+        },
+        {
+          "governance_context": "gc_mb_seller_789",
+          "purchase_type": "media_buy",
+          "status": "active",
+          "committed": 150000,
+          "check_count": 7
+        },
+        {
+          "governance_context": "gc_rights_acme_img",
+          "purchase_type": "rights_license",
+          "status": "active",
+          "committed": 75000,
+          "check_count": 2
+        }
+      ],
+      "summary": {
+        "checks_performed": 14,
+        "outcomes_reported": 12,
+        "adjustments_reported": 1,
+        "adjustments_verified": 1,
+        "statuses": {
+          "approved": 12,
+          "denied": 1,
+          "conditions": 1,
+          "human_reviewed": 1  // also counted in approved or denied above; never counted in conditions (an agent-issued flow-control state, not a human resolution)
+        },
+        "findings_count": 2,
+        "escalations": [
+          {
+            "check_id": "chk_esc_001",
+            "reason": "Budget reallocation exceeds threshold",
+            "resolution": "approved_by_human",
+            "resolved_at": "2026-03-16T09:30:00Z"
+          }
+        ],
+        "drift_metrics": {
+          "escalation_rate": 0.07,
+          "escalation_rate_trend": "stable",
+          "auto_approval_rate": 0.80,
+          "human_override_rate": 0.02,
+          "mean_confidence": 0.88,
+          "thresholds": {
+            "escalation_rate_max": 0.20,
+            "escalation_rate_min": 0.02,
+            "auto_approval_rate_max": 0.95,
+            "human_override_rate_max": 0.15
+          }
+        }
+      },
+      "entries": [
+        {
+          "id": "chk_001",
+          "type": "check",
+          "timestamp": "2026-03-10T10:05:00Z",
+          "caller": "https://orchestrator.pinnacle-media.com/agent",
+          "tool": "get_products",
+          "check_type": "intent",
+          "verdict": "approved",
+          "explanation": "Product discovery within budget and channel constraints.",
+          "categories_evaluated": ["budget_authority", "strategic_alignment"],
+          "policies_evaluated": ["us_coppa"]
+        },
+        {
+          "id": "chk_003",
+          "type": "check",
+          "timestamp": "2026-03-15T11:05:00Z",
+          "caller": "https://ads.seller-example.com/adcp",
+          "tool": "create_media_buy",
+          "check_type": "execution",
+          "mode": "enforce",
+          "governance_context": "gc_mb_seller_456",
+          "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+          "purchase_type": "media_buy",
+          "verdict": "approved",
+          "explanation": "Media buy within plan budget ($150,000 of $500,000 remaining). Geo targeting matches authorized markets. COPPA compliance verified.",
+          "categories_evaluated": ["budget_authority", "regulatory_compliance", "brand_policy"],
+          "policies_evaluated": ["us_coppa", "alcohol_advertising"],
+          "findings": [
+            {
+              "category_id": "budget_authority",
+              "severity": "info",
+              "explanation": "Budget utilization at 70% after this buy."
+            }
+          ]
+        },
+        {
+          "id": "out_001",
+          "type": "outcome",
+          "timestamp": "2026-03-15T11:10:00Z",
+          "caller": "https://orchestrator.pinnacle-media.com/agent",
+          "governance_context": "gc_mb_seller_456",
+          "purchase_type": "media_buy",
+          "outcome": "completed",
+          "committed_budget": 150000,
+          "reported_committed_budget": 150000,
+          "seller_reference": "mb_seller_456"
+        },
+        {
+          "id": "out_del_001",
+          "type": "outcome",
+          "timestamp": "2026-03-22T00:00:00Z",
+          "caller": "https://ads.seller-example.com/adcp",
+          "governance_context": "gc_mb_seller_456",
+          "purchase_type": "media_buy",
+          "outcome": "delivery",
+          "delivery": {
+            "media_buy_id": "mb_seller_456",
+            "impressions": 4200000,
+            "spend": 137500
+          },
+          "outcome_status": "accepted"
+        },
+        {
+          "id": "adj_001",
+          "type": "adjustment",
+          "timestamp": "2026-03-23T09:00:00Z",
+          "caller": "https://ads.seller-example.com/adcp",
+          "governance_context": "gc_mb_seller_456",
+          "purchase_type": "media_buy",
+          "outcome_id": "out_001",
+          "seller_reference": "mb_seller_456",
+          "seller_adjustment_id": "cancel_mb_seller_456_01",
+          "adjustment_type": "decommitment",
+          "amount": { "amount": 25000, "currency": "USD" },
+          "headroom_restored": 25000,
+          "reason": "Remaining obligation cancelled by mutual agreement.",
+          "effective_at": "2026-03-23T08:30:00Z"
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Fields
+
+### Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `plan_ids` | string[] | At least one of `plan_ids`, `portfolio_plan_ids`, or `governance_contexts` | Plan IDs to retrieve. |
+| `portfolio_plan_ids` | string[] | At least one of `plan_ids`, `portfolio_plan_ids`, or `governance_contexts` | Portfolio plan IDs. Expanded to member plans. |
+| `governance_contexts` | string[] | No | Filter results to specific governed actions by their `governance_context` values. When present, only entries and summaries for the matching governed actions are returned. |
+| `purchase_types` | string[] | No | Filter results by purchase type (e.g., `["rights_license"]` to see all rights activity). When present, only entries and summaries matching these purchase types are returned. |
+| `include_entries` | boolean | No | Include the full audit trail. Default: `false`. |
+
+### Response
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `plans` | array | Audit data for each requested plan. |
+| `plans[].plan_id` | string | Plan identifier. |
+| `plans[].plan_version` | number | Current plan version. |
+| `plans[].status` | enum | `active`, `suspended`, or `completed`. |
+| `plans[].budget` | object | Budget state. |
+| `plans[].budget.authorized` | number | Total authorized budget from the plan. |
+| `plans[].budget.accounting_mode` | enum | `gross_commitment` or `verified_net_cost`; controls which verified records restore headroom. |
+| `plans[].budget.gross_committed` | number | Authoritative commitment from completed outcomes before adjustments. |
+| `plans[].budget.adjustments_reported` | number | Sum of all seller-reported adjustment amounts, regardless of review state. |
+| `plans[].budget.adjustments_verified` | number | Sum of buyer-accepted economic reductions in plan currency; accepted makegoods contribute zero. |
+| `plans[].budget.net_cost` | number | Gross commitment minus verified economic reductions. |
+| `plans[].budget.headroom_restored` | number | Verified reductions eligible to restore headroom under the accounting mode. |
+| `plans[].budget.ledger_committed` | number | Amount currently charged against plan headroom. |
+| `plans[].budget.net_committed` | number | Legacy alias for `ledger_committed`. |
+| `plans[].budget.committed` | number | Legacy 3.x alias for `net_committed`. |
+| `plans[].budget.remaining` | number | Authorized minus committed. |
+| `plans[].budget.utilization_pct` | number | Committed as a percentage of authorized. |
+| `plans[].channel_allocation` | object | Current channel mix. Keyed by channel ID. |
+| `plans[].channel_allocation[channel].committed` | number | Budget committed to this channel. |
+| `plans[].channel_allocation[channel].pct` | number | Channel's share of the authorized total budget. |
+| `plans[].governed_actions` | array | Per-action breakdown joined by the stable opaque action binding. |
+| `plans[].governed_actions[].governance_context` | string | Original intent context exposed for correlation. |
+| `plans[].governed_actions[].purchase_type` | enum | `media_buy`, `rights_license`, `signal_activation`, or `creative_services`. |
+| `plans[].governed_actions[].status` | enum | `active`, `suspended`, or `completed`. |
+| `plans[].governed_actions[].committed` | number | Gross authoritative commitment for this governed action. |
+| `plans[].governed_actions[].adjustments_reported` | number | Sum of all adjustment amounts for this action. |
+| `plans[].governed_actions[].adjustments_verified` | number | Buyer-accepted economic reductions for this action. |
+| `plans[].governed_actions[].net_cost` | number | Gross commitment minus verified economic reductions. |
+| `plans[].governed_actions[].headroom_restored` | number | Verified amount eligible under the plan accounting mode. |
+| `plans[].governed_actions[].net_committed` | number | Current ledger obligation after restored headroom. |
+| `plans[].governed_actions[].seller_reported_spend` | number | Latest canonical seller cumulative spend. |
+| `plans[].governed_actions[].buyer_observed_spend` | number | Latest buyer-attributed cumulative spend. |
+| `plans[].governed_actions[].delivery_reporting_period` | object | Current seller reporting period summarized for this action. |
+| `plans[].governed_actions[].conservative_exposure` | number | Greater of seller-reported and buyer-observed spend while evidence disagrees. |
+| `plans[].governed_actions[].delivery_reconciliation_status` | enum | `consistent`, `measurement_variance`, `disputed`, `unmatched`, or `closed_unresolved`. |
+| `plans[].governed_actions[].delivery_period_state` | enum | `open` or `closed`; closure is operational and does not settle billing. |
+| `plans[].governed_actions[].check_count` | integer | Number of governance checks performed. |
+| `plans[].summary` | object | Aggregate validation and outcome statistics. |
+| `plans[].summary.checks_performed` | number | Total governance checks performed. |
+| `plans[].summary.outcomes_reported` | number | Total outcomes reported. |
+| `plans[].summary.adjustments_reported` | number | Total append-only adjustment records reported. |
+| `plans[].summary.adjustments_verified` | number | Count of adjustment records accepted by the plan owner, including makegoods. |
+| `plans[].summary.statuses` | object | Count of each governance check status (`approved`, `denied`, `conditions`). Also includes `human_reviewed` as a supplementary count — checks that required human review before resolving. Always a subset of `approved` + `denied`; `conditions` is an agent-issued flow-control state and is never counted here. |
+| `plans[].summary.findings_count` | number | Total findings across all checks and outcomes. |
+| `plans[].summary.escalations` | array | Checks that were escalated for human review and their resolutions. |
+| `plans[].summary.escalations[].check_id` | string | The governance check that was escalated. |
+| `plans[].summary.escalations[].reason` | string | Why the check was escalated. |
+| `plans[].summary.escalations[].resolution` | string | How it was resolved (e.g., `approved_by_human`, `rejected_by_human`). |
+| `plans[].summary.escalations[].resolved_at` | string | ISO 8601 resolution timestamp. |
+| `plans[].summary.drift_metrics` | object | Aggregate governance metrics for detecting oversight drift. See [specification](/dist/docs/3.2.0-beta.0/governance/campaign/specification#drift-detection). |
+| `plans[].summary.drift_metrics.escalation_rate` | number | Fraction of checks that were escalated for human review (0-1). |
+| `plans[].summary.drift_metrics.escalation_rate_trend` | enum | `increasing`, `stable`, or `declining`. |
+| `plans[].summary.drift_metrics.auto_approval_rate` | number | Fraction of checks approved without human intervention (0-1). |
+| `plans[].summary.drift_metrics.human_override_rate` | number | Fraction of escalations where the human overrode the governance agent's recommendation (0-1). |
+| `plans[].summary.drift_metrics.mean_confidence` | number | Average confidence score across findings (0-1). Present when findings include confidence. |
+| `plans[].summary.drift_metrics.thresholds` | object | Organization-defined thresholds for drift metrics. When a metric crosses its threshold, the governance agent includes a finding. |
+| `plans[].summary.drift_metrics.thresholds.escalation_rate_max` | number | Maximum acceptable escalation rate. A rate above this may indicate policy miscalibration. |
+| `plans[].summary.drift_metrics.thresholds.escalation_rate_min` | number | Minimum acceptable escalation rate. A rate below this may indicate eroding oversight. |
+| `plans[].summary.drift_metrics.thresholds.auto_approval_rate_max` | number | Maximum acceptable auto-approval rate. |
+| `plans[].summary.drift_metrics.thresholds.human_override_rate_max` | number | Maximum acceptable human override rate. |
+| `plans[].entries` | array | Ordered audit trail (only when `include_entries` is `true`). |
+| `plans[].entries[].id` | string | Entry identifier. |
+| `plans[].entries[].type` | enum | `check`, `outcome`, or `adjustment`. |
+| `plans[].entries[].timestamp` | string | ISO 8601 timestamp. |
+| `plans[].entries[].plan_id` | string | Plan this entry belongs to. Present when querying multiple plans or a portfolio. |
+| `plans[].entries[].caller` | string | URL of the agent that made the request. Resolved from the credentials used on the governance callback. |
+| `plans[].entries[].tool` | string | The AdCP tool (present for `check` entries). |
+| `plans[].entries[].status` | enum | Governance check status (present for `check` entries). |
+| `plans[].entries[].check_type` | enum | `intent` or `execution` (present for `check` entries). Inferred from the fields present on the original check request. |
+| `plans[].entries[].mode` | enum | `audit`, `advisory`, or `enforce` — governance mode active when this check was evaluated. Recorded by the governance agent from its runtime configuration at check time, not from a plan field. Present on check entries; absent on outcome entries and on governance agents that have not yet adopted this field. Lets auditors distinguish `approved` decisions made under `enforce` from those made under `audit` (where the agent could not have blocked anything). |
+| `plans[].entries[].explanation` | string | Human-readable explanation of the governance decision (present for `check` entries). |
+| `plans[].entries[].policies_evaluated` | array | Registry policy IDs evaluated during this check. |
+| `plans[].entries[].categories_evaluated` | array | Governance categories evaluated (e.g., `budget_authority`, `regulatory_compliance`). **Agent-internal labels**, not a protocol-level enum — each string is defined by the governance agent's policy model. Since one governance agent per account composes all specialist review (legal, brand safety, category-specialist reviewers) behind its single endpoint, `categories_evaluated` and `findings[].details` are how internal decomposition surfaces for audit. Consumers MUST treat values as opaque labels: pattern-matching against a fixed list is not safe across agents. |
+| `plans[].entries[].findings` | array | Findings from this check, mirroring the complete [`check_governance`](/dist/docs/3.2.0-beta.0/governance/campaign/tasks/check_governance) finding shape so binding-digest inputs round-trip without loss, including `source_plan_id`, `details`, and `uncertainty_reason` when present. |
+| `plans[].entries[].governance_context` | string | Opaque governance context identifying the governed action this entry belongs to. |
+| `plans[].entries[].plan_hash` | string | Audit-layer binding to the plan revision this attestation was evaluated over — `base64url_no_pad(SHA-256(JCS(plan_payload)))` per [Plan binding and audit](/dist/docs/3.2.0-beta.0/governance/campaign/specification#plan-binding-and-audit). Present on `check` entries. Auditors and buyer-side compliance tooling verify by recomputing over the retained plan revision and byte-comparing the decoded 32-byte digests. |
+| `plans[].entries[].runtime_attestations` | array | Ordered `{ reference, evaluation }` pairs retained for a runtime-attestation check. Recompute each `evaluation.reference_digest` from RFC 8785 JCS of its paired `reference` before recomputing the binding digest. |
+| `plans[].entries[].runtime_attestation_binding_digest` | string | Digest copied from the check response and signed governance context. Recompute it from ordered `runtime_attestations[].evaluation` values and findings carrying `attestation_reference_digest`. |
+| `plans[].entries[].purchase_type` | enum | `media_buy`, `rights_license`, `signal_activation`, or `creative_services`. Present when the entry is associated with a specific governed action. |
+| `plans[].entries[].outcome` | enum | Outcome type (present for `outcome` entries). |
+| `plans[].entries[].committed_budget` | number | Governance-authorized budget reserved for the action (present for `completed` outcome entries). This is the ledger-authoritative amount, not a caller assertion. |
+| `plans[].entries[].reported_committed_budget` | number | Caller-reported seller amount retained for reconciliation. Never ledger authority. |
+| `plans[].entries[].seller_reference` | string | Seller resource identifier retained with the outcome, such as a media-buy ID. |
+| `plans[].entries[].delivery_statement` | object | Canonical seller-attributed statement retained on a delivery check, including ID, digest, sequence, period, cumulative spend, currency, and the exact digest-verifiable payload. |
+| `plans[].entries[].delivery` | object | Buyer-attributed observation retained on a `delivery` outcome. It never overwrites the seller statement. |
+| `plans[].entries[].delivery_reconciliation_status` | enum | `consistent`, `measurement_variance`, `disputed`, `unmatched`, or `closed_unresolved`. Only an open dispute blocks adjustment verification; measurement variance is recorded and priced into conservative exposure. |
+| `plans[].entries[].delivery_period_state` | enum | `open` or `closed`. Closed evidence is immutable but not a final billing record. |
+| `plans[].entries[].outcome_status` | string | Outcome status (present for `outcome` entries). |
+| `plans[].entries[].outcome_id` | string | Source completed outcome (present for `adjustment` entries). |
+| `plans[].entries[].seller_adjustment_id` | string | Seller-issued source record (present for `adjustment` entries). |
+| `plans[].entries[].adjustment_type` | enum | `decommitment`, `refund`, `credit`, or `makegood`. |
+| `plans[].entries[].amount` | object | Positive adjustment amount and plan currency. |
+| `plans[].entries[].adjustment_state` | enum | `reported`, `verified`, or `disputed`. |
+| `plans[].entries[].verified_amount` | number | Buyer-accepted economic reduction; zero while reported, disputed, or for makegoods. |
+| `plans[].entries[].evidence` | object | Seller evidence ID, type, digest, and issue time. |
+| `plans[].entries[].headroom_restored` | number | Headroom restored by this record under the plan accounting mode. |
+| `plans[].entries[].reviewed_by` | string | Authenticated plan owner that reviewed the record. |
+| `plans[].entries[].reviewed_at` | string | Review timestamp. |
+| `plans[].entries[].review_reason` | string | Optional acceptance reason or required dispute reason. |
+| `plans[].entries[].reason` | string | Seller-supplied adjustment reason. |
+| `plans[].entries[].effective_at` | string | When the seller adjustment became effective. |
+
+## Authorization
+
+The request schema does not carry an envelope `account` field — tenant identity is resolved from the submitted IDs. The governance agent MUST verify that the authenticated principal is authorized for every `plan_ids` member, every plan expanded from `portfolio_plan_ids`, and every governed action addressed by `governance_contexts`. When any element fails the authorization check the governance agent MUST fail closed with a generic [`PLAN_NOT_FOUND`](/dist/docs/3.2.0-beta.0/building/verification/compliance-catalog#error-code-plan-not-found) response — the error body MUST NOT distinguish "unauthorized" from "not found" or name the offending ID. See [Agent and Account Isolation](/dist/docs/3.2.0-beta.0/building/by-layer/L1/security#agent-and-account-isolation) for the pattern and existence-leak guardrails.
+
+## Error codes
+
+| Code | Recovery | Description |
+|------|----------|-------------|
+| [`PLAN_NOT_FOUND`](/dist/docs/3.2.0-beta.0/building/verification/compliance-catalog#error-code-plan-not-found) | correctable | No plan with this ID, or the authenticated principal is not authorized for it. The two cases MUST be indistinguishable in the response to prevent plan-ID enumeration. |
+
+## Related tasks
+
+- [`sync_plans`](/dist/docs/3.2.0-beta.0/governance/campaign/tasks/sync_plans) -- Push or update plans
+- [`check_governance`](/dist/docs/3.2.0-beta.0/governance/campaign/tasks/check_governance) -- Validate actions against the plan
+- [`report_plan_outcome`](/dist/docs/3.2.0-beta.0/governance/campaign/tasks/report_plan_outcome) -- Report outcomes to update plan state
+- [`report_plan_adjustment`](/dist/docs/3.2.0-beta.0/governance/campaign/tasks/report_plan_adjustment) -- Append a seller-authenticated adjustment without rewriting the outcome

@@ -1,0 +1,1468 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/compliance/comply-test-controller-request.json",
+  "title": "Comply Test Controller Request",
+  "description": "Request payload for the comply_test_controller tool. Triggers seller-side state transitions for compliance testing. Sandbox only — sellers MUST NOT expose this tool in production. Naturally idempotent: each known `scenario` is either a lookup (`list_scenarios`) or a state-forcing operation whose target state is carried in the payload (`force_*_status`, `simulate_*`), so replays converge to the same observable state without needing an idempotency_key. The compliance harness drives this tool deterministically and does not rely on the seller's at-most-once replay cache.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "force_creative_status"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "creative_id",
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/creative-status.json"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "force_creative_purge"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "creative_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "force_account_status"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "account_id",
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/account-status.json"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "force_media_buy_status"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "media_buy_id",
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/media-buy-status.json"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "force_create_media_buy_arm"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "properties": {
+              "arm": {
+                "enum": [
+                  "submitted",
+                  "input-required"
+                ]
+              }
+            },
+            "required": [
+              "arm"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "arm": {
+                      "const": "submitted"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "task_id"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "force_get_products_arm"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "properties": {
+              "arm": {
+                "enum": [
+                  "submitted",
+                  "rejected"
+                ]
+              }
+            },
+            "required": [
+              "arm"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "arm": {
+                      "const": "submitted"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "task_id"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "reason"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "suggestions"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "arm": {
+                      "const": "rejected"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "reason"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "task_id"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "message"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "force_get_signals_arm"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "properties": {
+              "arm": {
+                "const": "submitted"
+              }
+            },
+            "required": [
+              "arm"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "arm": {
+                      "const": "submitted"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "task_id"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "force_task_completion"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "task_id",
+              "result"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "force_session_status"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "session_id",
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "complete",
+                  "terminated"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "simulate_delivery"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "media_buy_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "simulate_budget_spend"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "spend_percentage"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "account_id"
+                ]
+              },
+              {
+                "required": [
+                  "media_buy_id"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "seed_product"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "product_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "seed_pricing_option"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "product_id",
+              "pricing_option_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "seed_creative"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "creative_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "seed_plan"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "plan_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "seed_media_buy"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "media_buy_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "seed_account"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "account_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "seed_rights_grant"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "rights_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "seed_creative_format"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "format_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "seed_measurement_catalog"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "vendor",
+              "metrics"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "query_upstream_traffic"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "since_timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp; only return calls recorded at or after this time. Default: session start. Used by storyboard runners to scope upstream_traffic assertions to a specific step's window."
+              },
+              "endpoint_pattern": {
+                "type": "string",
+                "description": "Optional server-side filter; reduces response size. Wildcard pattern matched against `<METHOD> <URL>`, e.g. 'POST */audience/upload' or 'POST *'. When omitted, all recorded calls in the window are returned. **Grammar (normative):** `*` matches zero or more characters of any kind including `/`. No other characters have wildcard semantics — `?` is a literal question mark, `[` and `]` are literal brackets, etc. There is no escape mechanism — `*` is always a wildcard; if literal-asterisk matching is required, callers omit `endpoint_pattern` and filter response-side. Implementations MUST anchor the pattern (full-string match, not substring search). This narrow grammar is intentional — `endpoint_pattern` exists to discriminate platform endpoints (e.g., `POST */audience/upload` vs `POST */events/log`), not to express full path-segment grammars. Cross-runner determinism depends on this pinning: a runner that ships POSIX-glob semantics (`*` per-segment, `?` single-char-any) would grade the same storyboard differently than a runner picking the more permissive single-wildcard reading."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 100,
+                "description": "Maximum number of calls to return. The response carries `total_count` and `truncated` so the runner can detect overflow."
+              },
+              "attestation_mode": {
+                "type": "string",
+                "enum": [
+                  "raw",
+                  "digest"
+                ],
+                "default": "raw",
+                "description": "Requested response shape per recorded call. `raw` (default) returns full payload — the load-bearing assertion target for arbitrary `payload_must_contain` paths, and the existing v2.0.0 contract. `digest` returns only `payload_digest_sha256` + `payload_length` + `content_type` + optional `identifier_match_proofs[]`, so privacy-conscious adopters can support `upstream_traffic` conformance without raw-payload disclosure. Whether digest mode satisfies a given adopter's data-handling obligations (GDPR processor responsibilities, internal data-classification policy, contractual restrictions) is for that adopter's counsel to determine — the spec doesn't promise digest mode clears any specific legal bar. Synthetic-vectors-only still applies (see UpstreamTrafficSuccess top-level description in comply-test-controller-response.json): digest mode reduces what the runner sees, but the controller must still operate on synthetic test data, not production traffic — running queries against production payloads would let a runner with a precomputed digest set learn membership of arbitrary identifiers in the adopter's user base. Adopters MAY unilaterally downgrade a `raw` request to `digest` when their policy requires it; the response's per-call `attestation_mode` field echoes what was actually returned. Storyboards that strictly require raw introspection set `attestation_mode_required: \"raw\"` on their `upstream_traffic` check — calls returned in digest mode then grade not_applicable rather than failing."
+              },
+              "identifier_value_digests": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "maxItems": 64,
+                "description": "When `attestation_mode` is `digest`, the runner MAY supply SHA-256 digests (lowercase hex, 64 chars) of identifier values it wants the controller to verify echo for. The controller scans each recorded call's payload for string tokens whose SHA-256 hash matches any digest in this list and returns booleans in `recorded_calls[].identifier_match_proofs[]`. Lets the runner verify `identifier_paths` echo without ever transmitting plaintext identifiers to the controller — the digest is the comparison key. Cap of 64 digests per query to bound the controller's work; storyboards with more identifiers SHOULD batch across multiple queries. Has no effect when `attestation_mode` is `raw` (the runner does the matching in-process against the full payload)."
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "query_provenance_audit_observations"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "creative_id"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "force_upstream_unavailable"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "tool"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "catalog_item_availability_probe"
+          }
+        },
+        "required": [
+          "scenario"
+        ]
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "operation",
+              "catalog_id",
+              "item_id"
+            ],
+            "properties": {
+              "operation": {
+                "enum": [
+                  "seed_inaccessible_item",
+                  "query_eligibility",
+                  "advance_time",
+                  "recreate_catalog"
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "operation": {
+                      "enum": [
+                        "query_eligibility",
+                        "advance_time",
+                        "recreate_catalog"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "operation"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "catalog_generation"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "operation": {
+                      "const": "advance_time"
+                    }
+                  },
+                  "required": [
+                    "operation"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "target_time"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "compact_product_lifecycle_probe"
+          }
+        },
+        "required": [
+          "scenario"
+        ]
+      },
+      "then": {
+        "required": [
+          "params"
+        ],
+        "properties": {
+          "params": {
+            "required": [
+              "operation"
+            ],
+            "properties": {
+              "operation": {
+                "enum": [
+                  "prepare",
+                  "expire_proposal"
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "operation": {
+                      "const": "prepare"
+                    }
+                  },
+                  "required": [
+                    "operation"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "product_id"
+                  ],
+                  "not": {
+                    "required": [
+                      "proposal_id"
+                    ]
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "operation": {
+                      "const": "expire_proposal"
+                    }
+                  },
+                  "required": [
+                    "operation"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "proposal_id"
+                  ],
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "expires_at"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "target_time"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "product_id"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "x-mutates-state": true,
+  "properties": {
+    "scenario": {
+      "type": "string",
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'catalog_item_availability_probe' provides deterministic sandbox operations for cross-principal reference seeding, actual eligibility observation, clock advancement, and catalog delete/recreate generation tests. 'compact_product_lifecycle_probe' prepares deterministic synchronous compact proposal behavior and expires a committed proposal strictly after its hold deadline. 'force_creative_purge' destroys or tombstones a sandbox creative so account-level `creative.purged` webhooks can be observed where the seller supports the lifecycle surface. 'force_create_media_buy_arm', 'force_get_products_arm', and 'force_get_signals_arm' register one-shot response-arm directives for the next matching operation from the caller's authenticated sandbox account + principal pair. 'seed_*' scenarios pre-populate fixtures (account, product, pricing option, creative, plan, media buy, rights grant, creative format, measurement catalog) so storyboards can reference fixture IDs and external-catalog facts without implementers guessing which fixtures the conformance suite expects. 'query_upstream_traffic' returns outbound HTTP calls the agent has made since session start (or since a caller-supplied timestamp), so storyboard runners can assert upstream side-effects via `check: upstream_traffic`. 'query_provenance_audit_observations' returns sandbox-only audit observations recorded for a submitted creative so storyboards can assert non-blocking governance observations without exposing an internal audit log on public seller responses. 'force_upstream_unavailable' marks a named upstream dependency as unreachable for the duration of the compliance session (or until the seller resets it), so storyboards can exercise stale-cache fallback paths - see the `stale_response_advisory` universal storyboard. The contract raises the bar against unintentional facades - adapters that satisfy AdCP schema requirements with synthetic placeholders. It is NOT an adversarial integrity check: adopters self-report their own traffic. Adopters MUST scope the response to traffic caused by the requesting principal's session/auth context - cross-caller traffic MUST NOT be returned, regardless of the supplied since_timestamp. Multi-tenant sandboxes MUST key the recording buffer on the comply_test_controller invocation's auth principal. Runners and sellers MUST accept unknown scenario strings - new scenarios may be added in additive releases."
+    },
+    "params": {
+      "type": "object",
+      "description": "Scenario-specific parameters. Required for all scenarios except list_scenarios.",
+      "properties": {
+        "creative_id": {
+          "type": "string",
+          "description": "Creative to transition (force_creative_status) or seed (seed_creative).",
+          "x-entity": "creative"
+        },
+        "account_id": {
+          "type": "string",
+          "description": "Account to transition, simulate, or seed. Used by force_account_status, simulate_budget_spend, and seed_account.",
+          "x-entity": "account"
+        },
+        "media_buy_id": {
+          "type": "string",
+          "description": "Media buy to transition (force_media_buy_status, simulate_delivery, simulate_budget_spend) or seed (seed_media_buy).",
+          "x-entity": "media_buy"
+        },
+        "session_id": {
+          "type": "string",
+          "description": "Session to transition. Used by force_session_status."
+        },
+        "product_id": {
+          "type": "string",
+          "description": "Product to seed or prepare for deterministic compact lifecycle testing. Used by seed_product, seed_pricing_option, and compact_product_lifecycle_probe prepare.",
+          "x-entity": "product"
+        },
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Committed proposal whose hold the compact_product_lifecycle_probe expires.",
+          "x-entity": "proposal"
+        },
+        "pricing_option_id": {
+          "type": "string",
+          "description": "Pricing option to seed, scoped to a product. Used by seed_pricing_option.",
+          "x-entity": "product_pricing_option"
+        },
+        "plan_id": {
+          "type": "string",
+          "description": "Plan to seed. Used by seed_plan.",
+          "x-entity": "governance_plan"
+        },
+        "rights_id": {
+          "type": "string",
+          "description": "Rights grant to seed. Used by seed_rights_grant.",
+          "x-entity": "rights_grant"
+        },
+        "fixture": {
+          "type": "object",
+          "description": "Arbitrary fixture payload carried by seed_* scenarios. Shape matches the domain object the seed scenario creates (account, product, creative, plan, media buy, pricing option, rights grant). Seller MAY reject malformed fixtures with INVALID_PARAMS. Kept permissive so storyboard authors can declare the minimum shape each test needs without the spec locking down every field.",
+          "additionalProperties": true
+        },
+        "operation": {
+          "type": "string",
+          "enum": [
+            "seed_inaccessible_item",
+            "query_eligibility",
+            "advance_time",
+            "recreate_catalog",
+            "prepare",
+            "expire_proposal"
+          ],
+          "description": "Scenario-specific probe operation. catalog_item_availability_probe uses seed_inaccessible_item, query_eligibility, advance_time, and recreate_catalog. compact_product_lifecycle_probe uses prepare to make one seeded product's compact proposal path deterministic and expire_proposal to advance strictly beyond a committed proposal's stored expires_at and process the hold lapse."
+        },
+        "catalog_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Catalog operated on by catalog_item_availability_probe.",
+          "x-entity": "catalog"
+        },
+        "catalog_generation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Catalog incarnation operated on by catalog_item_availability_probe.",
+          "x-entity": "catalog_generation"
+        },
+        "item_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Catalog item operated on by catalog_item_availability_probe.",
+          "x-entity": "catalog_item"
+        },
+        "target_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Deterministic sandbox clock target used by catalog_item_availability_probe advance_time."
+        },
+        "status": {
+          "type": "string",
+          "description": "Target status for the resource. Type depends on scenario: creative-status for force_creative_status, account-status for force_account_status, media-buy-status for force_media_buy_status. For force_session_status, must be 'complete' or 'terminated'."
+        },
+        "rejection_reason": {
+          "type": "string",
+          "description": "Reason for rejection. Used by force_creative_status and force_media_buy_status when status = rejected."
+        },
+        "purge_kind": {
+          "type": "string",
+          "enum": [
+            "soft",
+            "hard"
+          ],
+          "description": "Purge mode for force_creative_purge. soft retains a list_creatives tombstone; hard removes the creative entirely."
+        },
+        "reason_code": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/creative-event-reason-code.json",
+          "description": "Creative lifecycle reason code for force_creative_status and force_creative_purge."
+        },
+        "reason_detail": {
+          "type": "string",
+          "description": "Human-readable detail for force_creative_status and force_creative_purge."
+        },
+        "termination_reason": {
+          "type": "string",
+          "description": "Reason for termination (e.g., session_timeout, host_terminated, policy_violation). Used by force_session_status when status = terminated."
+        },
+        "impressions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Impressions to simulate. Used by simulate_delivery."
+        },
+        "clicks": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Clicks to simulate. Used by simulate_delivery."
+        },
+        "conversions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Conversions to simulate. Used by simulate_delivery."
+        },
+        "delivery_date": {
+          "type": "string",
+          "format": "date",
+          "description": "UTC calendar date attributable to this simulated delivery batch. Used by simulate_delivery to seed deterministic date-range tests. When get_media_buy_delivery supplies start_date or end_date, dated batches are included when delivery_date is greater than or equal to start_date and strictly less than end_date. Omit to preserve cumulative, unfiltered simulation behavior."
+        },
+        "conversion_value": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total attributed conversion value to simulate in the delivery reporting currency. Used by simulate_delivery."
+        },
+        "commissionable_value": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Settled attributed value eligible for revenue-share commission to simulate in the delivery reporting currency. Used by simulate_delivery."
+        },
+        "reported_spend": {
+          "type": "object",
+          "description": "Spend as reported in delivery data. Does not affect budget. Used by simulate_delivery.",
+          "properties": {
+            "amount": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          "required": [
+            "amount",
+            "currency"
+          ]
+        },
+        "reach": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Unique reach count to inject into the simulated delivery row. Used by simulate_delivery. The unit of measurement matches the reach_unit declared on the media buy's optimization goal. When supplied, sellers MUST surface this value at `totals.reach` in the next get_media_buy_delivery response."
+        },
+        "frequency": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Average frequency per reach unit to inject. Used by simulate_delivery. When supplied alongside reach, sellers MUST surface this value at `totals.frequency`. The measurement window for this frequency value is declared in `reach_window` when also present."
+        },
+        "reach_window": {
+          "type": "object",
+          "description": "Measurement window semantics to attach to the simulated reach and frequency values. Used by simulate_delivery. When present, sellers MUST populate `reach_window` on the delivery row so buyers can determine the window semantics (cumulative vs. period vs. rolling). Omitting this param produces a row with no `reach_window` — valid per schema but sum-unsafe. Mirrors the `reach_window` shape in delivery-metrics.json.",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "cumulative",
+                "period",
+                "rolling"
+              ],
+              "description": "Window kind. `cumulative` — no period field required. `period` and `rolling` — period field REQUIRED."
+            },
+            "period": {
+              "allOf": [
+                {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/duration.json"
+                }
+              ],
+              "description": "Duration of the measurement window. REQUIRED when kind is `period` or `rolling`. Matches the `period` field in delivery-metrics.json's reach_window block."
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "period",
+                      "rolling"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "then": {
+                "required": [
+                  "period"
+                ]
+              }
+            }
+          ],
+          "additionalProperties": true
+        },
+        "viewability": {
+          "type": "object",
+          "description": "Viewability metrics to inject into the simulated delivery row. Used by simulate_delivery. When present, sellers MUST surface these values inside `viewability` on the next get_media_buy_delivery response. Mirrors the `viewability` block in delivery-metrics.json: measurable_impressions is the shared denominator for viewable_rate and viewed_seconds. Sellers SHOULD include standard whenever measured values are present.",
+          "properties": {
+            "measurable_impressions": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Impressions where viewability could be measured. Coverage denominator for viewable_rate and viewed_seconds."
+            },
+            "viewable_impressions": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Impressions that met the viewability threshold."
+            },
+            "viewable_rate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Viewable impression rate (viewable_impressions / measurable_impressions)."
+            },
+            "viewed_seconds": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Average in-view duration per measurable impression in seconds. Reporting counterpart to the viewed_seconds optimization metric."
+            },
+            "standard": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/viewability-standard.json",
+              "description": "Viewability measurement standard governing the threshold for viewable_rate and viewed_seconds."
+            }
+          },
+          "additionalProperties": true
+        },
+        "vendor_metric_values": {
+          "type": "array",
+          "description": "Vendor-defined metric values to inject into the next delivery report. Used by simulate_delivery. The reference seller reconciles these rows against each package's seller-stamped committed_metrics contract.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/vendor-metric-value.json"
+          }
+        },
+        "vendor_metric_values_by_package": {
+          "type": "object",
+          "description": "Package-scoped vendor-defined values to inject, keyed by package_id. Used by simulate_delivery for multi-package buys. Sellers MUST use this form whenever more than one package could carry the same vendor/metric_id key; the legacy media-buy-scoped vendor_metric_values form is unambiguous only for a single-package buy.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/vendor-metric-value.json"
+            }
+          }
+        },
+        "not_yet_measurable_vendor_metrics": {
+          "type": "array",
+          "description": "Committed vendor metrics that are not yet measurable for the simulated measurement window. Used by simulate_delivery to prove that a future metric is omitted from missing_metrics until its measurement window matures.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "vendor": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/brand-ref.json"
+              },
+              "metric_id": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/vendor-metric-id.json"
+              }
+            },
+            "required": [
+              "vendor",
+              "metric_id"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "not_yet_measurable_vendor_metrics_by_package": {
+          "type": "object",
+          "description": "Package-scoped committed vendor metrics that are not yet measurable for the simulated window, keyed by package_id. Used by simulate_delivery for multi-package buys so a deferral on one package never suppresses another package's overdue gap.",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "vendor": {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/brand-ref.json"
+                },
+                "metric_id": {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/vendor-metric-id.json"
+                }
+              },
+              "required": [
+                "vendor",
+                "metric_id"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "spend_percentage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Spend to this percentage of budget (0–100). Used by simulate_budget_spend."
+        },
+        "arm": {
+          "type": "string",
+          "enum": [
+            "submitted",
+            "input-required",
+            "rejected"
+          ],
+          "description": "Response arm for the next forced operation call. Used by force_create_media_buy_arm, force_get_products_arm, and force_get_signals_arm. 'submitted' is supported for all three operations; create_media_buy also supports 'input-required'; get_products also supports 'rejected'. 'completed' is covered by force_task_completion after a submitted task exists; 'working' is an out-of-band progress signal, not an initial response arm."
+        },
+        "task_id": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Deterministic task handle the seller MUST emit verbatim on the next forced operation response when arm is 'submitted'. The seller MUST accept this exact value on subsequent tasks/get or get_task_status calls within the same authenticated sandbox account + principal pair and MUST return REFERENCE_NOT_FOUND for the same task_id under any other account or principal. Sandbox task_ids are caller-opaque strings - the seller's production task-id format rules do not apply.",
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Optional human-readable explanation surfaced on the next forced operation response. Used by force_create_media_buy_arm, force_get_products_arm, and force_get_signals_arm for the submitted arm. Plain text only."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "description": "Deterministic buyer-facing reason the seller MUST emit on the next get_products response when force_get_products_arm uses arm 'rejected'. Plain text only; MUST NOT expose confidential internal rules, inventory identifiers, credentials, or stack traces."
+        },
+        "suggestions": {
+          "type": "array",
+          "description": "Optional deterministic alternatives the seller MUST emit on the next get_products rejection. Used only by force_get_products_arm with arm 'rejected'.",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        },
+        "format_id": {
+          "type": "string",
+          "deprecated": true,
+          "description": "**DEPRECATED 3.x compatibility fixture.** Legacy named-format ID to seed for seed_creative_format scenarios. The seller MUST expose it through the deprecated list_creative_formats projection for the duration of the compliance session. Canonical 3.2 scenarios seed creative.supported_formats capabilities instead.",
+          "x-entity": "creative_format"
+        },
+        "vendor": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/brand-ref.json",
+          "description": "Measurement vendor whose catalog is being seeded. Used by seed_measurement_catalog. The seller MUST treat `metrics[]` as this vendor's `get_adcp_capabilities.measurement.metrics[]` snapshot for the duration of the compliance session."
+        },
+        "metrics": {
+          "type": "array",
+          "description": "Measurement catalog entries to seed for the vendor. Used by seed_measurement_catalog. Shape mirrors `get_adcp_capabilities.measurement.metrics[]`; each metric_id is unique within the seeded vendor catalog.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "required": [
+              "metric_id"
+            ],
+            "properties": {
+              "metric_id": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/vendor-metric-id.json"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "tool": {
+          "type": "string",
+          "description": "Tool name whose upstream dependency to affect. Used by force_upstream_unavailable. The seller marks the named upstream as unreachable for subsequent calls to this tool within the compliance session. Sellers MAY accept a wildcard ('*') to affect all tools."
+        },
+        "upstream_name": {
+          "type": "string",
+          "description": "Human-readable identifier for the upstream dependency to force unavailable (e.g., 'inventory-service', 'creative-agent'). Used by force_upstream_unavailable. When omitted, the seller marks its default upstream for the specified tool as unavailable. Sellers MUST include the same name in STALE_RESPONSE error.details.upstream.name on the affected response."
+        },
+        "result": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/compliance/task-completion-data.json",
+          "description": "Completion payload to record against the task. force_task_completion supports the bounded get_products, get_signals, and create_media_buy completion union; polling and production SDKs resolve all task results through the originating task's manifest response mapping instead of embedding a global result union. The seller MUST deliver this verbatim to the buyer's push_notification_config.url, preserving caller-supplied fields. Sellers MUST emit INVALID_PARAMS when the payload does not match the original task response branch and MAY reject payloads exceeding 256 KB."
+        }
+      },
+      "additionalProperties": true
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/ext.json"
+    },
+    "account": {
+      "type": "object",
+      "description": "Sandbox account assertion. The runner MUST set sandbox: true on every comply_test_controller request. The seller MUST refuse the request (returning a structured error) if the targeted account is not a sandbox account in the seller's persisted records. This field is a caller-side declaration of intent — it does not grant sandbox status; sellers verify against their own account state. The (Sandbox) verification tier is defined by this gate: real production endpoints accept sandbox-flagged traffic and process it without real-world side effects, no separate test-mode endpoint required. See spec issue #3755 and the (Sandbox) framing in #4379.",
+      "required": [
+        "sandbox"
+      ],
+      "properties": {
+        "sandbox": {
+          "type": "boolean",
+          "const": true,
+          "description": "MUST be true. The seller MUST verify the targeted account is sandbox by looking up the persisted account record, not by trusting this field. A request asserting sandbox: false schema-rejects before reaching the seller — defense-in-depth on top of the per-request gate."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "scenario",
+    "account"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "List supported scenarios",
+      "data": {
+        "scenario": "list_scenarios",
+        "account": {
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Force a creative to rejected status",
+      "data": {
+        "scenario": "force_creative_status",
+        "params": {
+          "creative_id": "cr-123",
+          "status": "rejected",
+          "rejection_reason": "Brand safety policy violation"
+        },
+        "account": {
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Force account suspension",
+      "data": {
+        "scenario": "force_account_status",
+        "params": {
+          "account_id": "acct-456",
+          "status": "suspended"
+        },
+        "account": {
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Force the next create_media_buy call into the submitted arm with a deterministic task_id",
+      "data": {
+        "scenario": "force_create_media_buy_arm",
+        "params": {
+          "arm": "submitted",
+          "task_id": "task_async_signed_io_q2",
+          "message": "Awaiting IO signature from sales team; typical turnaround 2–4 hours"
+        },
+        "account": {
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Force a previously-submitted create_media_buy task to completion with a result payload",
+      "data": {
+        "scenario": "force_task_completion",
+        "params": {
+          "task_id": "task_async_signed_io_q2",
+          "result": {
+            "media_buy_id": "mb_async_signed_io_q2",
+            "media_buy_status": "active",
+            "confirmed_at": "2026-08-12T12:00:00Z",
+            "revision": 1,
+            "packages": [
+              {
+                "package_id": "pkg-0",
+                "product_id": "async_signed_io_q2",
+                "budget": 30000
+              }
+            ]
+          }
+        },
+        "account": {
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Simulate session timeout",
+      "data": {
+        "scenario": "force_session_status",
+        "params": {
+          "session_id": "sess-abc",
+          "status": "terminated",
+          "termination_reason": "session_timeout"
+        },
+        "account": {
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Simulate delivery data",
+      "data": {
+        "scenario": "simulate_delivery",
+        "params": {
+          "media_buy_id": "mb-789",
+          "delivery_date": "2026-02-05",
+          "impressions": 10000,
+          "clicks": 150,
+          "reported_spend": {
+            "amount": 150,
+            "currency": "USD"
+          }
+        },
+        "account": {
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Simulate budget consumption to 95%",
+      "data": {
+        "scenario": "simulate_budget_spend",
+        "params": {
+          "media_buy_id": "mb-789",
+          "spend_percentage": 95
+        },
+        "account": {
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Seed a product fixture so subsequent storyboard steps can reference it by ID",
+      "data": {
+        "scenario": "seed_product",
+        "params": {
+          "product_id": "test-product",
+          "fixture": {
+            "delivery_type": "non_guaranteed",
+            "channels": [
+              "display"
+            ],
+            "pricing_options": [
+              {
+                "pricing_option_id": "test-pricing",
+                "pricing_model": "cpm",
+                "currency": "USD",
+                "floor_price": 1
+              }
+            ]
+          }
+        },
+        "account": {
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Seed an approved creative fixture",
+      "data": {
+        "scenario": "seed_creative",
+        "params": {
+          "creative_id": "campaign_hero_video",
+          "fixture": {
+            "status": "approved",
+            "format_id": {
+              "id": "video_30s"
+            }
+          }
+        },
+        "account": {
+          "sandbox": true
+        }
+      }
+    },
+    {
+      "description": "Query upstream traffic recorded since a storyboard step's request timestamp",
+      "data": {
+        "scenario": "query_upstream_traffic",
+        "params": {
+          "since_timestamp": "2026-05-02T14:30:00Z",
+          "endpoint_pattern": "POST *",
+          "limit": 100
+        },
+        "account": {
+          "sandbox": true
+        }
+      }
+    }
+  ]
+}
