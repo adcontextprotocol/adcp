@@ -55,6 +55,28 @@
         },
         "metric_id": {
           "$ref": "/schemas/core/vendor-metric-id.json"
+        },
+        "qualifier": {
+          "type": "object",
+          "description": "Optional disambiguator mirroring the vendor-scope qualifier on `committed_metrics` — same closed key set as standard-scope entries.",
+          "properties": {
+            "viewability_standard": {
+              "$ref": "/schemas/enums/viewability-standard.json"
+            },
+            "completion_source": {
+              "$ref": "/schemas/enums/completion-source.json"
+            },
+            "attribution_methodology": {
+              "$ref": "/schemas/enums/attribution-methodology.json"
+            },
+            "attribution_window": {
+              "$ref": "/schemas/core/duration.json"
+            },
+            "lift_dimension": {
+              "$ref": "/schemas/enums/lift-dimension.json"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "required": ["scope", "vendor", "metric_id"],

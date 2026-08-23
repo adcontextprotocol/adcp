@@ -17,7 +17,7 @@
         },
         "metric_id": {
           "$ref": "/schemas/enums/available-metric.json",
-          "description": "Identifier for the standard metric."
+          "description": "Identifier for the standard metric. Container tokens (e.g., `viewability`, `quartile_data`, `dooh_metrics`) MUST NOT appear here — an aggregate row carries a single numeric `value`, and leaf identities exist for exactly that purpose (e.g., `viewable_rate`, `quartile_75`)."
         },
         "qualifier": {
           "type": "object",
@@ -177,7 +177,29 @@
         },
         "qualifier": {
           "type": "object",
-          "description": "Optional qualifier keys for vendor metrics that need disambiguation (rare today — most vendor methodologies are intrinsic to the metric definition).",
+          "description": "Optional qualifier keys disambiguating this vendor-metric row from sibling rows under the same (vendor, metric_id) — e.g., attribution_window on a vendor outcome metric. Same closed key set as the standard branch; new keys ship explicitly.",
+          "properties": {
+            "viewability_standard": {
+              "$ref": "/schemas/enums/viewability-standard.json",
+              "description": "Viewability standard under which this row was measured. MRC and GroupM define materially different thresholds; never sum across standards."
+            },
+            "completion_source": {
+              "$ref": "/schemas/enums/completion-source.json",
+              "description": "Attestation source for a vendor completion-style metric — seller_attested from player/ad server, vendor_attested from an independent measurement path. Applicability is defined by the vendor metric; never sum across sources."
+            },
+            "attribution_methodology": {
+              "$ref": "/schemas/enums/attribution-methodology.json",
+              "description": "Attribution methodology under which this outcome row was computed (`deterministic_purchase`, `probabilistic`, `panel_based`, `modeled`). Outcome metrics measured under different methodologies represent materially different numbers; never sum across methodologies."
+            },
+            "attribution_window": {
+              "$ref": "/schemas/core/duration.json",
+              "description": "Attribution window for this outcome row. Object-valued duration (`{interval, unit}`), not a shorthand string. Outcome metrics measured over different windows represent the same metric over different time periods; the partition keeps them as separate rows so buyers don't accidentally aggregate."
+            },
+            "lift_dimension": {
+              "$ref": "/schemas/enums/lift-dimension.json",
+              "description": "Lift dimension this row represents (awareness, consideration, favorability, purchase intent, or ad recall) for vendor lift-style metrics. Applicability is defined by the vendor metric; each dimension is a separate surveyed outcome and rows under different dimensions must not be summed."
+            }
+          },
           "additionalProperties": false
         },
         "value": {

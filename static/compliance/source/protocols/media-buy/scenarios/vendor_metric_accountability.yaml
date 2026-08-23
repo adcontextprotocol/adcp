@@ -273,10 +273,12 @@ phases:
       get_media_buy_delivery and reconcile each package independently.
 
       The semantic uniqueness key for each vendor metric row is
-      `(vendor.domain, vendor.brand_id, metric_id)`. Since brand_id is optional
-      in BrandRef, the operative key for single-brand vendors is
-      `(vendor.domain, metric_id)`. Sellers MUST NOT emit the same
-      `(vendor, metric_id)` pair twice in a single delivery report.
+      `(vendor.domain, vendor.brand_id, metric_id, qualifier)`. Since brand_id
+      is optional in BrandRef, the operative key for single-brand vendors is
+      `(vendor.domain, metric_id, qualifier)`. The same vendor metric MAY
+      appear in multiple rows only when each carries a distinct qualifier
+      (e.g., 7-day and 30-day attribution windows); sellers MUST NOT emit two
+      rows with the same tuple in a single delivery report.
     steps:
       - id: simulate_delivery_with_vendor_metrics
         title: "Inject simulated delivery with vendor_metric_values"
