@@ -7,11 +7,8 @@ export default defineConfig({
     root: __dirname,
     setupFiles: ['./tests/setup/revenue-tracking-env.ts'],
     testTimeout: 30000,
-    // Forks give each test file its own process so module-level singletons
-    // (db pool, WorkOS client, env-cached secrets) cannot bleed between files.
-    // The root vitest config uses threads for speed; server tests need forks
-    // because dozens of files set process.env in vi.hoisted() for route and
-    // middleware init, and threads share process.env across all workers.
+    // Keep process isolation explicit so module-level singletons (database
+    // pool, WorkOS client, env-cached secrets) cannot bleed between files.
     pool: 'forks',
     fileParallelism: false,
   },

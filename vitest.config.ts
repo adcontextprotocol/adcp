@@ -10,15 +10,6 @@ export default defineConfig({
     // Cap individual test hangs at 10 s so a single stalled test doesn't
     // silently consume the entire 60 s precommit budget with no test name.
     testTimeout: 10000,
-    setupFiles: ['./tests/setup/env-defaults.ts'],
-    // Route env-mutating server-integration tests to the forks pool.
-    // Threads share process.env; tests that set WORKOS/STRIPE secrets in
-    // vi.hoisted() corrupt the env for concurrent workers. Forks give each
-    // file its own process, matching the server vitest config's isolation.
-    poolMatchGlobs: [
-      ['tests/announcement/**', 'forks'],
-      ['tests/billing/**', 'forks'],
-    ],
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
