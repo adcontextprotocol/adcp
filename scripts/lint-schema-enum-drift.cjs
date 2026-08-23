@@ -80,6 +80,10 @@ const ALLOWED = new Set([
   'core/event-surface.json|*',
   // Creative format base has broader asset types and different watermark types
   'formats/canonical/_base.json|*',
+  // First-class tracker constraints intentionally narrow the flattened event
+  // vocabularies by XML element, target, and exact standards version.
+  'core/vast-tracker-constraints.json|*',
+  'core/daast-tracker-constraints.json|*',
   // Sponsored placement supported_id_types includes asin (broader than content-id-type)
   'formats/canonical/sponsored_placement.json|/properties/supported_id_types',
   // Delivery status is a superset of media-buy-status (includes failed, pending, etc.)
