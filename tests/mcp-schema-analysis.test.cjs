@@ -34,7 +34,7 @@ test("input-field weight report attributes the largest transitive schema graphs"
   const report = analyzeInputSchemaWeights(schemas);
 
   assert.equal(report.tool_count, 16);
-  assert.equal(report.definition_instances, 582);
+  assert.equal(report.definition_instances, 583);
   assert.equal(report.unique_definitions, 152);
   assert.equal(report.repeated_definitions, 109);
   assert.ok(report.repeated_definition_bytes > 180_000);

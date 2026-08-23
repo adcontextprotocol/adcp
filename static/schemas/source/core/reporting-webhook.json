@@ -52,7 +52,7 @@
     },
     "requested_metrics": {
       "type": "array",
-      "description": "Optional list of metrics to include in webhook notifications. If omitted, all available metrics are included. Must be a subset of the product's available_metrics. A numeric leaf may be covered by its container under `enums/available-metric.json`; each structured distribution must be explicitly available. Requesting any nested identity selects its canonical carrier inside the payload's nested object.",
+      "description": "Optional list of metrics to include in webhook notifications. If omitted, all available metrics are included; an empty array has the same meaning as omission (it does not narrow to impressions and spend only). impressions and spend are always included regardless of this list. Must be a subset of the product's available_metrics. Subset evaluation and leaf resolution follow `enums/available-metric.json`: a numeric leaf may be covered by its container, while each structured distribution must be explicitly available. Requesting any nested identity selects its canonical carrier inside the payload's nested object. Same narrowing semantics as get_media_buy_delivery's requested_metrics (which additionally requires at least one entry when present).",
       "items": {
         "$ref": "/schemas/enums/available-metric.json"
       },
