@@ -137,6 +137,17 @@ describe('secretariat queues snapshot', () => {
     );
   });
 
+  it('opts every GitHub issue search into advanced search', async () => {
+    const { buildQueuesSnapshot } = await import('../../src/addie/jobs/secretariat-queues.js');
+    await buildQueuesSnapshot(REPO);
+
+    const searchUrls = fetchMock.mock.calls
+      .map(([url]) => new URL(url as string))
+      .filter((url) => url.pathname === '/search/issues');
+    expect(searchUrls).toHaveLength(6);
+    expect(searchUrls.every((url) => url.searchParams.get('advanced_search') === 'true')).toBe(true);
+  });
+
   it('triage counts no:milestone total_count plus stuck-triaging issues that already carry a milestone', async () => {
     const noMilestoneA = fixtureIssue({ number: 10, created_at: daysAgoIso(8) });
     const noMilestoneB = fixtureIssue({ number: 11, created_at: daysAgoIso(2) });

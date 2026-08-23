@@ -1,0 +1,122 @@
+---
+title: Migration to Canonical Formats
+description: "Migration paths for sellers, creative agents, buyers, and tooling adopting the canonical AdCP 3.2 creative model."
+"og:title": "AdCP — Canonical Formats Migration"
+---
+
+# Migration to canonical formats
+
+AdCP 3.2 is canonical-first end to end. New implementations use portable format declarations rather than agent-owned named formats. Fields named exactly `format_ids` are deprecated in 3.2 and removed in AdCP 4.0; singular `format_id`, named-format definitions, and `list_creative_formats` follow separate compatibility schedules.
+
+| Concern | Deprecated 3.x surface | Canonical 3.2 source |
+|---|---|---|
+| Publisher acceptance | Publisher-owned `format_id` | `adagents.json.formats[]` |
+| Product deliverability | `Product.format_ids[]` | `Product.format_options[]` |
+| Creative-agent operations | `list_creative_formats` | `get_adcp_capabilities.creative.supported_formats[]` |
+| Manifest identity | `creative_manifest.format_id` | `format_kind` plus optional `format_option_ref` |
+| Build target | `target_format_id(s)` | `target_capability_id(s)` |
+| Transformer outputs | `output_format_ids` | `output_capability_ids` |
+
+The deprecated fields and task remain parseable during the 3.x compatibility window. They are not an alternative authoring model in 3.2: if exposed, they should be projections derived from canonical data. Exact plural `format_ids` must not be emitted after upgrading to AdCP 4.0.
+
+## Seller migration
+
+1. Move each product's creative contract into `format_options[]`.
+2. Give each option a stable `format_option_id` and full canonical `format` declaration.
+3. Publish reusable publisher options in `/.well-known/adagents.json` and reference them with `publisher_domain` plus `format_option_id`.
+4. Return the applicable options from `get_products`; product-, placement-, account-, and inventory-specific constraints belong there.
+5. Stop advertising `list_creative_formats` as a required sales task.
+
+```json
+{
+  "product_id": "homepage_takeover",
+  "name": "Homepage takeover",
+  "format_options": [
+    {
+      "publisher_domain": "publisher.example",
+      "format_option_id": "homepage_image",
+      "format_kind": "image",
+      "params": {
+        "width": 1200,
+        "height": 600,
+        "max_file_size_kb": 500
+      }
+    }
+  ]
+}
+```
+
+## Creative-agent migration
+
+1. Keep `list_creative_formats` only when older clients require it.
+2. Add `creative.supported_formats[]` to `get_adcp_capabilities`.
+3. Assign each producible contract an agent-local, stable `capability_id`.
+4. Declare the canonical `format` and supported `operations` (`build`, `validate`, `preview`).
+5. Accept `target_capability_id(s)` in `build_creative` and return canonical manifests.
+6. Declare transformer outputs with `output_capability_ids`.
+
+```json
+{
+  "creative": {
+    "supported_formats": [
+      {
+        "capability_id": "responsive_image_builder",
+        "operations": ["build", "validate", "preview"],
+        "format": {
+          "format_kind": "image",
+          "params": {
+            "min_width": 300,
+            "max_width": 2000,
+            "min_height": 250,
+            "max_height": 1200,
+            "max_file_size_kb": 500
+          }
+        }
+      }
+    ],
+    "preview": {
+      "routes": [{
+        "capability_id": "responsive_image_builder",
+        "rendering_origin": "agent_approximation"
+      }]
+    }
+  }
+}
+```
+
+A capability ID is local to the creative-agent endpoint. It is selected only after the buyer has matched that agent's canonical declaration to a seller or publisher declaration.
+
+## Buyer migration
+
+1. Discover seller products with `get_products` and read `format_options[]`.
+2. When starting from a publisher, read its `adagents.json.formats[]` or the AgenticAdvertising.org community mirror.
+3. Find candidate creative agents in the registry by exact `{publisher_domain, format_option_id}` or compatible canonical constraints.
+4. Confirm a candidate directly through `get_adcp_capabilities`.
+5. Select its `capability_id`, call `build_creative`, and carry the returned canonical manifest through preview, sync, and delivery.
+
+Do not compare `capability_id` with `format_option_id`; compare their canonical declarations. The identifiers serve different namespaces.
+
+## Compatibility projection
+
+An implementation serving older 3.x peers may derive named formats from canonical declarations. Keep the projection one-way:
+
+```text
+canonical publisher/product/capability declarations
+                     |
+                     v
+       deprecated named-format response
+```
+
+Never merge independently authored legacy constraints back into the canonical catalog. That creates two sources of truth and makes compatibility decisions ambiguous.
+
+## Completion checklist
+
+- New examples contain no named format IDs.
+- Sales-agent workflows do not call `list_creative_formats`.
+- Creative-agent discovery uses `get_adcp_capabilities.creative.supported_formats[]`.
+- Builds target capability IDs and return canonical manifests.
+- Preview, sync, library, and delivery paths preserve `format_kind` and `format_option_ref`.
+- Registry records can be queried by canonical kind and publisher option.
+- Legacy fields are labeled deprecated and tested only as compatibility behavior.
+
+See [Canonical formats](/dist/docs/3.2.0-beta.4/creative/canonical-formats) for the complete architecture.

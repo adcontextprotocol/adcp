@@ -11,7 +11,6 @@ requires_capability:
   equals: seller_assigned
 
 required_tools:
-  - get_adcp_capabilities
   - sync_accounts
   - list_accounts
 
