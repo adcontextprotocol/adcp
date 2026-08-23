@@ -22,6 +22,14 @@ const specialistModule = fs.readFileSync(path.join(
   'specialist',
   'media-buy.mdx'
 ), 'utf8');
+const refineProposalsReference = fs.readFileSync(path.join(
+  __dirname,
+  '..',
+  'docs',
+  'media-buy',
+  'task-reference',
+  'refine_proposals.mdx'
+), 'utf8');
 
 function jsonBlocks(source) {
   return [...source.matchAll(/```json[^\n]*\n([\s\S]*?)```/g)]
@@ -72,6 +80,43 @@ test('guide stays aligned with the shared scenario and conformance surface', () 
   ]) {
     assert.match(guide, new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+});
+
+test('budget compatibility fails closed when proposal constraints cannot be preserved', () => {
+  assert.match(
+    guide,
+    /request_proposals\.criteria\.offer_filters\.budget_range[\s\S]*?MAY project[\s\S]*?get_products\.filters\.budget_range[\s\S]*?inclusive[\s\S]*?MUST NOT perform currency conversion/
+  );
+  assert.match(
+    guide,
+    /MUST NOT project `refine_proposals\.refinements\[\]\.constraints\.total_budget` to `get_products\.filters\.budget_range`/
+  );
+  assert.match(
+    guide,
+    /present `criteria\.offer_filters` replaces that entire criterion[\s\S]*?MUST project the complete replacement object[\s\S]*?reject before dispatch[\s\S]*?omitted[\s\S]*?MUST also omit legacy `filters`[\s\S]*?bound discovery constraints/
+  );
+  assert.match(
+    guide,
+    /Legacy `finalize` asks for firm pricing[\s\S]*?MAY project finalize only when[\s\S]*?preserves the complete commercial terms[\s\S]*?MUST reject before dispatch/
+  );
+  for (const field of [
+    "code: 'PRE_MUTATION_UNSUPPORTED'",
+    "reason: 'NO_LOSSLESS_LEGACY_MAPPING'",
+    "'exact_discovery_offer_filter_state'",
+    "'proposal_total_budget_constraint'",
+    "'immutable_finalize_terms'",
+    "recovery: 'USE_COMPACT_LIFECYCLE' | 'REFORMULATE_REQUEST'",
+    'dispatched: false',
+    '/refinements/0/constraints/total_budget',
+    '/refinements/0/action',
+  ]) {
+    assert.ok(guide.includes(field), `missing typed rejection field: ${field}`);
+  }
+
+  assert.match(refineProposalsReference, /PRE_MUTATION_UNSUPPORTED[\s\S]*?RFC 6901/);
+  assert.match(refineProposalsReference, /whole-field replacement[\s\S]*?Legacy finalize/);
+  assert.doesNotMatch(guide, /legacy `budget_range` is a soft discovery/);
+  assert.doesNotMatch(refineProposalsReference, /legacy `budget_range` is a soft discovery/);
 });
 
 test('S1 links the guide and uses its shared scenario terminology', () => {

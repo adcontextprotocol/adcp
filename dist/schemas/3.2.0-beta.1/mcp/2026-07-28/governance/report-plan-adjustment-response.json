@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/mcp/2026-07-28/governance/report-plan-adjustment-response.json",
+  "title": "Report Plan Adjustment Response",
+  "description": "Append-only adjustment lifecycle result and attributed plan accounting state.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
+  "properties": {
+    "adjustment_id": {
+      "type": "string",
+      "description": "Governance-agent identifier for the adjustment record.",
+      "x-entity": "governance_adjustment"
+    },
+    "adjustment_state": {
+      "type": "string",
+      "enum": [
+        "reported",
+        "verified",
+        "disputed"
+      ],
+      "description": "reported has seller evidence but no buyer decision; verified was accepted by the plan owner; disputed was rejected by the plan owner. Only verified records can affect net cost or headroom."
+    },
+    "adjustment_type": {
+      "type": "string",
+      "enum": [
+        "decommitment",
+        "refund",
+        "credit",
+        "makegood"
+      ]
+    },
+    "amount": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "headroom_restored": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Amount by which current ledger commitment was reduced under the plan accounting mode."
+    },
+    "plan_summary": {
+      "type": "object",
+      "properties": {
+        "accounting_mode": {
+          "type": "string",
+          "enum": [
+            "gross_commitment",
+            "verified_net_cost"
+          ]
+        },
+        "gross_committed": {
+          "type": "number",
+          "minimum": 0
+        },
+        "adjustments_reported": {
+          "type": "number",
+          "minimum": 0
+        },
+        "adjustments_verified": {
+          "type": "number",
+          "minimum": 0
+        },
+        "net_cost": {
+          "type": "number",
+          "minimum": 0
+        },
+        "headroom_restored": {
+          "type": "number",
+          "minimum": 0
+        },
+        "ledger_committed": {
+          "type": "number",
+          "minimum": 0
+        },
+        "net_committed": {
+          "type": "number",
+          "minimum": 0
+        },
+        "budget_remaining": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "accounting_mode",
+        "gross_committed",
+        "adjustments_reported",
+        "adjustments_verified",
+        "net_cost",
+        "headroom_restored",
+        "ledger_committed",
+        "net_committed",
+        "budget_remaining"
+      ],
+      "additionalProperties": false
+    },
+    "replayed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Set to true when this response was returned from the idempotency cache rather than from a fresh execution. Set to false (or omitted) when the request was executed fresh. Buyers use this to distinguish cached replays from new executions — matters for billing reconciliation, audit logs, state-machine routing (cached state-tracking fields are historical snapshots, not current state — re-read via the resource's read endpoint), and any downstream system that assumes exactly-once event semantics. From 3.1 onward, `replayed` MAY appear on responses to any request that resolved via the idempotency cache, including read tools — universal `idempotency_key` (see security.mdx §Idempotency) means the cache holds read responses too."
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "adjustment_id",
+    "adjustment_state",
+    "adjustment_type",
+    "amount",
+    "headroom_restored",
+    "plan_summary"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "title": "AdCP Version Envelope",
+      "description": "Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into every AdCP request and response schema so the version semantics live in exactly one place. Distinct from `core/protocol-envelope.json`, which wraps responses at the transport layer (context_id / task_id / status / payload). This envelope is part of the payload itself.",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "examples": [
+            "3.0",
+            "3.1",
+            "3.1-beta",
+            "3.1-rc.1"
+          ]
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/context.json": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

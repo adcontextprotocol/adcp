@@ -1,0 +1,463 @@
+{
+  "description": "Conformance vectors for indicator snapshot semantics and invalidation lifecycle behavior.",
+  "indicator_snapshot_cases": [
+    {
+      "name": "valid-contained-scope",
+      "valid": true,
+      "snapshot": {
+        "indicator_types_evaluated": [
+          "creative_fatigue"
+        ],
+        "indicators_as_of": "2026-08-04T12:00:00Z",
+        "indicators_evaluated_scope": [
+          {
+            "publisher_domain": "publisher-a.example"
+          }
+        ],
+        "indicators": [
+          {
+            "type": "creative_fatigue",
+            "scope": [
+              {
+                "publisher_domain": "publisher-a.example",
+                "placement_id": "feed"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "type-not-evaluated",
+      "valid": false,
+      "snapshot": {
+        "indicator_types_evaluated": [
+          "creative_quality_opportunity"
+        ],
+        "indicators_as_of": "2026-08-04T12:00:00Z",
+        "indicators": [
+          {
+            "type": "creative_fatigue"
+          }
+        ]
+      }
+    },
+    {
+      "name": "assertion-outside-evaluated-publisher",
+      "valid": false,
+      "snapshot": {
+        "indicator_types_evaluated": [
+          "creative_fatigue"
+        ],
+        "indicators_as_of": "2026-08-04T12:00:00Z",
+        "indicators_evaluated_scope": [
+          {
+            "publisher_domain": "publisher-a.example"
+          }
+        ],
+        "indicators": [
+          {
+            "type": "creative_fatigue",
+            "scope": [
+              {
+                "publisher_domain": "publisher-b.example"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate-logical-key-after-scope-normalization",
+      "valid": false,
+      "snapshot": {
+        "indicator_types_evaluated": [
+          "creative_fatigue"
+        ],
+        "indicators_as_of": "2026-08-04T12:00:00Z",
+        "indicators": [
+          {
+            "type": "creative_fatigue",
+            "scope": [
+              {
+                "publisher_domain": "publisher-a.example",
+                "placement_id": "feed"
+              },
+              {
+                "publisher_domain": "publisher-b.example",
+                "placement_id": "feed"
+              }
+            ]
+          },
+          {
+            "type": "creative_fatigue",
+            "scope": [
+              {
+                "publisher_domain": "publisher-b.example",
+                "placement_id": "feed"
+              },
+              {
+                "publisher_domain": "publisher-a.example",
+                "placement_id": "feed"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "webhook_lifecycle_cases": [
+    {
+      "name": "subscription-is-prospective",
+      "event": "subscriber_activated",
+      "expected_fires": [],
+      "buyer_action": "complete_get_media_buys_baseline",
+      "baseline_request": {
+        "status_filter": [
+          "pending_creatives",
+          "pending_start",
+          "active",
+          "paused",
+          "completed",
+          "rejected",
+          "canceled"
+        ],
+        "pagination": {
+          "max_results": 100
+        }
+      },
+      "must_exhaust_pagination": true
+    },
+    {
+      "name": "semantic-assertion-change",
+      "event": "assertion_set_changed",
+      "expected_fires": [
+        "indicators.changed"
+      ],
+      "buyer_action": "unfiltered_repair_read"
+    },
+    {
+      "name": "timestamp-only-reevaluation",
+      "event": "indicators_as_of_only_changed",
+      "expected_fires": [],
+      "buyer_action": "none"
+    },
+    {
+      "name": "material-creative-update",
+      "event": "creative_content_materially_changed",
+      "expected_fires": [
+        "indicators.changed"
+      ],
+      "change_kind": "invalidated",
+      "buyer_action": "unfiltered_repair_read"
+    },
+    {
+      "name": "assignment-removal-with-indicators-and-both-events-advertised",
+      "event": "assignment_removed",
+      "advertised_event_types": [
+        "indicators.changed",
+        "creative.assignment_changed"
+      ],
+      "retires_stored_indicator_keys": true,
+      "expected_fires": [
+        "indicators.changed",
+        "creative.assignment_changed"
+      ],
+      "order": "any",
+      "buyer_action": "unfiltered_repair_read"
+    },
+    {
+      "name": "assignment-removal-with-optional-event-not-advertised",
+      "event": "assignment_removed",
+      "advertised_event_types": [
+        "indicators.changed"
+      ],
+      "retires_stored_indicator_keys": true,
+      "expected_fires": [
+        "indicators.changed"
+      ],
+      "buyer_action": "unfiltered_repair_read"
+    },
+    {
+      "name": "assignment-only-seller-removal",
+      "event": "assignment_removed",
+      "advertised_event_types": [
+        "creative.assignment_changed"
+      ],
+      "retires_stored_indicator_keys": false,
+      "expected_fires": [
+        "creative.assignment_changed"
+      ],
+      "buyer_action": "unfiltered_repair_read"
+    }
+  ],
+  "warning_capability_cases": [
+    {
+      "name": "inventory-warning-with-readback-capability",
+      "warning_code": "inventory_shortfall_forecast",
+      "supported_indicator_types": [
+        "inventory_shortfall_forecast"
+      ],
+      "valid": true
+    },
+    {
+      "name": "inventory-warning-without-readback-capability",
+      "warning_code": "inventory_shortfall_forecast",
+      "supported_indicator_types": [
+        "budget_constrained"
+      ],
+      "valid": false
+    },
+    {
+      "name": "operation-local-warning-needs-no-indicator",
+      "warning_code": "fields_ignored_due_to_precedence",
+      "supported_indicator_types": [],
+      "valid": true
+    }
+  ],
+  "assignment_projection_count_cases": [
+    {
+      "name": "all-projection-truncated-consistently",
+      "projection": "all",
+      "assignments": {
+        "assignment_count": 3,
+        "returned_assignment_count": 2,
+        "assignments_truncated": true,
+        "assigned_packages": [
+          {
+            "package_id": "pkg_1",
+            "assigned_date": "2026-08-01T00:00:00Z"
+          },
+          {
+            "package_id": "pkg_2",
+            "assigned_date": "2026-08-01T00:00:00Z"
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "returned-count-must-equal-array-length",
+      "projection": "all",
+      "assignments": {
+        "assignment_count": 3,
+        "returned_assignment_count": 1,
+        "assignments_truncated": true,
+        "assigned_packages": [
+          {
+            "package_id": "pkg_1",
+            "assigned_date": "2026-08-01T00:00:00Z"
+          },
+          {
+            "package_id": "pkg_2",
+            "assigned_date": "2026-08-01T00:00:00Z"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "all-projection-truncation-must-match-counts",
+      "projection": "all",
+      "assignments": {
+        "assignment_count": 3,
+        "returned_assignment_count": 2,
+        "assignments_truncated": false,
+        "assigned_packages": [
+          {
+            "package_id": "pkg_1",
+            "assigned_date": "2026-08-01T00:00:00Z"
+          },
+          {
+            "package_id": "pkg_2",
+            "assigned_date": "2026-08-01T00:00:00Z"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "matching-projection-complete-consistently",
+      "projection": "matching",
+      "assignments": {
+        "assignment_count": 5,
+        "returned_assignment_count": 2,
+        "matching_assignment_count": 2,
+        "assignments_truncated": false,
+        "assigned_packages": [
+          {
+            "package_id": "pkg_1",
+            "assigned_date": "2026-08-01T00:00:00Z"
+          },
+          {
+            "package_id": "pkg_2",
+            "assigned_date": "2026-08-01T00:00:00Z"
+          }
+        ]
+      },
+      "valid": true
+    },
+    {
+      "name": "matching-projection-requires-matching-count",
+      "projection": "matching",
+      "assignments": {
+        "assignment_count": 5,
+        "returned_assignment_count": 2,
+        "assignments_truncated": false,
+        "assigned_packages": [
+          {
+            "package_id": "pkg_1",
+            "assigned_date": "2026-08-01T00:00:00Z"
+          },
+          {
+            "package_id": "pkg_2",
+            "assigned_date": "2026-08-01T00:00:00Z"
+          }
+        ]
+      },
+      "valid": false
+    },
+    {
+      "name": "matching-truncation-must-use-matching-count",
+      "projection": "matching",
+      "assignments": {
+        "assignment_count": 5,
+        "returned_assignment_count": 2,
+        "matching_assignment_count": 3,
+        "assignments_truncated": false,
+        "assigned_packages": [
+          {
+            "package_id": "pkg_1",
+            "assigned_date": "2026-08-01T00:00:00Z"
+          },
+          {
+            "package_id": "pkg_2",
+            "assigned_date": "2026-08-01T00:00:00Z"
+          }
+        ]
+      },
+      "valid": false
+    }
+  ],
+  "approval_scope_cases": [
+    {
+      "name": "disjoint-publisher-outcomes",
+      "valid": true,
+      "approval_scopes": [
+        {
+          "scope": {
+            "publisher_domain": "publisher-a.example"
+          },
+          "approval_status": "approved"
+        },
+        {
+          "scope": {
+            "publisher_domain": "publisher-b.example"
+          },
+          "approval_status": "rejected",
+          "rejection_reason": "Local policy restriction."
+        }
+      ]
+    },
+    {
+      "name": "duplicate-conflicting-publisher-outcome",
+      "valid": false,
+      "approval_scopes": [
+        {
+          "scope": {
+            "publisher_domain": "publisher-a.example"
+          },
+          "approval_status": "approved"
+        },
+        {
+          "scope": {
+            "publisher_domain": "publisher-a.example"
+          },
+          "approval_status": "rejected",
+          "rejection_reason": "Contradiction."
+        }
+      ]
+    },
+    {
+      "name": "publisher-wide-and-placement-overlap",
+      "valid": false,
+      "approval_scopes": [
+        {
+          "scope": {
+            "publisher_domain": "publisher-a.example"
+          },
+          "approval_status": "approved"
+        },
+        {
+          "scope": {
+            "publisher_domain": "publisher-a.example",
+            "placement_id": "feed"
+          },
+          "approval_status": "rejected",
+          "rejection_reason": "No implicit override."
+        }
+      ]
+    },
+    {
+      "name": "disjoint-placement-outcomes",
+      "valid": true,
+      "approval_scopes": [
+        {
+          "scope": {
+            "publisher_domain": "publisher-a.example",
+            "placement_id": "feed"
+          },
+          "approval_status": "approved"
+        },
+        {
+          "scope": {
+            "publisher_domain": "publisher-a.example",
+            "placement_id": "stories"
+          },
+          "approval_status": "pending_review"
+        }
+      ]
+    }
+  ],
+  "delivery_identity_cases": [
+    {
+      "name": "transport-retry",
+      "mode": "retry",
+      "prior": {
+        "idempotency_key": "whk_fire_00000001",
+        "notification_id": "change_1"
+      },
+      "next": {
+        "idempotency_key": "whk_fire_00000001",
+        "notification_id": "change_1"
+      },
+      "valid": true
+    },
+    {
+      "name": "logical-reemission",
+      "mode": "reemission",
+      "prior": {
+        "idempotency_key": "whk_fire_00000001",
+        "notification_id": "change_1"
+      },
+      "next": {
+        "idempotency_key": "whk_fire_00000002",
+        "notification_id": "change_1"
+      },
+      "valid": true
+    },
+    {
+      "name": "retry-must-not-change-fire-id",
+      "mode": "retry",
+      "prior": {
+        "idempotency_key": "whk_fire_00000001",
+        "notification_id": "change_1"
+      },
+      "next": {
+        "idempotency_key": "whk_fire_00000002",
+        "notification_id": "change_1"
+      },
+      "valid": false
+    }
+  ]
+}

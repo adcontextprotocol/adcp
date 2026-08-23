@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/product-refinement.json",
+  "title": "Product Refinement Requests",
+  "description": "Change requests for iterating on product discovery results and proposals.",
+  "type": "array",
+  "minItems": 1,
+  "items": {
+    "type": "object",
+    "discriminator": {
+      "propertyName": "scope"
+    },
+    "oneOf": [
+      {
+        "properties": {
+          "scope": {
+            "type": "string",
+            "const": "request",
+            "description": "Change scoped to the overall request."
+          },
+          "ask": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What the buyer is asking for at the request level."
+          }
+        },
+        "required": [
+          "scope",
+          "ask"
+        ],
+        "additionalProperties": false
+      },
+      {
+        "properties": {
+          "scope": {
+            "type": "string",
+            "const": "product",
+            "description": "Change scoped to a specific product."
+          },
+          "product_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Product ID from a previous product-discovery response."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "include",
+              "omit",
+              "more_like_this"
+            ],
+            "default": "include",
+            "description": "Requested product-level action."
+          },
+          "ask": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What the buyer is asking for on this product."
+          }
+        },
+        "required": [
+          "scope",
+          "product_id"
+        ],
+        "additionalProperties": false
+      },
+      {
+        "properties": {
+          "scope": {
+            "type": "string",
+            "const": "proposal",
+            "description": "Change scoped to a specific proposal."
+          },
+          "proposal_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Proposal ID from a previous product-discovery response."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "include",
+              "omit",
+              "finalize"
+            ],
+            "default": "include",
+            "description": "Requested proposal-level action."
+          },
+          "ask": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What the buyer is asking for on this proposal."
+          }
+        },
+        "required": [
+          "scope",
+          "proposal_id"
+        ],
+        "additionalProperties": false
+      }
+    ]
+  }
+}

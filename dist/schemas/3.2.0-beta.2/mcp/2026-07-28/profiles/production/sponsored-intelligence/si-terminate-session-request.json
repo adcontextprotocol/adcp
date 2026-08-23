@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/mcp/2026-07-28/profiles/production/sponsored-intelligence/si-terminate-session-request.json",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
+  "x-mutates-state": true,
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "x-entity": "si_session"
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "handoff_transaction",
+        "handoff_complete",
+        "user_exit",
+        "session_timeout",
+        "host_terminated"
+      ]
+    },
+    "termination_context": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "transaction_intent": {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "purchase",
+                "subscribe"
+              ]
+            },
+            "product": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": true
+        },
+        "cause": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "session_id",
+    "reason"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

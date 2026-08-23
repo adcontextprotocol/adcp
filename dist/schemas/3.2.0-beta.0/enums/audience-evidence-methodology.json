@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/audience-evidence-methodology.json",
+  "title": "Audience Evidence Methodology",
+  "description": "How a population-level audience-evidence estimate was produced. This vocabulary is intentionally separate from signal-definition methodology: `projected` describes expansion of a sample or panel to a reference population and does not become a user-level signal-membership method.",
+  "type": "string",
+  "enum": [
+    "observed",
+    "declared",
+    "derived",
+    "inferred",
+    "modeled",
+    "projected"
+  ]
+}

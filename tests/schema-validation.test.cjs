@@ -534,6 +534,9 @@ async function runTests() {
     const validateOutcome = await testAjv.compileAsync(
       loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/report-plan-outcome-request.json'))
     );
+    const validateOutcomeResponse = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/report-plan-outcome-response.json'))
+    );
     const validatePlannedDelivery = testAjv.getSchema('/schemas/core/planned-delivery.json');
     if (!validatePlannedDelivery) {
       return 'planned-delivery schema was not loaded with the governance request';
@@ -664,19 +667,72 @@ async function runTests() {
       outcome: 'delivery',
       delivery: { reporting_period: { start: '2026-08-01T00:00:00Z', end: '2026-08-02T00:00:00Z' } }
     };
-    if (!validateOutcome(legacyDelivery)) {
-      return `legacy plan-owner delivery snapshot rejected: ${testAjv.errorsText(validateOutcome.errors)}`;
+    if (validateOutcome(legacyDelivery)) {
+      return 'legacy unbound delivery snapshots must be rejected';
+    }
+    const deliveryObservation = {
+      plan_id: 'plan_123',
+      idempotency_key: 'delivery-vector-0002',
+      outcome: 'delivery',
+      check_id: 'check_1',
+      governance_context: 'signed.context.token',
+      delivery: {
+        observation_id: 'observation_1',
+        source: 'seller_statement_copy',
+        observed_at: '2026-08-02T01:00:00Z',
+        reporting_period: { start: '2026-08-01T00:00:00Z', end: '2026-08-02T00:00:00Z' },
+        cumulative_spend: 100,
+        currency: 'USD',
+        seller_statement_id: 'statement_1',
+        seller_statement_digest: `sha256:${'a'.repeat(64)}`
+      }
+    };
+    if (!validateOutcome(deliveryObservation)) {
+      return `exact-tuple delivery observation rejected: ${testAjv.errorsText(validateOutcome.errors)}`;
     }
     if (!validateOutcome({
-      ...legacyDelivery,
-      check_id: 'check_1',
-      governance_context: 'signed.context.token'
+      ...deliveryObservation,
+      delivery: { ...deliveryObservation.delivery, observation_id: 'observation_close_1', period_closed: true }
     })) {
-      return `exact-tuple delivery snapshot rejected: ${testAjv.errorsText(validateOutcome.errors)}`;
+      return `governance period closure rejected: ${testAjv.errorsText(validateOutcome.errors)}`;
+    }
+    if (validateOutcome({
+      ...deliveryObservation,
+      delivery: { ...deliveryObservation.delivery, period_closed: 'yes' }
+    })) {
+      return 'governance period closure must be boolean';
+    }
+    if (!validateOutcomeResponse({
+      outcome_id: 'outcome_close_1',
+      outcome_state: 'findings',
+      delivery_reconciliation_status: 'closed_unresolved',
+      delivery_period_state: 'closed'
+    })) {
+      return `closed unresolved outcome response rejected: ${testAjv.errorsText(validateOutcomeResponse.errors)}`;
+    }
+    if (!validateOutcomeResponse({
+      outcome_id: 'outcome_variance_1',
+      outcome_state: 'findings',
+      delivery_reconciliation_status: 'measurement_variance',
+      delivery_period_state: 'open',
+      findings: [{
+        category_id: 'delivery_measurement_variance',
+        severity: 'warning',
+        explanation: 'Buyer-measured delivery differs from the seller statement.',
+        details: { field: 'delivery.cumulative_spend', seller_stated: 12500, buyer_observed: 12384 }
+      }]
+    })) {
+      return `measurement variance outcome response rejected: ${testAjv.errorsText(validateOutcomeResponse.errors)}`;
     }
     if (validateOutcome({ ...legacyDelivery, check_id: 'check_1' })
       || validateOutcome({ ...legacyDelivery, governance_context: 'signed.context.token' })) {
-      return 'delivery snapshots must provide check_id and governance_context together or omit both';
+      return 'delivery observations must provide check_id and governance_context together';
+    }
+    if (validateOutcome({
+      ...deliveryObservation,
+      delivery: { ...deliveryObservation.delivery, seller_statement_digest: undefined }
+    })) {
+      return 'seller statement copies must carry the seller statement digest';
     }
     if (validateOutcome({
       plan_id: 'plan_123',
@@ -686,6 +742,148 @@ async function runTests() {
       seller_response: {}
     })) {
       return 'completed outcomes must require governance_context with check_id';
+    }
+    return true;
+  });
+
+  await test('check_governance delivery phase requires a statement_digest on delivery_metrics', async () => {
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+    const validateRequest = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/check-governance-request.json'))
+    );
+
+    const deliveryCheck = {
+      caller: 'https://seller.example',
+      governance_context: 'signed.context.token',
+      phase: 'delivery',
+      planned_delivery: { media_buy_id: 'mb_123', total_budget: 1000, currency: 'USD' },
+      delivery_metrics: {
+        statement_id: 'stmt_1',
+        statement_digest: `sha256:${'a'.repeat(64)}`,
+        sequence: 1,
+        issued_at: '2026-08-09T00:00:00Z',
+        reporting_period: { start: '2026-08-01T00:00:00Z', end: '2026-08-08T00:00:00Z' },
+        cumulative_spend: 100,
+        currency: 'USD'
+      }
+    };
+    if (!validateRequest(deliveryCheck)) {
+      return `valid delivery-phase statement rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+    const { statement_digest, ...metricsWithoutDigest } = deliveryCheck.delivery_metrics;
+    if (validateRequest({ ...deliveryCheck, delivery_metrics: metricsWithoutDigest })) {
+      return 'delivery-phase delivery_metrics must require statement_digest';
+    }
+    return true;
+  });
+
+  await test('report_plan_adjustment enforces action-specific evidence and dispute rules', async () => {
+    const testAjv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
+    });
+    addFormats(testAjv);
+    const validateRequest = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/report-plan-adjustment-request.json'))
+    );
+    const validateResponse = await testAjv.compileAsync(
+      loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/report-plan-adjustment-response.json'))
+    );
+
+    const minimalReport = {
+      action: 'report',
+      plan_id: 'plan_123',
+      idempotency_key: 'report-adjustment-0001',
+      outcome_id: 'out_1',
+      seller_reference: 'mb_1',
+      seller_adjustment_id: 'sadj_1',
+      adjustment_type: 'decommitment',
+      amount: { amount: 1000, currency: 'USD' },
+      reason: 'Remaining inventory obligation cancelled by mutual agreement.',
+      effective_at: '2026-08-09T09:30:00Z',
+      evidence: {
+        evidence_id: 'ev_1',
+        evidence_type: 'decommitment_agreement',
+        digest: `sha256:${'a'.repeat(64)}`,
+        issued_at: '2026-08-09T09:25:00Z'
+      }
+    };
+    if (!validateRequest(minimalReport)) {
+      return `valid minimal seller report rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+
+    const minimalReviewAccept = {
+      action: 'review',
+      plan_id: 'plan_123',
+      idempotency_key: 'review-adjustment-0001',
+      adjustment_id: 'adj_1',
+      decision: 'accept'
+    };
+    if (!validateRequest(minimalReviewAccept)) {
+      return `valid minimal review acceptance rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+
+    if (validateRequest({ ...minimalReviewAccept, decision: 'dispute' })) {
+      return 'a dispute decision must require reason';
+    }
+    if (!validateRequest({ ...minimalReviewAccept, decision: 'dispute', reason: 'Cumulative spend does not match our records.' })) {
+      return `dispute with reason rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+
+    const { evidence, ...reportMissingEvidence } = minimalReport;
+    if (validateRequest(reportMissingEvidence)) {
+      return 'a seller report must require evidence';
+    }
+
+    if (validateRequest({
+      ...minimalReport,
+      adjustment_type: 'refund',
+      evidence: { ...minimalReport.evidence, evidence_type: 'decommitment_agreement' }
+    })) {
+      return 'evidence_type must match adjustment_type (refund requires refund_settlement)';
+    }
+    if (!validateRequest({
+      ...minimalReport,
+      adjustment_type: 'refund',
+      evidence: { ...minimalReport.evidence, evidence_type: 'refund_settlement' }
+    })) {
+      return `matching refund evidence_type rejected: ${testAjv.errorsText(validateRequest.errors)}`;
+    }
+
+    if (validateRequest({ ...minimalReport, idempotency_key: 'too-short' })) {
+      return 'idempotency_key shorter than 16 characters must be rejected';
+    }
+
+    const verifiedResponse = {
+      adjustment_id: 'adj_1',
+      adjustment_state: 'verified',
+      adjustment_type: 'decommitment',
+      amount: { amount: 5000, currency: 'USD' },
+      headroom_restored: 5000,
+      plan_summary: {
+        accounting_mode: 'gross_commitment',
+        gross_committed: 40000,
+        adjustments_reported: 5000,
+        adjustments_verified: 5000,
+        net_cost: 35000,
+        headroom_restored: 5000,
+        ledger_committed: 35000,
+        net_committed: 35000,
+        budget_remaining: 5000
+      }
+    };
+    if (!validateResponse(verifiedResponse)) {
+      return `valid verified adjustment response rejected: ${testAjv.errorsText(validateResponse.errors)}`;
     }
     return true;
   });
@@ -2671,7 +2869,10 @@ async function runTests() {
           capability_id: 'image_preview',
           operations: ['preview'],
           format: { format_kind: 'image', params: {} }
-        }]
+        }],
+        preview: {
+          routes: [{ capability_id: 'image_preview', rendering_origin: 'agent_approximation' }]
+        }
       }
     })) {
       return `legacy build flag with preview-only catalog rejected: ${validate.errors.map(err => `${err.instancePath} ${err.message}`).join('; ')}`;

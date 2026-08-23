@@ -6,7 +6,7 @@
   "type": "object",
   "deprecated": true,
   "x-deprecated-in": "3.2.0",
-  "x-superseded-by": ["control_media_buy", "refine_proposals"],
+  "x-superseded-by": ["control_media_buy", "refine_proposals", "sync_creatives"],
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
@@ -107,7 +107,7 @@
     "scope": "conditional",
     "triggers": ["increases_obligation", "extends_term", "resumes_execution", "reallocates_delivery"],
     "exemptions": ["cancel", "pause", "decrease_only"],
-    "precedence": "trigger_overrides_exemption"
+    "precedence": "root_cancellation_overrides_sibling_triggers"
   },
   "properties": {
     "governance_context": {

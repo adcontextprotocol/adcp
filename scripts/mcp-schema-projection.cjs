@@ -510,6 +510,238 @@ function resolvePointer(document, ref) {
   return current;
 }
 
+const MCP_DISCOVERY_ROOT_CONSTRAINTS = [
+  'allOf',
+  'anyOf',
+  'oneOf',
+  'not',
+  'if',
+  'then',
+  'else',
+];
+
+function collectRootConstraintPropertyNames(schema) {
+  const propertyNames = new Set();
+
+  function visit(node) {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+    if (Array.isArray(node.required)) {
+      for (const name of node.required) {
+        if (typeof name === 'string') propertyNames.add(name);
+      }
+    }
+    if (node.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)) {
+      for (const name of Object.keys(node.properties)) propertyNames.add(name);
+    }
+    for (const keyword of MCP_DISCOVERY_ROOT_CONSTRAINTS) {
+      const value = node[keyword];
+      if (Array.isArray(value)) value.forEach(visit);
+      else visit(value);
+    }
+  }
+
+  for (const keyword of MCP_DISCOVERY_ROOT_CONSTRAINTS) {
+    const value = schema[keyword];
+    if (Array.isArray(value)) value.forEach(visit);
+    else visit(value);
+  }
+  return propertyNames;
+}
+
+function rootConstraintDescriptions(schema, propertyNames) {
+  return new Map([...propertyNames].flatMap(name => {
+    const description = schema.properties?.[name]?.description;
+    return typeof description === 'string' ? [[name, description]] : [];
+  }));
+}
+
+function restoreRootConstraintDescriptions(schema, descriptions) {
+  for (const [name, description] of descriptions) {
+    const property = schema.properties?.[name];
+    if (property && typeof property === 'object' && !Array.isArray(property)) {
+      property.description = description;
+    }
+  }
+  return schema;
+}
+
+function uniqueSchemas(schemas) {
+  const seen = new Set();
+  return schemas.filter(schema => {
+    const key = JSON.stringify(schema);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function combinePropertySchemas(schemas, keyword) {
+  const unique = uniqueSchemas(schemas);
+  if (unique.length === 1) return clone(unique[0]);
+  return { [keyword]: clone(unique) };
+}
+
+function directObjectSurface(schema, root, seenRefs = new Set()) {
+  const propertyCandidates = new Map();
+  const required = new Set();
+
+  function collect(node, refs) {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+    if (typeof node.$ref === 'string') {
+      if (!refs.has(node.$ref)) {
+        const target = resolvePointer(root, node.$ref);
+        if (!target || typeof target !== 'object' || Array.isArray(target)) {
+          throw new Error(`MCP discovery object branch does not resolve: ${node.$ref}`);
+        }
+        collect(target, new Set([...refs, node.$ref]));
+      }
+    }
+    if (node.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)) {
+      for (const [name, propertySchema] of Object.entries(node.properties)) {
+        if (!propertyCandidates.has(name)) propertyCandidates.set(name, []);
+        propertyCandidates.get(name).push(propertySchema);
+      }
+    }
+    if (Array.isArray(node.required)) {
+      for (const name of node.required) required.add(name);
+    }
+    if (Array.isArray(node.allOf)) {
+      for (const branch of node.allOf) collect(branch, refs);
+    }
+  }
+
+  collect(schema, seenRefs);
+  return {
+    properties: Object.fromEntries([...propertyCandidates].map(([name, candidates]) => [
+      name,
+      combinePropertySchemas(candidates, 'allOf'),
+    ])),
+    required,
+  };
+}
+
+function unionObjectSurface(branches, root) {
+  const surfaces = branches.map(branch => directObjectSurface(branch, root));
+  const propertyNames = new Set();
+  for (const surface of surfaces) {
+    for (const name of Object.keys(surface.properties)) propertyNames.add(name);
+  }
+  const required = surfaces.length === 0
+    ? new Set()
+    : new Set([...surfaces[0].required].filter(name => (
+      surfaces.every(surface => surface.required.has(name))
+    )));
+  return {
+    properties: Object.fromEntries([...propertyNames].map(name => [
+      name,
+      combinePropertySchemas(surfaces.map(surface => (
+        Object.hasOwn(surface.properties, name) ? surface.properties[name] : {}
+      )), 'anyOf'),
+    ])),
+    required,
+  };
+}
+
+function mergeDiscoverySurface(projected, surface, propertyKeyword) {
+  projected.properties ||= {};
+  for (const [name, propertySchema] of Object.entries(surface.properties)) {
+    if (!Object.hasOwn(projected.properties, name)) {
+      projected.properties[name] = propertyKeyword
+        ? combinePropertySchemas([propertySchema], propertyKeyword)
+        : clone(propertySchema);
+    }
+  }
+  const required = new Set(Array.isArray(projected.required) ? projected.required : []);
+  for (const name of surface.required) required.add(name);
+  if (required.size > 0) projected.required = [...required];
+}
+
+/**
+ * Project a canonical request schema into an MCP tools/list discovery hint.
+ *
+ * Anthropic rejects tool input schemas with root allOf/anyOf/oneOf. The wire
+ * schema remains authoritative at call time, so this host-facing view:
+ *   1. inlines the optional version-envelope properties;
+ *   2. drops root conditionals and negations that cannot be expressed safely;
+ *   3. leaves every nested combinator intact.
+ *
+ * Do not use this projection for canonical request validation.
+ */
+function projectMcpDiscoveryInputSchemaWithGuidance(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema) || schema.type !== 'object') {
+    throw new Error('MCP discovery input schemas must have an object root');
+  }
+
+  const projected = clone(schema);
+  const rootConstraintProperties = collectRootConstraintPropertyNames(projected);
+  const allOfPropertyCandidates = new Map();
+  const allOfRequired = new Set();
+  for (const branch of projected.allOf || []) {
+    if (!branch || typeof branch !== 'object' || Array.isArray(branch)) continue;
+    if (typeof branch.$ref === 'string' && branch.$ref.includes('version-envelope.json')) {
+      const envelope = resolvePointer(projected, branch.$ref);
+      if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) {
+        throw new Error(`MCP discovery version envelope does not resolve: ${branch.$ref}`);
+      }
+      const envelopeProperties = envelope.properties;
+      if (!envelopeProperties || typeof envelopeProperties !== 'object' || Array.isArray(envelopeProperties)) {
+        throw new Error(`MCP discovery version envelope has no properties: ${branch.$ref}`);
+      }
+      for (const name of Object.keys(envelopeProperties)) rootConstraintProperties.add(name);
+      projected.properties = {
+        ...clone(envelopeProperties),
+        ...(projected.properties || {}),
+      };
+      continue;
+    }
+
+    const surface = directObjectSurface(branch, projected);
+    for (const [name, propertySchema] of Object.entries(surface.properties)) {
+      rootConstraintProperties.add(name);
+      if (!allOfPropertyCandidates.has(name)) allOfPropertyCandidates.set(name, []);
+      allOfPropertyCandidates.get(name).push(propertySchema);
+    }
+    for (const name of surface.required) allOfRequired.add(name);
+    for (const keyword of ['anyOf', 'oneOf']) {
+      if (!Array.isArray(branch[keyword])) continue;
+      const unionSurface = unionObjectSurface(branch[keyword], projected);
+      for (const [name, propertySchema] of Object.entries(unionSurface.properties)) {
+        rootConstraintProperties.add(name);
+        if (!allOfPropertyCandidates.has(name)) allOfPropertyCandidates.set(name, []);
+        allOfPropertyCandidates.get(name).push(propertySchema);
+      }
+      for (const name of unionSurface.required) allOfRequired.add(name);
+    }
+  }
+
+  mergeDiscoverySurface(projected, {
+    properties: Object.fromEntries([...allOfPropertyCandidates].map(([name, candidates]) => [
+      name,
+      combinePropertySchemas(candidates, 'allOf'),
+    ])),
+    required: allOfRequired,
+  });
+  for (const keyword of ['anyOf', 'oneOf']) {
+    if (Array.isArray(projected[keyword])) {
+      mergeDiscoverySurface(projected, unionObjectSurface(projected[keyword], projected));
+    }
+  }
+
+  for (const keyword of MCP_DISCOVERY_ROOT_CONSTRAINTS) delete projected[keyword];
+  // A discriminator is only meaningful alongside its root oneOf. Leaving it
+  // behind makes otherwise-permissive validators such as Ajv reject the schema
+  // at compile time after the discovery-only oneOf is removed.
+  delete projected.discriminator;
+  return {
+    schema: projected,
+    rootConstraintProperties,
+  };
+}
+
+function projectMcpDiscoveryInputSchema(schema) {
+  return projectMcpDiscoveryInputSchemaWithGuidance(schema).schema;
+}
+
 function assertLocalRefsResolve(schema) {
   let count = 0;
   walkSchema(schema, node => {
@@ -595,12 +827,28 @@ function projectSourceSchema(
   relativePath,
   annotationMode = 'full',
   schemaUrlPrefix = `${urlVersion}/mcp/${MCP_PROTOCOL_VERSION}`,
+  discoveryInput = false,
 ) {
   const compact = compactDraft07Schema(schema, rootFile, sourceDir);
   let projected = projectDraft07Node(compact);
+  let discoveryDescriptions = new Map();
+  let discoveryRootDescription;
+  if (discoveryInput) {
+    const discovery = projectMcpDiscoveryInputSchemaWithGuidance(projected);
+    discoveryRootDescription = discovery.schema.description;
+    discoveryDescriptions = rootConstraintDescriptions(
+      discovery.schema,
+      discovery.rootConstraintProperties,
+    );
+    projected = discovery.schema;
+  }
   if (annotationMode === 'structural') projected = stripPresentationAnnotations(projected);
   else if (annotationMode === 'model-context') projected = stripModelContextAnnotations(projected);
   else if (annotationMode !== 'full') throw new Error(`Unknown annotation mode ${JSON.stringify(annotationMode)}`);
+  if (discoveryInput && annotationMode !== 'model-context') {
+    restoreRootConstraintDescriptions(projected, discoveryDescriptions);
+    if (typeof discoveryRootDescription === 'string') projected.description = discoveryRootDescription;
+  }
   projected.$schema = JSON_SCHEMA_2020_12;
   projected.$id = `${SCHEMA_ORIGIN}/schemas/${schemaUrlPrefix}/${relativePath}`;
   if (annotationMode === 'model-context') {
@@ -746,7 +994,7 @@ function generateMcpSchemaProjection({
   }
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   const projectedTools = {};
-  const generated = new Set();
+  const generated = new Map();
   let schemaCount = 0;
   let totalBytes = 0;
   let largestSchemaBytes = 0;
@@ -754,12 +1002,19 @@ function generateMcpSchemaProjection({
   fs.rmSync(targetDir, { recursive: true, force: true });
   fs.mkdirSync(targetDir, { recursive: true });
 
-  function projectSchema(relativePath, label = relativePath) {
+  function projectSchema(relativePath, label = relativePath, discoveryInput = false) {
     const sourcePath = path.join(sourceDir, relativePath);
     if (!fs.existsSync(sourcePath)) {
       throw new Error(`Missing source schema for ${label}: ${relativePath}`);
     }
-    if (generated.has(relativePath)) return;
+    if (generated.has(relativePath)) {
+      if (generated.get(relativePath) !== discoveryInput) {
+        throw new Error(
+          `${relativePath} cannot be both an MCP discovery input and a semantics-preserving output`
+        );
+      }
+      return;
+    }
 
     const sourceSchema = JSON.parse(fs.readFileSync(sourcePath, 'utf8'));
     let projectedSchema;
@@ -772,6 +1027,7 @@ function generateMcpSchemaProjection({
         relativePath,
         annotationMode,
         schemaUrlPrefix,
+        discoveryInput,
       );
     } catch (error) {
       throw new Error(`${relativePath}: ${error.message}`);
@@ -781,7 +1037,7 @@ function generateMcpSchemaProjection({
     totalBytes += bytes;
     largestSchemaBytes = Math.max(largestSchemaBytes, bytes);
     schemaCount++;
-    generated.add(relativePath);
+    generated.set(relativePath, discoveryInput);
   }
 
   for (const [toolName, tool] of Object.entries(manifest.tools || {})) {
@@ -794,7 +1050,7 @@ function generateMcpSchemaProjection({
       ['inputSchema', tool.request_schema],
       ['outputSchema', tool.response_schema],
     ].filter(([field]) => schemaFields.includes(field))) {
-      projectSchema(relativePath, `${toolName}.${field}`);
+      projectSchema(relativePath, `${toolName}.${field}`, field === 'inputSchema');
       projectedTool[field] = relativePath;
     }
     projectedTools[toolName] = projectedTool;
@@ -821,8 +1077,8 @@ function generateMcpSchemaProjection({
     mcp_protocol_version: MCP_PROTOCOL_VERSION,
     schema_dialect: JSON_SCHEMA_2020_12,
     source_schema_dialect: JSON_SCHEMA_DRAFT_07,
-    compatibility: 'semantics-preserving projection; no 4.0 strictness rules applied',
-    delivery: 'downloadable schema artifacts; servers choose which schemas to embed in tools/list',
+    compatibility: 'host-compatible discovery inputs with canonical call-time validation; semantics-preserving outputs',
+    delivery: 'downloadable schema artifacts; inputSchema is a tools/list hint and canonical wire schemas remain authoritative',
     annotation_mode: annotationMode,
     schema_fields: schemaFields,
     ...(taskResultResolution ? { task_result_resolution: taskResultResolution } : {}),
@@ -854,6 +1110,7 @@ module.exports = {
   enforceSchemaBounds,
   generateMcpSchemaProjection,
   measureSchema,
+  projectMcpDiscoveryInputSchema,
   projectDraft07Node,
   projectSourceSchema,
   selectRuntimeToolNames,

@@ -1,0 +1,246 @@
+---
+title: provide_performance_feedback
+description: "Submit a compact buyer- or measurement-provider performance assertion that a seller can use for optimization."
+"og:title": "AdCP — provide_performance_feedback"
+---
+
+`provide_performance_feedback` sends one optimizer-ready assertion across either hop of a buyer-controlled feedback path. A measurement provider submits to the orchestrator's gateway; the orchestrator validates and normalizes the assertion before forwarding appropriate feedback to each media-buy seller. The payload carries the decision signal and enough provenance to interpret it, not raw exposure logs, attribution models, or a complete measurement study.
+
+The caller is therefore either:
+
+- an authenticated measurement agent calling the buyer orchestrator; or
+- the buyer orchestrator calling a seller.
+
+Measurement agents do not receive seller credentials. In the first experimental gateway tier, the provider reads buyer-approved cross-seller delivery from the orchestrator's [`get_media_buy_delivery`](/dist/docs/3.2.0-beta.0/media-buy/task-reference/get_media_buy_delivery) task and returns compact assertions through its `provide_performance_feedback` task.
+
+**Request schema:** [`provide-performance-feedback-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.0/media-buy/provide-performance-feedback-request.json)
+
+**Response schema:** [`provide-performance-feedback-response.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.0/media-buy/provide-performance-feedback-response.json)
+
+## Compact contract
+
+```json
+{
+  "idempotency_key": "d8e9f0a1-b2c3-4456-d789-456789012345",
+  "media_buy_id": "mb_123",
+  "package_id": "pkg_streaming_video",
+  "measurement_period": {
+    "start": "2026-07-01T00:00:00Z",
+    "end": "2026-07-31T23:59:59Z"
+  },
+  "metric": {
+    "scope": "standard",
+    "metric_id": "conversion_value",
+    "qualifier": {
+      "attribution_methodology": "modeled"
+    }
+  },
+  "performance_index": 1.35,
+  "baseline": "control_group",
+  "producer": {
+    "domain": "measurement.example"
+  },
+  "methodology": "geo_incrementality",
+  "methodology_version": "2026-07",
+  "study_ref": "study_42",
+  "evidence": {
+    "sample_size": 14820,
+    "confidence_interval": {
+      "lower": 1.18,
+      "upper": 1.49,
+      "level": 0.95
+    }
+  },
+  "evidence_ref": "https://measurement.example/results/study_42",
+  "as_of": "2026-08-04T12:00:00Z",
+  "final": true
+}
+```
+
+### Required fields
+
+| Field                | Meaning                                                                                                         |
+| -------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `idempotency_key`    | Unique key for this logical assertion. MUST be unique per receiving agent to prevent cross-agent correlation; use a fresh UUID v4 for each new assertion. Retries use the same key and payload. |
+| `media_buy_id`       | Receiver-scoped buy identifier: orchestrator-issued on the provider hop, seller-issued on the seller hop.       |
+| `measurement_period` | Period summarized by the assertion.                                                                             |
+| `performance_index`  | Normalized decision signal: `1.0` equals the named baseline, lower underperforms it, and higher outperforms it. |
+
+`baseline` is optional in the JSON Schema so legacy 3.x requests remain valid. Producers using the compact contract MUST populate it.
+
+### Scope
+
+| Field         | Meaning                                |
+| ------------- | -------------------------------------- |
+| `package_id`  | Narrows the assertion to one package.  |
+| `creative_id` | Narrows the assertion to one creative. |
+
+Omit both for media-buy-level feedback. `media_buy_id`, `package_id`, and `creative_id` are scoped to the receiver: the gateway exposes measurement-facing identifiers to the provider and maps them to each seller's local identifiers during fan-out. The initial compact contract deliberately does not enumerate every delivery dimension. A later revision can add an opaque receiver-issued delivery key without copying the entire reporting-dimension taxonomy into this task.
+
+### Metric identity
+
+`metric` reuses the standard/vendor discriminator used by `committed_metrics`, `missing_metrics`, and delivery metric aggregates:
+
+```json
+{ "scope": "standard", "metric_id": "roas" }
+```
+
+```json
+{
+  "scope": "vendor",
+  "vendor": { "domain": "attentionvendor.example" },
+  "metric_id": "attention_units"
+}
+```
+
+The nested `metric.vendor` identifies who defines the metric. It can differ from top-level `producer`, which identifies who produced this assertion.
+
+`metric_type` remains accepted for backwards compatibility but is deprecated. When both fields are present, consumers use `metric`.
+
+### Baseline
+
+`baseline` names what `performance_index = 1.0` represents:
+
+| Value              | Meaning                                                             |
+| ------------------ | ------------------------------------------------------------------- |
+| `campaign_target`  | Target or expectation for this buy or package.                      |
+| `control_group`    | Buyer- or measurement-provider-defined counterfactual control.      |
+| `seller_history`   | Historical performance for this seller or subject.                  |
+| `buyer_portfolio`  | Buyer-side portfolio benchmark.                                     |
+| `market_benchmark` | External market or category benchmark.                              |
+| `other`            | Another producer-defined baseline described in the linked evidence. |
+
+The producer does not need to disclose the raw baseline value. For ratio-compatible metrics, compact-contract producers (baseline present) MUST use `observed / baseline` for higher-is-better measures and `baseline / observed` for lower-is-better measures such as CPA. In both cases values above `1.0` mean better performance.
+
+### Producer and methodology
+
+`producer` is the BrandRef of the party that produced the analysis. On the provider-to-orchestrator hop, authenticated caller identity is authoritative and the orchestrator verifies that `producer` matches it. On the orchestrator-to-seller hop, `producer` preserves analytical provenance while the authenticated orchestrator remains responsible for the submission. Sellers never need to authenticate or authorize the measurement provider directly.
+
+`methodology` and `methodology_version` are producer-scoped open strings. AdCP does not impose a universal methodology enum: `geo_incrementality`, `media_mix_model`, and `deterministic_attribution` mean what the identified producer's catalog and methodology documentation say they mean.
+
+`study_ref` is opaque correlation metadata. It does not instruct the seller to create experiment arms or assign users/geographies. Buyers and measurement providers define cohorts once and apply them consistently through ordinary audience and geographic targeting.
+
+### Evidence and historical backfill
+
+The inline `evidence` object is intentionally small:
+
+- `sample_size`;
+- `confidence_interval` on the performance-index scale.
+
+`evidence_ref` points to the provider-hosted result for authorized reviewers. Large historical datasets and study artifacts stay with the measurement provider. Historical backfills use `measurement_period` plus `as_of`; submit one assertion per task call.
+
+`final: false` means the producer expects maturation. A later correction is a new immutable assertion carrying `supersedes_feedback_id` from the prior response.
+
+## Response and application status
+
+```json
+{
+  "status": "completed",
+  "success": true,
+  "feedback_id": "fb_01J5Y5KQ2T8B2M8P0A4E6R3C9D",
+  "application_status": "applied",
+  "received_at": "2026-08-04T12:00:02Z",
+  "applied_at": "2026-08-04T12:00:02Z"
+}
+```
+
+| Status        | Meaning                                                                                      |
+| ------------- | -------------------------------------------------------------------------------------------- |
+| `accepted`    | Stored and eligible for evaluation. This is not a claim that an optimizer used it.           |
+| `applied`     | Incorporated into the seller's optimization inputs. It does not guarantee a delivery change. |
+| `not_applied` | Evaluated but not incorporated; `status_reason` explains why.                                |
+
+Legacy task bodies may contain only `success`. Orchestrator gateways and sellers declaring `media_buy.performance_feedback` return a hop-local `feedback_id`. A gateway normally reports receipt only. Sellers declaring `reports_application_status: true` return an honest `application_status`. Top-level `status` remains the protocol task lifecycle and is not optimizer disposition.
+
+The initial contract reports disposition at response time. A durable asynchronous status read or webhook is deferred until implementations demonstrate that optimizers can expose it reliably.
+
+## Orchestrator-hosted measurement gateway
+
+Measurement agents are discoverable through `brand.json` entries with `type: "measurement"` and publish their metric catalogs in `get_adcp_capabilities.measurement.metrics[]`.
+
+A measurement agent that sets `measurement.produces_performance_feedback: true` can produce this task's compact assertion. A buyer orchestrator exposes the receiving boundary through the separate experimental `measurement_gateway` capability, without claiming to be a media-buy seller.
+
+The orchestrator gives each provider a scoped account. The first experimental tier uses existing task authorization:
+
+```json
+{
+  "authorization": {
+    "allowed_tasks": ["get_media_buy_delivery", "provide_performance_feedback"],
+    "read_only": false
+  }
+}
+```
+
+Both tasks are part of the first-tier gateway contract. The provider never receives seller-account access. Webhook and offline interchange are deferred until AdCP defines their registration, credential, payload, and receipt contracts.
+
+The resulting flow is:
+
+1. The orchestrator discovers a measurement agent and its metrics.
+2. The provider calls the orchestrator's [`get_media_buy_delivery`](/dist/docs/3.2.0-beta.0/media-buy/task-reference/get_media_buy_delivery) task for buyer-approved, cross-seller delivery.
+3. The provider calls `provide_performance_feedback` on the orchestrator gateway. The orchestrator authenticates the provider, validates provenance, and stores its own `feedback_id`.
+4. The orchestrator decides what to share with each seller, maps its cross-seller identifiers to seller-local media-buy/package/creative IDs, and calls each seller's `provide_performance_feedback` under the buyer's identity.
+5. Seller receipts and `application_status` values return to the orchestrator, which owns the cross-seller audit trail.
+
+This hub-and-spoke boundary lets the buyer keep treatment users and geographies consistent across sellers, prevents a measurement provider from accumulating seller credentials, and gives the orchestrator control over normalization and disclosure. Measurement data MUST NOT be forced through [`report_usage`](/dist/docs/3.2.0-beta.0/accounts/tasks/report_usage); that task reports consumption and billing for vendor services.
+
+## Capability examples
+
+Buyer orchestrator gateway:
+
+```json
+{
+  "supported_protocols": ["measurement"],
+  "experimental_features": ["measurement.gateway"],
+  "measurement_gateway": {
+    "delivery_task": "get_media_buy_delivery",
+    "feedback_task": "provide_performance_feedback"
+  }
+}
+```
+
+Seller:
+
+```json
+{
+  "experimental_features": ["measurement.core"],
+  "media_buy": {
+    "performance_feedback": {
+      "reports_application_status": true
+    }
+  }
+}
+```
+
+Measurement provider:
+
+```json
+{
+  "supported_protocols": ["measurement"],
+  "experimental_features": ["measurement.core"],
+  "measurement": {
+    "produces_performance_feedback": true,
+    "metrics": [
+      {
+        "metric_id": "incremental_revenue_index",
+        "unit": "index",
+        "methodology_url": "https://measurement.example/methodology"
+      }
+    ]
+  }
+}
+```
+
+## Privacy and trust
+
+- Submit aggregate decision signals, not user-level outcomes or identity paths.
+- The orchestrator authorizes each measurement provider; sellers authorize only the orchestrator.
+- A `producer` field cannot override provider identity at the gateway or orchestrator identity at the seller.
+- `evidence_ref` remains subject to the provider's access controls.
+- Accepted feedback is not necessarily true or applied. Identity, evidence, attestation, and disposition answer different questions.
+
+## Related documentation
+
+- [`get_media_buy_delivery`](/dist/docs/3.2.0-beta.0/media-buy/task-reference/get_media_buy_delivery)
+- [Measurement taxonomy](/dist/docs/3.2.0-beta.0/measurement/taxonomy)
+- [Caller authorization](/dist/docs/3.2.0-beta.0/accounts/overview#caller-authorization)
+- [Optimization and reporting](/dist/docs/3.2.0-beta.0/media-buy/media-buys/optimization-reporting)
