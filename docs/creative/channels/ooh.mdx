@@ -4,6 +4,8 @@ description: "Canonical contracts for printed OOH — bulletins, posters, transi
 "og:title": "AdCP — Static Out-of-Home"
 ---
 
+**Experimental in AdCP 3.2** — approved by the Media Buy working group for iteration against live transactions; field shapes may change before graduating to stable.
+
 Static OOH artwork uses `custom`, like [print](/docs/creative/channels/print): production-ready files with bleed, substrate, color-space, and effective-DPI constraints that exceed the web-image canonical. Dimensions are the unit's physical live-copy area expressed in pixels at the printer's effective resolution (18–25 ppi for roadside, 80–100 ppi for transit and street furniture, per OAAA print production specifications).
 
 ```json
@@ -41,8 +43,8 @@ Static OOH artwork uses `custom`, like [print](/docs/creative/channels/print): p
 }
 ```
 
-The product or publisher declaration should document what pixels cannot express: physical dimensions (a standard bulletin is 14'×48'), bleed, substrate, CMYK profile, production overage counts, and material deadlines (printed materials are customarily due five business days before the scheduled posting date; painted bulletins thirty days). Panel location, posting period, and audience measurement remain media-buy facts.
+The product or publisher declaration should document what pixels cannot express: physical dimensions (a standard bulletin is 14'×48'), bleed, substrate, CMYK profile, production overage counts, and material deadlines (printed materials are customarily due five business days before the scheduled posting date; painted bulletins thirty days — OAAA Bulletin Net Contract §2.2). Panel location, posting period, and audience measurement remain media-buy facts.
 
-Static units have no play event and cannot fire trackers. Flights run in posting periods against published industry calendars, with posting customarily completed within five business days of the scheduled date and display terms running from the average posting date. Delivery is a modeled audience estimate from the measurement currency declared on the product/package (`measurement_terms.billing_measurement` — Geopath, Route, MOVE, COMMB); reconciliation uses `ooh_metrics` in delivery reporting, whose posting records (per-unit posting dates and photo evidence, per OAAA proof-of-performance conventions) are the channel's settlement artifact.
+Static units have no play event and cannot fire trackers. Flights run in posting periods against published industry calendars, with posting customarily completed within five business days of the scheduled date and display terms running from the average posting date when materials were timely (§2.2 — reported as `average_posted_date` + `materials_timely`). Delivery is a modeled audience estimate from the measurement currency declared on the product/package (`measurement_terms.billing_measurement` — Geopath, Route, MOVE, COMMB); reconciliation uses `ooh_metrics` in delivery reporting, whose posting records are the channel's settlement artifact. Evidence follows the OAAA Proof of Performance clause (§3.5, a separate obligation from §2.2's posting deadline): a photo per bulletin within five *calendar* days of posting and after each rotation, and one representative close-up per creative design variation for poster showings.
 
 See [Print](/docs/creative/channels/print), [Canonical formats](/docs/creative/canonical-formats), [Creative manifests](/docs/creative/creative-manifests), and [Media products](/docs/media-buy/product-discovery/media-products).
