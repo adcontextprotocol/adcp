@@ -28,15 +28,31 @@ const {
   process.env.WORKOS_API_KEY ||= 'sk_test_dummy_for_unit_tests';
   process.env.WORKOS_CLIENT_ID ||= 'client_test_dummy_for_unit_tests';
   process.env.WORKOS_COOKIE_PASSWORD ||= 'test-cookie-password-32chars-min-len-1234';
+  const testUserId = 'user_stale_test';
+  const testOrg = 'org_stale_customer_test';
   return {
-    TEST_USER_ID: 'user_stale_test',
-    TEST_ORG: 'org_stale_customer_test',
+    TEST_USER_ID: testUserId,
+    TEST_ORG: testOrg,
     STALE_CUSTOMER_ID: 'cus_stale_does_not_exist',
     FRESH_CUSTOMER_ID: 'cus_fresh_after_unlink',
     RECOVERY_SECRET: 'cs_test_recovery_secret',
-    mockListMemberships: vi.fn().mockResolvedValue({
-      data: [{ id: 'om_test', role: { slug: 'owner' }, status: 'active' }],
-    }),
+    mockListMemberships: vi.fn().mockImplementation(async ({
+      userId,
+      organizationId,
+    }: {
+      userId: string;
+      organizationId?: string;
+    }) => ({
+      data: userId === testUserId && organizationId === testOrg
+        ? [{
+            id: 'om_test',
+            userId: testUserId,
+            organizationId: testOrg,
+            role: { slug: 'owner' },
+            status: 'active',
+          }]
+        : [],
+    })),
     mockCreateStripeCustomer: vi.fn(),
     mockCreateCustomerSession: vi.fn(),
     mockGetPendingInvoices: vi.fn().mockResolvedValue([]),

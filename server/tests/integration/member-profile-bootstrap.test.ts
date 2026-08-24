@@ -184,7 +184,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     await seedOrg(orgId);
 
     const res = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .send({
         organization_name: 'Acme Media',
         company_type: 'publisher',
@@ -230,7 +230,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     await seedOrg(orgId);
 
     const first = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .send({
         organization_name: 'Acme Idempotent',
         company_type: 'publisher',
@@ -239,7 +239,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     expect(first.status).toBe(201);
 
     const second = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .send({
         organization_name: 'Acme Idempotent',
         company_type: 'publisher',
@@ -259,7 +259,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     await seedOrg(orgId);
 
     const res = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .send({
         organization_name: 'Acme',
         company_type: 'publisher',
@@ -276,7 +276,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     await seedOrg(orgId);
 
     const res = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .send({
         organization_name: 'Other Co',
         company_type: 'publisher',
@@ -292,7 +292,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     await seedOrg(orgId);
 
     const res = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .send({
         organization_name: 'Acme',
         company_type: 'not_a_real_type',
@@ -303,7 +303,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     expect(res.body.error).toBe('Invalid company_type');
   });
 
-  it('returns 404 when caller has no organization', async () => {
+  it('fails closed when no organization is selected', async () => {
     currentUserId = 'user_boot_orphan';
     currentUserEmail = 'orphan@acme.example';
 
@@ -315,8 +315,8 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
         corporate_domain: 'acme.example',
       });
 
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe('No organization');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('The org query parameter is required');
   });
 
   it('rejects paid membership_tier values with 400', async () => {
@@ -324,7 +324,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     await seedOrg(orgId);
 
     const res = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .send({
         organization_name: 'Acme',
         company_type: 'publisher',
@@ -347,7 +347,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     await seedOrg(orgId);
 
     const res = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .send({
         organization_name: 'Acme',
         company_type: 'publisher',
@@ -373,7 +373,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     });
 
     const res = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .send({
         organization_name: 'Programmatic Override',
         company_type: 'publisher',
@@ -418,7 +418,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     await seedOrg(orgId);
 
     const res = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .send({
         organization_name: 'Acme Audit',
         company_type: 'publisher',
@@ -465,7 +465,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     );
 
     const res = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .send({
         organization_name: 'Acme Conflict',
         company_type: 'publisher',
@@ -521,7 +521,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     );
 
     const res = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .set('User-Agent', 'BootstrapTest/1.0')
       .set('X-Forwarded-For', '203.0.113.42')
       .send({
@@ -552,7 +552,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     await seedOrg(orgId, { role: 'member' });
 
     const res = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .send({
         organization_name: 'Acme Media',
         company_type: 'publisher',
@@ -574,7 +574,7 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     await seedOrg(orgId);
 
     const res = await request(app)
-      .post('/api/me/member-profile')
+      .post(`/api/me/member-profile?org=${orgId}`)
       .send({
         display_name: 'Legacy Profile',
         slug: 'legacy-profile-boot',
