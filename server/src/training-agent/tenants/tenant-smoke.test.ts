@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import Ajv from 'ajv';
 import type { TrainingContext } from '../types.js';
 import { clearAccountStore } from '../account-handlers.js';
 import {
@@ -1732,20 +1733,43 @@ describe('tenant routing smoke', () => {
               supported_optimization_metrics?: string[];
               vendor_metric_optimization?: { supported_targets?: string[] };
             };
+            creative?: {
+              supported_formats?: Array<{ capability_id?: string; operations?: string[] }>;
+              preview?: { routes?: Array<{ capability_id?: string; rendering_origin?: string }> };
+            };
             compliance_testing?: { scenarios?: string[] };
           };
         };
       };
       const mediaBuy = body.result?.structuredContent?.media_buy;
+      const creative = body.result?.structuredContent?.creative;
+      const previewCapabilityIds = creative?.supported_formats
+        ?.filter(format => format.operations?.includes('preview'))
+        .map(format => format.capability_id) ?? [];
+      const previewRouteIds = creative?.preview?.routes?.map(route => route.capability_id) ?? [];
       expect(body.result?.structuredContent?.adcp_version).toBe('3.2-beta.6');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
       expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.6']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
+      expect(previewCapabilityIds.length).toBeGreaterThan(0);
+      expect(previewRouteIds).toEqual(previewCapabilityIds);
+      expect(creative?.preview?.routes?.every(route => (
+        route.rendering_origin === 'agent_approximation'
+      ))).toBe(true);
       expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(
         expect.arrayContaining(SALES_CURRENT_SCENARIOS),
       );
+      const schema = JSON.parse(fs.readFileSync(path.resolve(
+        'node_modules/@adcp/sdk/dist/lib/schemas-data/3.2.0-beta.6/bundled/protocol/get-adcp-capabilities-response.json',
+      ), 'utf8'));
+      const validate = new Ajv({ allErrors: true, strict: false, discriminator: true, validateFormats: false })
+        .compile(schema);
+      expect(
+        validate(body.result?.structuredContent),
+        JSON.stringify(validate.errors),
+      ).toBe(true);
     } finally {
       await close();
     }

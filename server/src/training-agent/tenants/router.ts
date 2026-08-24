@@ -23,6 +23,7 @@ import {
 import { handleComplyTestController } from '../comply-test-controller.js';
 import {
   adcpError,
+  creativePreviewCapability,
   resolveServedAdcpVersion,
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
@@ -862,10 +863,12 @@ function projectTenantCapabilities(
       const creative = structured.creative && typeof structured.creative === 'object'
         ? structured.creative
         : {};
+      const supportedFormats = supportedCanonicalFormatsCapability();
       structured.creative = {
         ...creative,
         bills_through_adcp: false,
-        supported_formats: supportedCanonicalFormatsCapability(),
+        supported_formats: supportedFormats,
+        preview: creativePreviewCapability(supportedFormats),
         canonical_catalog_version: '3.1',
       };
       const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'

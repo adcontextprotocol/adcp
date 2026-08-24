@@ -5381,6 +5381,23 @@ export function supportedCanonicalFormatsCapability(): Array<Record<string, unkn
   }));
 }
 
+export function creativePreviewCapability(
+  supportedFormats: readonly Record<string, unknown>[],
+): { routes: Array<{ capability_id: string; rendering_origin: 'agent_approximation' }> } {
+  return {
+    routes: supportedFormats
+      .filter(format => (
+        typeof format.capability_id === 'string'
+        && Array.isArray(format.operations)
+        && format.operations.includes('preview')
+      ))
+      .map(format => ({
+        capability_id: format.capability_id as string,
+        rendering_origin: 'agent_approximation' as const,
+      })),
+  };
+}
+
 function supportedCanonicalBuildCapability(formatId: string): { formatKind: string; slots: CanonicalSlot[] } | undefined {
   const capability = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.find(item => item.capabilityId === formatId);
   if (!capability) return undefined;
@@ -14713,6 +14730,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       : []),
     ...((ctx.tenantId === 'sales' || ctx.tenantId == null) ? ['measurement.core'] : []),
   ];
+  const supportedCreativeFormats = includeThreeOneFields(ctx)
+    ? supportedCanonicalFormatsCapability()
+    : undefined;
   return {
     adcp_version: DEFAULT_ADCP_VERSION,
     adcp: {
@@ -14828,15 +14848,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       supports_transformation: true,
       supports_compliance: false,
       has_creative_library: true,
-      ...(includeThreeOneFields(ctx) ? {
+      ...(supportedCreativeFormats ? {
         bills_through_adcp: creativeBillsThroughAdcp(ctx),
-        supported_formats: supportedCanonicalFormatsCapability(),
-        preview: {
-          routes: SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(capability => ({
-            capability_id: capability.capabilityId,
-            rendering_origin: 'agent_approximation',
-          })),
-        },
+        supported_formats: supportedCreativeFormats,
+        preview: creativePreviewCapability(supportedCreativeFormats),
         canonical_catalog_version: '3.2',
         supports_transformers: true,
         supports_refinement: true,
