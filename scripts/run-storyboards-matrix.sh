@@ -241,25 +241,28 @@ fi
 # .github/workflows/training-agent-storyboards.yml.
 if [ "${FLOOR_SET}" = "3.0-compat" ]; then
   TENANTS=(
-    "signals:65:94"
-    "sales:65:209"
-    "governance:65:135"
-    "creative:65:137"
-    "creative-builder:65:121"
-    "brand:65:78"
-    "si:63:77"
+    # Capability-resolved 3.0.26 replay. N/A storyboards are selection rows,
+    # not synthetic clean results, so these floors grade only executed rows.
+    "signals:24:98"
+    "sales:40:224"
+    "governance:27:147"
+    "creative:22:109"
+    "creative-builder:24:112"
+    "brand:23:78"
+    "si:21:72"
   )
 else
   TENANTS=(
-    "signals:74:111"
-    # #6776 restores two proposal storyboards and their ten passing steps
-    # after lifting the current-source quarantine.
-    "sales:120:534"
-    "governance:73:151"
-    "creative:73:169"
-    "creative-builder:70:146"
-    "brand:73:96"
-    "si:157:91"
+    # Ratcheted from the first capability-resolved replay. The runner reports
+    # declared-scope applicability and quarantines separately from these
+    # clean-result-row and passing-step regression floors.
+    "signals:46:118"
+    "sales:127:594"
+    "governance:48:194"
+    "creative:50:247"
+    "creative-builder:51:222"
+    "brand:46:154"
+    "si:43:88"
   )
 fi
 
@@ -368,7 +371,8 @@ for entry in "${TENANTS[@]}"; do
   log=$(mktemp -t "storyboards-${tenant}.XXXXXX.log")
   orchestrator_failure=0
 
-  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; then
+  if { [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "sales" ]; } \
+    || [ "${tenant}" = "creative-builder" ]; then
     TENANT_PATH="${tenant}" \
       PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \
       bash scripts/run-storyboards-isolated-shards.sh \
@@ -381,8 +385,9 @@ for entry in "${TENANTS[@]}"; do
 
   clean=$(sed -nE 's/^[[:space:]]*storyboards: ([0-9]+)\/[0-9]+ clean$/\1/p' "${log}" | tail -1)
   passed=$(sed -nE 's/^[[:space:]]*steps: ([0-9]+) passed .*/\1/p' "${log}" | tail -1)
+  selection=$(sed -nE 's/^[[:space:]]*selection: ([0-9]+) applicable \| ([0-9]+) not applicable \| ([0-9]+) quarantined \| ([0-9]+) corpus$/\1 \2 \3 \4/p' "${log}" | tail -1)
 
-  if [ -z "${clean}" ] || [ -z "${passed}" ]; then
+  if [ -z "${clean}" ] || [ -z "${passed}" ] || [ -z "${selection}" ]; then
     echo "::error::Failed to parse storyboard counts from runner output for /${tenant}."
     echo "  Log: ${log}"
     tail -40 "${log}"
@@ -390,6 +395,7 @@ for entry in "${TENANTS[@]}"; do
     SUMMARY="${SUMMARY}\n  /${tenant}: ✗ parse failure (see ${log})"
     continue
   fi
+  read -r applicable scope_not_applicable quarantined corpus <<< "${selection}"
 
   status="✓"
   failed_floor=""
@@ -519,11 +525,11 @@ for entry in "${TENANTS[@]}"; do
     done
   fi
 
-  echo "  ${status} clean=${clean} passed=${passed}"
+  echo "  ${status} clean=${clean} passed=${passed} applicable=${applicable} n/a=${scope_not_applicable} quarantined=${quarantined}"
 
   if [ "${status}" = "✓" ]; then
     rm -f "${log}"
-    SUMMARY="${SUMMARY}\n  /${tenant}: ✓ ${clean} clean, ${passed} steps"
+    SUMMARY="${SUMMARY}\n  /${tenant}: ✓ ${clean} clean, ${passed} steps; ${applicable}/${corpus} applicable, ${scope_not_applicable} N/A, ${quarantined} quarantined"
   else
     REGRESSED=1
     SUMMARY="${SUMMARY}\n  /${tenant}: ✗ ${failed_floor} (log: ${log})"

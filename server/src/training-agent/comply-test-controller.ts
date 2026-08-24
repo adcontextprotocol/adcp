@@ -37,6 +37,7 @@ import type {
 } from './types.js';
 import { supportsGetProductsRejected } from './types.js';
 import {
+  findSessionsMatching,
   findSessionMatching,
   controllerFixturePrincipal,
   getProductsSessionKeyFromArgs,
@@ -100,6 +101,44 @@ function sameBrandIdentity(a: NaturalAccountIdentity, b: NaturalAccountIdentity)
     && a.brand.brand_id === b.brand.brand_id;
 }
 
+function sandboxControllerIdentity(account: ToolArgs['account']): NaturalAccountIdentity | undefined {
+  try {
+    const canonical = canonicalizeAccountRef(account);
+    return canonical.kind === 'natural' && canonical.sandbox ? canonical : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function controllerIdentityFromRequest(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): NaturalAccountIdentity | undefined {
+  const explicit = sandboxControllerIdentity(args.account);
+  if (explicit) return explicit;
+  // Several universal controller vectors intentionally use the minimal
+  // `{ account: { sandbox: true }, brand }` assertion. Only the public static
+  // demo principal may promote that incomplete shape into a brand-scoped
+  // lookup identity; authenticated callers must provide the full account.
+  if (
+    ctx.principal?.startsWith('static:')
+    && args.account?.sandbox === true
+    && typeof args.brand?.domain === 'string'
+  ) {
+    try {
+      const canonical = canonicalizeAccountRef({
+        brand: args.brand,
+        operator: args.brand.domain,
+        sandbox: true,
+      });
+      return canonical.kind === 'natural' ? canonical : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 function controllerCanMutateMediaBuy(
   controller: NaturalAccountIdentity,
   mediaBuy: MediaBuyState,
@@ -155,7 +194,6 @@ const CREATIVE_TRANSITIONS: Record<string, string[]> = {
   rejected: ['processing'],
   archived: ['approved'],
 };
-
 const AUDIENCE_TRANSITIONS: Record<string, string[]> = {
   processing: ['ready', 'too_small', 'suspended'],
   ready: ['processing', 'too_small', 'suspended'],
@@ -759,7 +797,13 @@ function recordCreativeWebhookActivity(
   creative.webhookActivity = [record, ...(creative.webhookActivity ?? [])].slice(0, 50);
 }
 
-function createStore(session: SessionState, sessionKey: string, principal?: string): TestControllerStore {
+function createStore(
+  session: SessionState,
+  sessionKey: string,
+  principal?: string,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+  controllerAccount?: NaturalAccountIdentity,
+): TestControllerStore {
   return {
     async forceAudienceStatus(audienceId, status, reason) {
       const audience = findAudienceInSession(sessionKey, audienceId);
@@ -776,6 +820,19 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
         throw new TestControllerError('INVALID_PARAMS', 'reason is required when audience status = suspended', prev);
       }
 
+      // Resolve the complete authorized fan-out before changing any state. A
+      // storage failure must fail the controller call without leaving only a
+      // subset of dependent buys impaired.
+      let dependentSessions: SessionState[] = [];
+      if (controllerAccount) {
+        dependentSessions = await findSessionsMatching(candidate => (
+          candidate !== session
+          && Array.from(candidate.mediaBuys.values()).some(mediaBuy => (
+            controllerCanMutateMediaBuy(controllerAccount, mediaBuy, principal)
+            && mediaBuy.packages.some(pkg => packageAudienceIds(pkg).includes(audienceId))
+          ))
+        ));
+      }
       const transition = forceAudienceStatusInSession(
         sessionKey,
         audienceId,
@@ -786,6 +843,15 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
         throw new TestControllerError('NOT_FOUND', `Audience ${audienceId} not found`, null);
       }
       propagateAudienceImpairment(session, audienceId, transition.previous, transition.current, reason);
+      for (const dependentSession of dependentSessions) {
+        propagateAudienceImpairment(
+          dependentSession,
+          audienceId,
+          transition.previous,
+          transition.current,
+          reason,
+        );
+      }
       return {
         success: true,
         previous_state: transition.previous,
@@ -797,6 +863,10 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
     async forceCreativeStatus(creativeId, status, rejectionReason) {
       const creative = session.creatives.get(creativeId);
       if (!creative) {
+        const priorTerminalState = session.complyExtensions.forcedCreativeTerminalStates.get(creativeId);
+        if (priorTerminalState) {
+          validateTransition(CREATIVE_TRANSITIONS, new Set(), priorTerminalState, status, 'creative');
+        }
         throw new TestControllerError('NOT_FOUND', `Creative ${creativeId} not found`, null);
       }
 
@@ -812,6 +882,12 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       }
 
       creative.status = status;
+      if (status === 'archived') {
+        enforceMapCap(session.complyExtensions.forcedCreativeTerminalStates, creativeId, 'creative terminal states');
+        session.complyExtensions.forcedCreativeTerminalStates.set(creativeId, status);
+      } else {
+        session.complyExtensions.forcedCreativeTerminalStates.delete(creativeId);
+      }
       propagateCreativeImpairment(session, creativeId, prev, status, rejectionReason);
       await emitCreativeStatusChanged(sessionKey, principal, creative, prev, status, rejectionReason);
       return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} transitioned from ${prev} to ${status}` };
@@ -834,6 +910,10 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
     async forceMediaBuyStatus(mediaBuyId, status, rejectionReason) {
       const mb = findMediaBuy(session, mediaBuyId);
       if (!mb) {
+        const priorTerminalState = session.complyExtensions.forcedMediaBuyTerminalStates.get(mediaBuyId);
+        if (priorTerminalState) {
+          validateTransition(MEDIA_BUY_TRANSITIONS, MEDIA_BUY_TERMINAL, priorTerminalState, status, 'media buy');
+        }
         throw new TestControllerError('NOT_FOUND', `Media buy ${mediaBuyId} not found`, null);
       }
 
@@ -850,6 +930,12 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
 
       const now = new Date().toISOString();
       mb.status = status;
+      if (MEDIA_BUY_TERMINAL.has(status)) {
+        enforceMapCap(session.complyExtensions.forcedMediaBuyTerminalStates, mediaBuyId, 'media buy terminal states');
+        session.complyExtensions.forcedMediaBuyTerminalStates.set(mediaBuyId, status);
+      } else {
+        session.complyExtensions.forcedMediaBuyTerminalStates.delete(mediaBuyId);
+      }
       mb.complyControllerForced = true;
       mb.updatedAt = now;
 
@@ -1070,6 +1156,12 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
       const fixtureFormatId = fx.format_id as CreativeState['formatId'];
       const formatKind = (fx.format_kind as string | undefined)
         ?? existing?.formatKind
+        ?? (storyboardCompat?.version !== '3.0' && fixtureFormatId?.id === 'existing_post'
+          ? 'video_hosted'
+          : undefined)
+        ?? (storyboardCompat?.version !== '3.0' && fixtureFormatId?.id === 'html5_bundle'
+          ? 'html5'
+          : undefined)
         ?? (fixtureFormatId || existing?.formatId ? undefined : 'image');
       const formatOptionRef = (fx.format_option_ref as Record<string, unknown> | undefined) ?? existing?.formatOptionRef;
       const formatId = fixtureFormatId ?? existing?.formatId;
@@ -1199,6 +1291,7 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
 const LOCAL_SCENARIOS = [
   'force_create_media_buy_arm',
   'force_get_products_arm',
+  'force_get_signals_arm',
   'force_task_completion',
   'force_creative_purge',
   'force_wholesale_feed_webhook',
@@ -1521,7 +1614,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       && params.operation === 'prepare'
     );
   const targetsPublicTaskState = scenario === 'seed_media_buy'
-    || scenario === 'seed_creative';
+    || scenario === 'seed_creative'
+    || scenario === 'force_create_media_buy_arm';
   // The frozen 3.0 runner injects a synthetic natural account into controller
   // and fixture calls, sometimes without copying its brand to the top level.
   // Platform methods on that compatibility surface historically key by brand.
@@ -1580,7 +1674,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
         : staticTaskAccount
           ? { ...args, account: staticTaskAccount }
           : args;
-  let sessionKey = scenario === 'force_get_products_arm' && ctx.principal?.startsWith('static:')
+  let sessionKey = targetsGetProductsState && ctx.principal?.startsWith('static:')
     ? sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal)
     : targetsGetProductsState
       ? getProductsSessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId)
@@ -1592,20 +1686,16 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       targetsControllerFixtureState ? controllerFixturePrincipal(ctx.principal) : undefined,
     );
   let session = await getSession(sessionKey);
-  if (scenario === 'simulate_delivery') {
+  if (
+    scenario === 'simulate_delivery'
+    || scenario === 'force_media_buy_status'
+    || scenario === 'simulate_budget_spend'
+  ) {
     const mediaBuyId = isRecord(rawArgs.params) && typeof rawArgs.params.media_buy_id === 'string'
       ? rawArgs.params.media_buy_id
       : undefined;
     if (mediaBuyId && !session.mediaBuys.has(mediaBuyId)) {
-      let controllerAccount: NaturalAccountIdentity | undefined;
-      try {
-        const canonical = canonicalizeAccountRef(args.account);
-        if (canonical.kind === 'natural' && canonical.sandbox) {
-          controllerAccount = canonical;
-        }
-      } catch {
-        controllerAccount = undefined;
-      }
+      const controllerAccount = controllerIdentityFromRequest(args, ctx);
       if (controllerAccount) {
         session = await findSessionMatching(candidate => {
           const mediaBuy = candidate.mediaBuys.get(mediaBuyId);
@@ -1618,15 +1708,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   if (scenario === 'force_creative_status') {
     const creativeId = typeof params.creative_id === 'string' ? params.creative_id : undefined;
     if (creativeId && !session.creatives.has(creativeId)) {
-      let controllerAccount: NaturalAccountIdentity | undefined;
-      try {
-        const canonical = canonicalizeAccountRef(args.account);
-        if (canonical.kind === 'natural' && canonical.sandbox) {
-          controllerAccount = canonical;
-        }
-      } catch {
-        controllerAccount = undefined;
-      }
+      const controllerAccount = controllerIdentityFromRequest(args, ctx);
       if (controllerAccount) {
         const ownerSession = await findSessionMatching(candidate => {
           const creative = candidate.creatives.get(creativeId);
@@ -1658,6 +1740,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   // we delegate. New scenarios from spec PRs land here until adopted upstream.
   if (scenario === 'force_create_media_buy_arm') {
     return handleForceCreateMediaBuyArm(session, rawArgs);
+  }
+  if (scenario === 'force_get_signals_arm') {
+    return handleForceGetSignalsArm(session, rawArgs);
   }
   if (
     scenario === 'compact_product_lifecycle_probe'
@@ -1696,9 +1781,16 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     if (!tool) {
       return { success: false, error: 'INVALID_PARAMS', error_detail: 'params.tool is required for force_upstream_unavailable' };
     }
+    if (
+      params.cache_age_seconds !== undefined
+      && (!Number.isInteger(params.cache_age_seconds) || (params.cache_age_seconds as number) < 0)
+    ) {
+      return { success: false, error: 'INVALID_PARAMS', error_detail: 'params.cache_age_seconds must be a non-negative integer' };
+    }
     session.complyExtensions.forcedUpstreamUnavailable = {
       tool,
       upstreamName: typeof params.upstream_name === 'string' ? params.upstream_name : undefined,
+      cacheAgeSeconds: typeof params.cache_age_seconds === 'number' ? params.cache_age_seconds : undefined,
       createdAt: new Date().toISOString(),
     };
     return {
@@ -1790,6 +1882,23 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
         error_detail: 'query_provenance_audit_observations is not available in AdCP 3.0 compatibility mode',
       };
     }
+    const creativeId = typeof params.creative_id === 'string' ? params.creative_id : undefined;
+    if (creativeId && !session.creatives.has(creativeId)) {
+      let controllerAccount: NaturalAccountIdentity | undefined;
+      try {
+        const canonical = canonicalizeAccountRef(args.account);
+        if (canonical.kind === 'natural' && canonical.sandbox) controllerAccount = canonical;
+      } catch {
+        controllerAccount = undefined;
+      }
+      if (controllerAccount) {
+        session = await findSessionMatching(candidate => {
+          const creative = candidate.creatives.get(creativeId);
+          return creative !== undefined
+            && controllerCanMutateCreative(controllerAccount, creative, ctx.principal);
+        }) ?? session;
+      }
+    }
     return handleQueryProvenanceAuditObservations(session, rawArgs);
   }
   // seed_creative_format is a training-agent extension not in the SDK's
@@ -1864,7 +1973,13 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     }
   }
 
-  const store = createStore(session, sessionKey, ctx.principal);
+  const store = createStore(
+    session,
+    sessionKey,
+    ctx.principal,
+    ctx.storyboardCompat,
+    sandboxControllerIdentity(args.account),
+  );
   const sdkResponse = await handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
 
   if (
@@ -2459,6 +2574,43 @@ function handleForceCreateMediaBuyArm(session: SessionState, rawArgs: Record<str
   };
 }
 
+function handleForceGetSignalsArm(session: SessionState, rawArgs: Record<string, unknown>): object {
+  const params = rawArgs.params as Record<string, unknown> | undefined;
+  if (!params || params.arm !== 'submitted') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: "force_get_signals_arm requires params.arm = 'submitted'",
+    };
+  }
+  const taskId = params.task_id;
+  if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 128) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'task_id is required and must contain at most 128 characters',
+    };
+  }
+  const message = params.message;
+  if (message !== undefined && (typeof message !== 'string' || message.length > 2000)) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'message must be a string up to 2000 characters',
+    };
+  }
+  session.complyExtensions.forcedGetSignalsArm = {
+    arm: 'submitted',
+    taskId,
+    ...(typeof message === 'string' && { message }),
+  };
+  return {
+    success: true,
+    forced: { arm: 'submitted', task_id: taskId },
+    message: `Next brief-mode get_signals call will return the submitted arm with task_id ${taskId}`,
+  };
+}
+
 function handleForceGetProductsRejection(
   session: SessionState,
   principal: string,
@@ -2671,6 +2823,13 @@ function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, u
       success: false,
       error: 'NOT_FOUND',
       error_detail: `Task "${taskId}" was not registered for this sandbox account`,
+    };
+  }
+  if (!pending) {
+    return {
+      success: false,
+      error: 'NOT_FOUND',
+      error_detail: `Task "${taskId}" is not awaiting forced completion for this sandbox account`,
     };
   }
 

@@ -538,11 +538,11 @@ phases:
             - product_id: "sports_preroll_q2"
               budget: 25000
               pricing_option_id: "cpm_non_guaranteed"
-              creative_assignments:
-                - creative_id: "video_30s_trail_pro"
+              bid_price: 25
             - product_id: "lifestyle_display_q2"
               budget: 15000
               pricing_option_id: "cpm_standard"
+              bid_price: 10
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             authentication:
@@ -827,11 +827,11 @@ phases:
             - product_id: "sports_preroll_q2"
               budget: 25000
               pricing_option_id: "cpm_non_guaranteed"
-              creative_assignments:
-                - creative_id: "video_30s_trail_pro"
+              bid_price: 25
             - product_id: "lifestyle_display_q2"
               budget: 15000
               pricing_option_id: "cpm_standard"
+              bid_price: 10
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
             authentication:

@@ -296,6 +296,8 @@ async function runManagedChild({
       process.stdout.write('--- Child result ---\n');
     } else if (/^\s*storyboards:/.test(line)) {
       process.stdout.write(line.replace('storyboards:', 'child storyboards:') + '\n');
+    } else if (/^\s*selection:/.test(line)) {
+      process.stdout.write(line.replace('selection:', 'child selection:') + '\n');
     } else if (/^\s*steps:/.test(line)) {
       process.stdout.write(line.replace('steps:', 'child steps:') + '\n');
     } else {
@@ -456,10 +458,17 @@ function addTotals(target, source) {
 
 function validDiscoveryEnvelope(envelope) {
   const applicableIds = envelope?.storyboard_ids;
+  const selection = envelope?.selection;
   return envelope?.version === 1
     && Array.isArray(applicableIds)
     && applicableIds.every(id => typeof id === 'string' && STORYBOARD_ID_PATTERN.test(id))
-    && new Set(applicableIds).size === applicableIds.length;
+    && new Set(applicableIds).size === applicableIds.length
+    && selection
+    && ['corpus', 'applicable', 'not_applicable', 'quarantined'].every(
+      field => Number.isSafeInteger(selection[field]) && selection[field] >= 0,
+    )
+    && selection.applicable === applicableIds.length
+    && selection.corpus === selection.applicable + selection.not_applicable + selection.quarantined;
 }
 
 async function main() {
@@ -535,6 +544,12 @@ async function main() {
 
   process.stdout.write('\n--- Totals ---\n');
   process.stdout.write(`  storyboards: ${aggregate.clean}/${aggregate.total} clean\n`);
+  process.stdout.write(
+    `  selection: ${discovery.envelope.selection.applicable} applicable | `
+    + `${discovery.envelope.selection.not_applicable} not applicable | `
+    + `${discovery.envelope.selection.quarantined} quarantined | `
+    + `${discovery.envelope.selection.corpus} corpus\n`,
+  );
   process.stdout.write(
     `  steps: ${aggregate.passed} passed | ${aggregate.failed} failed | `
     + `${aggregate.skipped} skipped | ${aggregate.not_applicable} not applicable\n`,

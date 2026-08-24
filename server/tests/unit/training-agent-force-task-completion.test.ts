@@ -5,11 +5,12 @@ import {
   invalidateCache,
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
-import { clearSessions } from '../../src/training-agent/state.js';
+import { clearSessions, sessionKeyFromArgs } from '../../src/training-agent/state.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import {
   clearForcedTaskCompletions,
   getForcedTaskCompletions,
+  waitForForcedTaskCompletion,
 } from '../../src/training-agent/comply-test-controller.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
@@ -26,6 +27,10 @@ const SAMPLE_RESULT = {
     { package_id: 'pkg-0', product_id: 'async_signed_io_q2', budget: 30000 },
   ],
 };
+
+function awaitForcedTask(taskId: string, account = ACCOUNT_A): Promise<Record<string, unknown>> {
+  return waitForForcedTaskCompletion(taskId, sessionKeyFromArgs({ account }, 'open'));
+}
 
 function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
   if (!MUTATING_TOOLS.has(toolName)) return args;
@@ -65,7 +70,8 @@ describe('force_task_completion', () => {
   });
 
   describe('directive registration', () => {
-    it('registers a completion with task_id and result, returns StateTransitionSuccess', async () => {
+    it('completes an owned pending task and returns StateTransitionSuccess', async () => {
+      const pending = awaitForcedTask('task_async_signed_io_q2');
       const result = await callTool(server, 'comply_test_controller', {
         scenario: 'force_task_completion',
         params: { task_id: 'task_async_signed_io_q2', result: SAMPLE_RESULT },
@@ -76,11 +82,25 @@ describe('force_task_completion', () => {
       expect(result.success).toBe(true);
       expect(result.previous_state).toBe('submitted');
       expect(result.current_state).toBe('completed');
+      await expect(pending).resolves.toEqual(SAMPLE_RESULT);
 
       // Recorded in the process-global pool.
       const recorded = getForcedTaskCompletions().get('task_async_signed_io_q2');
       expect(recorded).toBeDefined();
       expect(recorded!.result).toEqual(SAMPLE_RESULT);
+    });
+
+    it('rejects a guessed task_id that has no owned pending waiter', async () => {
+      const result = await callTool(server, 'comply_test_controller', {
+        scenario: 'force_task_completion',
+        params: { task_id: 'task_not_registered', result: SAMPLE_RESULT },
+        account: ACCOUNT_A,
+        brand: BRAND_A,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
+      expect(getForcedTaskCompletions().has('task_not_registered')).toBe(false);
     });
 
     it('rejects missing task_id with INVALID_PARAMS', async () => {
@@ -147,9 +167,11 @@ describe('force_task_completion', () => {
         brand: BRAND_A,
       };
 
+      const pending = awaitForcedTask('task_replay');
       const first = await callTool(server, 'comply_test_controller', args);
       expect(first.success).toBe(true);
       expect(first.previous_state).toBe('submitted');
+      await expect(pending).resolves.toEqual(SAMPLE_RESULT);
 
       const replay = await callTool(server, 'comply_test_controller', args);
       expect(replay.success).toBe(true);
@@ -159,12 +181,14 @@ describe('force_task_completion', () => {
     });
 
     it('replays with diverging params return INVALID_TRANSITION', async () => {
+      const pending = awaitForcedTask('task_diverge');
       await callTool(server, 'comply_test_controller', {
         scenario: 'force_task_completion',
         params: { task_id: 'task_diverge', result: SAMPLE_RESULT },
         account: ACCOUNT_A,
         brand: BRAND_A,
       });
+      await expect(pending).resolves.toEqual(SAMPLE_RESULT);
 
       const replay = await callTool(server, 'comply_test_controller', {
         scenario: 'force_task_completion',
@@ -182,12 +206,14 @@ describe('force_task_completion', () => {
   describe('cross-account isolation', () => {
     it('returns NOT_FOUND when account B tries to re-complete account A\'s task with diverging result', async () => {
       // Account A registers the task.
+      const pending = awaitForcedTask('task_cross_tenant');
       await callTool(server, 'comply_test_controller', {
         scenario: 'force_task_completion',
         params: { task_id: 'task_cross_tenant', result: SAMPLE_RESULT },
         account: ACCOUNT_A,
         brand: BRAND_A,
       });
+      await expect(pending).resolves.toEqual(SAMPLE_RESULT);
 
       // Account B tries to overwrite.
       const result = await callTool(server, 'comply_test_controller', {

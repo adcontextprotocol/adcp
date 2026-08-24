@@ -210,6 +210,20 @@ phases:
             media_buy_id: "$context.media_buy_id"
             impressions: 100000
             completed_views: 72000
+            viewability:
+              measurable_impressions: 90000
+              viewable_impressions: 72000
+              viewable_rate: 0.80
+              standard: "mrc"
+            vendor_metric_values:
+              - vendor:
+                  domain: "attentionvendor.example"
+                metric_id: "attention_units"
+                value: 4.2
+              - vendor:
+                  domain: "attentionvendor.example"
+                metric_id: "attention_score"
+                value: 0.74
             reported_spend:
               amount: 2500.00
               currency: "USD"

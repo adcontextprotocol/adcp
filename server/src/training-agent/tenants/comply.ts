@@ -89,7 +89,22 @@ async function dispatchV5(
       ? { ...compatAccount, sandbox: true }
       : { sandbox: true };
   }
-  const args = { ...cleanInput, scenario, params } as ToolArgs;
+  // The source controller contract can grow additive scenario parameters
+  // before the pinned SDK's typed adapter catches up. Preserve the raw
+  // deterministic stale-age fixture rather than letting the older adapter
+  // parser strip it before the v5 implementation sees it.
+  const rawParams = cleanInput.params && typeof cleanInput.params === 'object' && !Array.isArray(cleanInput.params)
+    ? cleanInput.params as Record<string, unknown>
+    : {};
+  const forwardedParams = scenario === 'force_upstream_unavailable'
+    ? {
+        ...params,
+        ...(rawParams.cache_age_seconds !== undefined && {
+          cache_age_seconds: rawParams.cache_age_seconds,
+        }),
+      }
+    : params;
+  const args = { ...cleanInput, scenario, params: forwardedParams } as ToolArgs;
   return await handleComplyTestController(args, {
     mode: 'open',
     principal,
@@ -227,6 +242,37 @@ export function buildCreativeComplyConfig(
     force: {
       creative_status: cast(forceAdapter('force_creative_status', storyboardCompat)),
       media_buy_status: cast(forceAdapter('force_media_buy_status', storyboardCompat)),
+    },
+  };
+}
+
+export function buildSignalsComplyConfig(
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+  taskRegistry?: TaskRegistry,
+): ComplyControllerConfig {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cast = (a: AdapterShim) => a as any;
+  return {
+    inputSchema: SALES_COMPLY_INPUT_SCHEMA,
+    force: {
+      // The frozen 3.0 capability schema permits only the original six
+      // controller scenario IDs. Keep one of those universally applicable
+      // lifecycle controls wired so the signals tenant can truthfully expose
+      // a non-empty compliance_testing.scenarios block in 3.0 mode.
+      session_status: cast(forceAdapter('force_session_status', storyboardCompat)),
+      get_signals_arm: cast(forceAdapter('force_get_signals_arm', storyboardCompat)),
+      task_completion: cast(forceAdapter(
+        'force_task_completion',
+        storyboardCompat,
+        async params => {
+          if (!taskRegistry) return;
+          const taskId = params.task_id;
+          const result = params.result;
+          if (typeof taskId === 'string' && result && typeof result === 'object' && !Array.isArray(result)) {
+            await taskRegistry.complete(taskId, result);
+          }
+        },
+      )),
     },
   };
 }

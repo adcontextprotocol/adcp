@@ -31,10 +31,28 @@ import { getAgentUrl } from '../config.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
 import { runWithTrainingTaskScope, trainingTaskScope } from '../mcp-task-store.js';
+import { PUBLISHERS } from '../publishers.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
 const SIGNAL_WHOLESALE_EVENTS = ['signal.created', 'signal.updated', 'signal.priced', 'signal.removed'] as const;
+const TRAINING_PUBLISHER_DOMAINS = PUBLISHERS.map(publisher => publisher.domain);
+const TRAINING_PRIMARY_CHANNELS = Array.from(new Set(PUBLISHERS.flatMap(publisher => publisher.channels)));
+
+// The SDK infers protocols from tool names. A few creative tools are shared
+// with the media-buy package, so creative-only tenants otherwise inherit a
+// false `media_buy` claim. Keep the public contract aligned with each route's
+// actual protocol surface; conformance selection treats every claim as an
+// obligation.
+const TENANT_PROTOCOLS: Readonly<Record<string, readonly string[]>> = {
+  sales: ['media_buy', 'creative'],
+  signals: ['signals'],
+  governance: ['governance'],
+  creative: ['creative'],
+  'creative-builder': ['creative'],
+  brand: ['brand'],
+  si: ['sponsored_intelligence'],
+};
 
 function installConflictEnvelopeRedaction(res: Response): void {
   const originalWriteHead = res.writeHead.bind(res);
@@ -742,6 +760,13 @@ function projectTenantCapabilities(
         ? adcp.supported_versions
         : [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
     };
+    const tenantProtocols = TENANT_PROTOCOLS[tenantId];
+    if (tenantProtocols) {
+      structured.supported_protocols = [...tenantProtocols];
+      if (!tenantProtocols.includes('media_buy')) {
+        delete structured.media_buy;
+      }
+    }
     if (tenantId === 'sales' && storyboardCompat?.version !== '3.0') {
       structured.adcp.capability_changes = {
         capabilities_version: 'training-agent-3.2-beta.5',
@@ -798,6 +823,12 @@ function projectTenantCapabilities(
       structured.creative = {
         ...creative,
         ...(tenantId === 'creative' ? { bills_through_adcp: false } : {}),
+        ...(tenantId === 'creative' && {
+          has_creative_library: true,
+          localization: { locale_matching: 'rfc4647_lookup' },
+        }),
+        supported_formats: supportedCanonicalFormatsCapability(),
+        canonical_catalog_version: '3.1',
         supports_transformers: true,
         supports_refinement: true,
         refinable_retention_seconds: 3600,
@@ -831,6 +862,16 @@ function projectTenantCapabilities(
       structured.media_buy = {
         ...mediaBuy,
         ...salesProjection,
+        portfolio: {
+          ...(
+            mediaBuy.portfolio && typeof mediaBuy.portfolio === 'object'
+              ? mediaBuy.portfolio as Record<string, unknown>
+              : {}
+          ),
+          publisher_domains: TRAINING_PUBLISHER_DOMAINS,
+          primary_channels: TRAINING_PRIMARY_CHANNELS,
+          primary_countries: ['US', 'CA', 'GB'],
+        },
         ...(supportsGetProductsRejected(servedVersion) && {
           lifecycle_tools: [...PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES],
           // Flexible-window availability discovery: the platform parses

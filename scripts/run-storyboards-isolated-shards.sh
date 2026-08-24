@@ -101,21 +101,31 @@ failed_sum=0
 skipped_sum=0
 not_applicable_sum=0
 infrastructure_failure=0
+selection_expected=""
 
 for ((index = 0; index < SHARD_COUNT; index += 1)); do
   shard_number=$((index + 1))
   shard_log="${TEMP_DIR}/shard-${index}.log"
   echo ""
   echo "=== Isolated storyboard shard ${shard_number}/${SHARD_COUNT} ==="
-  perl -pe 's/^(\s*)--- Totals ---/$1--- Shard result ---/; s/^(\s*)storyboards: ([0-9]+\/[0-9]+ clean)$/$1shard result: $2/; s/^(\s*)steps: (.*)$/$1shard step result: $2/' "${shard_log}"
+  perl -pe 's/^(\s*)--- Totals ---/$1--- Shard result ---/; s/^(\s*)storyboards: ([0-9]+\/[0-9]+ clean)$/$1shard result: $2/; s/^(\s*)selection: (.*)$/$1shard selection: $2/; s/^(\s*)steps: (.*)$/$1shard step result: $2/' "${shard_log}"
 
   storyboard_totals=$(sed -nE 's/^[[:space:]]*storyboards: ([0-9]+)\/([0-9]+) clean$/\1 \2/p' "${shard_log}")
   step_totals=$(sed -nE 's/^[[:space:]]*steps: ([0-9]+) passed \| ([0-9]+) failed \| ([0-9]+) skipped \| ([0-9]+) not applicable$/\1 \2 \3 \4/p' "${shard_log}")
+  selection_totals=$(sed -nE 's/^[[:space:]]*selection: ([0-9]+) applicable \| ([0-9]+) not applicable \| ([0-9]+) quarantined \| ([0-9]+) corpus$/\1 \2 \3 \4/p' "${shard_log}")
   storyboard_totals_count=$(printf '%s\n' "${storyboard_totals}" | awk 'NF { count += 1 } END { print count + 0 }')
   step_totals_count=$(printf '%s\n' "${step_totals}" | awk 'NF { count += 1 } END { print count + 0 }')
 
-  if [ "${storyboard_totals_count}" -ne 1 ] || [ "${step_totals_count}" -ne 1 ]; then
-    echo "::error::Isolated shard ${shard_number}/${SHARD_COUNT} emitted ${storyboard_totals_count} storyboard totals and ${step_totals_count} step totals; expected exactly one of each" >&2
+  selection_totals_count=$(printf '%s\n' "${selection_totals}" | awk 'NF { count += 1 } END { print count + 0 }')
+
+  if [ "${storyboard_totals_count}" -ne 1 ] || [ "${step_totals_count}" -ne 1 ] || [ "${selection_totals_count}" -ne 1 ]; then
+    echo "::error::Isolated shard ${shard_number}/${SHARD_COUNT} emitted incomplete or duplicate aggregate totals" >&2
+    exit 1
+  fi
+  if [ -z "${selection_expected}" ]; then
+    selection_expected="${selection_totals}"
+  elif [ "${selection_totals}" != "${selection_expected}" ]; then
+    echo "::error::Isolated shard ${shard_number}/${SHARD_COUNT} reported inconsistent capability selection" >&2
     exit 1
   fi
   if [ "${statuses[$index]}" -ne 0 ]; then
@@ -136,5 +146,7 @@ done
 echo ""
 echo "--- Totals ---"
 echo "  storyboards: ${clean_sum}/${total_sum} clean"
+read -r selected_total scope_not_applicable quarantined_total corpus_total <<< "${selection_expected}"
+echo "  selection: ${selected_total} applicable | ${scope_not_applicable} not applicable | ${quarantined_total} quarantined | ${corpus_total} corpus"
 echo "  steps: ${passed_sum} passed | ${failed_sum} failed | ${skipped_sum} skipped | ${not_applicable_sum} not applicable"
 exit "${infrastructure_failure}"

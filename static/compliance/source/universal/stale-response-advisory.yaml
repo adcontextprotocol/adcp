@@ -126,6 +126,7 @@ phases:
           params:
             tool: "get_products"
             upstream_name: "inventory-service"
+            cache_age_seconds: 60
           account:
             sandbox: true
           context:
@@ -171,9 +172,8 @@ phases:
         stateful: true
         expected: |
           Return a populated product list from stale cache with:
-          - errors[] containing a STALE_RESPONSE entry
-          - errors[0].details.served_from_cache: true
-          - errors[0].details.cache_age_seconds present (integer >= 0)
+          - errors[] containing a STALE_RESPONSE entry with details.served_from_cache: true
+            and details.cache_age_seconds: 60, as requested by the controller
           - Transport success: no adcp_error on the envelope (isError: false)
           - Response payload non-empty (products[] with at least one entry)
 
@@ -199,23 +199,14 @@ phases:
             severity: advisory
             permanent_advisory:
               reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."
-          - check: field_value
-            path: "errors[0].code"
-            value: "STALE_RESPONSE"
-            description: "First errors[] entry carries STALE_RESPONSE code"
-            severity: advisory
-            permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."
-          - check: field_value
-            path: "errors[0].details.served_from_cache"
-            value: true
-            description: "details.served_from_cache is true per error-details/stale-response.json"
-            severity: advisory
-            permanent_advisory:
-              reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."
-          - check: field_present
-            path: "errors[0].details.cache_age_seconds"
-            description: "details.cache_age_seconds is present (required details field)"
+          - check: field_contains
+            path: "errors[*]"
+            value:
+              code: "STALE_RESPONSE"
+              details:
+                served_from_cache: true
+                cache_age_seconds: 60
+            description: "One STALE_RESPONSE entry carries the correlated deterministic stale-cache details"
             severity: advisory
             permanent_advisory:
               reason: "Gated on force_upstream_unavailable runner support. Promote to required when widely adopted. See issue #4934."

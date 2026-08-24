@@ -9,7 +9,16 @@ const args = process.argv.slice(2);
 const storyboardIds = (process.env.FIXTURE_STORYBOARDS ?? 'healthy').split(',').filter(Boolean);
 
 if (args.includes('--list-applicable-json')) {
-  console.log(`ADCP_STORYBOARD_LIST ${JSON.stringify({ version: 1, storyboard_ids: storyboardIds })}`);
+  console.log(`ADCP_STORYBOARD_LIST ${JSON.stringify({
+    version: 1,
+    storyboard_ids: storyboardIds,
+    selection: {
+      corpus: storyboardIds.length + 2,
+      applicable: storyboardIds.length,
+      not_applicable: 1,
+      quarantined: 1,
+    },
+  })}`);
   process.exit(0);
 }
 

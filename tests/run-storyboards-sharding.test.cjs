@@ -30,6 +30,8 @@ function finish() {
   if (process.env.OMIT_TOTALS_SHARD === String(index)) process.exit(143);
   console.log('\\n--- Totals ---');
   console.log('  storyboards: 1/1 clean');
+  const applicable = process.env.INCONSISTENT_SELECTION_SHARD === String(index) ? 3 : 2;
+  console.log('  selection: ' + applicable + ' applicable | 3 not applicable | 1 quarantined | 6 corpus');
   console.log('  steps: ' + (10 + index) + ' passed | ' + index + ' failed | ' + (index + 1) + ' skipped | ' + (index + 2) + ' not applicable');
   if (process.env.SELF_KILL_AFTER_TOTALS === '1') process.kill(process.pid, 'SIGKILL');
   process.exit(1);
@@ -52,6 +54,8 @@ console.log('  child storyboards: 99/99 clean');
 console.log('  child steps: 999 passed | 0 failed | 0 skipped | 0 not applicable');
 if (process.env.MISSING_TOTALS_SHARD === String(index)) process.exit(0);
 console.log('  storyboards: 1/1 clean');
+const applicable = process.env.INCONSISTENT_SELECTION_SHARD === String(index) ? 3 : 2;
+console.log('  selection: ' + applicable + ' applicable | 3 not applicable | 1 quarantined | 6 corpus');
 console.log('  steps: ' + (10 + index) + ' passed | ' + index + ' failed | 0 skipped | 0 not applicable');
 process.exit(process.env.FAILING_SHARD === String(index) ? 1 : 0);
 `);
@@ -59,9 +63,12 @@ process.exit(process.env.FAILING_SHARD === String(index) ? 1 : 0);
   return { directory, runner };
 }
 
-test('runner shards the applicable storyboard list into deterministic contiguous ranges', () => {
+test('runner resolves declared capabilities before deterministic sharding', () => {
   const source = fs.readFileSync(RUNNER_FILE, 'utf8');
-  assert.match(source, /const applicable = everything\.filter\(isApplicable\);/);
+  assert.match(source, /testCapabilityDiscovery\(agentUrl,/);
+  assert.match(source, /resolveStoryboardsForCapabilities\(\{/);
+  assert.match(source, /refusing to guess storyboard applicability/);
+  assert.match(source, /const \{ applicable \} = selection;/);
   assert.match(
     source,
     /Math\.floor\(applicable\.length \* shard\.index \/ shard\.count\)/,
@@ -79,7 +86,7 @@ test('resolved proposal lifecycle storyboards are not quarantined', () => {
   assert.doesNotMatch(currentOnlyBlock, /media_buy_seller\/proposal_finalize_asap_timing'/);
   assert.match(
     source,
-    /releasedComplianceVersion === undefined && CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS\.has\(sb\.id\)/,
+    /CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS\.get\(storyboardId\)/,
   );
 });
 
@@ -108,6 +115,7 @@ test('sharded runner preserves storyboard lines and emits one aggregate totals b
   assert.match(result.stdout, /^  storyboard_1\s+✓/m);
   assert.equal((result.stdout.match(/storyboards:/g) ?? []).length, 1);
   assert.match(result.stdout, /storyboards: 2\/2 clean/);
+  assert.match(result.stdout, /selection: 2 applicable \| 3 not applicable \| 1 quarantined \| 6 corpus/);
   assert.match(result.stdout, /steps: 21 passed \| 1 failed \| 3 skipped \| 5 not applicable/);
 });
 
@@ -150,6 +158,21 @@ test('sharded runner omits aggregate totals when any shard is interrupted', (t) 
   assert.match(result.stderr, /shard 2\/2 exited 143 without a complete totals block/);
 });
 
+test('sharded runner fails closed when shards resolve different capability selections', (t) => {
+  const { directory, runner } = makeFakeRunner();
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  const result = spawnSync('bash', [SHARDED_RUNNER, '--shard-count', '2'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    env: { ...process.env, STORYBOARD_RUNNER_BIN: runner, INCONSISTENT_SELECTION_SHARD: '1' },
+  });
+
+  assert.equal(result.status, 1);
+  assert.doesNotMatch(result.stdout, /^--- Totals ---$/m);
+  assert.match(result.stderr, /shard 2\/2 reported inconsistent capability selection/i);
+});
+
 test('sharded runner aggregates complete totals from a self-terminated shard', (t) => {
   const { directory, runner } = makeFakeRunner();
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -162,6 +185,7 @@ test('sharded runner aggregates complete totals from a self-terminated shard', (
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /storyboards: 1\/1 clean/);
+  assert.match(result.stdout, /selection: 2 applicable \| 3 not applicable \| 1 quarantined \| 6 corpus/);
   assert.match(result.stdout, /steps: 10 passed \| 0 failed \| 1 skipped \| 2 not applicable/);
 });
 
@@ -177,6 +201,7 @@ test('isolated shard coordinator aggregates only one top-level totals block per 
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /^  storyboards: 2\/2 clean$/m);
+  assert.match(result.stdout, /^  selection: 2 applicable \| 3 not applicable \| 1 quarantined \| 6 corpus$/m);
   assert.match(result.stdout, /^  steps: 21 passed \| 1 failed \| 0 skipped \| 0 not applicable$/m);
   assert.equal((result.stdout.match(/^\s*storyboards:/gm) ?? []).length, 1);
   assert.equal((result.stdout.match(/^\s*steps:/gm) ?? []).length, 1);
@@ -193,12 +218,16 @@ test('isolated shard coordinator fails closed on missing totals or a nonzero sha
 
   const missing = run({ MISSING_TOTALS_SHARD: '1' });
   assert.equal(missing.status, 1);
-  assert.match(missing.stderr, /expected exactly one of each/);
+  assert.match(missing.stderr, /incomplete or duplicate aggregate totals/);
 
   const failed = run({ FAILING_SHARD: '1' });
   assert.equal(failed.status, 1);
   assert.match(failed.stderr, /Isolated shard 2\/2 exited 1/);
   assert.match(failed.stdout, /^  storyboards: 2\/2 clean$/m);
+
+  const inconsistent = run({ INCONSISTENT_SELECTION_SHARD: '1' });
+  assert.equal(inconsistent.status, 1);
+  assert.match(inconsistent.stderr, /Isolated shard 2\/2 reported inconsistent capability selection/);
 });
 
 test('isolated shard coordinator rejects missing option values', () => {
@@ -226,11 +255,83 @@ test('current /sales runs fixed orchestrators with isolated children behind one 
   assert.match(workflow, /sales_storyboards:\n\s+name: Storyboards \(current \/sales\)/);
   assert.match(workflow, /needs: sales_storyboard_orchestrators/);
   assert.match(workflow, /ORCHESTRATOR_RESULT: \$\{\{ needs\.sales_storyboard_orchestrators\.result \}\}/);
-  assert.match(workflow, /MIN_CLEAN: 120/);
-  assert.match(workflow, /MIN_PASSED: 534/);
-  assert.match(matrixRunner, /"sales:120:534"/);
+  assert.match(workflow, /MIN_CLEAN: 127/);
+  assert.match(workflow, /MIN_PASSED: 594/);
+  assert.match(matrixRunner, /"sales:127:594"/);
+  assert.match(workflow, /Training agent · current \/sales/);
+  assert.match(workflow, /echo "failed=\$\{failed_sum\}"/);
+  assert.match(workflow, /echo "not_applicable=\$\{not_applicable_sum\}"/);
   assert.match(matrixRunner, /bash scripts\/run-storyboards-isolated-shards\.sh/);
   assert.match(matrixRunner, /--shard-count 8 --max-parallel 4/);
   assert.match(matrixRunner, /orchestrator_failure=1/);
   assert.match(workflow, /media_buy_seller\/compact_direct_buy_lifecycle:7:0/);
+});
+
+test('creative-builder uses bounded isolated children in local and CI matrices', () => {
+  const workflow = fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8');
+  const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
+
+  assert.match(
+    workflow,
+    /if \[ "\$\{\{ matrix\.tenant \}\}" = "creative-builder" \]; then\n\s+bash scripts\/run-storyboards-isolated-shards\.sh/,
+  );
+  assert.match(workflow, /--shard-count 8 --max-parallel 4/);
+  assert.match(workflow, /isolated_orchestrator_failure=0/);
+  assert.match(workflow, /\| tee \/tmp\/storyboards\.log \|\| isolated_orchestrator_failure=1/);
+  assert.match(workflow, /if \[ "\$\{isolated_orchestrator_failure\}" -ne 0 \]; then/);
+  assert.match(
+    matrixRunner,
+    /\|\| \[ "\$\{tenant\}" = "creative-builder" \]; then\n\s+TENANT_PATH=/,
+  );
+});
+
+test('current training-agent floors are ratcheted and mirrored by local and CI runners', () => {
+  const workflow = fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8');
+  const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
+  const baselines = [
+    ['signals', 46, 118],
+    ['sales', 127, 594],
+    ['governance', 48, 194],
+    ['creative', 50, 247],
+    ['creative-builder', 51, 222],
+    ['brand', 46, 154],
+    ['si', 43, 88],
+  ];
+
+  for (const [tenant, clean, passed] of baselines) {
+    assert.match(matrixRunner, new RegExp(`"${tenant}:${clean}:${passed}"`));
+    if (tenant === 'sales') continue;
+    assert.match(
+      workflow,
+      new RegExp(
+        `surface: current\\n\\s+tenant: ${tenant}\\n` +
+        `\\s+min_clean_storyboards: ${clean}\\n\\s+min_passing_steps: ${passed}`,
+      ),
+    );
+  }
+});
+
+test('3.0 compatibility floors are capability-resolved and mirrored locally', () => {
+  const workflow = fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8');
+  const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
+  const baselines = [
+    ['signals', 24, 98],
+    ['sales', 40, 224],
+    ['governance', 27, 147],
+    ['creative', 22, 109],
+    ['creative-builder', 24, 112],
+    ['brand', 23, 78],
+    ['si', 21, 72],
+  ];
+
+  for (const [tenant, clean, passed] of baselines) {
+    assert.match(matrixRunner, new RegExp(`"${tenant}:${clean}:${passed}"`));
+    assert.match(
+      workflow,
+      new RegExp(
+        `surface: 3\\.0-compat\\n\\s+tenant: ${tenant}\\n`
+        + `\\s+min_clean_storyboards: ${clean}\\n\\s+min_passing_steps: ${passed}`,
+      ),
+    );
+  }
 });

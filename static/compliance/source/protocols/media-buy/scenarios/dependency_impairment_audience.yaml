@@ -140,6 +140,7 @@ phases:
             - product_id: "audience_impairment_display"
               budget: 5000
               pricing_option_id: "audience_impairment_cpm"
+              bid_price: 2.00
               targeting_overlay:
                 audience_include:
                   - "acme_impairment_audience"

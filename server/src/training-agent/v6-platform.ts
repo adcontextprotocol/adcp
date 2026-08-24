@@ -22,6 +22,8 @@ import {
 import { handleGetSignals, handleActivateSignal } from './task-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
+import { waitForForcedTaskCompletion } from './comply-test-controller.js';
+import { sessionKeyFromArgs } from './state.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 export interface TrainingConfig {
@@ -171,6 +173,7 @@ export class TrainingPlatform implements DecisioningPlatform<TrainingConfig, Tra
     },
     requireOperatorAuth: this.storyboardCompat?.version === '3.0' ? true : false,
     supportedBillings: ['agent', 'operator'] as const,
+    compliance_testing: {},
       config: { strict: false },
     };
   }
@@ -184,7 +187,49 @@ export class TrainingPlatform implements DecisioningPlatform<TrainingConfig, Tra
   signals: SignalsPlatform<TrainingMeta> = {
     getSignals: async (req, ctx) => {
       const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat);
-      const result = await handleGetSignals(req as ToolArgs, trainingCtx);
+      const rawAccount = ctx.input && typeof ctx.input === 'object'
+        ? (ctx.input as { account?: ToolArgs['account'] }).account
+        : undefined;
+      const resolvedBrand = ctx.account?.brand
+        ?? (typeof ctx.account?.ctx_metadata?.brand_domain === 'string'
+          ? { domain: ctx.account.ctx_metadata.brand_domain }
+          : undefined);
+      const resolvedAccount = resolvedBrand
+        ? {
+            brand: resolvedBrand,
+            ...(ctx.account.operator && { operator: ctx.account.operator }),
+            ...(ctx.account.sandbox && { sandbox: true }),
+          }
+        : undefined;
+      const args = {
+        ...(req as ToolArgs),
+        ...((rawAccount ?? resolvedAccount) && {
+          account: (() => {
+            const account = (rawAccount ?? resolvedAccount)!;
+            if (
+              trainingCtx.principal?.startsWith('static:')
+              && account.sandbox === true
+              && account.brand?.domain
+            ) {
+              return { ...account, operator: account.brand.domain };
+            }
+            return account;
+          })(),
+        }),
+      };
+      const result = await handleGetSignals(args, trainingCtx);
+      if (
+        result && typeof result === 'object'
+        && (result as { status?: unknown }).status === 'submitted'
+        && typeof (result as { task_id?: unknown }).task_id === 'string'
+      ) {
+        const submitted = result as { task_id: string };
+        const completionOwnerKey = sessionKeyFromArgs(args, 'open');
+        return ctx.handoffToTask(
+          async () => await waitForForcedTaskCompletion(submitted.task_id, completionOwnerKey),
+          { task_id: submitted.task_id },
+        );
+      }
       return translateV5Result(result);
     },
 
