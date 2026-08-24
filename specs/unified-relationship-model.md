@@ -46,7 +46,8 @@ longer have.
 | `person_relationships` | Addie's engagement state for the person | None |
 | identity profile | Person-managed community profile and preferences | Controls display/communication choices, not access |
 | organization membership | Current membership, role, and seat in one organization | Grants only that organization's scoped capabilities |
-| billing account/subscription | Organization or persistent personal billing boundary | Grants only the capabilities defined by that subscription |
+| billing account | Organization or persistent personal payer/record boundary | None by itself |
+| subscription entitlement | Capability grant with an explicit organization or personal-workspace subject | Grants only its declared subject, scope, and capability set |
 | affiliation | Current or historical employment/consulting profile fact | None; never substitutes for organization membership |
 
 `identities.id` is the canonical person identifier. The existing
@@ -62,15 +63,23 @@ legal-retention records, and anonymization have distinct lifecycle rules below.
 
 | Data family | Canonical owner | Provenance retained | Link behavior | Unlink/split behavior |
 |---|---|---|---|---|
-| WorkOS users, verified emails, Slack IDs, authentication history | Credential or identifier binding | Provider, verification method/time, binding actor, original external ID | Add a binding after proof of control or an audited admin action | Move only the selected binding; never infer another binding from matching attributes |
-| Community profile: slug, headline, bio, avatar, expertise, interests, social links, directory/contact preferences, country/timezone | `identity_id` | Last editor plus source where a value was imported | Resolve conflicts explicitly; never last-write-wins across two populated profiles | Assign the profile to one identity or resolve fields explicitly; do not silently clone it |
+| WorkOS users, verified emails, Slack IDs, authentication history | Credential or identifier binding | Provider, verification method/time, binding actor, original external ID | Add a binding after proof of control; emergency recovery follows the restricted workflow below | Move only the selected binding; never infer another binding from matching attributes |
+| Community profile: slug, headline, bio, avatar, expertise, interests, social links, directory/contact preferences, country/timezone | `identity_id` | Per-field editor, source, edit time, and merge resolution | Resolve conflicts explicitly; never last-write-wins across two populated profiles | Assign the profile to one identity or resolve fields explicitly; do not silently clone it |
 | Community points and person-level badges | `identity_id` aggregate over append-only source events | Source credential/channel, reference, action, and award time | Recompute/deduplicate from source events | Partition attributable events; require explicit resolution for unattributable events |
 | Engagement score and person journey stage | `identity_id`, derived | Inputs and computation version | Recompute after link | Recompute after split; do not copy a cached total/stage to both sides |
 | Certifications and assessments | Originating credential/attempt, aggregated in a person view | Full assessment, issuer, and credential provenance | Union for an authorized person view; do not rewrite issuance history | Follow proven source ownership; disputed records require review |
 | Organization memberships, roles, seats, invitations, and organization authority | Organization membership/account | Organization, grantor, seat source, effective dates | **Never merged or unioned by identity linkage** | Remain with their original membership; revoke through the organization authority |
-| Billing customers, subscriptions, invoices, refunds, and tax records | Organization or persistent personal billing account | Original payer/account and immutable billing references | Never reassign from an email/identity match alone | Remain with the billing account, subject to billing correction procedures |
+| Billing customers, invoices, refunds, and tax records | Organization or persistent personal billing account | Original payer/account and immutable billing references | Never reassign from an email/identity match alone | Remain with the billing account, subject to billing correction procedures |
+| Subscription entitlements | Explicit organization or personal-workspace subject | Billing account, subscription, subject, scope, capability set, and effective dates | Never change subject from identity/email similarity | End or transfer only through the subscription authority; never follow an affiliation |
 | Conversations, insights, consent, and contact preferences | Originating relationship/thread/surface scope | Surface, organization context, participants, consent purpose/time | May resolve to the same identity but remain fenced until policy permits use | Remain source-scoped; unlink removes future cross-identity visibility |
 | Audit and security events | Immutable event | Authenticated credential, resolved identity at the time, organization context, actor, reason | Append a link event; never rewrite historical actors | Append an unlink/split event; preserve the historical resolution |
+
+An organization membership retains an immutable membership ID and original
+authorization principal/binding in addition to its organization, role, seat,
+grantor, provider membership reference, and effective dates. Attaching an
+identity binding never changes those fields. Authorizing a second credential
+requires an explicit organization-issued grant; identity linkage is not that
+grant.
 
 "Champion" has two meanings that must not share one portable flag:
 
@@ -78,20 +87,40 @@ legal-retention records, and anonymization have distinct lifecycle rules below.
 - Organization-specific champion, contact, administrator, or representative
   authority stays with that organization and ends when its grant ends.
 
+Reputation source events use a globally unambiguous idempotency tuple:
+`(source_system, source_tenant, source_event_id)`. Each event also retains
+`origin_binding_id`, action, value, reference type, award time, ingestion time,
+and attribution status. Null/unnamespaced references are not sufficient for
+deduplication. Identity totals, badges, scores, and stages are versioned
+projections over those immutable events, with computation version, update
+actor, and last successful reconciliation time.
+
+Certification attempts and issuance records likewise retain immutable origin
+binding, issuer, source attempt, and external credential IDs. A person view may
+union authorized records, but identity merge never deletes or rewrites the
+underlying attempt/issuance provenance.
+
 ### Link, merge, unlink, and split rules
 
-**Linking credentials** requires proof of control of both sides or an explicit,
-audited administrator action. Email similarity, name similarity, employer,
-domain, Stripe email, or model confidence may suggest a candidate but can never
-execute a link.
+**Linking credentials** requires proof of control of both sides. Email
+similarity, name similarity, employer, domain, Stripe email, or model confidence
+may suggest a candidate but can never execute a link.
 
-A link operation:
+Emergency recovery is limited to a platform identity-security role (never an
+organization administrator), step-up authentication, independent approval,
+recorded evidence, subject notification, and delayed activation. It does not
+create a working authentication binding until the subject confirms control.
+
+A credential attachment records the authenticated actor, evidence, reason,
+target identity, and new binding; it changes no application-owned rows. A
+whole-identity merge operation:
 
 1. records the authenticated actor, evidence, reason, and both pre-link identities;
 2. binds credentials to one identity without copying organization grants;
 3. resolves conflicting person-owned profile values explicitly;
 4. deduplicates derived reputation from source events rather than adding cached totals; and
-5. invalidates affected authentication and context caches.
+5. bumps the persisted authorization/session epoch in the transaction before
+   invalidating affected authentication and context caches.
 
 An unlink/split operation:
 
@@ -101,10 +130,39 @@ An unlink/split operation:
    reassigning provenance-bound records;
 3. assigns non-partitionable person-owned values explicitly;
 4. recomputes derived state from attributable source events; and
-5. appends an immutable before/after audit event.
+5. appends an immutable before/after audit event and bumps the persisted
+   authorization/session epoch in the same transaction.
+
+Best-effort cache eviction is defense in depth; it is not the revocation
+primitive. Every session/token/context cache checks the persisted epoch so a
+stale cache cannot retain pre-link or pre-split authority.
 
 The system must not claim that a merge is reversible if it has already erased
-the provenance required to partition state again.
+the provenance required to partition state again. Credential attachment,
+whole-identity merge, and credential transfer/split are distinct operations:
+
+- **Credential attachment** may bind a state-empty credential after proof of
+  control. It does not consolidate application rows.
+- **Whole-identity merge** requires a preview and immutable per-entity
+  disposition records. It preserves both identity IDs in lineage and does not
+  rewrite provenance-bound authorities merely to simplify reads.
+- **Credential transfer/split** moves a binding using recorded assignments and
+  recomputes projections. It is not equivalent to creating an empty singleton
+  identity after destructive consolidation.
+
+Until the operation ledger and source attribution needed for a round-trip are
+live, existing-account consolidation must remain disabled. Operator access
+does not make a destructive merge reversible and is not an exception. It must
+not be used by self-service recovery.
+
+The identity-operation ledger is append-only/tamper-evident and records at
+least: operation ID, operation kind, authenticated actor credential and
+effective identity, source/destination identity IDs, affected binding IDs,
+evidence type and hash (not raw secrets), reason, approval IDs, request ID,
+per-entity before/after references or dispositions, consent basis, and
+timestamp. Database privileges or equivalent storage controls prohibit update
+and delete. A summary containing only per-table row counts is not sufficient
+to support audit or reversal.
 
 ### Deletion and anonymization
 
@@ -121,6 +179,27 @@ the provenance required to partition state again.
 - Public profile and former-employer data must be removed or anonymized when
   required even if internal anti-fraud/audit records are retained.
 
+Identity lifecycle is explicit rather than inferred from missing rows:
+
+- `provisional` identities may own sourced contact/relationship state but have
+  no authentication authority and no primary authentication binding;
+- `active` identities have a verified primary authentication binding, may
+  accept additional verified bindings, and own person projections;
+- `merged` identities retain immutable lineage to `merged_into_identity_id` and
+  cannot authenticate directly; and
+- `erased` identities retain only the minimum pseudonymous lineage required by
+  legal, security, certification, and audit policy, with `erased_at`, reason,
+  and legal-hold state recorded.
+
+Erasure propagates to relationship/profile state, scoped consent, search,
+caches, derived projections, summaries, embeddings/vector indexes, prompt or
+model telemetry containing user content, and downstream processors. Each data
+class declares its purpose, retention/expiry policy, erasure mechanism, and
+legal-hold exception. Backups expire under a documented schedule and cannot be
+restored into active service without replaying erasure tombstones. Identity
+lineage needed by retained audit or security records is pseudonymized rather
+than hard-deleted.
+
 ### Request authorization context
 
 Every authenticated request that consumes person state resolves an explicit
@@ -130,11 +209,42 @@ context tuple:
 (authenticated credential, identity_id, surface, selected organization?)
 ```
 
-The credential proves the login. `identity_id` selects person-owned state. The
-optional selected organization selects exactly one organization authorization
-context. Code must not build a privilege union from every organization linked
-to the identity. Personal-subscription capabilities are evaluated separately
-from the selected organization's seat capabilities.
+The credential proves the login. `identity_id` selects person-owned state. It
+is an internal correlation key and must not be serialized to clients or exposed
+as a cross-surface identifier. The optional selected organization selects
+exactly one organization authorization context.
+
+Organization authorization is resolved only from an active grant for
+`(authenticated credential, selected organization)`. `identity_id`, the
+identity's primary credential, other linked credentials, affiliations, and
+personal subscriptions are never organization-grant inputs. If no organization
+is selected, only global and person-level capabilities are available. Using a
+different linked credential for an organization requires an explicit
+organization-approved membership or credential-use grant.
+
+Personal-subscription capabilities are evaluated independently, and every
+resolved capability retains a machine-readable source:
+
+```typescript
+type CapabilityGrant = { capability: string } & (
+  | { source: 'global'; subject: { kind: 'global' } }
+  | {
+      source: 'personal_subscription';
+      subject: { kind: 'personal_workspace'; personalWorkspaceId: string };
+      subscriptionId: string;
+    }
+  | {
+      source: 'organization_seat';
+      subject: { kind: 'organization'; organizationId: string };
+      organizationGrantId: string;
+    }
+);
+```
+
+Authorization requires the grant subject to equal the resource/action subject.
+Code must not build a privilege union from every organization linked to the
+identity, and must never authorize using a capability-name-only search across
+the grant array.
 
 ## Relationship lifecycle
 
@@ -158,7 +268,12 @@ prospect -> welcomed -> exploring -> participating -> contributing -> leading
 
 **leading** -- Committee leaders, council members, community champions. Addie is a tool for them, not a guide.
 
-Stages advance automatically based on observed behavior (account linking, message count, group membership, event attendance). They never regress. The stage informs Addie's tone and content, not whether she contacts someone.
+Stages advance automatically based on observed behavior (account linking,
+message count, group membership, event attendance). They are monotonic during
+normal engagement, but a versioned correction, identity split, or removal of
+misattributed source events may lower a derived stage. Such a recomputation
+records its reason and input/computation version. The stage informs Addie's
+tone and content, not whether she contacts someone.
 
 ### Stage transitions
 
@@ -211,18 +326,12 @@ CREATE TABLE person_relationships (
   last_addie_message_at TIMESTAMPTZ,     -- when Addie last spoke to them
   last_person_message_at TIMESTAMPTZ,    -- when they last spoke to Addie
   last_interaction_channel VARCHAR(50),   -- which surface was last used
-  next_contact_after TIMESTAMPTZ,        -- don't reach out before this time
-  contact_preference VARCHAR(50),        -- 'slack', 'email', or NULL (let Addie decide)
-
-  -- Slack DM state (single thread model)
-  slack_dm_channel_id VARCHAR(255),      -- cached DM channel ID
-  slack_dm_thread_ts VARCHAR(255),       -- the ONE thread ts, forever
 
   -- Relationship quality
   sentiment_trend VARCHAR(20) DEFAULT 'neutral'
     CHECK (sentiment_trend IN ('positive', 'neutral', 'negative', 'disengaging')),
   interaction_count INTEGER NOT NULL DEFAULT 0,
-  opted_out BOOLEAN NOT NULL DEFAULT FALSE,
+  globally_suppressed BOOLEAN NOT NULL DEFAULT FALSE,
 
   -- Timestamps
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -230,8 +339,6 @@ CREATE TABLE person_relationships (
 );
 
 CREATE INDEX idx_person_relationships_stage ON person_relationships(stage);
-CREATE INDEX idx_person_relationships_next_contact ON person_relationships(next_contact_after)
-  WHERE opted_out = FALSE;
 ```
 
 External identifiers live in constrained binding tables, beginning with the
@@ -240,9 +347,112 @@ properties: provider-scoped uniqueness, verification/provenance metadata,
 binding status, and an append-only link/unlink audit trail. A billing customer
 is not an identity binding; it belongs to its billing account.
 
+The target binding shape is equivalent to:
+
+```sql
+CREATE TABLE identity_bindings (
+  id UUID PRIMARY KEY,
+  identity_id UUID NOT NULL REFERENCES identities(id),
+  provider VARCHAR(50) NOT NULL,
+  provider_tenant_key VARCHAR(255) NOT NULL, -- canonical tenant or 'global'
+  normalized_external_subject VARCHAR(255) NOT NULL,
+  binding_kind VARCHAR(40) NOT NULL CHECK (
+    binding_kind IN ('authentication', 'delivery',
+                     'authentication_and_delivery')
+  ),
+  status VARCHAR(30) NOT NULL CHECK (
+    status IN ('pending_verification', 'active', 'ended', 'disputed')
+  ),
+  verified_at TIMESTAMPTZ,
+  verification_method VARCHAR(50),
+  bound_by VARCHAR(255) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  ended_at TIMESTAMPTZ,
+  UNIQUE (id, identity_id),
+  CHECK (
+    status <> 'active'
+    OR (verified_at IS NOT NULL AND verification_method IS NOT NULL)
+  )
+);
+
+CREATE UNIQUE INDEX identity_bindings_one_current_claim
+  ON identity_bindings(provider, provider_tenant_key,
+                       normalized_external_subject)
+  WHERE status IN ('pending_verification', 'active');
+```
+
+The current-claim uniqueness constraint is partial so ended history does not
+block a later verified claim and concurrent pending claims cannot race.
+Tenant-scoped providers such as
+Slack require a real tenant key; callers cannot omit it. Binding history is
+append-only: ending or transferring a binding records a new operation and does
+not overwrite its original `created_at`/verification evidence.
+
+Every authentication-enabled active identity has exactly one verified, active
+primary authentication binding whose kind includes authentication. A
+provisional identity has none
+and cannot authorize a request; promotion to `active` requires a verified
+authentication binding and primary selection.
+
+The current partial index on `identity_workos_users.is_primary` enforces only
+"at most one," not "exactly one." The target uses a non-null
+`identities.primary_binding_id` for authentication-enabled identities plus a
+deferred same-identity integrity check, or an equivalent deferred
+constraint/trigger that makes zero primaries uncommittable for that lifecycle
+state.
+
 Email outreach chooses from verified email bindings plus communication consent
 and preference. It does not store an unqualified "primary email" on the
 relationship row.
+
+Delivery and consent state is scoped to the destination, not stored once per
+person:
+
+```sql
+CREATE TABLE relationship_delivery_state (
+  identity_id UUID NOT NULL,
+  binding_id UUID NOT NULL,
+  provider_tenant_key VARCHAR(255) NOT NULL,
+  surface VARCHAR(50) NOT NULL,
+  scope_kind VARCHAR(20) NOT NULL CHECK (
+    scope_kind IN ('personal', 'organization')
+  ),
+  scope_id VARCHAR(255) NOT NULL, -- literal 'personal' or organization ID
+  consent_purpose VARCHAR(100) NOT NULL,
+  consent_basis VARCHAR(50) NOT NULL,
+  consent_version VARCHAR(50) NOT NULL,
+  verified_at TIMESTAMPTZ NOT NULL,
+  suppressed_at TIMESTAMPTZ,
+  preference_rank INTEGER,
+  next_contact_after TIMESTAMPTZ,
+  thread_channel_id VARCHAR(255),
+  thread_root_id VARCHAR(255),
+  FOREIGN KEY (binding_id, identity_id)
+    REFERENCES identity_bindings(id, identity_id),
+  CHECK (
+    (scope_kind = 'personal' AND scope_id = 'personal')
+    OR (scope_kind = 'organization' AND scope_id <> 'personal')
+  ),
+  PRIMARY KEY (identity_id, binding_id, provider_tenant_key,
+               surface, scope_kind, scope_id, consent_purpose)
+);
+```
+
+An organization-scoped delivery row is valid only while `scope_id` matches the
+explicit organization in the resolved authorization context for that binding.
+The composite foreign key prevents a delivery row from pairing one identity
+with another identity's binding.
+
+Slack has one continuing DM thread per active Slack binding/installation, not
+one thread per identity globally. A relationship-level
+`globally_suppressed=true` is an additional global stop; purpose-, channel-, or
+address-specific opt-outs live on delivery/consent records and must not be
+promoted to a global suppression accidentally.
+
+`globally_suppressed` is a cached projection over append-only suppression
+records, not an unaudited toggle. The source record retains actor, effective
+time, reason, scope, evidence, and later revocation; contact eligibility uses
+the active source record and can rebuild the projection.
 
 ### Linking threads to relationships
 
@@ -250,16 +460,85 @@ Converge thread ownership on `identity_id`:
 
 ```sql
 ALTER TABLE addie_threads
-  ADD COLUMN identity_id UUID REFERENCES identities(id);
+  ADD COLUMN identity_id UUID REFERENCES identities(id),
+  ADD COLUMN origin_binding_id UUID REFERENCES identity_bindings(id),
+  ADD COLUMN surface_tenant_key VARCHAR(255),
+  ADD COLUMN organization_id VARCHAR(255),
+  ADD COLUMN consent_purpose VARCHAR(100),
+  ADD COLUMN consent_basis VARCHAR(50),
+  ADD COLUMN consent_version VARCHAR(50),
+  ADD COLUMN visibility_classification VARCHAR(50);
 
 CREATE INDEX idx_addie_threads_identity ON addie_threads(identity_id)
   WHERE identity_id IS NOT NULL;
 ```
 
+Thread participants are represented explicitly where a thread can contain more
+than the person and Addie. `origin_binding_id`, surface tenant, organization,
+consent, participants, and visibility are immutable provenance: identity merge
+may change the projection owner but never overwrites the origin fields.
+
 When creating or looking up a thread, resolve the identity first and record the
-surface and organization context on the thread. Subsequent context loading
-uses `identity_id` plus the privacy fence; `identity_id` alone is not a
-cross-surface disclosure grant.
+source binding, surface tenant, organization context, participants, consent,
+and visibility classification. Subsequent context loading uses `identity_id`
+plus the privacy fence; `identity_id` alone is not a cross-surface disclosure
+grant. A thread without typed provenance is quarantined from cross-surface
+context until reconciled.
+
+Cross-surface and cross-organization reuse is default-deny and represented by
+an explicit, revocable grant:
+
+```sql
+CREATE TABLE relationship_context_grants (
+  id UUID PRIMARY KEY,
+  identity_id UUID NOT NULL REFERENCES identities(id),
+  source_binding_id UUID REFERENCES identity_bindings(id),
+  source_surface VARCHAR(50) NOT NULL,
+  source_tenant_key VARCHAR(255) NOT NULL,
+  source_organization_id VARCHAR(255),
+  destination_surface VARCHAR(50) NOT NULL,
+  destination_tenant_key VARCHAR(255) NOT NULL,
+  destination_organization_id VARCHAR(255),
+  grant_type VARCHAR(50) NOT NULL,
+  purpose VARCHAR(100) NOT NULL,
+  subject_authorized_by_binding_id UUID REFERENCES identity_bindings(id),
+  subject_authorized_by_policy VARCHAR(100),
+  source_organization_grant_id VARCHAR(255),
+  approved_data_classes VARCHAR(100)[] NOT NULL,
+  consent_basis VARCHAR(50) NOT NULL,
+  consent_version VARCHAR(50) NOT NULL,
+  evidence_hash VARCHAR(255) NOT NULL,
+  operation_id UUID NOT NULL,
+  granted_at TIMESTAMPTZ NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ,
+  revoked_by VARCHAR(255),
+  revocation_reason VARCHAR(255),
+  CHECK (
+    num_nonnulls(subject_authorized_by_binding_id,
+                 subject_authorized_by_policy) = 1
+  ),
+  CHECK (
+    source_organization_id IS NULL
+    OR source_organization_grant_id IS NOT NULL
+  ),
+  CHECK (cardinality(approved_data_classes) > 0)
+);
+```
+
+Identity equality alone never authorizes reuse. Raw content, derived summaries,
+insights, embeddings, and scores inherit the most restrictive fence of their
+sources. Revocation immediately excludes raw and derived context from future
+retrieval and queues affected projections/embeddings for deletion or
+recomputation. Organization-confidential content has no implicit path into a
+different organization's or personal context. Retrieval rejects expired or
+revoked grants. Grants never follow a canonical identity or split
+automatically: the operation records an explicit binding-level disposition,
+and ambiguous grants fail closed pending new authorization. A person's consent
+cannot export organization-confidential material by itself: cross-organization
+reuse also requires an active source-organization authority grant covering the
+approved data classes. These grants remain disabled until the privacy-fence
+decision in #6491 defines both authorities and their revocation semantics.
 
 ## Context loading
 
@@ -270,7 +549,9 @@ authorization tuple and privacy fence, then loads only the allowed context:
 ```
 person_relationships WHERE identity_id = :identity_id
 ```
-Gives: stage, last interaction, sentiment trend, contact preference, interaction count.
+Gives: stage, last interaction, sentiment trend, global suppression, and
+interaction count. Destination preference, consent, and cooldown come only
+from the selected delivery-state record.
 
 ### 2. Recent conversation summary (bounded)
 ```
@@ -289,8 +570,9 @@ For the Slack DM surface specifically, Addie also has the native Slack thread hi
 
 ### 3. Person profile (existing data, assembled)
 - Insights from `member_user_insights`
-- Capabilities from `getMemberCapabilities()`
-- Company info from `organizations`
+- Capability grants from `getMemberCapabilities()`, each with its global,
+  personal-subscription, or selected-organization source
+- Selected-organization info only from the explicit request context
 - Goal history from `user_goal_history` (legacy, read-only during migration)
 
 ### 4. Community context (what's happening now)
@@ -309,8 +591,8 @@ interface RelationshipContext {
   recentMessages: ThreadMessage[];      // last 30 permitted by the fence
   profile: {
     insights: Insight[];
-    capabilities: MemberCapabilities;
-    company?: CompanyInfo;
+    capabilities: CapabilityGrant[];
+    selectedOrganization?: OrganizationInfo;
   };
   community?: {                         // only for proactive outreach decisions
     upcomingEvents: Event[];
@@ -319,20 +601,67 @@ interface RelationshipContext {
   };
 }
 
+type AuthorizedRelationshipContext = {
+  actor:
+    | { kind: 'person'; authenticatedCredentialId: string }
+    | { kind: 'system'; jobName: string };
+  identityId: string;                 // derived server-side, never request data
+  authorizationVersion: number;
+  purpose: string;
+  destinationBindingId?: string;
+  surface: 'slack' | 'web' | 'email' | 'a2a';
+  selectedOrganization?: {
+    id: string;
+    authorization:
+      | { kind: 'person_membership'; membershipId: string }
+      | { kind: 'system_grant'; grantId: string };
+  };
+};
+
+async function resolveAuthorizedRelationshipContext(input: {
+  authenticatedPrincipal: AuthenticatedPrincipal | SystemPrincipal;
+  requestedOrganizationId?: string;
+  purpose: string;
+  destinationBindingId?: string;
+  surface: 'slack' | 'web' | 'email' | 'a2a';
+}): Promise<AuthorizedRelationshipContext>
+
 async function loadRelationshipContext(
-  identityId: string,
-  requestContext: {
-    authenticatedCredentialId: string;
-    surface: 'slack' | 'web' | 'email' | 'a2a';
-    selectedOrganizationId?: string;
-  },
+  context: AuthorizedRelationshipContext,
   options?: { includeCommunity?: boolean }
 ): Promise<RelationshipContext>
 ```
 
+`identityId` is never accepted from request parameters, tool arguments, or
+other client data. The resolver derives it from the authenticated active
+binding. A requested organization is validated against an active, unrevoked
+membership for that authenticated principal; unauthorized selection returns
+403 and never falls back to a primary, first, or arbitrary organization. Every
+organization query and tool authorization consumes the same resolved
+membership context and independently rechecks it before mutation.
+
 The context formatter renders facts with source labels. Response policy lives
 in Addie's rules, not in hydrated person data. New fields must be added to both
 the hydration path and prompt formatting so the two data planes do not drift.
+
+Source labels are not an instruction boundary. Fixed, code-deployed policy and
+trusted authorization facts are the only relationship data allowed in a
+system-role block. Historical messages, profile text, insights, summaries,
+community content, and external tool data are untrusted content and remain in
+user-role/tool-role data structures with explicit delimiters and size limits;
+they are never interpolated into system instructions. Channel, recipient,
+organization, and tool authorization are fixed and rechecked by code, not
+selected from model output.
+
+Regression tests cover stored closing delimiters, embedded instructions/tool
+requests, cross-surface injection, and attempts to make Org A content trigger
+tools or disclosure in Org B.
+
+Proactive jobs have no person-authenticated credential. They must name their
+system actor, purpose, and destination binding; organization-scoped context is
+unavailable unless the job has an explicit authorized organization scope. An
+absent or ambiguous organization context fails closed rather than selecting a
+"primary" organization implicitly.
 
 ## Proactive engagement model
 
@@ -340,9 +669,9 @@ the hydration path and prompt formatting so the two data planes do not drift.
 
 The current system: Scheduler runs -> picks candidates -> OutboundPlanner picks a goal -> sends a template.
 
-The new system: Scheduler runs -> picks candidates -> loads relationship context -> Sonnet composes a message appropriate for this person at this moment.
+The new system: Scheduler runs -> picks candidates -> loads privacy-fenced relationship context -> Sonnet composes a message appropriate for this person at this moment.
 
-The key shift: **goals become suggestions, not the organizing primitive.** Addie still knows about available actions (link account, join working group, complete profile, attend event). But she doesn't "pick a goal and execute it." She looks at the full relationship and decides what to say, which might touch on one of these topics, or might just be a genuine check-in.
+The key shift: **goals become suggestions, not the organizing primitive.** Addie still knows about available actions (link account, join working group, complete profile, attend event). But she doesn't "pick a goal and execute it." She looks at the permitted relationship context and decides what to say, which might touch on one of these topics, or might just be a genuine check-in.
 
 ### The engagement planner
 
@@ -351,9 +680,12 @@ Replace `OutboundPlanner` with a simpler decision flow:
 **Step 1: Should Addie reach out to this person right now?**
 
 Rule-based check (fast, no LLM):
-- `opted_out = true` -> no
+- `globally_suppressed = true` -> no
+- No active, verified, consented destination for this purpose/context -> no
+- Destination is purpose/channel/address suppressed -> no
 - `next_contact_after > NOW()` -> no
-- Stage is `prospect` and no welcome sent -> yes (always welcome new people)
+- Stage is `prospect`, no welcome was sent, and an active destination has
+  purpose/channel-specific consent -> eligible for welcome
 - `last_addie_message_at` within cooldown period for their stage -> no
 - Not business hours in their timezone -> no
 
@@ -366,7 +698,7 @@ Cooldown periods by stage:
 
 **Step 2: What should Addie say?**
 
-This is where the LLM comes in. Pass Sonnet the full relationship context and ask it to compose an appropriate message.
+This is where the LLM comes in. Pass Sonnet the privacy-fenced relationship context and ask it to compose an appropriate message.
 
 The prompt includes:
 - The person's relationship record (stage, history, sentiment)
@@ -388,34 +720,42 @@ The message is composed in full by Sonnet. No templates. Every message is person
 
 **Step 3: Which channel?**
 
-Hierarchy:
-1. If person has `contact_preference` set, use that
-2. If person has `slack_user_id`, use Slack DM
-3. If person has `email` but no Slack, use email
-4. If neither, skip (shouldn't happen, but don't crash)
+Select only from active, verified delivery bindings whose consent purpose,
+surface tenant, organization context, and suppression state allow this message.
+Within that set, use the binding's scoped preference rank. If no eligible
+destination exists, skip and record the reason; never fall back to an
+unverified address or a binding from another organization context.
 
 **Step 4: Send and record**
 
-Send the message on the chosen channel. Record it as a thread message linked to the `identity_id` with its surface/organization provenance. Update `last_addie_message_at`. Set `next_contact_after` based on stage cooldown.
+Send the message on the chosen channel. Record it as a thread message linked to
+the `identity_id` with its binding, surface, consent, and organization
+provenance. Update `last_addie_message_at` on the relationship and
+`next_contact_after` on the selected delivery-state record based on stage
+cooldown.
 
 ### What happens to goals?
 
 Goals don't disappear overnight. During migration, the existing goal system continues to function. Goals become a reference list of "things Addie can suggest" rather than the driving force of outreach. The `outreach_goals` table stays but is consumed differently:
 
 - Goals inform the Sonnet prompt: "Here are actions this person could take: [list of eligible goals]"
-- Goal history is still tracked for admin visibility
+- Goal history is still tracked for purpose-limited support visibility
 - The goal-based admin UI keeps working
 
 Over time, goals can be simplified into a checklist of capabilities (which `MemberCapabilities` already is).
 
 ## Single thread model
 
-### Slack: one DM thread, forever
+### Slack: one DM thread per binding/installation
 
-When Addie first messages someone on Slack, she opens a DM and sends a message. That message's `thread_ts` becomes the permanent thread for this relationship. All future proactive messages from Addie go as replies in this same thread. The person can respond at any time, and the conversation continues.
+When Addie first messages one Slack binding/installation, she opens a DM and
+sends a message. That message's `thread_ts` becomes the continuing thread for
+that destination. A second Slack workspace or installation has separate thread
+coordinates and consent state. The person can respond at any time, and the
+conversation continues within that source context.
 
 Technical details:
-- `person_relationships.slack_dm_channel_id` and `slack_dm_thread_ts` store the permanent thread coordinates
+- `relationship_delivery_state.thread_channel_id` and `thread_root_id` store coordinates for the binding/installation
 - On first outreach: open DM channel, send message, save both IDs
 - On subsequent outreach: send as reply using saved `thread_ts`
 - If the Slack API rejects the `thread_ts` (channel deleted, etc.), start a new thread and update the record
@@ -432,7 +772,9 @@ Email doesn't have persistent threads, but we can create the feeling of continui
 - Email body may reference a prior discussion only when the privacy fence permits that source on email
 - Reply-to chaining when possible (use `In-Reply-To` and `References` headers with previous `Message-ID`)
 
-The relationship record tracks email state the same way as Slack. `last_addie_message_at` applies regardless of channel.
+Email consent, cooldown, preference, and message coordinates live on the
+selected destination's delivery-state record. Only aggregate
+`last_addie_message_at` is person-level across channels.
 
 ### Web chat: load the relationship
 
@@ -454,43 +796,53 @@ Resolution and linking are different operations:
 
 - **Resolution** looks up one already-bound external identifier and returns its
   `identity_id`. It does not mutate bindings.
-- **Linking** joins two credentials/identifiers only after proof of control or
-  an audited administrator decision. It records evidence and applies the
-  ownership rules above.
+- **Linking** joins two credentials/identifiers only after proof of control.
+  The restricted emergency recovery workflow above may prepare a pending
+  binding, but the subject must confirm it before activation. The operation
+  records evidence and applies the ownership rules above.
 - **Suggestion** may surface a possible duplicate to an administrator. It may
   use name, domain, or email similarity, but it never mutates identity state.
 
 Surface-specific rules:
 
-1. **Slack user discovered** -- Create a singleton identity plus Slack binding
-   when none exists. Email or employer-domain similarity may suggest a link but
-   cannot execute one.
+1. **Slack user discovered** -- Create a provisional singleton identity plus a
+   sourced Slack delivery binding when none exists. It cannot authenticate
+   until a verified authentication binding is activated. Email or
+   employer-domain similarity may suggest a link but cannot execute one.
 2. **Slack account linking** -- The authenticated web credential and Slack
    identity must both participate in the verified linking flow.
-3. **Email prospect created** -- Create a singleton identity/relationship with
-   sourced contact information. Later signup does not auto-link solely because
-   the email or domain matches.
+3. **Email prospect created** -- Create a provisional singleton
+   identity/relationship with sourced contact information and no authentication
+   authority. Later signup does not auto-link solely because the email or
+   domain matches.
 4. **Web session authenticated** -- Resolve the WorkOS user through
    `identity_workos_users`. A new WorkOS user receives a singleton identity.
-5. **Existing accounts linked** -- Require control of both credentials or the
-   guarded admin merge workflow; preview state before consolidation.
+5. **Existing accounts linked** -- Require control of both credentials. A
+   guarded operator workflow may supervise, review evidence, resolve
+   dispositions, or prepare a pending merge, but cannot waive subject
+   confirmation or activate a binding.
 
 ### Resolution function
 
 ```typescript
 async function resolveIdentity(input: {
   provider: 'workos' | 'slack' | 'verified_email';
-  providerTenantId?: string;
+  providerTenantKey: string; // real tenant for Slack; canonical 'global' otherwise
   externalId: string;
 }): Promise<{ identityId: string; bindingId: string }>
 ```
 
 This function:
 1. normalizes only according to the provider's identifier rules;
-2. finds an active, uniquely constrained binding;
+2. finds a verified, active, uniquely constrained binding;
 3. returns the bound identity without adding other identifiers; or
-4. creates a singleton identity and sourced binding only when the caller is an
-   authorized provisioning path.
+4. creates a provisional singleton identity and pending or sourced delivery
+   binding only when the caller is an authorized provisioning path.
+
+This return value is correlation, not authentication. An authentication
+resolver additionally validates the provider session and requires an active
+binding whose kind includes authentication; a pending or delivery-only binding
+can never establish a principal.
 
 The separate `linkIdentities`/`splitIdentity` operations require their own
 authorization, evidence, preview, audit, and cache invalidation. Generic
@@ -513,17 +865,79 @@ foundation landed in different sequences:
 - Most person-owned application state still uses the primary
   `workos_user_id`; the auth ID swap is a compatibility layer, not the target
   ownership model.
+- The current `mergeUsers` path rewrites/deduplicates organization and
+  working-group memberships, learner/certification state, points, badges,
+  threads, events, and other rows onto the primary WorkOS user. Primary
+  promotion and existing-account linking invoke that destructive path.
+- Current unlink creates an empty singleton identity; it cannot reconstruct
+  state that merge moved or deleted. The OAuth alias path may also create
+  upstream WorkOS memberships before local consolidation and leave them behind
+  if the local operation fails.
+
+Those last three behaviors are explicitly non-conformant with the target
+ownership and reversibility contract. They are rollout blockers, not evidence
+that authorization isolation or split support already exists. Credential
+binding must be separated from state consolidation; destructive consolidate,
+promote, and automatic alias paths remain disabled until their replacements
+preserve authority and provenance. Any upstream
+WorkOS mutation has a compensating rollback when the local transaction fails.
 
 The next migration sequence is therefore:
 
 1. approve this ownership/provenance contract and the cross-surface privacy fence;
-2. add safe self-service recovery credential management;
-3. migrate community profile state to `identity_id` with bounded dual read/write;
-4. migrate reputation events/aggregates while retaining source provenance;
-5. make merge/split genuinely reversible before removing compatibility fields; and
-6. move MemberContext and relationship/thread reads onto the fenced identity model.
+2. isolate organization authorization to the authenticated credential plus an
+   explicit active membership, removing canonical-user grant union;
+3. land the minimum immutable identity-operation ledger, source-attribution
+   substrate, and authorization/session epoch; disable any consolidation that
+   cannot preserve partition provenance;
+4. add safe self-service attachment of a new, state-empty recovery credential;
+   already-bound account consolidation remains disabled until the new
+   ledger-backed, provenance-preserving merge path is available;
+5. migrate community profile state, then reputation events/aggregates, to
+   `identity_id` while retaining origin bindings;
+6. complete split preview/operator UX and round-trip restoration before
+   removing compatibility fields; and
+7. move MemberContext and relationship/thread reads onto the fenced identity model.
 
-The historical stages below describe the relationship-driven outreach rollout.
+### Migration safety contract
+
+Each dataset follows the same expand-and-contract sequence:
+
+1. **Expand** -- add nullable identity/origin keys and provenance tables without
+   changing read behavior; add foreign keys as `NOT VALID` where needed.
+2. **Transactional dual-write** -- write legacy and target forms in one
+   transaction or through a durable outbox with operation IDs. Declare target
+   read precedence and rollback behavior.
+3. **Snapshot plus delta backfill** -- record a high-water mark, backfill in
+   bounded batches, replay concurrent deltas, and quarantine ambiguous rows
+   rather than guessing.
+4. **Shadow read/reconciliation** -- compare legacy and target results with
+   lag/backlog/error alerts and per-operation audit correlation.
+5. **Constrained cutover** -- enable target reads only after all dataset gates
+   pass; retain a tested rollback to legacy reads.
+6. **Validate and retire** -- validate foreign keys, stop legacy writes, then
+   remove compatibility fields only after the observation window.
+
+Minimum cutover gates:
+
+- zero active external subjects bound to multiple identities;
+- zero authentication-enabled active identities with zero or multiple verified
+  primary authentication bindings; provisional identities have zero;
+- 100% agreement between legacy/target keys on new dual-writes;
+- zero unquarantined rows missing `identity_id` or required origin binding;
+- unchanged membership row IDs, roles, seats, grantors, effective dates, and
+  provider membership provenance across identity-operation tests;
+- exact source-event counts and point sums before/after, with shadow-derived
+  totals equal;
+- unchanged certification attempt/issuance counts by immutable origin;
+- zero cross-surface context reads from rows lacking typed fence provenance;
+- successful merge/split canaries that restore assignments and aggregates; and
+- reconciliation lag/backlog within the declared SLO with no unresolved
+  operation errors.
+
+The non-normative legacy rollout narrative below describes the earlier
+relationship-driven outreach plan. It is context, not an assertion that every
+step landed and not executable instructions for the identity migration.
 Where they refer to the transitional `person_relationships.id`, new work uses
 the canonical `identity_id` seam defined above.
 
@@ -540,20 +954,22 @@ the canonical `identity_id` seam defined above.
    - In working groups? -> `participating`
    - Committee leader? -> `leading`
    - Otherwise -> `prospect`
-5. Link existing `addie_threads` to `identity_id` where evidence permits, retaining surface provenance
+5. Link existing `addie_threads` and `person_events` to `identity_id` where
+   evidence permits, retaining the transitional `person_relationships.id` and
+   immutable source provenance until reconciliation/cutover completes
 
 The old system still runs. Goals still fire. The relationship table is read-only at this stage.
 
 **Reuse**: All existing tables stay. `person_relationships` is additive.
 
-### Stage 2: Single thread model for Slack DMs
+### Stage 2: Continuing thread model for Slack DMs
 
-**Goal**: Stop creating new threads per outreach. One thread per person.
+**Goal**: Stop creating new threads per outreach. One continuing thread per Slack binding/installation.
 
-1. Modify `resolveThreadAndSendMessage` to check `person_relationships.slack_dm_thread_ts` first
+1. Modify `resolveThreadAndSendMessage` to check the destination-scoped `relationship_delivery_state.thread_root_id` first
 2. If a permanent thread exists, always reply there (remove the 7-day window logic)
-3. If no permanent thread, send a new message and save the `thread_ts` to the relationship
-4. When someone DMs Addie, resolve their relationship and use the permanent thread
+3. If no permanent thread exists for that binding/installation, send a new message and save the `thread_ts` to its delivery-state record
+4. When someone DMs Addie, resolve their binding and use only that destination's continuing thread
 
 **Reuse**: `openDmChannel` and `sendDmMessage` stay. Only the thread resolution logic changes.
 
@@ -562,7 +978,9 @@ The old system still runs. Goals still fire. The relationship table is read-only
 **Goal**: When Addie talks to someone (reactive or proactive), she loads the relationship context permitted for that request.
 
 1. Implement `loadRelationshipContext()`
-2. Modify Addie's system prompt to include privacy-fenced relationship context (stage, permitted recent messages, capabilities)
+2. Pass privacy-fenced relationship context (stage, permitted recent messages,
+   capabilities) as untrusted structured user/tool data; keep fixed policy and
+   trusted authorization facts in the system prompt
 3. Web chat loads relationship context for authenticated users
 4. Proactive outreach loads relationship context before composing messages
 
@@ -576,7 +994,7 @@ The old system still runs. Goals still fire. The relationship table is read-only
 2. Replace `initiateOutreachWithPlanner` with new `engageWithPerson` function
 3. Proactive messages go through Sonnet with privacy-fenced relationship context
 4. Record proactive messages as thread messages linked to `identity_id` with source provenance
-5. Keep recording goal history in parallel for admin visibility (dual-write)
+5. Keep recording goal history in parallel for purpose-limited support visibility (dual-write)
 
 **Reuse**: Business hours check, rate limiting, email sending, Slack DM sending all stay. Only the decision logic changes.
 
@@ -594,20 +1012,25 @@ The old system still runs. Goals still fire. The relationship table is read-only
 ## What we can reuse vs rebuild
 
 ### Keep as-is
-- `addie_threads` and `addie_thread_messages` (the thread model is good)
-- `getMemberCapabilities()` (the capability queries are solid)
-- `InsightsDatabase` (insights are still valuable)
 - `isBusinessHours()` and timezone logic
 - `openDmChannel()` and `sendDmMessage()` (low-level Slack API wrappers)
 - Email sending infrastructure (`sendProspectEmail`, Resend integration)
-- `canContactUser()` (eligibility checks stay)
 - Rate limiting and kill switches
 
 ### Modify
+- `addie_threads` and `addie_thread_messages` -- add typed immutable binding,
+  tenant, organization, consent, participant, and visibility provenance
+- `getMemberCapabilities()` -- return subject-discriminated, source-attributed
+  grants for the resolved authorization context
+- `InsightsDatabase` -- retain source fences on raw and derived insights
+- `canContactUser()` -- evaluate destination-, purpose-, tenant-, scope-, and
+  consent-specific delivery state
 - `resolveThreadAndSendMessage()` -- use permanent thread from relationship
 - `buildPlannerContext()` -- becomes `loadRelationshipContext()`
 - `runOutreachScheduler()` -- queries relationships instead of raw slack_user_mappings
 - Thread service `getUserRecentThread()` -- replaced by relationship-based lookup
+
+The fenced replacements above are cutover prerequisites, not optional cleanup.
 
 ### Rebuild
 - `OutboundPlanner` -- replaced by relationship-aware engagement planner
@@ -623,14 +1046,14 @@ The old system still runs. Goals still fire. The relationship table is read-only
 ## Success criteria
 
 - [ ] Every Slack user and email prospect has a `person_relationships` row
-- [ ] Addie maintains one DM thread per person on Slack (no new threads for each outreach)
+- [ ] Addie maintains one DM thread per active Slack binding/installation (no cross-workspace thread reuse)
 - [ ] When someone messages Addie on web chat, she can use an attributed Slack summary only when the privacy fence permits it
-- [ ] Proactive messages reference previous conversations ("Last time you mentioned...")
+- [ ] Proactive messages may reference permitted prior context when relevant
 - [ ] Welcome messages only happen once per person, ever
 - [ ] Stage transitions happen automatically based on behavior
 - [ ] Outreach frequency scales with engagement (active people get less proactive contact, not more)
 - [ ] Every proactive message is composed by Sonnet, not a template
-- [ ] Admin can see the full relationship timeline for any person
+- [ ] An authorized support/privacy administrator can see only timeline data allowed for the stated support purpose; cross-organization or otherwise fenced content requires an elevated role, recorded reason, and audited break-glass access
 
 ## What this does NOT include
 
