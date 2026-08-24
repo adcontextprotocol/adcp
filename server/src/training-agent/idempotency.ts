@@ -512,7 +512,7 @@ export function getIdempotencyStore(): OwnedIdempotencyStore {
   return storeInstance;
 }
 
-/** Expose the token-aware store through the SDK beta.7 idempotency contract. */
+/** Expose the token-aware store through the SDK beta.8 idempotency contract. */
 export function adaptOwnedIdempotencyStoreForSdk(owned: OwnedIdempotencyStore): IdempotencyStore {
   return owned;
 }

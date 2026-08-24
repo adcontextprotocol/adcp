@@ -21,7 +21,7 @@ const { stopSessionCleanup } = await import('../../src/training-agent/state.js')
 
 const COMPAT_CTX = { mode: 'open' as const, storyboardCompat: { version: '3.0' as const } };
 const AUTH = 'Bearer compat-tools-token';
-const CURRENT_ADCP_VERSION = '3.2-beta.5';
+const CURRENT_ADCP_VERSION = '3.2-beta.6';
 
 async function simulateListTools(server: ReturnType<typeof createTrainingAgentServer>): Promise<string[]> {
   const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
@@ -173,14 +173,14 @@ describe('training-agent 3.0 compat tool visibility', () => {
   it('projects SDK 14 capabilities onto the frozen 3.0 vocabulary', async () => {
     const { baseUrl, close } = await bootCompatRouter();
     try {
-      const allowedScenarios = new Set([
+      const allowedScenarios = [
         'force_creative_status',
         'force_account_status',
         'force_media_buy_status',
         'force_session_status',
         'simulate_delivery',
         'simulate_budget_spend',
-      ]);
+      ];
       const signals = await callTenantTool(baseUrl, 'signals', 'get_adcp_capabilities', {});
       expect(signals.media_buy).toMatchObject({
         execution: { targeting: { geo_postal_areas: { us_zip: true } } },
@@ -196,7 +196,7 @@ describe('training-agent 3.0 compat tool visibility', () => {
         const capabilities = await callTenantTool(baseUrl, tenant, 'get_adcp_capabilities', {});
         const scenarios = (capabilities.compliance_testing as { scenarios?: string[] } | undefined)?.scenarios ?? [];
         expect(scenarios).not.toHaveLength(0);
-        expect(scenarios.every(scenario => allowedScenarios.has(scenario))).toBe(true);
+        expect(scenarios.every(scenario => allowedScenarios.includes(scenario))).toBe(true);
       }
 
       const si = await callTenantTool(baseUrl, 'si', 'get_adcp_capabilities', {});
