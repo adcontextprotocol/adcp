@@ -6,9 +6,11 @@ category: media_buy_seller
 summary: "Bootstraps a shared account, forces a connected-platform creative change, observes account.change_recorded, drains list_account_changes, and repairs through list_creatives."
 track: media_buy
 
-requires_capability:
-  path: account.change_feed.supported
-  equals: true
+requires_all_capabilities:
+  - path: account.change_feed.supported
+    equals: true
+  - path: creative.has_creative_library
+    equals: true
 
 required_tools:
   - sync_accounts

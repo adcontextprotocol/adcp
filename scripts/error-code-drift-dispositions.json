@@ -26,6 +26,11 @@
       "target_version": "3.2",
       "note": "Canonical 3.2 PackageRequest migration guard. Returned when multiple resolvable format selector routes select different product format contracts. New wire code — held for 3.2."
     },
+    "CURSOR_EXPIRED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "Account change feeds return this when a durable checkpoint falls outside retained history. New 3.2 account wire code — held for 3.2."
+    },
     "BIDDING_PLACEMENT_CONFLICT": {
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
