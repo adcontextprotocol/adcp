@@ -20,15 +20,16 @@ describe('member profile membership authorization', () => {
     expect(selectedOrganizationMembership(memberships, 'org_pending_admin')).toBeNull();
   });
 
-  it('selects only the active membership by default or explicit organization', () => {
-    expect(selectedOrganizationMembership(memberships)).toEqual(memberships[1]);
+  it('never selects an organization implicitly', () => {
+    expect(selectedOrganizationMembership(memberships)).toBeNull();
     expect(selectedOrganizationMembership(memberships, 'org_active_member')).toEqual(memberships[1]);
   });
 
-  it('uses the active selector across every WorkOS-backed profile route', async () => {
+  it('uses the exact credential resolver across WorkOS-backed profile routes', async () => {
     const source = await readFile(new URL('../../src/routes/member-profiles.ts', import.meta.url), 'utf8');
-    expect(source.match(/selectedOrganizationMembership\(memberships\.data, requestedOrgId\)/g)?.length)
+    expect(source.match(/resolveUserOrgMembership\(workos!, user,/g)?.length)
       .toBeGreaterThanOrEqual(7);
+    expect(source).not.toContain('listOrganizationMemberships({\n          userId: user.id');
     expect(source).toContain('Only organization admins or owners can update brand identity');
   });
 });

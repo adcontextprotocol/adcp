@@ -23,8 +23,6 @@ import { OrganizationDatabase, hasApiAccess, readMembershipTierFromClient, resol
 import { canonicalizeAgentUrl } from "../db/publisher-db.js";
 import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
 import { linkDomain } from "../db/organization-domains-db.js";
-import { autoLinkByVerifiedDomain } from "../db/membership-db.js";
-import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { AAO_HOST } from "../config/aao.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
@@ -57,6 +55,7 @@ import { canonicalizeBrandDomain } from "../services/identifier-normalization.js
 import { issueDomainChallenge, verifyDomainChallenge } from "../services/brand-claim.js";
 import { resolveUserRole } from "../utils/resolve-user-role.js";
 import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
+import { getOrganizationAuthorizationUserId } from "../auth/organization-principal.js";
 import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
 import { createEscalation } from "../db/escalation-db.js";
 import { insertTypeReclassification } from "../db/type-reclassification-log-db.js";
@@ -81,17 +80,8 @@ export function selectedOrganizationMembership<
   const activeMemberships = memberships.filter(
     (membership) => membership.status === 'active',
   );
-  if (requestedOrgId) {
-    return activeMemberships.find((membership) => membership.organizationId === requestedOrgId) ?? null;
-  }
-  return activeMemberships[0] ?? null;
-}
-
-function isOrganizationAdminOrOwner(
-  membership: { role?: { slug?: string | null } | null },
-): boolean {
-  const role = membership.role?.slug ?? 'member';
-  return role === 'admin' || role === 'owner';
+  if (!requestedOrgId) return null;
+  return activeMemberships.find((membership) => membership.organizationId === requestedOrgId) ?? null;
 }
 
 /**
@@ -315,6 +305,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     try {
       const user = req.user!;
       const requestedOrgId = req.query.org as string | undefined;
+      if (!requestedOrgId) {
+        return res.status(400).json({ error: 'The org query parameter is required' });
+      }
       const {
         organization_name,
         company_type,
@@ -411,16 +404,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
         targetOrgId = requestedOrgId!;
       } else {
-        let memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-        if (linked) {
-          memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-        }
-        const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+        const selectedMembership = await resolveUserOrgMembership(workos!, user, requestedOrgId);
         if (!selectedMembership) {
           return res.status(requestedOrgId ? 403 : 404).json({
             error: requestedOrgId ? 'Not authorized' : 'No organization',
@@ -477,6 +461,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // matching email domain could clobber org-level fields a workspace
       // admin had already curated.
       const existingOrg = await orgDb.getOrganization(targetOrgId);
+      if (!isDevUserProfile && !await resolveUserOrgMembership(workos!, user, targetOrgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const orgUpdates: Record<string, unknown> = {};
       const metadataIgnoredApiFields: string[] = [];
       // Map DB column → public API field name. Callers know about
@@ -505,6 +492,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       considerField(revenue_tier, 'revenue_tier');
       considerField(membership_tier, 'membership_tier');
       if (Object.keys(orgUpdates).length > 0) {
+        if (!isDevUserProfile && !await resolveUserOrgMembership(workos!, user, targetOrgId)) {
+          return res.status(403).json({ error: 'Organization authorization was revoked' });
+        }
         try {
           await orgDb.updateOrganization(targetOrgId, orgUpdates);
         } catch (err) {
@@ -522,6 +512,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // on an admin-resolvable issue.
       let domainConflictOrgId: string | null = null;
       try {
+        if (!isDevUserProfile && !await resolveUserOrgMembership(workos!, user, targetOrgId)) {
+          return res.status(403).json({ error: 'Organization authorization was revoked' });
+        }
         const result = await linkDomain({
           orgId: targetOrgId,
           domain: corporateDomain,
@@ -536,6 +529,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       const slug = await pickAvailableSlug(trimmedName);
 
+      if (!isDevUserProfile && !await resolveUserOrgMembership(workos!, user, targetOrgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const profile = await memberDb.createProfile({
         workos_organization_id: targetOrgId,
         display_name: trimmedName,
@@ -678,6 +674,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     try {
       const user = req.user!;
       const requestedOrgId = req.query.org as string | undefined;
+      if (!requestedOrgId) {
+        return res.status(400).json({ error: 'The org query parameter is required' });
+      }
 
       // Dev mode: handle dev organizations without WorkOS
       const devUser = isDevModeEnabled() ? Object.values(DEV_USERS).find(du => du.id === user.id) : null;
@@ -714,20 +713,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       // Get user's organization memberships
-      let memberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
-      });
-
-      // Auto-link any verified-domain orgs the user isn't yet in.
-      // Helper short-circuits when the user is already a cached member.
-      const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-      if (linked) {
-        memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-      }
-
-      const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+      const selectedMembership = await resolveUserOrgMembership(workos!, user, requestedOrgId);
       if (!selectedMembership) {
         logger.info({ userId: user.id, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile: no organization');
         return res.status(requestedOrgId ? 403 : 404).json({
@@ -794,6 +780,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     try {
       const user = req.user!;
       const requestedOrgId = req.query.org as string | undefined;
+      if (!requestedOrgId) {
+        return res.status(400).json({ error: 'The org query parameter is required' });
+      }
       const {
         display_name,
         slug,
@@ -868,21 +857,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         targetOrgId = requestedOrgId!;
         logger.info({ userId: user.id, orgId: targetOrgId }, 'POST /api/me/member-profile: dev mode bypass');
       } else {
-        // Get user's organization memberships
-        let memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-
-        // Auto-link any verified-domain orgs the user isn't yet in.
-        // Helper short-circuits when the user is already a cached member.
-        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-        if (linked) {
-          memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-        }
-
-        const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+        const selectedMembership = await resolveUserOrgMembership(workos!, user, requestedOrgId);
         if (!selectedMembership) {
           return res.status(requestedOrgId ? 403 : 404).json({
             error: requestedOrgId ? 'Not authorized' : 'No organization',
@@ -891,7 +866,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
               : 'User has no active organization membership',
           });
         }
-        callerRole = selectedMembership.role?.slug || 'member';
+        callerRole = selectedMembership.role;
         targetOrgId = selectedMembership.organizationId;
       }
 
@@ -1065,6 +1040,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
+      if (!isDevUserProfile && !await resolveUserOrgMembership(workos!, user, targetOrgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const profile = await memberDb.createProfile({
         workos_organization_id: targetOrgId,
         display_name,
@@ -1158,6 +1136,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     try {
       const user = req.user!;
       const requestedOrgId = req.query.org as string | undefined;
+      if (!requestedOrgId) {
+        return res.status(400).json({ error: 'The org query parameter is required' });
+      }
       const updates = { ...(req.body as Record<string, unknown>) };
 
       const invalidProfileUrlField = validateMemberProfileUrlFields(updates);
@@ -1184,21 +1165,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         targetOrgId = requestedOrgId!;
         logger.info({ userId: user.id, orgId: targetOrgId }, 'PUT /api/me/member-profile: dev mode bypass');
       } else {
-        // Get user's organization memberships
-        let memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-
-        // Auto-link any verified-domain orgs the user isn't yet in.
-        // Helper short-circuits when the user is already a cached member.
-        const linked = await autoLinkByVerifiedDomain(workos!, user.id, user.email);
-        if (linked) {
-          memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-        }
-
-        const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+        const selectedMembership = await resolveUserOrgMembership(workos!, user, requestedOrgId);
         if (!selectedMembership) {
           return res.status(403).json({
             error: 'Not authorized',
@@ -1206,7 +1173,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           });
         }
         targetOrgId = selectedMembership.organizationId;
-        callerCanManageVisibility = isOrganizationAdminOrOwner(selectedMembership);
+        callerCanManageVisibility = selectedMembership.role === 'admin' || selectedMembership.role === 'owner';
       }
 
       // Check if profile exists
@@ -1402,6 +1369,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
+      if (!isDevUserProfile && !await resolveUserOrgMembership(workos!, user, targetOrgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
 
       // Trigger crawl for new/updated publisher domains (fire-and-forget)
@@ -1812,32 +1782,31 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   }
 
   /**
-   * Resolve the URL-selected organization for the authenticated user, falling
-   * back to their primary organization when omitted. Returns null when the
-   * response has already been sent.
+   * Resolve the explicitly URL-selected organization for the authenticated
+   * credential. Canonical identity and primary-organization pointers are not
+   * authorization inputs.
    */
   async function resolveUserOrgId(req: any, res: any): Promise<string | null> {
     const requestedOrgId = typeof req.query?.org === 'string' && req.query.org.length > 0
       ? req.query.org
       : null;
-    if (requestedOrgId) {
-      const membership = await resolveUserOrgMembership(workos, req.user!.id, requestedOrgId);
-      if (!membership) {
-        res.status(403).json({
-          error: 'Not authorized',
-          message: 'User is not a member of the requested organization',
-        });
-        return null;
-      }
-      return requestedOrgId;
-    }
-
-    const orgId = await resolvePrimaryOrganization(req.user!.id);
-    if (!orgId) {
-      res.status(400).json({ error: 'No organization associated' });
+    if (!requestedOrgId) {
+      res.status(400).json({
+        error: 'organization_selection_required',
+        message: 'org query parameter is required',
+      });
       return null;
     }
-    return orgId;
+
+    const membership = await resolveUserOrgMembership(workos, req.user!, requestedOrgId);
+    if (!membership) {
+      res.status(403).json({
+        error: 'Not authorized',
+        message: 'User is not a member of the requested organization',
+      });
+      return null;
+    }
+    return membership.organizationId;
   }
 
   /**
@@ -1870,9 +1839,12 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const orgId = await resolveUserOrgId(req, res);
       if (!orgId) return;
       if (!(await requireApiAccessTier(orgId, res))) return;
+      if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
 
       const result = await applyAgentVisibility(orgId, index, 'public', {
-        user_id: req.user!.id,
+        user_id: getOrganizationAuthorizationUserId(req.user!),
         email: req.user!.email,
         name: req.user!.firstName ? `${req.user!.firstName} ${req.user!.lastName || ''}`.trim() : undefined,
       });
@@ -1891,9 +1863,12 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       const orgId = await resolveUserOrgId(req, res);
       if (!orgId) return;
+      if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
 
       const result = await applyAgentVisibility(orgId, index, 'private', {
-        user_id: req.user!.id,
+        user_id: getOrganizationAuthorizationUserId(req.user!),
         email: req.user!.email,
         name: req.user!.firstName ? `${req.user!.firstName} ${req.user!.lastName || ''}`.trim() : undefined,
       });
@@ -1921,9 +1896,12 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const orgId = await resolveUserOrgId(req, res);
       if (!orgId) return;
       if (target === 'public' && !(await requireApiAccessTier(orgId, res))) return;
+      if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
 
       const result = await applyAgentVisibility(orgId, index, target, {
-        user_id: req.user!.id,
+        user_id: getOrganizationAuthorizationUserId(req.user!),
         email: req.user!.email,
         name: req.user!.firstName ? `${req.user!.firstName} ${req.user!.lastName || ''}`.trim() : undefined,
       });
@@ -2010,11 +1988,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const requestedOrgId = typeof req.query.org === 'string' && req.query.org.length > 0
         ? req.query.org
         : null;
-      const orgId = requestedOrgId ?? (await resolvePrimaryOrganization(req.user!.id));
-      if (!orgId) {
-        return res.status(400).json({ error: 'No organization associated with this account' });
+      if (!requestedOrgId) {
+        return res.status(400).json({
+          error: 'organization_selection_required',
+          message: 'org query parameter is required',
+        });
       }
-      const membership = await resolveUserOrgMembership(workos, req.user!.id, orgId);
+      const orgId = requestedOrgId;
+      const membership = await resolveUserOrgMembership(workos, req.user!, orgId);
       if (!membership || (membership.role !== 'admin' && membership.role !== 'owner')) {
         return res.status(403).json({
           error: 'Not authorized',
@@ -2071,6 +2052,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           if (hosted.domain_verified && hosted.workos_organization_id && hosted.workos_organization_id !== orgId) {
             return res.status(403).json({ error: 'This domain is verified by another organization' });
           }
+          const currentMembership = await resolveUserOrgMembership(workos, req.user!, orgId);
+          if (!currentMembership || !['admin', 'owner'].includes(currentMembership.role)) {
+            return res.status(403).json({ error: 'Organization authorization was revoked' });
+          }
           // Proof of domain control: claim ownership and mark verified.
           // If the brand is orphaned (prior owner relinquished), atomically
           // clear the orphan flag and reset the prior manifest — otherwise
@@ -2098,7 +2083,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   });
 
   /**
-   * Resolve the caller's requested org (or primary org when omitted) and
+   * Resolve the caller's explicitly requested org and
    * verify they have admin/owner role — brand-claim is org-scoped
    * state-mutation and shouldn't be reachable by rank-and-file members.
    * Returns the orgId, or sends an appropriate error response and returns
@@ -2108,11 +2093,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     const requestedOrgId = typeof req.query.org === 'string' && req.query.org.length > 0
       ? req.query.org
       : null;
-    const orgId = requestedOrgId ?? (await resolvePrimaryOrganization(req.user!.id));
-    if (!orgId) {
-      res.status(400).json({ error: 'No organization associated with this account' });
+    if (!requestedOrgId) {
+      res.status(400).json({
+        error: 'organization_selection_required',
+        message: 'org query parameter is required',
+      });
       return null;
     }
+    const orgId = requestedOrgId;
     if (!workos) {
       res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
       return null;
@@ -2122,7 +2110,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     // resolveUserRole did, plus a dev-mode bypass — a removed admin can't
     // claim a brand on the org that removed them.
     try {
-      const membership = await resolveUserOrgMembership(workos, req.user!.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, req.user!, orgId);
       if (!membership || (membership.role !== 'admin' && membership.role !== 'owner')) {
         res.status(403).json({
           error: 'Not authorized',
@@ -2149,6 +2137,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         return res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
       }
       const rawDomain = (req.body?.domain as string | undefined) ?? '';
+      const currentMembership = await resolveUserOrgMembership(workos, req.user!, orgId);
+      if (!currentMembership || !['admin', 'owner'].includes(currentMembership.role)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const result = await issueDomainChallenge({
         workos,
         brandDb,
@@ -2223,6 +2215,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         return res.status(503).json({ error: 'Domain verification is not configured for this environment.' });
       }
       const rawDomain = (req.body?.domain as string | undefined) ?? '';
+      const currentMembership = await resolveUserOrgMembership(workos, req.user!, orgId);
+      if (!currentMembership || !['admin', 'owner'].includes(currentMembership.role)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const result = await verifyDomainChallenge({
         workos,
         brandDb,
@@ -2272,6 +2268,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     try {
       const user = req.user!;
       const requestedOrgId = req.query.org as string | undefined;
+      if (!requestedOrgId) {
+        return res.status(400).json({ error: 'The org query parameter is required' });
+      }
       const { logo_url, brand_color, adopt_prior_manifest } = req.body;
 
       // Auth: resolve target org (same pattern as /visibility route)
@@ -2285,8 +2284,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
         targetOrgId = requestedOrgId!;
       } else {
-        const memberships = await workos!.userManagement.listOrganizationMemberships({ userId: user.id });
-        const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+        const selectedMembership = await resolveUserOrgMembership(workos!, user, requestedOrgId);
         if (!selectedMembership) {
           return res.status(requestedOrgId ? 403 : 404).json({
             error: requestedOrgId ? 'Not authorized' : 'No organization',
@@ -2295,7 +2293,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
               : 'User has no active organization membership',
           });
         }
-        if (!isOrganizationAdminOrOwner(selectedMembership)) {
+        if (selectedMembership.role !== 'admin' && selectedMembership.role !== 'owner') {
           return res.status(403).json({
             error: 'Not authorized',
             message: 'Only organization admins or owners can update brand identity',
@@ -2334,6 +2332,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       let result;
       try {
+        const currentMembership = isDevUserProfile
+          ? { role: 'owner' as const }
+          : await resolveUserOrgMembership(workos!, user, targetOrgId);
+        if (!currentMembership
+          || (currentMembership.role !== 'admin' && currentMembership.role !== 'owner')) {
+          return res.status(403).json({ error: 'Organization authorization was revoked' });
+        }
         result = await updateBrandIdentity({
           workosOrganizationId: targetOrgId,
           displayName,
@@ -2345,7 +2350,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           // when the brand is orphaned. Booleans only — anything else is a
           // bad-request shape, but we let the service treat it as undefined.
           adoptPriorManifest: typeof adopt_prior_manifest === 'boolean' ? adopt_prior_manifest : undefined,
-          uploadedBy: { userId: user.id, email: user.email },
+          uploadedBy: { userId: getOrganizationAuthorizationUserId(user), email: user.email },
         });
       } catch (err: any) {
         if (err instanceof BrandIdentityError) {
@@ -2437,6 +2442,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     try {
       const user = req.user!;
       const requestedOrgId = req.query.org as string | undefined;
+      if (!requestedOrgId) {
+        return res.status(400).json({ error: 'The org query parameter is required' });
+      }
       const { is_public, show_in_carousel } = req.body;
 
       // Dev mode: handle dev organizations without WorkOS
@@ -2454,19 +2462,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         targetOrgId = requestedOrgId!;
         logger.info({ userId: user.id, orgId: targetOrgId }, 'PUT /api/me/member-profile/visibility: dev mode bypass');
       } else {
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-
-        const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+        const selectedMembership = await resolveUserOrgMembership(workos!, user, requestedOrgId);
         if (!selectedMembership) {
           return res.status(403).json({
             error: 'Not authorized',
             message: 'User is not an active member of the requested organization',
           });
         }
-        if (!isOrganizationAdminOrOwner(selectedMembership)) {
+        if (selectedMembership.role !== 'admin' && selectedMembership.role !== 'owner') {
           return res.status(403).json({
             error: 'Not authorized',
             message: 'Only organization admins or owners can update profile visibility',
@@ -2502,6 +2505,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (typeof is_public === 'boolean') updates.is_public = is_public;
       if (typeof show_in_carousel === 'boolean') updates.show_in_carousel = show_in_carousel;
 
+      const currentMembership = isDevUserProfile
+        ? { role: 'owner' as const }
+        : await resolveUserOrgMembership(workos!, user, targetOrgId);
+      if (!currentMembership
+        || (currentMembership.role !== 'admin' && currentMembership.role !== 'owner')) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const profile = await memberDb.updateProfileByOrgId(targetOrgId, updates);
 
       // Record publish event if this flipped is_public from false/null to true
@@ -2509,7 +2519,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         targetOrgId,
         existingProfile.is_public,
         profile?.is_public,
-        user.id
+        getOrganizationAuthorizationUserId(user)
       );
 
       // Invalidate Addie's member context cache
@@ -2535,6 +2545,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     try {
       const user = req.user!;
       const requestedOrgId = req.query.org as string | undefined;
+      if (!requestedOrgId) {
+        return res.status(400).json({ error: 'The org query parameter is required' });
+      }
 
       // Dev mode: handle dev organizations without WorkOS
       const isDevUserProfile = isDevModeEnabled() && Object.values(DEV_USERS).some(du => du.id === user.id) && requestedOrgId?.startsWith('org_dev_');
@@ -2551,19 +2564,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         targetOrgId = requestedOrgId!;
         logger.info({ userId: user.id, orgId: targetOrgId }, 'DELETE /api/me/member-profile: dev mode bypass');
       } else {
-        // Get user's organization memberships
-        const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
-        });
-
-        const selectedMembership = selectedOrganizationMembership(memberships.data, requestedOrgId);
+        const selectedMembership = await resolveUserOrgMembership(workos!, user, requestedOrgId);
         if (!selectedMembership) {
           return res.status(403).json({
             error: 'Not authorized',
             message: 'User is not an active member of the requested organization',
           });
         }
-        if (!isOrganizationAdminOrOwner(selectedMembership)) {
+        if (selectedMembership.role !== 'admin' && selectedMembership.role !== 'owner') {
           return res.status(403).json({
             error: 'Not authorized',
             message: 'Only organization admins or owners can delete member profiles',
@@ -2581,6 +2589,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         });
       }
 
+      const currentMembership = isDevUserProfile
+        ? { role: 'owner' as const }
+        : await resolveUserOrgMembership(workos!, user, targetOrgId);
+      if (!currentMembership
+        || (currentMembership.role !== 'admin' && currentMembership.role !== 'owner')) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       // Delete the profile
       await memberDb.deleteProfile(existingProfile.id);
 

@@ -24,6 +24,15 @@ import { DEV_USERS, isDevModeEnabled } from '../middleware/auth.js';
 import { resolveUserRole } from './resolve-user-role.js';
 import { query } from '../db/client.js';
 import { createLogger } from '../logger.js';
+import {
+  getOrganizationAuthorizationUserId,
+  type OrgAuthorizationPrincipal,
+} from '../auth/organization-principal.js';
+
+export {
+  getOrganizationAuthorizationUserId,
+  type OrgAuthorizationPrincipal,
+} from '../auth/organization-principal.js';
 
 const logger = createLogger('resolve-user-org-membership');
 
@@ -36,6 +45,8 @@ export interface UserOrgMembership {
   role: MembershipRole;
   /** Membership status from WorkOS or 'active' for dev memberships. */
   status: 'active' | 'pending' | 'inactive';
+  /** True when authority comes from an explicit organization credential grant. */
+  via_credential_grant: boolean;
   /**
    * True when the membership was resolved via the dev-mode bypass (local
    * organization_memberships seed) rather than a live WorkOS lookup. Callers
@@ -47,6 +58,7 @@ export interface UserOrgMembership {
 }
 
 const VALID_ROLES: ReadonlySet<string> = new Set(['owner', 'admin', 'member']);
+const ROLE_RANK: Record<MembershipRole, number> = { member: 1, admin: 2, owner: 3 };
 
 /**
  * Resolve the caller's membership in the given org. Returns null when the
@@ -58,9 +70,11 @@ const VALID_ROLES: ReadonlySet<string> = new Set(['owner', 'admin', 'member']);
  */
 export async function resolveUserOrgMembership(
   workos: WorkOS | null,
-  userId: string,
+  principal: OrgAuthorizationPrincipal,
   organizationId: string,
 ): Promise<UserOrgMembership | null> {
+  const userId = getOrganizationAuthorizationUserId(principal);
+  let directMembership: UserOrgMembership | null = null;
   // Dev mode bypass: local membership cache is the source of truth.
   if (isDevModeEnabled()) {
     const devUser = Object.values(DEV_USERS).find((du) => du.id === userId);
@@ -70,49 +84,81 @@ export async function resolveUserOrgMembership(
          WHERE workos_user_id = $1 AND workos_organization_id = $2`,
         [userId, organizationId],
       );
-      if (result.rows.length === 0) return null;
-      const membershipRow = result.rows[0];
-      const rawRole = membershipRow.role || 'member';
-      const role = (VALID_ROLES.has(rawRole) ? rawRole : 'member') as MembershipRole;
-      return {
-        organizationId: membershipRow.workos_organization_id,
-        role,
-        status: 'active',
-        via_dev_bypass: true,
-      };
+      if (result.rows.length > 0) {
+        const membershipRow = result.rows[0];
+        const rawRole = membershipRow.role || 'member';
+        const role = (VALID_ROLES.has(rawRole) ? rawRole : 'member') as MembershipRole;
+        return {
+          organizationId: membershipRow.workos_organization_id,
+          role,
+          status: 'active',
+          via_dev_bypass: true,
+          via_credential_grant: false,
+        };
+      }
     }
     // Real users in dev mode (e.g. someone running tsx with their actual
     // WorkOS account) fall through to the WorkOS path below.
   }
 
   // Prod path: WorkOS is the source of truth.
-  if (!workos) {
-    logger.warn({ userId, organizationId }, 'WorkOS client not available — cannot resolve membership');
-    return null;
+  if (workos) {
+    try {
+      const memberships = await workos.userManagement.listOrganizationMemberships({
+        userId,
+        organizationId,
+      });
+      const matchingMemberships = memberships.data.filter(
+        (membership) => membership.organizationId === organizationId,
+      );
+      const activeRow = matchingMemberships.find((membership) => membership.status === 'active');
+      const roleSlug = resolveUserRole(matchingMemberships);
+      if (activeRow && roleSlug && VALID_ROLES.has(roleSlug)) {
+        directMembership = {
+          organizationId: activeRow.organizationId,
+          role: roleSlug as MembershipRole,
+          status: 'active',
+          via_dev_bypass: false,
+          via_credential_grant: false,
+        };
+      }
+    } catch (err) {
+      logger.warn({ err, userId, organizationId }, 'WorkOS membership lookup failed; checking explicit credential grant');
+    }
+  } else {
+    logger.warn({ userId, organizationId }, 'WorkOS client not available; checking explicit credential grant');
   }
 
-  const memberships = await workos.userManagement.listOrganizationMemberships({
-    userId,
-    organizationId,
-  });
-
-  // Bind authorization to the organization ID returned by the authoritative
-  // membership row instead of relying solely on the request filter.
-  const matchingMemberships = memberships.data.filter(
-    (membership) => membership.organizationId === organizationId,
-  );
-  if (matchingMemberships.length === 0) return null;
-
-  const roleSlug = resolveUserRole(matchingMemberships);
-  if (!roleSlug || !VALID_ROLES.has(roleSlug)) return null;
-
-  const activeRow = matchingMemberships.find((m) => m.status === 'active');
-  if (!activeRow) return null;
-
-  return {
-    organizationId: activeRow.organizationId,
-    role: roleSlug as MembershipRole,
+  let grant: { rows: Array<{ workos_organization_id: string; role: string }> };
+  try {
+    grant = await query<{ workos_organization_id: string; role: string }>(
+      `SELECT workos_organization_id, role
+         FROM organization_credential_grants
+        WHERE workos_user_id = $1
+          AND workos_organization_id = $2
+          AND revoked_at IS NULL
+          AND effective_from <= NOW()
+          AND (effective_until IS NULL OR effective_until > NOW())
+        LIMIT 1`,
+      [userId, organizationId],
+    );
+  } catch (err) {
+    // A live, exact WorkOS membership remains authoritative even if the
+    // optional grant store is unavailable. Without one, fail closed.
+    logger.warn({ err, userId, organizationId }, 'Credential grant lookup failed');
+    return directMembership;
+  }
+  const grantRow = grant.rows[0];
+  if (!grantRow || !VALID_ROLES.has(grantRow.role)) return directMembership;
+  const grantMembership: UserOrgMembership = {
+    organizationId: grantRow.workos_organization_id,
+    role: grantRow.role as MembershipRole,
     status: 'active',
     via_dev_bypass: false,
+    via_credential_grant: true,
   };
+  if (!directMembership || ROLE_RANK[grantMembership.role] > ROLE_RANK[directMembership.role]) {
+    return grantMembership;
+  }
+  return directMembership;
 }

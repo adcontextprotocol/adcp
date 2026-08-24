@@ -5,15 +5,16 @@
  * and Spotify feeds, plus bulk property/collection merge via JSON API.
  */
 
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { query, getPool } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
-import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { validateFetchUrl } from '../utils/url-security.js';
 import { fetchFeed, slugify, suggestProduct, mergeInstallments } from '../services/collection-feed-sync.js';
 import type { CollectionFromFeed } from '../services/collection-feed-sync.js';
+import { getWorkos } from '../auth/workos-client.js';
+import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
 import {
   parsePropertyInputForBrand,
   mergeBrandProperties,
@@ -30,7 +31,22 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
   const { brandDb } = config;
 
   // Helper: get brand and validate the user's org owns it
-  async function getBrandForEdit(domain: string, userId: string) {
+  function selectedOrganization(req: Request): string | null {
+    return typeof req.query.org === 'string' && req.query.org.length > 0
+      ? req.query.org
+      : null;
+  }
+
+  async function getBrandForEdit(domain: string, req: Request) {
+    const requestedOrgId = selectedOrganization(req);
+    if (!requestedOrgId) {
+      return { error: 'org query parameter is required', status: 400 };
+    }
+    const membership = await resolveUserOrgMembership(getWorkos(), req.user!, requestedOrgId);
+    if (!membership) {
+      return { error: 'Not authorized for the requested organization', status: 403 };
+    }
+    const orgId = membership.organizationId;
     const brand = await brandDb.getDiscoveredBrandByDomain(domain);
     if (!brand) return { error: 'Brand not found', status: 404 };
     if (brand.source_type === 'brand_json') return { error: 'Cannot edit self-hosted brand', status: 409 };
@@ -42,11 +58,6 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
 
     // Verify the user's org owns this brand. Only verified org_domains rows
     // grant edit authority — unverified rows are pending DNS challenges.
-    const orgId = await resolvePrimaryOrganization(userId);
-    if (!orgId) {
-      return { error: 'No organization associated with your account', status: 403 };
-    }
-
     const orgDomains = await query<{ domain: string }>(
       'SELECT domain FROM organization_domains WHERE workos_organization_id = $1 AND verified = true',
       [orgId]
@@ -56,7 +67,7 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       return { error: 'You do not own this brand domain', status: 403 };
     }
 
-    return { brand };
+    return { brand, orgId };
   }
 
   // ─── Feed endpoints ────────────────────────────────────────────────
@@ -75,7 +86,7 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
         return res.status(400).json({ error: 'Invalid feed URL' });
       }
 
-      const check = await getBrandForEdit(domain, req.user!.id);
+      const check = await getBrandForEdit(domain, req);
       if ('error' in check) return res.status(check.status!).json({ error: check.error });
 
       // Fetch and parse the feed
@@ -110,6 +121,11 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
           [domain]
         );
         const manifest = (locked.rows[0]?.brand_manifest as Record<string, unknown>) || {};
+
+        if (!await resolveUserOrgMembership(getWorkos(), req.user!, check.orgId!)) {
+          await client.query('ROLLBACK');
+          return res.status(403).json({ error: 'Organization authorization was revoked' });
+        }
 
         // Merge collections
         const collections = Array.isArray(manifest.collections) ? manifest.collections as CollectionFromFeed[] : [];
@@ -167,8 +183,9 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
   router.get('/brands/:domain/feeds', requireAuth, async (req, res) => {
     try {
       const domain = req.params.domain.toLowerCase();
-      const brand = await brandDb.getDiscoveredBrandByDomain(domain);
-      if (!brand) return res.status(404).json({ error: 'Brand not found' });
+      const check = await getBrandForEdit(domain, req);
+      if ('error' in check) return res.status(check.status!).json({ error: check.error });
+      const { brand } = check;
 
       const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
       const collections = Array.isArray(manifest.collections)
@@ -199,7 +216,7 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       const domain = req.params.domain.toLowerCase();
       const collectionId = req.params.collection_id;
 
-      const check = await getBrandForEdit(domain, req.user!.id);
+      const check = await getBrandForEdit(domain, req);
       if ('error' in check) return res.status(check.status!).json({ error: check.error });
       const { brand } = check;
 
@@ -216,6 +233,9 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       collection.last_sync_error = undefined;
 
       manifest.collections = collections;
+      if (!await resolveUserOrgMembership(getWorkos(), req.user!, check.orgId!)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       await query(
         'UPDATE brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2',
         [JSON.stringify(manifest), domain]
@@ -238,7 +258,7 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       const domain = req.params.domain.toLowerCase();
       const collectionId = req.params.collection_id;
 
-      const check = await getBrandForEdit(domain, req.user!.id);
+      const check = await getBrandForEdit(domain, req);
       if ('error' in check) return res.status(check.status!).json({ error: check.error });
       const { brand } = check;
 
@@ -246,6 +266,9 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       const collections = Array.isArray(manifest.collections) ? manifest.collections as CollectionFromFeed[] : [];
       manifest.collections = collections.filter(c => c.collection_id !== collectionId);
 
+      if (!await resolveUserOrgMembership(getWorkos(), req.user!, check.orgId!)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       await query(
         'UPDATE brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2',
         [JSON.stringify(manifest), domain]
@@ -270,10 +293,12 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
         relationship?: string;
       };
 
+      const check = await getBrandForEdit(domain, req);
+      if ('error' in check) return res.status(check.status!).json({ error: check.error });
       const result = await parsePropertyInputForBrand({
         brandDb,
         domain,
-        userId: req.user!.id,
+        organizationId: check.orgId!,
         input: input ?? '',
         inputType: (input_type ?? 'text') as 'text' | 'url',
         relationship: relationship as Relationship | undefined,
@@ -301,10 +326,16 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       const domain = req.params.domain.toLowerCase();
       const { properties } = req.body;
 
+      const check = await getBrandForEdit(domain, req);
+      if ('error' in check) return res.status(check.status!).json({ error: check.error });
+      if (!await resolveUserOrgMembership(getWorkos(), req.user!, check.orgId!)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
+
       const result = await mergeBrandProperties({
         brandDb,
         domain,
-        userId: req.user!.id,
+        organizationId: check.orgId!,
         properties,
       });
 
@@ -326,7 +357,7 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       if (!Array.isArray(collections)) return res.status(400).json({ error: 'collections array required' });
       if (collections.length > MAX_COLLECTIONS) return res.status(400).json({ error: `Maximum ${MAX_COLLECTIONS} collections per request` });
 
-      const check = await getBrandForEdit(domain, req.user!.id);
+      const check = await getBrandForEdit(domain, req);
       if ('error' in check) return res.status(check.status!).json({ error: check.error });
       const { brand } = check;
 
@@ -361,6 +392,9 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       }
 
       manifest.collections = Array.from(byId.values());
+      if (!await resolveUserOrgMembership(getWorkos(), req.user!, check.orgId!)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       await query(
         'UPDATE brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2',
         [JSON.stringify(manifest), domain]

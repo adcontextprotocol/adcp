@@ -11,6 +11,7 @@ const {
   mockGetRelationshipByWorkosId,
   mockGetRelationshipBySlackId,
   mockRecordEvent,
+  mockResolveUserOrgMembership,
 } = vi.hoisted(() => {
   const mockGetOrganization = vi.fn<any>();
   const mockSearchOrganizations = vi.fn<any>();
@@ -20,6 +21,11 @@ const {
   const mockGetRelationshipByWorkosId = vi.fn<any>();
   const mockGetRelationshipBySlackId = vi.fn<any>();
   const mockRecordEvent = vi.fn<any>().mockResolvedValue(undefined);
+  const mockResolveUserOrgMembership = vi.fn<any>().mockResolvedValue({
+    organizationId: 'org_test_123',
+    role: 'member',
+    source: 'workos',
+  });
   return {
     mockGetOrganization,
     mockSearchOrganizations,
@@ -27,8 +33,16 @@ const {
     mockGetRelationshipByWorkosId,
     mockGetRelationshipBySlackId,
     mockRecordEvent,
+    mockResolveUserOrgMembership,
   };
 });
+
+vi.mock('../../server/src/utils/resolve-user-org-membership.js', () => ({
+  resolveUserOrgMembership: mockResolveUserOrgMembership,
+}));
+vi.mock('../../server/src/auth/workos-client.js', () => ({
+  getWorkos: () => ({}),
+}));
 
 // Mock the stripe-client module
 vi.mock('../../server/src/billing/stripe-client.js', () => ({
@@ -225,7 +239,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers();
       const createLink = handlers.get('create_payment_link')!;
 
-      const result = await createLink({ lookup_key: 'aao_membership_corporate_5m' });
+      const result = await createLink({ organization_id: 'org_test_123', lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -249,7 +263,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(contextWithUserNoOrg);
       const createLink = handlers.get('create_payment_link')!;
 
-      const result = await createLink({ lookup_key: 'aao_membership_individual' });
+      const result = await createLink({ organization_id: 'org_test_123', lookup_key: 'aao_membership_individual' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -272,6 +286,7 @@ describe('billing-tools', () => {
       // an extra property in, the handler must ignore it and use only the
       // memberContext email + user_id.
       const result = await createLink({
+        organization_id: 'org_test_123',
         lookup_key: 'aao_membership_corporate_5m',
         customer_email: 'hallucinated@example.com',
       } as unknown as Record<string, unknown>);
@@ -336,7 +351,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(slackOnlyContext);
       const createLink = handlers.get('create_payment_link')!;
 
-      const result = await createLink({ lookup_key: 'aao_membership_corporate_5m' });
+      const result = await createLink({ organization_id: 'org_test_123', lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -353,7 +368,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(mockMemberContext);
       const createLink = handlers.get('create_payment_link')!;
 
-      const result = await createLink({ lookup_key: 'invalid_key' });
+      const result = await createLink({ organization_id: 'org_test_123', lookup_key: 'invalid_key' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -371,7 +386,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(mockMemberContext);
       const createLink = handlers.get('create_payment_link')!;
 
-      const result = await createLink({ lookup_key: 'aao_membership_corporate_5m' });
+      const result = await createLink({ organization_id: 'org_test_123', lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -400,7 +415,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(mockMemberContext);
       const sendInvoice = handlers.get('send_invoice')!;
 
-      const result = await sendInvoice({ lookup_key: 'aao_membership_corporate_5m' });
+      const result = await sendInvoice({ organization_id: 'org_test_123', lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
@@ -423,7 +438,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers();
       const sendInvoice = handlers.get('send_invoice')!;
 
-      const result = await sendInvoice({ lookup_key: 'aao_membership_corporate_5m' });
+      const result = await sendInvoice({ organization_id: 'org_test_123', lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -443,7 +458,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(mockMemberContext);
       const sendInvoice = handlers.get('send_invoice')!;
 
-      const result = await sendInvoice({ lookup_key: 'invalid_key' });
+      const result = await sendInvoice({ organization_id: 'org_test_123', lookup_key: 'invalid_key' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -463,7 +478,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(mockMemberContext);
       const sendInvoice = handlers.get('send_invoice')!;
 
-      const result = await sendInvoice({ lookup_key: 'aao_membership_corporate_5m' });
+      const result = await sendInvoice({ organization_id: 'org_test_123', lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -501,7 +516,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(mockMemberContext);
       const confirmSend = handlers.get('confirm_send_invoice')!;
 
-      const result = await confirmSend({ lookup_key: 'aao_membership_corporate_5m' });
+      const result = await confirmSend({ organization_id: 'org_test_123', lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(true);
@@ -528,7 +543,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(mockMemberContext);
       const confirmSend = handlers.get('confirm_send_invoice')!;
 
-      const result = await confirmSend({ lookup_key: 'aao_membership_corporate_5m' });
+      const result = await confirmSend({ organization_id: 'org_test_123', lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -541,7 +556,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers();
       const confirmSend = handlers.get('confirm_send_invoice')!;
 
-      const result = await confirmSend({ lookup_key: 'aao_membership_corporate_5m' });
+      const result = await confirmSend({ organization_id: 'org_test_123', lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -557,7 +572,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(mockMemberContext);
       const confirmSend = handlers.get('confirm_send_invoice')!;
 
-      const result = await confirmSend({ lookup_key: 'aao_membership_corporate_5m' });
+      const result = await confirmSend({ organization_id: 'org_test_123', lookup_key: 'aao_membership_corporate_5m' });
       const parsed = JSON.parse(result);
 
       expect(parsed.success).toBe(false);
@@ -640,6 +655,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(mockMemberContext);
 
       const result = JSON.parse(await handlers.get('confirm_send_invoice')({
+        organization_id: 'org_test_123',
         lookup_key: 'aao_membership_explorer_50',
       }));
       expect(result.success).toBe(false);
@@ -666,6 +682,7 @@ describe('billing-tools', () => {
       const handlers = createBillingToolHandlers(mockMemberContext);
 
       const result = JSON.parse(await handlers.get('create_payment_link')({
+        organization_id: 'org_test_123',
         lookup_key: 'bogus_key_does_not_exist',
       }));
       expect(result.success).toBe(false);
@@ -734,7 +751,7 @@ describe('billing-tools', () => {
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
 
-      await handlers.get('confirm_send_invoice')!({ lookup_key: 'aao_membership_explorer_50' });
+      await handlers.get('confirm_send_invoice')!({ organization_id: 'org_test_123', lookup_key: 'aao_membership_explorer_50' });
 
       const call = mockRecordEvent.mock.calls.find(
         ([, type, opts]: any[]) => type === 'tool_error' && opts.data.reason === 'exception',
@@ -759,7 +776,7 @@ describe('billing-tools', () => {
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
       const handlers = createBillingToolHandlers(mockMemberContext);
 
-      await handlers.get('confirm_send_invoice')!({ lookup_key: huge });
+      await handlers.get('confirm_send_invoice')!({ organization_id: 'org_test_123', lookup_key: huge });
 
       const call = mockRecordEvent.mock.calls[0];
       expect(call).toBeTruthy();

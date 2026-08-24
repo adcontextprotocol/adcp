@@ -10,8 +10,8 @@
  * bulk PUT path.
  *
  * Auth: WorkOS session OR Bearer API key (`requireAuth` handles both).
- * Multi-org callers may pass `?org=…` to target a non-primary org;
- * verification goes through `resolveUserOrgMembership`.
+ * Every caller must pass `?org=…`; verification uses the exact authenticated
+ * credential through `resolveUserOrgMembership`.
  *
  * Concurrency: writes go through a `SELECT … FOR UPDATE` on
  * `member_profiles` so two parallel POSTs/PATCHes/DELETEs serialize
@@ -30,7 +30,6 @@ import {
   hasApiAccess,
   resolveMembershipTier,
 } from '../db/organization-db.js';
-import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
 import { getPool } from '../db/client.js';
 import { canonicalizeAgentUrl } from '../db/publisher-db.js';
@@ -38,9 +37,6 @@ import type { AgentConfig } from '../types.js';
 import { isValidAgentType } from '../types.js';
 import { resolveAgentTypes, logResolvedTypeChanges } from './member-profiles.js';
 import { ensureMemberProfileExists } from '../services/member-profile-autopublish.js';
-import { performCreateOrganization } from '../services/organization-bootstrap.js';
-import { isDevModeEnabled, getDevUser } from '../middleware/auth.js';
-import { isFreeEmail, getCompanyDomain } from '../utils/email-domain.js';
 import {
   gateAgentVisibilityForCaller,
   type VisibilityWarning,
@@ -61,10 +57,9 @@ export interface MemberAgentsRouterConfig {
   memberDb: MemberDatabase;
   orgDb: OrganizationDatabase;
   /**
-   * WorkOS client. Required when callers may pass `?org=` to target a
-   * non-primary organization; verification of membership against that org
-   * goes through WorkOS. Pass `null` only in dev/test where the resolver
-   * can short-circuit on the local memberships cache.
+   * WorkOS client used to verify the exact authenticated credential against
+   * the explicitly selected organization. Pass `null` only in dev/test where
+   * the resolver can short-circuit on the local memberships cache.
    */
   workos: WorkOS | null;
   invalidateMemberContextCache: () => void;
@@ -96,11 +91,9 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
   const router = Router();
 
   /**
-   * Pick the org to act on. Honors `?org=…` for multi-org callers (matching
-   * the `PUT /api/me/member-profile` pattern); falls back to the user's
-   * primary org when not supplied. Returns null and writes the error
-   * response when the caller has no associated org or asks for an org
-   * they're not a member of.
+   * Pick the explicitly selected org and verify the authenticated credential
+   * is an active member. Identity linkage and a canonical/primary org are not
+   * organization authorization inputs.
    */
   async function resolveOrgOrSendError(
     req: import('express').Request,
@@ -111,130 +104,27 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
         ? req.query.org
         : null;
 
-    if (requestedOrgId) {
-      const membership = await resolveUserOrgMembership(
-        workos,
-        req.user!.id,
-        requestedOrgId,
-      );
-      if (!membership) {
-        res.status(403).json({
-          error: 'Not authorized',
-          message: 'User is not a member of the requested organization',
-        });
-        return null;
-      }
-      return requestedOrgId;
-    }
-
-    const orgId = await resolvePrimaryOrganization(req.user!.id);
-    if (!orgId) {
-      res.status(400).json({ error: 'No organization associated with this account' });
-      return null;
-    }
-    return orgId;
-  }
-
-  /**
-   * Resolve the caller's primary org, auto-bootstrapping a fresh org if the
-   * caller has zero memberships. The auto-bootstrap path is the
-   * "true one-call storefront" experience: a third-party app holding only
-   * a user's OAuth token can `POST /api/me/agents` once and have the org,
-   * member profile, and agent registration all materialize.
-   *
-   * `resolvePrimaryOrganization` already derives from `organization_memberships`
-   * when `users.primary_organization_id` is null, so a `null` return there
-   * means the user truly has zero memberships — that's the only signal we
-   * need to gate auto-bootstrap.
-   *
-   * Returns null and writes the error response on failure.
-   */
-  async function resolveOrAutoBootstrapOrg(
-    req: import('express').Request,
-    res: import('express').Response,
-  ): Promise<{ orgId: string; orgAutoCreated: boolean } | null> {
-    const requestedOrgId =
-      typeof req.query.org === 'string' && req.query.org.length > 0
-        ? req.query.org
-        : null;
-
-    if (requestedOrgId) {
-      const orgId = await resolveOrgOrSendError(req, res);
-      return orgId ? { orgId, orgAutoCreated: false } : null;
-    }
-
-    const primaryOrgId = await resolvePrimaryOrganization(req.user!.id);
-    if (primaryOrgId) return { orgId: primaryOrgId, orgAutoCreated: false };
-
-    // Fresh-user path: zero memberships → auto-bootstrap.
-    const user = req.user!;
-    const isPersonal = isFreeEmail(user.email);
-    const orgName = deriveDefaultOrgName(user, isPersonal);
-
-    const outcome = await performCreateOrganization(
-      {
-        user: { id: user.id, email: user.email },
-        organization_name: orgName,
-        is_personal: isPersonal,
-        // company_type / revenue_tier / marketing_opt_in: auto-bootstrap has
-        // no UI to capture these. Caller can patch the org later.
-        isDevUser: !!(isDevModeEnabled() && getDevUser(req)),
-        requestContext: {
-          ip: req.ip || (req.headers['x-forwarded-for'] as string) || 'unknown',
-          userAgent: (req.headers['user-agent'] as string) || 'unknown',
-        },
-      },
-      { workos: workos!, orgDb: config.orgDb },
-    );
-
-    if (outcome.kind === 'created' || outcome.kind === 'adopted') {
-      return { orgId: outcome.orgId, orgAutoCreated: true };
-    }
-
-    // Surface the auto-bootstrap failure honestly. None of these should
-    // hit a fresh user in normal flow, but mapping them keeps the contract
-    // legible.
-    if (outcome.kind === 'domain_taken') {
-      res.status(409).json({
-        error: 'Organization exists',
-        message: `An organization for ${outcome.domain} already exists: "${outcome.existingOrgName}". Use the join-request flow instead of registering an agent here.`,
-        existing_org_id: outcome.existingOrgId,
-        existing_org_name: outcome.existingOrgName,
+    if (!requestedOrgId) {
+      res.status(400).json({
+        error: 'organization_selection_required',
+        message: 'org query parameter is required',
       });
       return null;
     }
-    if (outcome.kind === 'corporate_email_required') {
-      // Shouldn't happen — `is_personal` is derived from `isFreeEmail`.
-      res.status(400).json({ error: 'Corporate email required' });
+
+    const membership = await resolveUserOrgMembership(
+      workos,
+      req.user!,
+      requestedOrgId,
+    );
+    if (!membership) {
+      res.status(403).json({
+        error: 'Not authorized',
+        message: 'User is not a member of the requested organization',
+      });
       return null;
     }
-    res.status(400).json({
-      error: 'Auto-bootstrap failed',
-      message: `Could not auto-create an organization for this user (${outcome.kind}). Call POST /api/organizations explicitly.`,
-    });
-    return null;
-  }
-
-  function deriveDefaultOrgName(
-    user: { email: string; firstName?: string; lastName?: string },
-    isPersonal: boolean,
-  ): string {
-    if (isPersonal) {
-      const suffix = "'s Workspace";
-      const fullName = [user.firstName, user.lastName]
-        .filter(Boolean)
-        .join(' ')
-        .normalize('NFC')
-        .replace(/[^\p{L}\p{N} \-_'.‘’]/gu, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .replace(/^[^\p{L}\p{N}]+/u, '')
-        .substring(0, 100 - suffix.length);
-      return fullName ? `${fullName}${suffix}` : 'Personal Workspace';
-    }
-    const domain = getCompanyDomain(user.email) || '';
-    const root = domain.split('.')[0] || 'Organization';
-    return root.charAt(0).toUpperCase() + root.slice(1);
+    return membership.organizationId;
   }
 
   function isParseableUrl(value: string): boolean {
@@ -259,6 +149,7 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
    */
   async function applyMemberAgentMutation(
     orgId: string,
+    principal: import('../auth/organization-principal.js').OrgAuthorizationPrincipal,
     mutate: (existing: AgentConfig[]) => RouteResult | Promise<RouteResult>,
   ): Promise<{ status: number; body: Record<string, unknown> | null }> {
     const pool = getPool();
@@ -295,6 +186,16 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       const callerHasApi = hasApiAccess(resolveMembershipTier(org));
       const { agents: gated, warnings } = gateAgentVisibilityForCaller(result.next, callerHasApi);
       const typed = (await resolveAgentTypes(gated)) as AgentConfig[];
+
+      // Close the validation-to-write revocation window. This runs after the
+      // profile row lock and immediately before the first persistent write.
+      if (!await resolveUserOrgMembership(workos, principal, orgId)) {
+        await client.query('ROLLBACK');
+        return {
+          status: 403,
+          body: { error: 'Organization authorization was revoked' },
+        };
+      }
       await logResolvedTypeChanges(gated, typed, orgId);
 
       // Stage 2 of #4159 dropped the primary_brand_domain column; this
@@ -404,9 +305,8 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
   // POST /api/me/agents — register or update a single agent (idempotent on url)
   router.post('/', requireAuth, brandCreationRateLimiter, async (req, res) => {
     try {
-      const resolved = await resolveOrAutoBootstrapOrg(req, res);
-      if (!resolved) return;
-      const { orgId, orgAutoCreated } = resolved;
+      const orgId = await resolveOrgOrSendError(req, res);
+      if (!orgId) return;
 
       const body = (req.body ?? {}) as Partial<AgentConfig>;
       if (typeof body.url !== 'string' || body.url.length === 0) {
@@ -466,6 +366,9 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       // private-by-default invariant stay consistent across surfaces.
       let profileAutoCreated = false;
       try {
+        if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
+          return res.status(403).json({ error: 'Organization authorization was revoked' });
+        }
         const org = await config.orgDb.getOrganization(orgId);
         const orgName = org?.name?.trim();
         if (orgName) {
@@ -483,7 +386,7 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
         logger.warn({ err, orgId }, 'POST /api/me/agents profile auto-bootstrap failed; falling through');
       }
 
-      const result = await applyMemberAgentMutation(orgId, (existing) => {
+      const result = await applyMemberAgentMutation(orgId, req.user!, (existing) => {
         // Match existing rows in canonical form so a legacy non-canonical
         // entry (pre-#3573) gets upgraded in place rather than duplicated.
         const idx = existing.findIndex((a) => (canonicalizeAgentUrl(a.url) ?? a.url) === targetUrl);
@@ -497,9 +400,11 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
           status: isUpdate ? 200 : 201,
         };
       });
+      if (result.status < 200 || result.status >= 300) {
+        return res.status(result.status).json(result.body ?? {});
+      }
       const shaped = shapeWriteBody(result.body, targetUrl);
       if (result.status >= 200 && result.status < 300) {
-        if (orgAutoCreated) shaped.org_auto_created = true;
         if (profileAutoCreated) shaped.profile_auto_created = true;
       }
       return res.status(result.status).json(shaped);
@@ -549,7 +454,7 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
         }
       }
 
-      const result = await applyMemberAgentMutation(orgId, (existing) => {
+      const result = await applyMemberAgentMutation(orgId, req.user!, (existing) => {
         // Canonical-form match so a legacy non-canonical row is still found.
         const idx = existing.findIndex((a) => (canonicalizeAgentUrl(a.url) ?? a.url) === targetUrl);
         if (idx === -1) {
@@ -564,6 +469,9 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
         );
         return { kind: 'commit' as const, next, status: 200 };
       });
+      if (result.status < 200 || result.status >= 300) {
+        return res.status(result.status).json(result.body ?? {});
+      }
       return res.status(result.status).json(shapeWriteBody(result.body, targetUrl));
     } catch (err) {
       logger.error({ err }, 'PATCH /api/me/agents/:url failed');
@@ -585,7 +493,7 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
         return res.status(400).json({ error: 'url is not a valid agent URL' });
       }
 
-      const result = await applyMemberAgentMutation(orgId, (existing) => {
+      const result = await applyMemberAgentMutation(orgId, req.user!, (existing) => {
         const idx = existing.findIndex((a) => (canonicalizeAgentUrl(a.url) ?? a.url) === targetUrl);
         if (idx === -1) {
           return {

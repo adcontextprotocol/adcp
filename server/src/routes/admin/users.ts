@@ -19,11 +19,16 @@ import { getPool } from '../../db/client.js';
 import { backfillOrganizationMemberships, backfillUsers, backfillOrganizationDomains } from '../workos-webhooks.js';
 import { sendSlackInviteEmail, hasSlackInviteBeenSent } from '../../notifications/email.js';
 import { getWorkos } from '../../auth/workos-client.js';
-import { mergeUsers } from '../../db/user-merge-db.js';
+import {
+  attachStateEmptyCredential,
+  CredentialAlreadyLinkedError,
+  CredentialHasStateError,
+} from '../../db/user-merge-db.js';
 import {
   buildCountryMembersCsv,
   type CountryMemberExportRow,
 } from './country-members-export.js';
+import { getOrganizationAuthorizationUserId } from '../../auth/organization-principal.js';
 
 const logger = createLogger('admin-users-routes');
 
@@ -832,7 +837,7 @@ export function createAdminUsersRouter(): Router {
   // verification email is sent to the new address. Phase 3 may add one.
   router.post('/:userId/linked-emails', ...requireGlobalAdmin, async (req, res) => {
     const adminEmail = req.user!.email;
-    const adminUserId = req.user!.id;
+    const adminUserId = getOrganizationAuthorizationUserId(req.user!);
     const existingUserId = req.params.userId;
     const rawEmail = (req.body?.email as string | undefined)?.trim();
 
@@ -906,22 +911,22 @@ export function createAdminUsersRouter(): Router {
     }
 
     // Insert into local users — fires the AFTER INSERT trigger which creates
-    // a singleton identity for the new WorkOS user. mergeUsers will then
-    // re-point the new user's binding to the existing user's identity.
+    // a singleton identity for the new WorkOS user. The state-empty attach
+    // operation then re-points only the credential binding.
+    let localUserCreated = false;
     try {
-      await pool.query(
+      const inserted = await pool.query(
         `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified,
                             workos_created_at, workos_updated_at, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-         ON CONFLICT (workos_user_id) DO NOTHING`,
+         ON CONFLICT (workos_user_id) DO NOTHING
+         RETURNING workos_user_id`,
         [newWorkosUser.id, newWorkosUser.email, newWorkosUser.firstName, newWorkosUser.lastName,
          newWorkosUser.emailVerified, newWorkosUser.createdAt, newWorkosUser.updatedAt]
       );
+      localUserCreated = inserted.rowCount === 1;
 
-      // Merge: moves zero data rows (the new user has nothing), rebinds the
-      // new user's identity_workos_users row to the existing user's identity
-      // as is_primary = FALSE, drops the new user's orphan singleton identity.
-      await mergeUsers(existingUserId, newWorkosUser.id, adminUserId);
+      await attachStateEmptyCredential(existingUserId, newWorkosUser.id, adminUserId);
     } catch (err) {
       logger.error(
         { err, newWorkosUserId: newWorkosUser.id, existingUserId },
@@ -938,6 +943,43 @@ export function createAdminUsersRouter(): Router {
           { err: deleteErr, newWorkosUserId: newWorkosUser.id },
           'Admin bind-email: failed to roll back WorkOS user after local-bind failure'
         );
+      }
+      if (cleanedUp && localUserCreated) {
+        const cleanupClient = await pool.connect();
+        try {
+          await cleanupClient.query('BEGIN');
+          const binding = await cleanupClient.query<{ identity_id: string }>(
+            `SELECT identity_id
+               FROM identity_workos_users
+              WHERE workos_user_id = $1
+              FOR UPDATE`,
+            [newWorkosUser.id],
+          );
+          await cleanupClient.query(
+            `DELETE FROM users WHERE workos_user_id = $1`,
+            [newWorkosUser.id],
+          );
+          if (binding.rows[0]) {
+            await cleanupClient.query(
+              `DELETE FROM identities i
+                WHERE i.id = $1
+                  AND NOT EXISTS (
+                    SELECT 1 FROM identity_workos_users iwu WHERE iwu.identity_id = i.id
+                  )`,
+              [binding.rows[0].identity_id],
+            );
+          }
+          await cleanupClient.query('COMMIT');
+        } catch (cleanupErr) {
+          await cleanupClient.query('ROLLBACK').catch(() => undefined);
+          cleanedUp = false;
+          logger.error(
+            { err: cleanupErr, newWorkosUserId: newWorkosUser.id },
+            'Admin bind-email: failed to roll back local user after upstream cleanup',
+          );
+        } finally {
+          cleanupClient.release();
+        }
       }
       return res.status(500).json({
         error: 'Failed to bind sign-in email',
@@ -1011,13 +1053,12 @@ export function createAdminUsersRouter(): Router {
   // user alive). Bypasses createUser, which avoids the case where WorkOS
   // returns 400 because the email is already in use.
   //
-  // If the target WorkOS user is itself bound to a different identity with
-  // its own app-state, mergeUsers moves that data to this user — admin is
-  // asserting the two represent the same person. The trust model and
-  // confirmation UX live on the admin frontend.
+  // A credential can only be attached when it has no application-owned
+  // state. Existing memberships and other state require the future
+  // provenance-preserving consolidation flow.
   router.post('/:userId/credentials', ...requireGlobalAdmin, async (req, res) => {
     const adminEmail = req.user!.email;
-    const adminUserId = req.user!.id;
+    const adminUserId = getOrganizationAuthorizationUserId(req.user!);
     const existingUserId = req.params.userId;
     const credId = (req.body?.workos_user_id as string | undefined)?.trim();
 
@@ -1055,7 +1096,7 @@ export function createAdminUsersRouter(): Router {
 
     // If credId is not in our local users table, fetch from WorkOS and
     // upsert. The AFTER INSERT trigger creates a singleton identity which
-    // mergeUsers will then re-point.
+    // the state-empty attach operation can safely re-point.
     const credLocal = await pool.query(
       `SELECT email FROM users WHERE workos_user_id = $1`,
       [credId]
@@ -1081,48 +1122,26 @@ export function createAdminUsersRouter(): Router {
       }
     }
 
-    // Foot-gun gate: refuse silent consolidation. If credId has any app-state
-    // attached (org membership, points, certification work, working-group
-    // membership), binding will MOVE it onto the host — that's a real account
-    // being absorbed, not a fresh credential being added. Require explicit
-    // `consolidate: true` in the body so the admin has stated intent.
-    //
-    // Cheap signal: check the four most user-facing tables. False negatives
-    // (e.g., a Slack-only points-bearing user with no org_membership) only
-    // matter if the points themselves are valuable enough to warn about, and
-    // they will move forward correctly either way.
-    const consolidateConfirmed = req.body?.consolidate === true;
-    if (!consolidateConfirmed) {
-      const stateCheck = await pool.query<{ has_state: boolean }>(
-        `SELECT EXISTS (
-           SELECT 1 FROM organization_memberships WHERE workos_user_id = $1
-           UNION ALL
-           SELECT 1 FROM working_group_memberships WHERE workos_user_id = $1
-           UNION ALL
-           SELECT 1 FROM certification_attempts WHERE workos_user_id = $1
-           UNION ALL
-           SELECT 1 FROM community_points WHERE workos_user_id = $1
-           LIMIT 1
-         ) AS has_state`,
-        [credId]
-      );
-      if (stateCheck.rows[0].has_state) {
+    // Existing credentials may be attached only when they have no
+    // application-owned state. `consolidate: true` is intentionally ignored:
+    // operator confirmation cannot make a destructive merge reversible.
+    try {
+      await attachStateEmptyCredential(existingUserId, credId, adminUserId);
+    } catch (err) {
+      if (err instanceof CredentialAlreadyLinkedError) {
         return res.status(409).json({
-          error: 'This WorkOS user has its own AAO data',
-          message: 'Binding will move that data (organization memberships, working-group memberships, certification work, community points) to the host. Re-submit with `"consolidate": true` to confirm this is the intended consolidation.',
-          consolidate_confirmation_required: true,
+          error: 'credential_already_linked',
+          message: 'This credential is already linked to another identity.',
         });
       }
-    }
-
-    // mergeUsers moves any app-state from credId to existingUserId, rebinds
-    // credId's identity_workos_users row to existingUserId's identity as
-    // is_primary = FALSE, and drops the orphan identity. Throws if either
-    // user lacks an identity binding.
-    try {
-      await mergeUsers(existingUserId, credId, adminUserId);
-    } catch (err) {
-      logger.error({ err, existingUserId, credId }, 'Admin link-credential: mergeUsers failed');
+      if (err instanceof CredentialHasStateError) {
+        return res.status(409).json({
+          error: 'credential_has_state',
+          message: 'This credential has application state and cannot be attached until the provenance-preserving merge flow is available.',
+          references: err.references,
+        });
+      }
+      logger.error({ err, existingUserId, credId }, 'Admin link-credential: state-empty attach failed');
       return res.status(500).json({ error: 'Failed to bind credential' });
     }
 
@@ -1151,7 +1170,7 @@ export function createAdminUsersRouter(): Router {
   // credential to primary first (separate endpoint, not yet built).
   router.delete('/:userId/credentials/:credentialId', ...requireGlobalAdmin, async (req, res) => {
     const adminEmail = req.user!.email;
-    const adminUserId = req.user!.id;
+    const adminUserId = getOrganizationAuthorizationUserId(req.user!);
     // For non-singleton admin identities (today: nobody — admins are still
     // singleton-bound — but Phase 3+ may change), record the auth credential
     // separately from the canonical id so forensics can tell them apart.
@@ -1168,21 +1187,26 @@ export function createAdminUsersRouter(): Router {
     try {
       await client.query('BEGIN');
 
-      const check = await client.query<{ is_primary: boolean; identity_id: string }>(
-        `SELECT iwu.is_primary, iwu.identity_id
-           FROM identity_workos_users iwu
-          WHERE iwu.workos_user_id = $1
-            AND iwu.identity_id = (
-              SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $2
-            )`,
-        [credId, userId]
+      const bindings = await client.query<{
+        workos_user_id: string;
+        is_primary: boolean;
+        identity_id: string;
+      }>(
+        `SELECT workos_user_id, is_primary, identity_id
+           FROM identity_workos_users
+          WHERE workos_user_id = ANY($1)
+          ORDER BY workos_user_id
+          FOR UPDATE`,
+        [[credId, userId]],
       );
+      const host = bindings.rows.find((row) => row.workos_user_id === userId);
+      const target = bindings.rows.find((row) => row.workos_user_id === credId);
 
-      if (check.rows.length === 0) {
+      if (!host || !target || target.identity_id !== host.identity_id) {
         await client.query('ROLLBACK');
         return res.status(404).json({ error: 'Credential not bound to this user' });
       }
-      if (check.rows[0].is_primary) {
+      if (target.is_primary) {
         await client.query('ROLLBACK');
         return res.status(409).json({
           error: 'Cannot remove the primary credential',
@@ -1190,15 +1214,26 @@ export function createAdminUsersRouter(): Router {
         });
       }
 
-      const detachedIdentityId = check.rows[0].identity_id;
+      const detachedIdentityId = target.identity_id;
+      const actorIdentity = await client.query<{ identity_id: string }>(
+        `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+        [adminUserId],
+      );
 
       // Unbind, then create a fresh singleton identity for the detached
       // credential so the Phase 1 invariant ("every user has exactly one
       // binding") holds.
-      await client.query(
-        `DELETE FROM identity_workos_users WHERE workos_user_id = $1`,
-        [credId]
+      const deleted = await client.query(
+        `DELETE FROM identity_workos_users
+          WHERE workos_user_id = $1
+            AND identity_id = $2
+            AND is_primary = FALSE
+        RETURNING 1`,
+        [credId, detachedIdentityId],
       );
+      if (deleted.rowCount !== 1) {
+        throw new Error('Credential binding changed during unlink');
+      }
       const newIdentity = await client.query<{ id: string }>(
         `INSERT INTO identities DEFAULT VALUES RETURNING id`
       );
@@ -1208,19 +1243,13 @@ export function createAdminUsersRouter(): Router {
         [credId, newIdentity.rows[0].id]
       );
 
-      // Audit log
-      const auditOrg = await client.query<{ workos_organization_id: string }>(
-        `SELECT workos_organization_id FROM organization_memberships
-          WHERE workos_user_id = $1 LIMIT 1`,
-        [userId]
-      );
-      const auditOrgId = auditOrg.rows[0]?.workos_organization_id || 'system';
+      // Identity operations are global, not scoped to an arbitrary membership.
       await client.query(
         `INSERT INTO registry_audit_log (
           workos_organization_id, workos_user_id, action, resource_type, resource_id, details
         ) VALUES ($1, $2, 'unbind_credential', 'user', $3, $4)`,
         [
-          auditOrgId,
+          'system',
           adminUserId,
           credId,
           JSON.stringify({
@@ -1230,6 +1259,8 @@ export function createAdminUsersRouter(): Router {
             // Auth credential the admin used (may differ from adminUserId
             // post-id-swap if the admin has multiple bound credentials).
             acting_workos_user_id: adminAuthCredentialId,
+            authenticated_credential_id: adminUserId,
+            resolved_identity_id: actorIdentity.rows[0]?.identity_id ?? null,
           }),
         ]
       );
@@ -1262,32 +1293,10 @@ export function createAdminUsersRouter(): Router {
 
   // POST /api/admin/users/:userId/credentials/:credentialId/promote
   //
-  // Make :credentialId the primary credential of the host's identity.
-  // Moves all of the current primary's app-state forward to :credentialId
-  // (so reads keyed on the canonical workos_user_id land on the right
-  // place), swaps `is_primary`, audit row.
-  //
-  // Use case: after a `link-existing` bind, the new credential ended up as
-  // the right one for the workspace the person actually wants (e.g., a
-  // work email that's a member of a paid org), but the canonical primary
-  // sits on a different credential whose org_memberships are a different
-  // (personal) workspace. Promote re-points the canonical so id-swap
-  // routes both sign-ins to the org-bearing credential.
-  //
-  // Implementation note: we run mergeUsers(newPrimary, currentPrimary)
-  // which moves data forward and demotes the old primary as a side
-  // effect (it becomes is_primary=FALSE). Both bindings are non-primary
-  // for a brief window between the mergeUsers commit and the follow-up
-  // UPDATE; during that window `attachIdentityId` finds no primary and
-  // skips the id-swap, so requests fall back to the auth user's slice of
-  // data — degraded but not broken. A failure of the follow-up UPDATE
-  // would persist that degraded state; the audit row records the intent
-  // and the recovery is a one-line UPDATE.
+  // Primary promotion is disabled until it can preserve the provenance of
+  // every credential-owned row. It must never turn linked credentials into
+  // an implicit union of organization authority.
   router.post('/:userId/credentials/:credentialId/promote', ...requireGlobalAdmin, async (req, res) => {
-    const adminEmail = req.user!.email;
-    const adminUserId = req.user!.id;
-    const adminIdentityId = req.user!.identityId;
-    const adminAuthCredentialId = req.user!.authWorkosUserId ?? req.user!.id;
     const userId = req.params.userId;
     const newPrimaryId = req.params.credentialId;
 
@@ -1301,21 +1310,9 @@ export function createAdminUsersRouter(): Router {
     // and target's email (for the audit row + caller display).
     const check = await pool.query<{
       new_is_primary: boolean;
-      current_primary_id: string | null;
-      identity_id: string;
-      target_email: string | null;
     }>(
-      `SELECT
-          target.is_primary AS new_is_primary,
-          primary_iwu.workos_user_id AS current_primary_id,
-          target.identity_id,
-          target_user.email AS target_email
+      `SELECT target.is_primary AS new_is_primary
         FROM identity_workos_users target
-        LEFT JOIN identity_workos_users primary_iwu
-          ON primary_iwu.identity_id = target.identity_id
-         AND primary_iwu.is_primary = TRUE
-        LEFT JOIN users target_user
-          ON target_user.workos_user_id = target.workos_user_id
        WHERE target.workos_user_id = $1
          AND target.identity_id = (
            SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $2
@@ -1330,101 +1327,9 @@ export function createAdminUsersRouter(): Router {
       return res.json({ promoted: true, message: 'Already primary — no change.' });
     }
 
-    const identityId = check.rows[0].identity_id;
-    const currentPrimaryId = check.rows[0].current_primary_id;
-    const targetEmail = check.rows[0].target_email;
-
-    // Refuse self-promote: an admin shouldn't mutate their own identity via
-    // this admin endpoint (it would shuffle their own session's app-state
-    // mid-request). If they need to promote one of their own credentials,
-    // they sign in as the target person and use the user-facing flow (or
-    // another admin handles it).
-    if (adminIdentityId && adminIdentityId === identityId) {
-      return res.status(409).json({
-        error: 'Cannot promote your own credential',
-        message: 'This identity belongs to the signed-in admin. Have a different admin perform the promote.',
-      });
-    }
-
-    // Edge case: identity has no current primary (broken invariant from a
-    // prior partial promote, manual SQL, etc.). Just set the target as
-    // primary; nothing to move forward.
-    if (!currentPrimaryId) {
-      await pool.query(
-        `UPDATE identity_workos_users SET is_primary = TRUE WHERE workos_user_id = $1`,
-        [newPrimaryId]
-      );
-      logger.info(
-        { adminEmail, userId, newPrimaryId, identityId, recovered_orphan: true },
-        'Promote: identity had no current primary; set target as primary directly'
-      );
-      invalidateSessionsForUsers([newPrimaryId]);
-      return res.json({
-        promoted: true,
-        message: 'Promoted (no current primary to demote — invariant repaired).',
-      });
-    }
-
-    // Run mergeUsers with ensurePrimaryFlag so the data move, the secondary
-    // rebind, AND the new primary's is_primary=TRUE flip all happen in one
-    // transaction. This closes the window where the identity has zero
-    // primaries.
-    try {
-      await mergeUsers(newPrimaryId, currentPrimaryId, adminUserId, { ensurePrimaryFlag: true });
-    } catch (err) {
-      logger.error(
-        { err, userId, newPrimaryId, currentPrimaryId },
-        'Promote: mergeUsers failed'
-      );
-      return res.status(500).json({ error: 'Failed to promote credential' });
-    }
-
-    // Audit row. mergeUsers writes its own merge_user audit; this adds the
-    // promote-specific record with target email + identity context. Failure
-    // here doesn't unwind the promote (the data + primary swap are
-    // committed) — log loud so we notice.
-    try {
-      const auditOrg = await pool.query<{ workos_organization_id: string }>(
-        `SELECT workos_organization_id FROM organization_memberships
-          WHERE workos_user_id = $1 LIMIT 1`,
-        [newPrimaryId]
-      );
-      const auditOrgId = auditOrg.rows[0]?.workos_organization_id || 'system';
-      await pool.query(
-        `INSERT INTO registry_audit_log (
-          workos_organization_id, workos_user_id, action, resource_type, resource_id, details
-        ) VALUES ($1, $2, 'promote_credential_to_primary', 'user', $3, $4)`,
-        [
-          auditOrgId,
-          adminUserId,
-          newPrimaryId,
-          JSON.stringify({
-            host_user_id: userId,
-            identity_id: identityId,
-            previous_primary_id: currentPrimaryId,
-            new_primary_id: newPrimaryId,
-            target_email: targetEmail,
-            acting_workos_user_id: adminAuthCredentialId,
-          }),
-        ]
-      );
-    } catch (err) {
-      logger.error({ err, userId, newPrimaryId }, 'Promote: audit row insert failed (operation already committed)');
-    }
-
-    invalidateSessionsForUsers([userId, newPrimaryId, currentPrimaryId]);
-
-    logger.info(
-      { adminEmail, identityId, previous_primary_id: currentPrimaryId, new_primary_id: newPrimaryId },
-      'Admin promoted credential to primary'
-    );
-
-    return res.json({
-      promoted: true,
-      identity_id: identityId,
-      previous_primary_id: currentPrimaryId,
-      new_primary_id: newPrimaryId,
-      message: 'Credential is now primary. Sign-ins via either bound credential will route here.',
+    return res.status(409).json({
+      error: 'credential_promotion_disabled',
+      message: 'Primary promotion is disabled until it can preserve application-state provenance without rewriting organization memberships.',
     });
   });
 

@@ -17,6 +17,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { contentProposeRateLimiter, contentFetchUrlRateLimiter, contentAssetUploadRateLimiter } from '../middleware/rate-limit.js';
 import { getPool } from '../db/client.js';
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 import { sendChannelMessage } from '../slack/client.js';
 import type { SlackBlockMessage } from '../slack/types.js';
 import { notifyPublishedPost, sendSocialAmplificationDM } from '../notifications/slack.js';
@@ -31,7 +32,9 @@ import { generateIllustration } from '../services/illustration-generator.js';
 import { createIllustration, approveIllustration } from '../db/illustration-db.js';
 import { resolveEscalationsForPerspective } from '../db/escalation-db.js';
 import { listMyContent as listMyContentService, MyContentError } from '../services/my-content-service.js';
-import { checkContentSubmissionTier } from '../services/membership-tiers.js';
+import { checkOrganizationContentSubmissionTier } from '../services/membership-tiers.js';
+import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
+import { getWorkos } from '../auth/workos-client.js';
 import { normalizePerspectiveExternalUrl } from '../utils/perspective-url.js';
 
 const logger = createLogger('content-routes');
@@ -88,6 +91,7 @@ interface ContentAuthor {
 }
 
 interface ProposeContentRequest {
+  organization_id?: string;
   title: string;
   subtitle?: string;
   content?: string;
@@ -329,6 +333,15 @@ async function isCommitteeLead(committeeId: string, userId: string): Promise<boo
   return result.rows.length > 0;
 }
 
+async function canReviewWorkingGroupContent(
+  user: ContentUser,
+  workingGroupId: string,
+): Promise<boolean> {
+  const authorizationUserId = getOrganizationAuthorizationUserId(user);
+  return await isWebUserAAOAdmin(authorizationUserId)
+    || await isCommitteeLead(workingGroupId, authorizationUserId);
+}
+
 /**
  * Get user info for author display
  */
@@ -351,6 +364,7 @@ async function getUserInfo(userId: string): Promise<{ name: string } | null> {
  */
 export interface ContentUser {
   id: string;
+  authWorkosUserId?: string;
   email?: string;
 }
 
@@ -374,6 +388,7 @@ export async function proposeContentForUser(
   user: ContentUser,
   request: ProposeContentRequest
 ): Promise<ProposeContentResult> {
+  const authorizationUserId = getOrganizationAuthorizationUserId(user);
   const {
     title,
     subtitle,
@@ -408,8 +423,13 @@ export async function proposeContentForUser(
   // Membership tier gate — Professional+ required for content submission.
   // System users (system:* prefix) and site admins are exempt, matching the
   // rate-limiter carve-out and the existing admin bypass pattern below.
-  if (!user.id.startsWith('system:') && !(await isWebUserAAOAdmin(user.id))) {
-    const eligible = await checkContentSubmissionTier(user.id);
+  if (!user.id.startsWith('system:') && !(await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(user)))) {
+    const organizationId = request.organization_id?.trim();
+    if (!organizationId) {
+      return { success: false, error: 'organization_id is required for member content submissions' };
+    }
+    const membership = await resolveUserOrgMembership(getWorkos(), user, organizationId);
+    const eligible = Boolean(membership) && await checkOrganizationContentSubmissionTier(organizationId);
     if (!eligible) {
       logger.warn({ userId: user.id }, 'proposeContentForUser blocked — insufficient membership tier');
       return {
@@ -487,15 +507,15 @@ export async function proposeContentForUser(
   const acceptsPublicSubmissions = committee.accepts_public_submissions;
 
   // Check if user can submit to this collection
-  const userIsLead = await isCommitteeLead(committeeId, user.id);
-  const userIsAdmin = await isWebUserAAOAdmin(user.id);
+  const userIsLead = await isCommitteeLead(committeeId, authorizationUserId);
+  const userIsAdmin = await isWebUserAAOAdmin(authorizationUserId);
 
   // For non-public collections, user must be a member
   if (!acceptsPublicSubmissions && !userIsLead && !userIsAdmin) {
     const membershipResult = await pool.query(
       `SELECT 1 FROM working_group_memberships
        WHERE working_group_id = $1 AND workos_user_id = $2 AND status = 'active'`,
-      [committeeId, user.id]
+      [committeeId, authorizationUserId]
     );
     if (membershipResult.rows.length === 0) {
       logger.warn({ committeeSlug, userId: user.id }, 'Content proposal failed: user not a member');
@@ -724,6 +744,7 @@ export async function listPendingContentForUser(
 ): Promise<PendingContentResult> {
   const pool = getPool();
   const { committeeSlug } = opts;
+  const authorizationUserId = getOrganizationAuthorizationUserId(user);
 
   // Committees this user leads (direct workos_user_id or via slack mapping)
   const leaderResult = await pool.query(
@@ -732,10 +753,10 @@ export async function listPendingContentForUser(
      LEFT JOIN slack_user_mappings sm ON wgl.user_id = sm.slack_user_id AND sm.workos_user_id IS NOT NULL
      JOIN working_groups wg ON wg.id = wgl.working_group_id
      WHERE wgl.user_id = $1 OR sm.workos_user_id = $1`,
-    [user.id]
+    [authorizationUserId]
   );
   const ledCommitteeIds = leaderResult.rows.map(c => c.id);
-  const userIsAdmin = await isWebUserAAOAdmin(user.id);
+  const userIsAdmin = await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(user));
 
   if (!userIsAdmin && ledCommitteeIds.length === 0) {
     return { items: [], summary: { total: 0, by_collection: {} } };
@@ -856,12 +877,12 @@ export async function approveContentForUser(
     };
   }
 
-  const userIsAdmin = await isWebUserAAOAdmin(user.id);
-  const userIsLead = content.working_group_id
-    ? await isCommitteeLead(content.working_group_id, user.id)
-    : false;
+  const authorizationUserId = getOrganizationAuthorizationUserId(user);
+  const canReview = content.working_group_id
+    ? await canReviewWorkingGroupContent(user, content.working_group_id)
+    : await isWebUserAAOAdmin(authorizationUserId);
 
-  if (!userIsAdmin && !userIsLead) {
+  if (!canReview) {
     return {
       success: false,
       error: 'permission_denied',
@@ -872,17 +893,24 @@ export async function approveContentForUser(
   const newStatus: 'published' | 'draft' = publishImmediately ? 'published' : 'draft';
   const publishedAt = publishImmediately ? new Date().toISOString() : null;
 
+  const canStillReview = content.working_group_id
+    ? await canReviewWorkingGroupContent(user, content.working_group_id)
+    : await isWebUserAAOAdmin(authorizationUserId);
+  if (!canStillReview) {
+    return { success: false, error: 'permission_denied', error_message: 'Your review access is no longer active' };
+  }
+
   await pool.query(
     `UPDATE perspectives
      SET status = $1, published_at = $2,
          reviewed_by_user_id = $3, reviewed_at = NOW()
      WHERE id = $4`,
-    [newStatus, publishedAt, user.id, contentId]
+    [newStatus, publishedAt, authorizationUserId, contentId]
   );
 
   logger.info({
     contentId,
-    reviewerId: user.id,
+    reviewerId: authorizationUserId,
     newStatus,
     committeeSlug: content.committee_slug,
   }, 'Content approved');
@@ -926,12 +954,12 @@ export async function approveContentForUser(
   // even if the escalation resolve query errors. See #2702.
   resolveEscalationsForPerspective(
     contentId,
-    user.id,
+    authorizationUserId,
     `Auto-resolved: content approved by reviewer`
   ).then(ids => {
     if (ids.length > 0) {
       logger.info(
-        { contentId, reviewerId: user.id, resolvedEscalationIds: ids },
+        { contentId, reviewerId: authorizationUserId, resolvedEscalationIds: ids },
         'Auto-resolved escalations linked to approved content'
       );
     }
@@ -988,12 +1016,12 @@ export async function rejectContentForUser(
     };
   }
 
-  const userIsAdmin = await isWebUserAAOAdmin(user.id);
-  const userIsLead = content.working_group_id
-    ? await isCommitteeLead(content.working_group_id, user.id)
-    : false;
+  const authorizationUserId = getOrganizationAuthorizationUserId(user);
+  const canReview = content.working_group_id
+    ? await canReviewWorkingGroupContent(user, content.working_group_id)
+    : await isWebUserAAOAdmin(authorizationUserId);
 
-  if (!userIsAdmin && !userIsLead) {
+  if (!canReview) {
     return {
       success: false,
       error: 'permission_denied',
@@ -1001,17 +1029,24 @@ export async function rejectContentForUser(
     };
   }
 
+  const canStillReview = content.working_group_id
+    ? await canReviewWorkingGroupContent(user, content.working_group_id)
+    : await isWebUserAAOAdmin(authorizationUserId);
+  if (!canStillReview) {
+    return { success: false, error: 'permission_denied', error_message: 'Your review access is no longer active' };
+  }
+
   await pool.query(
     `UPDATE perspectives
      SET status = 'rejected', rejection_reason = $1,
          reviewed_by_user_id = $2, reviewed_at = NOW()
      WHERE id = $3`,
-    [reason, user.id, contentId]
+    [reason, authorizationUserId, contentId]
   );
 
   logger.info({
     contentId,
-    reviewerId: user.id,
+    reviewerId: authorizationUserId,
     reason,
     committeeSlug: content.committee_slug,
   }, 'Content rejected');
@@ -1061,12 +1096,12 @@ export async function requestRevisionsForUser(
     };
   }
 
-  const userIsAdmin = await isWebUserAAOAdmin(user.id);
-  const userIsLead = content.working_group_id
-    ? await isCommitteeLead(content.working_group_id, user.id)
-    : false;
+  const authorizationUserId = getOrganizationAuthorizationUserId(user);
+  const canReview = content.working_group_id
+    ? await canReviewWorkingGroupContent(user, content.working_group_id)
+    : await isWebUserAAOAdmin(authorizationUserId);
 
-  if (!userIsAdmin && !userIsLead) {
+  if (!canReview) {
     return {
       success: false,
       error: 'permission_denied',
@@ -1074,17 +1109,24 @@ export async function requestRevisionsForUser(
     };
   }
 
+  const canStillReview = content.working_group_id
+    ? await canReviewWorkingGroupContent(user, content.working_group_id)
+    : await isWebUserAAOAdmin(authorizationUserId);
+  if (!canStillReview) {
+    return { success: false, error: 'permission_denied', error_message: 'Your review access is no longer active' };
+  }
+
   await pool.query(
     `UPDATE perspectives
      SET status = 'needs_revisions', revision_notes = $1,
          revision_requested_at = NOW(), reviewed_by_user_id = $2, reviewed_at = NOW()
      WHERE id = $3`,
-    [notes, user.id, contentId]
+    [notes, authorizationUserId, contentId]
   );
 
   logger.info({
     contentId,
-    reviewerId: user.id,
+    reviewerId: authorizationUserId,
     committeeSlug: content.committee_slug,
   }, 'Content revision requested');
 
@@ -1213,7 +1255,7 @@ export function createContentRouter(): Router {
     try {
       const user = req.user!;
       const result = await proposeContentForUser(
-        { id: user.id, email: user.email },
+        { id: user.id, authWorkosUserId: user.authWorkosUserId, email: user.email },
         req.body as ProposeContentRequest
       );
 
@@ -1251,7 +1293,7 @@ export function createContentRouter(): Router {
       const user = req.user!;
       const committeeSlug = req.query.committee_slug as string | undefined;
       const result = await listPendingContentForUser(
-        { id: user.id, email: user.email },
+        { id: user.id, authWorkosUserId: user.authWorkosUserId, email: user.email },
         { committeeSlug }
       );
       res.json(result);
@@ -1271,7 +1313,7 @@ export function createContentRouter(): Router {
       const { publish_immediately = true } = req.body;
 
       const result = await approveContentForUser(
-        { id: user.id, email: user.email },
+        { id: user.id, authWorkosUserId: user.authWorkosUserId, email: user.email },
         id,
         { publishImmediately: publish_immediately }
       );
@@ -1396,7 +1438,7 @@ export function createContentRouter(): Router {
       const { reason } = req.body;
 
       const result = await rejectContentForUser(
-        { id: user.id, email: user.email },
+        { id: user.id, authWorkosUserId: user.authWorkosUserId, email: user.email },
         id,
         reason
       );
@@ -1435,7 +1477,7 @@ export function createContentRouter(): Router {
       const { notes } = req.body;
 
       const result = await requestRevisionsForUser(
-        { id: user.id, email: user.email },
+        { id: user.id, authWorkosUserId: user.authWorkosUserId, email: user.email },
         id,
         notes
       );
@@ -1467,7 +1509,7 @@ export function createContentRouter(): Router {
       const { id } = req.params;
 
       const result = await resubmitContentForUser(
-        { id: user.id, email: user.email },
+        { id: user.id, authWorkosUserId: user.authWorkosUserId, email: user.email },
         id
       );
 
@@ -1571,7 +1613,7 @@ export function createContentRouter(): Router {
       const perspectiveId = perspResult.rows[0].id;
 
       // Check permission: must be author, proposer, or admin
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
+      const userIsAdmin = await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(user));
       if (!userIsAdmin) {
         const authorCheck = await pool.query(
           `SELECT 1 FROM perspectives WHERE id = $1 AND (author_user_id = $2 OR proposer_user_id = $2)
@@ -1721,9 +1763,9 @@ export function createMyContentRouter(): Router {
         [id, user.id]
       ).then(r => r.rows.length > 0);
       const userIsLead = contentItem.working_group_id
-        ? await isCommitteeLead(contentItem.working_group_id, user.id)
+        ? await isCommitteeLead(contentItem.working_group_id, getOrganizationAuthorizationUserId(user))
         : false;
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
+      const userIsAdmin = await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(user));
 
       if (!isProposer && !isAuthor && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
@@ -1972,9 +2014,9 @@ export function createMyContentRouter(): Router {
         [id, user.id]
       ).then(r => r.rows.length > 0);
       const userIsLead = contentItem.working_group_id
-        ? await isCommitteeLead(contentItem.working_group_id, user.id)
+        ? await isCommitteeLead(contentItem.working_group_id, getOrganizationAuthorizationUserId(user))
         : false;
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
+      const userIsAdmin = await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(user));
 
       if (!isProposer && !isAuthor && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
@@ -2037,9 +2079,9 @@ export function createMyContentRouter(): Router {
       // Check permission
       const isProposer = contentItem.proposer_user_id === user.id;
       const userIsLead = contentItem.working_group_id
-        ? await isCommitteeLead(contentItem.working_group_id, user.id)
+        ? await isCommitteeLead(contentItem.working_group_id, getOrganizationAuthorizationUserId(user))
         : false;
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
+      const userIsAdmin = await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(user));
 
       if (!isProposer && !userIsLead && !userIsAdmin) {
         return res.status(403).json({
@@ -2118,9 +2160,9 @@ export function createMyContentRouter(): Router {
       // Check permission
       const isProposer = contentItem.proposer_user_id === user.id;
       const userIsLead = contentItem.working_group_id
-        ? await isCommitteeLead(contentItem.working_group_id, user.id)
+        ? await isCommitteeLead(contentItem.working_group_id, getOrganizationAuthorizationUserId(user))
         : false;
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
+      const userIsAdmin = await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(user));
 
       if (!isProposer && !userIsLead && !userIsAdmin) {
         return res.status(403).json({

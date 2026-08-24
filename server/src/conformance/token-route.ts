@@ -12,7 +12,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import { requireAuth } from '../middleware/auth.js';
-import { resolveCallerOrgId } from '../routes/helpers/resolve-caller-org.js';
+import { resolveCallerOrganization } from '../routes/helpers/resolve-caller-org.js';
 import { createLogger } from '../logger.js';
 import { issueConformanceToken } from './token.js';
 import { conformanceSessions } from './session-store.js';
@@ -31,8 +31,8 @@ export function buildConformanceTokenRouter(): Router {
   const router = Router();
 
   router.post('/token', requireAuth, async (req: Request, res: Response) => {
-    const orgId = await resolveCallerOrgId(req);
-    if (!orgId) {
+    const callerOrg = await resolveCallerOrganization(req);
+    if (callerOrg.status !== 'authorized') {
       res.status(403).json({
         error: 'no_organization',
         message:
@@ -40,6 +40,7 @@ export function buildConformanceTokenRouter(): Router {
       });
       return;
     }
+    const orgId = callerOrg.organizationId;
 
     let issued;
     try {
@@ -63,7 +64,11 @@ export function buildConformanceTokenRouter(): Router {
 
   if (process.env.NODE_ENV !== 'production') {
     router.get('/_debug', requireAuth, async (req: Request, res: Response) => {
-      const orgId = await resolveCallerOrgId(req);
+      const callerOrg = await resolveCallerOrganization(req);
+      if (callerOrg.status === 'forbidden') {
+        return res.status(403).json({ error: 'forbidden' });
+      }
+      const orgId = callerOrg.status === 'authorized' ? callerOrg.organizationId : null;
       res.json({
         callerOrgId: orgId,
         activeSessions: conformanceSessions.list(),
@@ -86,7 +91,12 @@ export function buildConformanceTokenRouter(): Router {
     router.post('/_debug/run-storyboard', requireAuth, async (req: Request, res: Response) => {
       const isStaticAdmin = (req as Request & { isStaticAdminApiKey?: boolean })
         .isStaticAdminApiKey === true;
-      const callerOrgId = await resolveCallerOrgId(req);
+      const callerOrg = await resolveCallerOrganization(req);
+      if (callerOrg.status === 'forbidden') {
+        res.status(403).json({ error: 'forbidden' });
+        return;
+      }
+      const callerOrgId = callerOrg.status === 'authorized' ? callerOrg.organizationId : null;
       const bodyOrgId = typeof req.body?.org_id === 'string' ? req.body.org_id : null;
 
       let targetOrgId: string;

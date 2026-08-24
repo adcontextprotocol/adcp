@@ -413,6 +413,8 @@ export interface WorkOSUser {
    * across surfaces would let a client tie multiple emails to one person.
    */
   identityId?: string;
+  /** Persisted authorization graph version checked before cached auth reuse. */
+  authorizationEpoch?: string;
   /**
    * The actual authenticated WorkOS user, before any identity-aware id
    * swap. Set whenever {@link id} differs from the WorkOS-authenticated

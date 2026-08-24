@@ -20,9 +20,9 @@ vi.mock('../../src/middleware/auth.js', async () => ({
   },
 }));
 
-const resolvePrimaryOrganizationMock = vi.fn();
-vi.mock('../../src/db/users-db.js', () => ({
-  resolvePrimaryOrganization: (userId: string) => resolvePrimaryOrganizationMock(userId),
+const resolveUserOrgMembershipMock = vi.fn();
+vi.mock('../../src/utils/resolve-user-org-membership.js', () => ({
+  resolveUserOrgMembership: (...args: unknown[]) => resolveUserOrgMembershipMock(...args),
 }));
 
 import { createBrandOwnershipRouter } from '../../src/routes/brand-ownership.js';
@@ -50,7 +50,8 @@ function makeApp(brandRow: Record<string, unknown> | null, orgName: string | nul
 describe('GET /api/brands/:domain/ownership', () => {
   beforeEach(() => {
     currentUserId = null;
-    resolvePrimaryOrganizationMock.mockReset();
+    resolveUserOrgMembershipMock.mockReset();
+    resolveUserOrgMembershipMock.mockResolvedValue(null);
   });
 
   it('treats a missing brand row as community (not 404)', async () => {
@@ -94,8 +95,8 @@ describe('GET /api/brands/:domain/ownership', () => {
       'Acme Corp',
     );
     currentUserId = OWNER_USER;
-    resolvePrimaryOrganizationMock.mockResolvedValueOnce(OWNER_ORG);
-    const res = await request(app).get('/api/brands/example.com/ownership');
+    resolveUserOrgMembershipMock.mockResolvedValueOnce({ organizationId: OWNER_ORG, role: 'member', source: 'workos' });
+    const res = await request(app).get(`/api/brands/example.com/ownership?org=${OWNER_ORG}`);
     expect(res.status).toBe(200);
     expect(res.body.can_manage).toBe(true);
     expect(res.body.can_claim).toBe(false);
@@ -109,8 +110,8 @@ describe('GET /api/brands/:domain/ownership', () => {
       'Acme Corp',
     );
     currentUserId = OTHER_USER;
-    resolvePrimaryOrganizationMock.mockResolvedValueOnce('org_other');
-    const res = await request(app).get('/api/brands/example.com/ownership');
+    resolveUserOrgMembershipMock.mockResolvedValueOnce({ organizationId: 'org_other', role: 'member', source: 'workos' });
+    const res = await request(app).get('/api/brands/example.com/ownership?org=org_other');
     expect(res.status).toBe(200);
     expect(res.body.can_manage).toBe(false);
     expect(res.body.can_claim).toBe(false);
@@ -119,8 +120,8 @@ describe('GET /api/brands/:domain/ownership', () => {
   it('lets any authenticated user claim a community brand', async () => {
     const app = makeApp({ domain: 'example.com' }, null);
     currentUserId = OTHER_USER;
-    resolvePrimaryOrganizationMock.mockResolvedValueOnce('org_other');
-    const res = await request(app).get('/api/brands/example.com/ownership');
+    resolveUserOrgMembershipMock.mockResolvedValueOnce({ organizationId: 'org_other', role: 'member', source: 'workos' });
+    const res = await request(app).get('/api/brands/example.com/ownership?org=org_other');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('community');
     expect(res.body.can_claim).toBe(true);
@@ -133,8 +134,8 @@ describe('GET /api/brands/:domain/ownership', () => {
       null,
     );
     currentUserId = OTHER_USER;
-    resolvePrimaryOrganizationMock.mockResolvedValueOnce('org_other');
-    const res = await request(app).get('/api/brands/example.com/ownership');
+    resolveUserOrgMembershipMock.mockResolvedValueOnce({ organizationId: 'org_other', role: 'member', source: 'workos' });
+    const res = await request(app).get('/api/brands/example.com/ownership?org=org_other');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('orphaned');
     expect(res.body.owner).toBeNull();

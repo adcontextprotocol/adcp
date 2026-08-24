@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
   resolvePrimaryOrganization: vi.fn(),
+  resolveUserOrgMembership: vi.fn(),
 }));
 
 vi.mock('../../src/db/client.js', () => ({
@@ -12,6 +13,10 @@ vi.mock('../../src/db/client.js', () => ({
 
 vi.mock('../../src/db/users-db.js', () => ({
   resolvePrimaryOrganization: mocks.resolvePrimaryOrganization,
+}));
+
+vi.mock('../../src/utils/resolve-user-org-membership.js', () => ({
+  resolveUserOrgMembership: mocks.resolveUserOrgMembership,
 }));
 
 vi.mock('../../src/middleware/auth.js', () => ({
@@ -57,6 +62,13 @@ function createConfig() {
 }
 
 describe('member profile URL persistence boundaries', () => {
+  beforeEach(() => {
+    mocks.resolveUserOrgMembership.mockResolvedValue({
+      organizationId: 'org-profile-url',
+      role: 'member',
+    });
+  });
+
   it('rejects unsafe URLs at the shared database boundary', async () => {
     const memberDb = new MemberDatabase();
 
@@ -106,7 +118,7 @@ describe('member profile URL persistence boundaries', () => {
     app.use('/api/me/member-profile', createMemberProfileRouter(config));
 
     const response = await request(app)
-      .post('/api/me/member-profile')
+      .post('/api/me/member-profile?org=org-profile-url')
       .send({ display_name: 'Acme Media', slug: 'acme-media', [field]: value });
 
     expect(response.status).toBe(400);
@@ -125,7 +137,7 @@ describe('member profile URL persistence boundaries', () => {
     app.use('/api/me/member-profile', createMemberProfileRouter(config));
 
     const response = await request(app)
-      .put('/api/me/member-profile')
+      .put('/api/me/member-profile?org=org-profile-url')
       .send({ [field]: value });
 
     expect(response.status).toBe(400);
@@ -165,7 +177,7 @@ describe('member profile URL persistence boundaries', () => {
     expect(updateProfile).not.toHaveBeenCalled();
   });
 
-  it('syncs an explicit null website when a personal profile clears it', async () => {
+  it('does not implicitly sync a personal profile into an organization profile', async () => {
     const communityProfile = {
       workos_user_id: 'user-profile-url',
       slug: 'person',
@@ -221,13 +233,10 @@ describe('member profile URL persistence boundaries', () => {
       .send({ headline: 'Updated headline', contact_website: null })
       .expect(200);
 
-    expect(updateProfileByOrgId).toHaveBeenCalledWith(
-      'org-personal',
-      expect.objectContaining({ contact_website: null }),
-    );
+    expect(updateProfileByOrgId).not.toHaveBeenCalled();
   });
 
-  it('syncs non-URL fields without rewriting unsafe legacy member URLs', async () => {
+  it('does not implicitly rewrite an organization profile from personal-profile fields', async () => {
     const communityProfile = {
       workos_user_id: 'user-profile-url',
       slug: 'legacy-person',
@@ -287,14 +296,7 @@ describe('member profile URL persistence boundaries', () => {
       .send({ headline: 'Updated headline' });
 
     expect(response.status).toBe(200);
-    expect(updateProfileByOrgId).toHaveBeenCalledWith('org-personal', {
-      display_name: 'Legacy Person',
-      tagline: 'Updated headline',
-    });
-    const memberUpdates = updateProfileByOrgId.mock.calls[0][1];
-    expect(memberUpdates).not.toHaveProperty('linkedin_url');
-    expect(memberUpdates).not.toHaveProperty('twitter_url');
-    expect(memberUpdates).not.toHaveProperty('contact_website');
-    expect(invalidateMemberContextCache).toHaveBeenCalledOnce();
+    expect(updateProfileByOrgId).not.toHaveBeenCalled();
+    expect(invalidateMemberContextCache).not.toHaveBeenCalled();
   });
 });

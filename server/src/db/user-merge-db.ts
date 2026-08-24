@@ -33,6 +33,311 @@ export interface UserMergePreview {
   }[];
 }
 
+export const USER_STATE_REFERENCES = [
+  { name: 'organization_memberships', col: 'workos_user_id' },
+  { name: 'working_group_memberships', col: 'workos_user_id' },
+  { name: 'learner_progress', col: 'workos_user_id' },
+  { name: 'certification_attempts', col: 'workos_user_id' },
+  { name: 'user_credentials', col: 'workos_user_id' },
+  { name: 'teaching_checkpoints', col: 'workos_user_id' },
+  { name: 'certification_learner_feedback', col: 'workos_user_id' },
+  { name: 'user_email_preferences', col: 'workos_user_id' },
+  { name: 'committee_interest', col: 'workos_user_id' },
+  { name: 'user_badges', col: 'workos_user_id' },
+  { name: 'person_relationships', col: 'workos_user_id' },
+  { name: 'community_points', col: 'workos_user_id' },
+  { name: 'connections', col: 'requester_user_id' },
+  { name: 'connections', col: 'recipient_user_id' },
+  { name: 'flagged_conversations', col: 'reviewed_by' },
+  { name: 'slack_user_mappings', col: 'workos_user_id' },
+  { name: 'email_contacts', col: 'workos_user_id' },
+  { name: 'email_events', col: 'workos_user_id' },
+  { name: 'event_registrations', col: 'workos_user_id' },
+  { name: 'event_sponsorships', col: 'purchased_by_user_id' },
+  { name: 'events', col: 'created_by_user_id' },
+  { name: 'addie_escalations', col: 'workos_user_id' },
+  { name: 'action_items', col: 'workos_user_id' },
+  { name: 'user_stakeholders', col: 'workos_user_id' },
+  { name: 'user_agreement_acceptances', col: 'workos_user_id' },
+  { name: 'member_insights', col: 'workos_user_id' },
+  { name: 'working_group_topic_subscriptions', col: 'workos_user_id' },
+  { name: 'meeting_attendees', col: 'workos_user_id' },
+  { name: 'organization_join_requests', col: 'workos_user_id' },
+  { name: 'known_media_contacts', col: 'added_by' },
+  { name: 'member_portraits', col: 'user_id' },
+  { name: 'seat_upgrade_requests', col: 'workos_user_id' },
+  { name: 'user_email_aliases', col: 'workos_user_id' },
+  { name: 'email_link_tokens', col: 'primary_workos_user_id' },
+  { name: 'agent_test_runs', col: 'workos_user_id' },
+  { name: 'certification_expectations', col: 'workos_user_id' },
+  { name: 'addie_prompt_telemetry', col: 'workos_user_id' },
+  // Keep this inventory exhaustive for credential-owned and actor/provenance
+  // references. An attached credential is hidden behind the canonical person
+  // id on many reads, so even historical actor rows make it non-empty.
+  { name: 'addie_approval_queue', col: 'target_user_id' },
+  { name: 'addie_approval_queue', col: 'reviewed_by' },
+  { name: 'addie_conversations', col: 'user_id' },
+  { name: 'addie_interactions', col: 'user_id' },
+  { name: 'addie_interactions', col: 'reviewed_by' },
+  { name: 'addie_synthesis_runs', col: 'reviewed_by' },
+  { name: 'addie_thread_messages', col: 'user_id' },
+  { name: 'addie_threads', col: 'user_id' },
+  { name: 'addie_threads', col: 'reviewed_by' },
+  { name: 'admin_credential_reissue_events', col: 'workos_user_id' },
+  { name: 'admin_credential_reissue_events', col: 'admin_user_id' },
+  { name: 'admin_module_completions', col: 'workos_user_id' },
+  { name: 'admin_module_completions', col: 'admin_user_id' },
+  { name: 'admin_stripe_customer_update_previews', col: 'actor_workos_user_id' },
+  { name: 'agent_test_history', col: 'user_id' },
+  { name: 'brands', col: 'created_by_user_id' },
+  { name: 'community_mirrors', col: 'created_by_user_id' },
+  { name: 'content_authors', col: 'user_id' },
+  { name: 'domain_classifications', col: 'added_by' },
+  { name: 'email_link_tokens', col: 'target_workos_user_id' },
+  { name: 'escalation_triage_suggestions', col: 'reviewed_by' },
+  { name: 'event_committee_links', col: 'created_by_user_id' },
+  { name: 'feed_proposals', col: 'proposed_by_workos_user_id' },
+  { name: 'feed_proposals', col: 'reviewed_by_workos_user_id' },
+  { name: 'hosted_properties', col: 'created_by_user_id' },
+  { name: 'learner_protocol_updates', col: 'workos_user_id' },
+  { name: 'meeting_series', col: 'created_by_user_id' },
+  { name: 'meetings', col: 'created_by_user_id' },
+  { name: 'newsletter_suggestions', col: 'reviewed_by' },
+  { name: 'notifications', col: 'recipient_user_id' },
+  { name: 'organizations', col: 'champion_workos_user_id' },
+  { name: 'org_stakeholders', col: 'user_id' },
+  { name: 'publishers', col: 'created_by_user_id' },
+  { name: 'referrals', col: 'referrer_user_id' },
+  { name: 'referrals', col: 'referred_user_id' },
+  { name: 'rehearsal_sessions', col: 'admin_user_id' },
+  { name: 'task_reminder_log', col: 'user_id' },
+  { name: 'user_avatar_uploads', col: 'workos_user_id' },
+  { name: 'user_dismissed_nudges', col: 'workos_user_id' },
+  { name: 'working_group_leaders', col: 'user_id' },
+  { name: 'certification_experience_events', col: 'workos_user_id' },
+  { name: 'certification_contributions', col: 'workos_user_id' },
+  { name: 'publisher_crawl_requests', col: 'requested_by_user_id' },
+  { name: 'membership_checkout_attempts', col: 'initiated_by_user_id' },
+  { name: 'adagents_authorization_overrides', col: 'approved_by_user_id' },
+  { name: 'adagents_authorization_overrides', col: 'superseded_by_user_id' },
+  { name: 'addie_escalation_updates', col: 'author_user_id' },
+  { name: 'addie_threads', col: 'impersonator_user_id' },
+  { name: 'bans', col: 'banned_by_user_id' },
+  { name: 'brand_logos', col: 'reviewed_by_user_id' },
+  { name: 'brand_logos', col: 'uploaded_by_user_id' },
+  { name: 'brand_revisions', col: 'editor_user_id' },
+  { name: 'committee_documents', col: 'added_by_user_id' },
+  { name: 'community_mirror_proposals', col: 'proposed_by_user_id' },
+  { name: 'community_mirror_proposals', col: 'reviewed_by_user_id' },
+  { name: 'email_contacts', col: 'mapped_by_user_id' },
+  { name: 'event_invites', col: 'invited_by_user_id' },
+  { name: 'manifest_references', col: 'contributed_by_user_id' },
+  { name: 'member_search_analytics', col: 'searcher_user_id' },
+  { name: 'membership_invites', col: 'accepted_by_user_id' },
+  { name: 'membership_invites', col: 'invited_by_user_id' },
+  { name: 'membership_invites', col: 'revoked_by_user_id' },
+  { name: 'newsletter_suggestions', col: 'suggested_by_user_id' },
+  { name: 'notifications', col: 'actor_user_id' },
+  { name: 'org_activities', col: 'logged_by_user_id' },
+  { name: 'org_activities', col: 'next_step_owner_user_id' },
+  { name: 'org_knowledge', col: 'set_by_user_id' },
+  { name: 'organization_credential_grants', col: 'granted_by_workos_user_id' },
+  { name: 'organization_credential_grants', col: 'revoked_by_workos_user_id' },
+  { name: 'organization_join_requests', col: 'handled_by_user_id' },
+  { name: 'organizations', col: 'pending_agreement_user_id' },
+  { name: 'perspective_assets', col: 'uploaded_by_user_id' },
+  { name: 'perspectives', col: 'author_user_id' },
+  { name: 'perspectives', col: 'proposer_user_id' },
+  { name: 'perspectives', col: 'reviewed_by_user_id' },
+  { name: 'policy_revisions', col: 'editor_user_id' },
+  { name: 'property_revisions', col: 'editor_user_id' },
+  { name: 'referral_codes', col: 'referrer_user_id' },
+  { name: 'slack_user_mappings', col: 'mapped_by_user_id' },
+  { name: 'working_group_memberships', col: 'added_by_user_id' },
+  { name: 'addie_knowledge', col: 'created_by' },
+  { name: 'addie_synthesis_runs', col: 'created_by' },
+  { name: 'agent_contexts', col: 'created_by' },
+  { name: 'catalog_agent_authorizations', col: 'created_by' },
+  { name: 'catalog_collections', col: 'created_by' },
+  { name: 'catalog_properties', col: 'created_by' },
+  { name: 'certification_goals', col: 'created_by' },
+  { name: 'email_campaigns', col: 'created_by' },
+  { name: 'member_insight_types', col: 'created_by' },
+  { name: 'member_insights', col: 'created_by' },
+  { name: 'network_alert_rules', col: 'created_by' },
+  { name: 'outreach_goals', col: 'created_by' },
+  { name: 'personal_domains', col: 'created_by' },
+  { name: 'system_settings', col: 'updated_by' },
+  { name: 'system_settings_audit', col: 'changed_by' },
+  { name: 'weekly_digests', col: 'approved_by' },
+  { name: 'build_editions', col: 'approved_by' },
+  { name: 'geo_content_briefs', col: 'approved_by' },
+  { name: 'journey_stage_history', col: 'triggered_by' },
+  { name: 'addie_thread_messages', col: 'rated_by' },
+  { name: 'addie_messages', col: 'rated_by' },
+] as const;
+
+// Deliberate exceptions from the schema-level user-reference inventory.
+// These rows either define the credential/binding itself, preserve immutable
+// audit provenance, or are the explicit exact-credential grant being retained.
+export const USER_STATE_REFERENCE_EXCEPTIONS = [
+  { name: 'users', col: 'workos_user_id' },
+  { name: 'identity_workos_users', col: 'workos_user_id' },
+  { name: 'organization_credential_grants', col: 'workos_user_id' },
+  { name: 'registry_audit_log', col: 'workos_user_id' },
+  { name: 'perspective_likes', col: 'user_id' },
+  // Enum-like execution sources, not credential identifiers.
+  { name: 'agent_compliance_runs', col: 'triggered_by' },
+  { name: 'agent_storyboard_status', col: 'triggered_by' },
+  { name: 'agent_test_history', col: 'triggered_by' },
+] as const;
+
+export class CredentialHasStateError extends Error {
+  constructor(public readonly references: Array<{ table: string; column: string }>) {
+    super('Credential has application state and cannot be attached safely');
+    this.name = 'CredentialHasStateError';
+  }
+}
+
+export class CredentialAlreadyLinkedError extends Error {
+  constructor() {
+    super('Credential is already linked to another multi-credential identity');
+    this.name = 'CredentialAlreadyLinkedError';
+  }
+}
+
+/**
+ * Attach a credential that has no application-owned state. Unlike mergeUsers,
+ * this operation never rewrites or deletes membership, reputation, learning,
+ * conversation, billing, or audit rows.
+ */
+async function attachStateEmptyCredentialOnce(
+  hostUserId: string,
+  credentialUserId: string,
+  attachedBy: string,
+): Promise<void> {
+  const client = await getPool().connect();
+  try {
+    await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+    const bindings = await client.query<{
+      workos_user_id: string;
+      identity_id: string;
+      is_primary: boolean;
+    }>(
+      `SELECT workos_user_id, identity_id, is_primary
+         FROM identity_workos_users
+        WHERE workos_user_id = ANY($1)
+        ORDER BY workos_user_id
+        FOR UPDATE`,
+      [[hostUserId, credentialUserId]],
+    );
+    const host = bindings.rows.find((row) => row.workos_user_id === hostUserId);
+    const credential = bindings.rows.find((row) => row.workos_user_id === credentialUserId);
+    if (!host || !credential) throw new Error('Both users must have identity bindings');
+    if (host.identity_id === credential.identity_id) {
+      await client.query('COMMIT');
+      return;
+    }
+
+    const credentialIdentityBindings = await client.query<{ workos_user_id: string }>(
+      `SELECT workos_user_id
+         FROM identity_workos_users
+        WHERE identity_id = $1
+        ORDER BY workos_user_id
+        FOR UPDATE`,
+      [credential.identity_id],
+    );
+    if (!credential.is_primary || credentialIdentityBindings.rows.length !== 1) {
+      throw new CredentialAlreadyLinkedError();
+    }
+
+    const actorIdentity = await client.query<{ identity_id: string }>(
+      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+      [attachedBy],
+    );
+
+    // Establish one atomic state-empty boundary. SHARE conflicts with the
+    // ROW EXCLUSIVE lock taken by INSERT/UPDATE/DELETE: an in-flight writer
+    // finishes before our scan (and is observed), while a later writer waits
+    // until the binding move commits. Attach is rare and the lock order is
+    // stable, which keeps this safer than relying on SERIALIZABLE predicate
+    // tracking against ordinary READ COMMITTED application transactions.
+    const stateTables = [...new Set(USER_STATE_REFERENCES.map((reference) => reference.name))]
+      .sort();
+    await client.query(`LOCK TABLE ${stateTables.join(', ')} IN SHARE MODE`);
+
+    const references: Array<{ table: string; column: string }> = [];
+    for (const reference of USER_STATE_REFERENCES) {
+      const result = await client.query(
+        `SELECT 1 FROM ${reference.name} WHERE ${reference.col} = $1 LIMIT 1`,
+        [credentialUserId],
+      );
+      if (result.rowCount) {
+        references.push({ table: reference.name, column: reference.col });
+      }
+    }
+    if (references.length > 0) throw new CredentialHasStateError(references);
+
+    await client.query(
+      `UPDATE identity_workos_users
+          SET identity_id = $1, is_primary = FALSE
+        WHERE workos_user_id = $2`,
+      [host.identity_id, credentialUserId],
+    );
+    await client.query(
+      `DELETE FROM identities i
+        WHERE i.id = $1
+          AND NOT EXISTS (
+            SELECT 1 FROM identity_workos_users iwu WHERE iwu.identity_id = i.id
+          )`,
+      [credential.identity_id],
+    );
+    await client.query(
+      `INSERT INTO registry_audit_log (
+         workos_organization_id, workos_user_id, action,
+         resource_type, resource_id, details
+       ) VALUES ('system', $2, 'attach_state_empty_credential', 'user', $1, $3)`,
+      [credentialUserId, attachedBy, JSON.stringify({
+        host_user_id: hostUserId,
+        host_identity_id: host.identity_id,
+        previous_identity_id: credential.identity_id,
+        authenticated_credential_id: attachedBy,
+        resolved_identity_id: actorIdentity.rows[0]?.identity_id ?? null,
+      })],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Retry the complete serializable operation when PostgreSQL selects this
+ * transaction as the loser of a concurrent attach. The retry re-reads the
+ * locked bindings and therefore resolves to either idempotent success (same
+ * host) or CredentialAlreadyLinkedError (different host), never a spurious
+ * HTTP 500 from SQLSTATE 40001/40P01.
+ */
+export async function attachStateEmptyCredential(
+  hostUserId: string,
+  credentialUserId: string,
+  attachedBy: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await attachStateEmptyCredentialOnce(hostUserId, credentialUserId, attachedBy);
+      return;
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      if ((code === '40001' || code === '40P01') && attempt < 2) continue;
+      throw error;
+    }
+  }
+}
+
 /**
  * Preview what a user merge would do without modifying data.
  */

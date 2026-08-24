@@ -45,6 +45,9 @@ import {
   createAdminToolHandlers,
   isWebUserAAOAdmin,
 } from "../addie/mcp/admin-tools.js";
+import { getOrganizationAuthorizationUserId } from "../auth/organization-principal.js";
+import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
+import { getWorkos } from "../auth/workos-client.js";
 import {
   EVENT_READONLY_TOOLS,
   EVENT_ADMIN_TOOLS,
@@ -175,10 +178,11 @@ function validateLlmSecret(req: Request): boolean {
 async function buildVoiceRequestTools(
   userId: string,
   threadId: string,
+  selectedOrganizationId: string,
 ): Promise<{ requestTools: RequestTools; requestContext: string; memberContext: MemberContext | null }> {
   let memberContext: MemberContext | null = null;
   try {
-    memberContext = await getWebMemberContext(userId);
+    memberContext = await getWebMemberContext(userId, selectedOrganizationId);
   } catch (error) {
     logger.warn({ error, userId }, "Tavus: Failed to get member context");
   }
@@ -371,8 +375,10 @@ export function createTavusRouter() {
       // dashboard / direct API call.
       return res.status(404).json({ error: "Conversation not found" });
     }
-    if (thread.user_id !== req.user.id) {
-      const userIsAdmin = await isWebUserAAOAdmin(req.user.id).catch(() => false);
+    if (thread.user_id !== getOrganizationAuthorizationUserId(req.user)) {
+      const userIsAdmin = await isWebUserAAOAdmin(
+        getOrganizationAuthorizationUserId(req.user),
+      ).catch(() => false);
       if (!userIsAdmin) {
         return res.status(403).json({ error: "Forbidden" });
       }
@@ -446,6 +452,7 @@ export function createTavusRouter() {
       // these via an Advanced Settings panel; the standard /video page sends
       // none of them and gets the defaults below.
       const settings = (req.body ?? {}) as {
+        organization_id?: string;
         greeting?: string;
         extraContext?: string;
         maxDurationSec?: number;
@@ -453,6 +460,16 @@ export function createTavusRouter() {
         language?: string;
         disableFillers?: boolean;
       };
+      const selectedOrganizationId = typeof settings.organization_id === 'string'
+        ? settings.organization_id.trim()
+        : '';
+      if (!selectedOrganizationId) {
+        return res.status(400).json({ error: 'organization_id is required' });
+      }
+      const actorCredentialId = getOrganizationAuthorizationUserId(req.user);
+      if (!await resolveUserOrgMembership(getWorkos(), req.user, selectedOrganizationId)) {
+        return res.status(403).json({ error: 'You do not have access to the selected organization' });
+      }
       const greetingOverride = boundedTrimmedTavusSetting(
         settings.greeting,
         TAVUS_SETTING_LIMITS.greeting,
@@ -475,7 +492,11 @@ export function createTavusRouter() {
 
       // Create a thread to track this video conversation
       const threadService = getThreadService();
-      const threadContext: Record<string, unknown> = { persona_id: personaId };
+      const threadContext: Record<string, unknown> = {
+        persona_id: personaId,
+        authorization_workos_user_id: actorCredentialId,
+        selected_organization_id: selectedOrganizationId,
+      };
       if (disableFillers) threadContext.disable_fillers = true;
       if (sessionGuidance) {
         threadContext.video_session_guidance = sessionGuidance;
@@ -484,7 +505,7 @@ export function createTavusRouter() {
         channel: "video",
         external_id: conversationName,
         user_type: "workos",
-        user_id: req.user.id,
+        user_id: actorCredentialId,
         user_display_name: displayName,
         context: threadContext,
       });
@@ -618,7 +639,20 @@ export function createTavusRouter() {
           sessionGuidance = readTavusSessionGuidance(
             thread.context?.video_session_guidance
           );
-          const result = await buildVoiceRequestTools(thread.user_id, threadId);
+          const selectedOrganizationId = typeof thread.context?.selected_organization_id === 'string'
+            ? thread.context.selected_organization_id
+            : null;
+          const authorizationUserId = typeof thread.context?.authorization_workos_user_id === 'string'
+            ? thread.context.authorization_workos_user_id
+            : thread.user_id;
+          if (!selectedOrganizationId) {
+            throw new Error('Video session is missing explicit organization context');
+          }
+          const result = await buildVoiceRequestTools(
+            authorizationUserId,
+            threadId,
+            selectedOrganizationId,
+          );
           voiceRequestTools = result.requestTools;
           memberRequestContext = result.requestContext;
           logger.debug(

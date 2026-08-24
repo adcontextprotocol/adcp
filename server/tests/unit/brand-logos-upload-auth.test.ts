@@ -45,6 +45,16 @@ vi.mock('../../src/utils/html-config.js', () => ({
   enrichUserWithMembership: (...args: unknown[]) => mocks.enrichUserWithMembership(...args),
 }));
 
+vi.mock('../../src/utils/resolve-user-org-membership.js', () => ({
+  resolveUserOrgMembership: vi.fn().mockResolvedValue({
+    organizationId: 'org_test',
+    role: 'member',
+    status: 'active',
+    via_credential_grant: false,
+    via_dev_bypass: false,
+  }),
+}));
+
 vi.mock('../../src/middleware/rate-limit.js', () => ({
   logoUploadRateLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
@@ -175,6 +185,7 @@ describe('POST /api/brands/:domain/logos write authority', () => {
     });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
+      .field('organization_id', 'org_test')
       .field('tags', 'primary')
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(403);
@@ -207,6 +218,7 @@ describe('POST /api/brands/:domain/logos write authority', () => {
     });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
+      .field('organization_id', 'org_owner')
       .field('tags', 'primary')
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(201);
@@ -335,6 +347,7 @@ describe('POST /api/brands/:domain/logos write authority', () => {
     const { app } = makeApp({ hostedBrand: null, isOwner: false });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
+      .field('organization_id', 'org_test')
       .field('tags', 'primary')
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(201);
@@ -364,6 +377,7 @@ describe('POST /api/brands/:domain/logos write authority', () => {
     });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
+      .field('organization_id', 'org_test')
       .field('tags', 'primary')
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(201);

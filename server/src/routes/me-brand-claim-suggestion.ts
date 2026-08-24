@@ -18,6 +18,7 @@ import {
   getSuggestionForDomain,
   nudgeKey,
 } from '../services/brand-claim-suggestion.js';
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 import { getUserEmailById } from '../db/users-db.js';
 import { recordNudgeDismissal } from '../db/user-nudges-db.js';
 import { canonicalizeBrandDomain, assertValidBrandDomain } from '../services/identifier-normalization.js';
@@ -57,8 +58,9 @@ export function createBrandClaimSuggestionRouter(config: { brandDb: BrandDatabas
   // restrict the suggestion to a specific brand.
   router.get('/brand-claim-suggestion', requireAuth, async (req: Request, res: Response) => {
     try {
-      const user = req.user as { id: string; email?: string };
-      const email = user.email ?? (await getUserEmailById(user.id));
+      const user = req.user as { id: string; authWorkosUserId?: string; email?: string };
+      const authorizationUserId = getOrganizationAuthorizationUserId(user);
+      const email = user.email ?? (await getUserEmailById(authorizationUserId));
       if (!email) {
         return res.json({ suggestion: null });
       }
@@ -70,9 +72,9 @@ export function createBrandClaimSuggestionRouter(config: { brandDb: BrandDatabas
         if (!parsed.ok) {
           return res.status(400).json({ error: parsed.error });
         }
-        suggestion = await getSuggestionForDomain(user.id, email, parsed.domain, { brandDb });
+        suggestion = await getSuggestionForDomain(authorizationUserId, email, parsed.domain, { brandDb });
       } else {
-        suggestion = await getBrandClaimSuggestionForUser(user.id, email, { brandDb });
+        suggestion = await getBrandClaimSuggestionForUser(authorizationUserId, email, { brandDb });
       }
       return res.json({ suggestion });
     } catch (error) {

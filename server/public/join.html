@@ -439,9 +439,13 @@
         if (!config || !config.user) {
           return Promise.resolve({ user: null, existingReferral: null });
         }
-        return fetch('/api/me/referral', { credentials: 'include' })
+        var selectedOrgId = new URLSearchParams(window.location.search).get('org') || localStorage.getItem('selectedOrgId');
+        if (!selectedOrgId) {
+          return Promise.resolve({ user: config.user, existingReferral: null, selectedOrgId: null });
+        }
+        return fetch('/api/me/referral?org=' + encodeURIComponent(selectedOrgId), { credentials: 'include' })
           .then(function (res) { return res.ok ? res.json() : { referral: null }; })
-          .then(function (data) { return { user: config.user, existingReferral: data.referral, daysRemaining: data.days_remaining }; })
+          .then(function (data) { return { user: config.user, existingReferral: data.referral, daysRemaining: data.days_remaining, selectedOrgId: selectedOrgId }; })
           .catch(function () { return { user: config.user, existingReferral: null }; });
       }
 
@@ -533,12 +537,19 @@
         btn.textContent = 'Accepting...';
 
         var marketingOptIn = document.getElementById('marketingOptIn').checked;
+        var selectedOrgId = new URLSearchParams(window.location.search).get('org') || localStorage.getItem('selectedOrgId');
+        if (!selectedOrgId) {
+          btn.disabled = false;
+          btn.textContent = 'Accept invitation';
+          alert('Select an organization from your dashboard, then reopen this invitation.');
+          return;
+        }
 
         fetch('/api/referral/' + encodeURIComponent(code) + '/accept', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ marketing_opt_in: marketingOptIn }),
+          body: JSON.stringify({ marketing_opt_in: marketingOptIn, organization_id: selectedOrgId }),
         })
           .then(function (res) { return res.json().then(function (body) { return { ok: res.ok, status: res.status, body: body }; }); })
           .then(function (r) {

@@ -394,7 +394,13 @@
 
       let conversationUrl;
       try {
-        const res = await fetch('/api/addie/video/session', { method: 'POST' });
+        const organizationId = localStorage.getItem('selectedOrgId');
+        if (!organizationId) throw new Error('Select an organization in the dashboard before starting a call');
+        const res = await fetch('/api/addie/video/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ organization_id: organizationId }),
+        });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error || 'Failed to start session');

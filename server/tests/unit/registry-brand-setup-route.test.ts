@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-const resolvePrimaryOrganizationMock = vi.fn();
+const resolveUserOrgMembershipMock = vi.fn();
 const queryMock = vi.fn();
 const ORIGINAL_DEV_USER_EMAIL = process.env.DEV_USER_EMAIL;
 const ORIGINAL_DEV_USER_ID = process.env.DEV_USER_ID;
@@ -12,8 +12,8 @@ vi.hoisted(() => {
   process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID || 'client_test_registry_brand_setup';
 });
 
-vi.mock('../../src/db/users-db.js', () => ({
-  resolvePrimaryOrganization: (userId: string) => resolvePrimaryOrganizationMock(userId),
+vi.mock('../../src/utils/resolve-user-org-membership.js', () => ({
+  resolveUserOrgMembership: (...args: unknown[]) => resolveUserOrgMembershipMock(...args),
 }));
 
 vi.mock('../../src/db/client.js', () => ({
@@ -28,7 +28,11 @@ function buildApp(brandDb: Partial<RegistryApiConfig['brandDb']>, brandManager: 
   app.use(express.json());
 
   const requireAuth: import('express').RequestHandler = (req, _res, next) => {
-    req.user = { id: 'user_test', email: 'user@test.example' } as typeof req.user;
+    req.user = {
+      id: 'user_canonical',
+      authWorkosUserId: 'user_test',
+      email: 'user@test.example',
+    } as typeof req.user;
     next();
   };
 
@@ -59,7 +63,12 @@ describe('POST /api/brands/setup-my-brand', () => {
     vi.clearAllMocks();
     process.env.DEV_USER_EMAIL = 'dev@test.example';
     process.env.DEV_USER_ID = 'user_test';
-    resolvePrimaryOrganizationMock.mockResolvedValue('org_test');
+    resolveUserOrgMembershipMock.mockResolvedValue({
+      organizationId: 'org_test',
+      role: 'member',
+      status: 'active',
+      via_dev_bypass: true,
+    });
     queryMock.mockResolvedValue({ rows: [] });
   });
 
@@ -92,6 +101,7 @@ describe('POST /api/brands/setup-my-brand', () => {
       .send({
         domain: 'example.com',
         brand_name: 'Example',
+        organization_id: 'org_test',
         brand_json: brandJson,
       });
 
@@ -104,7 +114,7 @@ describe('POST /api/brands/setup-my-brand', () => {
     });
     expect(brandDb.createHostedBrand).toHaveBeenCalledWith(expect.objectContaining({
       workos_organization_id: 'org_test',
-      created_by_user_id: 'user_test',
+      created_by_user_id: 'user_canonical',
       created_by_email: 'user@test.example',
       brand_domain: 'example.com',
       brand_json: brandJson,
@@ -296,7 +306,7 @@ describe('POST /api/brands/setup-my-brand', () => {
 
     const res = await request(buildApp(brandDb))
       .post('/api/brands/setup-my-brand')
-      .send({ domain: 'nova.example', brand_name: 'Nova' });
+      .send({ domain: 'nova.example', brand_name: 'Nova', organization_id: 'org_test' });
 
     expect(res.status).toBe(200);
     const savedBrandJson = brandDb.createHostedBrand.mock.calls[0][0].brand_json;
@@ -318,6 +328,7 @@ describe('POST /api/brands/setup-my-brand', () => {
       .send({
         domain: 'nova.example',
         brand_name: hostileName,
+        organization_id: 'org_test',
         logo_url: 'https://cdn.example.test/brand/logo.svg?theme=dark',
         brand_color: '#12Ab9F',
       });
@@ -335,10 +346,23 @@ describe('POST /api/brands/setup-my-brand', () => {
     }));
   });
 
-  it('denies non-dev callers without a resolvable organization', async () => {
+  it('requires an explicitly selected organization', async () => {
+    const brandDb = { createHostedBrand: vi.fn() };
+
+    const res = await request(buildApp(brandDb))
+      .post('/api/brands/setup-my-brand')
+      .send({ domain: 'victim.example', brand_name: 'Victim' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('organization_id must be a non-empty organization ID');
+    expect(resolveUserOrgMembershipMock).not.toHaveBeenCalled();
+    expect(brandDb.createHostedBrand).not.toHaveBeenCalled();
+  });
+
+  it('denies callers whose authenticated credential lacks the selected organization', async () => {
     delete process.env.DEV_USER_EMAIL;
     delete process.env.DEV_USER_ID;
-    resolvePrimaryOrganizationMock.mockResolvedValue(null);
+    resolveUserOrgMembershipMock.mockResolvedValue(null);
     const brandDb = {
       getDiscoveredBrandByDomain: vi.fn(),
       getHostedBrandByDomain: vi.fn(),
@@ -350,6 +374,7 @@ describe('POST /api/brands/setup-my-brand', () => {
       .send({
         domain: 'victim.example',
         brand_name: 'Victim',
+        organization_id: 'org_victim',
         brand_json: {
           house: { domain: 'victim.example', name: 'Victim' },
           brands: [{ id: 'victim', names: [{ en: 'Victim' }], keller_type: 'master' }],
@@ -357,7 +382,12 @@ describe('POST /api/brands/setup-my-brand', () => {
       });
 
     expect(res.status).toBe(403);
-    expect(res.body.error).toBe('A verified organization is required to set up a brand');
+    expect(res.body.error).toBe('The authenticated credential is not an active member of the selected organization');
+    expect(resolveUserOrgMembershipMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: 'user_canonical', authWorkosUserId: 'user_test' }),
+      'org_victim',
+    );
     expect(queryMock).not.toHaveBeenCalled();
     expect(brandDb.createHostedBrand).not.toHaveBeenCalled();
   });
@@ -365,7 +395,12 @@ describe('POST /api/brands/setup-my-brand', () => {
   it('denies non-dev callers whose organization does not own the requested domain', async () => {
     delete process.env.DEV_USER_EMAIL;
     delete process.env.DEV_USER_ID;
-    resolvePrimaryOrganizationMock.mockResolvedValue('org_test');
+    resolveUserOrgMembershipMock.mockResolvedValue({
+      organizationId: 'org_test',
+      role: 'member',
+      status: 'active',
+      via_dev_bypass: false,
+    });
     queryMock.mockResolvedValue({ rows: [{ domain: 'owned.example' }] });
     const brandDb = {
       getDiscoveredBrandByDomain: vi.fn(),
@@ -378,6 +413,7 @@ describe('POST /api/brands/setup-my-brand', () => {
       .send({
         domain: 'victim.example',
         brand_name: 'Victim',
+        organization_id: 'org_test',
         brand_json: {
           house: { domain: 'victim.example', name: 'Victim' },
           brands: [{ id: 'victim', names: [{ en: 'Victim' }], keller_type: 'master' }],

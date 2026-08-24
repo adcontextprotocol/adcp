@@ -91,6 +91,7 @@ import { invalidateMembershipCache, findClaimableProspectOrgForDomain } from "./
 import * as relationshipDb from "./db/relationship-db.js";
 import * as personEvents from "./db/person-events-db.js";
 import { isWebUserAAOAdmin } from "./addie/mcp/admin-tools.js";
+import { getOrganizationAuthorizationUserId } from "./auth/organization-principal.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
@@ -175,6 +176,27 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const logger = createLogger('http-server');
+
+function explicitOrganizationId(req: express.Request): string | null {
+  const bodyValue = req.body?.organization_id;
+  if (typeof bodyValue === 'string' && bodyValue.trim()) return bodyValue.trim();
+  const queryValue = req.query.org ?? req.query.organization_id;
+  if (typeof queryValue === 'string' && queryValue.trim()) return queryValue.trim();
+  const headerValue = req.get('x-organization-id');
+  return headerValue?.trim() || null;
+}
+
+async function resolveExplicitMemberGate(req: express.Request): Promise<{
+  authorized: boolean;
+  missingOrganization: boolean;
+}> {
+  const user = req.user;
+  if (!user) return { authorized: false, missingOrganization: false };
+  const organizationId = explicitOrganizationId(req);
+  if (!organizationId) return { authorized: false, missingOrganization: true };
+  await enrichUserWithMembership(user as any, organizationId);
+  return { authorized: Boolean((user as any).isMember), missingOrganization: false };
+}
 const PUBLIC_SITE_URL = 'https://agenticadvertising.org';
 const SLACK_JOIN_GUIDE_URL = 'https://docs.adcontextprotocol.org/docs/community/joining-slack';
 const PERSPECTIVES_CRAWLER_LIMIT = 200;
@@ -3569,8 +3591,11 @@ export class HTTPServer {
     // POST /api/brands/discovered/community - Create a new community brand (member-authenticated, pending review)
     this.app.post('/api/brands/discovered/community', requireAuth, brandCreationRateLimiter, async (req, res) => {
       try {
-        await enrichUserWithMembership(req.user as any);
-        if (!(req.user as any)?.isMember) {
+        const memberGate = await resolveExplicitMemberGate(req);
+        if (memberGate.missingOrganization) {
+          return res.status(400).json({ error: 'organization_id is required' });
+        }
+        if (!memberGate.authorized) {
           return res.status(403).json({ error: 'Membership required to create brands' });
         }
 
@@ -3585,6 +3610,10 @@ export class HTTPServer {
           return res.status(403).json({ error: 'You are banned from creating brands', reason: banCheck.ban?.reason });
         }
 
+        if (!(await resolveExplicitMemberGate(req)).authorized) {
+          return res.status(403).json({ error: 'Your organization authorization was revoked' });
+        }
+        const actorCredentialId = getOrganizationAuthorizationUserId(req.user!);
         const brand = await this.brandDb.createDiscoveredBrand({
           domain,
           brand_name,
@@ -3595,7 +3624,7 @@ export class HTTPServer {
           has_brand_manifest: !!brand_manifest,
           source_type: 'community',
         }, {
-          user_id: req.user!.id,
+          user_id: actorCredentialId,
           email: req.user!.email,
           name: (req.user as any).displayName || req.user!.email,
         });
@@ -3609,7 +3638,7 @@ export class HTTPServer {
           reviewNewRecord({
             entity_type: 'brand',
             domain: brand.domain,
-            editor_user_id: req.user!.id,
+            editor_user_id: actorCredentialId,
             editor_email: req.user!.email,
             snapshot: brand as unknown as Record<string, unknown>,
             slack_thread_ts: slack_thread_ts || undefined,
@@ -3644,9 +3673,11 @@ export class HTTPServer {
     // POST /api/brands/hosted - Create a hosted brand (members only)
     this.app.post('/api/brands/hosted', requireAuth, async (req, res) => {
       try {
-        // Membership check
-        await enrichUserWithMembership(req.user as any);
-        if (!(req.user as any)?.isMember) {
+        const memberGate = await resolveExplicitMemberGate(req);
+        if (memberGate.missingOrganization) {
+          return res.status(400).json({ error: 'organization_id is required' });
+        }
+        if (!memberGate.authorized) {
           return res.status(403).json({ error: 'Membership required to save brands to registry' });
         }
 
@@ -3661,10 +3692,13 @@ export class HTTPServer {
 
         if (!validateBrandJson(brand_json, res)) return;
 
+        if (!(await resolveExplicitMemberGate(req)).authorized) {
+          return res.status(403).json({ error: 'Your organization authorization was revoked' });
+        }
         const brand = await this.brandDb.createHostedBrand({
           brand_domain: brand_domain.toLowerCase(),
           brand_json,
-          created_by_user_id: req.user?.id,
+          created_by_user_id: getOrganizationAuthorizationUserId(req.user!),
           created_by_email: req.user?.email,
         });
 
@@ -3678,9 +3712,11 @@ export class HTTPServer {
     // PUT /api/brands/hosted/:domain - Update a hosted brand (members only, owner or admin)
     this.app.put('/api/brands/hosted/:domain', requireAuth, async (req, res) => {
       try {
-        // Membership check
-        await enrichUserWithMembership(req.user as any);
-        if (!(req.user as any)?.isMember) {
+        const memberGate = await resolveExplicitMemberGate(req);
+        if (memberGate.missingOrganization) {
+          return res.status(400).json({ error: 'organization_id is required' });
+        }
+        if (!memberGate.authorized) {
           return res.status(403).json({ error: 'Membership required to update brands in registry' });
         }
 
@@ -3696,8 +3732,9 @@ export class HTTPServer {
         }
 
         // Check ownership - user must be creator or admin
-        const isCreator = brand.created_by_user_id && brand.created_by_user_id === req.user?.id;
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const actorCredentialId = getOrganizationAuthorizationUserId(req.user!);
+        const isCreator = brand.created_by_user_id && brand.created_by_user_id === actorCredentialId;
+        const isAdmin = req.user && await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(req.user));
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to update this brand' });
         }
@@ -3709,6 +3746,9 @@ export class HTTPServer {
 
         if (!validateBrandJson(brand_json, res)) return;
 
+        if (!(await resolveExplicitMemberGate(req)).authorized) {
+          return res.status(403).json({ error: 'Your organization authorization was revoked' });
+        }
         const updated = await this.brandDb.updateHostedBrand(brand.id, { brand_json });
         return res.json(updated);
       } catch (error) {
@@ -3738,6 +3778,13 @@ export class HTTPServer {
     // DELETE /api/brands/hosted/:domain - Delete a hosted brand
     this.app.delete('/api/brands/hosted/:domain', requireAuth, async (req, res) => {
       try {
+        const memberGate = await resolveExplicitMemberGate(req);
+        if (memberGate.missingOrganization) {
+          return res.status(400).json({ error: 'organization_id is required' });
+        }
+        if (!memberGate.authorized) {
+          return res.status(403).json({ error: 'Membership required to delete brands from the registry' });
+        }
         const domain = decodeURIComponent(req.params.domain);
         const brand = await this.brandDb.getHostedBrandByDomain(domain);
 
@@ -3746,12 +3793,16 @@ export class HTTPServer {
         }
 
         // Check ownership - user must be creator or admin
-        const isCreator = brand.created_by_user_id && brand.created_by_user_id === req.user?.id;
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const actorCredentialId = getOrganizationAuthorizationUserId(req.user!);
+        const isCreator = brand.created_by_user_id && brand.created_by_user_id === actorCredentialId;
+        const isAdmin = req.user && await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(req.user));
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this brand' });
         }
 
+        if (!(await resolveExplicitMemberGate(req)).authorized) {
+          return res.status(403).json({ error: 'Your organization authorization was revoked' });
+        }
         await this.brandDb.deleteHostedBrand(brand.id);
         return res.json({ success: true });
       } catch (error) {
@@ -3765,8 +3816,11 @@ export class HTTPServer {
     // PUT /api/brands/discovered/:domain - Edit a community/enriched brand with revision tracking
     this.app.put('/api/brands/discovered/:domain', requireAuth, async (req, res) => {
       try {
-        await enrichUserWithMembership(req.user as any);
-        if (!(req.user as any)?.isMember) {
+        const memberGate = await resolveExplicitMemberGate(req);
+        if (memberGate.missingOrganization) {
+          return res.status(400).json({ error: 'organization_id is required' });
+        }
+        if (!memberGate.authorized) {
           return res.status(403).json({ error: 'Membership required to edit brands' });
         }
 
@@ -3786,10 +3840,14 @@ export class HTTPServer {
           return res.status(403).json({ error: 'You are banned from editing this brand', reason: banCheck.ban?.reason });
         }
 
+        if (!(await resolveExplicitMemberGate(req)).authorized) {
+          return res.status(403).json({ error: 'Your organization authorization was revoked' });
+        }
+        const actorCredentialId = getOrganizationAuthorizationUserId(req.user!);
         const { brand, revision_number } = await this.brandDb.editDiscoveredBrand(domain, {
           ...fields,
           edit_summary,
-          editor_user_id: req.user!.id,
+          editor_user_id: actorCredentialId,
           editor_email: req.user!.email,
           editor_name: (req.user as any).displayName || req.user!.email,
         });
@@ -3808,7 +3866,7 @@ export class HTTPServer {
           reviewRegistryEdit({
             entity_type: 'brand',
             domain,
-            editor_user_id: req.user!.id,
+            editor_user_id: actorCredentialId,
             editor_email: req.user!.email,
             edit_summary,
             old_snapshot: oldRevision?.snapshot || {},
@@ -3872,9 +3930,12 @@ export class HTTPServer {
     // access for moderation and support.
     this.app.post('/api/brands/discovered/:domain/rollback', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
-        await enrichUserWithMembership(req.user as any);
-        if (!isAdmin && !(req.user as any)?.isMember) {
+        const isAdmin = req.user && await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(req.user));
+        const memberGate = await resolveExplicitMemberGate(req);
+        if (memberGate.missingOrganization) {
+          return res.status(400).json({ error: 'organization_id is required' });
+        }
+        if (!isAdmin && !memberGate.authorized) {
           return res.status(403).json({ error: 'Membership required to roll back brands' });
         }
         if ((req as any).apiKey || req.user?.id === 'admin_api_key' || req.user?.id?.startsWith('api_key_')) {
@@ -3909,8 +3970,11 @@ export class HTTPServer {
           }
         }
 
+        if (!isAdmin && !(await resolveExplicitMemberGate(req)).authorized) {
+          return res.status(403).json({ error: 'Your organization authorization was revoked' });
+        }
         const { brand, revision_number } = await this.brandDb.rollbackBrand(domain, to_revision, {
-          user_id: req.user!.id,
+          user_id: getOrganizationAuthorizationUserId(req.user!),
           email: req.user!.email,
           name: (req.user as any).displayName || req.user!.email,
         });
@@ -3979,7 +4043,7 @@ export class HTTPServer {
     // GET /api/registry/requests - List unresolved registry requests (admin only)
     this.app.get('/api/registry/requests', requireAuth, async (req, res) => {
       try {
-        const isAdmin = await isWebUserAAOAdmin(req.user!.id);
+        const isAdmin = await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(req.user!));
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4003,7 +4067,7 @@ export class HTTPServer {
     // GET /api/registry/requests/stats - Registry request statistics (admin only)
     this.app.get('/api/registry/requests/stats', requireAuth, async (req, res) => {
       try {
-        const isAdmin = await isWebUserAAOAdmin(req.user!.id);
+        const isAdmin = await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(req.user!));
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4136,7 +4200,7 @@ export class HTTPServer {
           publisher_domain: publisher_domain.toLowerCase(),
           adagents_json: adagentsJsonForStorage,
           source_type: source_type || 'community',
-          created_by_user_id: req.user?.id,
+          created_by_user_id: getOrganizationAuthorizationUserId(req.user!),
           created_by_email: req.user?.email,
         });
 
@@ -4155,8 +4219,11 @@ export class HTTPServer {
         const requestedAdagentsJson = req.body?.adagents_json;
         const adagentsJsonForStorage = scrubCommunityAuthorizedAgents(requestedAdagentsJson);
 
-        await enrichUserWithMembership(req.user as any);
-        if (!(req.user as any)?.isMember) {
+        const memberGate = await resolveExplicitMemberGate(req);
+        if (memberGate.missingOrganization) {
+          return res.status(400).json({ error: 'organization_id is required' });
+        }
+        if (!memberGate.authorized) {
           return res.status(403).json({ error: 'Membership required to create properties' });
         }
 
@@ -4171,14 +4238,18 @@ export class HTTPServer {
           return res.status(403).json({ error: 'You are banned from creating properties', reason: banCheck.ban?.reason });
         }
 
+        if (!(await resolveExplicitMemberGate(req)).authorized) {
+          return res.status(403).json({ error: 'Your organization authorization was revoked' });
+        }
+        const actorCredentialId = getOrganizationAuthorizationUserId(req.user!);
         const property = await this.propertyDb.createCommunityProperty({
           publisher_domain: publisher_domain.toLowerCase(),
           adagents_json: adagentsJsonForStorage,
           source_type: 'community',
-          created_by_user_id: req.user!.id,
+          created_by_user_id: actorCredentialId,
           created_by_email: req.user!.email,
         }, {
-          user_id: req.user!.id,
+          user_id: actorCredentialId,
           email: req.user!.email,
           name: (req.user as any).displayName || req.user!.email,
         });
@@ -4192,7 +4263,7 @@ export class HTTPServer {
           reviewNewRecord({
             entity_type: 'property',
             domain: property.publisher_domain,
-            editor_user_id: req.user!.id,
+            editor_user_id: actorCredentialId,
             editor_email: req.user!.email,
             snapshot: property as unknown as Record<string, unknown>,
             slack_thread_ts: slack_thread_ts || undefined,
@@ -4212,6 +4283,13 @@ export class HTTPServer {
     // DELETE /api/properties/hosted/:domain - Delete a hosted property
     this.app.delete('/api/properties/hosted/:domain', requireAuth, async (req, res) => {
       try {
+        const memberGate = await resolveExplicitMemberGate(req);
+        if (memberGate.missingOrganization) {
+          return res.status(400).json({ error: 'organization_id is required' });
+        }
+        if (!memberGate.authorized) {
+          return res.status(403).json({ error: 'Membership required to delete properties from the registry' });
+        }
         const domain = decodeURIComponent(req.params.domain);
         const property = await this.propertyDb.getHostedPropertyByDomain(domain);
 
@@ -4220,12 +4298,16 @@ export class HTTPServer {
         }
 
         // Check ownership
-        const isCreator = property.created_by_user_id && property.created_by_user_id === req.user?.id;
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const actorCredentialId = getOrganizationAuthorizationUserId(req.user!);
+        const isCreator = property.created_by_user_id && property.created_by_user_id === actorCredentialId;
+        const isAdmin = req.user && await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(req.user));
         if (!isCreator && !isAdmin) {
           return res.status(403).json({ error: 'Not authorized to delete this property' });
         }
 
+        if (!(await resolveExplicitMemberGate(req)).authorized) {
+          return res.status(403).json({ error: 'Your organization authorization was revoked' });
+        }
         await this.propertyDb.deleteHostedProperty(property.id);
         return res.json({ success: true });
       } catch (error) {
@@ -4248,8 +4330,11 @@ export class HTTPServer {
           ? undefined
           : adagentsJsonForStorage;
 
-        await enrichUserWithMembership(req.user as any);
-        if (!(req.user as any)?.isMember) {
+        const memberGate = await resolveExplicitMemberGate(req);
+        if (memberGate.missingOrganization) {
+          return res.status(400).json({ error: 'organization_id is required' });
+        }
+        if (!memberGate.authorized) {
           return res.status(403).json({ error: 'Membership required to edit properties' });
         }
 
@@ -4266,10 +4351,14 @@ export class HTTPServer {
           return res.status(403).json({ error: 'You are banned from editing this property', reason: banCheck.ban?.reason });
         }
 
+        if (!(await resolveExplicitMemberGate(req)).authorized) {
+          return res.status(403).json({ error: 'Your organization authorization was revoked' });
+        }
+        const actorCredentialId = getOrganizationAuthorizationUserId(req.user!);
         const { property, revision_number } = await this.propertyDb.editCommunityProperty(domain, {
           adagents_json: adagentsJsonUpdate,
           edit_summary,
-          editor_user_id: req.user!.id,
+          editor_user_id: actorCredentialId,
           editor_email: req.user!.email,
           editor_name: (req.user as any).displayName || req.user!.email,
         });
@@ -4288,7 +4377,7 @@ export class HTTPServer {
           reviewRegistryEdit({
             entity_type: 'property',
             domain,
-            editor_user_id: req.user!.id,
+            editor_user_id: actorCredentialId,
             editor_email: req.user!.email,
             edit_summary,
             old_snapshot: oldRevision?.snapshot || {},
@@ -4350,7 +4439,7 @@ export class HTTPServer {
     // POST /api/properties/hosted/:domain/rollback - Rollback property (admin only)
     this.app.post('/api/properties/hosted/:domain/rollback', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(req.user));
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4430,7 +4519,7 @@ export class HTTPServer {
     // POST /api/registry/edit-bans - Create an edit ban
     this.app.post('/api/registry/edit-bans', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(req.user));
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4477,7 +4566,7 @@ export class HTTPServer {
     // GET /api/registry/edit-bans - List active edit bans
     this.app.get('/api/registry/edit-bans', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(req.user));
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4501,7 +4590,7 @@ export class HTTPServer {
     // DELETE /api/registry/edit-bans/:id - Remove an edit ban
     this.app.delete('/api/registry/edit-bans/:id', requireAuth, async (req, res) => {
       try {
-        const isAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isAdmin = req.user && await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(req.user));
         if (!isAdmin) {
           return res.status(403).json({ error: 'Admin access required' });
         }
@@ -4646,7 +4735,7 @@ export class HTTPServer {
         // Check if user can delete (admin or creator)
         const devUser = getDevUser(req);
         const isDevAdmin = devUser?.isAdmin === true;
-        const isDbAdmin = req.user && await isWebUserAAOAdmin(req.user.id);
+        const isDbAdmin = req.user && await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(req.user));
         const isAdmin = isDevAdmin || isDbAdmin;
         const isCreator = ref.contributed_by_email === req.user?.email;
 
@@ -6849,7 +6938,9 @@ export class HTTPServer {
         const { slug, filename } = req.params;
         const pool = getPool();
         const userId = req.user?.id ?? null;
-        const userIsAdmin = userId ? await isWebUserAAOAdmin(userId) : false;
+        const userIsAdmin = req.user
+          ? await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(req.user))
+          : false;
 
         const perspResult = await pool.query(
           `SELECT p.id,
@@ -7620,12 +7711,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           logger.error({ error: upsertError, userId: user.id }, 'Failed to upsert user on login');
         }
 
-        // Auto-merge duplicate accounts caused by Google email aliases.
-        // googlemail.com and gmail.com deliver to the same inbox, so we can
-        // merge without requiring email verification — WorkOS already verified
-        // ownership of the mailbox during signup.
+        // Detect duplicate accounts caused by Google email aliases. Alias
+        // equivalence is a UI signal only; it never authorizes binding or
+        // state consolidation.
         let duplicateAliasEmail: string | null = null;
-        let autoMerged = false;
         try {
           const aliasEmails = getGoogleEmailAliases(user.email);
           if (aliasEmails.length > 0) {
@@ -7652,16 +7741,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                 const workosUsers = await workos.userManagement.listUsers({ email: aliasEmail });
                 const match = workosUsers.data.find(u => u.id !== user.id);
                 if (match) {
-                  // Insert into local users table so mergeUsers can operate on it
-                  await pool.query(
-                    `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified, workos_created_at, workos_updated_at, created_at, updated_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-                     ON CONFLICT (workos_user_id) DO NOTHING`,
-                    [match.id, match.email, match.firstName, match.lastName, match.emailVerified, match.createdAt, match.updatedAt]
-                  );
                   logger.info(
                     { primaryUserId: user.id, secondaryWorkosId: match.id, secondaryEmail: match.email },
-                    'Found duplicate account in WorkOS (not in local DB) — created local user for merge'
+                    'Found duplicate alias account in WorkOS; automatic consolidation disabled'
                   );
                   existing = { workos_user_id: match.id, email: match.email };
                   break;
@@ -7672,71 +7754,19 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             if (existing) {
               duplicateAliasEmail = existing.email;
 
-              // Claim the alias atomically — UNIQUE(LOWER(email)) prevents
-              // two users from claiming the same target concurrently.
-              const claimResult = await pool.query(
-                `INSERT INTO user_email_aliases (workos_user_id, email)
-                 VALUES ($1, $2)
-                 ON CONFLICT DO NOTHING
-                 RETURNING 1`,
-                [user.id, existing.email]
+              // Do not copy WorkOS memberships or consolidate application
+              // rows here. Matching an OAuth alias is only a duplicate-account
+              // signal; it is not proof that organization grants may move
+              // between credentials. The UI renders the manual-resolution
+              // banner from duplicateAliasEmail.
+              logger.info(
+                {
+                  authenticatedUserId: user.id,
+                  duplicateUserId: existing.workos_user_id,
+                  duplicateEmail: existing.email,
+                },
+                'Duplicate Google alias detected; automatic consolidation disabled',
               );
-
-              if (claimResult.rows.length > 0) {
-                // The currently-logging-in user must be primary — mergeUsers
-                // deletes the secondary's WorkOS account, which would invalidate
-                // the session we just created if the current user were secondary.
-                const primaryId = user.id;
-                const secondaryId = existing.workos_user_id;
-
-                try {
-                  // Add the primary user to any of the secondary's WorkOS orgs
-                  // so that membership context resolves correctly after the
-                  // merge deletes the secondary user from WorkOS.
-                  if (workos) {
-                    const secondaryMemberships = await workos.userManagement.listOrganizationMemberships({
-                      userId: secondaryId,
-                      limit: 100,
-                    });
-                    for (const mem of secondaryMemberships.data) {
-                      if (mem.status !== 'active') continue;
-                      try {
-                        await workos.userManagement.createOrganizationMembership({
-                          userId: primaryId,
-                          organizationId: mem.organizationId,
-                        });
-                      } catch (memErr: unknown) {
-                        // Ignore conflict — the primary may already be a member
-                        const status = (memErr as { status?: number })?.status;
-                        if (status !== 409) throw memErr;
-                      }
-                    }
-                  }
-
-                  const { mergeUsers } = await import('./db/user-merge-db.js');
-                  const summary = await mergeUsers(primaryId, secondaryId, 'system:google-alias-merge');
-                  autoMerged = true;
-                  logger.info(
-                    { primaryUserId: primaryId, secondaryUserId: secondaryId, tables: summary.tables_merged.length },
-                    'Auto-merged duplicate Google email alias accounts'
-                  );
-                } catch (mergeError) {
-                  // Note: org memberships already transferred to primary in WorkOS
-                  // are NOT rolled back. This is acceptable because both users
-                  // control the same inbox, and the merge will be retried on
-                  // next login (createOrganizationMembership will 409, which is handled).
-                  // Roll back the alias claim so the merge can be retried on next login
-                  await pool.query(
-                    'DELETE FROM user_email_aliases WHERE workos_user_id = $1 AND LOWER(email) = LOWER($2)',
-                    [user.id, existing.email]
-                  ).catch(() => {});
-                  logger.error(
-                    { err: mergeError, primaryUserId: primaryId, secondaryUserId: secondaryId },
-                    'Failed to auto-merge Google email alias accounts — user will see manual banner'
-                  );
-                }
-              }
-              // else: another concurrent login already claimed this alias — skip
             }
           }
         } catch (aliasCheckError) {
@@ -8015,15 +8045,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           }
         }
 
-        // If a Google email alias duplicate was detected, append status to the redirect.
-        // Auto-merged: show success notice. Failed: show manual merge banner.
+        // If a Google email alias duplicate was detected, show the manual
+        // resolution banner. Automatic consolidation is intentionally off.
         if (duplicateAliasEmail && returnTo.startsWith('/')) {
           const sep = returnTo.includes('?') ? '&' : '?';
-          if (autoMerged) {
-            returnTo = `${returnTo}${sep}accounts_merged=${encodeURIComponent(duplicateAliasEmail)}`;
-          } else {
-            returnTo = `${returnTo}${sep}duplicate_email=${encodeURIComponent(duplicateAliasEmail)}`;
-          }
+          returnTo = `${returnTo}${sep}duplicate_email=${encodeURIComponent(duplicateAliasEmail)}`;
         }
 
         // Redirect to dashboard or onboarding
@@ -8325,7 +8351,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         let organizations;
         try {
           organizations = await getCurrentUserOrganizations({
-            userId: user.id,
+            principal: user,
             email: user.email,
             workos,
             orgDb,
@@ -8345,7 +8371,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         // so the admin UI and backend agree on who sees admin surfaces.
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdminByEmail = adminEmails.includes(user.email.toLowerCase());
-        const isAdminByWorkingGroup = await isWebUserAAOAdmin(user.id);
+        const isAdminByWorkingGroup = await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(user));
         const isAdmin = isAdminByWorkingGroup || isAdminByEmail;
         // Check Slack sync status, seat type, and read DB names (user may have
         // set a display name that differs from the WorkOS session values)
@@ -8779,6 +8805,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         const user = req.user!;
         const memberDb = new MemberDatabase();
         const joinRequestDb = new JoinRequestDatabase();
+        const authorizationUserId = getOrganizationAuthorizationUserId(user);
 
         // Get user's company domain (null if free email provider)
         const userDomain = getCompanyDomain(user.email);
@@ -8788,7 +8815,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
         // Get user's current org memberships to exclude
         const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
+          userId: authorizationUserId,
         });
         const userOrgIds = new Set(userMemberships.data.map(m => m.organizationId));
 
@@ -8877,10 +8904,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         }
 
         const joinRequestDb = new JoinRequestDatabase();
+        const authorizationUserId = getOrganizationAuthorizationUserId(user);
 
         // Check if user is already a member
         const memberships = await workos!.userManagement.listOrganizationMemberships({
-          userId: user.id,
+          userId: authorizationUserId,
           organizationId: organization_id,
           statuses: ['active', 'inactive', 'pending'],
         });
@@ -8925,7 +8953,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             let membership: any;
             try {
               membership = await workos!.userManagement.createOrganizationMembership({
-                userId: user.id,
+                userId: authorizationUserId,
                 organizationId: organization_id,
                 roleSlug,
               });
@@ -8949,7 +8977,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             }
 
             logger.info({
-              userId: user.id,
+              userId: authorizationUserId,
               orgId: organization_id,
               domain: userDomain,
               role: roleSlug,
@@ -8961,12 +8989,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
               INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
               VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
               ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = $4, updated_at = NOW()
-            `, [user.id, organization_id, user.email, roleSlug]);
+            `, [authorizationUserId, organization_id, user.email, roleSlug]);
 
             // Record audit log
             await orgDb.recordAuditLog({
               workos_organization_id: organization_id,
-              workos_user_id: user.id,
+              workos_user_id: authorizationUserId,
               action: 'member_added',
               resource_type: 'membership',
               resource_id: membership.id,
@@ -8995,7 +9023,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         }
 
         // Check for existing pending request
-        const existingRequest = await joinRequestDb.getPendingRequest(user.id, organization_id);
+        const existingRequest = await joinRequestDb.getPendingRequest(authorizationUserId, organization_id);
         if (existingRequest) {
           return res.status(400).json({
             error: 'Request already pending',
@@ -9008,15 +9036,15 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         let firstName: string | undefined;
         let lastName: string | undefined;
         try {
-          const workosUser = await workos!.userManagement.getUser(user.id);
+          const workosUser = await workos!.userManagement.getUser(authorizationUserId);
           firstName = workosUser.firstName || undefined;
           lastName = workosUser.lastName || undefined;
         } catch (err) {
-          logger.warn({ err, userId: user.id }, 'Failed to get user details from WorkOS');
+          logger.warn({ err, userId: authorizationUserId }, 'Failed to get user details from WorkOS');
         }
 
         const joinRequestInput = {
-          workos_user_id: user.id,
+          workos_user_id: authorizationUserId,
           user_email: user.email,
           first_name: firstName,
           last_name: lastName,
@@ -9036,14 +9064,14 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           const request = await joinRequestDb.createRequest(joinRequestInput);
 
           logger.info({
-            userId: user.id,
+            userId: authorizationUserId,
             orgId: organization_id,
             requestId: request.id,
           }, 'Join request created');
 
           await orgDb.recordAuditLog({
             workos_organization_id: organization_id,
-            workos_user_id: user.id,
+            workos_user_id: authorizationUserId,
             action: 'join_request_created',
             resource_type: 'join_request',
             resource_id: request.id,
@@ -9080,7 +9108,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
           if (userDomain && orgDomains.includes(userDomain)) {
             logger.info({
-              userId: user.id,
+              userId: authorizationUserId,
               orgId: organization_id,
               domain: userDomain,
             }, 'Ownerless org with matching domain — auto-approving join request as owner');
@@ -9088,7 +9116,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             // Add user as owner
             try {
               await workos!.userManagement.createOrganizationMembership({
-                userId: user.id,
+                userId: authorizationUserId,
                 organizationId: organization_id,
                 roleSlug: 'owner',
               });
@@ -9105,12 +9133,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             const request = await createAndAuditJoinRequest();
 
             // Mark join request as approved
-            await joinRequestDb.approveRequest(request.id, user.id);
+            await joinRequestDb.approveRequest(request.id, authorizationUserId);
 
             // Record audit log
             await orgDb.recordAuditLog({
               workos_organization_id: organization_id,
-              workos_user_id: user.id,
+              workos_user_id: authorizationUserId,
               action: 'join_request_auto_approved',
               resource_type: 'join_request',
               resource_id: request.id,
@@ -9136,7 +9164,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           }
 
           logger.info({
-            userId: user.id,
+              userId: authorizationUserId,
             orgId: organization_id,
             userDomain,
             orgDomains,

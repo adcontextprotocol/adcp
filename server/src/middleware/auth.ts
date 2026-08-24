@@ -12,6 +12,7 @@ import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } fro
 import { getPool } from '../db/client.js';
 import { constantTimeEqual } from '../utils/constant-time-equal.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 
 const logger = createLogger('auth-middleware');
 
@@ -727,43 +728,101 @@ export function invalidateSessionsForUsers(workosUserIds: string[]): void {
  * person. The original authenticated id is preserved on `user.authWorkosUserId`.
  *
  * Skipped for synthetic users (admin API key, WorkOS API key) — they don't
- * represent a person. Failures are swallowed: identity resolution must
- * never block an authenticated request, and a degraded request that sees
- * only the auth user's slice of data is still better than a 500.
+ * represent a person. Callers fail closed when this lookup is unavailable;
+ * otherwise a cached pre-link authorization graph could outlive revocation.
  */
-async function attachIdentityId(user: WorkOSUser): Promise<void> {
-  if (isSyntheticUser(user.id)) return;
+type IdentityResolutionStatus = 'resolved' | 'stale' | 'unbound' | 'unavailable';
+
+async function attachIdentityId(user: WorkOSUser): Promise<IdentityResolutionStatus> {
+  if (isSyntheticUser(user.id)) return 'resolved';
+  const authenticatedUserId = user.authWorkosUserId ?? user.id;
+  const previousIdentityId = user.identityId;
+  const previousAuthorizationEpoch = user.authorizationEpoch;
   try {
     const result = await getPool().query<{
       identity_id: string;
       primary_workos_user_id: string | null;
+      identity_authorization_epoch: string | number;
+      credential_authorization_epoch: string | number;
     }>(
-      `SELECT iwu.identity_id, primary_iwu.workos_user_id AS primary_workos_user_id
+      `SELECT iwu.identity_id,
+              primary_iwu.workos_user_id AS primary_workos_user_id,
+              i.authorization_epoch AS identity_authorization_epoch,
+              iwu.authorization_epoch AS credential_authorization_epoch
          FROM identity_workos_users iwu
+         JOIN identities i ON i.id = iwu.identity_id
          LEFT JOIN identity_workos_users primary_iwu
            ON primary_iwu.identity_id = iwu.identity_id
           AND primary_iwu.is_primary = TRUE
         WHERE iwu.workos_user_id = $1`,
-      [user.id]
+      [authenticatedUserId]
     );
     const row = result.rows[0];
-    if (!row) return;
+    if (!row) return 'unbound';
 
     user.identityId = row.identity_id;
+    user.authorizationEpoch = `${row.identity_authorization_epoch}:${row.credential_authorization_epoch}`;
 
-    if (row.primary_workos_user_id && row.primary_workos_user_id !== user.id) {
+    // Rebuild the compatibility projection from the credential that actually
+    // authenticated. This also handles a cached session whose primary binding
+    // changed since its previous request.
+    user.id = authenticatedUserId;
+    delete user.authWorkosUserId;
+
+    if (row.primary_workos_user_id && row.primary_workos_user_id !== authenticatedUserId) {
       // Non-primary binding signed in. Swap id so app-state reads see the
       // canonical person; preserve the actual auth user on authWorkosUserId.
       logger.debug(
-        { authWorkosUserId: user.id, canonicalUserId: row.primary_workos_user_id, identityId: row.identity_id },
+        { authWorkosUserId: authenticatedUserId, canonicalUserId: row.primary_workos_user_id, identityId: row.identity_id },
         'Identity id-swap: routing non-primary binding to canonical user'
       );
-      user.authWorkosUserId = user.id;
+      user.authWorkosUserId = authenticatedUserId;
       user.id = row.primary_workos_user_id;
     }
+    if ((previousIdentityId !== undefined && previousIdentityId !== user.identityId)
+      || (previousAuthorizationEpoch !== undefined
+        && previousAuthorizationEpoch !== user.authorizationEpoch)) {
+      // Organization-derived enrichments may live on the cached user object.
+      // Drop them before rejecting the stale request so its retry must
+      // recompute authority for the new epoch.
+      delete (user as WorkOSUser & { isMember?: boolean }).isMember;
+      return 'stale';
+    }
+    return 'resolved';
   } catch (err) {
-    logger.warn({ err, userId: user.id }, 'Failed to resolve identity_id');
+    logger.warn({ err, userId: authenticatedUserId }, 'Failed to resolve identity authorization epoch');
+    return 'unavailable';
   }
+}
+
+function sendIdentityResolutionFailure(
+  res: Response,
+  isHtmlRequest: boolean,
+  status: Exclude<IdentityResolutionStatus, 'resolved'>,
+): void {
+  if (status === 'unavailable') {
+    res.status(503).json({
+      error: 'Authorization state unavailable',
+      message: 'Please retry in a moment.',
+    });
+    return;
+  }
+  if (status === 'stale') {
+    res.status(401).json({
+      error: 'Authorization state changed',
+      message: 'Your organization or credential access changed. Please retry the request.',
+    });
+    return;
+  }
+  if (isHtmlRequest) {
+    res.redirect('/auth/login');
+    return;
+  }
+  res.status(401).json({
+    error: 'Invalid session',
+    message: 'This credential is no longer bound to an active identity.',
+    login_url: '/auth/login',
+  });
 }
 
 /**
@@ -775,7 +834,7 @@ async function attachIdentityId(user: WorkOSUser): Promise<void> {
  * Automatically refreshes expired access tokens using the refresh token
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const isHtmlRequest = req.accepts('html') && !req.originalUrl.startsWith('/api/');
+  const isHtmlRequest = Boolean(req.accepts('html')) && !req.originalUrl.startsWith('/api/');
 
   // Check for static admin API key first (for internal tooling)
   if (hasValidAdminApiKey(req)) {
@@ -839,7 +898,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       logger.warn({ err: banError, userId: jwtAuth.user.id, path: req.path }, 'Ban check failed — allowing request through');
     }
 
-    await attachIdentityId(req.user);
+    const identityStatus = await attachIdentityId(req.user);
+    if (identityStatus !== 'resolved') {
+      return sendIdentityResolutionFailure(res, isHtmlRequest, identityStatus);
+    }
     return next();
   }
 
@@ -854,7 +916,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       if (devConfig) {
         (req.user as unknown as Record<string, unknown>).isMember = devConfig.isMember;
       }
-      await attachIdentityId(req.user);
+      const identityStatus = await attachIdentityId(req.user);
+      if (identityStatus !== 'resolved') {
+        return sendIdentityResolutionFailure(res, isHtmlRequest, identityStatus);
+      }
       return next();
     }
     // No dev session - redirect to dev login page
@@ -910,6 +975,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
 
     if (cached && cached.expiresAt > now) {
+      const identityStatus = await attachIdentityId(cached.user);
+      if (identityStatus !== 'resolved') {
+        sessionCache.delete(cacheKey);
+        return sendIdentityResolutionFailure(res, isHtmlRequest, identityStatus);
+      }
       // Cache hit - use cached session data
       logger.debug({ userId: cached.user.id }, 'Using cached session');
       req.user = cached.user;
@@ -1149,8 +1219,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       );
     }
 
-    // Resolve identityId once before caching so cache hits inherit it.
-    await attachIdentityId(user);
+    // Persisted authorization epoch is checked before every cached reuse.
+    const identityStatus = await attachIdentityId(user);
+    if (identityStatus !== 'resolved') {
+      return sendIdentityResolutionFailure(res, isHtmlRequest, identityStatus);
+    }
 
     // Cache the validated session
     sessionCache.set(cacheKey, {
@@ -1429,7 +1502,7 @@ function authorizeTenantAdminApiKey(
  * Or checks if user's email is in ADMIN_EMAILS list
  */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const isHtmlRequest = req.accepts('html') && !req.originalUrl.startsWith('/api/');
+  const isHtmlRequest = Boolean(req.accepts('html')) && !req.originalUrl.startsWith('/api/');
 
   // Check for static admin API key (set by requireAuth)
   if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey) {
@@ -1466,7 +1539,10 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
       if (mockUser) {
         req.user = mockUser;
         req.accessToken = 'dev-mode-token';
-        await attachIdentityId(req.user);
+        const identityStatus = await attachIdentityId(req.user);
+        if (identityStatus !== 'resolved') {
+          return sendIdentityResolutionFailure(res, isHtmlRequest, identityStatus);
+        }
       }
     }
 
@@ -1524,11 +1600,13 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     });
   }
 
-  // Check admin access via aao-admin working group membership (primary)
+  // Check admin access via the exact authenticated credential's aao-admin
+  // working group membership
   // or ADMIN_EMAILS env var (fallback for emergency access)
   const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
   const isAdminByEmail = adminEmails.includes(req.user.email.toLowerCase());
-  const isAdminByWorkingGroup = await isWebUserAAOAdmin(req.user.id);
+  const authorizationUserId = getOrganizationAuthorizationUserId(req.user);
+  const isAdminByWorkingGroup = await isWebUserAAOAdmin(authorizationUserId);
   const isAdmin = isAdminByWorkingGroup || isAdminByEmail;
 
   if (!isAdmin) {
@@ -1850,7 +1928,10 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       logger.warn({ err: banError, userId: jwtAuth.user.id, path: req.path }, 'Ban check failed — allowing optional-auth request through');
     }
 
-    await attachIdentityId(req.user);
+    const identityStatus = await attachIdentityId(req.user);
+    if (identityStatus !== 'resolved') {
+      req.user = undefined;
+    }
     return next();
   }
 
@@ -1892,6 +1973,11 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
     }
 
     if (cached && cached.expiresAt > now) {
+      const identityStatus = await attachIdentityId(cached.user);
+      if (identityStatus !== 'resolved') {
+        sessionCache.delete(cacheKey);
+        return next();
+      }
       // Cache hit - use cached session data
       logger.debug({ userId: cached.user.id }, 'Using cached session (optional auth)');
       req.user = cached.user;
@@ -2028,7 +2114,10 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       // Resolve identityId before caching — sessionCache is shared with
       // requireAuth, so skipping it here would let an optionalAuth request
       // poison subsequent requireAuth cache hits with identityId=undefined.
-      await attachIdentityId(user);
+      const identityStatus = await attachIdentityId(user);
+      if (identityStatus !== 'resolved') {
+        return next();
+      }
 
       // Cache the validated session
       sessionCache.set(cacheKey, {

@@ -3800,6 +3800,11 @@
 
       async function saveToRegistry() {
         if (!currentDomain) return;
+        const selectedOrgId = new URLSearchParams(window.location.search).get('org') || localStorage.getItem('selectedOrgId');
+        if (!selectedOrgId) {
+          alert('Select an organization from the dashboard before saving brand setup.');
+          return;
+        }
         const btn = document.getElementById('save-registry-btn');
         const originalText = btn.textContent;
         btn.disabled = true;
@@ -3812,6 +3817,7 @@
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({
+              organization_id: selectedOrgId,
               domain: currentDomain,
               brand_name: getSetupBrandName(json),
               brand_json: json,

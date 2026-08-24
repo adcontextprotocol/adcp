@@ -1733,6 +1733,7 @@
         const form = new FormData();
         form.append('file', uploadFile);
         form.append('tags', tags.join(','));
+        form.append('organization_id', localStorage.getItem('selectedOrgId') || '');
         if (note) form.append('note', note);
 
         try {
@@ -2415,6 +2416,7 @@
           if (body.brand_manifest[k] === undefined) delete body.brand_manifest[k];
         });
         if (Object.keys(body.brand_manifest).length === 0) delete body.brand_manifest;
+        body.organization_id = localStorage.getItem('selectedOrgId') || '';
 
         try {
           const resp = await fetch(`/api/brands/discovered/${encodeURIComponent(currentDomain)}`, {
@@ -2585,7 +2587,10 @@
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ to_revision: revisionNumber }),
+            body: JSON.stringify({
+              to_revision: revisionNumber,
+              organization_id: localStorage.getItem('selectedOrgId') || '',
+            }),
           });
 
           if (!resp.ok) {

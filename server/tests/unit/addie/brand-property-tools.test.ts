@@ -22,6 +22,7 @@ process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
 const mocks = vi.hoisted(() => ({
   parsePropertyInputForBrand: vi.fn(),
   mergeBrandProperties: vi.fn(),
+  resolveUserOrgMembership: vi.fn(),
 }));
 
 // Mock the shared service so the tests don't need a DB / Anthropic. We're
@@ -35,6 +36,10 @@ vi.mock('../../../src/services/brand-property-parse.js', async (importOriginal) 
     mergeBrandProperties: mocks.mergeBrandProperties,
   };
 });
+
+vi.mock('../../../src/utils/resolve-user-org-membership.js', () => ({
+  resolveUserOrgMembership: mocks.resolveUserOrgMembership,
+}));
 
 const {
   BRAND_PROPERTY_TOOLS,
@@ -54,11 +59,19 @@ const SIGNED_IN_CTX = {
   is_member: true,
   slack_linked: false,
   workos_user: { workos_user_id: 'user_owner_123', email: 'owner@example.com' },
+  organization: { workos_organization_id: 'org_owner_123' },
 } as unknown as MemberContext;
+
+const WITH_ORG = { organization_id: 'org_owner_123' };
 
 beforeEach(() => {
   mocks.parsePropertyInputForBrand.mockReset();
   mocks.mergeBrandProperties.mockReset();
+  mocks.resolveUserOrgMembership.mockReset();
+  mocks.resolveUserOrgMembership.mockResolvedValue({
+    organizationId: 'org_owner_123',
+    role: 'member',
+  });
 });
 
 describe('parse_brand_properties tool schema', () => {
@@ -91,6 +104,7 @@ describe('parse_brand_properties handler', () => {
     const handlers = createBrandPropertyToolHandlers(SIGNED_IN_CTX);
     const result = JSON.parse(
       await handlers.get('parse_brand_properties')!({
+        ...WITH_ORG,
         domain: '',
         input: 'cnn.com',
       }),
@@ -103,6 +117,7 @@ describe('parse_brand_properties handler', () => {
     const handlers = createBrandPropertyToolHandlers(SIGNED_IN_CTX);
     const result = JSON.parse(
       await handlers.get('parse_brand_properties')!({
+        ...WITH_ORG,
         domain: 'paste-demo.example',
         input: '   ',
       }),
@@ -120,13 +135,14 @@ describe('parse_brand_properties handler', () => {
     });
     const handlers = createBrandPropertyToolHandlers(SIGNED_IN_CTX);
     await handlers.get('parse_brand_properties')!({
+      ...WITH_ORG,
       domain: 'HTTPS://Paste-Demo.Example/path?q=1',
       input: 'cnn.com',
     });
     expect(mocks.parsePropertyInputForBrand).toHaveBeenCalledOnce();
     const callArgs = mocks.parsePropertyInputForBrand.mock.calls[0][0];
     expect(callArgs.domain).toBe('paste-demo.example');
-    expect(callArgs.userId).toBe('user_owner_123');
+    expect(callArgs.organizationId).toBe('org_owner_123');
     expect(callArgs.inputType).toBe('text');
   });
 
@@ -143,6 +159,7 @@ describe('parse_brand_properties handler', () => {
     const handlers = createBrandPropertyToolHandlers(SIGNED_IN_CTX);
     const result = JSON.parse(
       await handlers.get('parse_brand_properties')!({
+        ...WITH_ORG,
         domain: 'paste-demo.example',
         input: 'cnn.com\nbbc.co.uk',
         input_type: 'text',
@@ -163,6 +180,7 @@ describe('parse_brand_properties handler', () => {
     const handlers = createBrandPropertyToolHandlers(SIGNED_IN_CTX);
     const result = JSON.parse(
       await handlers.get('parse_brand_properties')!({
+        ...WITH_ORG,
         domain: 'someone-elses.example',
         input: 'cnn.com',
         input_type: 'text',
@@ -181,6 +199,7 @@ describe('parse_brand_properties handler', () => {
     });
     const handlers = createBrandPropertyToolHandlers(SIGNED_IN_CTX);
     await handlers.get('parse_brand_properties')!({
+      ...WITH_ORG,
       domain: 'paste-demo.example',
       input: 'cnn.com',
       input_type: 'text',
@@ -200,6 +219,7 @@ describe('parse_brand_properties handler', () => {
     const handlers = createBrandPropertyToolHandlers(SIGNED_IN_CTX);
     const result = JSON.parse(
       await handlers.get('parse_brand_properties')!({
+        ...WITH_ORG,
         domain: 'paste-demo.example',
         input: 'no-real-domains-here',
         input_type: 'text',
@@ -216,6 +236,7 @@ describe('import_brand_properties handler', () => {
     const handlers = createBrandPropertyToolHandlers(null);
     const result = JSON.parse(
       await handlers.get('import_brand_properties')!({
+        ...WITH_ORG,
         domain: 'paste-demo.example',
         properties: [{ identifier: 'cnn.com', type: 'website' }],
       }),
@@ -228,6 +249,7 @@ describe('import_brand_properties handler', () => {
     const handlers = createBrandPropertyToolHandlers(SIGNED_IN_CTX);
     const result = JSON.parse(
       await handlers.get('import_brand_properties')!({
+        ...WITH_ORG,
         domain: 'paste-demo.example',
         properties: 'not an array',
       }),
@@ -244,6 +266,7 @@ describe('import_brand_properties handler', () => {
     const handlers = createBrandPropertyToolHandlers(SIGNED_IN_CTX);
     const result = JSON.parse(
       await handlers.get('import_brand_properties')!({
+        ...WITH_ORG,
         domain: 'paste-demo.example',
         properties: [
           { identifier: 'cnn.com', type: 'website', relationship: 'delegated' },
@@ -254,7 +277,7 @@ describe('import_brand_properties handler', () => {
     expect(result.added).toBe(2);
     expect(mocks.mergeBrandProperties).toHaveBeenCalledOnce();
     const callArgs = mocks.mergeBrandProperties.mock.calls[0][0];
-    expect(callArgs.userId).toBe('user_owner_123');
+    expect(callArgs.organizationId).toBe('org_owner_123');
     expect(callArgs.domain).toBe('paste-demo.example');
     expect(callArgs.properties).toHaveLength(2);
   });
@@ -268,6 +291,7 @@ describe('import_brand_properties handler', () => {
     const handlers = createBrandPropertyToolHandlers(SIGNED_IN_CTX);
     const result = JSON.parse(
       await handlers.get('import_brand_properties')!({
+        ...WITH_ORG,
         domain: 'unknown.example',
         properties: [{ identifier: 'cnn.com', type: 'website' }],
       }),
@@ -283,6 +307,7 @@ describe('import_brand_properties handler', () => {
     });
     const handlers = createBrandPropertyToolHandlers(SIGNED_IN_CTX);
     await handlers.get('import_brand_properties')!({
+      ...WITH_ORG,
       domain: 'HTTPS://Paste-Demo.Example/foo',
       properties: [{ identifier: 'cnn.com', type: 'website' }],
     });

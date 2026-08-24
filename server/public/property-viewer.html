@@ -738,7 +738,11 @@
           const response = await fetch(`/api/properties/hosted/${encodeURIComponent(currentDomain)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ edit_summary: editSummary, adagents_json }),
+            body: JSON.stringify({
+              edit_summary: editSummary,
+              adagents_json,
+              organization_id: localStorage.getItem('selectedOrgId') || '',
+            }),
           });
 
           if (!response.ok) {

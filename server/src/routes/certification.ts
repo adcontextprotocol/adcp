@@ -4,7 +4,7 @@ import { WorkOS } from '@workos-inc/node';
 import { Resend } from 'resend';
 import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
-import { requireAuth, requireGlobalAdmin, optionalAuth, isDevModeEnabled } from '../middleware/auth.js';
+import { requireAuth, requireGlobalAdmin, optionalAuth } from '../middleware/auth.js';
 import { enrichUserWithMembership } from '../utils/html-config.js';
 import * as certDb from '../db/certification-db.js';
 import { query } from '../db/client.js';
@@ -25,6 +25,8 @@ import {
   getCertificationModuleExperience,
   recordCertificationExperienceEvent,
 } from '../services/certification-experience.js';
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
+import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
 
 const logger = createLogger('certification-routes');
 
@@ -191,24 +193,6 @@ async function resolveCapstoneModuleIdForAttempt(
 }
 
 /**
- * Check if a user belongs to an organization.
- * In dev mode, checks local DB. In production, calls WorkOS API.
- */
-async function isOrgMember(userId: string, orgId: string): Promise<boolean> {
-  if (isDevModeEnabled()) {
-    const result = await query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM organization_memberships
-       WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-      [userId, orgId]
-    );
-    return parseInt(result.rows[0]?.count || '0') > 0;
-  }
-  if (!workos) return false;
-  const memberships = await workos.userManagement.listOrganizationMemberships({ userId, organizationId: orgId });
-  return memberships.data.length > 0;
-}
-
-/**
  * Create certification routes.
  * Returns publicRouter (mounted at /api/certification), userRouter (mounted at /api/me),
  * and orgRouter (mounted at /api/organizations).
@@ -261,7 +245,8 @@ export function createCertificationRouters() {
 
       const isAuthenticated = !!req.user;
       if (isAuthenticated) {
-        await enrichUserWithMembership(req.user as any);
+        const selectedOrgId = typeof req.query.org === 'string' ? req.query.org.trim() : '';
+        await enrichUserWithMembership(req.user as any, selectedOrgId);
       }
       const isMember = isAuthenticated && (req.user as any).isMember;
 
@@ -452,7 +437,10 @@ export function createCertificationRouters() {
       }
 
       // Check membership for gated modules
-      await enrichUserWithMembership(req.user as any);
+      const selectedOrgId = typeof req.body?.organization_id === 'string'
+        ? req.body.organization_id.trim()
+        : '';
+      await enrichUserWithMembership(req.user as any, selectedOrgId);
       if (!mod.is_free && !(req.user as any).isMember) {
         return res.status(403).json({
           error: 'Membership required',
@@ -573,18 +561,19 @@ export function createCertificationRouters() {
   // GET /api/me/certification/expectation — get current user's cert expectation + org social proof
   userRouter.get('/certification/expectation', async (req, res) => {
     try {
-      const userId = req.user!.id;
-      const orgResult = await query<{ workos_organization_id: string; name: string }>(
-        `SELECT om.workos_organization_id, o.name
-         FROM organization_memberships om
-         JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
-         WHERE om.workos_user_id = $1 AND o.is_personal = false
-         LIMIT 1`,
-        [userId]
+      const userId = getOrganizationAuthorizationUserId(req.user!);
+      const selectedOrg = typeof req.query.org === 'string' && req.query.org.length > 0
+        ? req.query.org
+        : null;
+      if (!selectedOrg) return res.status(400).json({ error: 'organization_selection_required', message: 'org query parameter is required' });
+      const membership = await resolveUserOrgMembership(workos, req.user!, selectedOrg);
+      if (!membership) return res.status(403).json({ error: 'Not authorized for the requested organization' });
+      const orgId = membership.organizationId;
+      const orgResult = await query<{ name: string }>(
+        `SELECT name FROM organizations WHERE workos_organization_id = $1 AND is_personal = false`,
+        [orgId],
       );
-      const orgId = orgResult.rows[0]?.workos_organization_id;
       const orgName = orgResult.rows[0]?.name;
-      if (!orgId) return res.json({ expectation: null, org_stats: null });
 
       const [expectation, orgCertProgress] = await Promise.all([
         certDb.getCertExpectationForUser(orgId, userId),
@@ -616,13 +605,17 @@ export function createCertificationRouters() {
   // POST /api/me/certification/expectation/decline — opt out of team cert expectation
   userRouter.post('/certification/expectation/decline', async (req, res) => {
     try {
-      const userId = req.user!.id;
-      const orgResult = await query<{ workos_organization_id: string }>(
-        `SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
-        [userId]
-      );
-      const orgId = orgResult.rows[0]?.workos_organization_id;
-      if (!orgId) return res.status(404).json({ error: 'No organization found' });
+      const userId = getOrganizationAuthorizationUserId(req.user!);
+      const selectedOrg = req.body?.organization_id;
+      if (typeof selectedOrg !== 'string' || selectedOrg.length === 0) {
+        return res.status(400).json({ error: 'organization_selection_required', message: 'organization_id is required' });
+      }
+      const membership = await resolveUserOrgMembership(workos, req.user!, selectedOrg);
+      if (!membership) return res.status(403).json({ error: 'Not authorized for the requested organization' });
+      const orgId = membership.organizationId;
+      if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
 
       const result = await certDb.declineCertExpectation(orgId, userId);
       if (!result) return res.status(404).json({ error: 'No active expectation found' });
@@ -637,14 +630,14 @@ export function createCertificationRouters() {
   // POST /api/me/certification/expectation/snooze — progressive snooze (7d → 30d → auto-decline)
   userRouter.post('/certification/expectation/snooze', async (req, res) => {
     try {
-      const userId = req.user!.id;
-
-      const orgResult = await query<{ workos_organization_id: string }>(
-        `SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
-        [userId]
-      );
-      const orgId = orgResult.rows[0]?.workos_organization_id;
-      if (!orgId) return res.status(404).json({ error: 'No organization found' });
+      const userId = getOrganizationAuthorizationUserId(req.user!);
+      const selectedOrg = req.body?.organization_id;
+      if (typeof selectedOrg !== 'string' || selectedOrg.length === 0) {
+        return res.status(400).json({ error: 'organization_selection_required', message: 'organization_id is required' });
+      }
+      const membership = await resolveUserOrgMembership(workos, req.user!, selectedOrg);
+      if (!membership) return res.status(403).json({ error: 'Not authorized for the requested organization' });
+      const orgId = membership.organizationId;
 
       // Check current expectation to determine snooze progression
       const existing = await certDb.getCertExpectationForUser(orgId, userId);
@@ -657,11 +650,17 @@ export function createCertificationRouters() {
       if (previouslySnoozed && existing.snooze_until && new Date(existing.snooze_until) < new Date()) {
         // They've snoozed before and it expired — this is the second+ snooze
         // Auto-decline instead of snoozeing indefinitely
+        if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
+          return res.status(403).json({ error: 'Organization authorization was revoked' });
+        }
         await certDb.declineCertExpectation(orgId, userId);
         return res.json({ status: 'declined', message: 'No worries — certification is always available if you change your mind.' });
       }
 
       const days = previouslySnoozed ? 30 : 7;
+      if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const result = await certDb.snoozeCertExpectation(orgId, userId, days);
       if (!result) return res.status(404).json({ error: 'No active expectation found' });
 
@@ -729,11 +728,11 @@ export function createCertificationRouters() {
   // GET /api/organizations/:orgId/certification-summary — team credential overview
   orgRouter.get('/:orgId/certification-summary', requireAuth, async (req, res) => {
     try {
-      const userId = req.user!.id;
+      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { orgId } = req.params;
 
-      // Verify user is a member of this org
-      if (!await isOrgMember(userId, orgId)) {
+      // Authorization is scoped to the exact credential that authenticated.
+      if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
@@ -787,7 +786,7 @@ export function createCertificationRouters() {
   // POST /api/organizations/:orgId/certification-invites — invite colleagues to certify
   orgRouter.post('/:orgId/certification-invites', requireAuth, async (req, res) => {
     try {
-      const userId = req.user!.id;
+      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { orgId } = req.params;
       const { emails, credential_target } = req.body;
 
@@ -804,15 +803,12 @@ export function createCertificationRouters() {
         }
       }
 
-      // Verify user is an admin of this org (only admins can send invitations)
-      const membershipResult = await query<{ role: string }>(
-        `SELECT role FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-        [userId, orgId]
-      );
-      if (!membershipResult.rows[0]) {
+      // Verify the exact authenticated credential is an active org admin.
+      const membershipResult = await resolveUserOrgMembership(workos, req.user!, orgId);
+      if (!membershipResult) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
-      if (membershipResult.rows[0].role !== 'admin') {
+      if (membershipResult.role !== 'admin') {
         return res.status(403).json({ error: 'Only organization admins can send certification invitations' });
       }
 
@@ -835,6 +831,9 @@ export function createCertificationRouters() {
         }
 
         try {
+          if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
+            return res.status(403).json({ error: 'Organization authorization was revoked' });
+          }
           // Check if expectation already exists
           if (existingEmails.has(email)) {
             alreadyInvited++;
@@ -893,7 +892,7 @@ export function createCertificationRouters() {
   // POST /api/organizations/:orgId/certification-invites/:id/resend — re-send a stale invitation
   orgRouter.post('/:orgId/certification-invites/:id/resend', requireAuth, async (req, res) => {
     try {
-      const userId = req.user!.id;
+      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { orgId, id } = req.params;
 
       if (!isUuid(id)) {
@@ -901,17 +900,17 @@ export function createCertificationRouters() {
       }
 
       // Verify caller is an admin of this org
-      const resendMembership = await query<{ role: string }>(
-        `SELECT role FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-        [userId, orgId]
-      );
-      if (!resendMembership.rows[0]) {
+      const resendMembership = await resolveUserOrgMembership(workos, req.user!, orgId);
+      if (!resendMembership) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
-      if (resendMembership.rows[0].role !== 'admin') {
+      if (resendMembership.role !== 'admin') {
         return res.status(403).json({ error: 'Only organization admins can resend certification invitations' });
       }
 
+      if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const updated = await certDb.resendCertExpectation(id, orgId);
       if (!updated) return res.status(404).json({ error: 'No pending invitation found' });
 
@@ -943,10 +942,10 @@ export function createCertificationRouters() {
   // GET /api/organizations/:orgId/certification-goals — list goals with progress
   orgRouter.get('/:orgId/certification-goals', requireAuth, async (req, res) => {
     try {
-      const userId = req.user!.id;
+      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { orgId } = req.params;
 
-      if (!await isOrgMember(userId, orgId)) {
+      if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
 
@@ -961,7 +960,7 @@ export function createCertificationRouters() {
   // POST /api/organizations/:orgId/certification-goals — create/update a goal (admin only)
   orgRouter.post('/:orgId/certification-goals', requireAuth, async (req, res) => {
     try {
-      const userId = req.user!.id;
+      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { orgId } = req.params;
       const { credential_id, target_count, deadline } = req.body;
 
@@ -984,14 +983,14 @@ export function createCertificationRouters() {
       }
 
       // Verify admin role
-      const membershipResult = await query<{ role: string }>(
-        `SELECT role FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-        [userId, orgId]
-      );
-      if (!membershipResult.rows[0] || membershipResult.rows[0].role !== 'admin') {
+      const membershipResult = await resolveUserOrgMembership(workos, req.user!, orgId);
+      if (!membershipResult || membershipResult.role !== 'admin') {
         return res.status(403).json({ error: 'Only organization admins can set certification goals' });
       }
 
+      if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const goal = await certDb.createOrUpdateCertGoal(orgId, credential_id, target_count, parsedDeadline, userId);
       res.json({ goal });
     } catch (error) {
@@ -1003,17 +1002,17 @@ export function createCertificationRouters() {
   // DELETE /api/organizations/:orgId/certification-goals/:id — remove a goal (admin only)
   orgRouter.delete('/:orgId/certification-goals/:id', requireAuth, async (req, res) => {
     try {
-      const userId = req.user!.id;
+      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { orgId, id } = req.params;
 
-      const membershipResult = await query<{ role: string }>(
-        `SELECT role FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-        [userId, orgId]
-      );
-      if (!membershipResult.rows[0] || membershipResult.rows[0].role !== 'admin') {
+      const membershipResult = await resolveUserOrgMembership(workos, req.user!, orgId);
+      if (!membershipResult || membershipResult.role !== 'admin') {
         return res.status(403).json({ error: 'Only organization admins can delete certification goals' });
       }
 
+      if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const deleted = await certDb.deleteCertGoal(id, orgId);
       if (!deleted) return res.status(404).json({ error: 'Goal not found' });
 
@@ -1031,10 +1030,10 @@ export function createCertificationRouters() {
   // GET /api/organizations/:orgId/certification-stalled — count of stalled learners
   orgRouter.get('/:orgId/certification-stalled', requireAuth, async (req, res) => {
     try {
-      const userId = req.user!.id;
+      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { orgId } = req.params;
 
-      if (!await isOrgMember(userId, orgId)) {
+      if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
 
@@ -1049,16 +1048,13 @@ export function createCertificationRouters() {
   // POST /api/organizations/:orgId/certification-nudge — nudge stalled learners
   orgRouter.post('/:orgId/certification-nudge', requireAuth, async (req, res) => {
     try {
-      const userId = req.user!.id;
+      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { orgId } = req.params;
       const { user_ids } = req.body;
 
       // Verify admin role
-      const membershipResult = await query<{ role: string }>(
-        `SELECT role FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-        [userId, orgId]
-      );
-      if (!membershipResult.rows[0] || membershipResult.rows[0].role !== 'admin') {
+      const membershipResult = await resolveUserOrgMembership(workos, req.user!, orgId);
+      if (!membershipResult || membershipResult.role !== 'admin') {
         return res.status(403).json({ error: 'Only organization admins can send certification nudges' });
       }
 
@@ -1076,6 +1072,9 @@ export function createCertificationRouters() {
       let nudged = 0;
       for (const learner of stalledLearners) {
         try {
+          if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
+            return res.status(403).json({ error: 'Organization authorization was revoked' });
+          }
           await notifyUser({
             recipientUserId: learner.workos_user_id,
             actorUserId: userId,

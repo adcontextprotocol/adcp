@@ -4629,9 +4629,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MemberAgentVisibilityWarning"
-        org_auto_created:
-          type: boolean
-          description: "Set to `true` when this `POST` was the caller's first interaction with the registry and the server auto-created the organization (display name derived from the user's email domain for corporate emails, or `<First Last>'s Workspace` for free-email providers). Combined with `profile_auto_created`, this is the one-call storefront experience: a third-party app holding only an OAuth token gets the org, profile, and registered agent in a single request."
         profile_auto_created:
           type: boolean
           description: "Set to `true` when this `POST` was the first agent registration on the caller's organization and the server auto-created a private member profile (display name = organization name, `is_public: false`). Absent on subsequent calls and on update-in-place. Surfaced so storefront-style integrations can show a \"we set up your profile\" hint without needing to detect the prior 404 → bootstrap → retry shape."
@@ -10283,6 +10280,13 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+        - schema:
+            type: string
+            description: Explicit organization used for member access.
+          required: true
+          description: Explicit organization used for member access.
+          name: org
+          in: query
       responses:
         "200":
           description: Compliance detail
@@ -10796,8 +10800,12 @@ paths:
                     type: string
                   maxItems: 100
                   description: Agent URLs to fetch storyboard status for
+                organization_id:
+                  type: string
+                  description: Explicit organization used for member access.
               required:
                 - agent_urls
+                - organization_id
       responses:
         "200":
           description: Storyboard status keyed by agent URL
@@ -10946,8 +10954,12 @@ paths:
                     - testing
                     - production
                     - deprecated
+                organization_id:
+                  type: string
+                  description: Explicit organization that owns the agent.
               required:
                 - lifecycle_stage
+                - organization_id
       responses:
         "200":
           description: Updated metadata
@@ -11005,8 +11017,12 @@ paths:
               properties:
                 opt_out:
                   type: boolean
+                organization_id:
+                  type: string
+                  description: Explicit organization that owns the agent.
               required:
                 - opt_out
+                - organization_id
       responses:
         "200":
           description: Updated metadata
@@ -11056,6 +11072,13 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+        - schema:
+            type: string
+            description: Explicit organization that owns the agent.
+          required: true
+          description: Explicit organization that owns the agent.
+          name: org
+          in: query
       responses:
         "200":
           description: Monitoring settings
@@ -11113,8 +11136,12 @@ paths:
               properties:
                 paused:
                   type: boolean
+                organization_id:
+                  type: string
+                  description: Explicit organization that owns the agent.
               required:
                 - paused
+                - organization_id
       responses:
         "200":
           description: Updated monitoring settings
@@ -11174,8 +11201,12 @@ paths:
                   type: integer
                   minimum: 6
                   maximum: 168
+                organization_id:
+                  type: string
+                  description: Explicit organization that owns the agent.
               required:
                 - interval_hours
+                - organization_id
       responses:
         "200":
           description: Updated monitoring settings
@@ -11225,6 +11256,17 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                organization_id:
+                  type: string
+                  description: Explicit organization that owns the agent.
+              required:
+                - organization_id
       responses:
         "200":
           description: Agent requeued
@@ -11288,6 +11330,13 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+        - schema:
+            type: string
+            description: Explicit organization that owns the agent.
+          required: true
+          description: Explicit organization that owns the agent.
+          name: org
+          in: query
         - schema:
             type: string
             description: Specific compliance run UUID. Defaults to latest.
@@ -11369,6 +11418,13 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+        - schema:
+            type: string
+            description: Explicit organization that owns the agent.
+          required: true
+          description: Explicit organization that owns the agent.
+          name: org
+          in: query
         - schema:
             type: string
             description: Max results (default 50, max 200)
@@ -11465,6 +11521,8 @@ paths:
                 organization_id:
                   type: string
                   description: Selected organization ID. The caller must own the agent in this organization before its credentials are used.
+              required:
+                - organization_id
       responses:
         "200":
           description: Snapshot refreshed
@@ -11616,9 +11674,9 @@ paths:
           in: path
         - schema:
             type: string
-            description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
-          required: false
-          description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+            description: Selected organization ID. Required to authorize the exact credential.
+          required: true
+          description: Selected organization ID. Required to authorize the exact credential.
           name: org
           in: query
       responses:
@@ -11636,6 +11694,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "401":
           description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized for the selected organization
           content:
             application/json:
               schema:
@@ -11683,6 +11747,8 @@ paths:
                 organization_id:
                   type: string
                   description: Selected organization ID. The caller must own the agent in this organization.
+              required:
+                - organization_id
       responses:
         "200":
           description: Connection result
@@ -11795,6 +11861,7 @@ paths:
                 - token_endpoint
                 - client_id
                 - client_secret
+                - organization_id
       responses:
         "200":
           description: Credentials saved
@@ -11873,6 +11940,8 @@ paths:
                 organization_id:
                   type: string
                   description: Selected organization ID. The caller must own the agent in this organization.
+              required:
+                - organization_id
       responses:
         "200":
           description: "Result of the token exchange. `ok: true` on 2xx from the AS; `ok: false` with a typed error otherwise (HTTP response itself is still 200 — the error payload carries the rejection kind so UI can branch on it)."
@@ -11977,9 +12046,9 @@ paths:
           in: path
         - schema:
             type: string
-            description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
-          required: false
-          description: Selected organization ID. Required to disambiguate an agent URL registered by multiple organizations.
+            description: Selected organization ID. Required to authorize the exact credential.
+          required: true
+          description: Selected organization ID. Required to authorize the exact credential.
           name: org
           in: query
       responses:
@@ -12325,6 +12394,10 @@ paths:
                   example: acmecorp.com
                 brand_name:
                   type: string
+                organization_id:
+                  type: string
+                  minLength: 1
+                  description: Organization explicitly selected for this mutation. The authenticated credential must have an active membership in this organization.
                 brand_json:
                   type: object
                   additionalProperties: {}
@@ -12341,6 +12414,7 @@ paths:
               required:
                 - domain
                 - brand_name
+                - organization_id
       responses:
         "200":
           description: Brand setup result
@@ -12636,6 +12710,8 @@ paths:
                 organization_id:
                   type: string
                   description: Selected organization ID. The caller must own the agent in this organization.
+              required:
+                - organization_id
       responses:
         "200":
           description: Step execution result
@@ -12773,6 +12849,8 @@ paths:
                 organization_id:
                   type: string
                   description: Selected organization ID. The caller must own the agent in this organization.
+              required:
+                - organization_id
       responses:
         "200":
           description: Storyboard run result with annotated phases
@@ -12983,6 +13061,8 @@ paths:
                 organization_id:
                   type: string
                   description: Selected organization ID. The caller must own the agent in this organization.
+              required:
+                - organization_id
       responses:
         "200":
           description: Side-by-side comparison results
@@ -13090,10 +13170,10 @@ paths:
       parameters:
         - schema:
             type: string
-            description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+            description: Explicit WorkOS organization id to act on. Required on every request. Verification uses the exact authenticated credential; identity linkage and primary organizations are not authorization inputs.
             example: org_01HXZAB123
-          required: false
-          description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+          required: true
+          description: Explicit WorkOS organization id to act on. Required on every request. Verification uses the exact authenticated credential; identity linkage and primary organizations are not authorization inputs.
           name: org
           in: query
       responses:
@@ -13104,7 +13184,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemberAgentListResponse"
         "400":
-          description: No organization associated with this account
+          description: The required `org` query parameter is missing.
           content:
             application/json:
               schema:
@@ -13116,7 +13196,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: "`?org=` was supplied but the caller is not a member of that organization."
+          description: The exact authenticated credential is not authorized for the selected organization.
           content:
             application/json:
               schema:
@@ -13135,13 +13215,7 @@ paths:
 
         Idempotent on `url`: re-posting the same `url` updates the entry in place rather than creating a duplicate. New entries return `201`; updates return `200`.
 
-        **True one-call storefront experience.** A third-party app holding only a user's OAuth token can `POST /api/me/agents` once and have the entire bootstrap chain materialize:
-
-        - If the caller has zero org memberships, the server auto-creates an organization (corporate or personal workspace based on the user's email domain) and the response includes `org_auto_created: true`.
-
-        - If the caller's org has no member profile, the server auto-creates a private profile (display name = organization name, `is_public: false`) and the response includes `profile_auto_created: true`.
-
-        Both auto-bootstraps are best-effort fallbacks. To customize org name / company_type / revenue_tier, or to control profile slug / brand identity / tagline, call `POST /api/organizations` and `POST /api/me/member-profile` explicitly before registering the agent. Tier transitions never happen via this path — go through the billing flow.
+        The `org` query parameter is required. If the selected organization has no member profile, the server creates a private profile (display name = organization name, `is_public: false`) and includes `profile_auto_created: true`.
 
         `type` is required and declared by the caller — the server does not infer it. Server-side smuggle protection still cross-checks the declared type against the agent's capability snapshot when one exists; if the snapshot contradicts the declaration without classifying it, the stored value is `unknown` and the dashboard surfaces the conflict for the owner to resolve.
 
@@ -13154,10 +13228,10 @@ paths:
       parameters:
         - schema:
             type: string
-            description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+            description: Explicit WorkOS organization id to act on. Required on every request. Verification uses the exact authenticated credential; identity linkage and primary organizations are not authorization inputs.
             example: org_01HXZAB123
-          required: false
-          description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+          required: true
+          description: Explicit WorkOS organization id to act on. Required on every request. Verification uses the exact authenticated credential; identity linkage and primary organizations are not authorization inputs.
           name: org
           in: query
       requestBody:
@@ -13179,7 +13253,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemberAgentResponse"
         "400":
-          description: Missing or invalid `url`, missing/invalid `type`, or the caller has memberships in other orgs but no primary org set — pass `?org=<id>` to target one explicitly. (Fresh users with no memberships at all hit the org auto-bootstrap path and do not see this error.)
+          description: Missing required `org`, missing or invalid `url`, or missing/invalid `type`.
           content:
             application/json:
               schema:
@@ -13191,13 +13265,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: "`?org=` was supplied but the caller is not a member of that organization."
+          description: The exact authenticated credential is not authorized for the selected organization.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
-          description: Auto-bootstrap could not run (e.g. the organization has no name yet). Call `POST /api/me/member-profile` to create a profile explicitly, then retry.
+          description: No member profile exists and a private profile could not be created.
           content:
             application/json:
               schema:
@@ -13228,10 +13302,10 @@ paths:
           in: path
         - schema:
             type: string
-            description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+            description: Explicit WorkOS organization id to act on. Required on every request. Verification uses the exact authenticated credential; identity linkage and primary organizations are not authorization inputs.
             example: org_01HXZAB123
-          required: false
-          description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+          required: true
+          description: Explicit WorkOS organization id to act on. Required on every request. Verification uses the exact authenticated credential; identity linkage and primary organizations are not authorization inputs.
           name: org
           in: query
       requestBody:
@@ -13247,7 +13321,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemberAgentResponse"
         "400":
-          description: No organization associated with this account, or `body.url` differs from the path (`url_immutable`).
+          description: The required `org` query parameter is missing, or `body.url` differs from the path (`url_immutable`).
           content:
             application/json:
               schema:
@@ -13259,7 +13333,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: "`?org=` was supplied but the caller is not a member of that organization."
+          description: The exact authenticated credential is not authorized for the selected organization.
           content:
             application/json:
               schema:
@@ -13292,17 +13366,17 @@ paths:
           in: path
         - schema:
             type: string
-            description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+            description: Explicit WorkOS organization id to act on. Required on every request. Verification uses the exact authenticated credential; identity linkage and primary organizations are not authorization inputs.
             example: org_01HXZAB123
-          required: false
-          description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+          required: true
+          description: Explicit WorkOS organization id to act on. Required on every request. Verification uses the exact authenticated credential; identity linkage and primary organizations are not authorization inputs.
           name: org
           in: query
       responses:
         "204":
           description: Agent removed.
         "400":
-          description: No organization associated with this account
+          description: The required `org` query parameter is missing.
           content:
             application/json:
               schema:
@@ -13314,7 +13388,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: "`?org=` was supplied but the caller is not a member of that organization."
+          description: The exact authenticated credential is not authorized for the selected organization.
           content:
             application/json:
               schema:

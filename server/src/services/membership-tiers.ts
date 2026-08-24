@@ -219,3 +219,11 @@ export async function checkContentSubmissionTier(
   // active/non-canceled global membership resolver.
   return membership.is_member && isApiAccessTier(membership.membership_tier);
 }
+
+/** Check content eligibility for an already-authorized explicit organization. */
+export async function checkOrganizationContentSubmissionTier(orgId: string): Promise<boolean> {
+  const directMembership = await fetchDirectMembership(orgId);
+  if (isContentSubmissionMembershipEligible(directMembership)) return true;
+  const membership = await resolveEffectiveMembership(orgId);
+  return membership.is_member && isApiAccessTier(membership.membership_tier);
+}

@@ -1843,7 +1843,8 @@
         if (!contentEl) return;
 
         try {
-          var resp = await fetch('/api/certification/modules/' + encodeURIComponent(modId), {credentials: 'include'});
+          var selectedOrgId = localStorage.getItem('selectedOrgId') || '';
+          var resp = await fetch('/api/certification/modules/' + encodeURIComponent(modId) + '?org=' + encodeURIComponent(selectedOrgId), {credentials: 'include'});
           if (!resp.ok) throw new Error('fetch failed');
           var data = await resp.json();
           var dims = (data.assessment_criteria && data.assessment_criteria.dimensions) || [];

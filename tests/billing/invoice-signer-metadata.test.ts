@@ -15,7 +15,7 @@ describe('invoice signer metadata invariants', () => {
     const source = readRepoFile('server/src/routes/billing-public.ts');
 
     expect(source).toMatch(
-      /const invoiceData: InvoiceRequestData = \{[\s\S]*workosOrganizationId: orgId,\s*workosUserId: user\.id,[\s\S]*\};/
+      /const invoiceData: InvoiceRequestData = \{[\s\S]*workosOrganizationId: orgId,\s*workosUserId: authorizationUserId,[\s\S]*\};/
     );
   });
 

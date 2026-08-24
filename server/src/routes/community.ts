@@ -10,8 +10,7 @@ import { MemberDatabase } from "../db/member-db.js";
 import { OrganizationDatabase } from "../db/organization-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { query } from "../db/client.js";
-import { resolvePrimaryOrganization } from "../db/users-db.js";
-import { VALID_MEMBER_OFFERINGS, type MemberOffering } from "../types.js";
+import { VALID_MEMBER_OFFERINGS } from "../types.js";
 import { notifyUser } from "../notifications/notification-service.js";
 import { validateMemberProfileUrlFields } from "../utils/member-profile-url.js";
 
@@ -59,7 +58,7 @@ export interface CommunityRoutesConfig {
  * Returns publicRouter (mounted at /api/community) and userRouter (mounted at /api/me).
  */
 export function createCommunityRouters(config: CommunityRoutesConfig) {
-  const { communityDb, slackDb, memberDb, orgDb, invalidateMemberContextCache } = config;
+  const { communityDb, slackDb, invalidateMemberContextCache } = config;
   const publicRouter = Router();
   const userRouter = Router();
 
@@ -280,21 +279,6 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         return res.status(404).json({ error: 'User not found' });
       }
 
-      if (memberDb && orgDb) {
-        const orgId = await resolvePrimaryOrganization(user.id);
-        if (orgId) {
-          const org = await orgDb.getOrganization(orgId);
-          if (org?.is_personal) {
-            await query(
-              `UPDATE member_profiles
-               SET portrait_id = NULL, updated_at = NOW()
-               WHERE workos_organization_id = $1`,
-              [orgId]
-            );
-          }
-        }
-      }
-
       communityDb.checkAndAwardBadges(user.id, 'profile').catch(
         err => logger.error({ err }, 'Badge check failed')
       );
@@ -440,25 +424,6 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
         err => logger.error({ err }, 'Badge check failed')
       );
 
-      // For individual accounts, sync community profile → member_profiles
-      if (memberDb && orgDb) {
-        const memberFields: MemberDirectoryFields = {
-          offerings: Array.isArray(req.body.offerings) ? req.body.offerings as MemberOffering[] : undefined,
-          contact_email: typeof req.body.contact_email === 'string' ? req.body.contact_email : undefined,
-          contact_website: req.body.contact_website === null
-            ? null
-            : typeof req.body.contact_website === 'string'
-              ? req.body.contact_website
-              : undefined,
-          contact_phone: typeof req.body.contact_phone === 'string' ? req.body.contact_phone : undefined,
-        };
-        try {
-          await syncIndividualMemberProfile(user.id, profile, memberFields, memberDb, orgDb, invalidateMemberContextCache);
-        } catch (err) {
-          logger.error({ err }, 'Member profile sync failed');
-        }
-      }
-
       res.json(profile);
     } catch (error: any) {
       if (error?.constraint === 'users_slug_key') {
@@ -521,124 +486,4 @@ export function createCommunityRouters(config: CommunityRoutesConfig) {
   });
 
   return { publicRouter, userRouter };
-}
-
-/**
- * For individual (personal) accounts, sync community profile fields to member_profiles
- * so the member directory listing stays up to date from a single profile form.
- */
-interface MemberDirectoryFields {
-  offerings?: MemberOffering[];
-  contact_email?: string;
-  contact_website?: string | null;
-  contact_phone?: string;
-}
-
-async function syncIndividualMemberProfile(
-  userId: string,
-  communityProfile: CommunityProfile,
-  memberFields: MemberDirectoryFields,
-  memberDb: MemberDatabase,
-  orgDb: OrganizationDatabase,
-  invalidateMemberContextCache?: () => void,
-): Promise<void> {
-  // Look up user's org
-  const orgId = await resolvePrimaryOrganization(userId);
-  if (!orgId) return;
-
-  // Only sync for personal/individual orgs
-  const org = await orgDb.getOrganization(orgId);
-  if (!org?.is_personal) return;
-
-  const userRow = await query<{ first_name: string; last_name: string }>(
-    'SELECT first_name, last_name FROM users WHERE workos_user_id = $1',
-    [userId]
-  );
-  const user = userRow.rows[0];
-  const displayName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'Member';
-
-  // Build mapped fields for member_profiles
-  const memberUpdates: Record<string, unknown> = {
-    display_name: displayName,
-  };
-
-  // Legacy community rows may contain URL values that predate the current
-  // HTTPS-only policy. An unrelated profile edit must still sync its safe
-  // fields, without copying those legacy values into a new member write.
-  for (const [field, value] of [
-    ['linkedin_url', communityProfile.linkedin_url || null],
-    ['twitter_url', communityProfile.twitter_url || null],
-  ] as const) {
-    if (!validateMemberProfileUrlFields({ [field]: value })) {
-      memberUpdates[field] = value;
-    }
-  }
-
-  if (memberFields.contact_email !== undefined) memberUpdates.contact_email = memberFields.contact_email;
-  if (
-    memberFields.contact_website !== undefined
-    && !validateMemberProfileUrlFields({ contact_website: memberFields.contact_website })
-  ) {
-    memberUpdates.contact_website = memberFields.contact_website;
-  }
-  if (memberFields.contact_phone !== undefined) memberUpdates.contact_phone = memberFields.contact_phone;
-
-  const existingProfile = await memberDb.getProfileByOrgId(orgId);
-
-  // Sync is_public: turning off always syncs; turning on requires active subscription.
-  // Only check subscription when actually toggling on to avoid unnecessary DB call.
-  if (communityProfile.is_public === false) {
-    memberUpdates.is_public = false;
-  } else if (communityProfile.is_public === true && (!existingProfile || !existingProfile.is_public)) {
-    const hasSubscription = await orgDb.hasActiveSubscription(orgId);
-    if (hasSubscription) {
-      memberUpdates.is_public = true;
-    }
-  }
-
-  if (existingProfile) {
-    // Only sync headline→tagline and bio→description if the listing field hasn't been
-    // independently customized (i.e., it's empty or already matches the community value).
-    const newTagline = communityProfile.headline || null;
-    const currentTagline = existingProfile.tagline || null;
-    if (!currentTagline || currentTagline === newTagline) {
-      memberUpdates.tagline = newTagline;
-    }
-
-    const newDescription = communityProfile.bio || null;
-    const currentDescription = existingProfile.description || null;
-    if (!currentDescription || currentDescription === newDescription) {
-      memberUpdates.description = newDescription;
-    }
-
-    // Merge offerings: the form only edits individual-relevant offerings (consulting, other).
-    // Preserve any other offerings the existing profile has (e.g. data_provider).
-    if (memberFields.offerings !== undefined) {
-      const individualOfferings: MemberOffering[] = ['consulting', 'other'];
-      const preserved = (existingProfile.offerings || []).filter(
-        (o: MemberOffering) => !individualOfferings.includes(o)
-      );
-      memberUpdates.offerings = [...preserved, ...memberFields.offerings];
-    }
-
-    await memberDb.updateProfileByOrgId(orgId, memberUpdates);
-  } else {
-    // Auto-create member profile for personal accounts on first save
-    const slug = communityProfile.slug || displayName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    const memberIsPublic = memberUpdates.is_public === true;
-    await memberDb.createProfile({
-      workos_organization_id: orgId,
-      display_name: displayName,
-      slug,
-      tagline: communityProfile.headline || undefined,
-      description: communityProfile.bio || undefined,
-      contact_email: memberFields.contact_email,
-      contact_website: memberFields.contact_website ?? undefined,
-      contact_phone: memberFields.contact_phone,
-      offerings: memberFields.offerings || [],
-      is_public: memberIsPublic,
-    });
-  }
-
-  invalidateMemberContextCache?.();
 }

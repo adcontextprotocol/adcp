@@ -267,6 +267,12 @@ function mountChatRouter() {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
+    if (mocks.authenticated && req.body && typeof req.body === 'object' && !req.body.organization_id) {
+      req.body.organization_id = 'org_object_authorization';
+    }
+    next();
+  });
+  app.use((req, _res, next) => {
     const ownerCookie = req.get('cookie')
       ?.split(';')
       .map(value => value.trim())

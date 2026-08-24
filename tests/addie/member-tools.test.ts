@@ -8,6 +8,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MemberContext } from '../../server/src/addie/member-context.js';
 
+vi.hoisted(() => {
+  process.env.WORKOS_API_KEY ||= 'sk_test_member_tools';
+  process.env.WORKOS_CLIENT_ID ||= 'client_test_member_tools';
+});
+
 const memberToolMocks = vi.hoisted(() => ({
   checkToolRateLimit: vi.fn(),
   comply: vi.fn(),
@@ -156,7 +161,7 @@ describe('MEMBER_TOOLS definitions', () => {
     expect(tool?.input_schema.properties).toHaveProperty('offerings');
     expect(tool?.input_schema.properties).toHaveProperty('contact_website');
     expect(tool?.input_schema.properties).toHaveProperty('headquarters');
-    expect(tool?.input_schema.required).toEqual([]);
+    expect(tool?.input_schema.required).toEqual(['organization_id']);
   });
 
   it('has list_perspectives tool', () => {

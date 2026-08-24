@@ -63,6 +63,7 @@ import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { notifyInvoiceSent } from "../notifications/billing.js";
 import { WorkOS } from "@workos-inc/node";
 import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
+import { getOrganizationAuthorizationUserId } from "../auth/organization-principal.js";
 
 const logger = createLogger("billing-public-routes");
 const orgDb = new OrganizationDatabase();
@@ -263,6 +264,7 @@ export function createPublicBillingRouter(): Router {
   router.post("/invoice-request", requireAuth, async (req: Request, res: Response) => {
     try {
       const user = req.user!;
+      const authorizationUserId = getOrganizationAuthorizationUserId(user);
       const { orgId, lookupKey, billingAddress, referral_code, agreement_version } =
         req.body as {
           orgId: string;
@@ -311,7 +313,7 @@ export function createPublicBillingRouter(): Router {
         });
       }
 
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: "Access denied",
@@ -382,16 +384,6 @@ export function createPublicBillingRouter(): Router {
         });
       }
 
-      // Atomic: record (or re-affirm) the pending agreement + store the
-      // billing address in a single UPDATE so a partial failure can't leave
-      // one set without the other.
-      await orgDb.updateOrganization(orgId, {
-        pending_agreement_version: acceptedVersion,
-        pending_agreement_accepted_at: new Date(),
-        pending_agreement_user_id: user.id,
-        billing_address: sanitizedAddress,
-      });
-
       // Referral discount (same logic as checkout).
       let invoiceCouponId: string | undefined;
       let validatedInvoiceReferralCode: Awaited<ReturnType<typeof referralDb.getReferralCode>> = null;
@@ -439,11 +431,11 @@ export function createPublicBillingRouter(): Router {
         billingAddress: sanitizedAddress,
         lookupKey,
         workosOrganizationId: orgId,
-        workosUserId: user.id,
+        workosUserId: authorizationUserId,
         couponId: invoiceCouponId ?? org.stripe_coupon_id ?? undefined,
       };
 
-      logger.info({ orgId, lookupKey, userId: user.id }, 'Invoice request received');
+      logger.info({ orgId, lookupKey, userId: authorizationUserId }, 'Invoice request received');
 
       // Lock + re-guard + Stripe write must be atomic per-org. The early
       // `blockIfActiveSubscription` above handles the common case fast; this
@@ -459,7 +451,7 @@ export function createPublicBillingRouter(): Router {
         // Re-resolve inside the lock: a membership can be revoked or
         // downgraded after the early check while the request waits. Never use
         // that stale snapshot to mint a billing-management portal session.
-        const currentMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+        const currentMembership = await resolveUserOrgMembership(workos, user, orgId);
         if (!currentMembership) return { kind: 'forbidden' };
         const racedBlock = await blockIfActiveSubscription(orgId, orgDb, {
           customerPortalReturnUrl: `${req.protocol}://${req.get('host')}/dashboard/membership`,
@@ -470,6 +462,14 @@ export function createPublicBillingRouter(): Router {
         if (await hasPendingMembershipCheckoutAttempt(orgId)) {
           return { kind: 'pendingCheckout' };
         }
+        // Persist the agreement and billing address only after the exact
+        // credential's authority has been revalidated under the org lock.
+        await orgDb.updateOrganization(orgId, {
+          pending_agreement_version: acceptedVersion,
+          pending_agreement_accepted_at: new Date(),
+          pending_agreement_user_id: authorizationUserId,
+          billing_address: sanitizedAddress,
+        });
         const invoiceResult = await createAndSendInvoice(invoiceData);
         if (!invoiceResult) return { kind: 'invoiceFailed' };
         return { kind: 'success', invoiceResult };
@@ -512,7 +512,7 @@ export function createPublicBillingRouter(): Router {
       }
 
       logger.info(
-        { invoiceId: result.invoiceId, orgId, lookupKey, userId: user.id },
+        { invoiceId: result.invoiceId, orgId, lookupKey, userId: authorizationUserId },
         "Invoice request processed successfully"
       );
 
@@ -550,6 +550,7 @@ export function createPublicBillingRouter(): Router {
     async (req: Request, res: Response) => {
       try {
         const user = req.user!;
+        const authorizationUserId = getOrganizationAuthorizationUserId(user);
         const { priceId, orgId, referral_code } = req.body as {
           priceId: string;
           orgId: string;
@@ -572,7 +573,7 @@ export function createPublicBillingRouter(): Router {
           });
         }
 
-        const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+        const membership = await resolveUserOrgMembership(workos, user, orgId);
         if (!membership) {
           return res.status(403).json({
             error: "Access denied",
@@ -598,7 +599,7 @@ export function createPublicBillingRouter(): Router {
         // afterwards so a membership revoked or downgraded while it was in
         // flight cannot carry stale billing-management authority into the
         // active-subscription guard.
-        const currentMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+        const currentMembership = await resolveUserOrgMembership(workos, user, orgId);
         if (!currentMembership) {
           return res.status(403).json({
             error: "Access denied",
@@ -704,7 +705,7 @@ export function createPublicBillingRouter(): Router {
           successUrl: `${baseUrl}/dashboard?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
           cancelUrl: `${baseUrl}/dashboard?checkout=cancelled`,
           workosOrganizationId: orgId,
-          workosUserId: user.id,
+          workosUserId: authorizationUserId,
           isPersonalWorkspace: org.is_personal || false,
           // Priority: org coupon > referral coupon > org promo code > allow manual entry
           couponId: org.stripe_coupon_id || referralCouponId || undefined,
@@ -721,7 +722,7 @@ export function createPublicBillingRouter(): Router {
           // Recheck mutable authority and Stripe state after acquiring the
           // per-org lock, then persist an immutable checkout attempt before
           // performing the Stripe write outside the database transaction.
-          const lockedMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+          const lockedMembership = await resolveUserOrgMembership(workos, user, orgId);
           if (!lockedMembership) return { kind: 'forbidden' };
           const racedBlock = await blockIfActiveSubscription(orgId, orgDb, {
             customerPortalReturnUrl: `${baseUrl}/dashboard/membership`,
@@ -731,7 +732,7 @@ export function createPublicBillingRouter(): Router {
           if (!canManageMembershipBilling(lockedMembership.role)) return { kind: 'forbidden' };
           const claim = await claimMembershipCheckoutAttempt({
             organizationId: orgId,
-            userId: user.id,
+            userId: authorizationUserId,
             payloadFingerprint: fingerprintMembershipCheckoutPayload(checkoutData),
           });
           if (claim.kind === 'conflict') return { kind: 'conflict' };
@@ -793,7 +794,7 @@ export function createPublicBillingRouter(): Router {
         // (above) avoids this because the code is consumed at /join/:code accept time.
         if (validatedReferralCode && shouldConsumeReferral) {
           try {
-            await referralDb.acceptReferralCode(validatedReferralCode.code, orgId, user.id);
+            await referralDb.acceptReferralCode(validatedReferralCode.code, orgId, authorizationUserId);
           } catch (err) {
             logger.warn({ err, referral_code, orgId }, 'Failed to record referral at checkout — continuing');
           }
@@ -803,7 +804,7 @@ export function createPublicBillingRouter(): Router {
           {
             sessionId: result.sessionId,
             orgId,
-            userId: user.id,
+            userId: authorizationUserId,
             priceId,
           },
           "Checkout session created"
@@ -953,14 +954,7 @@ export function createPublicBillingRouter(): Router {
           Object.values(DEV_USERS).some((du) => du.id === user.id) &&
           orgId.startsWith("org_dev_");
         if (!isDevUserBilling) {
-          // Verify user is a member of this organization
-          const memberships =
-            await workos!.userManagement.listOrganizationMemberships({
-              userId: user.id,
-              organizationId: orgId,
-            });
-
-          if (memberships.data.length === 0) {
+          if (!await resolveUserOrgMembership(workos, user, orgId)) {
             return res.status(403).json({
               error: "Access denied",
               message: "You are not a member of this organization",
@@ -989,6 +983,9 @@ export function createPublicBillingRouter(): Router {
             metadata: { workos_organization_id: orgId },
           });
 
+        if (!isDevUserBilling && !await resolveUserOrgMembership(workos, user, orgId)) {
+          return res.status(403).json({ error: "Organization authorization was revoked" });
+        }
         let stripeCustomerId = await orgDb.getOrCreateStripeCustomer(orgId, makeCustomer);
 
         if (!stripeCustomerId) {
@@ -1124,14 +1121,7 @@ export function createPublicBillingRouter(): Router {
           Object.values(DEV_USERS).some((du) => du.id === user.id) &&
           orgId.startsWith("org_dev_");
         if (!isDevUserBilling) {
-          // Verify user is a member of this organization with admin/owner role
-          const memberships =
-            await workos!.userManagement.listOrganizationMemberships({
-              userId: user.id,
-              organizationId: orgId,
-            });
-
-          if (memberships.data.length === 0) {
+          if (!await resolveUserOrgMembership(workos, user, orgId)) {
             return res.status(403).json({
               error: "Access denied",
               message: "You are not a member of this organization",
@@ -1145,6 +1135,9 @@ export function createPublicBillingRouter(): Router {
         if (company_type) updateData.company_type = company_type as CompanyType;
         if (revenue_tier) updateData.revenue_tier = revenue_tier as RevenueTier;
 
+        if (!isDevUserBilling && !await resolveUserOrgMembership(workos, user, orgId)) {
+          return res.status(403).json({ error: "Organization authorization was revoked" });
+        }
         await orgDb.updateOrganization(orgId, updateData);
 
         logger.info(
@@ -1199,11 +1192,7 @@ export function createPublicBillingRouter(): Router {
           Object.values(DEV_USERS).some((du) => du.id === user.id) &&
           orgId.startsWith("org_dev_");
         if (!isDevUserBilling) {
-          const memberships = await workos!.userManagement.listOrganizationMemberships({
-            userId: user.id,
-            organizationId: orgId,
-          });
-          if (memberships.data.length === 0) {
+          if (!await resolveUserOrgMembership(workos, user, orgId)) {
             return res.status(403).json({
               error: "Access denied",
               message: "You are not a member of this organization",
@@ -1211,6 +1200,9 @@ export function createPublicBillingRouter(): Router {
           }
         }
 
+        if (!isDevUserBilling && !await resolveUserOrgMembership(workos, user, orgId)) {
+          return res.status(403).json({ error: "Organization authorization was revoked" });
+        }
         await orgDb.updateOrganization(orgId, { billing_address: sanitized });
 
         logger.info(

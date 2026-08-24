@@ -144,7 +144,7 @@ describe('get_billing_portal tool', () => {
       ...memberContext('owner'), // stale cached owner must not authorize
     });
 
-    const result = JSON.parse(await handlers.get('get_billing_portal')!({}));
+    const result = JSON.parse(await handlers.get('get_billing_portal')!({ organization_id: 'org_123' }));
 
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/owners and admins/i);
@@ -158,7 +158,7 @@ describe('get_billing_portal tool', () => {
     mockListMemberships.mockResolvedValue({ data: [membership] });
     const handlers = createBillingToolHandlers(memberContext('owner'));
 
-    const result = JSON.parse(await handlers.get('get_billing_portal')!({}));
+    const result = JSON.parse(await handlers.get('get_billing_portal')!({ organization_id: 'org_123' }));
 
     expect(result.success).toBe(false);
     expect(mockCreatePortalSession).not.toHaveBeenCalled();
@@ -168,7 +168,7 @@ describe('get_billing_portal tool', () => {
     mockListMemberships.mockRejectedValue(new Error('WorkOS unavailable'));
     const handlers = createBillingToolHandlers(memberContext('owner'));
 
-    const result = JSON.parse(await handlers.get('get_billing_portal')!({}));
+    const result = JSON.parse(await handlers.get('get_billing_portal')!({ organization_id: 'org_123' }));
 
     expect(result.success).toBe(false);
     expect(mockCreatePortalSession).not.toHaveBeenCalled();
@@ -185,7 +185,7 @@ describe('get_billing_portal tool', () => {
       mockCreatePortalSession.mockResolvedValueOnce('https://billing.stripe.test/session');
       const handlers = createBillingToolHandlers(memberContext('member'));
 
-      const result = JSON.parse(await handlers.get('get_billing_portal')!({}));
+      const result = JSON.parse(await handlers.get('get_billing_portal')!({ organization_id: 'org_123' }));
 
       expect(result.success).toBe(true);
       expect(mockCreatePortalSession).toHaveBeenCalledWith(

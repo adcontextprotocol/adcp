@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getWebMemberContext: vi.fn(),
   isWebUserAdmin: vi.fn(),
   getCommitteesLedByUser: vi.fn(),
+  resolveUserOrgMembership: vi.fn(),
 }));
 
 vi.mock("express-rate-limit", () => ({
@@ -60,6 +61,10 @@ vi.mock("../../src/addie/claude-cost-tracker.js", () => ({
 vi.mock("../../src/addie/member-context.js", () => ({
   getWebMemberContext: mocks.getWebMemberContext,
   formatMemberContextForPrompt: () => "",
+}));
+
+vi.mock("../../src/utils/resolve-user-org-membership.js", () => ({
+  resolveUserOrgMembership: mocks.resolveUserOrgMembership,
 }));
 
 vi.mock("../../src/addie/mcp/knowledge-search.js", () => ({
@@ -149,6 +154,11 @@ describe("Tavus session guidance route boundary", () => {
     );
     mocks.addMessage.mockResolvedValue(undefined);
     mocks.getWebMemberContext.mockResolvedValue(null);
+    mocks.resolveUserOrgMembership.mockResolvedValue({
+      organizationId: "org-video",
+      role: "member",
+      source: "workos",
+    });
     mocks.isWebUserAdmin.mockResolvedValue(false);
     mocks.getCommitteesLedByUser.mockResolvedValue([]);
     mocks.processMessageStream.mockImplementation(async function* () {
@@ -178,6 +188,7 @@ describe("Tavus session guidance route boundary", () => {
     const response = await request(mountApp())
       .post("/api/addie/video/session")
       .send({
+        organization_id: "org-video",
         extraContext: GUIDANCE,
         disableFillers: true,
       });
@@ -189,6 +200,8 @@ describe("Tavus session guidance route boundary", () => {
         user_id: "authenticated-session-user",
         context: {
           persona_id: "test-persona",
+          authorization_workos_user_id: "authenticated-session-user",
+          selected_organization_id: "org-video",
           disable_fillers: true,
           video_session_guidance: { version: 1, text: GUIDANCE },
         },
@@ -205,6 +218,8 @@ describe("Tavus session guidance route boundary", () => {
     });
     expect(storedContext).toEqual({
       persona_id: "test-persona",
+      authorization_workos_user_id: "authenticated-session-user",
+      selected_organization_id: "org-video",
       disable_fillers: true,
       video_session_guidance: { version: 1, text: GUIDANCE },
       tavus_conversation_id: "tavus-conversation-id",
@@ -213,6 +228,7 @@ describe("Tavus session guidance route boundary", () => {
 
   it("applies escaped guidance only to the resolved thread user's current turn", async () => {
     await request(mountApp()).post("/api/addie/video/session").send({
+      organization_id: "org-video",
       extraContext: GUIDANCE,
       disableFillers: true,
     });
@@ -234,7 +250,8 @@ describe("Tavus session guidance route boundary", () => {
     expect(mocks.getThread).toHaveBeenCalledWith(THREAD_ID);
     expect(mocks.getThread).not.toHaveBeenCalledWith(FAKE_THREAD_ID);
     expect(mocks.getWebMemberContext).toHaveBeenCalledWith(
-      "authenticated-session-user"
+      "authenticated-session-user",
+      "org-video"
     );
     expect(mocks.isWebUserAdmin).toHaveBeenCalledWith(
       "authenticated-session-user"

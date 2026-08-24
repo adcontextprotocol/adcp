@@ -60,13 +60,14 @@ describe('resolveUserOrgMembership', () => {
       await seedMembership(pool, DEV_ADMIN_USER, DEV_ORG, 'owner');
 
       // workos arg is a no-op in dev path — pass null to prove it.
-      const result = await resolveUserOrgMembership(null, DEV_ADMIN_USER, DEV_ORG);
+      const result = await resolveUserOrgMembership(null, { id: DEV_ADMIN_USER }, DEV_ORG);
 
       expect(result).toEqual({
         organizationId: DEV_ORG,
         role: 'owner',
         status: 'active',
         via_dev_bypass: true,
+        via_credential_grant: false,
       });
     });
 
@@ -74,7 +75,7 @@ describe('resolveUserOrgMembership', () => {
       await seedOrg(pool, DEV_ORG);
       // Don't seed membership.
 
-      const result = await resolveUserOrgMembership(null, DEV_ADMIN_USER, DEV_ORG);
+      const result = await resolveUserOrgMembership(null, { id: DEV_ADMIN_USER }, DEV_ORG);
 
       expect(result).toBeNull();
     });
@@ -83,13 +84,14 @@ describe('resolveUserOrgMembership', () => {
       await seedOrg(pool, DEV_ORG);
       await seedMembership(pool, DEV_MEMBER_USER, DEV_ORG, 'weirdRole');
 
-      const result = await resolveUserOrgMembership(null, DEV_MEMBER_USER, DEV_ORG);
+      const result = await resolveUserOrgMembership(null, { id: DEV_MEMBER_USER }, DEV_ORG);
 
       expect(result).toEqual({
         organizationId: DEV_ORG,
         role: 'member',
         status: 'active',
         via_dev_bypass: true,
+        via_credential_grant: false,
       });
     });
 
@@ -103,13 +105,14 @@ describe('resolveUserOrgMembership', () => {
       } as unknown as WorkOS;
 
       // NON_DEV_USER isn't in DEV_USERS, so we hit WorkOS even in dev mode.
-      const result = await resolveUserOrgMembership(mockWorkos, NON_DEV_USER, NON_DEV_ORG);
+      const result = await resolveUserOrgMembership(mockWorkos, { id: NON_DEV_USER }, NON_DEV_ORG);
 
       expect(result).toEqual({
         organizationId: NON_DEV_ORG,
         role: 'admin',
         status: 'active',
         via_dev_bypass: false,
+        via_credential_grant: false,
       });
       expect(mockWorkos.userManagement.listOrganizationMemberships).toHaveBeenCalledWith({
         userId: NON_DEV_USER,
@@ -119,6 +122,26 @@ describe('resolveUserOrgMembership', () => {
   });
 
   describe('WorkOS path', () => {
+    it('authorizes the authenticated credential instead of the canonical person-state user', async () => {
+      const listOrganizationMemberships = vi.fn().mockResolvedValue({
+        data: [{ organizationId: NON_DEV_ORG, status: 'active', role: { slug: 'member' } }],
+      });
+      const mockWorkos = {
+        userManagement: { listOrganizationMemberships },
+      } as unknown as WorkOS;
+
+      await resolveUserOrgMembership(
+        mockWorkos,
+        { id: 'user_canonical', authWorkosUserId: 'user_authenticated' },
+        NON_DEV_ORG,
+      );
+
+      expect(listOrganizationMemberships).toHaveBeenCalledWith({
+        userId: 'user_authenticated',
+        organizationId: NON_DEV_ORG,
+      });
+    });
+
     it('returns the highest-privilege active role from WorkOS memberships', async () => {
       const mockWorkos = {
         userManagement: {
@@ -132,7 +155,7 @@ describe('resolveUserOrgMembership', () => {
         },
       } as unknown as WorkOS;
 
-      const result = await resolveUserOrgMembership(mockWorkos, NON_DEV_USER, NON_DEV_ORG);
+      const result = await resolveUserOrgMembership(mockWorkos, { id: NON_DEV_USER }, NON_DEV_ORG);
 
       // 'admin' is the highest active role; pending 'owner' is filtered out.
       expect(result?.role).toBe('admin');
@@ -146,7 +169,7 @@ describe('resolveUserOrgMembership', () => {
         },
       } as unknown as WorkOS;
 
-      const result = await resolveUserOrgMembership(mockWorkos, NON_DEV_USER, NON_DEV_ORG);
+      const result = await resolveUserOrgMembership(mockWorkos, { id: NON_DEV_USER }, NON_DEV_ORG);
 
       expect(result).toBeNull();
     });
@@ -163,7 +186,7 @@ describe('resolveUserOrgMembership', () => {
         },
       } as unknown as WorkOS;
 
-      const result = await resolveUserOrgMembership(mockWorkos, NON_DEV_USER, NON_DEV_ORG);
+      const result = await resolveUserOrgMembership(mockWorkos, { id: NON_DEV_USER }, NON_DEV_ORG);
 
       expect(result).toBeNull();
     });
@@ -180,14 +203,14 @@ describe('resolveUserOrgMembership', () => {
         },
       } as unknown as WorkOS;
 
-      const result = await resolveUserOrgMembership(mockWorkos, NON_DEV_USER, NON_DEV_ORG);
+      const result = await resolveUserOrgMembership(mockWorkos, { id: NON_DEV_USER }, NON_DEV_ORG);
 
       expect(result).toBeNull();
     });
 
     it('returns null when the WorkOS client is missing', async () => {
       // Use a non-DEV user so the dev-mode path doesn't bypass.
-      const result = await resolveUserOrgMembership(null, NON_DEV_USER, NON_DEV_ORG);
+      const result = await resolveUserOrgMembership(null, { id: NON_DEV_USER }, NON_DEV_ORG);
 
       expect(result).toBeNull();
     });

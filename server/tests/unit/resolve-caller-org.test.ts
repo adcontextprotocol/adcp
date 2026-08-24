@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const validateWorkOSApiKeyMock = vi.fn();
 const jwtVerifyMock = vi.fn();
 const decodeJwtMock = vi.fn();
-const dbQueryMock = vi.fn();
+const resolveUserOrgMembershipMock = vi.fn();
 
 vi.mock('../../src/middleware/auth.js', () => ({
   validateWorkOSApiKey: (...args: unknown[]) => validateWorkOSApiKeyMock(...args),
@@ -30,8 +30,12 @@ vi.mock('jose', () => ({
   decodeJwt: (...args: unknown[]) => decodeJwtMock(...args),
 }));
 
-vi.mock('../../src/db/client.js', () => ({
-  query: (...args: unknown[]) => dbQueryMock(...args),
+vi.mock('../../src/auth/workos-client.js', () => ({
+  getWorkos: () => 'fake-workos',
+}));
+
+vi.mock('../../src/utils/resolve-user-org-membership.js', () => ({
+  resolveUserOrgMembership: (...args: unknown[]) => resolveUserOrgMembershipMock(...args),
 }));
 
 // Import under test *after* the mocks are registered.
@@ -39,9 +43,16 @@ const { resolveCallerOrgId, orgIdFromBearerJwt, __resetJwksForTests } = await im
   '../../src/routes/helpers/resolve-caller-org.js'
 );
 
-function reqWith(authHeader?: string, user?: { id?: string }) {
+function reqWith(
+  authHeader?: string,
+  user?: { id?: string; authWorkosUserId?: string },
+  selectedOrganizationId?: string,
+) {
   return {
-    headers: authHeader ? { authorization: authHeader } : {},
+    headers: {
+      ...(authHeader ? { authorization: authHeader } : {}),
+      ...(selectedOrganizationId ? { 'x-organization-id': selectedOrganizationId } : {}),
+    },
     user,
   };
 }
@@ -53,7 +64,7 @@ describe('resolveCallerOrgId', () => {
     validateWorkOSApiKeyMock.mockReset();
     jwtVerifyMock.mockReset();
     decodeJwtMock.mockReset();
-    dbQueryMock.mockReset();
+    resolveUserOrgMembershipMock.mockReset();
     __resetJwksForTests();
   });
 
@@ -62,6 +73,9 @@ describe('resolveCallerOrgId', () => {
   it('returns org_id from a verified OIDC JWT', async () => {
     decodeJwtMock.mockReturnValueOnce({ iss: ISS });
     jwtVerifyMock.mockResolvedValueOnce({ payload: { org_id: 'org_from_jwt', sub: 'user_123' } });
+    resolveUserOrgMembershipMock.mockResolvedValueOnce({
+      organizationId: 'org_from_jwt', role: 'member', status: 'active', via_dev_bypass: false,
+    });
 
     const orgId = await resolveCallerOrgId(reqWith('Bearer eyJabc.def.ghi'));
 
@@ -70,7 +84,15 @@ describe('resolveCallerOrgId', () => {
     // jwtVerify must pin the issuer it resolved from unverified decode.
     expect(jwtVerifyMock.mock.calls[0][2]).toMatchObject({ issuer: ISS });
     expect(validateWorkOSApiKeyMock).not.toHaveBeenCalled();
-    expect(dbQueryMock).not.toHaveBeenCalled();
+    expect(resolveUserOrgMembershipMock).toHaveBeenCalledWith('fake-workos', { id: 'user_123' }, 'org_from_jwt');
+  });
+
+  it('rejects a verified JWT whose current membership was revoked', async () => {
+    decodeJwtMock.mockReturnValueOnce({ iss: ISS });
+    jwtVerifyMock.mockResolvedValueOnce({ payload: { org_id: 'org_revoked', sub: 'user_123' } });
+    resolveUserOrgMembershipMock.mockResolvedValueOnce(null);
+
+    expect(await resolveCallerOrgId(reqWith('Bearer eyJabc.def.ghi'))).toBeNull();
   });
 
   it('falls through to API key / session when JWT verification fails', async () => {
@@ -128,7 +150,7 @@ describe('resolveCallerOrgId', () => {
     expect(decodeJwtMock).not.toHaveBeenCalled();
     expect(jwtVerifyMock).not.toHaveBeenCalled();
     expect(validateWorkOSApiKeyMock).toHaveBeenCalledTimes(1);
-    expect(dbQueryMock).not.toHaveBeenCalled();
+    expect(resolveUserOrgMembershipMock).not.toHaveBeenCalled();
   });
 
   it('returns org from a legacy wos_api_key_ prefix key', async () => {
@@ -143,38 +165,57 @@ describe('resolveCallerOrgId', () => {
 
   // ── Sealed-session path (existing behavior) ─────────────────────
 
-  it('falls back to users.primary_organization_id when only req.user is set', async () => {
+  it('resolves an explicitly selected organization for the authenticated credential', async () => {
     validateWorkOSApiKeyMock.mockResolvedValueOnce(null);
-    // resolvePrimaryOrganization: fast-path read returns the cached column
-    // alongside joins_valid, so a dangling pointer can fall through.
-    dbQueryMock.mockResolvedValueOnce({ rows: [{ primary_organization_id: 'org_from_session', joins_valid: true }] });
+    resolveUserOrgMembershipMock.mockResolvedValueOnce({
+      organizationId: 'org_from_session', role: 'member', status: 'active', via_dev_bypass: false,
+    });
 
-    const orgId = await resolveCallerOrgId(reqWith(undefined, { id: 'user_session' }));
+    const orgId = await resolveCallerOrgId(reqWith(
+      undefined,
+      { id: 'user_canonical', authWorkosUserId: 'user_authenticated' },
+      'org_from_session',
+    ));
 
     expect(orgId).toBe('org_from_session');
-    // Assert the fast-path SQL — joins_valid checks both organizations and
-    // organization_memberships so a dangling pointer falls through.
-    expect(dbQueryMock.mock.calls[0][0]).toMatch(/SELECT[\s\S]*primary_organization_id[\s\S]*EXISTS[\s\S]*organizations[\s\S]*EXISTS[\s\S]*organization_memberships[\s\S]*joins_valid[\s\S]*FROM users[\s\S]*workos_user_id\s*=\s*\$1/);
-    expect(dbQueryMock.mock.calls[0][1]).toEqual(['user_session']);
+    expect(resolveUserOrgMembershipMock).toHaveBeenCalledWith(
+      'fake-workos',
+      { id: 'user_canonical', authWorkosUserId: 'user_authenticated' },
+      'org_from_session',
+    );
   });
 
-  it('returns null when session user has no primary org and no memberships', async () => {
+  it('does not choose an implicit organization for a sealed session', async () => {
     validateWorkOSApiKeyMock.mockResolvedValueOnce(null);
-    // Fast-path: no row (column was NULL or user row missing).
-    dbQueryMock.mockResolvedValueOnce({ rows: [] });
-    // Fallback: resolvePreferredOrganization finds no memberships.
-    dbQueryMock.mockResolvedValueOnce({ rows: [] });
 
     const orgId = await resolveCallerOrgId(reqWith(undefined, { id: 'user_no_org' }));
 
     expect(orgId).toBeNull();
+    expect(resolveUserOrgMembershipMock).not.toHaveBeenCalled();
   });
 
-  it('swallows DB errors and returns null rather than throwing', async () => {
+  it('returns null when the authenticated credential lacks the selected organization', async () => {
     validateWorkOSApiKeyMock.mockResolvedValueOnce(null);
-    dbQueryMock.mockRejectedValueOnce(new Error('connection reset'));
+    resolveUserOrgMembershipMock.mockResolvedValueOnce(null);
 
-    const orgId = await resolveCallerOrgId(reqWith(undefined, { id: 'user_db_err' }));
+    const orgId = await resolveCallerOrgId(reqWith(
+      undefined,
+      { id: 'user_session' },
+      'org_unavailable',
+    ));
+
+    expect(orgId).toBeNull();
+  });
+
+  it('swallows authoritative membership lookup errors and returns null rather than throwing', async () => {
+    validateWorkOSApiKeyMock.mockResolvedValueOnce(null);
+    resolveUserOrgMembershipMock.mockRejectedValueOnce(new Error('connection reset'));
+
+    const orgId = await resolveCallerOrgId(reqWith(
+      undefined,
+      { id: 'user_db_err' },
+      'org_selected',
+    ));
 
     expect(orgId).toBeNull();
   });
@@ -188,7 +229,7 @@ describe('resolveCallerOrgId', () => {
 
     expect(orgId).toBeNull();
     expect(decodeJwtMock).not.toHaveBeenCalled();
-    expect(dbQueryMock).not.toHaveBeenCalled();
+    expect(resolveUserOrgMembershipMock).not.toHaveBeenCalled();
   });
 
   it('returns null for a non-Bearer Authorization header', async () => {

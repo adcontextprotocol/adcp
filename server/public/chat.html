@@ -6422,7 +6422,13 @@
         setReadOnlyMode(true, 'video');
 
         try {
-          const res = await authFetch('/api/addie/video/session', { method: 'POST' });
+          const selectedOrgId = getSelectedOrganizationId();
+          if (!selectedOrgId) throw new Error('Select an organization before starting a video call');
+          const res = await authFetch('/api/addie/video/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ organization_id: selectedOrgId }),
+          });
           if (!res.ok) {
             const data = await res.json().catch(() => ({}));
             throw new Error(data.error || 'Failed to start video session');

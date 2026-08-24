@@ -8,8 +8,9 @@
 
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
-import { query } from '../db/client.js';
 import { createLogger } from '../logger.js';
+import { getWorkos } from '../auth/workos-client.js';
+import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
 
 const logger = createLogger('brand-logo-auth');
 
@@ -54,17 +55,14 @@ export async function isVerifiedBrandOwner(userId: string, domain: string, brand
     const hosted = await brandDb.getHostedBrandByDomain(domain);
     if (!hosted || !hosted.domain_verified) return false;
 
-    // Check if user belongs to the org that owns this brand
+    // Recheck the exact authenticated credential against the live membership
+    // source (or an explicit credential grant) for the owning organization.
     if (!hosted.workos_organization_id) return false;
-
-    const result = await query<{ exists: boolean }>(
-      `SELECT EXISTS(
-        SELECT 1 FROM organization_memberships
-        WHERE workos_user_id = $1 AND workos_organization_id = $2
-      ) AS exists`,
-      [userId, hosted.workos_organization_id]
-    );
-    return result.rows[0]?.exists ?? false;
+    return Boolean(await resolveUserOrgMembership(
+      getWorkos(),
+      { id: userId },
+      hosted.workos_organization_id,
+    ));
   } catch (err) {
     logger.error({ err, userId, domain }, 'Error checking brand ownership');
     return false;

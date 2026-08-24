@@ -31,6 +31,7 @@ import {
 } from '../billing/active-subscription-guard.js';
 import { withOrgIntakeLock } from '../billing/org-intake-lock.js';
 import * as referralDb from '../db/referral-codes-db.js';
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 
 const logger = createLogger('invites-routes');
 const orgDb = new OrganizationDatabase();
@@ -184,26 +185,27 @@ export function createInvitesRouter(): Router {
       // confirmed the person is the right one. This closes the "anyone with a
       // leaked link becomes owner of an empty prospect org" escalation path.
       if (workos) {
+        const authorizationUserId = getOrganizationAuthorizationUserId(user);
         try {
           const existing = await workos.userManagement.listOrganizationMemberships({
-            userId: user.id,
+            userId: authorizationUserId,
             organizationId: org.workos_organization_id,
           });
           if (!existing.data || existing.data.length === 0) {
             try {
               await workos.userManagement.createOrganizationMembership({
-                userId: user.id,
+                userId: authorizationUserId,
                 organizationId: org.workos_organization_id,
                 roleSlug: 'member',
               });
               logger.info(
-                { userId: user.id, orgId: org.workos_organization_id },
+                { userId: authorizationUserId, orgId: org.workos_organization_id },
                 'Added user to org via invite accept (role: member)'
               );
             } catch (membershipErr) {
               const code = (membershipErr as { code?: string }).code;
               if (code === 'organization_membership_already_exists') {
-                logger.info({ userId: user.id, orgId: org.workos_organization_id },
+                logger.info({ userId: authorizationUserId, orgId: org.workos_organization_id },
                   'Membership already exists (race) — continuing');
               } else {
                 throw membershipErr;
@@ -211,7 +213,7 @@ export function createInvitesRouter(): Router {
             }
           }
         } catch (err) {
-          logger.error({ err, userId: user.id, orgId: org.workos_organization_id },
+          logger.error({ err, userId: authorizationUserId, orgId: org.workos_organization_id },
             'Failed to ensure org membership on invite accept');
           return res.status(500).json({
             error: 'Could not add you to the organization',
