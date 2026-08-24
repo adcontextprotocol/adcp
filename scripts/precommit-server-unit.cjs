@@ -104,7 +104,7 @@ function main() {
   }
 
   console.log(`Running ${plan.files.length} changed server unit test file(s).`);
-  return run('npm', ['exec', '--', 'vitest', 'run', ...plan.files]);
+  return run('npm', ['exec', '--', 'vitest', 'run', '--config', 'server/vitest.config.ts', ...plan.files]);
 }
 
 if (require.main === module) {

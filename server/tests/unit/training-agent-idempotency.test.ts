@@ -509,7 +509,7 @@ describe('training agent idempotency middleware', () => {
     it('keeps keyless list_products independent from legacy discovery replay identity', async () => {
       const key = `products-list-alias-${randomUUID()}`;
       const identity = {
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         brand: BRAND,
       };
 
@@ -543,7 +543,7 @@ describe('training agent idempotency middleware', () => {
 
       const conflict = await call(server, 'get_products', {
         idempotency_key: key,
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         buying_mode: 'wholesale',
         account: ACCOUNT,
       });
@@ -569,7 +569,7 @@ describe('training agent idempotency middleware', () => {
       const key = `products-recommend-task-alias-${randomUUID()}`;
       const shared = {
         idempotency_key: key,
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         account: ACCOUNT,
         brand: BRAND,
         brief: 'cross-channel news video and display',
@@ -585,7 +585,7 @@ describe('training agent idempotency middleware', () => {
 
       const split = await call(server, 'request_proposals', {
         idempotency_key: key,
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         brand: BRAND,
         brief: shared.brief,
       });
@@ -596,7 +596,7 @@ describe('training agent idempotency middleware', () => {
     it('projects one cached product result across inline then task execution modes', async () => {
       const shared = {
         idempotency_key: `products-inline-task-${randomUUID()}`,
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         brand: BRAND,
         brief: 'cross-channel sports',
       };
@@ -616,7 +616,7 @@ describe('training agent idempotency middleware', () => {
     it('projects one cached product result across task then inline execution modes', async () => {
       const shared = {
         idempotency_key: `products-task-inline-${randomUUID()}`,
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         brand: BRAND,
         brief: 'cross-channel news',
       };
@@ -767,7 +767,7 @@ describe('training agent idempotency middleware', () => {
         .toMatchObject({ proposal_status: 'committed' });
     });
 
-    it('allocates a fresh task when a released error key is retried with corrected input', async () => {
+    it('keeps a released error key bound to its original payload', async () => {
       const key = `products-task-correction-${randomUUID()}`;
       const failed = await callAsTask(server, 'get_products', {
         idempotency_key: key,
@@ -778,19 +778,25 @@ describe('training agent idempotency middleware', () => {
       const failedTaskId = (failed.parsed.task as { taskId?: string })?.taskId;
       expect(failedTaskId).toBeTruthy();
 
-      const correctedPayload = {
+      const changedPayload = {
         idempotency_key: key,
         buying_mode: 'wholesale',
         account: ACCOUNT,
       };
-      const corrected = await callAsTask(server, 'get_products', correctedPayload);
-      const correctedTaskId = (corrected.parsed.task as { taskId?: string })?.taskId;
-      expect(correctedTaskId).toBeTruthy();
-      expect(correctedTaskId).not.toBe(failedTaskId);
+      const changed = await call(server, 'get_products', changedPayload);
+      expect(changed.isError).toBe(true);
+      expect((changed.parsed as any).adcp_error).toMatchObject({
+        code: 'IDEMPOTENCY_CONFLICT',
+      });
 
-      const replay = await callAsTask(server, 'get_products', correctedPayload);
-      expect((replay.parsed.task as { taskId?: string })?.taskId).toBe(correctedTaskId);
-      expect(replay.parsed.replayed).toBe(true);
+      const exactRetry = await callAsTask(server, 'get_products', {
+        idempotency_key: key,
+        buying_mode: 'refine',
+        account: ACCOUNT,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: 'proposal-does-not-exist' }],
+      });
+      expect((exactRetry.parsed.task as { taskId?: string })?.taskId).toBeTruthy();
+      expect((exactRetry.parsed.task as { taskId?: string })?.taskId).not.toBe(failedTaskId);
     });
 
     it('allocates a fresh task when the exact failed payload later succeeds', async () => {

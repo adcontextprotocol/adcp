@@ -103,7 +103,7 @@ without asking the seller to author a media plan:
 
 ```javascript
 const result = await seller.listProducts({
-  adcp_version: '3.2-beta.4',
+  adcp_version: '3.2-beta.5',
   account: { account_id: 'account_123' },
   criteria: {
     offer_filters: {
@@ -121,6 +121,23 @@ The response contains products only—never proposals—and carries an opaque
 to `buy_products` so the seller can reject stale offers instead of silently
 applying changed terms.
 
+When discovery includes concrete `targeting_overlay` values, inspect each
+returned product before purchase:
+
+- No product-level `targeting_resolution` means the product accepts the
+  requested structured overlay exactly.
+- `targeting_resolution.modifications` is an ordered, sparse disclosure of the
+  alternative the seller can execute. Selecting that `product_id` accepts the
+  modified result.
+- A request-specific configured product carries `is_custom: true` and
+  `expires_at`. Purchase that exact ID before expiry; do not substitute the
+  baseline product ID or send a conflicting overlay at commitment.
+
+After `buy_products`, verify that the package readback preserves the accepted
+targeting. If the buyer requested only `required_overlay_support`, rediscover
+with concrete values before purchase when it needs a value-specific price or
+forecast; support alone does not promise inventory for every later value.
+
 A catalog mirror uses the same read as its bootstrap and repair surface. Store
 `feed_version`, `pricing_version`, and `cache_scope`; subscribe to `product.*`
 and `wholesale_feed.bulk_change` through account notification configuration;
@@ -133,12 +150,12 @@ for the complete mirror contract.
 ## Seller-planned proposals
 
 Use `request_proposals` when the seller should translate a campaign brief into
-one or more priced plans. Sam Adeyemi at Pinnacle Agency can send the same
+one or more priced plans. Sam at Pinnacle Agency can send the same
 structured criteria to StreamHaus while keeping strategy in prose:
 
 ```javascript
 const response = await seller.requestProposals({
-  adcp_version: '3.2-beta.4',
+  adcp_version: '3.2-beta.5',
   idempotency_key: 'acme-q2-proposals-001',
   account: { account_id: 'account_123' },
   brand: { domain: 'acme-outdoor.example' },
@@ -165,6 +182,11 @@ The seller returns immutable draft proposals. Each revision creates a new
    expiring inventory hold.
 4. Call `accept_proposal` with both the committed `proposal_id` and
    `terms_digest` before `expires_at`.
+
+The criteria and any configured product targeting are part of the proposal's
+commercial terms. Before finalizing, verify the selected product IDs, effective
+targeting or disclosed modifications, price, forecast assumptions, and expiry;
+after acceptance, confirm the same targeting on package readback.
 
 Commercial changes after acceptance use the same proposal lineage to create an
 amendment or negotiated cancellation. Operational changes inside the accepted

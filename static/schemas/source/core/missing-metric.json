@@ -57,6 +57,28 @@
         },
         "metric_id": {
           "$ref": "/schemas/core/vendor-metric-id.json"
+        },
+        "qualifier": {
+          "type": "object",
+          "description": "Mirrors the qualifier on the corresponding vendor-scope `committed_metrics` entry. MUST match that entry so reconciliation joins on (vendor, metric_id, qualifier).",
+          "properties": {
+            "viewability_standard": {
+              "$ref": "/schemas/enums/viewability-standard.json"
+            },
+            "completion_source": {
+              "$ref": "/schemas/enums/completion-source.json"
+            },
+            "attribution_methodology": {
+              "$ref": "/schemas/enums/attribution-methodology.json"
+            },
+            "attribution_window": {
+              "$ref": "/schemas/core/duration.json"
+            },
+            "lift_dimension": {
+              "$ref": "/schemas/enums/lift-dimension.json"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "required": [

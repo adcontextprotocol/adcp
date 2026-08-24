@@ -226,7 +226,7 @@ describe('comply_test_controller', () => {
 
     it('advertises force_get_products_arm for the 3.2 beta release', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         adcp_major_version: 3,
         scenario: 'list_scenarios',
         account: ACCOUNT,
@@ -914,7 +914,7 @@ describe('comply_test_controller', () => {
       expect(seeded.success).toBe(true);
 
       const { result: active32 } = await simulateCallTool(server, 'get_media_buys', {
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         account: ACCOUNT,
         brand: BRAND,
         media_buy_ids: ['proposal_bound_change_rights'],
@@ -951,7 +951,7 @@ describe('comply_test_controller', () => {
       ]);
 
       const sellerManaged = await simulateCallTool(server, 'control_media_buy', {
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         account: ACCOUNT,
         media_buy_id: 'proposal_bound_change_rights',
         revision: activeBuy32.revision,
@@ -967,7 +967,7 @@ describe('comply_test_controller', () => {
       });
 
       const unevaluatedCondition = await simulateCallTool(server, 'control_media_buy', {
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         account: ACCOUNT,
         media_buy_id: 'proposal_bound_change_rights',
         revision: activeBuy32.revision,
@@ -983,7 +983,7 @@ describe('comply_test_controller', () => {
       });
 
       const packageCeiling = await simulateCallTool(server, 'control_media_buy', {
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         account: ACCOUNT,
         media_buy_id: 'proposal_bound_change_rights',
         revision: activeBuy32.revision,
@@ -1003,7 +1003,7 @@ describe('comply_test_controller', () => {
       });
 
       const { result: paused } = await simulateCallTool(server, 'control_media_buy', {
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         account: ACCOUNT,
         media_buy_id: 'proposal_bound_change_rights',
         revision: activeBuy32.revision,
@@ -1022,7 +1022,7 @@ describe('comply_test_controller', () => {
       });
 
       const { result: pausedRead } = await simulateCallTool(server, 'get_media_buys', {
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         account: ACCOUNT,
         media_buy_ids: ['proposal_bound_change_rights'],
       });
@@ -1103,7 +1103,7 @@ describe('comply_test_controller', () => {
       });
 
       const { result: before } = await simulateCallTool(server, 'get_media_buys', {
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         account: ACCOUNT,
         media_buy_ids: ['bounded_self_serve_budget'],
       });
@@ -1116,7 +1116,7 @@ describe('comply_test_controller', () => {
       }]);
 
       const { result: increased, isError: increaseError } = await simulateCallTool(server, 'control_media_buy', {
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         account: ACCOUNT,
         media_buy_id: 'bounded_self_serve_budget',
         revision: buy.revision,
@@ -1129,7 +1129,7 @@ describe('comply_test_controller', () => {
       });
 
       const requote = await simulateCallTool(server, 'control_media_buy', {
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         account: ACCOUNT,
         media_buy_id: 'bounded_self_serve_budget',
         revision: increased.revision,
@@ -1185,7 +1185,7 @@ describe('comply_test_controller', () => {
       });
 
       const { result } = await simulateCallTool(server, 'get_media_buys', {
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         account: ACCOUNT,
         media_buy_ids: ['paused_without_resume_term'],
       });
@@ -1280,7 +1280,7 @@ describe('comply_test_controller', () => {
         });
 
         const attempt = await simulateCallTool(server, testCase.tool, {
-          adcp_version: testCase.tool === 'control_media_buy' ? '3.2-beta.4' : '3.1',
+          adcp_version: testCase.tool === 'control_media_buy' ? '3.2-beta.5' : '3.1',
           account: ACCOUNT,
           media_buy_id: testCase.id,
           revision: 1,
@@ -1604,7 +1604,7 @@ describe('comply_test_controller', () => {
       });
 
       const rejectedCompactControl = await simulateCallTool(server, 'control_media_buy', {
-        adcp_version: '3.2-beta.4',
+        adcp_version: '3.2-beta.5',
         account: ACCOUNT,
         media_buy_id: 'created_from_allowed_actions',
         revision: updated.revision,

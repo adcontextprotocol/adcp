@@ -1169,8 +1169,9 @@ test("buyer teaching surfaces explain structured-first targeting", () => {
   }
   assert.match(skill, /fewer tokens/);
   assert.match(addieKnowledge, /No targeting-resolution echo confirms only/);
-  assert.match(certificationTools, /3\.2 targeting-aware objectives with schema fixtures/);
-  assert.match(certificationTools, /issues\/6199/);
+  assert.match(certificationTools, /exact 3\.2 beta\.5 wire pin with @adcp\/sdk@14\.0\.0-beta\.7/);
+  assert.match(certificationTools, /3\.2 targeting-aware objectives live/);
+  assert.doesNotMatch(certificationTools, /issues\/6199/);
   assert.match(
     certificationTools,
     /learning\/supplements\/buyer-briefs-and-get-products/
