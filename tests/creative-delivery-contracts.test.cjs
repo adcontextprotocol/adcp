@@ -529,6 +529,14 @@ test('creative representation resolution vectors retain the complete revision an
     assert.equal(selected?.representation_id ?? null, vector.expected.selected_representation_id, vector.name);
     assert.deepEqual(vector.representation_set.representations.map(v => v.representation_id), vector.expected.retained_representation_ids, vector.name);
     assert.deepEqual(rejections, vector.expected.rejections.map(({ representation_id, code }) => ({ representation_id, code })), vector.name);
+    if (!selected) {
+      const validateUnresolved = ajv.getSchema('/schemas/error-details/creative-representation-unresolved.json');
+      const details = { representation_rejections: vector.expected.rejections };
+      assert.equal(validateUnresolved(details), true,
+        `${vector.name}: ${JSON.stringify(validateUnresolved.errors)}`);
+      assert.equal(details.representation_rejections.length, vector.representation_set.representations.length,
+        `${vector.name}: unresolved resolution reports every retained candidate exactly once`);
+    }
   }
 
   const uniqueVariantIds = source => new Set(source.representations.map(variant => variant.representation_id)).size ===
@@ -634,7 +642,13 @@ test('creative representation resolution vectors retain the complete revision an
   assert.match(revisionRules.representation_set_projection.explicit_reselection, /build_creative resolution alone does not mutate/);
   assert.match(revisionRules.representation_set_projection.capability_drift, /MUST NOT implicitly re-resolve/);
   assert.match(revisionRules.representation_set_projection.seller_inability, /MUST NOT silently substitute/);
+  assert.match(validateSource.schema['x-adcp-validation'].verifier_constraints.revision_identity.equivalence_assertion,
+    /buyer asserts.*digest proves set integrity, not semantic or rendered equivalence/);
+  assert.equal(validateSelection.schema['x-adcp-validation'].spec,
+    'docs/creative/representation-sets.mdx#seller-bound-resolution');
   const selectionRules = validateSelection.schema['x-adcp-validation'].verifier_constraints.derived_output;
+  assert.match(selectionRules.approval_boundary, /exact selected output MUST complete.*ordinary validation and review/);
+  assert.match(selectionRules.runtime_selection, /pinned at trafficking time.*MUST NOT be changed per viewer or device/);
   assert.match(selectionRules.selection_stability, /only an explicit buyer-submitted selected output/);
   assert.match(selectionRules.seller_inability, /media-buy impairment/);
 
@@ -761,7 +775,9 @@ test('creative representation resolution vectors retain the complete revision an
   const registry = JSON.parse(fs.readFileSync(path.join(SCHEMAS, 'index.json'), 'utf8'));
   for (const publicSchema of [
     'creative-representation-set', 'creative-representation', 'representation-destination',
-    'representation-selection', 'representation-rejection'
+    'representation-selection', 'representation-rejection', 'macro-bearing-url',
+    'macro-declaration', 'macro-encoding', 'macro-resolution-capability',
+    'macro-resolution-result', 'macro-translation-target'
   ]) {
     assert.ok(registry.schemas.core.schemas[publicSchema], `${publicSchema} is discoverable in the schema registry`);
   }
@@ -889,6 +905,13 @@ test('macro processing vectors preserve bytes and match exact owner/context/enco
   assert.ok(translationVector);
   assert.equal(translationVector.seller_capabilities.length, 2, 'translation requires source and target capability tuples');
   assert.equal(translationVector.product_capabilities.length, 2, 'the selected product also closes the target chain');
+  const coveredReasons = new Set(fixture.vectors.map(vector => vector.expected.reason));
+  const reasonEnum = ajv.getSchema('/schemas/enums/macro-resolution-reason.json').schema.enum;
+  assert.deepEqual(
+    reasonEnum.filter(reason => reason !== 'ambiguous_mapping' && !coveredReasons.has(reason)),
+    [],
+    'portable processing vectors cover every deterministic match, preservation, and unsupported reason'
+  );
 });
 
 test('validation and sync response schemas expose per-token macro results', () => {
@@ -947,6 +970,15 @@ test('validation and sync response schemas expose per-token macro results', () =
   };
   assert.equal(validateResult(daastResult), true, JSON.stringify(validateResult.errors));
   assert.equal(validateResult({ ...daastResult, performed_by: 'seller' }), false);
+  const ambiguousResult = {
+    ...daastResult,
+    status: 'ambiguous',
+    reason: 'ambiguous_mapping',
+    message: 'Two declarations claim the same token occurrence with different meanings'
+  };
+  assert.equal(validateResult(ambiguousResult), true, JSON.stringify(validateResult.errors));
+  assert.equal(validateResult({ ...ambiguousResult, reason: 'semantic_unsupported' }), false,
+    'ambiguous occurrence identity has one machine-stable reason distinct from unsupported matching');
 });
 
 test('creative delivery errors use typed detail schemas without closing the generic extension point', () => {

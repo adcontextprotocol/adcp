@@ -18,11 +18,13 @@
         "shared_projection": "apply the same exclusion list to the returned CreativeManifest and to its later CreativeAsset sync wrapper so library metadata never changes the digest",
         "selected_output_digest": "must equal lowercase-hex SHA-256 of derived-output canonical content before receiving-seller normalization",
         "review_identity": "the receiving seller tracks selected_representation_id plus selected_output_digest separately from the source revision; changing either is an updated execution that follows ordinary re-review without minting a buyer revision",
+        "approval_boundary": "the exact selected output MUST complete the receiving seller's ordinary validation and review before serving; approval of one candidate never approves another",
+        "runtime_selection": "selection is pinned at trafficking time and MUST NOT be changed per viewer or device; device and player fallback stays within the selected manifest or VAST document",
         "selection_stability": "after sync_creatives accepts this lineage, later product, placement, VAST, macro, or seller-capability changes MUST NOT cause implicit re-resolution, lineage replacement, or buyer re-review; only an explicit buyer-submitted selected output may replace it",
         "seller_inability": "if the seller can no longer serve the pinned execution, it MUST preserve this lineage and use ordinary seller/system creative-status and media-buy impairment surfaces rather than silently substituting another representation"
       }
     },
-    "spec": "docs/creative/representation-sets.mdx#deterministic-resolution"
+    "spec": "docs/creative/representation-sets.mdx#seller-bound-resolution"
   },
   "type": "object",
   "properties": {

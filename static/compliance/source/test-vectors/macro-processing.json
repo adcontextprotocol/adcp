@@ -25,6 +25,256 @@
       }
     },
     {
+      "name": "declared preservation remains byte-identical without claiming a resolver",
+      "source": "https://track.acme-example.com/pixel?x=%%ACME_OPAQUE%%",
+      "declaration": {
+        "declaration_id": "vendor-preserve",
+        "token": "%%ACME_OPAQUE%%",
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "OPAQUE_HANDOFF",
+        "mapping_status": "dialect_defined",
+        "operation": "preserve",
+        "location": { "field": "url", "occurrence": 0, "context": "opaque" },
+        "encoding": { "kind": "none", "depth": 0 },
+        "required": false,
+        "unavailable_behavior": "preserve"
+      },
+      "seller_capabilities": [],
+      "product_capabilities": [],
+      "expected": {
+        "status": "preserved_for_downstream",
+        "reason": "preserved_for_downstream",
+        "output": "https://track.acme-example.com/pixel?x=%%ACME_OPAQUE%%"
+      }
+    },
+    {
+      "name": "unsupported dialect fails before looser semantic matching",
+      "source": "https://track.acme-example.com/click?redirect=%%ACME_CLICK%%",
+      "declaration": {
+        "declaration_id": "dialect-mismatch",
+        "token": "%%ACME_CLICK%%",
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "CLICK",
+        "mapping_status": "dialect_defined",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+        "encoding": { "kind": "rfc3986", "depth": 1 },
+        "required": true,
+        "unavailable_behavior": "reject"
+      },
+      "seller_capabilities": [{
+        "dialect": "adcp",
+        "dialect_semantic": "CLICK_URL",
+        "mapping_status": "verified_universal",
+        "universal_semantic": "CLICK_URL",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "supported_contexts": ["url_query_value"],
+        "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+      }],
+      "product_capabilities": [],
+      "expected": {
+        "status": "unsupported",
+        "reason": "dialect_unsupported",
+        "output": "https://track.acme-example.com/click?redirect=%%ACME_CLICK%%"
+      }
+    },
+    {
+      "name": "vendor namespace mismatch is explicit",
+      "source": "https://track.acme-example.com/click?redirect=%%ACME_CLICK%%",
+      "declaration": {
+        "declaration_id": "namespace-mismatch",
+        "token": "%%ACME_CLICK%%",
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "CLICK",
+        "mapping_status": "dialect_defined",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+        "encoding": { "kind": "rfc3986", "depth": 1 },
+        "required": true,
+        "unavailable_behavior": "reject"
+      },
+      "seller_capabilities": [{
+        "dialect": "vendor",
+        "dialect_namespace": "https://other-macros.example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "CLICK",
+        "mapping_status": "dialect_defined",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "supported_contexts": ["url_query_value"],
+        "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+      }],
+      "product_capabilities": [],
+      "expected": {
+        "status": "unsupported",
+        "reason": "namespace_mismatch",
+        "output": "https://track.acme-example.com/click?redirect=%%ACME_CLICK%%"
+      }
+    },
+    {
+      "name": "vendor registry revision mismatch is explicit",
+      "source": "https://track.acme-example.com/click?redirect=%%ACME_CLICK%%",
+      "declaration": {
+        "declaration_id": "revision-mismatch",
+        "token": "%%ACME_CLICK%%",
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "CLICK",
+        "mapping_status": "dialect_defined",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+        "encoding": { "kind": "rfc3986", "depth": 1 },
+        "required": true,
+        "unavailable_behavior": "reject"
+      },
+      "seller_capabilities": [{
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v2",
+        "dialect_semantic": "CLICK",
+        "mapping_status": "dialect_defined",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "supported_contexts": ["url_query_value"],
+        "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+      }],
+      "product_capabilities": [],
+      "expected": {
+        "status": "unsupported",
+        "reason": "revision_mismatch",
+        "output": "https://track.acme-example.com/click?redirect=%%ACME_CLICK%%"
+      }
+    },
+    {
+      "name": "dialect semantic mismatch is explicit",
+      "source": "https://track.acme-example.com/click?redirect=%%ACME_CLICK%%",
+      "declaration": {
+        "declaration_id": "semantic-mismatch",
+        "token": "%%ACME_CLICK%%",
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "CLICK",
+        "mapping_status": "dialect_defined",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+        "encoding": { "kind": "rfc3986", "depth": 1 },
+        "required": true,
+        "unavailable_behavior": "reject"
+      },
+      "seller_capabilities": [{
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "IMPRESSION",
+        "mapping_status": "dialect_defined",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "supported_contexts": ["url_query_value"],
+        "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+      }],
+      "product_capabilities": [],
+      "expected": {
+        "status": "unsupported",
+        "reason": "semantic_unsupported",
+        "output": "https://track.acme-example.com/click?redirect=%%ACME_CLICK%%"
+      }
+    },
+    {
+      "name": "requested operation must match exactly",
+      "source": "https://track.acme-example.com/click?redirect=%%ACME_CLICK%%",
+      "declaration": {
+        "declaration_id": "operation-mismatch",
+        "token": "%%ACME_CLICK%%",
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "CLICK",
+        "mapping_status": "dialect_defined",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+        "encoding": { "kind": "rfc3986", "depth": 1 },
+        "required": true,
+        "unavailable_behavior": "reject"
+      },
+      "seller_capabilities": [{
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "CLICK",
+        "mapping_status": "dialect_defined",
+        "operation": "translate_to_native",
+        "performed_by": "seller",
+        "supported_contexts": ["url_query_value"],
+        "translation_target": {
+          "token": "%%ACME_CLICK_NATIVE%%",
+          "dialect": "vendor",
+          "dialect_namespace": "https://macros.acme-example.com/registry",
+          "dialect_revision": "mapping-v1",
+          "dialect_semantic": "CLICK_NATIVE",
+          "mapping_status": "dialect_defined",
+          "next_operation": "resolve_value",
+          "performed_by": "seller",
+          "encoding": { "kind": "rfc3986", "depth": 1 }
+        }
+      }],
+      "product_capabilities": [],
+      "expected": {
+        "status": "unsupported",
+        "reason": "operation_unsupported",
+        "output": "https://track.acme-example.com/click?redirect=%%ACME_CLICK%%"
+      }
+    },
+    {
+      "name": "occurrence context must match exactly",
+      "source": "https://track.acme-example.com/click?redirect=%%ACME_CLICK%%",
+      "declaration": {
+        "declaration_id": "context-mismatch",
+        "token": "%%ACME_CLICK%%",
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "CLICK",
+        "mapping_status": "dialect_defined",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
+        "encoding": { "kind": "rfc3986", "depth": 1 },
+        "required": true,
+        "unavailable_behavior": "reject"
+      },
+      "seller_capabilities": [{
+        "dialect": "vendor",
+        "dialect_namespace": "https://macros.acme-example.com/registry",
+        "dialect_revision": "mapping-v1",
+        "dialect_semantic": "CLICK",
+        "mapping_status": "dialect_defined",
+        "operation": "resolve_value",
+        "performed_by": "seller",
+        "supported_contexts": ["url_path_segment"],
+        "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+      }],
+      "product_capabilities": [],
+      "expected": {
+        "status": "unsupported",
+        "reason": "context_unsupported",
+        "output": "https://track.acme-example.com/click?redirect=%%ACME_CLICK%%"
+      }
+    },
+    {
       "name": "seller translates a universal token before downstream value resolution",
       "source": "https://video.acme-example.com/event?cb={CACHEBUSTER}",
       "value": "12345678",

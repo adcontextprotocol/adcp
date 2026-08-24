@@ -94,6 +94,8 @@ The request carries `representation_destination.product_id` plus the exact effec
 
 Resolution requires explicit compatibility inputs. In particular, every `video_vast` source representation has an exact asset `vast_version`, while the selected product option and seller advertise non-empty plural `vast_versions`. An absent set is unproven and cannot be treated as accepting every version on this opt-in resolution path.
 
+Equivalence is a buyer assertion, not something the set digest proves. The digest proves that the complete asserted set was not changed; it does not prove that two representations render the same ad or behave identically. A seller MUST apply its ordinary validation and review policy to the exact selected output before approving or serving it. The seller does not need to fetch, execute, or approve every unselected candidate, and it MUST NOT treat acceptance of one candidate as approval of another. Different sellers may select different candidates, but each selected output is separately submitted through `sync_creatives` and reviewed before it can serve. A later selection likewise requires an explicit buyer sync and ordinary re-review, so an unreviewed hidden candidate can never replace the approved execution.
+
 Pass a representation set to the destination seller's `build_creative` route with the product contract and an advertised strategy:
 
 ```json
@@ -201,6 +203,18 @@ status through `creative.status_changed`, `list_creatives`, and
 `get_media_buys`, then explicitly resolve and sync a replacement when needed.
 An independent seller-initiated re-review may evaluate the same pinned
 execution, but it does not authorize representation re-selection.
+
+Representation resolution is a trafficking-time destination choice, not a
+viewer- or device-time fallback mechanism. `highest_compatible_vast` means the
+highest exact VAST version accepted by the selected product and seller; it does
+not mean the highest version supported by a particular player or device. The
+selected representation remains pinned for every execution until the buyer
+explicitly resolves and syncs a replacement. Device-specific media selection,
+VAST wrapper fallback, and player compatibility remain inside the selected
+VAST document and its `MediaFile` alternatives. Buyers that need distinct
+device contracts must target separate product options or submit separate
+creatives; a representation set never authorizes runtime switching between its
+members.
 
 This version does not combine `representation_selection` with the sync-only
 `localization` mutation. A selected sync item MUST omit `localization`, including

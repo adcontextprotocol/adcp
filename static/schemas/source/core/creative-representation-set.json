@@ -13,7 +13,8 @@
         "array_order": "significant",
         "duplicate_json_members": "reject before canonicalization",
         "digest": "revision_content_digest MUST equal lowercase-hex SHA-256 of the canonical content",
-        "immutability": "reusing creative_id plus revision_id with a different digest or canonical content MUST fail with CREATIVE_REVISION_CONTENT_MISMATCH"
+        "immutability": "reusing creative_id plus revision_id with a different digest or canonical content MUST fail with CREATIVE_REVISION_CONTENT_MISMATCH",
+        "equivalence_assertion": "the buyer asserts that all representations are equivalent; the digest proves set integrity, not semantic or rendered equivalence"
       }
     },
     "spec": "docs/creative/representation-sets.mdx#revision-identity"
