@@ -25,9 +25,9 @@ import { AddieClaudeClient } from '../../src/addie/claude-client.js';
 // integration assertion — no SDK call means the gate fired at entry.
 // claude-client uses `beta.messages.create` for non-stream and
 // `messages.stream` for stream, so wire both to the same spy.
-const anthropicCall = vi.fn(() => {
+const anthropicCall = vi.hoisted(() => vi.fn(() => {
   throw new Error('SDK should not be reached when cap is exhausted');
-});
+}));
 vi.mock('@anthropic-ai/sdk', () => {
   return {
     default: class {
