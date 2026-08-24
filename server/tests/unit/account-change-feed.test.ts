@@ -1,7 +1,25 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const webhookMocks = vi.hoisted(() => ({
+  emit: vi.fn(),
+  proveControl: vi.fn(),
+}));
+
+vi.mock('../../src/training-agent/webhooks.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/training-agent/webhooks.js')>(),
+  emitAccountNotificationWebhook: webhookMocks.emit,
+}));
+
+vi.mock('../../src/training-agent/webhook-challenge.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../src/training-agent/webhook-challenge.js')>(),
+  proveAccountWebhookControl: webhookMocks.proveControl,
+}));
+
 import {
   clearAccountStore,
+  emitAccountChangeRecordedWebhook,
   handleListAccountChanges,
+  handleSyncAccounts,
   recordAccountChange,
   seedAccountFixture,
 } from '../../src/training-agent/account-handlers.js';
@@ -18,7 +36,16 @@ function call(args: Record<string, unknown>, ctx = context) {
 }
 
 describe('training account change feed', () => {
-  beforeEach(() => clearAccountStore());
+  beforeEach(() => {
+    clearAccountStore();
+    webhookMocks.emit.mockReset();
+    webhookMocks.emit.mockResolvedValue({ delivered: true });
+    webhookMocks.proveControl.mockReset();
+    webhookMocks.proveControl.mockImplementation(async (config: { url: string }) => ({
+      ok: true,
+      normalizedUrl: config.url,
+    }));
+  });
 
   it('supports latest bootstrap, durable drain, and empty-tail checkpoints', () => {
     const bootstrap = call({ account, starting_position: 'latest' });
@@ -163,6 +190,56 @@ describe('training account change feed', () => {
 
     const bDrain = call({ account: { account_id: accountId }, cursor: bCheckpoint.cursor }, principalB);
     expect(bDrain.changes).toEqual([]);
+  });
+
+  it('fans one logical change out to every proven shared-account subscriber', async () => {
+    const principals = [
+      { mode: 'open', principal: 'test:shared-subscriber-a' },
+      { mode: 'open', principal: 'test:shared-subscriber-b' },
+    ] satisfies TrainingContext[];
+
+    for (const [index, subscriberContext] of principals.entries()) {
+      const response = await handleSyncAccounts({
+        accounts: [{
+          account,
+          notification_configs: [{
+            subscriber_id: `subscriber-${index + 1}`,
+            url: `https://buyer-${index + 1}.example.com/webhooks/account-changes`,
+            event_types: ['account.change_recorded'],
+            active: true,
+          }],
+        }],
+      }, subscriberContext) as Record<string, any>;
+      expect(response).toHaveProperty('accounts');
+      expect(response.accounts[0]).toEqual(expect.objectContaining({ notification_configs: expect.any(Array) }));
+      expect(response.accounts[0].notification_configs[0].active).toBe(true);
+    }
+    webhookMocks.emit.mockClear();
+
+    const change = recordAccountChange(principals[0].principal, {
+      resource: {
+        type: 'creative',
+        account_id: account.account_id,
+        resource_id: 'cr_shared_fanout',
+      },
+      action: 'created',
+      origin: { kind: 'connected_platform' },
+      repair: { task: 'list_creatives' },
+    });
+    await emitAccountChangeRecordedWebhook(principals[0].principal, change);
+
+    expect(webhookMocks.emit).toHaveBeenCalledTimes(2);
+    const deliveries = webhookMocks.emit.mock.calls.map(([delivery]) => delivery);
+    expect(deliveries.map(delivery => delivery.payload.subscriber_id).sort()).toEqual([
+      'subscriber-1',
+      'subscriber-2',
+    ]);
+    for (const delivery of deliveries) {
+      expect(delivery.notificationType).toBe('account.change_recorded');
+      expect(delivery.payload.notification_id).toBe(change.change_id);
+      expect(delivery.payload.change_id).toBe(change.change_id);
+      expect(delivery.payload.resource.resource_id).toBe('cr_shared_fanout');
+    }
   });
 
   it('records an AdCP creative mutation once and suppresses an unchanged replay', async () => {
