@@ -6,7 +6,7 @@ description: "Keep equivalent trafficking representations in one immutable creat
 
 A logical creative can arrive before its destination is known. It may carry several equivalent trafficking representations—for example, inline display markup plus an Internal Redirect pair, or VAST 2.0, 3.0, and 4.0 URLs. Preserve those alternatives in one `CreativeRepresentationSet` revision, then resolve exactly one into an ordinary seller-bound creative manifest.
 
-This is not creative rotation or A/B testing. Every entry represents the same creative content through a different delivery contract.
+This is not creative rotation or A/B testing. Every entry represents the same creative content through a different delivery contract. A representation set is scoped to one canonical format kind: every representation must share the same `format_kind`. Interchangeable packagings for different media types belong in separate sets or separate `sync_creatives` items—seller selection is choosing between delivery contracts for one format, not between media types.
 
 | Identity | Meaning |
 |---|---|
@@ -190,6 +190,10 @@ only after that removal is accepted may the selected output be synced. Locale
 topology and materialized locale assets need their own explicit
 pre-binding projection; treating them as library metadata would allow served
 bytes to change without changing either review fingerprint.
+
+<Warning>
+**Migrating an existing localized creative to representation selection is destructive and non-atomic.** First, submit a `sync_creatives` item with `localization: null` to clear all locale assets — existing localized delivery stops while that sync is under review. Only after the null-sync is accepted may the selected output be synced. There is no atomic path: a re-review window exists between the two steps, and a buyer currently serving localized creatives will experience a delivery gap during migration.
+</Warning>
 
 ## Resolution failure
 
