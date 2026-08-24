@@ -1,0 +1,308 @@
+{
+  "$schema": "./universal-macro-translation.schema.json",
+  "$schema_version": "1.0",
+  "version": "3.2",
+  "name": "Universal macro translation — cross-SDK conformance fixtures",
+  "spec_reference": "docs/creative/universal-macros.mdx#implementing-translation-with-the-sdk",
+  "description": "Language-neutral golden vectors for ratified producer-side universal-macro translation behavior, including typed rejection cases and the complete successful result shape.",
+  "ordering": {
+    "dropped_params": "Query-parameter occurrence order; repeated keys remain repeated.",
+    "unmapped_macros": "First occurrence in query order, deduplicated.",
+    "dropped_consent_macros": "First occurrence in query order, deduplicated subset of unmapped_macros.",
+    "frozen_consent_macros": "Mapping property order, deduplicated consent macros supplied through value entries.",
+    "suspect_native_values": "Mapping property order, deduplicated. JSON fixture consumers MUST preserve the mapping order shown here."
+  },
+  "vectors": [
+    {
+      "name": "value-reserved-characters",
+      "input_pixel_url": "https://pixel.example/i?v={VALUE}",
+      "mapping": { "{VALUE}": { "value": "/?&=% {}#" } },
+      "expected": {
+        "url": "https://pixel.example/i?v=%2F%3F%26%3D%25%20%7B%7D%23",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "value-unreserved-characters",
+      "input_pixel_url": "https://pixel.example/i?v={VALUE}",
+      "mapping": { "{VALUE}": { "value": "AZaz09-._~" } },
+      "expected": {
+        "url": "https://pixel.example/i?v=AZaz09-._~",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "value-non-ascii-utf8",
+      "input_pixel_url": "https://pixel.example/i?store={STORE_ID}",
+      "mapping": { "{STORE_ID}": { "value": "café" } },
+      "expected": {
+        "url": "https://pixel.example/i?store=caf%C3%A9",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "native-token-forms-inserted-verbatim",
+      "input_pixel_url": "https://pixel.example/i?a={A}&b={B}&c={C}&d={D}",
+      "mapping": {
+        "{A}": { "native": "%%TOKEN%%" },
+        "{B}": { "native": "{{token}}" },
+        "{C}": { "native": "${token}" },
+        "{D}": { "native": "[TOKEN]" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?a=%%TOKEN%%&b={{token}}&c=${token}&d=[TOKEN]",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "multiple-mapped-macros-in-one-parameter",
+      "input_pixel_url": "https://pixel.example/i?ids=pre-{A}-{B}-{A}",
+      "mapping": {
+        "{A}": { "value": "a/b" },
+        "{B}": { "native": "%%B%%" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?ids=pre-a%2Fb-%%B%%-a%2Fb",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "mapped-plus-unmapped-drops-whole-parameter",
+      "input_pixel_url": "https://pixel.example/i?ids={MEDIA_BUY_ID}-{UNKNOWN}&literal=keep",
+      "mapping": { "{MEDIA_BUY_ID}": { "value": "mb_1" } },
+      "expected": {
+        "url": "https://pixel.example/i?literal=keep",
+        "dropped_params": ["ids"],
+        "unmapped_macros": ["{UNKNOWN}"],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "repeated-keys-and-first-seen-report-order",
+      "input_pixel_url": "https://pixel.example/i?first={Z}&same={A}&same={Z}&mix={B}{A}&ok=1",
+      "mapping": {},
+      "expected": {
+        "url": "https://pixel.example/i?ok=1",
+        "dropped_params": ["first", "same", "same", "mix"],
+        "unmapped_macros": ["{Z}", "{A}", "{B}"],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "privacy-drops-and-deduplicated-order",
+      "input_pixel_url": "https://pixel.example/i?g={GPP_STRING}&u={US_PRIVACY}&g2={GPP_STRING}&c={GDPR_CONSENT}",
+      "mapping": {},
+      "expected": {
+        "url": "https://pixel.example/i",
+        "dropped_params": ["g", "u", "g2", "c"],
+        "unmapped_macros": ["{GPP_STRING}", "{US_PRIVACY}", "{GDPR_CONSENT}"],
+        "dropped_consent_macros": ["{GPP_STRING}", "{US_PRIVACY}", "{GDPR_CONSENT}"],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "privacy-native-mappings-allowed",
+      "input_pixel_url": "https://pixel.example/i?g={GPP_STRING}&u={US_PRIVACY}&c={GDPR_CONSENT}",
+      "mapping": {
+        "{GPP_STRING}": { "native": "%%GPP_STRING%%" },
+        "{US_PRIVACY}": { "native": "%%US_PRIVACY%%" },
+        "{GDPR_CONSENT}": { "native": "%%GDPR_CONSENT%%" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?g=%%GPP_STRING%%&u=%%US_PRIVACY%%&c=%%GDPR_CONSENT%%",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "literal-parameters-pass-through-byte-for-byte",
+      "input_pixel_url": "https://pixel.example/i?encoded=%2f+%7e&flag&empty=&equals=a=b",
+      "mapping": {},
+      "expected": {
+        "url": "https://pixel.example/i?encoded=%2f+%7e&flag&empty=&equals=a=b",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "path-and-no-query-left-untouched",
+      "input_pixel_url": "https://pixel.example/{MEDIA_BUY_ID}",
+      "mapping": { "{MEDIA_BUY_ID}": { "value": "mb_1" } },
+      "expected": {
+        "url": "https://pixel.example/{MEDIA_BUY_ID}",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "fragment-left-untouched",
+      "input_pixel_url": "https://pixel.example/i?buy={MEDIA_BUY_ID}#frag={CREATIVE_ID}",
+      "mapping": {
+        "{MEDIA_BUY_ID}": { "value": "mb_1" },
+        "{CREATIVE_ID}": { "value": "cr_1" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?buy=mb_1#frag={CREATIVE_ID}",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "macro-in-key-left-untouched",
+      "input_pixel_url": "https://pixel.example/i?{MEDIA_BUY_ID}=literal",
+      "mapping": { "{MEDIA_BUY_ID}": { "value": "mb_1" } },
+      "expected": {
+        "url": "https://pixel.example/i?{MEDIA_BUY_ID}=literal",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "substitution-is-single-pass",
+      "input_pixel_url": "https://pixel.example/i?buy={MEDIA_BUY_ID}",
+      "mapping": {
+        "{MEDIA_BUY_ID}": { "value": "{PACKAGE_ID}" },
+        "{PACKAGE_ID}": { "value": "pkg_1" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?buy=%7BPACKAGE_ID%7D",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "suspect-native-values-are-mapping-scoped-and-ordered",
+      "input_pixel_url": "https://pixel.example/i?ok={NORMAL}",
+      "mapping": {
+        "{PERCENT}": { "value": "%%TOKEN%%" },
+        "{DOUBLE_BRACE}": { "value": "{{token}}" },
+        "{DOLLAR_BRACE}": { "value": "${token}" },
+        "{BRACKET}": { "value": "[TOKEN]" },
+        "{NORMAL}": { "value": "ok" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?ok=ok",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": ["{PERCENT}", "{DOUBLE_BRACE}", "{DOLLAR_BRACE}", "{BRACKET}"]
+      }
+    },
+    {
+      "name": "ordinary-bracketed-values-not-suspect",
+      "input_pixel_url": "https://pixel.example/i?a={A}&b={B}",
+      "mapping": {
+        "{A}": { "value": "[1,2,3]" },
+        "{B}": { "value": "[redacted]" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?a=%5B1%2C2%2C3%5D&b=%5Bredacted%5D",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "privacy-value-mappings-are-encoded-and-reported",
+      "input_pixel_url": "https://pixel.example/i?g={GPP_STRING}&u={US_PRIVACY}",
+      "mapping": {
+        "{GPP_STRING}": { "value": "DBABMA~CPXxRfA/PXxRfA" },
+        "{US_PRIVACY}": { "value": "1YNN" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?g=DBABMA~CPXxRfA%2FPXxRfA&u=1YNN",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": ["{GPP_STRING}", "{US_PRIVACY}"],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "bare-query-normalized-away",
+      "input_pixel_url": "https://pixel.example/i?",
+      "mapping": {},
+      "expected": {
+        "url": "https://pixel.example/i",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "native-c0-null-rejected",
+      "input_pixel_url": "https://pixel.example/i?cb={CACHEBUSTER}",
+      "mapping": { "{CACHEBUSTER}": { "native": "%%CACHE\u0000BUSTER%%" } },
+      "expected_error": {
+        "code": "unsafe_native_mapping",
+        "macro": "{CACHEBUSTER}"
+      }
+    },
+    {
+      "name": "native-c0-unit-separator-rejected",
+      "input_pixel_url": "https://pixel.example/i?cb={CACHEBUSTER}",
+      "mapping": { "{CACHEBUSTER}": { "native": "%%CACHE\u001fBUSTER%%" } },
+      "expected_error": {
+        "code": "unsafe_native_mapping",
+        "macro": "{CACHEBUSTER}"
+      }
+    },
+    {
+      "name": "native-del-rejected",
+      "input_pixel_url": "https://pixel.example/i?cb={CACHEBUSTER}",
+      "mapping": { "{CACHEBUSTER}": { "native": "%%CACHE\u007fBUSTER%%" } },
+      "expected_error": {
+        "code": "unsafe_native_mapping",
+        "macro": "{CACHEBUSTER}"
+      }
+    }
+  ]
+}

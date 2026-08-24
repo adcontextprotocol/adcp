@@ -1,0 +1,1341 @@
+id: governance_delivery_monitor
+version: "1.0.0"
+title: "Campaign governance — delivery monitoring with drift detection"
+protocol: governance
+category: governance_delivery_monitor
+summary: "Governance agent monitors delivery, detects budget drift past thresholds, and triggers re-evaluation."
+track: campaign_governance
+required_tools:
+  - check_governance
+
+# Cross-step assertion (adcp#2639): mid-flight drift can return a denial
+# re-evaluation. The assertion gates any post-denial mutation on the
+# affected plan, catching sellers that ignore a mid-campaign denial and
+# keep delivering / committing new spend.
+# Cross-step assertion (adcp#2664): status.monotonic rejects media_buy
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — paused → active → paused is fine,
+# active → pending_creatives fails.
+invariants:
+  - governance.denial_blocks_mutation
+  - status.monotonic
+
+narrative: |
+  After a media buy is confirmed with governance approval, the governance agent monitors
+  delivery. When spend drifts past a reallocation threshold — for example, one line item
+  is overspending while another is underspending — the governance agent triggers a delivery
+  phase re-evaluation.
+
+  This storyboard covers the delivery monitoring governance flow: initial approval,
+  delivery metrics showing drift, governance re-check triggered by drift, and either
+  re-approval with adjusted conditions or a pause recommendation.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - governance_aware
+  examples:
+    - "Publisher platform with governance and delivery reporting"
+    - "Retail media network with pacing data"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity, operator credentials, a governance agent URL,
+    and an active media buy with delivery data. The governance plan defines a
+    reallocation threshold that triggers re-evaluation.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "outdoor_display_q2"
+      delivery_type: "guaranteed"
+      channels: ["display"]
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
+    - product_id: "outdoor_video_q2"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_options:
+        - format_option_id: "video_15s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 15000
+  pricing_options:
+    - product_id: "outdoor_display_q2"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 8.0
+    - product_id: "outdoor_video_q2"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.0
+  plans:
+    - plan_id: "gov_acme_delivery_monitor"
+      brand:
+        domain: "acmeoutdoor.example"
+      objectives: "Delivery-phase governance with drift detection and rebalancing"
+      budget:
+        total: 40000
+        currency: "USD"
+        reallocation_threshold: 8000
+      flight:
+        start: "2020-01-01T00:00:00Z"
+        end: "2099-12-31T23:59:59Z"
+      countries: ["US"]
+      custom_policies:
+        - policy_id: "drift_reevaluation"
+          enforcement: "must"
+          policy: "Re-evaluate governance if any line item drifts more than 20% from plan."
+  media_buys:
+    - media_buy_id: "mb_acme_q2_2026"
+      status: "active"
+      budget:
+        total: 40000
+        currency: "USD"
+      flight:
+        start: "2020-01-01T00:00:00Z"
+        end: "2099-06-30T23:59:59Z"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports media buying before sending briefs or creating buys.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
+        sample_request:
+          context:
+            correlation_id: "governance_delivery_monitor--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_contains
+            path: "supported_protocols[*]"
+            value: "governance"
+            description: "Agent declares governance protocol support"
+          - check: field_contains
+            path: "specialisms[*]"
+            value: "governance-delivery-monitor"
+            description: "Agent declares governance-delivery-monitor specialism"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: plan_registration
+    title: "Register governance plan with delivery monitoring"
+    narrative: |
+      The buyer registers a governance plan that includes delivery monitoring thresholds.
+      When spend drift exceeds the reallocation threshold, the governance agent triggers
+      a delivery-phase re-evaluation.
+
+    steps:
+      - id: sync_plans
+        title: "Register a governance plan with reallocation threshold"
+        narrative: |
+          The buyer's governance agent registers a plan with full spending authority and
+          a 20% reallocation threshold. If any line item's spend drifts more than 20%
+          from the planned budget allocation, the governance agent re-evaluates.
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Acknowledge the governance plan:
+          - plan_id: identifier for this governance plan
+          - budget.reallocation_threshold: amount above which reallocation requires re-evaluation
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#gov-delivery-monitor-sync"
+          plans:
+            - plan_id: "gov_acme_delivery_monitor"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Delivery-phase governance with drift detection and rebalancing"
+              budget:
+                total: 40000
+                currency: "USD"
+                reallocation_threshold: 8000
+              flight:
+                start: "2020-01-01T00:00:00Z"
+                end: "2099-12-31T23:59:59Z"
+              countries: ["US"]
+              custom_policies:
+                - policy_id: "drift_reevaluation"
+                  enforcement: "must"
+                  policy: "Re-evaluate governance if any line item drifts more than 20% from plan."
+
+          context:
+            correlation_id: "governance_delivery_monitor--sync_plans"
+        context_outputs:
+          - name: plan_id
+            path: 'plans[0].plan_id'
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--sync_plans"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "plans[0].plan_id"
+            description: "Governance agent assigns plan_id — must be echoed in check_governance"
+  - id: initial_approval
+    title: "Initial governance check — human-approved"
+    narrative: |
+      The buyer proposes a media buy whose initial commitment exceeds the plan's
+      reallocation threshold. A human reviewer approves that initial commitment
+      off-protocol, and the governance agent returns a context with delivery
+      monitoring conditions active.
+
+    steps:
+      - id: check_governance_approved
+        title: "Pre-buy governance check (approved after human review)"
+        narrative: |
+          The buyer calls check_governance with a media buy above the plan's
+          reallocation threshold and includes the human approval obtained outside
+          the protocol. The governance agent approves the initial commitment and
+          notes that delivery monitoring is active with the 20% drift threshold.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Return an approved governance decision:
+          - decision: approved
+          - governance_context: token for the media buy
+          - monitoring: delivery phase governance is active
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
+          target_agent: "https://seller.example.com"
+          tool: "create_media_buy"
+          ext:
+            human_approval:
+              approved_by: "human-reviewer-1"
+              approved_at: "2099-03-15T12:00:00Z"
+              approval_reference: "delivery-monitor-initial-commitment"
+          payload:
+            account:
+              brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+            total_budget: 40000
+            packages:
+              - product_id: "outdoor_display_q2"
+                budget: 20000
+              - product_id: "outdoor_video_q2"
+                budget: 20000
+
+          context:
+            correlation_id: "governance_delivery_monitor--check_governance_approved"
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+          - check: field_present
+            path: "verdict"
+            description: "Response contains a governance verdict"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--check_governance_approved"
+            description: "Context correlation_id returned unchanged"
+        context_outputs:
+          - name: governance_context
+            path: "governance_context"
+          - name: intent_check_id
+            path: "check_id"
+  - id: create_buy
+    title: "Create media buy under governance approval"
+    narrative: |
+      With governance approved, the buyer creates the media buy. The seller confirms
+      and returns a media_buy_id the buyer will use to pull delivery metrics as the
+      campaign runs.
+
+    steps:
+      - id: create_media_buy
+        title: "Create a media buy"
+        narrative: |
+          The buyer creates the media buy with the governance_context from the approved
+          check. The seller confirms and returns a media_buy_id that subsequent delivery
+          monitoring steps reference.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Confirm the media buy:
+          - media_buy_id: platform-assigned identifier
+          - status: active
+          - packages: confirmed line items
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          governance_context: "$context.governance_context"
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "outdoor_display_q2"
+              budget: 20000
+              pricing_option_id: "cpm_standard"
+            - product_id: "outdoor_video_q2"
+              budget: 20000
+              pricing_option_id: "cpm_standard"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_create_buy_create_media_buy"
+          context:
+            correlation_id: "governance_delivery_monitor--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Response contains a media_buy_id for delivery monitoring"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+  - id: settle_outcome
+    title: "Settle the confirmed buy as a completed governance outcome"
+    narrative: |
+      The buyer reports the seller's confirmation back to governance. This closes the
+      authorization record for the original intent check and reserves the
+      governance-authorized commitment on the plan ledger — the amount a later
+      commercial adjustment can act against.
+
+    steps:
+      - id: report_completed_outcome
+        title: "Report the completed outcome"
+        narrative: |
+          The buyer reports outcome: completed against the original intent check_id
+          and governance_context. Governance reserves its own approved amount
+          (the full $40,000 intent commitment) regardless of the seller-reported
+          package total, which happens to match here.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Return an accepted outcome that reserves the authoritative commitment:
+          - outcome_id: identifier for the completed governance outcome
+          - outcome_state: accepted
+          - committed_budget: 40000
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          check_id: "$context.intent_check_id"
+          governance_context: "$context.governance_context"
+          outcome: "completed"
+          seller_response:
+            seller_reference: "$context.media_buy_id"
+            packages:
+              - package_id: "pkg_display"
+                product_id: "outdoor_display_q2"
+                budget: 20000
+              - package_id: "pkg_video"
+                product_id: "outdoor_video_q2"
+                budget: 20000
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_settle_outcome_report_completed_outcome"
+          context:
+            correlation_id: "governance_delivery_monitor--report_completed_outcome"
+        context_outputs:
+          - name: outcome_id
+            path: "outcome_id"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
+          - check: field_value
+            path: "outcome_state"
+            value: "accepted"
+            description: "Seller-reported package total matches the governance-authorized commitment"
+          - check: field_value
+            path: "committed_budget"
+            value: 40000
+            description: "Governance reserves its own approved intent amount, not a caller-chosen figure (report_plan_outcome.mdx: the caller cannot choose the ledger amount)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--report_completed_outcome"
+            description: "Context correlation_id returned unchanged"
+  - id: delivery_monitoring
+    title: "Delivery metrics show budget drift"
+    narrative: |
+      The campaign is running. The buyer checks delivery and finds that one line item
+      is overspending while the other is underspending. The CTV line item has consumed
+      70% of its budget at the halfway point while the video line item is at 30%.
+
+    steps:
+      - id: get_delivery
+        title: "Check delivery metrics"
+        narrative: |
+          The buyer requests delivery data and finds budget drift. One line item is
+          significantly overpacing while the other is underpacing.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Return delivery metrics showing drift:
+          - Per-package delivery with impressions, spend, and pacing
+          - One package overpacing (>60% spend at 50% flight)
+          - One package underpacing (<40% spend at 50% flight)
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+
+          context:
+            correlation_id: "governance_delivery_monitor--get_delivery"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries"
+            description: "Response contains media buy delivery data"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--get_delivery"
+            description: "Context correlation_id returned unchanged"
+  - id: drift_recheck
+    title: "Governance re-check — drift detected"
+    narrative: |
+      The buyer's governance agent detects that budget drift has exceeded the 20%
+      reallocation threshold. It triggers a delivery-phase governance check with the
+      current delivery data as evidence. The governance agent re-evaluates and returns
+      a binary execution decision: approved, or denied with findings that require pause
+      and correction before a new check.
+
+    steps:
+      - id: check_governance_drift
+        title: "Delivery-phase governance re-check (drift exceeded)"
+        narrative: |
+          The buyer calls check_governance with phase: delivery and attaches
+          the current delivery metrics as evidence. The governance agent evaluates the
+          drift against the reallocation threshold and returns a decision.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Return a governance decision about the delivery drift:
+          - decision: approved or denied (pause recommended)
+          - findings: warning-severity findings noting the drift amounts
+            - severity: warning
+            - category_id: BUDGET_DRIFT_EXCEEDED
+            - explanation: explains which line items drifted and by how much
+        sample_request:
+          caller: "https://seller.example.com"
+          phase: "delivery"
+          governance_context: "$context.governance_context"
+          planned_delivery:
+            media_buy_id: "mb_governance_delivery_monitor"
+            geo:
+              countries: ["US"]
+            channels: ["display", "olv"]
+            total_budget: 40000
+            currency: "USD"
+          delivery_metrics:
+            statement_id: "governance_delivery_monitor_0001"
+            statement_digest: "sha256:7a1a1cf8cdd13f1c470dce0e2e00da1cd1403876dd6f2b231b6b83924e2489d5"
+            sequence: 1
+            issued_at: "2099-05-16T00:00:00Z"
+            reporting_period:
+              start: "2099-05-01T00:00:00Z"
+              end: "2099-05-15T00:00:00Z"
+            spend: 20000
+            cumulative_spend: 20000
+            currency: "USD"
+            channel_distribution:
+              ctv: 70
+              video: 30
+            pacing: "ahead"
+
+          context:
+            correlation_id: "governance_delivery_monitor--check_governance_drift"
+        context_outputs:
+          - name: delivery_check_id
+            path: "check_id"
+          - name: delivery_governance_context
+            path: "governance_context"
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+          - check: field_present
+            path: "verdict"
+            description: "Response contains a governance verdict"
+          - check: field_present
+            path: "findings"
+            description: "Response contains findings about the drift"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--check_governance_drift"
+            description: "Context correlation_id returned unchanged"
+
+  - id: adjustment_decommitment_accepted
+    title: "Seller reports a decommitment; plan owner accepts it"
+    narrative: |
+      Some of the committed inventory will not run. The seller reports a decommitment
+      against the completed outcome with an integrity-bound evidence record. Governance
+      records it as reported only — net cost and headroom are unchanged until the plan
+      owner independently reviews it. The plan owner then accepts, and only then does
+      governance verify the record and restore headroom.
+
+    steps:
+      - id: report_decommitment
+        title: "Seller reports a decommitment"
+        narrative: |
+          The seller reports a $5,000 decommitment against the completed outcome. The
+          amount is within the undelivered obligation established by the canonical
+          delivery statement ($40,000 commitment − $20,000 cumulative spend = $20,000
+          headroom). Reporting alone never changes net cost or headroom.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Record the report without touching accounting state:
+          - adjustment_state: reported
+          - headroom_restored: 0
+
+        sample_request:
+          action: "report"
+          plan_id: "$context.plan_id"
+          outcome_id: "$context.outcome_id"
+          seller_reference: "$context.media_buy_id"
+          seller_adjustment_id: "cancel_mb_acme_q2_2026_01"
+          adjustment_type: "decommitment"
+          amount:
+            amount: 5000
+            currency: "USD"
+          reason: "Remaining inventory obligation cancelled by mutual agreement."
+          effective_at: "2099-05-20T09:30:00Z"
+          evidence:
+            evidence_id: "agreement_mb_acme_q2_2026_01"
+            evidence_type: "decommitment_agreement"
+            digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            issued_at: "2099-05-20T09:25:00Z"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_decommitment_accepted_report_decommitment"
+          context:
+            correlation_id: "governance_delivery_monitor--report_decommitment"
+        context_outputs:
+          - name: adjustment_id
+            path: "adjustment_id"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-adjustment-response.json schema (adjustment_state is a required enum field)"
+          - check: field_value
+            path: "adjustment_state"
+            value: "reported"
+            description: "A seller report alone lands in reported state (report_plan_adjustment.mdx: 'the report response has adjustment_state: \"reported\"')"
+          - check: field_value
+            path: "headroom_restored"
+            value: 0
+            description: "Reporting alone never changes plan headroom (report_plan_adjustment.mdx: 'net cost and plan headroom do not change')"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--report_decommitment"
+            description: "Context correlation_id returned unchanged"
+
+      - id: review_accept_decommitment
+        title: "Plan owner accepts the decommitment"
+        narrative: |
+          The plan owner independently reviews the exact adjustment_id and accepts it.
+          Only now does governance verify the record and restore headroom — the seller's
+          report could not do this unilaterally.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Verify the adjustment and restore headroom:
+          - adjustment_state: verified
+          - headroom_restored: 5000
+          - plan_summary reflects the reduced ledger commitment
+
+        sample_request:
+          action: "review"
+          plan_id: "$context.plan_id"
+          adjustment_id: "$context.adjustment_id"
+          decision: "accept"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_decommitment_accepted_review_accept_decommitment"
+          context:
+            correlation_id: "governance_delivery_monitor--review_accept_decommitment"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-adjustment-response.json schema (plan_summary's full field set is required)"
+          - check: field_value
+            path: "adjustment_state"
+            value: "verified"
+            description: "Only plan-owner acceptance moves a record to verified (report_plan_adjustment.mdx: 'Only an accepted record becomes verified and may affect accounting')"
+          - check: field_value
+            path: "headroom_restored"
+            value: 5000
+            description: "A verified decommitment restores headroom in every accounting mode (report_plan_adjustment.mdx table: decommitment → headroom Restored)"
+          - check: field_value
+            path: "plan_summary.accounting_mode"
+            value: "gross_commitment"
+            description: "Plan uses the default accounting_mode (schema enum on plan_summary.accounting_mode)"
+          - check: field_value
+            path: "plan_summary.net_cost"
+            value: 35000
+            description: "Verified decommitment reduces economic net_cost (report_plan_adjustment.mdx table: decommitment → net_cost Reduced)"
+          - check: field_value
+            path: "plan_summary.ledger_committed"
+            value: 35000
+            description: "Restored headroom lowers the plan's ledger commitment by the verified amount"
+          - check: field_value
+            path: "plan_summary.budget_remaining"
+            value: 5000
+            description: "budget_remaining reflects the restored headroom (schema-required plan_summary field)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--review_accept_decommitment"
+            description: "Context correlation_id returned unchanged"
+
+  - id: adjustment_over_commitment_rejected
+    title: "Over-adjustment is rejected"
+    narrative: |
+      A second seller report against the same outcome would push cumulative reported
+      adjustments past the outcome's authoritative commitment. Governance rejects the
+      report outright — the cap is enforced at report time, not deferred to review.
+
+    steps:
+      - id: report_over_commitment
+        title: "Seller reports an adjustment that exceeds the remaining commitment"
+        narrative: |
+          $5,000 was already reported (and verified) against this $40,000 outcome. A
+          further $36,000 report would bring cumulative reported adjustments to
+          $41,000 — above the outcome's authoritative commitment. The payload is
+          schema-valid; the rejection is a cross-request ledger rule.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject the report with VALIDATION_ERROR — cumulative reported adjustments
+          for this outcome cannot exceed its authoritative commitment.
+
+        sample_request:
+          action: "report"
+          plan_id: "$context.plan_id"
+          outcome_id: "$context.outcome_id"
+          seller_reference: "$context.media_buy_id"
+          seller_adjustment_id: "cancel_mb_acme_q2_2026_02"
+          adjustment_type: "decommitment"
+          amount:
+            amount: 36000
+            currency: "USD"
+          reason: "Attempting to cancel the remainder of the commitment."
+          effective_at: "2099-05-21T09:30:00Z"
+          evidence:
+            evidence_id: "agreement_mb_acme_q2_2026_02"
+            evidence_type: "decommitment_agreement"
+            digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            issued_at: "2099-05-21T09:25:00Z"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_over_commitment_rejected_report_over_commitment"
+          context:
+            correlation_id: "governance_delivery_monitor--report_over_commitment"
+        validations:
+          - check: error_code
+            value: "VALIDATION_ERROR"
+            description: "Cumulative adjustments for an outcome cannot exceed its authoritative commitment (report-plan-adjustment-request.json amount.amount description; report_plan_adjustment.mdx fields table: 'Cumulative reports cannot exceed the source commitment')"
+
+  - id: adjustment_reference_not_found
+    title: "Adjustment report against an unknown outcome is rejected"
+    narrative: |
+      A report naming an outcome_id governance does not recognize gets the same
+      not-found shape the spec requires for an absent record or one belonging to
+      another seller — never a fabricated success.
+
+    steps:
+      - id: report_unknown_outcome
+        title: "Seller reports against a nonexistent outcome_id"
+        narrative: |
+          The payload is otherwise well-formed, but outcome_id does not identify any
+          completed outcome governance holds for this plan.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject with REFERENCE_NOT_FOUND — the same shape returned for a record
+          belonging to another seller, so a prober cannot distinguish the two cases.
+
+        sample_request:
+          action: "report"
+          plan_id: "$context.plan_id"
+          outcome_id: "out_ffffffff"
+          seller_reference: "$context.media_buy_id"
+          seller_adjustment_id: "cancel_unknown_outcome_01"
+          adjustment_type: "decommitment"
+          amount:
+            amount: 1000
+            currency: "USD"
+          reason: "Testing an adjustment against an outcome governance does not hold."
+          effective_at: "2099-05-22T09:30:00Z"
+          evidence:
+            evidence_id: "agreement_unknown_outcome_01"
+            evidence_type: "decommitment_agreement"
+            digest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            issued_at: "2099-05-22T09:25:00Z"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_reference_not_found_report_unknown_outcome"
+          context:
+            correlation_id: "governance_delivery_monitor--report_unknown_outcome"
+        validations:
+          - check: error_code
+            value: "REFERENCE_NOT_FOUND"
+            description: "The source is absent or not attributable to the authenticated seller or plan owner (report_plan_adjustment.mdx error table; 'Governance returns the same not-found shape for an absent record and a record belonging to another seller')"
+
+  - id: adjustment_dispute_blocks_acceptance
+    title: "A disputed delivery period blocks acceptance until the period closes"
+    narrative: |
+      The seller reports a refund. Before the plan owner reviews it, the buyer submits
+      a delivery observation that conflicts with the seller's canonical delivery
+      statement for the same governed action. While that period is open and disputed,
+      governance MUST reject acceptance of any reported adjustment for the action. Once
+      the plan owner closes the period, the historical discrepancy is preserved as
+      closed_unresolved but no longer blocks acceptance.
+
+    steps:
+      - id: report_refund_adjustment
+        title: "Seller reports a refund"
+        narrative: |
+          A $3,000 refund, reported and evidenced independently of the decommitment
+          above. Cumulative reported adjustments ($5,000 + $3,000 = $8,000) stay well
+          under the $40,000 commitment.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Record the refund report without touching accounting state:
+          - adjustment_state: reported
+          - headroom_restored: 0
+
+        sample_request:
+          action: "report"
+          plan_id: "$context.plan_id"
+          outcome_id: "$context.outcome_id"
+          seller_reference: "$context.media_buy_id"
+          seller_adjustment_id: "refund_mb_acme_q2_2026_01"
+          adjustment_type: "refund"
+          amount:
+            amount: 3000
+            currency: "USD"
+          reason: "Partial refund for an under-delivered placement."
+          effective_at: "2099-05-23T09:30:00Z"
+          evidence:
+            evidence_id: "settlement_mb_acme_q2_2026_01"
+            evidence_type: "refund_settlement"
+            digest: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            issued_at: "2099-05-23T09:25:00Z"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_dispute_blocks_acceptance_report_refund_adjustment"
+          context:
+            correlation_id: "governance_delivery_monitor--report_refund_adjustment"
+        context_outputs:
+          - name: adjustment_id_refund
+            path: "adjustment_id"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-adjustment-response.json schema"
+          - check: field_value
+            path: "adjustment_state"
+            value: "reported"
+            description: "A seller report alone lands in reported state (report_plan_adjustment.mdx: adjustment_state: \"reported\")"
+          - check: field_value
+            path: "headroom_restored"
+            value: 0
+            description: "Reporting alone never changes plan headroom"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--report_refund_adjustment"
+            description: "Context correlation_id returned unchanged"
+
+      - id: buyer_delivery_dispute
+        title: "Buyer forwards a seller statement copy that does not match the canonical statement"
+        narrative: |
+          The buyer forwards a copy of a seller delivery statement, but its digest does
+          not match the canonical statement governance retained for the same reporting
+          period — the seller told two different stories. Governance MUST mark the
+          governed action disputed and retain both attributed values rather than
+          averaging or picking a last writer.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Record the conflicting observation without overwriting the seller statement:
+          - outcome_state: findings
+          - delivery_reconciliation_status: disputed
+          - delivery_period_state: open
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          check_id: "$context.delivery_check_id"
+          governance_context: "$context.delivery_governance_context"
+          outcome: "delivery"
+          delivery:
+            observation_id: "obs_mb_acme_q2_2026_dispute_01"
+            source: "seller_statement_copy"
+            observed_at: "2099-05-24T00:00:00Z"
+            reporting_period:
+              start: "2099-05-01T00:00:00Z"
+              end: "2099-05-15T00:00:00Z"
+            cumulative_spend: 25000
+            currency: "USD"
+            seller_statement_id: "governance_delivery_monitor_0001"
+            seller_statement_digest: "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_dispute_blocks_acceptance_buyer_delivery_dispute"
+          context:
+            correlation_id: "governance_delivery_monitor--buyer_delivery_dispute"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema (delivery_reconciliation_status is an enum field)"
+          - check: field_value
+            path: "outcome_state"
+            value: "findings"
+            description: "A conflicting observation is recorded with findings, not silently accepted"
+          - check: field_value
+            path: "delivery_reconciliation_status"
+            value: "disputed"
+            description: "specification.mdx (Evidence authority and reconciliation): a seller_statement_copy whose digest does not match the canonical statement means the seller told two different stories, so governance MUST mark the governed action disputed"
+          - check: field_value
+            path: "delivery_period_state"
+            value: "open"
+            description: "The period is still open — no period_closed was submitted"
+          - check: field_present
+            path: "findings"
+            description: "Disputed reconciliation MUST surface a finding (schema: findings present when outcome_state is findings)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--buyer_delivery_dispute"
+            description: "Context correlation_id returned unchanged"
+
+      - id: review_accept_blocked
+        title: "Acceptance is rejected while the period is open and disputed"
+        narrative: |
+          The plan owner tries to accept the refund reported above. The governed
+          action has an open, disputed delivery period, so acceptance is rejected —
+          not only for the most recent reporting period, but for any open dispute
+          on the action.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject with CONFLICT — delivery evidence for the governed action is
+          disputed in an open governance period.
+
+        sample_request:
+          action: "review"
+          plan_id: "$context.plan_id"
+          adjustment_id: "$context.adjustment_id_refund"
+          decision: "accept"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_dispute_blocks_acceptance_review_accept_blocked"
+          context:
+            correlation_id: "governance_delivery_monitor--review_accept_blocked"
+        validations:
+          - check: error_code
+            value: "CONFLICT"
+            description: "specification.mdx (Evidence authority and reconciliation): governance MUST reject adjustment acceptance while any reporting period for the governed action has a disputed, unclosed latest observation"
+
+      - id: close_reporting_period
+        title: "Plan owner closes the disputed reporting period"
+        narrative: |
+          The plan owner submits a new observation for the same seller statement and
+          period with period_closed: true. The values still disagree, so the period
+          becomes closed_unresolved rather than consistent — closure freezes the
+          evidence without asserting a final billing amount.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Freeze the period without resolving the discrepancy:
+          - outcome_state: findings
+          - delivery_reconciliation_status: closed_unresolved
+          - delivery_period_state: closed
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          check_id: "$context.delivery_check_id"
+          governance_context: "$context.delivery_governance_context"
+          outcome: "delivery"
+          delivery:
+            observation_id: "obs_mb_acme_q2_2026_close_01"
+            source: "seller_statement_copy"
+            observed_at: "2099-05-25T00:00:00Z"
+            reporting_period:
+              start: "2099-05-01T00:00:00Z"
+              end: "2099-05-15T00:00:00Z"
+            cumulative_spend: 25000
+            currency: "USD"
+            seller_statement_id: "governance_delivery_monitor_0001"
+            seller_statement_digest: "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+            period_closed: true
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_dispute_blocks_acceptance_close_reporting_period"
+          context:
+            correlation_id: "governance_delivery_monitor--close_reporting_period"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
+          - check: field_value
+            path: "delivery_reconciliation_status"
+            value: "closed_unresolved"
+            description: "specification.mdx: if the values still disagree at closure, governance records closed_unresolved and freezes both parties' evidence for that period"
+          - check: field_value
+            path: "delivery_period_state"
+            value: "closed"
+            description: "period_closed: true freezes the operational reporting window (schema enum on delivery_period_state)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--close_reporting_period"
+            description: "Context correlation_id returned unchanged"
+
+      - id: review_accept_after_closure
+        title: "Acceptance succeeds once the period is closed_unresolved"
+        narrative: |
+          A historical closed_unresolved period is audit evidence, not a live block.
+          The plan owner retries the same review and it now succeeds: the refund
+          verifies, reducing economic net_cost, but — because this plan uses the
+          default gross_commitment accounting mode — a verified refund does not
+          restore ledger headroom the way the decommitment above did.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Verify the refund without restoring ledger headroom:
+          - adjustment_state: verified
+          - headroom_restored: 0
+          - plan_summary.net_cost reduced; plan_summary.ledger_committed unchanged
+
+        sample_request:
+          action: "review"
+          plan_id: "$context.plan_id"
+          adjustment_id: "$context.adjustment_id_refund"
+          decision: "accept"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_dispute_blocks_acceptance_review_accept_after_closure"
+          context:
+            correlation_id: "governance_delivery_monitor--review_accept_after_closure"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-adjustment-response.json schema"
+          - check: field_value
+            path: "adjustment_state"
+            value: "verified"
+            description: "A closed_unresolved period does not block acceptance (report_plan_adjustment.mdx: 'A historical closed_unresolved period does not block a later buyer-reviewed adjustment')"
+          - check: field_value
+            path: "headroom_restored"
+            value: 0
+            description: "Verified refunds restore headroom only under budget.accounting_mode verified_net_cost; this plan uses the default gross_commitment (report_plan_adjustment.mdx table: refund → headroom in gross_commitment Unchanged)"
+          - check: field_value
+            path: "plan_summary.net_cost"
+            value: 32000
+            description: "Verified refunds reduce economic net_cost regardless of accounting mode (report_plan_adjustment.mdx table: refund → net_cost Reduced)"
+          - check: field_value
+            path: "plan_summary.ledger_committed"
+            value: 35000
+            description: "ledger_committed is unchanged from the decommitment-only state — the refund did not restore headroom under gross_commitment"
+          - check: field_value
+            path: "plan_summary.adjustments_verified"
+            value: 8000
+            description: "Both the decommitment (5000) and the refund (3000) are now verified"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--review_accept_after_closure"
+            description: "Context correlation_id returned unchanged"
+
+  - id: adjustment_measurement_variance_non_blocking
+    title: "Buyer measurement variance never blocks adjustment acceptance"
+    narrative: |
+      The seller files a canonical delivery statement for a later reporting period.
+      The buyer's own measurement of that same period agrees on reporting period and
+      currency but differs slightly in cumulative spend — expected measurement noise,
+      not equivocation. Governance records measurement_variance rather than disputed,
+      and unlike a dispute, a recorded variance never blocks a later adjustment from
+      being accepted.
+
+    steps:
+      - id: seller_statement_variance_period
+        title: "Seller reports a canonical delivery statement for a later period"
+        narrative: |
+          A new reporting period following the closed period above. Its digest becomes
+          the canonical figure the buyer's measurement is compared against.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Record the canonical delivery statement for the new period:
+          - verdict: approved
+        sample_request:
+          caller: "https://seller.example.com"
+          phase: "delivery"
+          governance_context: "$context.governance_context"
+          planned_delivery:
+            media_buy_id: "mb_governance_delivery_monitor"
+            geo:
+              countries: ["US"]
+            channels: ["display", "olv"]
+            total_budget: 40000
+            currency: "USD"
+          delivery_metrics:
+            statement_id: "governance_delivery_monitor_0002"
+            statement_digest: "sha256:511d4229097028b41eed7179c0c8e13cb430c0798797ac0f95dc8858511df8fc"
+            sequence: 2
+            issued_at: "2099-05-30T00:00:00Z"
+            reporting_period:
+              start: "2099-05-16T00:00:00Z"
+              end: "2099-05-31T00:00:00Z"
+            spend: 12000
+            cumulative_spend: 12000
+            currency: "USD"
+            channel_distribution:
+              ctv: 70
+              video: 30
+            pacing: "on_track"
+
+          context:
+            correlation_id: "governance_delivery_monitor--seller_statement_variance_period"
+        context_outputs:
+          - name: variance_check_id
+            path: "check_id"
+          - name: variance_governance_context
+            path: "governance_context"
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+          - check: field_value
+            path: "verdict"
+            value: "approved"
+            description: "A new, higher-sequence canonical statement for a new reporting period is accepted"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--seller_statement_variance_period"
+            description: "Context correlation_id returned unchanged"
+
+      - id: buyer_measurement_variance
+        title: "Buyer's independent measurement differs slightly from the seller statement"
+        narrative: |
+          The buyer's own measurement ($12,150) agrees with the seller's canonical
+          statement ($12,000) on reporting period and currency but differs on
+          cumulative spend by a small margin. specification.mdx (Evidence authority
+          and reconciliation): this is expected measurement noise, not equivocation,
+          so governance MUST record measurement_variance rather than disputed.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Record the variance without treating it as a dispute:
+          - outcome_state: findings
+          - delivery_reconciliation_status: measurement_variance
+          - delivery_period_state: open
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          check_id: "$context.variance_check_id"
+          governance_context: "$context.variance_governance_context"
+          outcome: "delivery"
+          delivery:
+            observation_id: "obs_mb_acme_q2_2026_variance_01"
+            source: "buyer_measurement"
+            observed_at: "2099-06-01T00:00:00Z"
+            reporting_period:
+              start: "2099-05-16T00:00:00Z"
+              end: "2099-05-31T00:00:00Z"
+            cumulative_spend: 12150
+            currency: "USD"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_measurement_variance_non_blocking_buyer_measurement_variance"
+          context:
+            correlation_id: "governance_delivery_monitor--buyer_measurement_variance"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema (delivery_reconciliation_status enum includes measurement_variance)"
+          - check: field_value
+            path: "outcome_state"
+            value: "findings"
+            description: "A buyer measurement variance is recorded with findings, not silently accepted"
+          - check: field_value
+            path: "delivery_reconciliation_status"
+            value: "measurement_variance"
+            description: "specification.mdx (Evidence authority and reconciliation): a buyer_measurement with matching period and currency but a different cumulative_spend MUST be recorded as measurement_variance, not disputed"
+          - check: field_value
+            path: "delivery_period_state"
+            value: "open"
+            description: "The period is still open — no period_closed was submitted"
+          - check: field_present
+            path: "findings"
+            description: "measurement_variance MUST surface a finding (schema: findings present when outcome_state is findings)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--buyer_measurement_variance"
+            description: "Context correlation_id returned unchanged"
+
+      - id: report_variance_credit
+        title: "Seller reports a credit against the outcome"
+        narrative: |
+          A $2,000 credit, reported and evidenced independently of the decommitment and
+          refund already verified above. Cumulative reported adjustments
+          ($5,000 + $3,000 + $2,000 = $10,000) stay well under the $40,000 commitment.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Record the credit report without touching accounting state:
+          - adjustment_state: reported
+          - headroom_restored: 0
+
+        sample_request:
+          action: "report"
+          plan_id: "$context.plan_id"
+          outcome_id: "$context.outcome_id"
+          seller_reference: "$context.media_buy_id"
+          seller_adjustment_id: "credit_mb_acme_q2_2026_01"
+          adjustment_type: "credit"
+          amount:
+            amount: 2000
+            currency: "USD"
+          reason: "Goodwill credit for the under-delivered placement."
+          effective_at: "2099-06-01T09:30:00Z"
+          evidence:
+            evidence_id: "credit_note_mb_acme_q2_2026_01"
+            evidence_type: "credit_note"
+            digest: "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            issued_at: "2099-06-01T09:25:00Z"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_measurement_variance_non_blocking_report_variance_credit"
+          context:
+            correlation_id: "governance_delivery_monitor--report_variance_credit"
+        context_outputs:
+          - name: adjustment_id_variance_credit
+            path: "adjustment_id"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-adjustment-response.json schema"
+          - check: field_value
+            path: "adjustment_state"
+            value: "reported"
+            description: "A seller report alone lands in reported state"
+          - check: field_value
+            path: "headroom_restored"
+            value: 0
+            description: "Reporting alone never changes plan headroom"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--report_variance_credit"
+            description: "Context correlation_id returned unchanged"
+
+      - id: review_accept_variance_credit
+        title: "Acceptance succeeds despite the open measurement_variance period"
+        narrative: |
+          Unlike the disputed period earlier in this scenario, a recorded
+          measurement_variance never blocks adjustment acceptance — its difference is
+          priced into the conservative decommitment ceiling instead of freezing
+          acceptance. The plan owner accepts the credit while the variance period is
+          still open.
+        task: report_plan_adjustment
+        schema_ref: "governance/report-plan-adjustment-request.json"
+        response_schema_ref: "governance/report-plan-adjustment-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_adjustment"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Verify the credit without restoring ledger headroom:
+          - adjustment_state: verified
+          - headroom_restored: 0
+
+        sample_request:
+          action: "review"
+          plan_id: "$context.plan_id"
+          adjustment_id: "$context.adjustment_id_variance_credit"
+          decision: "accept"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_adjustment_measurement_variance_non_blocking_review_accept_variance_credit"
+          context:
+            correlation_id: "governance_delivery_monitor--review_accept_variance_credit"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-adjustment-response.json schema"
+          - check: field_value
+            path: "adjustment_state"
+            value: "verified"
+            description: "report_plan_outcome.mdx (Evidence authority and reconciliation): 'Only a disputed state blocks adjustment acceptance; measurement_variance never does' — the open variance period does not block this acceptance"
+          - check: field_value
+            path: "headroom_restored"
+            value: 0
+            description: "Verified credits restore headroom only under budget.accounting_mode verified_net_cost; this plan uses the default gross_commitment"
+          - check: field_value
+            path: "plan_summary.adjustments_verified"
+            value: 10000
+            description: "The decommitment (5000), refund (3000), and this credit (2000) are all verified"
+          - check: field_value
+            path: "plan_summary.ledger_committed"
+            value: 35000
+            description: "ledger_committed is unchanged from the decommitment-only state — the credit does not restore headroom under gross_commitment"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--review_accept_variance_credit"
+            description: "Context correlation_id returned unchanged"

@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/attestation-issuer.json",
+  "title": "Attestation Issuer",
+  "description": "Canonical identity of the party that issued an attestation credential. The discriminator selects an existing AdCP identity when one exists and falls back to an HTTPS origin for other attestors. This identity is a claim carried by the presentation; evaluators MUST match it against their configured trust policy and verify it from the resolved or embedded credential before relying on it.",
+  "discriminator": {
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "title": "AttestationBrandIssuer",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "brand",
+          "description": "The issuer is identified by an AdCP BrandRef."
+        },
+        "brand": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/brand-ref.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+        }
+      },
+      "required": [
+        "type",
+        "brand"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "AttestationAgentIssuer",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "agent",
+          "description": "The issuer is an AdCP agent identified by its canonical HTTPS endpoint."
+        },
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+          "description": "Canonical HTTPS endpoint of the issuing agent. Evaluators compare it using AdCP URL canonicalization rules."
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+        }
+      },
+      "required": [
+        "type",
+        "agent_url"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "AttestationOriginIssuer",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "origin",
+          "description": "The issuer is identified by a canonical HTTPS origin because no AdCP brand or agent identity applies."
+        },
+        "origin": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[^/?#@]+$",
+          "description": "Canonical HTTPS origin with no path, query, fragment, or userinfo. This identifies the issuer; it does not authorize a fetch."
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+        }
+      },
+      "required": [
+        "type",
+        "origin"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "examples": [
+    {
+      "type": "brand",
+      "brand": {
+        "domain": "nova-brands.example",
+        "brand_id": "nova_motors"
+      }
+    },
+    {
+      "type": "agent",
+      "agent_url": "https://attestor.example/adcp"
+    },
+    {
+      "type": "origin",
+      "origin": "https://credentials.example"
+    }
+  ]
+}
