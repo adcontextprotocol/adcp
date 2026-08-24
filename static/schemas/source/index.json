@@ -698,6 +698,14 @@
           "$ref": "/schemas/core/account-status-changed-webhook.json",
           "description": "Account-level webhook payload that invalidates a list_accounts account status snapshot"
         },
+        "account-change": {
+          "$ref": "/schemas/core/account-change.json",
+          "description": "Immutable metadata for one material change to authoritative account-scoped state"
+        },
+        "account-change-recorded-webhook": {
+          "$ref": "/schemas/core/account-change-recorded-webhook.json",
+          "description": "Account-level invalidation indicating that a durable account change is available"
+        },
         "indicator": {
           "$ref": "/schemas/core/indicator.json",
           "description": "Compact durable seller interpretation attached to an authoritative resource snapshot"
@@ -1500,6 +1508,16 @@
     "account": {
       "description": "Account management task request/response schemas",
       "tasks": {
+        "list-account-changes": {
+          "request": {
+            "$ref": "/schemas/account/list-account-changes-request.json",
+            "description": "Request parameters for reading the durable account change feed"
+          },
+          "response": {
+            "$ref": "/schemas/account/list-account-changes-response.json",
+            "description": "Ordered durable changes to authoritative account-scoped state"
+          }
+        },
         "list-accounts": {
           "request": {
             "$ref": "/schemas/account/list-accounts-request.json",

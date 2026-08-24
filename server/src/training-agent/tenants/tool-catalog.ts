@@ -30,6 +30,7 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   // customTools registration.
   sync_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand', 'si'],
   list_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand', 'si'],
+  list_account_changes: ['sales'],
 
   // sales
   sync_catalogs: ['sales', 'si'],
@@ -133,8 +134,10 @@ export function toolsForTenant(
     .filter(([, tenants]) => tenants.includes(tenantId))
     .map(([tool]) => tool)
     .filter(tool => {
-      const is30 = options.storyboardCompat?.version === '3.0'
-        || options.adcpVersion?.startsWith('3.0');
+      const negotiatedVersion = options.storyboardCompat?.version ?? options.adcpVersion;
+      const isPre32 = negotiatedVersion?.startsWith('3.0') || negotiatedVersion?.startsWith('3.1');
+      if (tool === 'list_account_changes' && isPre32) return false;
+      const is30 = negotiatedVersion?.startsWith('3.0');
       if (!is30) return true;
       // 3.0-compat exclusions. The split product-discovery tools are introduced
       // in 3.2, while validate_input / list_transformers are gated off on every
@@ -150,6 +153,7 @@ export function toolsForTenant(
         || tool === 'buy_products'
         || tool === 'accept_proposal'
         || tool === 'control_media_buy'
+        || tool === 'list_account_changes'
       ) return false;
       if (tool === 'validate_input' || tool === 'list_transformers') return false;
       if (

@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/account/list-account-changes-request.json",
+  "title": "List Account Changes Request",
+  "description": "Read a durable, ordered feed of material changes to AdCP-visible state for one account. Use a latest checkpoint before snapshot bootstrap, then drain from that cursor to close the bootstrap race.",
+  "x-tool-summary": "List durable changes to authoritative AdCP-visible state for one account.",
+  "type": "object",
+  "allOf": [
+    {"$ref": "/schemas/core/version-envelope.json"},
+    {
+      "not": {
+        "required": ["cursor", "starting_position"]
+      }
+    }
+  ],
+  "properties": {
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account whose change feed to read. The resolved account and returned cursor are bound to the authenticated principal."
+    },
+    "cursor": {
+      "type": "string",
+      "description": "Opaque checkpoint returned by a prior call using the same authenticated principal, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value.",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "starting_position": {
+      "type": "string",
+      "enum": ["earliest", "latest"],
+      "default": "earliest",
+      "description": "Initial position when cursor is absent. earliest begins at the oldest retained change. latest returns a checkpoint at the current seller-ingestion high-water and is used before a race-free snapshot bootstrap."
+    },
+    "resource_types": {
+      "type": "array",
+      "description": "Optional exact resource-type filter. The cursor is bound to the normalized filter. Unknown resource types are allowed for forward compatibility.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100,
+        "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
+      },
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true
+    },
+    "max_results": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 50,
+      "description": "Maximum changes to return. Sellers still scan through nonmatching records and advance the returned cursor."
+    },
+    "context": {"$ref": "/schemas/core/context.json"},
+    "ext": {"$ref": "/schemas/core/ext.json"}
+  },
+  "required": ["account"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Acquire a pre-bootstrap checkpoint",
+      "data": {
+        "adcp_version": "3.2",
+        "account": {"account_id": "acc_luma_shared"},
+        "starting_position": "latest",
+        "max_results": 100
+      }
+    }
+  ]
+}

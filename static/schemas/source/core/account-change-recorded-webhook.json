@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/account-change-recorded-webhook.json",
+  "title": "Account Change Recorded Webhook",
+  "description": "Compact account-anchored invalidation fired after a material account change and its authoritative snapshot are readable. The payload is not current state and through_cursor is only a drain target; receivers continue from their own persisted list_account_changes cursor.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated delivery key stable across retries of one fire. Deliberate re-emission uses a new key.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_id": {
+      "type": "string",
+      "description": "Logical notification identifier. Always equals change_id; retries and deliberate re-emissions of the same change retain it.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "account.change_recorded"
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "subscriber_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "account_id": {
+      "type": "string",
+      "x-entity": "account"
+    },
+    "change_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resource": {
+      "type": "object",
+      "description": "Resource identity copied from the corresponding account change record.",
+      "properties": {
+        "type": {"type": "string"},
+        "resource_id": {"type": "string"},
+        "parent_ids": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "maxProperties": 12
+        }
+      },
+      "required": ["type", "resource_id"],
+      "additionalProperties": true
+    },
+    "action": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "through_cursor": {
+      "type": "string",
+      "description": "Optional advisory checkpoint at or after this change. It is a drain target, not a cursor the receiver may install without reading every intervening page.",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "ext": {"$ref": "/schemas/core/ext.json"}
+  },
+  "required": ["idempotency_key", "notification_id", "notification_type", "fired_at", "subscriber_id", "account_id", "change_id", "recorded_at", "resource", "action"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Creative update invalidation",
+      "data": {
+        "idempotency_key": "whk_01K38G8AB52T1V9S4Y7Q0P6X3Z",
+        "notification_id": "chg_01K38G7X8ZGX9T4F1Q5W6Y2M3N",
+        "notification_type": "account.change_recorded",
+        "fired_at": "2026-08-24T11:58:05Z",
+        "subscriber_id": "buyer-primary",
+        "account_id": "acc_luma_shared",
+        "change_id": "chg_01K38G7X8ZGX9T4F1Q5W6Y2M3N",
+        "recorded_at": "2026-08-24T11:58:04Z",
+        "resource": {"type": "creative", "resource_id": "cr_8421"},
+        "action": "updated",
+        "through_cursor": "eyJhY2NvdW50IjoiYWNjX2x1bWFfc2hhcmVkIiwic2VxIjo0M30"
+      }
+    }
+  ]
+}

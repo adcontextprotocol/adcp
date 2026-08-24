@@ -244,6 +244,7 @@
                   "docs/accounts/provisioning-walkthrough",
                   "docs/accounts/tasks/sync_accounts",
                   "docs/accounts/tasks/list_accounts",
+                  "docs/accounts/tasks/list_account_changes",
                   "docs/accounts/tasks/report_usage",
                   "docs/accounts/tasks/sync_governance",
                   "docs/accounts/tasks/get_account_financials"
@@ -679,6 +680,7 @@
               "docs/learning/overview",
               "docs/learning/instructional-design",
               "docs/learning/failure-mode-scope",
+              "docs/learning/shared-account-change-feed",
               {
                 "group": "Basics (free)",
                 "pages": [

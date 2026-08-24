@@ -732,6 +732,57 @@
             }
           ]
         },
+        "change_feed": {
+          "type": "object",
+          "description": "Whether the seller exposes a durable, ordered feed of material changes to authoritative account-scoped state. This is distinct from webhook_activity transport diagnostics and from current-state reads. Sellers claiming support MUST retain changes for at least 90 days after recording and MUST produce records regardless of whether a mutation originated through AdCP, a seller surface, another authorized principal, seller automation, or a connected platform within declared coverage.",
+          "oneOf": [
+            {
+              "title": "AccountChangeFeedSupported",
+              "properties": {
+                "supported": {"type": "boolean", "const": true},
+                "read_task": {"type": "string", "const": "list_account_changes"},
+                "registration_task": {"type": "string", "const": "sync_accounts"},
+                "event_type": {"type": "string", "const": "account.change_recorded"},
+                "retention_days": {
+                  "type": "integer",
+                  "minimum": 90,
+                  "description": "Minimum number of days committed change records remain readable."
+                },
+                "resource_types": {
+                  "type": "array",
+                  "description": "Resource families for which this seller can produce change records. Account-specific connected-source status and freshness are returned by list_account_changes.",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              },
+              "required": ["supported", "read_task", "registration_task", "event_type", "retention_days", "resource_types"],
+              "additionalProperties": true
+            },
+            {
+              "title": "AccountChangeFeedUnsupported",
+              "properties": {
+                "supported": {"type": "boolean", "const": false}
+              },
+              "required": ["supported"],
+              "not": {
+                "anyOf": [
+                  {"required": ["read_task"]},
+                  {"required": ["registration_task"]},
+                  {"required": ["event_type"]},
+                  {"required": ["retention_days"]},
+                  {"required": ["resource_types"]}
+                ]
+              },
+              "additionalProperties": true
+            }
+          ]
+        },
         "identity_updates": {
           "type": "object",
           "description": "Whether the seller accepts buyer-desired operator identity reconciliation through sync_accounts settings-update entries. Sellers declaring support expose the exact identity transitions they implement, MUST return account revisions from sync_accounts and list_accounts, and MUST return identity_change_preview for dry-run identity updates.",

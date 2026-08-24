@@ -1,0 +1,323 @@
+id: media_buy_seller/account_change_feed
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Shared-account change feed convergence"
+category: media_buy_seller
+summary: "Bootstraps a shared account, forces a connected-platform creative change, observes account.change_recorded, drains list_account_changes, and repairs through list_creatives."
+track: media_buy
+
+requires_capability:
+  path: account.change_feed.supported
+  equals: true
+
+required_tools:
+  - sync_accounts
+  - sync_creatives
+  - list_creatives
+  - list_account_changes
+  - comply_test_controller
+
+narrative: |
+  A buyer connects to an account that is also managed through seller and
+  connected-platform surfaces. The buyer registers the generic account change
+  wake-up, obtains a latest feed checkpoint before reading snapshots, and then
+  observes a creative status change driven outside its AdCP mutation calls.
+
+  The seller must make the changed creative snapshot and durable change record
+  readable before enqueueing account.change_recorded. The webhook is only a
+  wake-up; the buyer drains from its own cursor and repairs through the task in
+  the change record.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - sells_media
+    - has_creative_library
+    - account_change_feed
+  examples:
+    - "Seller with a connected social platform and shared advertiser accounts"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The runner hosts a signed webhook receiver and the seller exposes the
+    sandbox comply controller. The change-feed capability is optional; once
+    advertised, every phase is required and failures must not grade as skips.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: subscribe_and_checkpoint
+    title: "Subscribe and acquire a pre-bootstrap checkpoint"
+    steps:
+      - id: sync_shared_account
+        title: "Register account.change_recorded"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              sandbox: true
+              notification_configs:
+                - subscriber_id: "account-change-runner"
+                  url: "{{runner.webhook_url:account_change_feed}}"
+                  event_types:
+                    - "account.change_recorded"
+                  active: true
+          idempotency_key: "$generate:uuid_v4#account_change_feed_sync_account"
+          context:
+            correlation_id: "account_change_feed--sync_account"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "active"
+            description: "Shared sandbox account is active"
+          - check: field_value
+            path: "accounts[0].notification_configs[0].event_types[0]"
+            value: "account.change_recorded"
+            description: "Change-feed subscriber is persisted"
+
+      - id: acquire_latest_checkpoint
+        title: "Acquire C0 before snapshot bootstrap"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          starting_position: "latest"
+          max_results: 100
+          context:
+            correlation_id: "account_change_feed--checkpoint"
+        context_outputs:
+          - name: pre_baseline_account_change_cursor
+            path: "cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches list-account-changes-response.json"
+          - check: field_present
+            path: "cursor"
+            description: "Tail checkpoint is returned even when no changes are returned"
+          - check: field_value
+            path: "has_more"
+            value: false
+            description: "Latest checkpoint starts at the seller-ingestion tail"
+
+  - id: external_creative_change
+    title: "Observe a connected-platform creative change"
+    steps:
+      - id: sync_creative_baseline
+        title: "Create the authoritative creative baseline"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          creatives:
+            - creative_id: "shared_account_display_001"
+              name: "Shared account display baseline"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-300x250.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+          idempotency_key: "$generate:uuid_v4#account_change_feed_sync_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "shared_account_display_001"
+            description: "Creative baseline exists"
+
+      - id: acquire_post_baseline_checkpoint
+        title: "Acquire C0 after creating the baseline"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          starting_position: "latest"
+          max_results: 100
+        context_outputs:
+          - name: account_change_cursor
+            path: "cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches list-account-changes-response.json"
+          - check: field_present
+            path: "cursor"
+            description: "Checkpoint excludes the already-observed baseline creation"
+
+      - id: force_connected_creative_change
+        title: "Connected platform approves the creative"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "force_creative_status"
+          params:
+            creative_id: "shared_account_display_001"
+            status: "approved"
+          context:
+            correlation_id: "account_change_feed--force_external"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "External creative transition committed"
+
+      - id: expect_account_change_webhook
+        title: "Observe account.change_recorded"
+        task: expect_webhook
+        triggered_by: force_connected_creative_change
+        filter:
+          notification_type: "account.change_recorded"
+          subscriber_id: "account-change-runner"
+          change_id: "*"
+        timeout_seconds: 30
+        expect_idempotency_key: true
+        webhook_payload_schema_ref: "core/account-change-recorded-webhook.json"
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          One logical account.change_recorded fire arrives. notification_id
+          equals change_id and the creative identity is present, but the payload
+          is not treated as the current creative document.
+
+  - id: drain_and_repair
+    title: "Drain the feed and repair authoritative state"
+    steps:
+      - id: drain_after_checkpoint
+        title: "Read changes strictly after C0"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          cursor: "$context.account_change_cursor"
+          max_results: 100
+        context_outputs:
+          - name: account_change_tail_cursor
+            path: "cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches list-account-changes-response.json"
+          - check: field_value
+            path: "changes[0].resource.type"
+            value: "creative"
+            description: "Feed identifies the changed resource family"
+          - check: field_value
+            path: "changes[0].resource.resource_id"
+            value: "shared_account_display_001"
+            description: "Feed identifies the externally changed creative"
+          - check: field_value
+            path: "changes[0].origin.kind"
+            value: "connected_platform"
+            description: "Server-derived origin identifies the connected platform"
+          - check: field_value
+            path: "changes[0].repair.task"
+            value: "list_creatives"
+            description: "Change names the authoritative repair read"
+
+      - id: repair_creative_snapshot
+        title: "Re-read authoritative creative state"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          filters:
+            creative_ids:
+              - "shared_account_display_001"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "shared_account_display_001"
+            description: "Authoritative read returns the changed creative"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "approved"
+            description: "Authoritative state already reflects the external change"
+
+      - id: empty_tail_checkpoint
+        title: "Persist a cursor from an empty tail page"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          cursor: "$context.account_change_tail_cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches list-account-changes-response.json"
+          - check: field_value
+            path: "changes"
+            value: []
+            description: "No additional changes remain"
+          - check: field_present
+            path: "cursor"
+            description: "Empty tail still returns a resumable checkpoint"
+          - check: field_value
+            path: "has_more"
+            value: false
+            description: "Buyer is caught up to seller ingestion"

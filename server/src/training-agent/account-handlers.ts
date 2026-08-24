@@ -5,7 +5,8 @@
  * Accounts are stored in session state; governance agents are stored per-account.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import type { WebhookAuthentication } from '@adcp/sdk/server';
 import type { TrainingContext, ToolArgs, AccountRef, OperatorUnit } from './types.js';
 import { accountScopeFromRef } from './account-scope.js';
 import { sessionKeyFromArgs } from './state.js';
@@ -23,6 +24,7 @@ import {
   normalizeAccountWebhookUrl,
   proveAccountWebhookControl,
 } from './webhook-challenge.js';
+import { emitAccountNotificationWebhook } from './webhooks.js';
 
 // One account may legitimately use the protocol's full 16-subscriber fan-out.
 // Larger multi-account activations must be split by account so a single call
@@ -51,6 +53,8 @@ interface SyncAccountInput {
 }
 
 interface AccountState {
+  /** Internal seller scope. Equal wire IDs do not imply shared access. */
+  changeScopeId: string;
   accountId: string;
   brand: { domain: string; brand_id?: string; countries?: string[]; name?: string };
   operator: string;
@@ -68,6 +72,45 @@ interface AccountState {
   notificationConfigs: NotificationConfigState[];
   notificationConfigsTouched?: boolean;
   syncedAt: string;
+}
+
+export interface TrainingAccountChange {
+  change_id: string;
+  recorded_at: string;
+  occurred_at?: string;
+  resource: {
+    type: string;
+    account_id: string;
+    resource_id: string;
+    parent_ids?: Record<string, string>;
+  };
+  action: string;
+  origin: {
+    kind: 'adcp' | 'seller_operator' | 'seller_system' | 'connected_platform' | 'unknown';
+    connection_id?: string;
+  };
+  resource_revision?: number | string;
+  changed_paths?: string[];
+  repair: {
+    task: string;
+    available?: boolean;
+    unavailable_reason?: string;
+  };
+  reason?: string;
+  summary?: string;
+}
+
+interface StoredAccountChange {
+  sequence: number;
+  change: TrainingAccountChange;
+}
+
+interface AccountChangeCursor {
+  principal: string;
+  accountScopeId: string;
+  accountId: string;
+  resourceTypes: string[];
+  sequence: number;
 }
 
 export interface GovernanceAgentEntry {
@@ -117,6 +160,79 @@ interface GovernanceAgentInput {
 // module-level Map keyed by session key → account key → AccountState.
 // This avoids modifying the shared SessionState interface.
 const accountStore = new Map<string, Map<string, AccountState>>();
+const accountChangeStore = new Map<string, StoredAccountChange[]>();
+const ACCOUNT_CHANGE_CURSOR_SECRET = randomUUID();
+
+function principalAccountChangeScope(principal: string | undefined, accountId: string): string {
+  return `principal:${principalScope(principal)}:${accountId}`;
+}
+
+function accountChanges(accountScopeId: string): StoredAccountChange[] {
+  const key = accountScopeId;
+  let changes = accountChangeStore.get(key);
+  if (!changes) {
+    changes = [];
+    accountChangeStore.set(key, changes);
+  }
+  return changes;
+}
+
+export function recordAccountChange(
+  principal: string | undefined,
+  input: Omit<TrainingAccountChange, 'change_id' | 'recorded_at'> & {
+    change_id?: string;
+    recorded_at?: string;
+  },
+): TrainingAccountChange {
+  const change: TrainingAccountChange = {
+    change_id: input.change_id ?? `chg_${randomUUID()}`,
+    recorded_at: input.recorded_at ?? new Date().toISOString(),
+    ...(input.occurred_at && { occurred_at: input.occurred_at }),
+    resource: {
+      ...input.resource,
+      ...(input.resource.parent_ids && { parent_ids: { ...input.resource.parent_ids } }),
+    },
+    action: input.action,
+    origin: { ...input.origin },
+    ...(input.resource_revision !== undefined && { resource_revision: input.resource_revision }),
+    ...(input.changed_paths && { changed_paths: [...input.changed_paths] }),
+    repair: {
+      ...input.repair,
+    },
+    ...(input.reason && { reason: input.reason }),
+    ...(input.summary && { summary: input.summary }),
+  };
+  const ownedAccount = findAccountByIdAcrossSessions(change.resource.account_id, principal);
+  const accountScopeId = ownedAccount?.changeScopeId
+    ?? (getComplianceAccounts().some(account => account.account_id === change.resource.account_id)
+      ? `fixture:${change.resource.account_id}`
+      : principalAccountChangeScope(principal, change.resource.account_id));
+  const changes = accountChanges(accountScopeId);
+  changes.push({ sequence: (changes.at(-1)?.sequence ?? 0) + 1, change });
+  return change;
+}
+
+function ensureExistingAccountChangeSeed(accountScopeId: string, principal: string | undefined, account: AccountWireShape): void {
+  const changes = accountChanges(accountScopeId);
+  if (changes.length > 0) return;
+  recordAccountChange(principal, {
+    resource: {
+      type: 'account',
+      account_id: account.account_id,
+      resource_id: account.account_id,
+    },
+    action: 'updated',
+    origin: {
+      kind: 'connected_platform',
+      connection_id: 'conn_shared_training_platform',
+    },
+    changed_paths: ['/status'],
+    repair: {
+      task: 'list_accounts',
+    },
+    summary: 'Existing shared training account observed from a connected platform.',
+  });
+}
 
 function principalScope(principal: string | undefined): string {
   return principal && principal.length > 0 ? principal : 'anonymous';
@@ -241,6 +357,7 @@ function accountMapsForPrincipal(sessionKey: string, principal?: string): Map<st
 
 function accountStateFromWire(wire: AccountWireShape, now: string): AccountState {
   return {
+    changeScopeId: `fixture:${wire.account_id}`,
     accountId: wire.account_id,
     brand: wire.brand,
     operator: wire.operator,
@@ -268,6 +385,7 @@ function findComplianceAccountById(accountId: string, now: string): AccountState
 /** Exported for testing — clear all account state */
 export function clearAccountStore(): void {
   accountStore.clear();
+  accountChangeStore.clear();
 }
 
 interface AccountWireShape {
@@ -327,6 +445,7 @@ function accountStateToWire(account: AccountState): AccountWireShape {
 export const ACCOUNT_ANCHORED_NOTIFICATION_TYPE_VALUES = [
   'creative.status_changed',
   'creative.purged',
+  'account.change_recorded',
   'product.created',
   'product.updated',
   'product.priced',
@@ -593,6 +712,88 @@ export function getAccountNotificationSubscribers(
   return out;
 }
 
+/**
+ * Server-internal fan-out for account business changes. Unlike the
+ * request-principal helper above, this enumerates every independently proven
+ * subscriber on the shared account so a mutation by one principal wakes the
+ * others. Callers cannot invoke this enumeration through a protocol task.
+ */
+export function getAccountChangeSubscribersAcrossPrincipals(
+  accountScopeId: string,
+): AccountNotificationSubscriber[] {
+  const out: AccountNotificationSubscriber[] = [];
+  const seen = new Set<string>();
+  for (const [storeKey, accounts] of accountStore) {
+    for (const account of accounts.values()) {
+      // The stored scope is the seller-issued access grant. A matching wire
+      // account_id alone never authorizes cross-principal fan-out.
+      if (account.changeScopeId !== accountScopeId) continue;
+      for (const config of account.notificationConfigs) {
+        if (!config.active || !config.eventTypes.includes('account.change_recorded')) continue;
+        const subscriberKey = `${storeKey}\u001F${config.subscriberId}`;
+        if (seen.has(subscriberKey)) continue;
+        seen.add(subscriberKey);
+        out.push({
+          accountId: account.accountId,
+          subscriberId: config.subscriberId,
+          url: config.url,
+          eventTypes: [...config.eventTypes],
+          authentication: config.authentication,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+function accountChangeWebhookAuthentication(
+  auth: NotificationConfigState['authentication'] | undefined,
+): WebhookAuthentication | undefined {
+  if (!auth?.credentials) return undefined;
+  const schemes = auth.schemes.map(scheme => scheme.toLowerCase().replace(/-/g, '_'));
+  if (schemes.includes('bearer')) return { type: 'bearer', token: auth.credentials };
+  if (schemes.includes('hmac_sha256')) return { type: 'hmac_sha256', secret: auth.credentials };
+  return undefined;
+}
+
+export async function emitAccountChangeRecordedWebhook(
+  principal: string | undefined,
+  change: TrainingAccountChange,
+): Promise<void> {
+  const ownedAccount = findAccountByIdAcrossSessions(change.resource.account_id, principal);
+  const accountScopeId = ownedAccount?.changeScopeId
+    ?? (getComplianceAccounts().some(account => account.account_id === change.resource.account_id)
+      ? `fixture:${change.resource.account_id}`
+      : principalAccountChangeScope(principal, change.resource.account_id));
+  const subscribers = getAccountChangeSubscribersAcrossPrincipals(accountScopeId);
+  await Promise.allSettled(subscribers.map(async subscriber => {
+    const idempotencyKey = randomUUID();
+    const payload: Record<string, unknown> = {
+      idempotency_key: idempotencyKey,
+      notification_id: change.change_id,
+      notification_type: 'account.change_recorded',
+      fired_at: new Date().toISOString(),
+      subscriber_id: subscriber.subscriberId,
+      account_id: change.resource.account_id,
+      change_id: change.change_id,
+      recorded_at: change.recorded_at,
+      resource: {
+        type: change.resource.type,
+        resource_id: change.resource.resource_id,
+        ...(change.resource.parent_ids && { parent_ids: change.resource.parent_ids }),
+      },
+      action: change.action,
+    };
+    await emitAccountNotificationWebhook({
+      url: subscriber.url,
+      payload,
+      operationId: `${subscriber.accountId}:${subscriber.subscriberId}:${change.change_id}:${idempotencyKey}`,
+      notificationType: 'account.change_recorded',
+      authentication: accountChangeWebhookAuthentication(subscriber.authentication),
+    });
+  }));
+}
+
 export function resolveAccountIdForRef(
   sessionKey: string,
   principal: string | undefined,
@@ -692,6 +893,7 @@ export function seedAccountFixture(
     ?? findAccountByIdAcrossSessions(accountId, ctx.principal);
 
   const state: AccountState = {
+    changeScopeId: principalAccountChangeScope(ctx.principal, accountId),
     accountId,
     brand: brand as { domain: string; brand_id?: string; countries?: string[]; name?: string },
     operator,
@@ -731,6 +933,17 @@ export function seedAccountFixture(
 // storyboards that rely on stable account IDs work without prior sync_accounts.
 function getComplianceAccounts(): AccountWireShape[] {
   return [
+    {
+      account_id: 'acc_luma_shared',
+      name: 'Luma Outdoor — shared connected-platform sandbox',
+      advertiser: 'Luma Outdoor',
+      brand: { domain: 'luma-outdoor.example' },
+      operator: 'pinnacle-agency.example',
+      billing: 'operator',
+      account_scope: 'operator_brand',
+      status: 'active',
+      sandbox: true,
+    },
     {
       account_id: 'acc_pagination_integrity_1',
       name: 'Acme Outdoor c/o Pinnacle',
@@ -1105,6 +1318,17 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       const nextNotificationConfigs = notificationConfigsProvided
         ? notificationConfigs
         : existing.notificationConfigs;
+      const changedPaths: string[] = [];
+      if (input.payment_terms && input.payment_terms !== existing.paymentTerms) {
+        changedPaths.push('/payment_terms');
+      }
+      if (
+        notificationConfigsProvided
+        && JSON.stringify(sanitizeNotificationConfigs(notificationConfigs))
+          !== JSON.stringify(sanitizeNotificationConfigs(existing.notificationConfigs))
+      ) {
+        changedPaths.push('/notification_configs');
+      }
 
       const result: Record<string, unknown> = {
         account_id: existing.accountId,
@@ -1132,6 +1356,21 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         existing.notificationConfigsTouched = true;
       }
       existing.syncedAt = now;
+      if (changedPaths.length > 0) {
+        const change = recordAccountChange(ctx.principal, {
+          resource: {
+            type: 'account',
+            account_id: existing.accountId,
+            resource_id: existing.accountId,
+          },
+          action: 'updated',
+          origin: { kind: 'adcp' },
+          changed_paths: changedPaths,
+          repair: { task: 'list_accounts' },
+          summary: 'Account settings changed through sync_accounts.',
+        });
+        await emitAccountChangeRecordedWebhook(ctx.principal, change);
+      }
       results.push(result);
       continue;
     }
@@ -1305,7 +1544,10 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
     // Sandbox accounts are active immediately; non-sandbox may need approval
     const status = isSandbox ? 'active' : (existing?.status === 'active' ? 'active' : 'pending_approval');
 
+    const previousWire = existing ? JSON.stringify(accountStateToWire(existing)) : undefined;
     const state: AccountState = {
+      changeScopeId: existing?.changeScopeId
+        ?? principalAccountChangeScope(ctx.principal, accountId),
       accountId,
       brand: input.brand,
       operator: input.operator,
@@ -1328,8 +1570,39 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         : existing?.notificationConfigsTouched,
       syncedAt: now,
     };
+    const provisioningChangedPaths = existing
+      ? [
+          ...(existing.billing !== state.billing ? ['/billing'] : []),
+          ...(existing.paymentTerms !== state.paymentTerms ? ['/payment_terms'] : []),
+          ...(existing.status !== state.status ? ['/status'] : []),
+          ...(
+            JSON.stringify(sanitizeNotificationConfigs(existing.notificationConfigs))
+              !== JSON.stringify(sanitizeNotificationConfigs(state.notificationConfigs))
+              ? ['/notification_configs']
+              : []
+          ),
+        ]
+      : undefined;
 
     accounts.set(key, state);
+    const currentWire = JSON.stringify(accountStateToWire(state));
+    if (!existing || previousWire !== currentWire) {
+      const change = recordAccountChange(ctx.principal, {
+        resource: {
+          type: 'account',
+          account_id: accountId,
+          resource_id: accountId,
+        },
+        action: existing ? 'updated' : 'created',
+        origin: { kind: 'adcp' },
+        changed_paths: provisioningChangedPaths,
+        repair: { task: 'list_accounts' },
+        summary: existing
+          ? 'Account configuration changed through sync_accounts.'
+          : 'Account created through sync_accounts.',
+      });
+      await emitAccountChangeRecordedWebhook(ctx.principal, change);
+    }
 
     const result: Record<string, unknown> = {
       account_id: accountId,
@@ -1390,6 +1663,14 @@ interface ListAccountsRequest extends ToolArgs {
   pagination?: { max_results?: number; cursor?: string };
 }
 
+interface ListAccountChangesRequest extends ToolArgs {
+  account: AccountRef;
+  cursor?: string;
+  starting_position?: 'earliest' | 'latest';
+  resource_types?: string[];
+  max_results?: number;
+}
+
 function wireAccountMatchesRef(account: AccountWireShape, ref: AccountRef): boolean {
   if (ref.account_id) return account.account_id === ref.account_id;
   if (!ref.brand?.domain || !ref.operator) return false;
@@ -1428,6 +1709,9 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
   const sessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
   const accountMap = getAccountMap(sessionKey, ctx.principal);
   const preferFixtureAccounts = ctx.storyboardCompat?.version === '3.0';
+  const complianceAccounts = preferFixtureAccounts
+    ? getComplianceAccounts().filter(account => account.account_id !== 'acc_luma_shared')
+    : getComplianceAccounts();
   const exactAccountFilter = hasExactAccountFilter(req.account)
     && (req.sandbox !== true || Boolean(req.account?.account_id));
   const scopedAccounts = accountsForPrincipal(ctx.principal);
@@ -1435,15 +1719,15 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
   let accounts: AccountWireShape[] = preferFixtureAccounts
     ? scopedAccounts.length > 0
       ? scopedAccounts.map(accountStateToWire)
-      : getComplianceAccounts()
+      : complianceAccounts
     : scopedAccounts.length > 0
       ? scopedAccounts.map(accountStateToWire)
       : accountMap.size > 0
         ? Array.from(accountMap.values()).map(accountStateToWire)
-        : getComplianceAccounts();
+        : complianceAccounts;
 
   if (!preferFixtureAccounts && req.sandbox === true && !exactAccountFilter) {
-    accounts = mergeAccountFixtures(accounts, getComplianceAccounts());
+    accounts = mergeAccountFixtures(accounts, complianceAccounts);
   }
   if (!preferFixtureAccounts && exactAccountFilter) {
     accounts = accounts.filter(a => wireAccountMatchesRef(a, req.account!));
@@ -1475,6 +1759,163 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
       total_count: totalMatching,
       ...(hasMore && { cursor: encodeOffsetCursor('accounts', pageEnd) }),
     },
+  };
+}
+
+function resolveAccountForChangeFeed(
+  ref: AccountRef,
+  principal?: string,
+): { account: AccountWireShape; scopeId: string } | undefined {
+  const scoped = accountsForPrincipal(principal)
+    .find(account => wireAccountMatchesRef(accountStateToWire(account), ref));
+  if (scoped) return { account: accountStateToWire(scoped), scopeId: scoped.changeScopeId };
+  const fixture = getComplianceAccounts().find(account => wireAccountMatchesRef(account, ref));
+  return fixture ? { account: fixture, scopeId: `fixture:${fixture.account_id}` } : undefined;
+}
+
+function normalizeResourceTypes(types: string[] | undefined): string[] {
+  return [...new Set(types ?? [])].sort();
+}
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function issueAccountChangeCursor(cursor: AccountChangeCursor): string {
+  const payload = Buffer.from(JSON.stringify(cursor)).toString('base64url');
+  const signature = createHmac('sha256', ACCOUNT_CHANGE_CURSOR_SECRET)
+    .update(payload)
+    .digest('base64url');
+  return `accchg_${payload}.${signature}`;
+}
+
+function readAccountChangeCursor(token: string): AccountChangeCursor | undefined {
+  if (!token.startsWith('accchg_')) return undefined;
+  const [payload, suppliedSignature] = token.slice('accchg_'.length).split('.');
+  if (!payload || !suppliedSignature) return undefined;
+  const expectedSignature = createHmac('sha256', ACCOUNT_CHANGE_CURSOR_SECRET)
+    .update(payload)
+    .digest('base64url');
+  const supplied = Buffer.from(suppliedSignature);
+  const expected = Buffer.from(expectedSignature);
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return undefined;
+  try {
+    const value = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Partial<AccountChangeCursor>;
+    if (
+      typeof value.principal !== 'string'
+      || typeof value.accountScopeId !== 'string'
+      || typeof value.accountId !== 'string'
+      || !Array.isArray(value.resourceTypes)
+      || !value.resourceTypes.every(item => typeof item === 'string')
+      || !Number.isSafeInteger(value.sequence)
+      || (value.sequence ?? -1) < 0
+    ) return undefined;
+    return value as AccountChangeCursor;
+  } catch {
+    return undefined;
+  }
+}
+
+export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): object {
+  const req = args as unknown as ListAccountChangesRequest;
+  const identityError = durableAccountIdentityError(ctx);
+  if (identityError) return identityError;
+  if (!req.account) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'account is required', field: 'account', recovery: 'correctable' }] };
+  }
+  if (req.cursor && req.starting_position) {
+    return { errors: [{ code: 'INVALID_REQUEST', message: 'cursor and starting_position are mutually exclusive', recovery: 'correctable' }] };
+  }
+
+  const access = resolveAccountForChangeFeed(req.account, ctx.principal);
+  if (!access) {
+    return { errors: [{ code: 'ACCOUNT_NOT_FOUND', message: 'Account is not visible to the authenticated principal', recovery: 'terminal' }] };
+  }
+  const { account, scopeId: accountScopeId } = access;
+  ensureExistingAccountChangeSeed(accountScopeId, ctx.principal, account);
+
+  const resourceTypes = normalizeResourceTypes(req.resource_types);
+  const changes = accountChanges(accountScopeId);
+  const currentHighWater = changes.at(-1)?.sequence ?? 0;
+  let afterSequence = req.starting_position === 'latest' ? currentHighWater : 0;
+
+  if (req.cursor) {
+    const cursor = readAccountChangeCursor(req.cursor);
+    if (!cursor) {
+      return {
+        errors: [{
+          code: 'CURSOR_EXPIRED',
+          message: 'The account change cursor is no longer available; rebuild authoritative snapshots from a new latest checkpoint',
+          recovery: 'correctable',
+          details: {
+            available_since: changes[0]?.change.recorded_at ?? new Date().toISOString(),
+            restart_with: { starting_position: 'latest' },
+          },
+        }],
+      };
+    }
+    if (
+      cursor.principal !== principalScope(ctx.principal)
+      || cursor.accountScopeId !== accountScopeId
+      || cursor.accountId !== account.account_id
+      || !sameStringArray(cursor.resourceTypes, resourceTypes)
+    ) {
+      return {
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'cursor is scoped to a different principal, account, or resource_types filter',
+          field: 'cursor',
+          recovery: 'correctable',
+        }],
+      };
+    }
+    afterSequence = cursor.sequence;
+  }
+
+  const maxResults = Math.min(Math.max(req.max_results ?? 50, 1), 100);
+  const filter = new Set(resourceTypes);
+  const matches = (entry: StoredAccountChange) => filter.size === 0 || filter.has(entry.change.resource.type);
+  const page: StoredAccountChange[] = [];
+  let scannedSequence = afterSequence;
+  for (const entry of changes) {
+    if (entry.sequence <= afterSequence) continue;
+    scannedSequence = entry.sequence;
+    if (matches(entry)) page.push(entry);
+    if (page.length === maxResults) break;
+  }
+  if (page.length < maxResults) scannedSequence = currentHighWater;
+  const hasMore = changes.some(entry => entry.sequence > scannedSequence && matches(entry));
+  const cursor = issueAccountChangeCursor({
+    principal: principalScope(ctx.principal),
+    accountScopeId,
+    accountId: account.account_id,
+    resourceTypes,
+    sequence: scannedSequence,
+  });
+
+  return {
+    changes: page.map(entry => entry.change),
+    cursor,
+    has_more: hasMore,
+    available_since: changes[0]?.change.recorded_at ?? new Date().toISOString(),
+    generated_at: new Date().toISOString(),
+    source_coverage: [
+      {
+        source_id: 'seller',
+        kind: 'seller',
+        status: 'current',
+        resource_types: ['account', 'media_buy', 'creative'],
+      },
+      ...(accountScopeId.startsWith('fixture:') ? [{
+        source_id: 'conn_shared_training_platform',
+        kind: 'connected_platform',
+        status: 'current',
+        coverage_start: changes[0]?.change.recorded_at ?? new Date().toISOString(),
+        observed_through: new Date().toISOString(),
+        last_successful_sync_at: new Date().toISOString(),
+        resource_types: ['account', 'media_buy', 'creative'],
+      }] : []),
+    ],
   };
 }
 

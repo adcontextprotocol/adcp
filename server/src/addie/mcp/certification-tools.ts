@@ -1442,6 +1442,8 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   D3: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
+    { label: 'Shared-account change feed lab', url: `${DOCS_BASE}/docs/learning/shared-account-change-feed` },
+    { label: 'Snapshot and log contract', url: `${DOCS_BASE}/docs/protocol/snapshot-and-log` },
     { label: 'How AdCP compares to OpenRTB', url: `${DOCS_BASE}/docs/building/concepts/adcp-vs-openrtb` },
     { label: 'Trusted Match Protocol', url: `${DOCS_BASE}/docs/trusted-match` },
     { label: 'TMP specification', url: `${DOCS_BASE}/docs/trusted-match/specification` },
@@ -1461,6 +1463,8 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   // Track S: Specialist deep dives
   S1: [
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
+    { label: 'Shared-account change feed lab', url: `${DOCS_BASE}/docs/learning/shared-account-change-feed` },
+    { label: 'List account changes task', url: `${DOCS_BASE}/docs/accounts/tasks/list_account_changes` },
     { label: 'Proposal negotiation with refine_proposals', url: `${DOCS_BASE}/docs/media-buy/task-reference/refine_proposals` },
     { label: 'Proposal refinement capabilities', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities#proposal-refinement` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },

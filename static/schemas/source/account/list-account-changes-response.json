@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/account/list-account-changes-response.json",
+  "title": "List Account Changes Response",
+  "description": "Durable account change feed page. cursor is always present, including for an empty page at the tail; ordinary pagination-response semantics do not apply.",
+  "type": "object",
+  "allOf": [
+    {"$ref": "/schemas/core/version-envelope.json"},
+    {"$ref": "/schemas/core/protocol-envelope.json"}
+  ],
+  "properties": {
+    "changes": {
+      "type": "array",
+      "description": "Matching changes in oldest-first total account order. Timestamps are descriptive and do not define this order.",
+      "items": {"$ref": "/schemas/core/account-change.json"},
+      "maxItems": 100
+    },
+    "cursor": {
+      "type": "string",
+      "description": "Opaque checkpoint strictly after the high-water scanned by this page. Always persist this value, including when changes is empty or has_more is false. A filtered empty page still advances past scanned nonmatching records.",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "has_more": {
+      "type": "boolean",
+      "description": "True when more retained matching changes were available at generation time. False means caught up to seller ingestion, not necessarily to an unavailable or delayed connected source."
+    },
+    "available_since": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Oldest time for which the seller currently retains change records for this account and caller. The capability guarantees at least 90 days after adoption; pre-adoption history is not fabricated."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Seller time when this page and its source-coverage watermarks were generated."
+    },
+    "source_coverage": {
+      "type": "array",
+      "description": "Account-specific feed and connector coverage. Buyers use this to distinguish feed catch-up from upstream freshness. Omission means no additional connected-source coverage is declared.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "description": "Opaque seller or connection reference.",
+            "maxLength": 255
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["seller", "connected_platform"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["current", "delayed", "unavailable", "not_configured"]
+          },
+          "coverage_start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Earliest upstream time covered by this source after connection or retention limits."
+          },
+          "observed_through": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Latest upstream point the seller has successfully observed."
+          },
+          "last_successful_sync_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "resource_types": {
+            "type": "array",
+            "items": {"type": "string"},
+            "uniqueItems": true
+          }
+        },
+        "required": ["source_id", "kind", "status", "resource_types"],
+        "additionalProperties": true
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {"$ref": "/schemas/core/error.json"}
+    },
+    "context": {"$ref": "/schemas/core/context.json"},
+    "ext": {"$ref": "/schemas/core/ext.json"}
+  },
+  "required": ["changes", "cursor", "has_more", "available_since", "generated_at"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Caught up after acquiring a latest checkpoint",
+      "data": {
+        "adcp_version": "3.2",
+        "status": "completed",
+        "changes": [],
+        "cursor": "eyJhY2NvdW50IjoiYWNjX2x1bWFfc2hhcmVkIiwic2VxIjo0Mn0",
+        "has_more": false,
+        "available_since": "2026-05-26T00:00:00Z",
+        "generated_at": "2026-08-24T12:00:00Z",
+        "source_coverage": [
+          {
+            "source_id": "seller",
+            "kind": "seller",
+            "status": "current",
+            "resource_types": ["account", "media_buy", "creative"]
+          }
+        ]
+      }
+    }
+  ]
+}

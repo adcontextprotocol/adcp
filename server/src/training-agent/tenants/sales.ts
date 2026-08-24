@@ -16,13 +16,14 @@ import {
 } from '../v6-sales-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
-import { listAccountsTool, syncGovernanceTool } from './account-tools.js';
+import { listAccountChangesTool, listAccountsTool, syncGovernanceTool } from './account-tools.js';
 import { reportUsageTool } from './report-usage-tool.js';
 import { validateInputTool } from './validate-input-tool.js';
 import { buildCreativeTool, previewCreativeTool } from './creative-tools.js';
 import { customToolFor } from './custom-tool-helper.js';
 import { handleSyncCatalogs } from '../catalog-event-handlers.js';
 import type { TrainingContext } from '../types.js';
+import { supportsAccountChangeFeed } from '../types.js';
 import { syncAgentNotificationConfigsLegacy } from '../agent-notification-configs.js';
 
 const TENANT_ID = 'sales';
@@ -110,7 +111,8 @@ export function buildSalesTenantConfig(
           // absent; advertising it under 3.0-compat makes those steps execute
           // and fail the older response schema. Gate it off 3.0 like the
           // creative tools below. (/signals keeps it across versions.)
-          ...(options.storyboardCompat?.version === '3.0' ? {} : {
+          ...(supportsAccountChangeFeed(options.storyboardCompat?.version ?? '3.2-beta.5') ? {
+            list_account_changes: listAccountChangesTool(options.storyboardCompat),
             sync_agent_notification_configs: customToolFor(
               'sync_agent_notification_configs',
               'Register, replace, pause, or clear caller-scoped agent-level capability-change webhook subscribers.',
@@ -138,7 +140,7 @@ export function buildSalesTenantConfig(
               creativeBillsThroughAdcp: false,
               ...(options.storyboardCompat && { storyboardCompat: options.storyboardCompat }),
             }),
-          }),
+          } : {}),
         },
         complyTest: buildSalesComplyConfig(options.storyboardCompat, taskRegistry),
       },

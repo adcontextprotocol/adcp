@@ -26,7 +26,7 @@ import {
   resolveServedAdcpVersion,
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
-import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext } from '../types.js';
+import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsAccountChangeFeed, supportsGetProductsRejected, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
@@ -868,6 +868,26 @@ function projectTenantCapabilities(
         supported_formats: supportedCanonicalFormatsCapability(),
         canonical_catalog_version: '3.1',
       };
+      if (supportsAccountChangeFeed(servedVersion)) {
+        const account = structured.account && typeof structured.account === 'object'
+          ? structured.account
+          : {};
+        structured.account = {
+          ...account,
+          change_feed: {
+            supported: true,
+            read_task: 'list_account_changes',
+            registration_task: 'sync_accounts',
+            event_type: 'account.change_recorded',
+            retention_days: 90,
+            resource_types: [
+              'account',
+              'media_buy',
+              'creative',
+            ],
+          },
+        };
+      }
       const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
         ? structured.compliance_testing
         : {};

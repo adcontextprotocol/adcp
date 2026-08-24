@@ -44,6 +44,16 @@ export function supportsGetProductsRejected(servedVersion: string | undefined): 
   return qualifier === 'beta' && prerelease >= 2;
 }
 
+/** Account change feed is a 3.2+ surface and must not leak into 3.1 negotiation. */
+export function supportsAccountChangeFeed(servedVersion: string | undefined): boolean {
+  if (!servedVersion) return false;
+  const match = servedVersion.match(/^(\d+)\.(\d+)/);
+  if (!match) return false;
+  const major = Number.parseInt(match[1], 10);
+  const minor = Number.parseInt(match[2], 10);
+  return major > 3 || (major === 3 && minor >= 2);
+}
+
 /** AccountReference from SDK — identifies an account on create_media_buy */
 type AccountReference = CreateMediaBuyRequest['account'];
 

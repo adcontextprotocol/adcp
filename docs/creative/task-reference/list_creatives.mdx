@@ -7,6 +7,13 @@ description: "list_creatives browses and filters creatives in an AdCP library by
 
 Browse and filter creatives in a creative library. Supports filtering by asset type, format, status, concept, tags, date range, and dynamic variables, with pagination and optional field enrichment.
 
+For every account the caller can access, the library membership is
+**source-neutral**: sellers MUST return creatives the caller can see regardless
+of whether they were created through [`sync_creatives`](/docs/creative/task-reference/sync_creatives), a seller UI or API,
+seller automation, another authorized principal, or a connected platform.
+Filters and lifecycle defaults still apply. An implementation that exposes
+only AdCP-created creatives is not a conforming account snapshot.
+
 Implemented by any agent that hosts a creative library — creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
 
 **Response time**: ~1 second (simple database lookup)
@@ -22,6 +29,7 @@ Implemented by any agent that hosts a creative library — creative agents (ad s
 - Filter by creative concept (groups of related creatives across sizes/formats)
 - Find DCO creatives and inspect their dynamic content slots
 - Find creatives with seller indicators such as package-scoped creative fatigue
+- Reconcile source-neutral external changes through the optional account change feed
 
 ## Request parameters
 

@@ -46,7 +46,10 @@ import {
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
 import {
+  emitAccountChangeRecordedWebhook,
   getAccountNotificationSubscribers,
+  recordAccountChange,
+  resolveAccountIdForRef,
   sandboxAccountRefForId,
   seedAccountFixture,
 } from './account-handlers.js';
@@ -813,6 +816,24 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
 
       creative.status = status;
       propagateCreativeImpairment(session, creativeId, prev, status, rejectionReason);
+      const accountId = creative.accountId
+        ?? resolveAccountIdForRef(sessionKey, principal, creative.accountRef);
+      if (accountId) {
+        const change = recordAccountChange(principal, {
+          resource: {
+            type: 'creative',
+            account_id: accountId,
+            resource_id: creativeId,
+          },
+          action: 'status_changed',
+          origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+          changed_paths: ['/status'],
+          repair: { task: 'list_creatives' },
+          reason: lifecycleReasonCode(prev, status),
+          summary: `Connected training platform changed creative status from ${prev} to ${status}.`,
+        });
+        await emitAccountChangeRecordedWebhook(principal, change);
+      }
       await emitCreativeStatusChanged(sessionKey, principal, creative, prev, status, rejectionReason);
       return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} transitioned from ${prev} to ${status}` };
     },
@@ -866,6 +887,24 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
         action: `status_forced_to_${status}`,
         summary: `Comply test controller forced status to ${status}`,
       });
+
+      const accountId = resolveAccountIdForRef(sessionKey, principal, mb.accountRef);
+      if (accountId) {
+        const change = recordAccountChange(principal, {
+          resource: {
+            type: 'media_buy',
+            account_id: accountId,
+            resource_id: mediaBuyId,
+          },
+          action: 'status_changed',
+          origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+          resource_revision: mb.revision,
+          changed_paths: ['/status'],
+          repair: { task: 'get_media_buys' },
+          summary: `Connected training platform changed media buy status from ${prev} to ${status}.`,
+        });
+        await emitAccountChangeRecordedWebhook(principal, change);
+      }
 
       return { success: true, previous_state: prev, current_state: status, message: `Media buy ${mediaBuyId} transitioned from ${prev} to ${status}` };
     },

@@ -447,6 +447,7 @@ test('temporary snapshot redirects cover every available live page', () => {
     'docs/building/by-layer/L3/async-identity-and-convergence',
     'docs/protocol/sync_agent_notification_configs',
     'docs/accounts/provisioning-walkthrough',
+    'docs/accounts/tasks/list_account_changes',
     'docs/media-buy/product-discovery/proposal-negotiation',
     'docs/media-buy/media-buys/indicators',
     'docs/media-buy/task-reference/list_products',
@@ -460,6 +461,7 @@ test('temporary snapshot redirects cover every available live page', () => {
     'docs/governance/creative/policy-backed-rejections',
     'docs/governance/campaign/tasks/report_plan_adjustment',
     'docs/brand-protocol/tasks/search_brands',
+    'docs/learning/shared-account-change-feed',
   ];
   if (JSON.stringify(uncoveredPages) !== JSON.stringify(expectedUncoveredPages)) {
     throw new Error(
