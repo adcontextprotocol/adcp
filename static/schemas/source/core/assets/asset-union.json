@@ -9,6 +9,7 @@
     { "$ref": "/schemas/core/assets/video-asset.json" },
     { "$ref": "/schemas/core/assets/audio-asset.json" },
     { "$ref": "/schemas/core/assets/vast-asset.json" },
+    { "$ref": "/schemas/core/assets/display-tag-asset.json" },
     { "$ref": "/schemas/core/assets/text-asset.json" },
     { "$ref": "/schemas/core/assets/url-asset.json" },
     { "$ref": "/schemas/core/assets/html-asset.json" },

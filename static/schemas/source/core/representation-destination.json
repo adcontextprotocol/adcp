@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/representation-destination.json",
+  "title": "Representation Destination",
+  "description": "Seller-owned inventory context against which a CreativeRepresentationSet is resolved. This object is valid only when build_creative is invoked on the destination sales agent. The seller resolves product_id to its current product, verifies that format_option is an exact current effective declaration for the requested placements, and intersects it with its own current seller-wide execution capabilities. A standalone creative agent cannot use this object to claim seller deliverability.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "seller_authority": "the build_creative endpoint MUST be the sales agent that owns product_id",
+      "current_product_match": "format_option MUST exactly match one effective current format option for product_id after every applicable placement and publisher narrowing",
+      "placement_scope": "when placement_refs is omitted, the representation must satisfy the common effective contract for every placement where the product may deliver",
+      "execution_intersection": "resolution additionally intersects the seller's current media_buy.execution.creative_specs VAST and macro ceilings; the request does not override those capabilities"
+    },
+    "spec": "docs/creative/representation-sets.mdx#seller-bound-resolution"
+  },
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "product",
+      "description": "Product owned by the destination seller."
+    },
+    "format_option": {
+      "$ref": "/schemas/core/product-format-declaration.json",
+      "description": "Exact effective destination declaration. The full declaration is carried so an option without format_option_id remains addressable. The destination seller verifies it against the current product and applicable placement/publisher narrowings."
+    },
+    "placement_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "/schemas/core/placement-ref.json" },
+      "description": "Optional placements the derived manifest must satisfy. Omission means every placement in the intended product route, not an unconstrained destination."
+    }
+  },
+  "required": ["product_id", "format_option"],
+  "additionalProperties": false
+}

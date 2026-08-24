@@ -2,10 +2,11 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/url-asset-type.json",
   "title": "URL Asset Type",
-  "description": "Types of URL assets for tracking and click-through purposes",
+  "description": "Invocation mechanisms for URL assets. `ad_request` invokes a third-party display ad endpoint at impression time; it is not a tracker or click destination.",
   "type": "string",
   "enum": [
     "clickthrough",
+    "ad_request",
     "tracker_pixel",
     "tracker_script"
   ]

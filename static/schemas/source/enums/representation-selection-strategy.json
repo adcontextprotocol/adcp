@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/representation-selection-strategy.json",
+  "title": "Representation Selection Strategy",
+  "description": "Deterministic strategy used after filtering a CreativeRepresentationSet against one seller destination contract. `representation_order` selects the first compatible representation in source array order. `highest_compatible_vast` is valid only when the destination format_kind is video_vast; it selects the compatible VAST representation with the highest exact VAST version, and equal-version ties are resolved by source array order. Using it for another format is INVALID_REQUEST and never falls back silently.",
+  "type": "string",
+  "enum": ["representation_order", "highest_compatible_vast"]
+}
