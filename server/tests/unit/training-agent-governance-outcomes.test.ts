@@ -162,6 +162,24 @@ describe('report_plan_outcome authorization and ledger binding', () => {
     });
   });
 
+  it('preserves 3.1-compatible message-only failed-outcome evidence', async () => {
+    await runWithSessionContext(async () => {
+      const intent = await setupIntent(100);
+      const result = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: intent.check_id,
+        governance_context: intent.governance_context,
+        idempotency_key: `outcome_${intent.check_id}_message_only_0001`,
+        outcome: 'failed',
+        error: { message: 'The seller declined this governed action.' },
+      }, BUYER_CTX) as Record<string, any>;
+
+      const outcomeEntry = (await audit()).plans[0].entries.find((entry: any) => entry.type === 'outcome');
+      expect(result).toMatchObject({ outcome_state: 'accepted' });
+      expect(outcomeEntry.error).toEqual({ message: 'The seller declined this governed action.' });
+    });
+  });
+
   it('rejects deeply nested failed-outcome evidence without mutation', async () => {
     await runWithSessionContext(async () => {
       const intent = await setupIntent(100);
@@ -257,6 +275,8 @@ describe('report_plan_outcome authorization and ledger binding', () => {
 
     expect(validate(input)).toBe(false);
     input.error.classification_source = 'seller_response_copy';
+    expect(validate(input), JSON.stringify(validate.errors)).toBe(true);
+    input.error = { message: 'Message-only evidence from a 3.1 caller.' } as any;
     expect(validate(input), JSON.stringify(validate.errors)).toBe(true);
   });
 

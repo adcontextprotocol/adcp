@@ -295,7 +295,7 @@ Sellers may disclose progressively. A [`POLICY_VIOLATION`](/docs/building/verifi
 | `delivery.seller_statement_digest` | string | For seller copy | Digest received with the seller statement. |
 | `delivery.impressions` | integer | No | Optional buyer-attributed impressions. |
 | `error` | object | No | Buyer-attributed structured error evidence. Required when outcome is `failed`; retained on the audit entry. |
-| `error.code` | string | Yes for failed | Error code returned by the seller or assigned by the buyer. |
+| `error.code` | string | No | Error code returned by the seller or assigned by the buyer. Optional for compatibility with 3.1 message-only evidence; reporters SHOULD include it when available. |
 | `error.message` | string | No | Human-readable error description. |
 | `error.details` | object | No | Structured error details preserved without forcing policy disclosure. [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) details SHOULD use the standard policy-violation shape. |
 | `error.classification_source` | enum | No | `seller_response_copy` or `buyer_classification`. Omission is permitted for compatibility. Additional seller fields remain forward-compatible but are size-, width-, and depth-bounded; prefer the bounded `error.ext` envelope. |

@@ -90,7 +90,6 @@ const REPORTED_OUTCOME_ERROR_INPUT_SCHEMA = {
     classification_source: { type: 'string', enum: ['seller_response_copy', 'buyer_classification'] },
     ext: { $ref: '#/properties/error/definitions/bounded_object' },
   },
-  required: ['code'],
   maxProperties: 16,
   propertyNames: { maxLength: MAX_REPORTED_OUTCOME_ERROR_PROPERTY_NAME_LENGTH },
   additionalProperties: { $ref: '#/properties/error/definitions/bounded_value' },
@@ -200,8 +199,8 @@ function cloneReportedOutcomeError(value: unknown): AuditEvidenceCloneResult {
     if (Object.keys(cloned).length > 16) {
       return { ok: false, reason: 'must not contain more than 16 properties' };
     }
-    if (typeof cloned.code !== 'string' || cloned.code.length === 0 || cloned.code.length > 128) {
-      return { ok: false, reason: 'must include a code between 1 and 128 characters' };
+    if ('code' in cloned && (typeof cloned.code !== 'string' || cloned.code.length === 0 || cloned.code.length > 128)) {
+      return { ok: false, reason: 'code must be a string between 1 and 128 characters' };
     }
     const stringLimits: Array<[string, number]> = [
       ['message', MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH],

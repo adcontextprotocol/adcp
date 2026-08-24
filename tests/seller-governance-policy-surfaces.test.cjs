@@ -306,6 +306,8 @@ test('failed outcomes preserve structured, attributed seller dispositions in aud
     },
   };
   assert.equal(validateError(error), true, JSON.stringify(validateError.errors));
+  assert.equal(validateError({ message: 'Message-only evidence from a 3.1 caller.' }), true,
+    'the bounded audit shape must preserve 3.1 message-only compatibility');
 
   const oversized = structuredClone(error);
   oversized.message = 'x'.repeat(4001);

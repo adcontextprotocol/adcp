@@ -61,7 +61,6 @@
       "description": "Bounded extension envelope for forward-compatible seller fields."
     }
   },
-  "required": ["code"],
   "maxProperties": 16,
   "propertyNames": { "maxLength": 128 },
   "additionalProperties": { "$ref": "#/definitions/bounded_value" }
