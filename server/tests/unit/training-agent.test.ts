@@ -15536,24 +15536,23 @@ describe('get_adcp_capabilities handler', () => {
 
     const complianceTesting = result.compliance_testing as Record<string, unknown>;
     const scenarios = complianceTesting.scenarios as string[];
-    expect(scenarios).toEqual(expect.arrayContaining([
+    expect(scenarios).toEqual([
       'force_creative_status',
-      'force_audience_status',
       'force_account_status',
       'force_media_buy_status',
-      'force_create_media_buy_arm',
-      'force_task_completion',
-      'force_creative_purge',
       'force_session_status',
       'simulate_delivery',
       'simulate_budget_spend',
+    ]);
+
+    const { result: currentResult } = await simulateCallTool(server, 'get_adcp_capabilities', {
+      adcp_version: CURRENT_ADCP_VERSION,
+    });
+    const currentScenarios = (currentResult.compliance_testing as Record<string, unknown>).scenarios as string[];
+    expect(currentScenarios).toEqual(expect.arrayContaining([
+      'force_audience_status',
+      'force_creative_purge',
       'seed_account',
-      'seed_product',
-      'seed_pricing_option',
-      'seed_creative',
-      'seed_plan',
-      'seed_media_buy',
-      'seed_creative_format',
       'seed_measurement_catalog',
       'query_provenance_audit_observations',
     ]));
@@ -15597,8 +15596,11 @@ describe('get_adcp_capabilities handler', () => {
     const server = createTrainingAgentServer({ mode: 'open', strict: true });
     const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
     const rs = result.request_signing as Record<string, unknown>;
+    const adcp = result.adcp as Record<string, unknown>;
 
     expect(rs.supported).toBe(true);
+    expect(rs.covers_content_digest).toBe('either');
+    expect(adcp.supported_versions).not.toContain(CURRENT_ADCP_VERSION);
     const requiredFor = rs.required_for as string[];
     expect(requiredFor).toContain('create_media_buy');
     expect(requiredFor).toContain('update_media_buy');
@@ -15609,17 +15611,63 @@ describe('get_adcp_capabilities handler', () => {
     expect(rs.protocol_methods_required_for).toEqual([
       'tasks/cancel',
       'tasks/pushNotificationConfig/set',
-      'CreateTaskPushNotificationConfig',
     ]);
     expect(rs.protocol_methods_supported_for).toEqual([
       'tasks/cancel',
       'tasks/pushNotificationConfig/set',
-      'CreateTaskPushNotificationConfig',
     ]);
 
     // Cross-namespace leak guard.
     const supportedFor = rs.supported_for as string[];
     expect(supportedFor.every(op => !isProtocolMethodName(op))).toBe(true);
+  });
+
+  it('advertises 3.2 only on signing routes that require content-digest coverage', async () => {
+    const requiredServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'required' });
+    const forbiddenServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'forbidden' });
+    const [{ result: required }, { result: forbidden }] = await Promise.all([
+      simulateCallTool(requiredServer, 'get_adcp_capabilities', {}),
+      simulateCallTool(forbiddenServer, 'get_adcp_capabilities', {}),
+    ]);
+
+    expect((required.request_signing as Record<string, unknown>).covers_content_digest).toBe('required');
+    expect((required.adcp as Record<string, unknown>).supported_versions).toContain(CURRENT_ADCP_VERSION);
+    expect((forbidden.request_signing as Record<string, unknown>).covers_content_digest).toBe('forbidden');
+    expect((forbidden.adcp as Record<string, unknown>).supported_versions).not.toContain(CURRENT_ADCP_VERSION);
+  });
+
+  it('rejects 3.2 pins on legacy signing profiles and accepts them on the required profile', async () => {
+    const eitherServer = createTrainingAgentServer({ mode: 'open', strict: true });
+    const forbiddenServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'forbidden' });
+    const requiredServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'required' });
+    const [{ result: either, isError: eitherError }, { result: forbidden, isError: forbiddenError }, required] = await Promise.all([
+      simulateCallTool(eitherServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+      simulateCallTool(forbiddenServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+      simulateCallTool(requiredServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+    ]);
+
+    expect(eitherError).toBe(true);
+    expect(either).toMatchObject({ code: 'VERSION_UNSUPPORTED' });
+    expect((either.details as Record<string, unknown>).supported_versions as string[]).not.toContain(CURRENT_ADCP_VERSION);
+    expect(forbiddenError).toBe(true);
+    expect(forbidden).toMatchObject({ code: 'VERSION_UNSUPPORTED' });
+    expect((forbidden.details as Record<string, unknown>).supported_versions as string[]).not.toContain(CURRENT_ADCP_VERSION);
+    expect(required.isError).not.toBe(true);
+    expect(required.result.adcp_version).toBe(CURRENT_ADCP_VERSION);
+  });
+
+  it('negotiates major-only pins to the highest signing-compatible release', async () => {
+    const eitherServer = createTrainingAgentServer({ mode: 'open', strict: true });
+    const forbiddenServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'forbidden' });
+    const [either, forbidden] = await Promise.all([
+      simulateCallTool(eitherServer, 'get_adcp_capabilities', { adcp_major_version: 3 }),
+      simulateCallTool(forbiddenServer, 'get_adcp_capabilities', { adcp_major_version: 3 }),
+    ]);
+
+    expect(either.isError).not.toBe(true);
+    expect(either.result.adcp_version).toBe('3.1-rc.15');
+    expect(forbidden.isError).not.toBe(true);
+    expect(forbidden.result.adcp_version).toBe('3.1-rc.15');
   });
 });
 
@@ -16356,6 +16404,34 @@ describe('MCP Tasks protocol', () => {
         },
       });
     }
+  });
+
+  it('applies signing-profile version negotiation to task lifecycle methods', async () => {
+    const eitherServer = createTrainingAgentServer({ mode: 'open', strict: true });
+    const forbiddenServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'forbidden' });
+    const requiredServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'required' });
+
+    for (const server of [eitherServer, forbiddenServer]) {
+      await expect(
+        simulateGetTask(server, 'nonexistent-task-id', { adcp_version: CURRENT_ADCP_VERSION }),
+      ).rejects.toMatchObject({
+        code: -32602,
+        data: {
+          adcp_error: { code: 'VERSION_UNSUPPORTED', field: 'adcp_version' },
+        },
+      });
+    }
+
+    const requiredError = await simulateGetTask(
+      requiredServer,
+      'nonexistent-task-id',
+      { adcp_version: CURRENT_ADCP_VERSION },
+    ).catch((error: unknown) => error as { code?: number; data?: Record<string, unknown> });
+    expect(requiredError).toMatchObject({
+      code: -32602,
+      data: { adcp_version: CURRENT_ADCP_VERSION },
+    });
+    expect(requiredError.data?.adcp_error).toBeUndefined();
   });
 
   it('echoes served adcp_version on task lifecycle JSON-RPC errors', async () => {
