@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   docsReady: false,
@@ -46,13 +46,19 @@ vi.mock('../../src/slack/client.js', () => ({
   getAccessiblePrivateChannelIds: vi.fn(async () => []),
 }));
 
-import {
-  initializeKnowledgeSearch,
-  isKnowledgeReady,
-} from '../../src/addie/mcp/knowledge-search.js';
-
 describe('knowledge search initialization', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mocks.docsReady = false;
+    mocks.externalReady = false;
+    mocks.initializeDocsIndex.mockReset();
+    mocks.initializeExternalRepos.mockReset();
+  });
+
   it('deduplicates concurrent calls and retries an incomplete initialization', async () => {
+    const { initializeKnowledgeSearch, isKnowledgeReady } = await import(
+      '../../src/addie/mcp/knowledge-search.js'
+    );
     let releaseDocs!: () => void;
     const docsStarted = new Promise<void>((resolve) => {
       releaseDocs = resolve;
@@ -80,6 +86,28 @@ describe('knowledge search initialization', () => {
 
     await initializeKnowledgeSearch();
     expect(mocks.initializeDocsIndex).toHaveBeenCalledTimes(2);
+    expect(isKnowledgeReady()).toBe(true);
+  });
+
+  it('preserves a ready docs index while retrying external repositories', async () => {
+    const { initializeKnowledgeSearch, isKnowledgeReady } = await import(
+      '../../src/addie/mcp/knowledge-search.js'
+    );
+    mocks.initializeDocsIndex.mockImplementation(async () => {
+      mocks.docsReady = true;
+    });
+    mocks.initializeExternalRepos
+      .mockRejectedValueOnce(new Error('transient external failure'))
+      .mockImplementationOnce(async () => {
+        mocks.externalReady = true;
+      });
+
+    await initializeKnowledgeSearch();
+    expect(isKnowledgeReady()).toBe(false);
+
+    await initializeKnowledgeSearch();
+    expect(mocks.initializeDocsIndex).toHaveBeenCalledTimes(1);
+    expect(mocks.initializeExternalRepos).toHaveBeenCalledTimes(2);
     expect(isKnowledgeReady()).toBe(true);
   });
 });

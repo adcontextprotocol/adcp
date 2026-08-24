@@ -63,20 +63,24 @@ export function initializeKnowledgeSearch(): Promise<void> {
   initializationPromise = (async () => {
     logger.info('Addie: Initializing knowledge search');
 
-    // Index docs from filesystem
-    try {
-      await initializeDocsIndex();
-      const docCount = getDocCount();
-      const categories = getDocCategories();
-      logger.info(
-        {
-          docCount,
-          categories: categories.map((c) => `${c.category}(${c.count})`).join(', '),
-        },
-        'Addie: Docs index ready'
-      );
-    } catch (error) {
-      logger.warn({ error }, 'Addie: Failed to index docs');
+    // Index docs from filesystem. Preserve a ready index when retrying another
+    // source so a transient external-repo failure does not re-read every
+    // versioned snapshot on each caller.
+    if (!isDocsIndexReady()) {
+      try {
+        await initializeDocsIndex();
+        const docCount = getDocCount();
+        const categories = getDocCategories();
+        logger.info(
+          {
+            docCount,
+            categories: categories.map((c) => `${c.category}(${c.count})`).join(', '),
+          },
+          'Addie: Docs index ready'
+        );
+      } catch (error) {
+        logger.warn({ error }, 'Addie: Failed to index docs');
+      }
     }
 
     // Clone/update and index external repos (sales-agent, client libraries, etc.)
