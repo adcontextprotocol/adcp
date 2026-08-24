@@ -48,9 +48,9 @@ trap cleanup EXIT
 run_shard() {
   local index="$1"
   if [ -n "${STORYBOARD_RUNNER_BIN:-}" ]; then
-    "${STORYBOARD_RUNNER_BIN}" "${RUNNER_ARGS[@]}" --shard-index "${index}" --shard-count "${SHARD_COUNT}"
+    "${STORYBOARD_RUNNER_BIN}" ${RUNNER_ARGS[@]+"${RUNNER_ARGS[@]}"} --shard-index "${index}" --shard-count "${SHARD_COUNT}"
   else
-    npx tsx server/tests/manual/run-storyboards.ts "${RUNNER_ARGS[@]}" --shard-index "${index}" --shard-count "${SHARD_COUNT}"
+    npx tsx server/tests/manual/run-storyboards.ts ${RUNNER_ARGS[@]+"${RUNNER_ARGS[@]}"} --shard-index "${index}" --shard-count "${SHARD_COUNT}"
   fi
 }
 
