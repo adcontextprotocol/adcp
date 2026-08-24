@@ -2864,7 +2864,7 @@ export function resolveServedAdcpVersionForTool(
   ) {
     return resolveServedAdcpVersion({
       ...args,
-      adcp_version: CURRENT_ADCP_VERSION,
+      adcp_major_version: 3,
     }, supportedVersions);
   }
   return resolveServedAdcpVersion(args, supportedVersions);

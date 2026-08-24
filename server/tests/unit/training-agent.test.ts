@@ -32,6 +32,7 @@ import {
   clearTaskStore,
   projectListCreativesCompatibilityWire,
   projectProductDiscoveryResult,
+  resolveServedAdcpVersionForTool,
   trainingCatalogLegacyResolver,
   creativeProjectionAdapters,
 } from '../../src/training-agent/task-handlers.js';
@@ -2701,7 +2702,7 @@ describe('validate_input handler', () => {
     });
   });
 
-  it('serves unpinned validate_input calls on the current 3.1 beta envelope', async () => {
+  it('serves unpinned validate_input calls on the current beta envelope', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
     const handler = requestHandlers.get('tools/call');
@@ -2732,6 +2733,75 @@ describe('validate_input handler', () => {
     expect(parsed.results).toEqual([
       { target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' },
     ]);
+  });
+
+  it.each([
+    { digestMode: undefined, label: 'either' },
+    { digestMode: 'forbidden' as const, label: 'forbidden' },
+  ])('downshifts unpinned version-forced tools on the $label signing route', async ({ digestMode }) => {
+    const server = createTrainingAgentServer({ mode: 'open', strict: true, ...(digestMode && { digestMode }) });
+    const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
+    const handler = requestHandlers.get('tools/call');
+    const validateResponse = await handler({
+      method: 'tools/call',
+      params: {
+        name: 'validate_input',
+        arguments: {
+          manifest: {
+            format_kind: 'image',
+            assets: {
+              image_main: {
+                asset_type: 'image',
+                url: 'https://cdn.acme.example/mrec.png',
+                width: 300,
+                height: 250,
+              },
+            },
+          },
+          targets: [{ kind: 'canonical', id: 'image' }],
+        },
+      },
+    }, {});
+    const validateResult = validateResponse.structuredContent as Record<string, unknown>;
+
+    expect(validateResponse.isError).not.toBe(true);
+    expect(validateResult.adcp_version).toBe('3.1-rc.15');
+
+    const lifecycleResponse = await handler({
+      method: 'tools/call',
+      params: { name: 'list_products', arguments: {} },
+    }, {});
+    const lifecycleResult = lifecycleResponse.structuredContent as Record<string, unknown>;
+
+    expect(lifecycleResponse.isError).toBe(true);
+    expect(lifecycleResult.adcp_version).toBe('3.1-rc.15');
+    expect(lifecycleResult.adcp_error).toMatchObject({
+      code: 'INVALID_REQUEST',
+      message: 'Unknown tool: list_products',
+    });
+  });
+
+  it.each([
+    'validate_input',
+    'list_products',
+    'request_proposals',
+    'refine_proposals',
+    'decline_proposals',
+  ])('defaults unpinned %s to the highest route-compatible major-3 release', (toolName) => {
+    expect(resolveServedAdcpVersionForTool(toolName, {})).toEqual({
+      ok: true,
+      servedVersion: CURRENT_ADCP_VERSION,
+    });
+    expect(resolveServedAdcpVersionForTool(toolName, {}, ['3.0', '3.1-rc.15'])).toEqual({
+      ok: true,
+      servedVersion: '3.1-rc.15',
+    });
+    expect(resolveServedAdcpVersionForTool(toolName, {
+      adcp_version: CURRENT_ADCP_VERSION,
+    }, ['3.0', '3.1-rc.15'])).toMatchObject({
+      ok: false,
+      field: 'adcp_version',
+    });
   });
 
   it('serves in-process validate_input calls on the same version contract', async () => {
