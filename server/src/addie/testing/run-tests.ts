@@ -281,7 +281,7 @@ async function main(): Promise<void> {
     }
   } else {
     console.log('Skipped (set RUN_REDTEAM=1 to run against a live Addie endpoint).');
-    console.log('This suite sends 25 hostile questions to Addie and checks for');
+    console.log('This suite sends the hostile-question scenarios to Addie and checks for');
     console.log('fabricated member names, banned ritual phrases, sign-in deflection,');
     console.log('length blow-out on short questions, and missing concept markers.');
   }

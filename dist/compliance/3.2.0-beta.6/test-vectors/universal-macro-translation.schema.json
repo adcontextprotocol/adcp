@@ -1,0 +1,131 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "universal-macro-translation.schema.json",
+  "title": "Universal macro translation fixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "$schema_version",
+    "version",
+    "name",
+    "spec_reference",
+    "description",
+    "ordering",
+    "vectors"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "$schema_version": { "const": "1.0" },
+    "version": { "const": "3.2" },
+    "name": { "type": "string", "minLength": 1 },
+    "spec_reference": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "ordering": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dropped_params",
+        "unmapped_macros",
+        "dropped_consent_macros",
+        "frozen_consent_macros",
+        "suspect_native_values"
+      ],
+      "properties": {
+        "dropped_params": { "type": "string", "minLength": 1 },
+        "unmapped_macros": { "type": "string", "minLength": 1 },
+        "dropped_consent_macros": { "type": "string", "minLength": 1 },
+        "frozen_consent_macros": { "type": "string", "minLength": 1 },
+        "suspect_native_values": { "type": "string", "minLength": 1 }
+      }
+    },
+    "vectors": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/vector" }
+    }
+  },
+  "definitions": {
+    "macro": {
+      "type": "string",
+      "pattern": "^\\{[A-Z][A-Z0-9_]*\\}$"
+    },
+    "mappingEntry": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["native"],
+          "properties": { "native": { "type": "string" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value"],
+          "properties": { "value": { "type": "string" } }
+        }
+      ]
+    },
+    "mapping": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/definitions/macro" },
+      "additionalProperties": { "$ref": "#/definitions/mappingEntry" }
+    },
+    "macroArray": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/definitions/macro" }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "url",
+        "dropped_params",
+        "unmapped_macros",
+        "dropped_consent_macros",
+        "frozen_consent_macros",
+        "suspect_native_values"
+      ],
+      "properties": {
+        "url": { "type": "string" },
+        "dropped_params": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "unmapped_macros": { "$ref": "#/definitions/macroArray" },
+        "dropped_consent_macros": { "$ref": "#/definitions/macroArray" },
+        "frozen_consent_macros": { "$ref": "#/definitions/macroArray" },
+        "suspect_native_values": { "$ref": "#/definitions/macroArray" }
+      }
+    },
+    "expectedError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "macro"],
+      "properties": {
+        "code": { "const": "unsafe_native_mapping" },
+        "macro": { "$ref": "#/definitions/macro" }
+      }
+    },
+    "vector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "input_pixel_url", "mapping"],
+      "oneOf": [
+        { "required": ["expected"] },
+        { "required": ["expected_error"] }
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "input_pixel_url": { "type": "string", "minLength": 1 },
+        "mapping": { "$ref": "#/definitions/mapping" },
+        "expected": { "$ref": "#/definitions/expected" },
+        "expected_error": { "$ref": "#/definitions/expectedError" }
+      }
+    }
+  }
+}

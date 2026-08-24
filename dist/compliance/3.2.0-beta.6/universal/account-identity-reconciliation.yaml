@@ -1,0 +1,1541 @@
+id: account_identity_reconciliation
+version: "1.0.0"
+title: "Account identity reconciliation"
+category: account_identity_reconciliation
+summary: "Validates revision-guarded operator identity rekeying, collision safety, and former-key redirects for sellers that advertise identity updates."
+track: core
+required_tools:
+  - list_accounts
+  - sync_accounts
+  - get_media_buys
+
+requires:
+  - controller
+
+requires_capability:
+  path: "account.identity_updates.supported"
+  equals: true
+
+narrative: |
+  A buyer sometimes needs to reconcile the operator-owned portion of an
+  existing advertiser account without replacing the seller account or losing
+  account-scoped state. This storyboard runs only when the seller advertises
+  `account.identity_updates.supported: true`.
+
+  The runner seeds four sandbox accounts with explicit revisions. It proves
+  that operator-identity writes require a revision, stale positive revisions
+  fail atomically, a supported operator-unit rekey preserves account_id and
+  increments revision, and a rekey onto another account's natural key fails
+  with ACCOUNT_IDENTITY_CONFLICT without merging either account. It then uses
+  the former natural key as the same authorized caller and requires
+  ACCOUNT_MOVED.
+
+  The final phases exercise an operator-domain transition when the seller
+  advertises that change. They require a non-mutating dry-run preview, the
+  request stages the destination operator's complete billing identity before
+  the initial pending_approval response, and same-principal cancellation using
+  the current canonical identity. Dry-run, pending, and cancellation responses
+  continue to expose only the current canonical billing entity; destination
+  billing and bank data remain write-only. The current runner still cannot force
+  a later seller approval or rejection disposition or switch to a second
+  unauthorized principal.
+
+agent:
+  interaction_model: stateful_preloaded
+  capabilities:
+    - account_identity_updates
+  examples:
+    - "Seller platforms with buyer-declared advertiser accounts"
+    - "Media buying agents with operator-owned seat mappings"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Identity Test Agent"
+
+prerequisites:
+  description: |
+    The runner seeds four active sandbox accounts visible to the compliance
+    principal. Separate fixtures isolate unit rekey, unit-name-only, and
+    operator-domain flows so capability-specific skips cannot perturb another
+    flow's revision sequence. Sellers exposing the media_buy protocol seed an
+    attached media buy later in a capability-gated phase.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_identity_reconciliation_primary"
+      fixture:
+        account_id: "acct_identity_reconciliation_primary"
+        name: "Nova Trail via Pinnacle legacy seat"
+        brand:
+          domain: "nova-trail.example"
+        operator: "pinnacle-identity.example"
+        operator_unit:
+          id: "seat_legacy"
+          name: "Legacy buying unit"
+        revision: 7
+        currency: "USD"
+        billing: "operator"
+        account_scope: "operator_brand"
+        sandbox: true
+        status: "active"
+    - account_id: "acct_identity_reconciliation_collision"
+      fixture:
+        account_id: "acct_identity_reconciliation_collision"
+        name: "Nova Trail via Pinnacle reserved seat"
+        brand:
+          domain: "nova-trail.example"
+        operator: "pinnacle-identity.example"
+        operator_unit:
+          id: "seat_reserved"
+          name: "Reserved buying unit"
+        revision: 3
+        currency: "USD"
+        billing: "operator"
+        account_scope: "operator_brand"
+        sandbox: true
+        status: "active"
+    - account_id: "acct_identity_reconciliation_handoff"
+      fixture:
+        account_id: "acct_identity_reconciliation_handoff"
+        name: "Nova Handoff via Pinnacle"
+        brand:
+          domain: "nova-handoff.example"
+        operator: "pinnacle-handoff.example"
+        operator_unit:
+          id: "seat_handoff"
+          name: "Handoff buying unit"
+        revision: 20
+        currency: "USD"
+        billing: "operator"
+        billing_entity:
+          legal_name: "Pinnacle Handoff Services LLC"
+          tax_id: "12-3456789"
+          registration_number: "PH-2020-0011"
+          address:
+            street: "18 Agency Plaza"
+            city: "Denver"
+            region: "CO"
+            postal_code: "80202"
+            country: "US"
+          contacts:
+            - role: "billing"
+              name: "Pinnacle Handoff accounts payable"
+              email: "billing@pinnacle-handoff.example"
+          bank:
+            account_holder: "Pinnacle Handoff Services LLC"
+            routing_number: "011000015"
+            account_number: "123456789"
+        account_scope: "operator_brand"
+        sandbox: true
+        status: "active"
+    - account_id: "acct_identity_reconciliation_name"
+      fixture:
+        account_id: "acct_identity_reconciliation_name"
+        name: "Nova Name via Pinnacle"
+        brand:
+          domain: "nova-name.example"
+        operator: "pinnacle-name.example"
+        operator_unit:
+          id: "seat_name"
+          name: "Original unit name"
+        revision: 30
+        currency: "USD"
+        billing: "operator"
+        account_scope: "operator_brand"
+        sandbox: true
+        status: "active"
+phases:
+  - id: capability_discovery
+    title: "Discover account identity update support"
+    narrative: |
+      Confirm the seller's capability declaration. The storyboard-level gate
+      has already selected only sellers that claim identity update support;
+      this call preserves the declaration as ordinary runner evidence.
+    steps:
+      - id: get_identity_update_capabilities
+        title: "Read account identity update capabilities"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: account_identity_reconciliation
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "account_identity_reconciliation--capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_value
+            path: "account.identity_updates.supported"
+            value: true
+            description: "Seller explicitly advertises account identity updates"
+          - check: field_present
+            path: "account.identity_updates.supported_changes"
+            description: "Supported identity transitions are declared"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "account_identity_reconciliation--capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: read_seeded_identity
+    title: "Read the seeded account and current revision"
+    depends_on: ["capability_discovery"]
+    narrative: |
+      Read the primary account by seller account_id before writing. Sellers
+      that claim identity updates always expose the current revision on
+      list_accounts.
+    steps:
+      - id: list_primary_before_updates
+        title: "Read primary account at revision 7"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        context_outputs:
+          - name: primary_account_id
+            path: "accounts[0].account_id"
+          - name: primary_revision
+            path: "accounts[0].revision"
+        sample_request:
+          account:
+            account_id: "acct_identity_reconciliation_primary"
+          context:
+            correlation_id: "account_identity_reconciliation--read_seeded_primary"
+        validations:
+          - check: response_schema
+            description: "Response matches list-accounts-response.json"
+          - check: field_value
+            path: "accounts[0].account_id"
+            value: "acct_identity_reconciliation_primary"
+            description: "Exact account filter returns the seeded primary account"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-identity.example"
+            description: "Seeded canonical operator is returned"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_legacy"
+            description: "Seeded canonical operator unit is returned"
+          - check: field_value
+            path: "accounts[0].operator_unit.name"
+            value: "Legacy buying unit"
+            description: "Seeded operator unit display name is returned"
+          - check: field_value
+            path: "accounts[0].revision"
+            value: 7
+            description: "Seeded current revision is returned"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "account_identity_reconciliation--read_seeded_primary"
+            description: "Context correlation_id returned unchanged"
+
+      - id: list_handoff_before_updates
+        title: "Read dedicated handoff account at revision 20"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        context_outputs:
+          - name: handoff_account_id
+            path: "accounts[0].account_id"
+          - name: handoff_revision
+            path: "accounts[0].revision"
+        sample_request:
+          account:
+            account_id: "acct_identity_reconciliation_handoff"
+          context:
+            correlation_id: "account_identity_reconciliation--read_seeded_handoff"
+        validations:
+          - check: response_schema
+            description: "Response matches list-accounts-response.json"
+          - check: field_value
+            path: "accounts[0].account_id"
+            value: "acct_identity_reconciliation_handoff"
+            description: "Exact filter returns the dedicated handoff account"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-handoff.example"
+            description: "Handoff account starts under its agency operator"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_handoff"
+            description: "Handoff account starts under its dedicated unit"
+          - check: field_value
+            path: "accounts[0].revision"
+            value: 20
+            description: "Handoff account starts at revision 20"
+          - check: field_value
+            path: "accounts[0].billing_entity.legal_name"
+            value: "Pinnacle Handoff Services LLC"
+            description: "Handoff account exposes the distinct current canonical billing entity"
+          - check: field_absent
+            path: "accounts[0].billing_entity.bank"
+            description: "Current billing entity bank data is write-only"
+
+      - id: list_name_only_before_updates
+        title: "Read dedicated unit-name account at revision 30"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        context_outputs:
+          - name: name_account_id
+            path: "accounts[0].account_id"
+          - name: name_revision
+            path: "accounts[0].revision"
+        sample_request:
+          account:
+            account_id: "acct_identity_reconciliation_name"
+          context:
+            correlation_id: "account_identity_reconciliation--read_seeded_name"
+        validations:
+          - check: response_schema
+            description: "Response matches list-accounts-response.json"
+          - check: field_value
+            path: "accounts[0].account_id"
+            value: "acct_identity_reconciliation_name"
+            description: "Exact filter returns the dedicated name-only account"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_name"
+            description: "Name-only account exposes its stable unit ID"
+          - check: field_value
+            path: "accounts[0].operator_unit.name"
+            value: "Original unit name"
+            description: "Name-only account exposes its original display name"
+          - check: field_value
+            path: "accounts[0].revision"
+            value: 30
+            description: "Name-only account starts at revision 30"
+
+  - id: operator_unit_name_update
+    title: "Update operator-unit display metadata in isolation"
+    depends_on: ["read_seeded_identity"]
+    requires_capability:
+      path: "account.identity_updates.supported_changes"
+      contains: "operator_unit_name"
+    narrative: |
+      Exercise the display-name-only capability on its own seeded account so
+      the write cannot perturb the revision sequence used for the stable unit-ID
+      rekey. The unit ID and account_id stay fixed while the display name and
+      revision advance.
+    steps:
+      - id: update_operator_unit_name
+        title: "Change only the operator-unit display name"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          accounts:
+            - account:
+                account_id: "$context.name_account_id"
+              revision: "$context.name_revision"
+              operator_identity:
+                operator: "pinnacle-name.example"
+                operator_unit:
+                  id: "seat_name"
+                  name: "Reconciled unit name"
+          idempotency_key: "$generate:uuid_v4#account_identity_reconciliation_unit_name"
+          context:
+            correlation_id: "account_identity_reconciliation--unit_name"
+        validations:
+          - check: response_schema
+            description: "Name-only update matches sync-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "name_account_id"
+            description: "Display-name update preserves account_id"
+          - check: field_value
+            path: "accounts[0].action"
+            value: "updated"
+            description: "Display metadata change updates the existing account"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-name.example"
+            description: "Display-name update preserves operator"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_name"
+            description: "Display-name update preserves stable unit ID"
+          - check: field_value
+            path: "accounts[0].operator_unit.name"
+            value: "Reconciled unit name"
+            description: "New display name becomes canonical"
+          - check: field_value
+            path: "accounts[0].revision"
+            value: 31
+            description: "Persisted display-name update increments revision"
+          - check: field_absent
+            path: "accounts[0].identity_change"
+            description: "Intra-operator display metadata applies immediately"
+
+      - id: read_operator_unit_name_update
+        title: "Verify display-name update persisted"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.name_account_id"
+          context:
+            correlation_id: "account_identity_reconciliation--read_unit_name"
+        validations:
+          - check: response_schema
+            description: "Name-only readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "name_account_id"
+            description: "Readback returns the same account"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_name"
+            description: "Readback preserves stable unit ID"
+          - check: field_value
+            path: "accounts[0].operator_unit.name"
+            value: "Reconciled unit name"
+            description: "Readback returns the updated display name"
+          - check: field_value
+            path: "accounts[0].revision"
+            value: 31
+            description: "Readback returns the incremented revision"
+
+  - id: revision_required
+    title: "Require revision on identity writes"
+    depends_on: ["read_seeded_identity"]
+    narrative: |
+      operator_identity is present but revision is deliberately omitted. The
+      request is schema-invalid by design and must be rejected without changing
+      the account. A readback proves that no state was persisted.
+    steps:
+      - id: reject_identity_update_without_revision
+        title: "Reject operator_identity without revision"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        expect_error: true
+        negative_path: schema_invalid
+        sample_request_skip_schema: true
+        sample_request:
+          accounts:
+            - account:
+                account_id: "$context.primary_account_id"
+              operator_identity:
+                operator: "pinnacle-identity.example"
+                operator_unit:
+                  id: "seat_reconciled"
+                  name: "Reconciled buying unit"
+          idempotency_key: "$generate:uuid_v4#account_identity_reconciliation_missing_revision"
+          context:
+            correlation_id: "account_identity_reconciliation--missing_revision"
+        validations:
+          - check: response_schema
+            description: "Rejection matches a sync_accounts response arm"
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
+            description: "Identity writes without revision are rejected as invalid"
+
+      - id: read_after_missing_revision
+        title: "Verify omitted-revision rejection changed nothing"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+          context:
+            correlation_id: "account_identity_reconciliation--after_missing_revision"
+        validations:
+          - check: response_schema
+            description: "Readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "primary_account_id"
+            description: "The same primary account still exists"
+          - check: field_equals_context
+            path: "accounts[0].revision"
+            context_key: "primary_revision"
+            description: "Rejected schema-invalid write did not increment revision"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-identity.example"
+            description: "Canonical operator is unchanged"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_legacy"
+            description: "Canonical operator unit is unchanged"
+
+  - id: stale_revision_rejected
+    title: "Reject a stale positive revision atomically"
+    depends_on: ["revision_required"]
+    requires_capability:
+      path: "account.identity_updates.supported_changes"
+      contains: "operator_unit"
+    narrative: |
+      Revision 6 is schema-valid and positive but stale relative to the seeded
+      revision 7. The seller must return CONFLICT and leave canonical identity
+      and revision unchanged.
+    steps:
+      - id: reject_stale_operator_unit_update
+        title: "Submit operator-unit rekey with stale revision 6"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          accounts:
+            - account:
+                account_id: "$context.primary_account_id"
+              revision: 6
+              operator_identity:
+                operator: "pinnacle-identity.example"
+                operator_unit:
+                  id: "seat_reconciled"
+                  name: "Reconciled buying unit"
+          idempotency_key: "$generate:uuid_v4#account_identity_reconciliation_stale_revision"
+          context:
+            correlation_id: "account_identity_reconciliation--stale_revision"
+        validations:
+          - check: response_schema
+            description: "Conflict matches a sync_accounts response arm"
+          - check: error_code
+            value: "CONFLICT"
+            description: "Stale positive revision is rejected with CONFLICT"
+
+      - id: read_after_stale_revision
+        title: "Verify stale write changed nothing"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+          context:
+            correlation_id: "account_identity_reconciliation--after_stale_revision"
+        validations:
+          - check: response_schema
+            description: "Readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "primary_account_id"
+            description: "The same primary account remains addressable"
+          - check: field_equals_context
+            path: "accounts[0].revision"
+            context_key: "primary_revision"
+            description: "Stale rejection did not increment revision"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_legacy"
+            description: "Stale rejection did not rekey the account"
+          - check: field_value
+            path: "accounts[0].operator_unit.name"
+            value: "Legacy buying unit"
+            description: "Stale rejection did not update display metadata"
+
+  - id: seed_account_resource_continuity
+    title: "Seed optional account-scoped resource continuity evidence"
+    depends_on: ["stale_revision_rejected"]
+    requires_capability:
+      path: "supported_protocols"
+      contains: "media_buy"
+    narrative: |
+      Only sellers advertising the media_buy protocol receive this optional
+      fixture. Identity-only sellers skip the phase instead of becoming
+      not_applicable because their controller does not implement seed_media_buy.
+    steps:
+      - id: seed_attached_media_buy
+        title: "Seed a media buy on the primary account"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: seed_media_buy
+        stateful: true
+        sample_request:
+          account:
+            sandbox: true
+            account_id: "$context.primary_account_id"
+          scenario: "seed_media_buy"
+          params:
+            media_buy_id: "mb_identity_reconciliation_continuity"
+            fixture:
+              status: "active"
+              currency: "USD"
+              account:
+                account_id: "$context.primary_account_id"
+          context:
+            correlation_id: "account_identity_reconciliation--seed_resource_continuity"
+        validations:
+          - check: response_schema
+            description: "Seed response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Optional media buy fixture is seeded"
+
+  - id: successful_operator_unit_rekey
+    title: "Apply an operator-unit rekey"
+    depends_on: ["stale_revision_rejected"]
+    requires_capability:
+      path: "account.identity_updates.supported_changes"
+      contains: "operator_unit"
+    narrative: |
+      Retry the same desired operator unit with the current revision captured
+      from list_accounts. The rekey must update the existing account in place,
+      preserve account_id, and advance revision from 7 to 8.
+    steps:
+      - id: update_operator_unit_with_current_revision
+        title: "Rekey the primary account to seat_reconciled"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        context_outputs:
+          - name: updated_revision
+            path: "accounts[0].revision"
+        sample_request:
+          accounts:
+            - account:
+                account_id: "$context.primary_account_id"
+              revision: "$context.primary_revision"
+              operator_identity:
+                operator: "pinnacle-identity.example"
+                operator_unit:
+                  id: "seat_reconciled"
+                  name: "Reconciled buying unit"
+          idempotency_key: "$generate:uuid_v4#account_identity_reconciliation_successful_unit_rekey"
+          context:
+            correlation_id: "account_identity_reconciliation--successful_unit_rekey"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "primary_account_id"
+            description: "Rekey preserves the seller-assigned account_id"
+          - check: field_value
+            path: "accounts[0].action"
+            value: "updated"
+            description: "Existing account is updated rather than created"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "active"
+            description: "Operator-unit-only rekey leaves the active account active"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-identity.example"
+            description: "Operator domain is preserved"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_reconciled"
+            description: "New operator unit becomes canonical"
+          - check: field_value
+            path: "accounts[0].operator_unit.name"
+            value: "Reconciled buying unit"
+            description: "New operator unit display metadata is returned"
+          - check: field_value
+            path: "accounts[0].revision"
+            value: 8
+            description: "Persisted rekey increments the seeded revision exactly once"
+          - check: field_absent
+            path: "accounts[0].identity_change"
+            description: "Operator-unit rekey is immediately canonical"
+
+      - id: read_successful_operator_unit_rekey
+        title: "Verify the rekey persisted in place"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+          context:
+            correlation_id: "account_identity_reconciliation--read_successful_unit_rekey"
+        validations:
+          - check: response_schema
+            description: "Readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "primary_account_id"
+            description: "Readback returns the original account_id"
+          - check: field_equals_context
+            path: "accounts[0].revision"
+            context_key: "updated_revision"
+            description: "Readback returns the revision produced by sync_accounts"
+          - check: field_value
+            path: "accounts[0].revision"
+            value: 8
+            description: "Readback confirms revision 8"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_reconciled"
+            description: "Readback confirms the new natural key"
+          - check: field_absent
+            path: "accounts[0].identity_change"
+            description: "No pending identity transition remains"
+
+  - id: account_resource_continuity
+    title: "Verify an attached media buy survives the rekey"
+    depends_on: ["seed_account_resource_continuity", "successful_operator_unit_rekey"]
+    requires_capability:
+      path: "supported_protocols"
+      contains: "media_buy"
+    narrative: |
+      When the identity-capable agent also exposes media buying, retrieve the
+      media buy seeded against the original account_id after its operator-unit
+      natural key changed. Returning the same media_buy_id through the same
+      account_id proves the rekey preserved an attached account-scoped resource.
+    steps:
+      - id: read_attached_media_buy_after_rekey
+        title: "Read the attached media buy through the preserved account"
+        task: get_media_buys
+        requires_tool: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+          media_buy_ids:
+            - "mb_identity_reconciliation_continuity"
+          context:
+            correlation_id: "account_identity_reconciliation--resource_continuity"
+        validations:
+          - check: response_schema
+            description: "Continuity read matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].media_buy_id"
+            value: "mb_identity_reconciliation_continuity"
+            description: "The attached media buy remains on the preserved account_id"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "account_identity_reconciliation--resource_continuity"
+            description: "Context correlation_id returned unchanged"
+
+  - id: target_key_collision
+    title: "Reject a target-key collision without merging"
+    depends_on: ["successful_operator_unit_rekey"]
+    requires_capability:
+      path: "account.identity_updates.supported_changes"
+      contains: "operator_unit"
+    narrative: |
+      Attempt to move the primary account onto seat_reserved, which the second
+      seeded account already owns for the same complete natural-key qualifiers.
+      A dry run must return ACCOUNT_IDENTITY_CONFLICT with a blocked resource
+      impact and no mutation. The live request must reject with the same code.
+      Exact account_id readbacks after each attempt prove that neither account
+      was merged or mutated.
+    steps:
+      - id: preview_operator_unit_collision
+        title: "Preview the blocked rekey onto seat_reserved"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          accounts:
+            - account:
+                account_id: "$context.primary_account_id"
+              revision: "$context.updated_revision"
+              operator_identity:
+                operator: "pinnacle-identity.example"
+                operator_unit:
+                  id: "seat_reserved"
+                  name: "Reserved buying unit"
+          dry_run: true
+          idempotency_key: "$generate:uuid_v4#account_identity_reconciliation_target_collision_preview"
+          context:
+            correlation_id: "account_identity_reconciliation--target_collision_preview"
+        validations:
+          - check: response_schema
+            description: "Blocked collision preview matches sync-accounts-response.json"
+          - check: error_code
+            value: "ACCOUNT_IDENTITY_CONFLICT"
+            description: "Dry-run collision returns the dedicated identity conflict code"
+          - check: field_value
+            path: "dry_run"
+            value: true
+            description: "Collision evaluation is explicitly non-mutating"
+          - check: field_value
+            path: "accounts[0].action"
+            value: "failed"
+            description: "Blocked collision cannot describe a persisted update"
+          - check: field_equals_context
+            path: "accounts[0].revision"
+            context_key: "updated_revision"
+            description: "Blocked preview retains the current revision"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-identity.example"
+            description: "Blocked preview retains the current canonical operator"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_reconciled"
+            description: "Blocked preview retains the current canonical unit"
+          - check: field_value
+            path: "accounts[0].identity_change_preview.outcome"
+            value: "blocked"
+            description: "Collision preview is explicitly blocked"
+          - check: field_value
+            path: "accounts[0].identity_change_preview.requested_operator_identity.operator_unit.id"
+            value: "seat_reserved"
+            description: "Preview identifies the occupied requested unit"
+          - check: field_contains
+            path: "accounts[0].identity_change_preview.impacts"
+            value:
+              area: "account_id"
+              effect: "blocked"
+            description: "Preview identifies blocked account identity continuity"
+          - check: field_present
+            path: "accounts[0].identity_change_preview.blockers[0]"
+            description: "Preview explains the collision blocker"
+          - check: field_absent
+            path: "accounts[0].identity_change"
+            description: "Dry-run collision does not persist an identity request"
+
+      - id: read_primary_after_collision_preview
+        title: "Verify the dry run left the source unchanged"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+          context:
+            correlation_id: "account_identity_reconciliation--source_after_collision_preview"
+        validations:
+          - check: response_schema
+            description: "Source readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].revision"
+            context_key: "updated_revision"
+            description: "Dry-run collision does not increment source revision"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_reconciled"
+            description: "Source retains its canonical unit after the dry run"
+
+      - id: read_target_after_collision_preview
+        title: "Verify the dry run left the target unchanged"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acct_identity_reconciliation_collision"
+          context:
+            correlation_id: "account_identity_reconciliation--target_after_collision_preview"
+        validations:
+          - check: response_schema
+            description: "Target readback matches list-accounts-response.json"
+          - check: field_value
+            path: "accounts[0].revision"
+            value: 3
+            description: "Dry-run collision does not increment target revision"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_reserved"
+            description: "Target retains the occupied unit after the dry run"
+
+      - id: reject_operator_unit_collision
+        title: "Reject rekey onto seat_reserved"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          accounts:
+            - account:
+                account_id: "$context.primary_account_id"
+              revision: "$context.updated_revision"
+              operator_identity:
+                operator: "pinnacle-identity.example"
+                operator_unit:
+                  id: "seat_reserved"
+                  name: "Reserved buying unit"
+          idempotency_key: "$generate:uuid_v4#account_identity_reconciliation_target_collision"
+          context:
+            correlation_id: "account_identity_reconciliation--target_collision"
+        validations:
+          - check: response_schema
+            description: "Collision rejection matches a sync_accounts response arm"
+          - check: error_code
+            value: "ACCOUNT_IDENTITY_CONFLICT"
+            description: "Occupied target natural key is rejected with the dedicated code"
+
+      - id: read_primary_after_collision
+        title: "Verify the source account remains unchanged"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.primary_account_id"
+          context:
+            correlation_id: "account_identity_reconciliation--source_after_collision"
+        validations:
+          - check: response_schema
+            description: "Source readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "primary_account_id"
+            description: "Source account_id remains present"
+          - check: field_equals_context
+            path: "accounts[0].revision"
+            context_key: "updated_revision"
+            description: "Collision rejection does not increment source revision"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_reconciled"
+            description: "Source account retains its prior canonical unit"
+
+      - id: read_target_after_collision
+        title: "Verify the target account remains separate"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acct_identity_reconciliation_collision"
+          context:
+            correlation_id: "account_identity_reconciliation--target_after_collision"
+        validations:
+          - check: response_schema
+            description: "Target readback matches list-accounts-response.json"
+          - check: field_value
+            path: "accounts[0].account_id"
+            value: "acct_identity_reconciliation_collision"
+            description: "Target account_id remains independently addressable"
+          - check: field_value
+            path: "accounts[0].revision"
+            value: 3
+            description: "Collision rejection does not increment target revision"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_reserved"
+            description: "Target account retains the occupied natural key"
+
+  - id: former_key_redirect
+    title: "Redirect an authorized caller from the former key"
+    depends_on: ["successful_operator_unit_rekey"]
+    requires_capability:
+      path: "account.identity_updates.supported_changes"
+      contains: "operator_unit"
+    narrative: |
+      The same compliance principal that read and updated the account now uses
+      its tombstoned seat_legacy natural key. Because this caller can resolve
+      the current account, the seller must return ACCOUNT_MOVED rather than
+      creating a second account or masking the redirect as not found.
+    steps:
+      - id: list_account_by_former_natural_key
+        title: "Use the tombstoned seat_legacy key"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          account:
+            brand:
+              domain: "nova-trail.example"
+            operator: "pinnacle-identity.example"
+            operator_unit:
+              id: "seat_legacy"
+            currency: "USD"
+            sandbox: true
+          context:
+            correlation_id: "account_identity_reconciliation--former_key"
+        validations:
+          - check: response_schema
+            description: "Former-key redirect matches list-accounts-response.json"
+          - check: error_code
+            value: "ACCOUNT_MOVED"
+            description: "Authorized former-key lookup returns ACCOUNT_MOVED"
+          - check: field_value
+            path: "errors[0].details.current_account.brand.domain"
+            value: "nova-trail.example"
+            description: "Repair reference identifies the current canonical brand"
+          - check: field_value
+            path: "errors[0].details.current_account.operator"
+            value: "pinnacle-identity.example"
+            description: "Repair reference identifies the current canonical operator"
+          - check: field_value
+            path: "errors[0].details.current_account.operator_unit.id"
+            value: "seat_reconciled"
+            description: "Repair reference replaces the tombstoned unit with the current unit"
+          - check: field_value
+            path: "errors[0].details.current_account.currency"
+            value: "USD"
+            description: "Repair reference preserves the fixed currency qualifier"
+          - check: field_value
+            path: "errors[0].details.current_account.sandbox"
+            value: true
+            description: "Repair reference preserves the sandbox qualifier"
+          - check: field_value
+            path: "errors[0].details.revision"
+            value: 8
+            description: "Redirect supplies the current revision for a safe refresh"
+
+  - id: operator_domain_billing_required
+    title: "Require destination billing identity for operator-billed handoffs"
+    depends_on: ["read_seeded_identity"]
+    requires_capability:
+      path: "account.identity_updates.supported_changes"
+      contains: "operator"
+    narrative: |
+      An operator-billed account cannot stage an operator-domain handoff without
+      the destination party's complete billing identity. The well-formed request
+      omits destination_billing_entity; the seller must apply the state-dependent
+      business rule, reject it, and leave revision, identity, and current billing
+      unchanged.
+    steps:
+      - id: reject_operator_domain_without_destination_billing
+        title: "Reject a handoff missing destination billing identity"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
+        sample_request:
+          accounts:
+            - account:
+                account_id: "$context.handoff_account_id"
+              revision: "$context.handoff_revision"
+              operator_identity:
+                operator: "nova-handoff.example"
+          idempotency_key: "$generate:uuid_v4#account_identity_reconciliation_missing_destination_billing"
+          context:
+            correlation_id: "account_identity_reconciliation--missing_destination_billing"
+        validations:
+          - check: response_schema
+            description: "Missing destination billing rejection matches a sync_accounts response arm"
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
+            description: "Operator-billed handoff without destination billing is invalid"
+
+      - id: read_after_missing_destination_billing
+        title: "Verify missing billing rejection changed nothing"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.handoff_account_id"
+          context:
+            correlation_id: "account_identity_reconciliation--after_missing_destination_billing"
+        validations:
+          - check: response_schema
+            description: "Readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].revision"
+            context_key: "handoff_revision"
+            description: "Rejected handoff does not increment revision"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-handoff.example"
+            description: "Rejected handoff preserves the canonical operator"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_handoff"
+            description: "Rejected handoff preserves the canonical operator unit"
+          - check: field_value
+            path: "accounts[0].billing_entity.legal_name"
+            value: "Pinnacle Handoff Services LLC"
+            description: "Rejected handoff preserves the current canonical billing entity"
+          - check: field_absent
+            path: "accounts[0].billing_entity.bank"
+            description: "Readback omits current billing bank data"
+          - check: field_absent
+            path: "accounts[0].identity_change"
+            description: "Invalid handoff does not persist an identity request"
+
+  - id: operator_domain_dry_run
+    title: "Preview an operator-domain handoff without mutation"
+    depends_on: ["operator_domain_billing_required"]
+    requires_capability:
+      path: "account.identity_updates.supported_changes"
+      contains: "operator"
+    narrative: |
+      The same authorized compliance principal previews a handoff from the
+      agency operator to the brand's own domain at revision 20. The seller must
+      return would_require_approval with billing and grant transition impacts,
+      but dry_run must not persist identity_change or increment revision. The
+      response and list_accounts readback retain Pinnacle's current canonical
+      billing entity and omit both staged destination identity and bank data.
+    steps:
+      - id: preview_direct_brand_operator
+        title: "Dry-run the operator-domain handoff"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          accounts:
+            - account:
+                account_id: "$context.handoff_account_id"
+              revision: "$context.handoff_revision"
+              operator_identity:
+                operator: "nova-handoff.example"
+              destination_billing_entity:
+                legal_name: "Nova Handoff Industries LLC"
+                tax_id: "98-7654321"
+                registration_number: "NT-2026-0042"
+                address:
+                  street: "42 Summit Way"
+                  city: "Boulder"
+                  region: "CO"
+                  postal_code: "80302"
+                  country: "US"
+                contacts:
+                  - role: "billing"
+                    name: "Nova Handoff accounts payable"
+                    email: "billing@nova-handoff.example"
+                bank:
+                  account_holder: "Nova Handoff Industries LLC"
+                  routing_number: "021000021"
+                  account_number: "987654321"
+          dry_run: true
+          idempotency_key: "$generate:uuid_v4#account_identity_reconciliation_operator_domain_preview"
+          context:
+            correlation_id: "account_identity_reconciliation--operator_domain_preview"
+        validations:
+          - check: response_schema
+            description: "Dry-run preview matches sync-accounts-response.json"
+          - check: field_value
+            path: "dry_run"
+            value: true
+            description: "Response identifies the operation as a dry run"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "handoff_account_id"
+            description: "Preview targets the existing account"
+          - check: field_value
+            path: "accounts[0].action"
+            value: "updated"
+            description: "Preview describes the update that would be persisted"
+          - check: field_equals_context
+            path: "accounts[0].revision"
+            context_key: "handoff_revision"
+            description: "Dry run leaves revision at the current value"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-handoff.example"
+            description: "Preview returns the unchanged canonical operator"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_handoff"
+            description: "Preview returns the unchanged canonical operator unit"
+          - check: field_value
+            path: "accounts[0].identity_change_preview.outcome"
+            value: "would_require_approval"
+            description: "Operator-domain handoff preview requires approval"
+          - check: field_value
+            path: "accounts[0].identity_change_preview.requested_operator_identity.operator"
+            value: "nova-handoff.example"
+            description: "Preview carries the requested destination operator"
+          - check: field_contains
+            path: "accounts[0].identity_change_preview.impacts"
+            value:
+              area: "approval"
+              effect: "revalidation_required"
+            description: "Preview identifies the approval transition"
+          - check: field_contains
+            path: "accounts[0].identity_change_preview.impacts"
+            value:
+              area: "billing"
+              effect: "revalidation_required"
+            description: "Preview identifies required destination billing revalidation"
+          - check: field_contains
+            path: "accounts[0].identity_change_preview.impacts"
+            value:
+              area: "grants"
+              effect: "revoke_and_regrant"
+            description: "Preview identifies the operator-scoped grant transition"
+          - check: field_value
+            path: "accounts[0].billing_entity.legal_name"
+            value: "Pinnacle Handoff Services LLC"
+            description: "Preview returns only the current canonical billing entity"
+          - check: field_absent
+            path: "accounts[0].destination_billing_entity"
+            description: "Preview does not echo the staged destination billing entity"
+          - check: field_absent
+            path: "accounts[0].billing_entity.bank"
+            description: "Preview omits current billing bank data"
+          - check: field_absent
+            path: "accounts[0].identity_change"
+            description: "Dry run does not return or persist identity_change"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "account_identity_reconciliation--operator_domain_preview"
+            description: "Context correlation_id returned unchanged"
+
+      - id: read_after_operator_domain_preview
+        title: "Verify dry-run preview changed nothing"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.handoff_account_id"
+          context:
+            correlation_id: "account_identity_reconciliation--after_operator_domain_preview"
+        validations:
+          - check: response_schema
+            description: "Readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "handoff_account_id"
+            description: "The same account remains addressable after preview"
+          - check: field_equals_context
+            path: "accounts[0].revision"
+            context_key: "handoff_revision"
+            description: "Dry run did not increment revision"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-handoff.example"
+            description: "Dry run did not change the canonical operator"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_handoff"
+            description: "Dry run did not change the canonical operator unit"
+          - check: field_value
+            path: "accounts[0].billing_entity.legal_name"
+            value: "Pinnacle Handoff Services LLC"
+            description: "Dry run did not replace the canonical billing entity"
+          - check: field_absent
+            path: "accounts[0].destination_billing_entity"
+            description: "Readback does not expose the staged destination billing entity"
+          - check: field_absent
+            path: "accounts[0].billing_entity.bank"
+            description: "Readback omits current billing bank data"
+          - check: field_absent
+            path: "accounts[0].identity_change"
+            description: "Dry run did not persist a pending identity change"
+
+  - id: operator_domain_transition
+    title: "Place an operator-domain handoff into approval"
+    depends_on: ["operator_domain_dry_run"]
+    requires_capability:
+      path: "account.identity_updates.supported_changes"
+      contains: "operator"
+    narrative: |
+      Request a complete transition from the agency operator to the brand's own
+      domain, removing the operator unit. Because the account is billed to the
+      operator, the buyer also supplies the destination operator's complete
+      billing identity. An operator-domain handoff crosses an authority boundary:
+      the seller must retain the old canonical operator and unit and return
+      identity_change.status pending_approval. The request stages destination
+      billing identity, but neither the response nor persisted account exposes
+      it; both continue returning Pinnacle's current canonical billing entity
+      without bank data. The seller must not apply or reject the transition in
+      this initial response.
+    steps:
+      - id: request_direct_brand_operator
+        title: "Request an operator-domain transition"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        context_outputs:
+          - name: pending_revision
+            path: "accounts[0].revision"
+        sample_request:
+          accounts:
+            - account:
+                account_id: "$context.handoff_account_id"
+              revision: "$context.handoff_revision"
+              operator_identity:
+                operator: "nova-handoff.example"
+              destination_billing_entity:
+                legal_name: "Nova Handoff Industries LLC"
+                tax_id: "98-7654321"
+                registration_number: "NT-2026-0042"
+                address:
+                  street: "42 Summit Way"
+                  city: "Boulder"
+                  region: "CO"
+                  postal_code: "80302"
+                  country: "US"
+                contacts:
+                  - role: "billing"
+                    name: "Nova Handoff accounts payable"
+                    email: "billing@nova-handoff.example"
+                bank:
+                  account_holder: "Nova Handoff Industries LLC"
+                  routing_number: "021000021"
+                  account_number: "987654321"
+          idempotency_key: "$generate:uuid_v4#account_identity_reconciliation_operator_domain"
+          context:
+            correlation_id: "account_identity_reconciliation--operator_domain"
+        validations:
+          - check: response_schema
+            description: "Pending operator-domain handoff matches sync-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "handoff_account_id"
+            description: "Pending operator-domain handoff preserves account_id"
+          - check: field_value
+            path: "accounts[0].action"
+            value: "updated"
+            description: "Persisting the approval request updates the existing account"
+          - check: field_value
+            path: "accounts[0].revision"
+            value: 21
+            description: "Identity request advances revision from 20 to 21"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-handoff.example"
+            description: "Canonical operator remains unchanged while approval is pending"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_handoff"
+            description: "Canonical operator unit remains unchanged while approval is pending"
+          - check: field_value
+            path: "accounts[0].identity_change.status"
+            value: "pending_approval"
+            description: "Initial operator-domain handoff always enters pending approval"
+          - check: field_value
+            path: "accounts[0].identity_change.requested_operator_identity.operator"
+            value: "nova-handoff.example"
+            description: "Pending transition carries the requested destination operator"
+          - check: field_value
+            path: "accounts[0].billing_entity.legal_name"
+            value: "Pinnacle Handoff Services LLC"
+            description: "Pending response retains the current canonical billing entity"
+          - check: field_absent
+            path: "accounts[0].destination_billing_entity"
+            description: "Pending response does not echo the staged destination billing entity"
+          - check: field_absent
+            path: "accounts[0].billing_entity.bank"
+            description: "Pending response omits current billing bank data"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "account_identity_reconciliation--operator_domain"
+            description: "Context correlation_id returned unchanged"
+
+      - id: read_pending_operator_domain_transition
+        title: "Verify pending state retains current billing identity"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.handoff_account_id"
+          context:
+            correlation_id: "account_identity_reconciliation--read_pending_domain"
+        validations:
+          - check: response_schema
+            description: "Pending readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].revision"
+            context_key: "pending_revision"
+            description: "Pending state exposes the revision produced by the request"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-handoff.example"
+            description: "Pending state retains the canonical operator"
+          - check: field_value
+            path: "accounts[0].identity_change.status"
+            value: "pending_approval"
+            description: "Readback exposes the staged operator transition"
+          - check: field_value
+            path: "accounts[0].billing_entity.legal_name"
+            value: "Pinnacle Handoff Services LLC"
+            description: "Pending state retains the current canonical billing entity"
+          - check: field_absent
+            path: "accounts[0].destination_billing_entity"
+            description: "Pending readback does not expose the staged destination billing entity"
+          - check: field_absent
+            path: "accounts[0].billing_entity.bank"
+            description: "Pending state omits current billing bank data"
+
+  - id: cancel_pending_operator_domain_transition
+    title: "Cancel the pending handoff with canonical identity"
+    depends_on: ["operator_domain_transition"]
+    requires_capability:
+      path: "account.identity_updates.supported_changes"
+      contains: "operator"
+    narrative: |
+      The same compliance principal cancels the pending request by submitting
+      the current canonical operator identity at the current revision returned
+      by the pending response. The seller must clear identity_change, preserve
+      the canonical account and billing identity, discard the staged destination
+      billing identity, and increment revision exactly once.
+    steps:
+      - id: cancel_pending_operator_domain_request
+        title: "Replace pending request with canonical identity"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          accounts:
+            - account:
+                account_id: "$context.handoff_account_id"
+              revision: "$context.pending_revision"
+              operator_identity:
+                operator: "pinnacle-handoff.example"
+                operator_unit:
+                  id: "seat_handoff"
+                  name: "Handoff buying unit"
+          idempotency_key: "$generate:uuid_v4#account_identity_reconciliation_cancel_pending_domain"
+          context:
+            correlation_id: "account_identity_reconciliation--cancel_pending_domain"
+        validations:
+          - check: response_schema
+            description: "Cancellation response matches sync-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "handoff_account_id"
+            description: "Cancellation preserves the seller account_id"
+          - check: field_value
+            path: "accounts[0].action"
+            value: "updated"
+            description: "Clearing the pending request updates the existing account"
+          - check: field_value
+            path: "accounts[0].revision"
+            value: 22
+            description: "Canceling the revision-21 pending request advances revision to 22"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-handoff.example"
+            description: "Cancellation preserves the canonical operator"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_handoff"
+            description: "Cancellation preserves the canonical operator unit"
+          - check: field_value
+            path: "accounts[0].billing_entity.legal_name"
+            value: "Pinnacle Handoff Services LLC"
+            description: "Cancellation preserves the current canonical billing entity"
+          - check: field_absent
+            path: "accounts[0].destination_billing_entity"
+            description: "Cancellation response does not expose discarded destination billing"
+          - check: field_absent
+            path: "accounts[0].billing_entity.bank"
+            description: "Cancellation response omits current billing bank data"
+          - check: field_absent
+            path: "accounts[0].identity_change"
+            description: "Canonical identity replacement clears the pending request"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "account_identity_reconciliation--cancel_pending_domain"
+            description: "Context correlation_id returned unchanged"
+
+      - id: read_after_pending_cancellation
+        title: "Verify cancellation persisted"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/task-reference/list_accounts"
+        comply_scenario: account_identity_reconciliation
+        stateful: true
+        sample_request:
+          account:
+            account_id: "$context.handoff_account_id"
+          context:
+            correlation_id: "account_identity_reconciliation--after_pending_cancellation"
+        validations:
+          - check: response_schema
+            description: "Cancellation readback matches list-accounts-response.json"
+          - check: field_equals_context
+            path: "accounts[0].account_id"
+            context_key: "handoff_account_id"
+            description: "Readback returns the same account after cancellation"
+          - check: field_value
+            path: "accounts[0].revision"
+            value: 22
+            description: "Readback confirms the cancellation revision"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-handoff.example"
+            description: "Readback confirms the canonical operator"
+          - check: field_value
+            path: "accounts[0].operator_unit.id"
+            value: "seat_handoff"
+            description: "Readback confirms the canonical operator unit"
+          - check: field_value
+            path: "accounts[0].billing_entity.legal_name"
+            value: "Pinnacle Handoff Services LLC"
+            description: "Readback confirms the current canonical billing entity"
+          - check: field_absent
+            path: "accounts[0].destination_billing_entity"
+            description: "Cancellation readback does not expose discarded destination billing"
+          - check: field_absent
+            path: "accounts[0].billing_entity.bank"
+            description: "Cancellation readback omits current billing bank data"
+          - check: field_absent
+            path: "accounts[0].identity_change"
+            description: "Readback confirms the pending request was cleared"

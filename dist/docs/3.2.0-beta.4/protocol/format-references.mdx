@@ -1,0 +1,72 @@
+---
+title: Format References
+description: "How canonical format declarations, format-option references, and creative capability IDs differ in AdCP 3.2."
+"og:title": "AdCP — Canonical format references"
+---
+
+AdCP 3.2 has three deliberately different format-related shapes. Do not substitute one for another.
+
+| Shape | Scope | Used for |
+|---|---|---|
+| `ProductFormatDeclaration` | Publisher or product contract | Full `format_kind` + `params` declaration in `adagents.json.formats[]`, `Product.format_options[]`, placements, and creative capabilities |
+| `FormatOptionRef` | Product/package delivery routing | Selects a publisher or product option without copying its declaration |
+| `capability_id` | One creative agent | Selects that agent's build, validation, or preview path |
+
+## Full declaration
+
+```json
+{
+  "format_option_id": "homepage_image",
+  "format_kind": "image",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "slots": [
+      { "asset_group_id": "image_main", "asset_type": "image", "required": true }
+    ]
+  }
+}
+```
+
+Products always carry full declarations in `format_options[]`. A product never contains a bare capability reference.
+
+## Option reference
+
+Publisher option:
+
+```json
+{
+  "scope": "publisher",
+  "publisher_domain": "daily-pulse.example",
+  "format_option_id": "homepage_image"
+}
+```
+
+Product-local option:
+
+```json
+{
+  "scope": "product",
+  "format_option_id": "homepage_image"
+}
+```
+
+Use these in package selectors and `creative_manifest.format_option_ref`. A publisher-scoped reference resolves by `{publisher_domain, format_option_id}`; a product-scoped reference resolves only inside the enclosing product/package context.
+
+## Creative capability selector
+
+```json
+{
+  "target_capability_id": "homepage_image_builder"
+}
+```
+
+The value comes from the selected creative agent's `get_adcp_capabilities.creative.supported_formats[].capability_id`. It is meaningful only at that agent endpoint. It must not appear on products, placements, manifests, or creative assets.
+
+## Deprecated named references
+
+The compound `{agent_url, id}` `format_id` shape and `format_ids[]` arrays are deprecated in 3.2. Implementations may read or project them for older 3.x peers, but new examples and authored resources use exactly one canonical selector route. New buyers MUST NOT dual-emit `format_ids[]`.
+
+Receivers remain compatible with older 3.x multi-route requests. They resolve every present route independently before applying precedence. An unresolved option reference or unprojectable legacy ID is rejected with [`UNSUPPORTED_FEATURE`](/dist/docs/3.2.0-beta.4/building/verification/compliance-catalog#error-code-unsupported-feature). Once all routes resolve, receivers derive the product options selected by each route and require those sets to match; legacy parameter compatibility follows the asymmetric [v2 narrows v1](/dist/docs/3.2.0-beta.4/creative/canonical-formats#narrows-formal-definition-normative) relation instead of raw object equality. Conflicts are rejected with [`CONFLICTING_SELECTORS`](/dist/docs/3.2.0-beta.4/building/verification/compliance-catalog#error-code-conflicting-selectors); they are never resolved by silently ignoring the legacy projection. Fixed-size image width and height are atomic and both dimensions participate in compatibility.
+
+See [Canonical formats](/dist/docs/3.2.0-beta.4/creative/canonical-formats) for matching, narrowing, publisher resolution, and migration details.

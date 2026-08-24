@@ -26,7 +26,7 @@ const PROTOCOL_SCOPED_PATHS = [
   /^dist\/(?:schemas|compliance)\//,
   /^dist\/protocol\/[^/]+[.]tgz(?:[.](?:sha256|sig|crt))?$/,
   /^scripts\/(?:build-schemas|build-compliance|build-protocol-tarball|sign-protocol-tarball|stage-sdk-schema-bundle|overlay-compliance-cache|update-schema-versions|verify-version-sync|patch-3-0-compat-bundle)[.](?:cjs|mjs|sh)$/,
-  /^scripts\/(?:run-storyboards-[^/]+|run-storyboards-matrix)[.]sh$/,
+  /^scripts\/run-storyboards-(?:[^/]+[.]sh|isolated[.]mjs)$/,
   /^[.]github\/workflows\/(?:release|training-agent-storyboards)[.]yml$/,
 ];
 

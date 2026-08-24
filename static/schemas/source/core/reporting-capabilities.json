@@ -82,6 +82,10 @@
       "type": "boolean",
       "description": "Whether this product supports creative-level metric breakdowns in delivery reporting (by_creative within by_package)"
     },
+    "supports_format_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports canonical creative-format breakdowns in GET delivery reporting (by_format within by_package, keyed by format_kind). This is independent from supports_creative_breakdown because a seller may expose aggregate format-grain reporting without exposing individual creative performance."
+    },
     "supports_keyword_breakdown": {
       "type": "boolean",
       "description": "Whether this product supports keyword-level metric breakdowns in delivery reporting (by_keyword within by_package)"

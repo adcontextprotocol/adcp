@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/geo-place-area.json",
+  "title": "Geographic Place Area",
+  "description": "A catalog-backed named place target. Values are stable identifiers in the declared system. Entries within geo_places form a union; different geographic inclusion dimensions intersect. value_labels are diagnostic only and MUST NOT be used to resolve targeting.",
+  "x-adcp-validation": {
+    "map_keys_subset_of_array": {
+      "map_field": "value_labels",
+      "array_field": "values"
+    },
+    "description": "Every value_labels key MUST also appear in values. JSON Schema draft-07 cannot express this sibling-field key membership constraint, so conformance tooling must enforce it."
+  },
+  "type": "object",
+  "properties": {
+    "country": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2 country code containing the place."
+    },
+    "system": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/geo-place-system.json"
+    },
+    "system_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional exact catalog version from the seller's declared supported_versions. When omitted, the seller applies catalog.current_version and MUST echo that version on persisted package state."
+    },
+    "place_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/geo-place-type.json"
+    },
+    "values": {
+      "type": "array",
+      "description": "Stable place identifiers in the declared system. Display names are not valid targeting values.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "value_labels": {
+      "type": "object",
+      "description": "Optional human-readable diagnostic labels keyed by identifiers present in values. Extra keys are a conformance error. Labels are non-authoritative and MUST NOT be used to resolve or apply targeting.",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+    }
+  },
+  "required": [
+    "country",
+    "system",
+    "place_type",
+    "values"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "system": {
+            "enum": [
+              "geonames",
+              "google_ads",
+              "microsoft_ads"
+            ]
+          }
+        },
+        "required": [
+          "system"
+        ]
+      },
+      "then": {
+        "properties": {
+          "values": {
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9]+$"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

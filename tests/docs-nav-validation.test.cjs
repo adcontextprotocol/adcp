@@ -162,6 +162,34 @@ test('one release-labeled version owns the live docs tree', () => {
   }
 });
 
+test('prerelease banner links to the current versioned beta landing page', () => {
+  const betaVersion = navigation.versions.find(versionEntry =>
+    /-beta$/.test(versionEntry.version)
+  );
+  if (!betaVersion) return;
+
+  const [majorMinor] = betaVersion.version.split('-');
+  const [major, minor] = majorMinor.split('.');
+  const landingSuffix = `/reference/${major}-${minor}-beta`;
+  const landingPage = collectPages(betaVersion.groups).find(page =>
+    page.endsWith(landingSuffix)
+  );
+  if (!landingPage) {
+    throw new Error(`Version "${betaVersion.version}" has no beta landing page`);
+  }
+
+  const bannerContent = docsConfig.banner?.content || '';
+  const bannerLink = bannerContent.match(/\[[^\]]+\]\(([^)]+)\)/)?.[1];
+  if (bannerLink !== `/${landingPage}`) {
+    throw new Error(
+      `Beta banner must link to /${landingPage}; found ${bannerLink || 'no link'}`
+    );
+  }
+  if (new RegExp(`AdCP ${major}\\.${minor} beta\\.\\d+`).test(bannerContent)) {
+    throw new Error('Beta banner must not freeze a moving beta ordinal in its copy');
+  }
+});
+
 for (const versionEntry of navigation.versions) {
   const { version, groups } = versionEntry;
   log(`Version: ${version}`);
