@@ -227,11 +227,13 @@ describe('POST /api/me/member-profile/verify-brand authz', () => {
     }
   }
 
-  it('rejects a plain member verifying their primary org brand domain', async () => {
+  it('rejects a plain member verifying their explicitly selected org brand domain', async () => {
     await seedOrg(TEST_ORG);
     await seedUser(MEMBER_USER, TEST_ORG, 'member');
 
-    const res = await request(app).post('/api/me/member-profile/verify-brand');
+    const res = await request(app).post(
+      `/api/me/member-profile/verify-brand?org=${TEST_ORG}`,
+    );
 
     expect(res.status).toBe(403);
     expect(res.body.error).toBe('Not authorized');

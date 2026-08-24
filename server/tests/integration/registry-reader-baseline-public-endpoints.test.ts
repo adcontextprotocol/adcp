@@ -47,10 +47,32 @@ vi.hoisted(() => {
 const DEFAULT_TEST_USER_ID = 'user_test_registry_baseline_endpoints';
 const authState = vi.hoisted(() => ({
   optAuthUser: null as { id: string; email: string } | null,
+  organizationByUser: {} as Record<string, string>,
   requireAuthUser: {
     id: 'user_test_registry_baseline_endpoints',
     email: 'registry-baseline@test.com',
   } as { id: string; email: string; isAdmin?: boolean } | null,
+}));
+
+vi.mock('../../src/utils/resolve-user-org-membership.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/utils/resolve-user-org-membership.js')>()),
+  resolveUserOrgMembership: vi.fn(async (
+    _workos: unknown,
+    principal: { id?: string; authWorkosUserId?: string },
+    organizationId: string,
+  ) => {
+    const authorizationUserId = principal.authWorkosUserId ?? principal.id;
+    if (!authorizationUserId || authState.organizationByUser[authorizationUserId] !== organizationId) {
+      return null;
+    }
+    return {
+      organizationId,
+      role: 'admin',
+      status: 'active',
+      via_credential_grant: false,
+      via_dev_bypass: false,
+    };
+  }),
 }));
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
@@ -209,6 +231,8 @@ describe('Registry reader baseline — public endpoints', () => {
   });
 
   beforeEach(async () => {
+    authState.optAuthUser = null;
+    authState.organizationByUser = {};
     await clearFixtures();
   });
 
@@ -1222,6 +1246,7 @@ describe('Registry reader baseline — public endpoints', () => {
          ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING`,
         [userId, orgId, `${userId}@example.com`],
       );
+      authState.organizationByUser[userId] = orgId;
     }
 
     async function clearScopeFixtures() {
@@ -1300,12 +1325,24 @@ describe('Registry reader baseline — public endpoints', () => {
       setOptAuthUser({ id, email: `${id}@example.com` });
     }
 
+    function callerOrganization(kind: CallerKind): string | null {
+      if (kind === 'owner') return SCOPE_OWNER_ORG;
+      if (kind === 'other_api') return SCOPE_OTHER_API_ORG;
+      if (kind === 'explorer') return SCOPE_EXPLORER_ORG;
+      return null;
+    }
+
     async function fetchAgents(scope: string | null, kind: CallerKind): Promise<string[]> {
       setCaller(kind);
       const qs = scope === null ? '' : `&scope=${encodeURIComponent(scope)}`;
-      const res = await request(app).get(
+      let testRequest = request(app).get(
         `/api/registry/operator?domain=${encodeURIComponent(SCOPE_DOMAIN)}${qs}`,
       );
+      const organizationId = callerOrganization(kind);
+      if (organizationId) {
+        testRequest = testRequest.set('x-organization-id', organizationId);
+      }
+      const res = await testRequest;
       expect(res.status).toBe(200);
       return (res.body.agents as Array<{ url: string }>).map(a => a.url).sort();
     }
