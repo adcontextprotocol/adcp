@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/mcp/2026-07-28/profiles/production/media-buy/decline-proposals-response.json",
+  "type": "object",
+  "anyOf": [
+    {
+      "required": [
+        "results"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "status"
+            ]
+          },
+          {
+            "required": [
+              "task_id"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "$ref": "#/$defs/external:core~1compact-task-submitted.json"
+    }
+  ],
+  "properties": {
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "outcome"
+        },
+        "properties": {
+          "proposal_id": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "proposal"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "declined",
+              "unable"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "proposal_id",
+          "outcome"
+        ],
+        "oneOf": [
+          {
+            "properties": {
+              "outcome": {
+                "const": "declined"
+              }
+            },
+            "required": [
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "reason"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "outcome": {
+                "const": "unable"
+              }
+            },
+            "required": [
+              "outcome",
+              "reason"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "status": {
+      "type": "string",
+      "const": "submitted"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "task"
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:core~1error.json"
+      }
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    },
+    "replayed": {
+      "type": "boolean",
+      "const": true
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "external:core/compact-task-submitted.json": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1error.json"
+          }
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/error.json": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "keyword": {
+                "type": "string"
+              },
+              "schemaPath": {
+                "type": "string"
+              },
+              "schema_id": {
+                "type": "string"
+              },
+              "discriminator": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "property_name": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "property_name",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "pointer",
+              "message",
+              "keyword"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "recovery": {
+          "type": "string",
+          "enum": [
+            "transient",
+            "correctable",
+            "terminal"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "producer",
+            "sdk"
+          ]
+        },
+        "sdk_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

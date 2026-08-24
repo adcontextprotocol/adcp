@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/browser-family.json",
+  "title": "Browser Family",
+  "description": "Portable browser families for targeting the impression delivery and rendering environment, not a post-click landing-page browser. Values identify browser families, not versions or seller-native browser IDs, and MUST NOT be inferred solely from operating system, device, web/mobile-web inventory, or placement. android_webview means an impression reliably classified as rendering in Android WebView. other means a seller-recognized browser family that is not explicitly enumerated; unknown means the seller cannot classify the browser into a recognized family.",
+  "type": "string",
+  "enum": [
+    "chrome",
+    "safari",
+    "firefox",
+    "edge",
+    "opera",
+    "samsung_internet",
+    "android_webview",
+    "other",
+    "unknown"
+  ]
+}

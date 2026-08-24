@@ -1,0 +1,1161 @@
+# Grading notes (informational — not read by the runner):
+#
+# Phase `matrix_positive_pairings` is manifest-driven in the ordinary sense:
+# each step submits a manifest satisfying a validly-declared CTV product's
+# required slots and expects `validated_pass`.
+#
+# Phase `matrix_defense_in_depth` seeds products whose format_option
+# declarations are THEMSELVES invalid against the canonical schema's
+# `x-adcp-validation.verifier_constraints` (menu on video_vast, pause on
+# native_in_feed, creative_type:linear on an overlay option, a 5-second
+# duration on an overlay option, simid_supported on a nonlinear CTV option,
+# full_motion on a pause image). A conformant seller never actually
+# authors these — the canonical JSON Schema's `allOf` conditionals already
+# reject the schema-expressible ones at product-authoring time (see
+# static/schemas/source/formats/canonical/*.json and
+# tests/canonical-negative-fixtures.test.cjs, owned separately from this
+# storyboard). Every check in this phase is evaluated against the SEEDED
+# PRODUCT'S OWN declared params, not against anything the buyer's manifest
+# contributes — validate_input's `manifest` object has no `ctv_ad_experience`,
+# `creative_type`, `duration_ms_range`, `simid_supported`, or `motion_level`
+# field of its own (see /docs/creative/ctv-experiences#validating-ctv-
+# manifests). These steps test whether the agent's validate_input runtime
+# independently re-derives each constraint at request time — defense in
+# depth against a malformed product declaration reaching a buyer — rather
+# than pure manifest structural validation. Grading them requires the
+# semantic validate_input implementation this storyboard was written
+# against (a fixed CTV_EXPERIENCE_MATRIX plus per-canonical constraint
+# checks against `params`), not a generic JSON Schema compiled at request
+# time.
+#
+# Two steps have NO JSON Schema enforcement at all — they are graded purely on
+# the runtime's semantic interpretation of the `x-adcp-validation.verifier_constraints`
+# prose rules:
+#
+# `reject_focus_autoplay_without_video_slot` — native_in_feed.json documents
+# `focus_video_pairing` in verifier_constraints prose but has no `allOf`
+# conditional checking that `focus_behavior: autoplay_*` requires a `video`
+# entry in the format option's effective `slots[]`.
+#
+# `reject_pause_on_html5` — html5.json carries no CTV `allOf` conditional at
+# all; the semantic validator's `ctv_experience_matrix` check is the only layer
+# that rejects a `ctv_ad_experience` value on a canonical not listed in the
+# matrix (such as `html5`).
+#
+# Duration floors (`reject_overlay_short_duration`) are also semantic-only:
+# the numeric thresholds live in `VIDEO_VAST_DURATION_FLOOR_MS` in the
+# reference validator, not in a JSON Schema `allOf` conditional, so a schema-
+# only validator would not catch a 5-second overlay product declaration.
+
+id: ctv_experience_validate_input
+version: "1.0.0"
+title: "CTV experience profile validate_input"
+category: schema_validation
+summary: "Validates AdCP 3.2 ctv_ad_experience matrix pairings, duration/interactivity constraint profiles, the menu focus/video pairing, and non-blocking activation-copy warnings via validate_input against seeded CTV products."
+track: creative
+introduced_in: "3.2"
+required_tools:
+  - validate_input
+  - comply_test_controller
+
+requires:
+  - controller
+
+narrative: |
+  AdCP 3.2 expresses the IAB CTV Ad Portfolio's six on-glass experiences
+  (`menu`, `pause`, `screensaver`, `overlay`, `squeezeback`, `in_scene`) as a
+  shared `ctv_ad_experience` value on existing canonical formats rather than
+  as new canonical kinds. Each canonical's schema restricts which experience
+  values it accepts, and — where applicable — the duration floor, the
+  interactivity rule, and the motion-level narrowing.
+
+  This storyboard seeds one product per matrix row via `comply_test_controller`
+  and calls `validate_input` with `targets: [{ kind: "product", id: ... }]`
+  so the agent under test evaluates the buyer's manifest against that
+  product's declared CTV parameters. Six pairings validate; eight seeded
+  products carry an experience/canonical or constraint pairing that never
+  should have been authored, testing whether the runtime still catches it.
+  Two of those eight are purely semantic — no JSON Schema enforcement backs
+  them: the focus/video pairing (`reject_focus_autoplay_without_video_slot`)
+  and the unlisted-canonical matrix row (`reject_pause_on_html5`, where
+  `html5` has no CTV allOf conditional at all).
+
+  The valid overlay product also declares `push_notification` activation
+  without an `activation_message` slot. That omission remains a pass but is
+  reported through `warnings[]` as `ctv_activation_copy_slots`.
+
+agent:
+  interaction_model: creative
+  capabilities:
+    - validates_canonical_formats
+  examples:
+    - "CTV sales agents that accept canonical v2 manifests for menu, pause, screensaver, overlay, squeezeback, and in_scene inventory"
+    - "Sales agents that pre-flight product-local CTV format_options"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The runner seeds fourteen fictional CTV products for the StreamHaus
+    publisher via `comply_test_controller`: six with valid experience/canonical
+    pairings (one per matrix row) and eight with intentionally invalid
+    pairings or constraint values used only for the defense-in-depth phase
+    (see the grading notes above).
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "ctv_validate_menu_tile"
+      name: "CTV Validate — Menu Tile"
+      description: "Seeded video-capable menu tile used to test the menu/native_in_feed matrix pairing."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "native_in_feed"
+          format_option_id: "ctv_validate_menu_tile_option"
+          params:
+            ctv_ad_experience: "menu"
+            menu_placement: "tile"
+            focus_behavior: "autoplay_muted"
+            motion_level: "full_motion"
+            slots:
+              - { asset_group_id: "title", asset_type: "text", required: true }
+              - { asset_group_id: "main_image", asset_type: "image", required: true }
+              - { asset_group_id: "advertiser_name", asset_type: "text", required: true }
+              - { asset_group_id: "landing_page_url", asset_type: "url", required: true }
+              - { asset_group_id: "video", asset_type: "vast", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_validate_menu_tile_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 40
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    - product_id: "ctv_validate_menu_banner"
+      name: "CTV Validate — Menu Headline Banner"
+      description: "Seeded static headline-banner menu tile used to test the menu/native_in_feed matrix pairing without a video slot."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "native_in_feed"
+          format_option_id: "ctv_validate_menu_banner_option"
+          params:
+            ctv_ad_experience: "menu"
+            menu_placement: "headline_banner"
+            focus_behavior: "none"
+            motion_level: "static"
+            slots:
+              - { asset_group_id: "title", asset_type: "text", required: true }
+              - { asset_group_id: "main_image", asset_type: "image", required: true }
+              - { asset_group_id: "advertiser_name", asset_type: "text", required: true }
+              - { asset_group_id: "landing_page_url", asset_type: "url", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_validate_menu_banner_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 35
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    - product_id: "ctv_validate_pause_image"
+      name: "CTV Validate — Pause Image"
+      description: "Seeded raw-image pause frame used to test the pause/image matrix pairing."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "image"
+          format_option_id: "ctv_validate_pause_image_option"
+          params:
+            ctv_ad_experience: "pause"
+            motion_level: "static"
+            width: 1920
+            height: 1080
+            slots:
+              - { asset_group_id: "image_main", asset_type: "image", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_validate_pause_image_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 30
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    - product_id: "ctv_validate_screensaver_video"
+      name: "CTV Validate — Screensaver Hosted Video"
+      description: "Seeded ambient looping hosted-video screensaver used to test the screensaver/video_hosted matrix pairing."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "video_hosted"
+          format_option_id: "ctv_validate_screensaver_video_option"
+          params:
+            ctv_ad_experience: "screensaver"
+            motion_level: "full_motion"
+            orientation: "horizontal"
+            slots:
+              - { asset_group_id: "video_main", asset_type: "video", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_validate_screensaver_video_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 28
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    - product_id: "ctv_validate_overlay_vast"
+      name: "CTV Validate — Overlay NonLinear VAST"
+      description: "Seeded 10-30 second NonLinear VAST overlay used to test the overlay/video_vast matrix pairing, its duration floor, and the advisory activation-copy warning."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "non_guaranteed"
+      format_options:
+        - format_kind: "video_vast"
+          format_option_id: "ctv_validate_overlay_vast_option"
+          params:
+            ctv_ad_experience: "overlay"
+            creative_type: "nonlinear"
+            duration_ms_range: [10000, 30000]
+            activation_methods: ["push_notification"]
+            slots:
+              - { asset_group_id: "vast_tag", asset_type: "vast", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_validate_overlay_vast_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          floor_price: 20
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    - product_id: "ctv_validate_squeezeback_sponsored"
+      name: "CTV Validate — Squeezeback Sponsored Placement"
+      description: "Seeded catalog-driven squeezeback placement used to test the squeezeback/sponsored_placement matrix pairing."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "sponsored_placement"
+          format_option_id: "ctv_validate_squeezeback_option"
+          params:
+            ctv_ad_experience: "squeezeback"
+            slots:
+              - { asset_group_id: "source_catalog", asset_type: "catalog", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_validate_squeezeback_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 50
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    # --- Intentionally invalid seeded products (defense-in-depth phase only) ---
+
+    - product_id: "ctv_invalid_menu_video_vast"
+      name: "CTV Invalid — Menu on video_vast"
+      description: "Seeded product whose format_option declares ctv_ad_experience: menu on video_vast, which the matrix never permits — used only to test runtime defense in depth."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "non_guaranteed"
+      format_options:
+        - format_kind: "video_vast"
+          format_option_id: "ctv_invalid_menu_video_vast_option"
+          params:
+            ctv_ad_experience: "menu"
+            creative_type: "nonlinear"
+            slots:
+              - { asset_group_id: "vast_tag", asset_type: "vast", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_invalid_menu_video_vast_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          floor_price: 20
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    - product_id: "ctv_invalid_pause_native"
+      name: "CTV Invalid — Pause on native_in_feed"
+      description: "Seeded product whose format_option declares ctv_ad_experience: pause on native_in_feed, which the matrix restricts to menu only — used only to test runtime defense in depth."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "native_in_feed"
+          format_option_id: "ctv_invalid_pause_native_option"
+          params:
+            ctv_ad_experience: "pause"
+            slots:
+              - { asset_group_id: "title", asset_type: "text", required: true }
+              - { asset_group_id: "advertiser_name", asset_type: "text", required: true }
+              - { asset_group_id: "landing_page_url", asset_type: "url", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_invalid_pause_native_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 30
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    - product_id: "ctv_invalid_overlay_linear"
+      name: "CTV Invalid — Overlay with creative_type linear"
+      description: "Seeded product whose format_option declares ctv_ad_experience: overlay with creative_type: linear; overlay requires nonlinear — used only to test runtime defense in depth."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "non_guaranteed"
+      format_options:
+        - format_kind: "video_vast"
+          format_option_id: "ctv_invalid_overlay_linear_option"
+          params:
+            ctv_ad_experience: "overlay"
+            creative_type: "linear"
+            duration_ms_range: [10000, 30000]
+            slots:
+              - { asset_group_id: "vast_tag", asset_type: "vast", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_invalid_overlay_linear_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          floor_price: 20
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    - product_id: "ctv_invalid_overlay_short_duration"
+      name: "CTV Invalid — Overlay below the 10-second duration floor"
+      description: "Seeded product whose format_option declares ctv_ad_experience: overlay with duration_ms_exact: 5000, below the 10-second floor — used only to test runtime defense in depth."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "non_guaranteed"
+      format_options:
+        - format_kind: "video_vast"
+          format_option_id: "ctv_invalid_overlay_short_duration_option"
+          params:
+            ctv_ad_experience: "overlay"
+            creative_type: "nonlinear"
+            duration_ms_exact: 5000
+            slots:
+              - { asset_group_id: "vast_tag", asset_type: "vast", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_invalid_overlay_short_duration_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          floor_price: 20
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    - product_id: "ctv_invalid_in_scene_simid"
+      name: "CTV Invalid — In-Scene with simid_supported"
+      description: "Seeded product whose nonlinear format_option declares ctv_ad_experience: in_scene with simid_supported: true; every video_vast CTV profile forbids SIMID because VAST serializes InteractiveCreativeFile only under Linear MediaFiles — used only to test runtime defense in depth."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "non_guaranteed"
+      format_options:
+        - format_kind: "video_vast"
+          format_option_id: "ctv_invalid_in_scene_simid_option"
+          params:
+            ctv_ad_experience: "in_scene"
+            creative_type: "nonlinear"
+            duration_ms_range: [3000, 15000]
+            simid_supported: true
+            slots:
+              - { asset_group_id: "vast_tag", asset_type: "vast", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_invalid_in_scene_simid_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          floor_price: 25
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    - product_id: "ctv_invalid_pause_full_motion"
+      name: "CTV Invalid — Pause image with motion_level full_motion"
+      description: "Seeded product whose format_option declares ctv_ad_experience: pause with motion_level: full_motion; image narrows motion_level to static/limited_motion unconditionally — used only to test runtime defense in depth."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "image"
+          format_option_id: "ctv_invalid_pause_full_motion_option"
+          params:
+            ctv_ad_experience: "pause"
+            motion_level: "full_motion"
+            width: 1920
+            height: 1080
+            slots:
+              - { asset_group_id: "image_main", asset_type: "image", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_invalid_pause_full_motion_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 30
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    - product_id: "ctv_invalid_menu_no_video_slot"
+      name: "CTV Invalid — Menu tile with autoplay focus but no video slot"
+      description: "Seeded product whose format_option declares focus_behavior: autoplay_muted but omits the video asset group from its effective slots — used only to test runtime defense in depth against the (semantic-only) focus_video_pairing rule."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "native_in_feed"
+          format_option_id: "ctv_invalid_menu_no_video_slot_option"
+          params:
+            ctv_ad_experience: "menu"
+            menu_placement: "tile"
+            focus_behavior: "autoplay_muted"
+            slots:
+              - { asset_group_id: "title", asset_type: "text", required: true }
+              - { asset_group_id: "main_image", asset_type: "image", required: true }
+              - { asset_group_id: "advertiser_name", asset_type: "text", required: true }
+              - { asset_group_id: "landing_page_url", asset_type: "url", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_invalid_menu_no_video_slot_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 40
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+    - product_id: "ctv_invalid_pause_html5"
+      name: "CTV Invalid — Pause on html5 (unlisted canonical)"
+      description: "Seeded product whose format_option declares ctv_ad_experience: pause on html5, a canonical absent from the experience-to-canonical matrix entirely — used only to test runtime defense in depth against the semantic-layer ctv_experience_matrix check for unlisted canonicals (html5.json has no CTV allOf conditional)."
+      publisher_properties:
+        - publisher_domain: "tv.streamhaus.example"
+          selection_type: "all"
+      channels: ["ctv"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "html5"
+          format_option_id: "ctv_invalid_pause_html5_option"
+          params:
+            ctv_ad_experience: "pause"
+            width: 1920
+            height: 1080
+            slots:
+              - { asset_group_id: "html5_bundle", asset_type: "zip", required: true }
+      pricing_options:
+        - pricing_option_id: "ctv_invalid_pause_html5_cpm"
+          pricing_model: "cpm"
+          currency: "USD"
+          fixed_price: 30
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "UTC"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+
+phases:
+  - id: matrix_positive_pairings
+    title: "Experience-to-canonical matrix — positive pairings"
+    narrative: |
+      Each step submits a manifest satisfying a validly-declared CTV
+      product's required slots. Every pairing here is one row of the
+      experience-to-canonical matrix in
+      /docs/creative/ctv-experiences#experience-to-canonical-matrix.
+
+    steps:
+      - id: validate_menu_tile
+        title: "menu + native_in_feed (tile, video-capable)"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#experience-to-canonical-matrix"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "native_in_feed"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_validate_menu_tile_option"
+            assets:
+              title:
+                asset_type: "text"
+                content: "Gear for every trail"
+              main_image:
+                asset_type: "image"
+                url: "https://cdn.acmeoutdoor.example/ctv/menu-tile-bg.png"
+                width: 1920
+                height: 1080
+              advertiser_name:
+                asset_type: "text"
+                content: "Acme Outdoor"
+              landing_page_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/trails"
+              video:
+                asset_type: "vast"
+                delivery_type: "url"
+                url: "https://vast.acmeoutdoor.example/menu-hero.xml"
+          targets:
+            - kind: "product"
+              id: "ctv_validate_menu_tile"
+        validations:
+          - check: response_schema
+            description: "Response matches validate-input-response.json schema"
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Video-capable menu tile manifest satisfies the menu/native_in_feed pairing"
+
+      - id: validate_menu_banner
+        title: "menu + native_in_feed (headline banner, no video)"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#experience-to-canonical-matrix"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "native_in_feed"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_validate_menu_banner_option"
+            assets:
+              title:
+                asset_type: "text"
+                content: "Weekend packs, ready now"
+              main_image:
+                asset_type: "image"
+                url: "https://cdn.acmeoutdoor.example/ctv/menu-banner-bg.png"
+                width: 1920
+                height: 260
+              advertiser_name:
+                asset_type: "text"
+                content: "Acme Outdoor"
+              landing_page_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/packs"
+          targets:
+            - kind: "product"
+              id: "ctv_validate_menu_banner"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Static headline-banner manifest satisfies the menu/native_in_feed pairing without a video slot"
+
+      - id: validate_pause_image
+        title: "pause + image"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#experience-to-canonical-matrix"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "image"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_validate_pause_image_option"
+            assets:
+              image_main:
+                asset_type: "image"
+                url: "https://cdn.acmeoutdoor.example/ctv/pause-frame.png"
+                width: 1920
+                height: 1080
+          targets:
+            - kind: "product"
+              id: "ctv_validate_pause_image"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Raw 1920x1080 image manifest satisfies the pause/image pairing — no VAST tag required"
+
+      - id: validate_screensaver_video
+        title: "screensaver + video_hosted"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#experience-to-canonical-matrix"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "video_hosted"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_validate_screensaver_video_option"
+            assets:
+              video_main:
+                asset_type: "video"
+                url: "https://cdn.acmeoutdoor.example/ctv/screensaver-loop.mp4"
+                width: 1920
+                height: 1080
+                duration_ms: 20000
+          targets:
+            - kind: "product"
+              id: "ctv_validate_screensaver_video"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Ambient looping video manifest satisfies the screensaver/video_hosted pairing"
+
+      - id: validate_overlay_vast
+        title: "overlay + video_vast (nonlinear, 20s)"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#constraint-profiles"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "video_vast"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_validate_overlay_vast_option"
+            assets:
+              vast_tag:
+                asset_type: "vast"
+                delivery_type: "url"
+                url: "https://vast.acmeoutdoor.example/overlay.xml"
+                duration_ms: 20000
+          targets:
+            - kind: "product"
+              id: "ctv_validate_overlay_vast"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "20-second NonLinear VAST manifest satisfies the overlay/video_vast pairing declared on this product (whose own duration_ms_range [10000, 30000] already clears the 10-second floor)"
+          - check: field_value
+            path: "results[0].warnings[0].rule"
+            value: "ctv_activation_copy_slots"
+            description: "Missing push-notification copy remains non-blocking and is surfaced through warnings[]"
+
+      - id: validate_squeezeback_sponsored
+        title: "squeezeback + sponsored_placement"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#experience-to-canonical-matrix"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "sponsored_placement"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_validate_squeezeback_option"
+            assets:
+              source_catalog:
+                asset_type: "catalog"
+                type: "product"
+                items:
+                  - sku: "ACME-TRAIL-001"
+                    name: "Trail jacket"
+          targets:
+            - kind: "product"
+              id: "ctv_validate_squeezeback_sponsored"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_pass"
+            description: "Catalog reference satisfies the squeezeback/sponsored_placement pairing"
+
+  - id: matrix_defense_in_depth
+    title: "Matrix and constraint-profile defense in depth"
+    narrative: |
+      Every product seeded here declares an experience/canonical or
+      constraint pairing that should never have been authored (see the
+      top-of-file grading notes). A conformant seller never actually
+      publishes these; the steps below test whether the agent's
+      validate_input runtime independently re-derives the same rule when
+      asked to validate a manifest against such a product, rather than
+      trusting that a seeded product target is well-formed. Every check
+      here evaluates the seeded product's own declared params — none
+      depends on anything the manifest itself contributes.
+
+    steps:
+      - id: reject_menu_on_video_vast
+        title: "Reject menu declared on a video_vast product"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#experience-to-canonical-matrix"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "video_vast"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_invalid_menu_video_vast_option"
+            assets:
+              vast_tag:
+                asset_type: "vast"
+                delivery_type: "url"
+                url: "https://vast.acmeoutdoor.example/menu-invalid.xml"
+          targets:
+            - kind: "product"
+              id: "ctv_invalid_menu_video_vast"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_fail"
+            description: "video_vast never permits ctv_ad_experience: menu"
+          - check: field_value
+            path: "results[0].violations[0].rule"
+            value: "ctv_experience_matrix"
+            description: "Violation cites the video_vast verifier_constraints matrix rule"
+          - check: field_value
+            path: "results[0].violations[0].field"
+            value: "params.ctv_ad_experience"
+            description: "Violation points at the seeded product's own ctv_ad_experience declaration, not the manifest"
+
+      - id: reject_pause_on_native_in_feed
+        title: "Reject pause declared on a native_in_feed product"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#experience-to-canonical-matrix"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "native_in_feed"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_invalid_pause_native_option"
+            assets:
+              title:
+                asset_type: "text"
+                content: "Invalid pause native"
+              advertiser_name:
+                asset_type: "text"
+                content: "Acme Outdoor"
+              landing_page_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/invalid"
+          targets:
+            - kind: "product"
+              id: "ctv_invalid_pause_native"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_fail"
+            description: "native_in_feed only permits ctv_ad_experience: menu"
+          - check: field_value
+            path: "results[0].violations[0].rule"
+            value: "ctv_experience_matrix"
+            description: "Violation cites the native_in_feed verifier_constraints matrix rule"
+          - check: field_value
+            path: "results[0].violations[0].field"
+            value: "params.ctv_ad_experience"
+            description: "Violation points at the seeded product's own ctv_ad_experience declaration, not the manifest"
+
+      - id: reject_overlay_creative_type_linear
+        title: "Reject overlay declared with creative_type linear"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#constraint-profiles"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "video_vast"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_invalid_overlay_linear_option"
+            assets:
+              vast_tag:
+                asset_type: "vast"
+                delivery_type: "url"
+                url: "https://vast.acmeoutdoor.example/overlay-linear-invalid.xml"
+                duration_ms: 20000
+          targets:
+            - kind: "product"
+              id: "ctv_invalid_overlay_linear"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_fail"
+            description: "Every non-menu CTV experience on video_vast requires creative_type: nonlinear"
+          - check: field_value
+            path: "results[0].violations[0].rule"
+            value: "ctv_experience_matrix"
+            description: "Violation cites the video_vast verifier_constraints matrix rule (the nonlinear requirement is bundled with the experience pairing, not a separate rule name)"
+          - check: field_value
+            path: "results[0].violations[0].field"
+            value: "params.creative_type"
+            description: "Violation points at the seeded product's own creative_type declaration, not the manifest"
+
+      - id: reject_overlay_short_duration
+        title: "Reject overlay declared below the 10-second duration floor"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#constraint-profiles"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "video_vast"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_invalid_overlay_short_duration_option"
+            assets:
+              vast_tag:
+                asset_type: "vast"
+                delivery_type: "url"
+                url: "https://vast.acmeoutdoor.example/overlay-short-invalid.xml"
+          targets:
+            - kind: "product"
+              id: "ctv_invalid_overlay_short_duration"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_fail"
+            description: "overlay requires a 10-second minimum duration; this product declares duration_ms_exact: 5000"
+          - check: field_value
+            path: "results[0].violations[0].rule"
+            value: "ctv_duration_floors"
+            description: "Violation cites the video_vast verifier_constraints duration-floor rule"
+          - check: field_value
+            path: "results[0].violations[0].field"
+            value: "params.duration_ms_exact"
+            description: "Violation points at the seeded product's own duration_ms_exact declaration, not the manifest"
+
+      - id: reject_in_scene_simid_supported
+        title: "Reject SIMID on a nonlinear CTV experience"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#constraint-profiles"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "video_vast"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_invalid_in_scene_simid_option"
+            assets:
+              vast_tag:
+                asset_type: "vast"
+                delivery_type: "url"
+                url: "https://vast.acmeoutdoor.example/in-scene-invalid.xml"
+                duration_ms: 5000
+          targets:
+            - kind: "product"
+              id: "ctv_invalid_in_scene_simid"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_fail"
+            description: "Every video_vast CTV experience is nonlinear, where VAST cannot serialize SIMID"
+          - check: field_value
+            path: "results[0].violations[0].rule"
+            value: "ctv_nonlinear_no_simid"
+            description: "Violation cites the video_vast verifier constraint that keeps SIMID on Linear creatives"
+          - check: field_value
+            path: "results[0].violations[0].field"
+            value: "params.simid_supported"
+            description: "Violation points at the seeded product's own simid_supported declaration, not the manifest"
+
+      - id: reject_pause_full_motion_image
+        title: "Reject pause image declared with motion_level full_motion"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#motion-level-and-activation-vocabularies"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "image"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_invalid_pause_full_motion_option"
+            assets:
+              image_main:
+                asset_type: "image"
+                url: "https://cdn.acmeoutdoor.example/ctv/pause-invalid.png"
+                width: 1920
+                height: 1080
+          targets:
+            - kind: "product"
+              id: "ctv_invalid_pause_full_motion"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_fail"
+            description: "image narrows motion_level to static or limited_motion unconditionally — the image canonical never accepts full_motion regardless of whether ctv_ad_experience is declared"
+          - check: field_value
+            path: "results[0].violations[0].rule"
+            value: "motion_level_static_canonical"
+            description: "Violation cites the image verifier_constraints motion-level rule"
+          - check: field_value
+            path: "results[0].violations[0].field"
+            value: "params.motion_level"
+            description: "Violation points at the seeded product's own motion_level declaration, not the manifest"
+
+      - id: reject_focus_autoplay_without_video_slot
+        title: "Reject autoplay_muted focus_behavior on a product with no video slot"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#menu-profile-on-native_in_feed"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "native_in_feed"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_invalid_menu_no_video_slot_option"
+            assets:
+              title:
+                asset_type: "text"
+                content: "Invalid autoplay tile"
+              main_image:
+                asset_type: "image"
+                url: "https://cdn.acmeoutdoor.example/ctv/menu-invalid.png"
+                width: 1920
+                height: 1080
+              advertiser_name:
+                asset_type: "text"
+                content: "Acme Outdoor"
+              landing_page_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/invalid"
+          targets:
+            - kind: "product"
+              id: "ctv_invalid_menu_no_video_slot"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_fail"
+            description: "focus_behavior: autoplay_muted requires a video asset group in the product's effective slots — not enforced by JSON Schema, semantic-only (see grading notes)"
+          - check: field_value
+            path: "results[0].violations[0].rule"
+            value: "focus_video_pairing"
+            description: "Violation cites the native_in_feed verifier_constraints focus/video pairing rule"
+          - check: field_value
+            path: "results[0].violations[0].field"
+            value: "params.focus_behavior"
+            description: "Violation points at the seeded product's own focus_behavior declaration, not the manifest"
+
+      - id: reject_pause_on_html5
+        title: "Reject pause declared on an html5 product (unlisted canonical)"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/docs/creative/ctv-experiences#experience-to-canonical-matrix"
+        comply_scenario: ctv_experience_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "html5"
+            format_option_ref:
+              scope: "product"
+              format_option_id: "ctv_invalid_pause_html5_option"
+            assets:
+              html5_bundle:
+                asset_type: "zip"
+                url: "https://cdn.acmeoutdoor.example/ctv/pause-invalid.zip"
+          targets:
+            - kind: "product"
+              id: "ctv_invalid_pause_html5"
+        validations:
+          - check: field_value
+            path: "results[0].result_kind"
+            value: "validated_fail"
+            description: "html5 is absent from the experience-to-canonical matrix entirely; the semantic validator's ctv_experience_matrix check is the only layer that rejects this pairing — html5.json has no CTV allOf conditional"
+          - check: field_value
+            path: "results[0].violations[0].rule"
+            value: "ctv_experience_matrix"
+            description: "Violation cites the semantic ctv_experience_matrix rule (no allOf conditional on html5 — semantic layer only)"
+          - check: field_value
+            path: "results[0].violations[0].field"
+            value: "params.ctv_ad_experience"
+            description: "Violation points at the seeded product's own ctv_ad_experience declaration, not the manifest"
