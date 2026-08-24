@@ -39,7 +39,6 @@ import { supportsGetProductsRejected } from './types.js';
 import {
   findSessionMatching,
   controllerFixturePrincipal,
-  getProductsSessionKeyFromArgs,
   getSession,
   sessionKeyFromArgs,
 } from './state.js';
@@ -1537,7 +1536,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     : undefined;
   let staticFixtureAccount: ToolArgs['account'] | undefined;
   let staticTaskAccount: ToolArgs['account'] | undefined;
-  if ((targetsControllerFixtureState || targetsPublicTaskState) && ctx.principal?.startsWith('static:') && args.account) {
+  if ((targetsGetProductsState || targetsControllerFixtureState || targetsPublicTaskState)
+    && ctx.principal?.startsWith('static:')
+    && args.account) {
     try {
       const canonical = canonicalizeAccountRef(args.account);
       if (canonical.kind === 'natural' && canonical.sandbox) {
@@ -1550,7 +1551,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
           brand: canonical.brand,
           operator: canonical.brand.domain,
         };
-        if (targetsControllerFixtureState) {
+        if (targetsGetProductsState || targetsControllerFixtureState) {
           staticFixtureAccount = { ...brandOwnedAccount, sandbox: true };
         } else {
           // The SDK strips the controller-only sandbox assertion before
@@ -1583,7 +1584,15 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   let sessionKey = scenario === 'force_get_products_arm' && ctx.principal?.startsWith('static:')
     ? sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal)
     : targetsGetProductsState
-      ? getProductsSessionKeyFromArgs(sessionArgs, ctx.mode, ctx.userId, ctx.moduleId)
+      ? sessionKeyFromArgs(
+          sessionArgs,
+          ctx.mode,
+          ctx.userId,
+          ctx.moduleId,
+          ctx.principal?.startsWith('static:')
+            ? controllerFixturePrincipal(ctx.principal)
+            : undefined,
+        )
     : sessionKeyFromArgs(
       sessionArgs,
       ctx.mode,

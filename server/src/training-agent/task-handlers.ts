@@ -4226,13 +4226,18 @@ function getFormats(): ReturnType<typeof buildFormats> {
   return cachedFormats;
 }
 
-function requestedCreativeWireMode(args: Record<string, unknown>): CreativeFormatWireMode {
+function requestedCreativeWireMode(
+  args: Record<string, unknown>,
+  servedAdcpVersion?: string,
+): CreativeFormatWireMode {
   const ext = args.ext as { adcp?: { creative_wire?: unknown } } | undefined;
   const explicit = ext?.adcp?.creative_wire;
   if (explicit === 'canonical' || explicit === 'legacy') return explicit;
-  return typeof args.adcp_version === 'string' && args.adcp_version.startsWith('3.0')
-    ? 'legacy'
-    : 'unknown';
+  const version = servedAdcpVersion
+    ?? (typeof args.adcp_version === 'string' ? args.adcp_version : undefined);
+  if (version?.startsWith('3.0')) return 'legacy';
+  if (version?.startsWith('3.2')) return 'canonical';
+  return 'unknown';
 }
 
 function formatProjectionCatalogs(): ProjectionCatalogSnapshot[] {
@@ -4361,14 +4366,84 @@ export const trainingCatalogLegacyResolver: CanonicalFormatLegacyResolver = cont
   return matches.size === 1 ? [...matches.values()][0] : undefined;
 };
 
+function mappedLegacyFormatIds(product: Product): {
+  mappedIds: FormatID[];
+  allCanonicalRefsResolve: boolean;
+} {
+  if (!Array.isArray(product.format_ids) || product.format_ids.length === 0) {
+    return { mappedIds: [], allCanonicalRefsResolve: false };
+  }
+  if (!Array.isArray(product.format_options) || product.format_options.length === 0) {
+    return { mappedIds: [], allCanonicalRefsResolve: false };
+  }
+  const canonicalRefs: FormatID[] = [];
+  let malformedCanonicalRef = false;
+  for (const option of product.format_options) {
+    if (!isRecord(option) || !Array.isArray(option.v1_format_ref)) continue;
+    for (const ref of option.v1_format_ref) {
+      if (!isRecord(ref) || typeof ref.agent_url !== 'string' || typeof ref.id !== 'string') {
+        malformedCanonicalRef = true;
+        continue;
+      }
+      canonicalRefs.push(ref as FormatID);
+    }
+  }
+  const mappedIds = product.format_ids.filter(ref => (
+    isRecord(ref)
+    && typeof ref.agent_url === 'string'
+    && typeof ref.id === 'string'
+    && canonicalRefs.some(canonicalRef => legacyFormatIdMatches(ref as FormatID, canonicalRef))
+  ));
+  const allCanonicalRefsResolve = !malformedCanonicalRef && canonicalRefs.every(canonicalRef => (
+    product.format_ids!.some(ref => (
+      isRecord(ref)
+      && typeof ref.agent_url === 'string'
+      && typeof ref.id === 'string'
+      && legacyFormatIdMatches(ref as FormatID, canonicalRef)
+    ))
+  ));
+  return { mappedIds, allCanonicalRefsResolve };
+}
+
 /** Project a raw compatibility response to the wire arm explicitly requested by the caller. */
 export function projectGetProductsCompatibilityWire(
   response: { products?: Product[]; [key: string]: unknown },
   args: Record<string, unknown>,
+  servedAdcpVersion?: string,
 ): unknown {
-  const wireMode = requestedCreativeWireMode(args);
+  const wireMode = requestedCreativeWireMode(args, servedAdcpVersion);
+  const explicitWireMode = (args.ext as { adcp?: { creative_wire?: unknown } } | undefined)
+    ?.adcp?.creative_wire;
   if (wireMode === 'unknown') return response;
-  if (wireMode === 'canonical') return toCanonicalOnlyResponse(response as never).response;
+  if (wireMode === 'canonical') {
+    if (servedAdcpVersion?.startsWith('3.2') && explicitWireMode !== 'canonical') {
+      // beta.6 still permits an exact v1/v2 migration pair. Preserve those
+      // honest dual declarations, but remove an unmapped compatibility
+      // sidecar before the SDK finalizer turns its expected removal into a
+      // buyer-visible LEGACY_FORMAT_ID_DROPPED_UNMAPPED advisory.
+      return {
+        ...response,
+        ...(Array.isArray(response.products) && {
+          products: response.products.map(product => {
+            if (!Array.isArray(product.format_options) || product.format_options.length === 0) return product;
+            const { mappedIds, allCanonicalRefsResolve } = mappedLegacyFormatIds(product);
+            if (allCanonicalRefsResolve && mappedIds.length === product.format_ids?.length) return product;
+            const { format_ids: _legacyCompatibilitySelectors, ...canonicalProduct } = product;
+            return allCanonicalRefsResolve && mappedIds.length > 0
+              ? { ...canonicalProduct, format_ids: mappedIds }
+              : canonicalProduct;
+          }),
+        }),
+      };
+    }
+    const canonicalInput = response;
+    const projected = toCanonicalOnlyResponse(canonicalInput as never).response as Record<string, unknown>;
+    if (!Object.hasOwn(canonicalInput, 'products')) {
+      const { products: _sdkDefaultProducts, ...withoutDefaultProducts } = projected;
+      return withoutDefaultProducts;
+    }
+    return projected;
+  }
 
   const products = (response.products ?? []).flatMap(product => {
     if (!Array.isArray(product.format_ids) || product.format_ids.length === 0) return [];
@@ -7597,10 +7672,8 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   if (!proposalLifecycleWrite && !concreteTargetingWrite) {
     let directives: GetProductsReadDirectives = {};
     try {
-      const session = await getSession(
-        sessionScope,
-        controllerFixtureSessionKey(req, ctx),
-      );
+      const fixtureSessionKey = controllerFixtureSessionKey(req, ctx);
+      const session = await getSession(sessionScope, fixtureSessionKey);
       const directivePrincipal = ctx.principal ?? 'anonymous';
       let directiveSession = session;
       let rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
@@ -7614,14 +7687,21 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
           ? directiveSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
           : undefined;
       }
-      const staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
+      let staleDirectiveSession = session;
+      let staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
         ? session.complyExtensions.forcedUpstreamUnavailable
         : undefined;
+      if (!staleDirective && fixtureSessionKey && fixtureSessionKey !== sessionScope) {
+        staleDirectiveSession = await getSession(fixtureSessionKey);
+        staleDirective = staleDirectiveSession.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
+          ? staleDirectiveSession.complyExtensions.forcedUpstreamUnavailable
+          : undefined;
+      }
       if (rejection) {
         directiveSession.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
       }
       if (staleDirective) {
-        session.complyExtensions.forcedUpstreamUnavailable = undefined;
+        staleDirectiveSession.complyExtensions.forcedUpstreamUnavailable = undefined;
       }
       directives = { rejection, staleDirective };
       if (rejection || staleDirective) await flushDirtySessions();

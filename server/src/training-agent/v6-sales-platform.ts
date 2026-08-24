@@ -714,7 +714,9 @@ export function legacyGetProductsHandler(
     );
     const versionResolution = resolveServedAdcpVersion(normalizedReq as unknown as Record<string, unknown>);
     const trainingCtx = buildTrainingCtx(ctx, storyboardCompat);
-    if (versionResolution.ok) trainingCtx.servedAdcpVersion = versionResolution.servedVersion;
+    const servedAdcpVersion = ctx.servedAdcpVersion
+      ?? (versionResolution.ok ? versionResolution.servedVersion : undefined);
+    if (servedAdcpVersion) trainingCtx.servedAdcpVersion = servedAdcpVersion;
     const executed = await executeTrainingAgentTool('get_products', normalizedReq, trainingCtx);
     if (!executed.success) throwGetProductsExecutionError(executed.error ?? 'get_products failed');
     const response = translateV5Result<{ products?: import('@adcp/sdk').LegacyProduct[] }>(
@@ -724,6 +726,7 @@ export function legacyGetProductsHandler(
     return projectGetProductsCompatibilityWire(
       response,
       req as unknown as Record<string, unknown>,
+      servedAdcpVersion,
     ) as Awaited<ReturnType<NonNullable<LegacyMediaBuyHandlers['getProducts']>>>;
   };
 }

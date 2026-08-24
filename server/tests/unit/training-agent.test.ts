@@ -31,6 +31,7 @@ import {
   invalidateCache,
   clearTaskStore,
   projectListCreativesCompatibilityWire,
+  projectGetProductsCompatibilityWire,
   projectProductDiscoveryResult,
   resolveServedAdcpVersionForTool,
   trainingCatalogLegacyResolver,
@@ -326,6 +327,106 @@ async function simulateCancel(
   }
   return handler({ method: 'tasks/cancel', params: { taskId, ...params } }, {});
 }
+
+describe('get_products creative wire projection', () => {
+  it('preserves valid beta.6 migration shapes and drops only unmapped legacy sidecars', () => {
+    const mappedRef = { agent_url: 'https://creative.adcontextprotocol.org/', id: 'display_300x250_image' };
+    const mappedWithoutSlash = { ...mappedRef, agent_url: 'https://creative.adcontextprotocol.org' };
+    const legacyOnly = { product_id: 'legacy-only', format_ids: [mappedRef] };
+    const canonicalOnly = {
+      product_id: 'canonical-only',
+      format_options: [{ format_kind: 'image', format_option_id: 'canonical-only-image' }],
+    };
+    const projected = projectGetProductsCompatibilityWire({
+      products: [
+        {
+          product_id: 'mapped-dual',
+          format_ids: [mappedRef],
+          format_options: [{
+            format_kind: 'image',
+            format_option_id: 'mapped-image',
+            v1_format_ref: [mappedWithoutSlash],
+          }],
+        },
+        {
+          product_id: 'partially-mapped-dual',
+          format_ids: [
+            mappedRef,
+            { agent_url: 'https://legacy.example/', id: 'unmapped' },
+          ],
+          format_options: [{
+            format_kind: 'image',
+            format_option_id: 'canonical-image',
+            v1_format_ref: [mappedWithoutSlash],
+          }],
+        },
+        {
+          product_id: 'parameter-mismatch',
+          format_ids: [{ ...mappedRef, width: 300, height: 250, pixel_ratio: 2 }],
+          format_options: [{
+            format_kind: 'image',
+            format_option_id: 'parameterized-image',
+            v1_format_ref: [{ ...mappedRef, width: 300, height: 250, pixel_ratio: 1 }],
+          }],
+        },
+        {
+          product_id: 'unresolved-canonical-ref',
+          format_ids: [mappedRef],
+          format_options: [{
+            format_kind: 'image',
+            format_option_id: 'divergent-image',
+            v1_format_ref: [mappedWithoutSlash, { agent_url: 'https://legacy.example/', id: 'missing' }],
+          }],
+        },
+        legacyOnly,
+        canonicalOnly,
+      ] as any,
+      errors: [{ code: 'STALE_RESPONSE', message: 'Cached response', recovery: 'transient' }],
+    }, {}, '3.2-beta.6') as Record<string, any>;
+
+    expect(projected.products[0].format_ids).toEqual([mappedRef]);
+    expect(projected.products[0].format_options[0].v1_format_ref).toEqual([mappedWithoutSlash]);
+    expect(projected.products[1].format_ids).toEqual([mappedRef]);
+    expect(projected.products[2].format_ids).toBeUndefined();
+    expect(projected.products[3].format_ids).toBeUndefined();
+    expect(projected.products[4]).toEqual(legacyOnly);
+    expect(projected.products[5]).toEqual(canonicalOnly);
+    expect(projected.errors).toEqual([
+      { code: 'STALE_RESPONSE', message: 'Cached response', recovery: 'transient' },
+    ]);
+  });
+
+  it('keeps explicit canonical and compatibility wire modes unchanged', () => {
+    const mappedRef = { agent_url: 'https://creative.adcontextprotocol.org/', id: 'display_300x250_image' };
+    const response = {
+      products: [{
+        product_id: 'mapped-dual',
+        format_ids: [mappedRef],
+        format_options: [{
+          format_kind: 'image',
+          format_option_id: 'mapped-image',
+          v1_format_ref: [mappedRef],
+        }],
+      }] as any,
+    };
+
+    const explicitCanonical = projectGetProductsCompatibilityWire(
+      response,
+      { ext: { adcp: { creative_wire: 'canonical' } } },
+      '3.2-beta.6',
+    ) as Record<string, any>;
+    expect(explicitCanonical.products[0].format_ids).toBeUndefined();
+
+    const legacy = projectGetProductsCompatibilityWire(response, { adcp_version: '3.0' }) as Record<string, any>;
+    expect(legacy.products[0].format_ids).toEqual([mappedRef]);
+    expect(legacy.products[0].format_options).toBeUndefined();
+
+    expect(projectGetProductsCompatibilityWire(response, {}, '3.1-rc.15')).toBe(response);
+    expect(projectGetProductsCompatibilityWire({ status: 'rejected' }, {}, '3.2-beta.6')).toEqual({
+      status: 'rejected',
+    });
+  });
+});
 
 // ── Catalog (buildCatalog) ─────────────────────────────────────────
 
@@ -9697,6 +9798,25 @@ describe('list_creatives handler', () => {
     // return only those.
     const creatives = result.creatives as Array<Record<string, unknown>>;
     expect(creatives.map(c => c.creative_id)).toEqual(['campaign_hero_video']);
+    expect(creatives[0]?.format_kind).toBe('video_vast');
+    expect(creatives[0]?.format_option_ref).toEqual({
+      scope: 'product',
+      format_option_id: 'video_preroll_video_vast',
+    });
+    expect(creatives[0]?.format_id).toBeUndefined();
+
+    const legacyProjected = projectListCreativesCompatibilityWire(
+      { creatives },
+      { adcp_version: '3.0' },
+    );
+    const legacyCreatives = legacyProjected.creatives as Array<Record<string, unknown>>;
+    expect(legacyCreatives).toEqual([
+      expect.objectContaining({
+        creative_id: 'campaign_hero_video',
+        format_id: expect.objectContaining({ id: 'video_preroll' }),
+      }),
+    ]);
+    expect(legacyCreatives[0]?.format_kind).toBeUndefined();
   });
 
   it('skips the compliance fallback when creative_ids filter is explicit', async () => {

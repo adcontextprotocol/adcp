@@ -1762,7 +1762,7 @@ describe('tenant routing smoke', () => {
         expect.arrayContaining(SALES_CURRENT_SCENARIOS),
       );
       const schema = JSON.parse(fs.readFileSync(path.resolve(
-        'node_modules/@adcp/sdk/dist/lib/schemas-data/3.2.0-beta.6/bundled/protocol/get-adcp-capabilities-response.json',
+        'dist/schemas/3.2.0-beta.6/bundled/protocol/get-adcp-capabilities-response.json',
       ), 'utf8'));
       const validate = new Ajv({ allErrors: true, strict: false, discriminator: true, validateFormats: false })
         .compile(schema);
@@ -3303,13 +3303,17 @@ describe('tenant routing smoke', () => {
     try {
       const url = `${baseUrl}/sales/mcp`;
       await initializeTenant(url);
-      const account = {
-        brand: { domain: 'tenant-products-advisory.example' },
-        operator: 'tenant-products-advisory.example',
+      const controllerAccount = {
+        brand: { domain: 'acmeoutdoor.example' },
+        operator: 'acmeoutdoor.example',
         sandbox: true,
       };
+      const account = {
+        ...controllerAccount,
+        operator: 'pinnacle-agency.example',
+      };
       const directive = await callTenantTool(url, 2, 'comply_test_controller', {
-        account,
+        account: controllerAccount,
         scenario: 'force_upstream_unavailable',
         params: { tool: 'get_products', upstream_name: 'catalog-test' },
       }) as { result?: { structuredContent?: { success?: boolean } } };
@@ -3318,27 +3322,53 @@ describe('tenant routing smoke', () => {
       const key = 'tenant-products-advisory-replay-0001';
       const first = await callTenantTool(url, 3, 'get_products', {
         idempotency_key: key,
-        buying_mode: 'wholesale',
+        buying_mode: 'brief',
+        brief: 'Display advertising',
         account,
         context: { correlation_id: 'tenant-advisory-first' },
       }) as {
-        result?: { structuredContent?: { products?: unknown[]; errors?: Array<{ code?: string }>; context?: { correlation_id?: string } } };
+        result?: { structuredContent?: { products?: Array<Record<string, unknown>>; errors?: Array<{ code?: string }>; context?: { correlation_id?: string } } };
       };
       const replay = await callTenantTool(url, 4, 'get_products', {
         idempotency_key: key,
-        buying_mode: 'wholesale',
+        buying_mode: 'brief',
+        brief: 'Display advertising',
         account,
         context: { correlation_id: 'tenant-advisory-retry' },
       }) as {
         result?: { structuredContent?: { products?: unknown[]; errors?: Array<{ code?: string }>; replayed?: boolean; context?: { correlation_id?: string } } };
       };
+      const fresh = await callTenantTool(url, 5, 'get_products', {
+        idempotency_key: 'tenant-products-advisory-fresh-0001',
+        buying_mode: 'brief',
+        brief: 'Display advertising',
+        account,
+      }) as {
+        result?: { structuredContent?: { products?: unknown[]; errors?: Array<{ code?: string }> } };
+      };
       expect(first.result?.structuredContent?.products?.length).toBeGreaterThan(0);
-      expect(first.result?.structuredContent?.errors?.[0]?.code).toBe('STALE_RESPONSE');
+      expect(first.result?.structuredContent?.products?.every(product => (
+        Array.isArray(product.format_options) && (
+          !Object.hasOwn(product, 'format_ids')
+          || (() => {
+            const legacy = new Set((product.format_ids as Array<{ agent_url?: string; id?: string }>).map(
+              ref => `${ref.agent_url}#${ref.id}`,
+            ));
+            const mapped = new Set((product.format_options as Array<{ v1_format_ref?: Array<{ agent_url?: string; id?: string }> }>)
+              .flatMap(option => option.v1_format_ref ?? [])
+              .map(ref => `${ref.agent_url}#${ref.id}`));
+            return legacy.size === mapped.size && [...legacy].every(id => mapped.has(id));
+          })()
+        )
+      ))).toBe(true);
+      expect(first.result?.structuredContent?.errors?.map(error => error.code)).toEqual(['STALE_RESPONSE']);
       expect(first.result?.structuredContent?.context?.correlation_id).toBe('tenant-advisory-first');
       expect(replay.result?.structuredContent?.replayed).toBe(true);
       expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
       expect(replay.result?.structuredContent?.errors).toEqual(first.result?.structuredContent?.errors);
       expect(replay.result?.structuredContent?.context?.correlation_id).toBe('tenant-advisory-retry');
+      expect(fresh.result?.structuredContent?.products?.length).toBeGreaterThan(0);
+      expect(fresh.result?.structuredContent?.errors?.map(error => error.code) ?? []).not.toContain('STALE_RESPONSE');
     } finally {
       await close();
     }
