@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/trusted-match/publisher-tmpx-config.json",
+  "title": "Publisher TMPX Macro Mapping",
+  "description": "Publisher-owned deployment configuration that maps each identity provider's TMPX slots to the ad-server macro names (or targeting keys, VAST substitutions, DOOH play-log fields) the publisher wants those chunks fired into on this surface. Mapping is authored by the publisher — the same operator who trafficks the corresponding ad-server line items — and never travels on the wire between identity provider and router. This keeps macro naming a deployment concern rather than a protocol identifier: providers emit chunks as `{slot_id, value}` pairs (see provider-identity-match-response.json), the router preserves ordering and slot IDs under the emitting `provider_id` (see identity-match-response.json), and this configuration resolves each `(provider_id, slot_id)` to a local destination on the way to the ad server. A publisher may map the same provider to different destinations across surfaces (GAM key-values vs. VAST macros vs. DOOH play-log fields) by carrying one instance of this configuration per surface.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "tmpx_macro_mapping": {
+      "type": "object",
+      "description": "Map from `provider_id` to a slot-keyed map of ad-server destinations (macro names, GAM key-values, VAST URL macro tokens, DOOH play-log field identifiers) for that provider on this surface. The inner map's keys are the provider-local `slot_id` values the provider registered in `tmpx_slots` (see provider-registration.json). At serve time, the publisher's adapter reads `tmpx_providers[provider_id].chunks[]` from the identity-match response and, for each chunk, substitutes the chunk's `value` into `tmpx_macro_mapping[provider_id][chunk.slot_id]`. Publishers use the outer map's keys plus the inner map's keys to validate the mapping at startup — every `slot_id` a provider registered in `tmpx_slots` SHOULD have a corresponding entry in that provider's inner map, and publishers SHOULD surface any missing entry as a startup warning so the operator can add it before responses begin carrying the unmapped slot. The exact destination string is publisher-local: GAM adopters typically use uppercase snake-case macro names, VAST surfaces use URL macro tokens, DOOH surfaces use play-log field identifiers. Outer-map key charset matches `provider_id` in provider-registration.json (enforced by `propertyNames`). Inner-map key charset matches `slot_id` in tmpx-chunk.json. When a response carries a `slot_id` for a provider that this mapping has no entry for — the mapping is missing the whole provider, OR the provider is present but the specific `slot_id` is unknown to this surface — the publisher's adapter MUST fail closed for that provider on that impression: none of that provider's chunks are fired into the ad-serving path and the adapter logs a configuration error. Other providers on the same response are unaffected. A `provider_id` absent from this mapping entirely (e.g. a newly onboarded provider not yet trafficked on this surface) is the same case — the adapter drops that provider's chunks on this surface rather than firing them into an unconfigured destination. Startup validation and serve-time fail-closed are two stages of a single rule: the warning at startup is the operator's chance to fix the mapping before the serve-time rule catches the missing slot.",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_]+$",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "additionalProperties": {
+        "type": "object",
+        "description": "Map from the provider's registered `slot_id` to the ad-server destination string for that slot on this surface. Opaque to the protocol — the exact form is publisher-local.",
+        "propertyNames": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "additionalProperties": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "minProperties": 1,
+        "maxProperties": 2
+      }
+    }
+  },
+  "required": [
+    "tmpx_macro_mapping"
+  ],
+  "additionalProperties": false
+}

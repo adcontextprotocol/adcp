@@ -647,6 +647,27 @@ export const CompanySearchResultSchema = z
     parent_brand: z.string().optional(),
     brand_agent_url: z.string().optional(),
     source: z.string().openapi({ example: "community" }),
+    relationship_trust: z
+      .enum(["inline", "mutual", "leaf_only", "house_only", "standalone", "unverifiable"])
+      .optional()
+      .openapi({
+        description:
+          "Trust verdict for the brand-to-house relationship. Absent means not yet computed — absent MUST NOT be interpreted as `standalone`.",
+      }),
+    relationship_verified_at: z
+      .string()
+      .datetime()
+      .optional()
+      .openapi({
+        description: "When the mutual-assertion edge was last confirmed by both sides. Present only when relationship_trust is `mutual`.",
+      }),
+    claimed_house_domain: z
+      .string()
+      .optional()
+      .openapi({
+        description:
+          "Unilateral parent claim from the brand's own document. Not trust-extending. Present for `leaf_only` and `unverifiable`.",
+      }),
   })
   .openapi("CompanySearchResult");
 
@@ -700,6 +721,27 @@ export const BrandRegistryItemSchema = z
     keller_type: z
       .enum(["master", "sub_brand", "endorsed", "independent"])
       .optional(),
+    relationship_trust: z
+      .enum(["inline", "mutual", "leaf_only", "house_only", "standalone", "unverifiable"])
+      .optional()
+      .openapi({
+        description:
+          "Trust verdict for the brand-to-house relationship, cached from the last crawler resolution. Absent means not yet computed — absent MUST NOT be interpreted as `standalone`.",
+      }),
+    relationship_verified_at: z
+      .string()
+      .datetime()
+      .optional()
+      .openapi({
+        description: "When the mutual-assertion edge was last confirmed by both sides. Present only when relationship_trust is `mutual`.",
+      }),
+    claimed_house_domain: z
+      .string()
+      .optional()
+      .openapi({
+        description:
+          "Unilateral parent claim from the brand's own document. Not trust-extending. Present for `leaf_only` and `unverifiable`.",
+      }),
   })
   .openapi("BrandRegistryItem");
 
@@ -1212,11 +1254,11 @@ export const PublisherLookupResultSchema = z
     }),
     formats: z.array(PublisherFormatSummarySchema).optional().openapi({
       description:
-        "Lossy display-oriented summary of top-level adagents.json `formats[]`, normalized for publisher pages and eligibility discovery. It preserves `format_kind`, `format_option_id`, params, property scope, preference, and experimental status, but omits `v1_format_ref`, `canonical_formats_only`, `applies_to_channels`, `publisher_domain`, and custom `format_shape`/`format_schema`. Fetch the canonical document at hosting.resolved_url (or hosting.expected_url when self-hosted) for creative validation.",
+        "Lossy display-oriented summary of top-level adagents.json `formats[]`, normalized for publisher pages and eligibility discovery. It preserves `format_kind`, `format_option_id`, params, property scope, preference, and experimental status, but omits `reference_renderer`, `v1_format_ref`, `canonical_formats_only`, `applies_to_channels`, `publisher_domain`, and custom `format_shape`/`format_schema`. Fetch the canonical document at hosting.resolved_url (or hosting.expected_url when self-hosted) for creative validation or reference-renderer discovery.",
     }),
     placements: z.array(PublisherPlacementSummarySchema).optional().openapi({
       description:
-        "Eligibility-oriented publisher placement summaries. Present only when the request includes `include=placements`; format references are resolved to canonical kind/params so callers can join property → placement → format without a second origin fetch.",
+      "Eligibility-oriented publisher placement summaries. Present only when the request includes `include=placements`; format references are resolved to canonical kind/params so callers can join property → placement → format without a second origin fetch. The lossy summary omits placement `presentation_ref` and `preview_provider`; fetch the resolved raw adagents.json for publisher presentation metadata and preview delegation.",
     }),
     authorized_agents: z.array(PublisherAuthorizedAgentSchema),
     rollup_truncated: z.object({

@@ -1,0 +1,81 @@
+---
+title: Display Ads
+description: "Canonical image, HTML5, and display-tag creative contracts for AdCP 3.2."
+"og:title": "AdCP — Display Ads"
+---
+
+Display inventory uses three canonical kinds: `image`, `html5`, and `display_tag`. Size, file, interaction, and slot constraints live in `params`; a size-specific named format ID is not needed.
+
+## Static image
+
+```json
+{
+  "format_option_id": "homepage_image_300x250",
+  "format_kind": "image",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "max_file_size_kb": 200,
+    "image_formats": ["jpg", "png", "webp"],
+    "slots": [
+      { "asset_group_id": "image_main", "asset_type": "image", "required": true },
+      { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true }
+    ]
+  }
+}
+```
+
+```json
+{
+  "format_kind": "image",
+  "format_option_ref": { "scope": "product", "format_option_id": "homepage_image_300x250" },
+  "assets": {
+    "image_main": {
+      "asset_type": "image",
+      "url": "https://cdn.acmeoutdoor.example/trail-pro-300x250.png",
+      "width": 300,
+      "height": 250,
+      "alt_text": "Trail Pro boot on a mountain path"
+    },
+    "landing_page_url": { "asset_type": "url", "url": "https://acmeoutdoor.example/trail-pro" }
+  }
+}
+```
+
+## Multi-size image
+
+Use `sizes[]` when one creative contract accepts a closed set of sizes:
+
+```json
+{
+  "format_kind": "image",
+  "params": {
+    "sizes": [{ "w": 300, "h": 250 }, { "w": 728, "h": 90 }, { "w": 320, "h": 50 }],
+    "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true }]
+  }
+}
+```
+
+Use min/max width and height for a genuinely responsive envelope. Exact-size, multi-size, and responsive modes are mutually exclusive.
+
+## HTML5 and third-party tags
+
+`html5` describes a buyer-supplied HTML bundle. `display_tag` describes externally served HTML or JavaScript markup. Keep them separate because validation, hosting, security, and measurement differ.
+
+```json
+{
+  "format_kind": "display_tag",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "slots": [
+      { "asset_group_id": "serving_tag", "asset_type": "html", "required": true },
+      { "asset_group_id": "impression_tracker", "asset_type": "pixel_tracker", "required": false }
+    ]
+  }
+}
+```
+
+Buyers discover seller acceptance from `Product.format_options[]`. Creative agents that can build or validate these contracts advertise matching `creative.supported_formats[]` entries.
+
+See [Canonical formats](/dist/docs/3.2.0-beta.0/creative/canonical-formats), [Creative manifests](/dist/docs/3.2.0-beta.0/creative/creative-manifests), and [Universal macros](/dist/docs/3.2.0-beta.0/creative/universal-macros).

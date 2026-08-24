@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/geo-place-catalog-entry.json",
+  "title": "Geographic Place Catalog Entry",
+  "description": "One resolver result for a stable place identifier, including lifecycle state. Labels and parent_labels are diagnostic only; value is the authoritative targeting key.",
+  "type": "object",
+  "properties": {
+    "value": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier in the response system and system_version."
+    },
+    "country": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$"
+    },
+    "subdivision": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$",
+      "description": "ISO 3166-2 subdivision containing the place when the catalog has a subdivision mapping. Required by resolver semantics when the request constrained subdivision."
+    },
+    "place_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/geo-place-type.json"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable display label; never an authoritative targeting key."
+    },
+    "canonical_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required fully qualified display name suitable for distinguishing same-named results."
+    },
+    "parent_labels": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "description": "Ordered human-readable parent hierarchy for disambiguation only. Must include at least the containing country."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "removal_planned",
+        "deprecated"
+      ]
+    },
+    "replaced_by_values": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Replacement identifiers in the same system and response system_version."
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Known time after which the identifier must no longer be accepted for new targeting."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+    }
+  },
+  "required": [
+    "value",
+    "country",
+    "place_type",
+    "label",
+    "canonical_name",
+    "parent_labels",
+    "status"
+  ],
+  "additionalProperties": false
+}

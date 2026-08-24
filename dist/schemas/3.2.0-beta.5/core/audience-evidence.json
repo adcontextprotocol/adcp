@@ -1,0 +1,265 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/audience-evidence.json",
+  "title": "Audience Evidence",
+  "description": "An immutable, population-level claim about an inventory audience's composition, affinity, or estimated reach. This object is discovery and planning evidence only: it MUST NOT be interpreted as an exact targeting predicate, proof that any particular impression belongs to the audience, or legal-age verification.",
+  "type": "object",
+  "properties": {
+    "evidence_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable provider-scoped identifier for the logical evidence series across versions.",
+      "x-entity": "audience_evidence"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Seller-scoped immutable snapshot identifier. It MUST never be reused for different content.",
+      "x-entity": "audience_evidence_snapshot"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Provider version of this evidence snapshot."
+    },
+    "content_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 of the RFC 8785 (JCS) canonical evidence core with content_digest and attestation_refs omitted. Attestation references are excluded so independently issued credentials can be attached without changing the immutable evidence snapshot and without creating a recursive digest. This digest is required even when snapshot_id is present so buyers can detect identifier reuse or catalog drift."
+    },
+    "audience": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/audience-characteristic.json"
+    },
+    "relationship": {
+      "type": "string",
+      "enum": [
+        "composition",
+        "index",
+        "reach_estimate"
+      ],
+      "description": "What the estimate says: population share, ratio to a baseline, or estimated reachable count."
+    },
+    "value": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Estimated relationship value, interpreted according to unit."
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "fraction",
+        "ratio",
+        "count"
+      ],
+      "description": "composition uses fraction in [0,1], index uses ratio, and reach_estimate uses count."
+    },
+    "baseline": {
+      "type": "object",
+      "description": "Reference population against which the estimate was calculated.",
+      "properties": {
+        "system": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "population_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "system",
+        "population_id",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "evidence_type": {
+      "type": "string",
+      "enum": [
+        "measured",
+        "forecast",
+        "seller_declared"
+      ],
+      "description": "Nature of the evidence. Independent verification is represented separately by attestation_refs and never inferred from this value."
+    },
+    "methodology": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/audience-evidence-methodology.json"
+    },
+    "subject_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/audience-subject-type.json"
+    },
+    "resolution_method": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/audience-resolution-method.json",
+      "description": "Optional subject-resolution method used by the study or estimate. This describes population methodology, not a promise that the product can execute that resolution at serving time."
+    },
+    "provider": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/brand-ref.json",
+      "description": "Brand responsible for producing the evidence."
+    },
+    "measurement_window": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/date-range.json"
+    },
+    "sample_size": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of observations or respondents underlying the estimate, when applicable."
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Provider-defined confidence score in [0,1]. Consumers MUST compare scores only when the provider's methodology makes them comparable."
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the provider last produced or refreshed this immutable snapshot."
+    },
+    "methodology_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "Documentation for interpreting the methodology. It is disclosure, not executable routing."
+    },
+    "attestation_refs": {
+      "type": "array",
+      "description": "Optional portable attestations about this exact evidence snapshot. Each subject MUST be resource type https://adcontextprotocol.org/claims/subjects/audience-evidence, subject.id MUST equal snapshot_id, and subject.content_digest MUST equal this evidence object's content_digest. Buyer references do not override evaluator issuer or resolver policy.",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/attestation-reference.json"
+          },
+          {
+            "properties": {
+              "subject": {
+                "allOf": [
+                  {
+                    "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/attestation-subject.json"
+                  },
+                  {
+                    "properties": {
+                      "type": {
+                        "const": "resource"
+                      },
+                      "resource_type": {
+                        "const": "https://adcontextprotocol.org/claims/subjects/audience-evidence"
+                      },
+                      "content_digest": {
+                        "type": "string",
+                        "pattern": "^sha256:[a-f0-9]{64}$"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "resource_type",
+                      "content_digest"
+                    ]
+                  }
+                ]
+              }
+            },
+            "required": [
+              "subject"
+            ]
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 10
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "snapshot_id",
+    "version",
+    "content_digest",
+    "audience",
+    "relationship",
+    "value",
+    "unit",
+    "baseline",
+    "evidence_type",
+    "methodology",
+    "subject_type",
+    "provider",
+    "measurement_window",
+    "last_updated"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "relationship": {
+            "const": "composition"
+          }
+        },
+        "required": [
+          "relationship"
+        ]
+      },
+      "then": {
+        "properties": {
+          "unit": {
+            "const": "fraction"
+          },
+          "value": {
+            "maximum": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "relationship": {
+            "const": "index"
+          }
+        },
+        "required": [
+          "relationship"
+        ]
+      },
+      "then": {
+        "properties": {
+          "unit": {
+            "const": "ratio"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "relationship": {
+            "const": "reach_estimate"
+          }
+        },
+        "required": [
+          "relationship"
+        ]
+      },
+      "then": {
+        "properties": {
+          "unit": {
+            "const": "count"
+          },
+          "value": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

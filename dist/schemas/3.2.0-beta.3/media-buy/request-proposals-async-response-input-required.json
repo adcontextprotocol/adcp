@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/media-buy/request-proposals-async-response-input-required.json",
+  "title": "Request Proposals - Input Required",
+  "description": "Bounded input-required payload for request_proposals.",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/compact-task-input-required.json"
+    }
+  ]
+}

@@ -1,0 +1,957 @@
+id: media_buy_seller/geo_region_targeting
+version: "1.0.0"
+title: "Seller validates and persists value-aware ISO subdivision targeting"
+category: media_buy_seller
+summary: "Verifies exact known-region discovery, country/value future support, independent exclusion, package readback, and deterministic rejection semantics."
+track: media_buy
+
+requires_capability:
+  path: media_buy.execution.targeting.geo_regions.countries.FR.values
+  contains: FR-49
+
+required_tools:
+  - get_adcp_capabilities
+  - get_products
+  - create_media_buy
+  - update_media_buy
+  - get_media_buys
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  ISO 3166-2 identifiers are canonical protocol identities. This scenario
+  applies only to sellers declaring a finite structured French subdivision
+  support list containing FR-49. It
+  proves that a known department affects configured discovery price and
+  forecast, while values explicitly deferred through required_overlay_support
+  receive product-scoped permission without a value-specific availability
+  guarantee. Inclusion and exclusion are checked independently.
+
+  The scenario also distinguishes three create-time outcomes: a country outside
+  Product overlay support is UNSUPPORTED_FEATURE; an unknown canonical code is
+  INVALID_REQUEST; a valid supported region with no executable inventory is
+  PRODUCT_UNAVAILABLE. An executable update outside the accepted commercial
+  envelope is REQUOTE_REQUIRED. Successful state echoes the exact ISO identifiers,
+  including values executed through exact internal translation.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - value_aware_region_targeting
+  examples:
+    - "Sales agents mapping canonical ISO subdivisions into exact provider-native targets"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller declares structured French region inclusion and exclusion
+    support. The product fixture is seeded with exhaustive French inclusion
+    support and a finite exclusion subset. Namespaced compliance metadata makes
+    target-specific price, forecast, and mutation dispositions deterministic; it
+    is sandbox controller behavior, not a production Product field.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "geo_region_display_fr"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+      overlay_support:
+        geo_regions:
+          countries:
+            FR:
+              all_values: true
+          catalog_version: "2026-08"
+          as_of: "2026-08-01"
+          max_values_per_package: 25
+        geo_regions_exclude:
+          countries:
+            FR:
+              values: ["FR-44", "FR-49", "FR-2A", "FR-971"]
+          catalog_version: "2026-08"
+          as_of: "2026-08-01"
+          max_values_per_package: 25
+      forecast:
+        forecast_range_unit: "availability"
+        method: "modeled"
+        currency: "EUR"
+        points:
+          - metrics:
+              impressions: { mid: 1000000 }
+      ext:
+        adcp_compliance:
+          upstream_route: "fr_region_route"
+          geo_region_cases:
+            - value: "FR-49"
+              execution: "exact_translated"
+              outcome: "accepted"
+              forecast_impressions_mid: 360000
+              floor_price: 4.10
+            - value: "FR-2A"
+              execution: "exact_native"
+              outcome: "accepted"
+            - value: "FR-971"
+              execution: "exact_native"
+              outcome: "PRODUCT_UNAVAILABLE"
+            - value: "FR-ARA"
+              execution: "exact_native"
+              outcome: "REQUOTE_REQUIRED"
+    - product_id: "geo_region_display_ca"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+      overlay_support:
+        geo_regions:
+          countries:
+            CA:
+              values: ["CA-QC"]
+          catalog_version: "2026-08"
+          as_of: "2026-08-01"
+      forecast:
+        forecast_range_unit: "availability"
+        method: "modeled"
+        currency: "EUR"
+        points:
+          - metrics:
+              impressions: { mid: 250000 }
+      ext:
+        adcp_compliance:
+          upstream_route: "ca_region_route"
+  pricing_options:
+    - product_id: "geo_region_display_fr"
+      pricing_option_id: "geo_region_auction_cpm"
+      pricing_model: "cpm"
+      currency: "EUR"
+      floor_price: 3.00
+    - product_id: "geo_region_display_ca"
+      pricing_option_id: "geo_region_ca_cpm"
+      pricing_model: "cpm"
+      currency: "EUR"
+      floor_price: 3.25
+
+phases:
+  - id: verify_finite_region_inclusion
+    title: "Verify finite inclusion support without assuming exclusion"
+    steps:
+      - id: get_finite_region_inclusion_capability
+        title: "Read finite French subdivision inclusion support"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "geo_region_targeting--get_inclusion_capability"
+        expected: |
+          Return a finite inclusion support list containing FR-49. Exclusion
+          support is not assumed by this phase.
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_contains
+            path: "media_buy.execution.targeting.geo_regions.countries.FR.values[*]"
+            value: "FR-49"
+            description: "Seller explicitly declares FR-49 inclusion support"
+
+      - id: get_finite_inclusion_product
+        title: "Discover a product configured for a supported region"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            is_fixed_price: false
+          targeting_overlay:
+            geo_regions: ["FR-49"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "geo_region_targeting--get_finite_inclusion_product"
+        expected: |
+          Return a configured product whose FR-49-specific forecast and floor
+          differ from the base offer, without requiring exclusion capability.
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "products[0].forecast.points[0].metrics.impressions.mid"
+            value: 360000
+            description: "Known FR-49 targeting scopes the forecast"
+          - check: field_value
+            path: "products[0].pricing_options[0].floor_price"
+            value: 4.10
+            description: "Known FR-49 targeting scopes the price"
+
+  - id: discover_region_support
+    title: "Discover exact subdivision targeting and future selection"
+    requires_capability:
+      path: media_buy.execution.targeting.geo_regions_exclude.countries.FR.values
+      contains: FR-44
+    steps:
+      - id: get_region_capabilities
+        title: "Read country- and value-aware region capabilities"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        expected: |
+          Return structured inclusion and exclusion support. Inclusion contains
+          FR-49 and the exclusion declaration independently contains FR-44.
+        sample_request:
+          context:
+            correlation_id: "geo_region_targeting--get_region_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_contains
+            path: "media_buy.execution.targeting.geo_regions.countries.FR.values[*]"
+            value: "FR-49"
+            description: "Seller explicitly declares FR-49 inclusion support"
+          - check: field_contains
+            path: "media_buy.execution.targeting.geo_regions_exclude.countries.FR.values[*]"
+            value: "FR-44"
+            description: "Seller independently declares FR-44 exclusion support"
+
+      - id: get_exact_region_product
+        title: "Discover a product configured for FR-49"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            is_fixed_price: false
+          targeting_overlay:
+            geo_regions: ["FR-49"]
+          required_overlay_support:
+            geo_regions_exclude:
+              countries:
+                FR:
+                  values: ["FR-44"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "geo_region_targeting--get_exact_region_product"
+        expected: |
+          Return a request-scoped product whose aggregate forecast is 360,000
+          impressions and whose floor is EUR 4.10, proving FR-49 affected the
+          configured offer. Product support independently permits FR-44 later.
+        context_outputs:
+          - key: "exact_product_id"
+            path: "products[0].product_id"
+          - key: "exact_pricing_option_id"
+            path: "products[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "products[0].is_custom"
+            value: true
+            description: "Known region targeting produces a configured product"
+          - check: field_value
+            path: "products[0].forecast.points[0].metrics.impressions.mid"
+            value: 360000
+            description: "FR-49 forecast differs from the one-million-impression base"
+          - check: field_value
+            path: "products[0].pricing_options[0].floor_price"
+            value: 4.10
+            description: "FR-49 price differs from the EUR 3.00 base floor"
+          - check: field_contains
+            path: "products[0].overlay_support.geo_regions_exclude.countries.FR.values[*]"
+            value: "FR-44"
+            description: "Configured product grants the requested future exclusion"
+
+      - id: get_deferred_region_product
+        title: "Declare candidate region values for later package selection"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            is_fixed_price: false
+          required_overlay_support:
+            geo_regions:
+              countries:
+                FR:
+                  values: ["FR-2A", "FR-971", "FR-ARA"]
+            geo_regions_exclude:
+              countries:
+                FR:
+                  values: ["FR-44"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "geo_region_targeting--get_deferred_region_product"
+        expected: |
+          Return a product whose exhaustive French inclusion support contains
+          the requested finite candidate set and whose independent exclusion
+          support contains FR-44. Do not claim a value-specific forecast.
+        context_outputs:
+          - key: "deferred_product_id"
+            path: "products[0].product_id"
+          - key: "deferred_pricing_option_id"
+            path: "products[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "products[0].overlay_support.geo_regions.countries.FR.all_values"
+            value: true
+            description: "Exhaustive country support contains every requested candidate"
+          - check: field_contains
+            path: "products[0].overlay_support.geo_regions_exclude.countries.FR.values[*]"
+            value: "FR-44"
+            description: "Finite exclusion support contains the requested candidate"
+
+      - id: reject_cross_country_region_requirement
+        title: "Reject a subdivision nested under the wrong country key"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            is_fixed_price: false
+          required_overlay_support:
+            geo_regions:
+              countries:
+                FR:
+                  values: ["US-CA"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "geo_region_targeting--reject_cross_country_requirement"
+        expected: |
+          Reject with INVALID_REQUEST. Every explicit ISO subdivision prefix
+          must match the country map key that contains it.
+        validations:
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Cross-country nesting fails semantic validation"
+          - check: field_value
+            path: "errors[0].field"
+            value: "required_overlay_support.geo_regions.countries.FR.values[0]"
+            description: "Error points to the mismatched subdivision value"
+
+  - id: reject_composed_route_union
+    title: "Do not union incompatible upstream route support"
+    requires_capability:
+      path: media_buy.execution.targeting.geo_regions.countries.CA.values
+      contains: CA-QC
+    steps:
+      - id: get_product_requiring_incompatible_routes
+        title: "Require French and Canadian values on one configured product"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            is_fixed_price: false
+          required_overlay_support:
+            geo_regions:
+              countries:
+                FR:
+                  values: ["FR-49"]
+                CA:
+                  values: ["CA-QC"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "geo_region_targeting--reject_composed_route_union"
+        expected: |
+          Return no product. The French and Canadian fixtures model separate
+          upstream routes; neither route supports both requirements, so the
+          seller must not present their union as one executable product.
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_value
+            path: "products"
+            value: []
+            description: "No single configured route satisfies the combined requirement"
+
+  - id: execute_and_read_region_targeting
+    title: "Create and read exact and deferred region targeting"
+    depends_on: [discover_region_support]
+    steps:
+      - id: create_exact_region_buy
+        title: "Create the configured FR-49 buy"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.exact_product_id"
+              pricing_option_id: "$context.exact_pricing_option_id"
+              bid_price: 4.50
+              budget: 5000
+          idempotency_key: "$generate:uuid_v4#geo_region_targeting_exact"
+          context:
+            correlation_id: "geo_region_targeting--create_exact_region_buy"
+        expected: |
+          Create the buy using the FR-49 targeting bound to the configured
+          product. Exact internal translation does not change its ISO identity.
+        context_outputs:
+          - key: "exact_media_buy_id"
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Configured FR-49 buy is created"
+
+      - id: get_exact_region_buy
+        title: "Verify exact-translated FR-49 readback"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.exact_media_buy_id"]
+          context:
+            correlation_id: "geo_region_targeting--get_exact_region_buy"
+        expected: |
+          Echo FR-49 as the package targeting identity even though the fixture
+          marks its seller-side execution as an exact internal translation.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_contains
+            path: "media_buys[0].packages[0].targeting_overlay.geo_regions[*]"
+            value: "FR-49"
+            description: "Exact internal translation preserves the ISO identity"
+
+      - id: create_deferred_region_buy
+        title: "Select inclusion and exclusion values at create time"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
+              bid_price: 4.50
+              budget: 5000
+              targeting_overlay:
+                geo_regions: ["FR-2A"]
+                geo_regions_exclude: ["FR-44"]
+          idempotency_key: "$generate:uuid_v4#geo_region_targeting_deferred"
+          context:
+            correlation_id: "geo_region_targeting--create_deferred_region_buy"
+        expected: |
+          Accept FR-2A inclusion and FR-44 exclusion because each lies within
+          the independently declared Product support envelope.
+        context_outputs:
+          - key: "deferred_media_buy_id"
+            path: "media_buy_id"
+          - key: "deferred_package_id"
+            path: "packages[0].package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Deferred region selection succeeds"
+
+      - id: get_deferred_region_buy
+        title: "Verify deferred inclusion and exclusion after create"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.deferred_media_buy_id"]
+          context:
+            correlation_id: "geo_region_targeting--get_deferred_region_buy"
+        expected: |
+          Echo the complete effective inclusion and exclusion lists.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_contains
+            path: "media_buys[0].packages[0].targeting_overlay.geo_regions[*]"
+            value: "FR-2A"
+            description: "Deferred inclusion persisted"
+          - check: field_contains
+            path: "media_buys[0].packages[0].targeting_overlay.geo_regions_exclude[*]"
+            value: "FR-44"
+            description: "Deferred exclusion persisted independently"
+
+      - id: update_deferred_region_buy
+        title: "Replace the region exclusion atomically"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.deferred_media_buy_id"
+          packages:
+            - package_id: "$context.deferred_package_id"
+              targeting_overlay:
+                geo_regions: ["FR-2A"]
+                geo_regions_exclude: ["FR-49"]
+          idempotency_key: "$generate:uuid_v4#geo_region_targeting_update"
+          context:
+            correlation_id: "geo_region_targeting--update_deferred_region_buy"
+        expected: |
+          Replace the complete region overlay atomically. Preserve FR-2A and
+          replace FR-44 with FR-49; do not retain a partially merged list.
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json"
+          - check: field_contains
+            path: "affected_packages[*]"
+            value:
+              package_id: "$context.deferred_package_id"
+              targeting_overlay:
+                geo_regions: ["FR-2A"]
+                geo_regions_exclude: ["FR-49"]
+            description: "Update returns the complete post-replacement region overlay"
+
+      - id: get_updated_region_buy
+        title: "Verify updated region targeting readback"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.deferred_media_buy_id"]
+          context:
+            correlation_id: "geo_region_targeting--get_updated_region_buy"
+        expected: |
+          Echo only the complete post-update region overlay. FR-44 must not
+          survive the replacement.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_contains
+            path: "media_buys[0].packages[0].targeting_overlay.geo_regions[*]"
+            value: "FR-2A"
+            description: "Included subdivision remains exact"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.geo_regions_exclude"
+            value: ["FR-49"]
+            description: "Replacement exclusion persisted without retaining FR-44"
+
+      - id: reject_out_of_envelope_region_update
+        title: "Reject an executable region update outside accepted terms"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.deferred_media_buy_id"
+          packages:
+            - package_id: "$context.deferred_package_id"
+              targeting_overlay:
+                geo_regions: ["FR-ARA"]
+                geo_regions_exclude: ["FR-49"]
+          idempotency_key: "$generate:uuid_v4#geo_region_targeting_requote_update"
+          context:
+            correlation_id: "geo_region_targeting--reject_out_of_envelope_region_update"
+        expected: |
+          Reject executable FR-ARA with REQUOTE_REQUIRED because the update
+          lies outside the package's accepted commercial envelope. Preserve
+          the prior overlay atomically.
+        validations:
+          - check: response_schema
+            description: "Error response matches update-media-buy-response.json"
+          - check: error_code
+            value: "REQUOTE_REQUIRED"
+            description: "Out-of-envelope targeting changes require an amendment"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_regions"
+            description: "Error points to the out-of-envelope region overlay"
+
+      - id: get_after_requoted_region_update
+        title: "Verify requote rejection left region state unchanged"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.deferred_media_buy_id"]
+          context:
+            correlation_id: "geo_region_targeting--get_after_requoted_region_update"
+        expected: |
+          Return the exact pre-error overlay, proving REQUOTE_REQUIRED did not
+          partially apply the commercially incompatible change.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.geo_regions"
+            value: ["FR-2A"]
+            description: "Included region state remains unchanged after requote"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.geo_regions_exclude"
+            value: ["FR-49"]
+            description: "Excluded region state remains unchanged after requote"
+
+      - id: reject_partial_region_update
+        title: "Reject a mixed supported and unsupported region update"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_id: "$context.deferred_media_buy_id"
+          packages:
+            - package_id: "$context.deferred_package_id"
+              targeting_overlay:
+                geo_regions: ["FR-2A", "CA-QC"]
+                geo_regions_exclude: ["FR-49"]
+          idempotency_key: "$generate:uuid_v4#geo_region_targeting_partial_update"
+          context:
+            correlation_id: "geo_region_targeting--reject_partial_region_update"
+        expected: |
+          Reject the whole replacement with UNSUPPORTED_FEATURE because CA-QC
+          lies outside Product support. FR-2A must not be applied separately.
+        validations:
+          - check: response_schema
+            description: "Error response matches update-media-buy-response.json"
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Mixed region updates fail closed"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_regions[1]"
+            description: "Error identifies the unsupported value"
+
+      - id: get_after_rejected_region_update
+        title: "Verify failed update left region state unchanged"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.deferred_media_buy_id"]
+          context:
+            correlation_id: "geo_region_targeting--get_after_rejected_region_update"
+        expected: |
+          Return the exact pre-error overlay, proving the failed mixed update
+          did not partially mutate either region direction.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.geo_regions"
+            value: ["FR-2A"]
+            description: "Included region state remains unchanged"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.geo_regions_exclude"
+            value: ["FR-49"]
+            description: "Excluded region state remains unchanged"
+
+  - id: reject_invalid_region_targeting
+    title: "Distinguish region targeting failure dispositions"
+    depends_on: [discover_region_support]
+    steps:
+      - id: create_unsupported_region_country
+        title: "Submit a country outside Product support"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request: &region_error_request
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
+              bid_price: 4.50
+              budget: 5000
+              targeting_overlay:
+                geo_regions: ["CA-QC"]
+          idempotency_key: "$generate:uuid_v4#geo_region_targeting_unsupported"
+          context:
+            correlation_id: "geo_region_targeting--create_unsupported_region_country"
+        expected: |
+          Reject CA-QC with UNSUPPORTED_FEATURE because the configured Product
+          grants French, not Canadian, region selection.
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Country outside Product support is unsupported"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_regions[0]"
+            description: "Error points to the unsupported value"
+
+      - id: create_unknown_region_code
+        title: "Submit a syntactically valid but unknown subdivision"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          <<: *region_error_request
+          packages:
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
+              bid_price: 4.50
+              budget: 5000
+              targeting_overlay:
+                geo_regions: ["FR-ZZ"]
+          idempotency_key: "$generate:uuid_v4#geo_region_targeting_unknown"
+          context:
+            correlation_id: "geo_region_targeting--create_unknown_region_code"
+        expected: |
+          Reject FR-ZZ with INVALID_REQUEST. The code is well-formed but is not
+          an active canonical ISO subdivision and must not be widened or dropped.
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Unknown canonical identifier is an invalid request"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_regions[0]"
+            description: "Error points to the unknown identifier"
+
+      - id: create_unsupported_region_exclusion
+        title: "Submit an exclusion outside independent exclusion support"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          <<: *region_error_request
+          packages:
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
+              bid_price: 4.50
+              budget: 5000
+              targeting_overlay:
+                geo_regions: ["FR-2A"]
+                geo_regions_exclude: ["FR-ARA"]
+          idempotency_key: "$generate:uuid_v4#geo_region_targeting_unsupported_exclusion"
+          context:
+            correlation_id: "geo_region_targeting--create_unsupported_region_exclusion"
+        expected: |
+          Reject FR-ARA with UNSUPPORTED_FEATURE even though exhaustive French
+          inclusion support contains it. Inclusion never implies exclusion.
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Independent exclusion support is enforced"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_regions_exclude[0]"
+            description: "Error points to the unsupported exclusion"
+
+      - id: create_overlapping_region_targeting
+        title: "Submit the same subdivision for inclusion and exclusion"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          <<: *region_error_request
+          packages:
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
+              bid_price: 4.50
+              budget: 5000
+              targeting_overlay:
+                geo_regions: ["FR-49"]
+                geo_regions_exclude: ["FR-49"]
+          idempotency_key: "$generate:uuid_v4#geo_region_targeting_overlap"
+          context:
+            correlation_id: "geo_region_targeting--create_overlapping_region_targeting"
+        expected: |
+          Reject with INVALID_REQUEST. The same canonical subdivision identity
+          cannot be both included and excluded.
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Same-value region overlap is rejected"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_regions_exclude[0]"
+            description: "Error points to the conflicting exclusion"
+
+      - id: create_zero_inventory_region
+        title: "Submit a valid region with zero executable inventory"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          <<: *region_error_request
+          packages:
+            - product_id: "$context.deferred_product_id"
+              pricing_option_id: "$context.deferred_pricing_option_id"
+              bid_price: 4.50
+              budget: 5000
+              targeting_overlay:
+                geo_regions: ["FR-971"]
+          idempotency_key: "$generate:uuid_v4#geo_region_targeting_zero"
+          context:
+            correlation_id: "geo_region_targeting--create_zero_inventory_region"
+        expected: |
+          Reject valid FR-971 with PRODUCT_UNAVAILABLE because the fixture has
+          no executable inventory for this effective target.
+        validations:
+          - check: response_schema
+            description: "Error response matches create-media-buy-response.json"
+          - check: error_code
+            value: "PRODUCT_UNAVAILABLE"
+            description: "Valid supported target with zero inventory is unavailable"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.geo_regions"
+            description: "Error points to the inventory-eliminating region overlay"

@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/assets/markdown-asset.json",
+  "title": "Markdown Asset",
+  "description": "Markdown-formatted text content following CommonMark specification",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "markdown",
+      "description": "Discriminator identifying this as a markdown asset. See /schemas/creative/asset-types for the registry."
+    },
+    "content": {
+      "type": "string",
+      "description": "Markdown content following CommonMark spec with optional GitHub Flavored Markdown extensions"
+    },
+    "language": {
+      "type": "string",
+      "description": "Optional language claim for this markdown. In a materialized creative localization variant, localized-creative-asset.json requires this value to use /schemas/core/locale-tag.json and conformance requires exact equality with the enclosing variant locale. General non-localized assets retain the legacy unconstrained string for compatibility."
+    },
+    "markdown_flavor": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/markdown-flavor.json",
+      "default": "commonmark",
+      "description": "Markdown flavor used. CommonMark for strict compatibility, GFM for tables/task lists/strikethrough."
+    },
+    "allow_raw_html": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether raw HTML blocks are allowed in the markdown. False recommended for security."
+    }
+  },
+  "required": [
+    "asset_type",
+    "content"
+  ],
+  "additionalProperties": true
+}

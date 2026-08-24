@@ -1,0 +1,1808 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/mcp/2026-07-28/media-buy/media-buy-delivery-webhook-result.json",
+  "title": "Media Buy Delivery Webhook Result",
+  "description": "Payload-only delivery report result carried under core/mcp-webhook-payload.json result for task_type media_buy_delivery. This is not a top-level webhook POST body and does not include protocol envelope fields such as task_id or status.",
+  "type": "object",
+  "properties": {
+    "notification_type": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "final",
+        "delayed",
+        "adjusted",
+        "window_update"
+      ],
+      "description": "Type of delivery-report notification: scheduled = regular periodic update, final = campaign completed, delayed = data not yet available, adjusted = corrected data for the same window, window_update = a wider measurement window supersedes a prior window."
+    },
+    "partial_data": {
+      "type": "boolean",
+      "description": "Indicates if any media buys in this webhook have missing or delayed data."
+    },
+    "unavailable_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of media buys with reporting_delayed or failed status when partial_data is true."
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Sequential notification number for this reporting webhook stream."
+    },
+    "next_expected_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp for the next expected notification. Omitted on final notifications."
+    },
+    "reporting_period": {
+      "type": "object",
+      "description": "UTC date range covered by the delivery report.",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code.",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "attribution_window": {
+      "$ref": "#/$defs/external:core~1attribution-window.json",
+      "description": "Attribution methodology and lookback windows used for conversion metrics in this report."
+    },
+    "media_buy_deliveries": {
+      "type": "array",
+      "description": "Delivery rows for one or more media buys included in this notification.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "media_buy_id": {
+            "type": "string",
+            "description": "Seller's media buy identifier.",
+            "x-entity": "media_buy"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current media buy lifecycle or reporting status. This is distinct from the webhook envelope's top-level task status.",
+            "enum": [
+              "pending_creatives",
+              "pending_start",
+              "pending",
+              "active",
+              "paused",
+              "completed",
+              "rejected",
+              "canceled",
+              "failed",
+              "reporting_delayed"
+            ]
+          },
+          "expected_availability": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When delayed data is expected to be available. Present when status is reporting_delayed."
+          },
+          "is_adjusted": {
+            "type": "boolean",
+            "description": "Indicates this row contains updated data for a previously reported period."
+          },
+          "is_final": {
+            "type": "boolean",
+            "description": "Whether this row's delivery data is final for the reporting period."
+          },
+          "finalized_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this row became final. Present only when is_final is true."
+          },
+          "pricing_model": {
+            "$ref": "#/$defs/external:enums~1pricing-model.json"
+          },
+          "pacing_index": {
+            "type": "number",
+            "description": "Aggregate media-buy delivery pace relative to the media-buy pacing plan. Authoritative for seller-optimized buys.",
+            "minimum": 0
+          },
+          "totals": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/external:core~1delivery-metrics.json"
+              },
+              {
+                "type": "object",
+                "description": "Aggregate metrics for this media buy across all packages.",
+                "properties": {
+                  "effective_rate": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "spend"
+                ],
+                "additionalProperties": true
+              }
+            ]
+          },
+          "by_package": {
+            "type": "array",
+            "description": "Metrics broken down by package.",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/external:core~1delivery-metrics.json"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "package_id": {
+                      "type": "string",
+                      "x-entity": "package"
+                    },
+                    "pacing_index": {
+                      "type": "number",
+                      "description": "Subordinate package pacing diagnostic. May be absent for seller-optimized packages without package-level pacing.",
+                      "minimum": 0
+                    },
+                    "pricing_model": {
+                      "$ref": "#/$defs/external:enums~1pricing-model.json"
+                    },
+                    "rate": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "currency": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{3}$"
+                    },
+                    "delivery_status": {
+                      "$ref": "#/$defs/external:enums~1delivery-status.json",
+                      "description": "System-reported operational state of this package. Reflects actual delivery state independent of buyer pause control. 'not_delivering' means zero impressions were recorded for the entire reporting_period while the package was in-flight. Sellers SHOULD only report 'not_delivering' once the package's data is_final for the period — a provisional (is_final: false) zero may still be measurement catching up, not genuine non-delivery."
+                    },
+                    "paused": {
+                      "type": "boolean"
+                    },
+                    "is_final": {
+                      "type": "boolean"
+                    },
+                    "finalized_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "measurement_window": {
+                      "type": "string",
+                      "maxLength": 50
+                    },
+                    "supersedes_window": {
+                      "type": "string",
+                      "maxLength": 50
+                    }
+                  },
+                  "required": [
+                    "spend"
+                  ],
+                  "additionalProperties": true
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "media_buy_id",
+          "status",
+          "totals",
+          "by_package"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific delivery errors or warnings.",
+      "items": {
+        "$ref": "#/$defs/external:core~1error.json"
+      }
+    },
+    "sandbox": {
+      "type": "boolean"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "notification_type",
+    "reporting_period",
+    "currency",
+    "media_buy_deliveries"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/attribution-window.json": {
+      "title": "Attribution Window",
+      "description": "Describes the attribution methodology and lookback windows used for conversion measurement. Enables cross-platform comparison by making attribution methodology transparent. Used as a `$ref` from `optimization-goal.json` (buyer's optimization-time attribution choice), `get-media-buy-delivery-response.json` (seller-declared attribution methodology in delivery reports), and similar surfaces. All fields are optional individually but at least one of `post_click`, `post_view`, or `model` SHOULD be populated; absence of `model` means the seller's default attribution model applies (typically `last_touch` per industry convention) — sellers SHOULD populate `model` explicitly when committing to a specific methodology.",
+      "type": "object",
+      "properties": {
+        "post_click": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1duration.json"
+            }
+          ],
+          "description": "Post-click attribution window. Conversions occurring within this duration after a click are attributed to the ad."
+        },
+        "post_view": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:core~1duration.json"
+            }
+          ],
+          "description": "Post-view attribution window. Conversions occurring within this duration after an ad impression (without click) are attributed to the ad."
+        },
+        "model": {
+          "$ref": "#/$defs/external:enums~1attribution-model.json",
+          "description": "Attribution model used to assign credit when multiple touchpoints exist. SHOULD be populated when committing to a specific model; when absent, the seller's default applies."
+        }
+      },
+      "additionalProperties": true
+    },
+    "external:core/duration.json": {
+      "title": "Duration",
+      "description": "A time duration expressed as an interval and unit. Used for frequency cap windows, attribution windows, reach optimization windows, time budgets, and other time-based settings. When unit is 'campaign', interval must be 1 — the window spans the full campaign flight.",
+      "type": "object",
+      "properties": {
+        "interval": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of time units. Must be 1 when unit is 'campaign'."
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "seconds",
+            "minutes",
+            "hours",
+            "days",
+            "campaign"
+          ],
+          "description": "Time unit. 'seconds' for sub-minute precision. 'campaign' spans the full campaign flight."
+        }
+      },
+      "required": [
+        "interval",
+        "unit"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/attribution-model.json": {
+      "title": "Attribution Model",
+      "description": "Attribution model used for conversion measurement",
+      "type": "string",
+      "enum": [
+        "last_touch",
+        "first_touch",
+        "linear",
+        "time_decay",
+        "data_driven"
+      ]
+    },
+    "external:enums/pricing-model.json": {
+      "title": "Pricing Model",
+      "description": "Supported pricing models for advertising products",
+      "type": "string",
+      "enum": [
+        "cpm",
+        "vcpm",
+        "cpc",
+        "cpcv",
+        "cpv",
+        "cpp",
+        "cpa",
+        "revenue_share",
+        "flat_rate",
+        "time"
+      ],
+      "enumDescriptions": {
+        "cpm": "Cost Per Mille - cost per 1,000 impressions",
+        "vcpm": "Viewable Cost Per Mille - cost per 1,000 viewable impressions (MRC standard)",
+        "cpc": "Cost Per Click - cost per click on the ad",
+        "cpcv": "Cost Per Completed View - cost per 100% video/audio completion",
+        "cpv": "Cost Per View - cost per view at publisher-defined threshold (e.g., 50% completion)",
+        "cpp": "Cost Per Point - cost per Gross Rating Point or Target Rating Point (TV/audio)",
+        "cpa": "Cost Per Acquisition - cost per conversion event (purchase, lead, signup, etc.)",
+        "revenue_share": "Revenue Share - decimal commission rate applied to settled commissionable conversion value",
+        "flat_rate": "Flat Rate - fixed cost regardless of delivery volume (sponsorships, takeovers)",
+        "time": "Time - cost per time unit (hour, day, week, or month) that scales with campaign duration"
+      }
+    },
+    "external:core/delivery-metrics.json": {
+      "title": "Delivery Metrics",
+      "description": "Standard delivery metrics that can be reported at media buy, package, or creative level",
+      "type": "object",
+      "properties": {
+        "impressions": {
+          "type": "number",
+          "description": "Impressions delivered",
+          "minimum": 0
+        },
+        "spend": {
+          "type": "number",
+          "description": "Amount spent",
+          "minimum": 0
+        },
+        "clicks": {
+          "type": "number",
+          "description": "Total clicks",
+          "minimum": 0
+        },
+        "ctr": {
+          "type": "number",
+          "description": "Click-through rate (clicks/impressions)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "views": {
+          "type": "number",
+          "description": "Content engagements counted toward the billable view threshold. For video this is a platform-defined view event (e.g., 30 seconds or video midpoint); for audio/podcast it is a stream start; for other formats it follows the pricing model's view definition. When the package uses CPV pricing, spend = views × rate.",
+          "minimum": 0
+        },
+        "completed_views": {
+          "type": "number",
+          "description": "Video/audio completions. When the package has a completed_views optimization goal with view_duration_seconds, completions are counted at that threshold rather than 100% completion.",
+          "minimum": 0
+        },
+        "completion_rate": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Completion rate (completed_views/impressions). Null indicates the metric is not applicable to this package/buy (e.g. completion rate on a non-video buy).",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "conversions": {
+          "type": "number",
+          "description": "Total conversions attributed to this delivery. When by_event_type is present, this equals the sum of all by_event_type[].count entries.",
+          "minimum": 0
+        },
+        "conversion_value": {
+          "type": "number",
+          "description": "Total monetary value of attributed conversions (in the reporting currency)",
+          "minimum": 0
+        },
+        "commissionable_value": {
+          "type": "number",
+          "description": "Settled portion of attributed conversion value eligible for revenue-share commission, in the reporting currency. For revenue_share pricing, spend = round_currency(commissionable_value × commission_rate). This is distinct from conversion_value because taxes, shipping, discounts, returns, cancellations, or ineligible items may be excluded under the agreed commission basis.",
+          "minimum": 0
+        },
+        "roas": {
+          "type": "number",
+          "description": "Return on ad spend (conversion_value / spend)",
+          "minimum": 0
+        },
+        "cost_per_acquisition": {
+          "type": "number",
+          "description": "Cost per conversion (spend / conversions)",
+          "minimum": 0
+        },
+        "new_to_brand_rate": {
+          "type": "number",
+          "description": "Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none, 1 = all. For retail-media unit-volume tracking of first-time buyers, see `new_to_brand_units` (count, not rate).",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "leads": {
+          "type": "number",
+          "description": "Leads generated (convenience alias for by_event_type where event_type='lead')",
+          "minimum": 0
+        },
+        "incremental_sales_lift": {
+          "type": "number",
+          "description": "Incremental sales lift attributed to the campaign — sales above the control/holdout baseline. Reported as a fraction (0.15 = 15% lift) or as an absolute value depending on seller convention. The seller's `attribution_methodology` qualifier (typically `deterministic_purchase` or `modeled`) and `attribution_window` qualifier on the matching `committed_metrics` entry disambiguate the methodology and window.",
+          "minimum": 0
+        },
+        "brand_lift": {
+          "type": "number",
+          "description": "Brand lift — measured change in a brand metric (awareness, consideration, favorability, purchase intent, or ad recall) attributed to the campaign. Typically panel-based or survey-based. Reported as a fraction (0.05 = 5% lift). **Multidimensional in production** — Kantar, Upwave, Cint, DV all report each dimension separately with its own sample size and confidence interval. The dimension flows through `qualifier.lift_dimension` on `committed_metrics` / `metric_aggregates` (`awareness` | `consideration` | `favorability` | `purchase_intent` | `ad_recall`); rows under different dimensions are different surveyed outcomes and must not be combined. Use `attribution_methodology: 'panel_based'` qualifier when the underlying methodology is a panel.",
+          "minimum": 0
+        },
+        "foot_traffic": {
+          "type": "number",
+          "description": "Store visits attributed to ad exposure. Count of incremental visits over baseline. Typically uses location-data panel methodology (`attribution_methodology: 'panel_based'`) or deterministic loyalty-card match (`attribution_methodology: 'deterministic_purchase'`).",
+          "minimum": 0
+        },
+        "conversion_lift": {
+          "type": "number",
+          "description": "Incremental conversions attributed to the campaign — conversions above the control/holdout baseline. Reported as a fraction (0.10 = 10% lift) or as an absolute count depending on seller convention. Distinct from `conversions` (raw count of attributed conversions); conversion_lift requires a control group and an incrementality methodology.",
+          "minimum": 0
+        },
+        "brand_search_lift": {
+          "type": "number",
+          "description": "Lift in brand search query volume attributed to the campaign — measured via search-data partnerships (Google, Microsoft) or survey methodology. Reported as a fraction (0.20 = 20% lift in branded search).",
+          "minimum": 0
+        },
+        "plays": {
+          "type": "number",
+          "description": "Number of times the ad creative was displayed on a DOOH screen or played in a loop. Raw play count before any impression multiplier is applied. Mirrors `forecastable-metric.json`'s `plays` token for forecast↔delivery reconciliation. Distinct from `dooh_metrics.loop_plays` (per-screen rotation count) and from `impressions` (multiplied audience figure). Used for DOOH and broadcast inventory where buyers reconcile against forecast `plays`.",
+          "minimum": 0
+        },
+        "by_event_type": {
+          "type": "array",
+          "description": "Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA) are only available at the package/totals level since spend cannot be attributed to individual event types.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "event_type": {
+                "$ref": "#/$defs/external:enums~1event-type.json",
+                "description": "The event type"
+              },
+              "event_source_id": {
+                "type": "string",
+                "description": "Event source that produced these conversions (for disambiguation when multiple event sources are configured)"
+              },
+              "count": {
+                "type": "number",
+                "description": "Number of events of this type",
+                "minimum": 0
+              },
+              "value": {
+                "type": "number",
+                "description": "Total monetary value of events of this type",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "event_type",
+              "count"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "grps": {
+          "type": "number",
+          "description": "Gross Rating Points delivered (for CPP)",
+          "minimum": 0
+        },
+        "reach": {
+          "type": "number",
+          "description": "Unique reach in the units specified by reach_unit. When reach_unit is omitted, units are unspecified — do not compare reach values across packages or media buys without a common reach_unit. The measurement window for this value is declared in `reach_window`; when `reach_window` is omitted, the window is unspecified and buyers MUST NOT sum reach across reports (the value MAY be a daily snapshot, a cumulative total, or something else).",
+          "minimum": 0
+        },
+        "reach_unit": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/external:enums~1reach-unit.json"
+            }
+          ],
+          "description": "Unit of measurement for the reach field. Aligns with the reach_unit declared on optimization goals and delivery forecasts. Required when reach is present to enable cross-platform comparison."
+        },
+        "reach_window": {
+          "type": "object",
+          "description": "Measurement window for the reported `reach` and `frequency` values in this row. Declares whether the values are a per-period snapshot, a trailing rolling window, or cumulative-to-date — without this declaration, buyers summing `reach` across rows (e.g., daily delivery reports) can silently double-count audiences. Sellers SHOULD populate this whenever `reach` is present.",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "cumulative",
+                "period",
+                "rolling"
+              ],
+              "description": "Window semantics. `cumulative` — uniques since campaign start; the value is the total unique count to date and MUST NOT be summed across rows (each later row supersedes the earlier value). `period` — uniques within a single non-overlapping reporting period (e.g., a daily snapshot for a specific calendar day). Adjacent `period` rows do not share audiences by construction, but the same person MAY appear across multiple periods, so MUST NOT be summed across rows to compute campaign reach. `rolling` — uniques within a trailing window ending at the row's reporting timestamp (e.g., trailing-7-day reach). Adjacent rolling rows overlap and MUST NOT be summed; each row's value stands alone."
+            },
+            "period": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/external:core~1duration.json"
+                }
+              ],
+              "description": "Duration of the measurement window. REQUIRED when `kind` is `period` or `rolling` — declares the snapshot length (e.g., `{\"interval\": 1, \"unit\": \"days\"}` for a daily snapshot) or the trailing-window length (e.g., `{\"interval\": 7, \"unit\": \"days\"}` for trailing-7-day rolling reach). When `kind` is `cumulative`, this field is implicit (campaign-to-date) and SHOULD be omitted."
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "period",
+                      "rolling"
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "then": {
+                "required": [
+                  "period"
+                ]
+              }
+            }
+          ],
+          "additionalProperties": true
+        },
+        "frequency": {
+          "type": "number",
+          "description": "Average frequency per reach unit, measured over the window declared in `reach_window`. When `reach_unit` is 'households', this is average exposures per household; when 'accounts', per logged-in account; etc. When `reach_window` is omitted, the window is unspecified — buyers MUST NOT compare or average frequency values across rows.",
+          "minimum": 0
+        },
+        "quartile_data": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Audio/video quartile completion data. Null indicates the metric is not applicable to this package/buy (e.g. quartile data on a non-video buy).",
+          "properties": {
+            "q1_views": {
+              "type": "number",
+              "description": "25% completion views",
+              "minimum": 0
+            },
+            "q2_views": {
+              "type": "number",
+              "description": "50% completion views",
+              "minimum": 0
+            },
+            "q3_views": {
+              "type": "number",
+              "description": "75% completion views",
+              "minimum": 0
+            },
+            "q4_views": {
+              "type": "number",
+              "description": "100% completion views",
+              "minimum": 0
+            }
+          }
+        },
+        "dooh_metrics": {
+          "type": "object",
+          "description": "DOOH-specific metrics (only included for DOOH campaigns)",
+          "properties": {
+            "loop_plays": {
+              "type": "integer",
+              "description": "Number of times ad played in rotation",
+              "minimum": 0
+            },
+            "screens_used": {
+              "type": "integer",
+              "description": "Number of unique screens displaying the ad",
+              "minimum": 0
+            },
+            "screen_time_seconds": {
+              "type": "integer",
+              "description": "Total display time in seconds",
+              "minimum": 0
+            },
+            "sov_achieved": {
+              "type": "number",
+              "description": "Actual share of voice delivered (0.0 to 1.0)",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "calculation_notes": {
+              "type": "string",
+              "description": "Per-row supplementary methodology notes for DOOH impression calculation (e.g., 'rotation-based; 6-second slot weighted by 70% audience overlap'). Free-form prose for context that doesn't fit the structured measurement-vendor surface. Canonical methodology declarations belong on the measurement vendor's `get_adcp_capabilities.measurement.metrics[]` block where they're discoverable once and inherited across delivery rows; this field is for row-specific context (a particular daypart's calculation, a venue-mix exception) rather than the seller's general methodology."
+            },
+            "venue_breakdown": {
+              "type": "array",
+              "description": "Per-venue performance breakdown",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "venue_id": {
+                    "type": "string",
+                    "description": "Venue identifier"
+                  },
+                  "venue_name": {
+                    "type": "string",
+                    "description": "Human-readable venue name"
+                  },
+                  "venue_type": {
+                    "type": "string",
+                    "description": "Venue type (e.g., 'airport', 'transit', 'retail', 'billboard')"
+                  },
+                  "impressions": {
+                    "type": "integer",
+                    "description": "Impressions delivered at this venue",
+                    "minimum": 0
+                  },
+                  "loop_plays": {
+                    "type": "integer",
+                    "description": "Loop plays at this venue",
+                    "minimum": 0
+                  },
+                  "screens_used": {
+                    "type": "integer",
+                    "description": "Number of screens used at this venue",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "venue_id",
+                  "impressions"
+                ],
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "viewability": {
+          "type": "object",
+          "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — since duration is governed by the same viewability threshold (`standard`) and shares the same `measurable_impressions` denominator. Sellers SHOULD include `standard` whenever measured viewability values are reported because MRC and GroupM rows are not interchangeable.",
+          "properties": {
+            "vendor": {
+              "$ref": "#/$defs/external:core~1brand-ref.json",
+              "description": "Vendor that produced these viewability values. Optional but RECOMMENDED so the row is self-describing — buyer agents reading delivery in isolation can attribute the numbers without joining back to `package.committed_metrics` or `package.performance_standards`. The vendor's `brand.json` `agents[type='measurement']` is the discovery anchor; the metric definitions live on the agent's `get_adcp_capabilities.measurement.metrics[]` block. Same shape as `vendor_metric_value.vendor` for symmetry across vendor-attested surfaces."
+            },
+            "measurable_impressions": {
+              "type": "number",
+              "description": "Impressions where viewability could be measured. Excludes environments without measurement capability (e.g., non-Intersection Observer browsers, certain app environments). Coverage denominator for `viewable_rate` AND `viewed_seconds` — both metrics are computed over the same measurable population.",
+              "minimum": 0
+            },
+            "viewable_impressions": {
+              "type": "number",
+              "description": "Impressions that met the viewability threshold defined by the measurement standard.",
+              "minimum": 0
+            },
+            "viewable_rate": {
+              "type": "number",
+              "description": "Viewable impression rate (viewable_impressions / measurable_impressions). Range 0.0 to 1.0.",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "viewed_seconds": {
+              "type": "number",
+              "description": "Average in-view duration per measurable impression, in seconds. Reporting-side counterpart to the `viewed_seconds` optimization metric in `optimization-goal.json`. Computed over `measurable_impressions`, not total impressions — the same denominator as `viewable_rate`. The viewability `standard` governs the threshold (e.g., MRC's 50% pixels for 1s display / 2s video) that defines when an impression is in view and therefore when the clock is running. Sellers reporting against a `viewed_seconds` optimization goal MUST populate this field.",
+              "minimum": 0
+            },
+            "standard": {
+              "$ref": "#/$defs/external:enums~1viewability-standard.json",
+              "description": "Viewability measurement standard applied to these metrics. Governs the in-view threshold for both `viewable_rate` and `viewed_seconds`."
+            }
+          },
+          "additionalProperties": true
+        },
+        "engagements": {
+          "type": "number",
+          "description": "Total engagements — direct interactions with the ad beyond viewing. Includes social reactions/comments/shares, story/unit opens, interactive overlay taps on CTV, companion banner interactions on audio. Platform-specific; corresponds to the 'engagements' optimization metric. Maps to DBCFM KPI_INTERACTIONS (Interaktionen) in the Reporting/Performance block.",
+          "minimum": 0
+        },
+        "follows": {
+          "type": "number",
+          "description": "New followers, page likes, artist/podcast/channel follows, or free channel/feed subscribes attributed to this delivery. Paid subscriptions are conversion events with `event_type: subscribe`, not `follows`.",
+          "minimum": 0
+        },
+        "saves": {
+          "type": "number",
+          "description": "Saves, bookmarks, playlist adds, pins attributed to this delivery.",
+          "minimum": 0
+        },
+        "profile_visits": {
+          "type": "number",
+          "description": "Visits to the brand's in-platform page (profile, artist page, channel, or storefront) attributed to this delivery. Does not include external website clicks.",
+          "minimum": 0
+        },
+        "engagement_rate": {
+          "type": "number",
+          "description": "Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impressions, but definition varies by platform.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cost_per_click": {
+          "type": "number",
+          "description": "Cost per click (spend / clicks)",
+          "minimum": 0
+        },
+        "cost_per_completed_view": {
+          "type": "number",
+          "description": "Cost per completed view (spend / completed_views). Primary CPCV pricing scalar for video/audio inventory; the package's `pricing_model` is `cpcv` when this field is the billing basis.",
+          "minimum": 0
+        },
+        "cpm": {
+          "type": "number",
+          "description": "Cost per thousand impressions, computed as (spend / impressions) × 1000. Universal pricing scalar across CTV, display, mobile/web video, native, audio, and DOOH inventory; the package's `pricing_model` is `cpm` when this field is the billing basis. Field name aligns with the canonical `cpm` token in `enums/pricing-model.json` and `pricing-options/cpm-option.json` so buyers cross-walk pricing model → reported scalar without a translation table.",
+          "minimum": 0
+        },
+        "downloads": {
+          "type": "number",
+          "description": "Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x methodology). Distinct from `views` — for podcast inventory this is the count of podcast episode downloads; for streaming audio it is the count of stream starts that meet the platform's download threshold. Prefer this over `views` for audio inventory.",
+          "minimum": 0
+        },
+        "units_sold": {
+          "type": "number",
+          "description": "Items sold attributed to this delivery. Retail-media scalar distinct from `conversions` — a single conversion (transaction) may carry multiple `units_sold`. Used by retail media platforms where the buyer optimizes against unit movement, not transaction count. Attribution lookback windows are platform-specific (commonly 7/14/30 days, view-through and click-through variants); sellers SHOULD declare the window via `reporting_capabilities.measurement_windows` or `measurement_terms` rather than encoding it in this scalar.",
+          "minimum": 0
+        },
+        "new_to_brand_units": {
+          "type": "number",
+          "description": "Units sold to first-time brand buyers (count, not rate). Retail-media scalar — the unit-volume parallel to the conversion-fraction `new_to_brand_rate`. Used by retail media platforms where new-customer acquisition unit volume is a primary KPI. Same attribution-window note as `units_sold` applies.",
+          "minimum": 0
+        },
+        "by_action_source": {
+          "type": "array",
+          "description": "Conversion metrics broken down by action source (website, app, in_store, etc.). Useful for omnichannel sellers where conversions occur across digital and physical channels.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action_source": {
+                "$ref": "#/$defs/external:enums~1action-source.json",
+                "description": "Where the conversion occurred"
+              },
+              "event_source_id": {
+                "type": "string",
+                "description": "Event source that produced these conversions (for disambiguation when multiple event sources are configured)"
+              },
+              "count": {
+                "type": "number",
+                "description": "Number of conversions from this action source",
+                "minimum": 0
+              },
+              "value": {
+                "type": "number",
+                "description": "Total monetary value of conversions from this action source",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "action_source",
+              "count"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "vendor_metric_values": {
+          "type": "array",
+          "description": "Reported values for vendor-defined metrics that the product's `reporting_capabilities.vendor_metrics` declared. Each entry carries the vendor (BrandRef), the metric identifier within the vendor's vocabulary, the value, optional unit, and `measurable_impressions` as the coverage denominator — vendor measurement is rarely 100% of delivered impressions, since vendors only score impressions where their SDK fires or their panel matches. When a declared vendor metric is omitted from this array, buyers infer no measurement happened (no integration). One row per `(vendor.domain, vendor.brand_id, metric_id)` per reporting period — sellers MUST de-duplicate before emission and MUST NOT emit the same vendor metric twice; buyers MAY treat duplicate rows as a seller-side conformance bug. The structured `vendor_metric_values` array is the recommended path for vendor metrics; `additionalProperties: true` on this parent object is preserved so existing free-form vendor emissions remain conformant during migration.",
+          "items": {
+            "$ref": "#/$defs/external:core~1vendor-metric-value.json"
+          }
+        }
+      },
+      "additionalProperties": true,
+      "dependentRequired": {
+        "reach": [
+          "reach_unit"
+        ]
+      }
+    },
+    "external:enums/event-type.json": {
+      "title": "Event Type",
+      "description": "Standard marketing event types for event logging, aligned with IAB ECAPI",
+      "type": "string",
+      "enum": [
+        "page_view",
+        "view_content",
+        "select_content",
+        "select_item",
+        "search",
+        "share",
+        "add_to_cart",
+        "remove_from_cart",
+        "viewed_cart",
+        "add_to_wishlist",
+        "initiate_checkout",
+        "add_payment_info",
+        "purchase",
+        "refund",
+        "lead",
+        "qualify_lead",
+        "close_convert_lead",
+        "disqualify_lead",
+        "complete_registration",
+        "subscribe",
+        "follow",
+        "content_view",
+        "watch_milestone",
+        "start_trial",
+        "app_install",
+        "app_launch",
+        "contact",
+        "schedule",
+        "donate",
+        "submit_application",
+        "custom"
+      ],
+      "enumDescriptions": {
+        "page_view": "User viewed a page",
+        "view_content": "User viewed specific content (product, article, etc.)",
+        "select_content": "User selected or clicked on content (article, video, etc.)",
+        "select_item": "User selected a specific product or item from a list",
+        "search": "User performed a search",
+        "share": "User shared content via social or messaging",
+        "add_to_cart": "User added an item to cart",
+        "remove_from_cart": "User removed an item from cart",
+        "viewed_cart": "User viewed their shopping cart",
+        "add_to_wishlist": "User added an item to a wishlist",
+        "initiate_checkout": "User started checkout process",
+        "add_payment_info": "User added payment information",
+        "purchase": "User completed a purchase",
+        "refund": "A purchase was fully or partially refunded (adjusts ROAS)",
+        "lead": "User expressed interest (form submission, signup, etc.)",
+        "qualify_lead": "Lead qualified by sales or scoring criteria",
+        "close_convert_lead": "Lead converted to a customer or closed deal",
+        "disqualify_lead": "Lead disqualified or marked as not viable",
+        "complete_registration": "User completed account registration",
+        "subscribe": "User started a paid subscription or paid membership",
+        "follow": "User made a free, durable opt-in to an account, channel, feed, list, podcast, or similar owned property",
+        "content_view": "User meaningfully consumed a content unit, such as a watch, listen, stream, episode play, or read",
+        "watch_milestone": "User reached a content progress threshold, such as 25%, 50%, 75%, 100%, or a seconds-viewed milestone",
+        "start_trial": "User started a free trial",
+        "app_install": "User installed an application",
+        "app_launch": "User launched an application",
+        "contact": "User initiated contact (call, message, etc.)",
+        "schedule": "User scheduled an appointment or event",
+        "donate": "User made a donation",
+        "submit_application": "User submitted an application (loan, job, etc.)",
+        "custom": "Custom event type (specify in custom_event_name)"
+      }
+    },
+    "external:enums/reach-unit.json": {
+      "title": "Reach Unit",
+      "description": "Unit of measurement for reach and audience size metrics. Different channels and measurement providers count reach in fundamentally different units, making cross-channel comparison impossible without declaring the unit.",
+      "type": "string",
+      "enum": [
+        "individuals",
+        "households",
+        "devices",
+        "accounts",
+        "cookies",
+        "custom"
+      ],
+      "enumDescriptions": {
+        "individuals": "Unique people. Panel-based or identity-resolved measurement.",
+        "households": "Unique households or TV homes.",
+        "devices": "Unique device identifiers (IDFA, GAID, CTV device ID).",
+        "accounts": "Unique logged-in accounts (platform-specific identity).",
+        "cookies": "Unique browser cookies.",
+        "custom": "Publisher-defined reach unit. Describe in ext."
+      }
+    },
+    "external:core/brand-ref.json": {
+      "title": "Brand Reference",
+      "description": "Reference to a brand by domain and optional brand_id. The domain hosts /.well-known/brand.json or is registered in the brand registry. For single-brand domains, brand_id can be omitted. For house-of-brands domains, brand_id identifies the specific brand. For creative production, brand.json is the canonical source of master brand identity (logo, palette, fonts, voice, and visual guidelines), subject only to the supported per-call fields in brand_kit_override. Catalogs supply product or item payload; catalog item asset groups, including property- or franchise-level logos, are item identity and do not override these master brand fields.",
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json",
+          "description": "Brand identifier within the house portfolio. Optional for single-brand domains."
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit for a global/default identity. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account identity and is not delivery targeting."
+        },
+        "industries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Inline override for the brand's industries. Useful when the caller cannot modify the brand's canonical brand.json but needs to declare industries for governance (e.g., Annex III vertical detection). brand.json remains the canonical source; when omitted here, governance agents SHOULD resolve from brand.json."
+        },
+        "data_subject_contestation": {
+          "type": "object",
+          "description": "Inline override for the brand's contestation contact point. Useful when the operator does not control brand.json but needs to discharge Art 22(3) for this plan. brand.json is canonical; when omitted, governance agents resolve brand → house → missing.",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "email"
+              ]
+            }
+          ],
+          "additionalProperties": false
+        },
+        "brand_kit_override": {
+          "type": "object",
+          "description": "Inline override for brand-kit fields normally resolved from `/.well-known/brand.json` on `domain` (logo, colors, voice, tagline). Use when brand.json is missing, stale, or inappropriate for this specific call — e.g., a campaign-scoped tagline, a co-branded creative, a freshly-rebranded color palette the brand.json hasn't shipped yet. Same inline-override pattern as `industries` and `data_subject_contestation` above: brand.json is canonical, the override is per-call. Adopters needing to override fields outside this subset (`voice_attributes`, `prohibited_terms`, etc.) MUST publish a different brand.json and reference it via a different `domain` — the inline override is intentionally narrow to a small high-traffic subset.\n\n**Merge semantics (normative).** The merge is **field-level**, not whole-object replacement. Each field within `brand_kit_override` (`logo`, `colors`, `voice`, `tagline`) is evaluated independently — when a field is present on the override the override value applies; when a field is absent the brand.json value applies (or is absent if brand.json doesn't carry one either). For composite fields (`colors.primary`, `colors.secondary`, `colors.accent`), the merge is one level deeper: each color slot is evaluated independently — a producer can override `colors.primary` while still inheriting `colors.secondary` from brand.json. SDKs MUST NOT treat a present `brand_kit_override.colors` as wiping the brand.json `colors` block entirely; only the per-slot fields present in the override take precedence. Without this rule, a partial-override semantics would diverge across SDKs and produce inconsistent rendering for the same payload.",
+          "properties": {
+            "logo": {
+              "$ref": "#/$defs/external:core~1assets~1image-asset.json",
+              "description": "Override logo asset."
+            },
+            "colors": {
+              "type": "object",
+              "description": "Override brand colors (hex strings).",
+              "properties": {
+                "primary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "secondary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "accent": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                }
+              },
+              "additionalProperties": true
+            },
+            "voice": {
+              "type": "string",
+              "description": "Override brand-voice description for surface-composed text/audio output."
+            },
+            "tagline": {
+              "type": "string",
+              "description": "Override tagline."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "domain": "nova-brands.com",
+          "brand_id": "spark"
+        },
+        {
+          "domain": "nova-brands.com",
+          "brand_id": "glow"
+        },
+        {
+          "domain": "acme-corp.com"
+        },
+        {
+          "domain": "nova-athletics.example",
+          "countries": [
+            "NL"
+          ]
+        }
+      ]
+    },
+    "external:core/brand-id.json": {
+      "title": "Brand ID",
+      "description": "Identifier for a brand within a house portfolio. Must be lowercase alphanumeric with underscores only. The house chooses this identifier.",
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand",
+      "examples": [
+        "tide",
+        "cheerios",
+        "air_jordan",
+        "nike",
+        "pampers"
+      ]
+    },
+    "external:core/assets/image-asset.json": {
+      "title": "Image Asset",
+      "description": "Image asset with URL and dimensions",
+      "type": "object",
+      "properties": {
+        "asset_type": {
+          "type": "string",
+          "const": "image",
+          "description": "Discriminator identifying this as an image asset. See /schemas/creative/asset-types for the registry."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the image asset"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Width in pixels"
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Height in pixels"
+        },
+        "file_size_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Image file size in bytes. Required by agents that advertise a max_file_size_kb constraint."
+        },
+        "pixel_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Intrinsic pixels per logical render pixel (for example `2` for a 600×500 image intended to render at 300×250). Optional because a validator can infer the ratio when the target format declares logical dimensions. When supplied, it MUST agree with both `width / logical_width` and `height / logical_height`; it is never a substitute for the intrinsic `width` and `height` fields."
+        },
+        "format": {
+          "type": "string",
+          "description": "Image file format (jpg, png, gif, webp, etc.)"
+        },
+        "alt_text": {
+          "type": "string",
+          "description": "Alternative text for accessibility",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "#/$defs/external:core~1provenance.json",
+          "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+        }
+      },
+      "required": [
+        "asset_type",
+        "url",
+        "width",
+        "height"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/provenance.json": {
+      "title": "Provenance",
+      "description": "Declares how content was produced, whether AI was involved, and what disclosure obligations apply. Attaches to creative manifests, individual assets, or content-standards artifacts. When present at multiple levels, the most specific provenance object replaces the inherited one entirely (no field-level merging). Provenance is a claim by the declaring party — receiving parties should verify claims independently via their own detection tools.",
+      "type": "object",
+      "properties": {
+        "digital_source_type": {
+          "$ref": "#/$defs/external:enums~1digital-source-type.json",
+          "description": "IPTC-aligned classification of AI involvement in producing this content"
+        },
+        "synthetic_depiction": {
+          "type": "boolean",
+          "description": "Assessed declaration of whether the content synthetically depicts a real or fictional person performing or appearing in a way that was generated or materially manipulated rather than captured as depicted. `true` covers both a fully synthetic performer and material manipulation of a real performer; `false` is an assessed declaration that the content does not contain such a depiction. Absence means the content has not been assessed for synthetic depiction. This field does not claim consent, legality, or independent verification, and receivers MUST NOT derive it solely from `digital_source_type`."
+        },
+        "ai_tool": {
+          "type": "object",
+          "description": "AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI metadata fields and C2PA claim_generator.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name of the AI tool or model (e.g., 'DALL-E 3', 'Stable Diffusion XL', 'Gemini')"
+            },
+            "version": {
+              "type": "string",
+              "description": "Version identifier for the AI tool or model (e.g., '25.1', '0125', '2.1'). For generative models, use the model version rather than the API version."
+            },
+            "provider": {
+              "type": "string",
+              "description": "Organization that provides the AI tool (e.g., 'OpenAI', 'Stability AI', 'Google')"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "human_oversight": {
+          "type": "string",
+          "description": "Level of human involvement in the AI-assisted creation process. Independent of `disclosure.required` — the protocol does not derive disclosure obligations from oversight level. Some regulations include carve-outs for human-edited or human-directed AI output, but those carve-outs have factual prerequisites the schema cannot evaluate. Asserting `edited` or `directed` does not by itself justify `disclosure.required: false`.",
+          "enum": [
+            "none",
+            "prompt_only",
+            "selected",
+            "edited",
+            "directed"
+          ],
+          "enumDescriptions": {
+            "none": "Fully automated with no human involvement in generation",
+            "prompt_only": "Human provided the prompt or instructions but did not review outputs",
+            "selected": "Human selected from multiple AI-generated candidates",
+            "edited": "Human edited or refined AI-generated output",
+            "directed": "Human directed the creative process with AI as an assistive tool"
+          }
+        },
+        "declared_by": {
+          "type": "object",
+          "description": "Party declaring this provenance. Identifies who attached the provenance claim, enabling receiving parties to assess trust.",
+          "properties": {
+            "agent_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL of the agent or service that declared this provenance"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "creator",
+                "advertiser",
+                "agency",
+                "platform",
+                "tool"
+              ],
+              "description": "Role of the declaring party in the supply chain",
+              "enumDescriptions": {
+                "creator": "The party that created or generated the content",
+                "advertiser": "The brand or advertiser that owns the content",
+                "agency": "Agency acting on behalf of the advertiser",
+                "platform": "Ad platform or publisher that processed the content",
+                "tool": "Automated tool or service that attached provenance metadata"
+              }
+            }
+          },
+          "required": [
+            "role"
+          ]
+        },
+        "declared_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this provenance claim was made (ISO 8601). Distinct from created_time, which records when the content itself was produced. A provenance claim may be attached well after content creation, for example when retroactively declaring AI involvement for regulatory compliance."
+        },
+        "created_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this content was created or generated (ISO 8601)"
+        },
+        "c2pa": {
+          "type": "object",
+          "description": "C2PA sidecar manifest reference. Links to a detached cryptographic provenance manifest for this content. Note: file-level C2PA bindings break when ad servers transcode, resize, or re-encode assets. For pipelines with intermediaries, consider embedded_provenance as the primary provenance mechanism.",
+          "properties": {
+            "manifest_url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL to the C2PA manifest store for this content"
+            }
+          },
+          "required": [
+            "manifest_url"
+          ]
+        },
+        "embedded_provenance": {
+          "type": "array",
+          "description": "Provenance metadata embedded within the content stream. Each entry declares one embedding layer: structured provenance data carried inside the content itself, as distinct from sidecar references (c2pa.manifest_url). Embedded provenance survives operations that break sidecar and file-level bindings: ad-server transcoding, CMS ingestion, copy-paste, reformatting, and CDN re-encoding. For ad-tech pipelines where content passes through multiple intermediaries, embedded provenance is the reliable path for provenance that persists from declaration through delivery. This is a declaration by the embedding party. The receiving party (the seller) is the verifier-of-record: it confirms the claim by calling a governance agent it trusts (typically one published in `creative_policy.accepted_verifiers`).",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "$ref": "#/$defs/external:enums~1embedded-provenance-method.json",
+                "description": "How provenance data is carried within the content"
+              },
+              "standard": {
+                "type": "string",
+                "description": "Standard the embedding conforms to, if any (e.g., 'c2pa' for C2PA Section A.7 text manifest embedding)"
+              },
+              "provider": {
+                "type": "string",
+                "description": "Organization that performed the embedding (e.g., 'Encypher', 'Digimarc'). Display label and audit context — not a wire identifier."
+              },
+              "verify_agent": {
+                "type": "object",
+                "description": "Buyer's representation that this embedding can be verified by a governance agent on the seller's `creative_policy.accepted_verifiers` list. The `agent_url` MUST match (canonicalized) one of the seller's published `accepted_verifiers[].agent_url` entries; sellers reject `sync_creatives` submissions whose `verify_agent.agent_url` is off-list with `PROVENANCE_VERIFIER_NOT_ACCEPTED`. This is buyer-supplied evidence, not buyer-driven routing — the seller is the verifier-of-record and the seller controls which agent it actually calls (the seller MAY use a different on-list agent if it determines this is more appropriate; the seller does not call buyer-asserted endpoints outside its allowlist). MAY be omitted for self-verifiable embeddings (e.g., a C2PA text manifest with a public key the seller already trusts).",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "URL of the governance agent the buyer represents was used to embed/verify this layer. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
+                  },
+                  "feature_id": {
+                    "type": "string",
+                    "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `encypher.markers_present_v2`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the provenance data was embedded (ISO 8601)"
+              }
+            },
+            "required": [
+              "method",
+              "provider"
+            ]
+          }
+        },
+        "watermarks": {
+          "type": "array",
+          "description": "Content watermarks applied to this asset. Each entry declares one watermarking layer: a content modification that encodes an identifier or fingerprint within the asset. Watermarks differ from embedded provenance: a watermark encodes an identifier (who generated it, who owns it), while embedded provenance carries or references a structured provenance record (the full chain of custody). A single asset may carry both. Aligns with C2PA action taxonomy: c2pa.watermarked.bound (watermark linked to a C2PA manifest) and c2pa.watermarked.unbound (watermark independent of any manifest). This is a declaration by the watermarking party. The receiving party (the seller) is the verifier-of-record: it confirms the claim by calling a governance agent it trusts (typically one published in `creative_policy.accepted_verifiers`).",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "media_type": {
+                "$ref": "#/$defs/external:enums~1watermark-media-type.json",
+                "description": "Media category of the watermarked content"
+              },
+              "provider": {
+                "type": "string",
+                "description": "Organization that applied the watermark (e.g., 'Imatag', 'Steg.AI', 'Encypher'). Display label and audit context — not a wire identifier."
+              },
+              "verify_agent": {
+                "type": "object",
+                "description": "Buyer's representation that this watermark can be detected by a governance agent on the seller's `creative_policy.accepted_verifiers` list. The `agent_url` MUST match (canonicalized) one of the seller's published `accepted_verifiers[].agent_url` entries; sellers reject `sync_creatives` submissions whose `verify_agent.agent_url` is off-list with `PROVENANCE_VERIFIER_NOT_ACCEPTED`. This is buyer-supplied evidence, not buyer-driven routing — the seller is the verifier-of-record and the seller controls which agent it actually calls (the seller MAY use a different on-list agent if it determines this is more appropriate; the seller does not call buyer-asserted endpoints outside its allowlist).",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "description": "URL of the governance agent the buyer represents was used to apply/detect this watermark. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
+                  },
+                  "feature_id": {
+                    "type": "string",
+                    "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `imatag.watermark_detected`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "c2pa_action": {
+                "$ref": "#/$defs/external:enums~1c2pa-watermark-action.json",
+                "description": "C2PA action classification for this watermark"
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the watermark was applied (ISO 8601)"
+              }
+            },
+            "required": [
+              "media_type",
+              "provider"
+            ]
+          }
+        },
+        "disclosure": {
+          "type": "object",
+          "description": "Regulatory disclosure requirements for this content. Indicates whether AI disclosure is required and under which jurisdictions.",
+          "properties": {
+            "required": {
+              "type": "boolean",
+              "description": "The declaring party's claim that AI disclosure is required for this content under applicable regulations. This is a declared signal carried through the supply chain — useful as a routing and audit input — not a regulatory determination made by the protocol. Receiving parties remain responsible for their own jurisdictional analysis and should not treat `required: false` as compliance cover."
+            },
+            "jurisdictions": {
+              "type": "array",
+              "description": "Jurisdictions where disclosure obligations apply",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "country": {
+                    "type": "string",
+                    "description": "ISO 3166-1 alpha-2 country code (e.g., 'US', 'DE', 'CN')"
+                  },
+                  "region": {
+                    "type": "string",
+                    "description": "Sub-national region code (e.g., 'CA' for California, 'BY' for Bavaria)"
+                  },
+                  "regulation": {
+                    "type": "string",
+                    "description": "Regulation identifier (e.g., 'eu_ai_act_article_50', 'ca_sb_942', 'cn_deep_synthesis')"
+                  },
+                  "label_text": {
+                    "type": "string",
+                    "description": "Required disclosure label text for this jurisdiction, in the local language"
+                  },
+                  "render_guidance": {
+                    "type": "object",
+                    "description": "How the disclosure should be rendered for this jurisdiction. Expresses the declaring party's intent for persistence and position based on regulatory requirements. Publishers control actual rendering but governance agents can audit whether guidance was followed.",
+                    "minProperties": 1,
+                    "properties": {
+                      "persistence": {
+                        "$ref": "#/$defs/external:enums~1disclosure-persistence.json",
+                        "description": "How long the disclosure must persist during content playback or display"
+                      },
+                      "min_duration_ms": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Minimum display duration in milliseconds for initial persistence. Recommended when persistence is initial — without it, the duration is at the publisher's discretion. At serve time the publisher reads this from provenance since the brief is not available."
+                      },
+                      "positions": {
+                        "type": "array",
+                        "description": "Preferred disclosure positions in priority order. The first position a format supports should be used.",
+                        "items": {
+                          "$ref": "#/$defs/external:enums~1disclosure-position.json"
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      },
+                      "ext": {
+                        "$ref": "#/$defs/external:core~1ext.json"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "country",
+                  "regulation"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "required"
+          ]
+        },
+        "verification": {
+          "type": "array",
+          "description": "Third-party verification or detection results for this content. Multiple services may independently evaluate the same content. Provenance is a claim — verification results attached by the declaring party are supplementary. The enforcing party (e.g., seller/publisher) should run its own verification via get_creative_features or calibrate_content.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "verified_by": {
+                "type": "string",
+                "description": "Name of the verification service (e.g., 'DoubleVerify', 'Hive Moderation', 'Reality Defender')"
+              },
+              "verified_time": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the verification was performed (ISO 8601)"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "authentic",
+                  "ai_generated",
+                  "ai_modified",
+                  "inconclusive"
+                ],
+                "description": "Verification outcome"
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Confidence score of the verification result (0.0 to 1.0)"
+              },
+              "details_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to the full verification report"
+              }
+            },
+            "required": [
+              "verified_by",
+              "result"
+            ]
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      }
+    },
+    "external:enums/digital-source-type.json": {
+      "title": "Digital Source Type",
+      "description": "Classification of AI involvement in content creation, aligned with IPTC digitalsourcetype vocabulary. Used in provenance metadata to declare how a creative asset, artifact, or individual asset was produced.",
+      "type": "string",
+      "enum": [
+        "digital_capture",
+        "digital_creation",
+        "trained_algorithmic_media",
+        "composite_with_trained_algorithmic_media",
+        "algorithmic_media",
+        "composite_capture",
+        "composite_synthetic",
+        "human_edits",
+        "data_driven_media"
+      ],
+      "enumDescriptions": {
+        "digital_capture": "Captured by a digital device (camera, scanner, screen recording) with no AI involvement",
+        "digital_creation": "Created by a human using digital tools (Photoshop, Illustrator, After Effects) without AI generation",
+        "trained_algorithmic_media": "Generated entirely by a trained AI model (DALL-E, Midjourney, Stable Diffusion, Sora)",
+        "composite_with_trained_algorithmic_media": "Human-created content combined with AI-generated elements (e.g., photo with AI background)",
+        "algorithmic_media": "Produced by deterministic algorithms without machine learning (procedural generation, rule-based systems)",
+        "composite_capture": "Multiple digital captures composited together without AI",
+        "composite_synthetic": "Composite of multiple elements where at least one is AI-generated (e.g., stock photo composited with AI-generated background)",
+        "human_edits": "Content augmented, corrected, or enhanced by humans using non-generative tools",
+        "data_driven_media": "Assembled from structured data feeds (DCO templates, product catalogs, weather-triggered variants)"
+      }
+    },
+    "external:enums/embedded-provenance-method.json": {
+      "title": "Embedded Provenance Method",
+      "description": "How provenance data is carried within the content stream. Distinguishes between format-level manifest embedding (where the manifest travels inside the file container) and provenance markers (where invisible markers in the content itself encode or reference a provenance record). Both survive operations that strip sidecar metadata, but provenance markers additionally survive content-level transformations such as copy-paste, reformatting, and CMS re-encoding.",
+      "type": "string",
+      "enum": [
+        "manifest_wrapper",
+        "provenance_markers"
+      ],
+      "enumDescriptions": {
+        "manifest_wrapper": "A provenance manifest embedded in the file container per format-specific rules (e.g., JUMBF box in JPEG, C2PATextManifestWrapper in plaintext per C2PA Section A.7). The manifest travels with the file but is tied to the file's byte structure.",
+        "provenance_markers": "Invisible markers embedded within the content stream that encode or reference a provenance record. Designed to survive reformatting, copy-paste, CMS ingestion, and ad-server transcoding that breaks file-level bindings."
+      }
+    },
+    "external:enums/watermark-media-type.json": {
+      "title": "Watermark Media Type",
+      "description": "Media category of a content watermark. Identifies what kind of content the watermark is applied to, which determines the detection and verification methods required.",
+      "type": "string",
+      "enum": [
+        "audio",
+        "image",
+        "video",
+        "text"
+      ],
+      "enumDescriptions": {
+        "audio": "Watermark applied to audio content (e.g., spread-spectrum, echo hiding)",
+        "image": "Watermark applied to image content (e.g., spatial domain, frequency domain)",
+        "video": "Watermark applied to video content (e.g., per-frame image watermarking, temporal watermarking)",
+        "text": "Watermark applied to text content (e.g., synonym substitution, structural modification)"
+      }
+    },
+    "external:enums/c2pa-watermark-action.json": {
+      "title": "C2PA Watermark Action",
+      "description": "C2PA action classification for a content watermark. Distinguishes watermarks that are cryptographically linked to a C2PA manifest (bound) from watermarks that exist independently (unbound). Aligns with the c2pa.watermarked.* action family in the C2PA action taxonomy.",
+      "type": "string",
+      "enum": [
+        "c2pa.watermarked.bound",
+        "c2pa.watermarked.unbound"
+      ],
+      "enumDescriptions": {
+        "c2pa.watermarked.bound": "Watermark linked to a C2PA manifest for this asset. The watermark and manifest are mutually reinforcing: the manifest references the watermark, and the watermark can be used to locate the manifest.",
+        "c2pa.watermarked.unbound": "Watermark independent of any C2PA manifest. Applied before any provenance signing event (e.g., by the AI generator at creation time) or in pipelines where no manifest is present."
+      }
+    },
+    "external:enums/disclosure-persistence.json": {
+      "title": "Disclosure Persistence",
+      "description": "How long a disclosure must persist during content playback or display. Different jurisdictions and regulations require different persistence behaviors for AI-generated content labels. When multiple sources specify persistence for the same jurisdiction (e.g., brief and provenance), the most restrictive mode applies: continuous > initial > flexible.",
+      "type": "string",
+      "enum": [
+        "continuous",
+        "initial",
+        "flexible"
+      ],
+      "enumDescriptions": {
+        "continuous": "Disclosure must remain visible or audible throughout the entire content display duration. For video and audio, this means the full playback duration. For static formats (display, DOOH), this means the full display slot. For DOOH specifically, 'content duration' means the ad's display slot within the rotation, not the screen's full rotation cycle.",
+        "initial": "Disclosure must appear at the start of content for a minimum duration before it may be removed. Pair with min_duration_ms in render_guidance or creative brief to specify the required duration.",
+        "flexible": "Disclosure presence is sufficient; placement timing and duration are at the publisher's discretion"
+      }
+    },
+    "external:enums/disclosure-position.json": {
+      "title": "Disclosure Position",
+      "description": "Where a required disclosure should appear within a creative. Used by creative briefs to specify disclosure placement and by formats to declare which positions they can render.",
+      "type": "string",
+      "enum": [
+        "prominent",
+        "footer",
+        "audio",
+        "subtitle",
+        "overlay",
+        "end_card",
+        "pre_roll",
+        "companion"
+      ]
+    },
+    "external:core/ext.json": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:enums/viewability-standard.json": {
+      "title": "Viewability Standard",
+      "description": "Viewability measurement standard applied to determine whether an impression qualifies as viewable. These are materially different thresholds and should not be compared across standards.",
+      "type": "string",
+      "enum": [
+        "mrc",
+        "groupm"
+      ],
+      "enumDescriptions": {
+        "mrc": "MRC/IAB standard: 50% of pixels in view for 1 continuous second (display) or 2 continuous seconds (video).",
+        "groupm": "GroupM standard: 100% of pixels in view for 1 continuous second (display) or 50% of video duration."
+      }
+    },
+    "external:enums/action-source.json": {
+      "title": "Action Source",
+      "description": "Where the conversion event originated",
+      "type": "string",
+      "enum": [
+        "website",
+        "app",
+        "offline",
+        "phone_call",
+        "chat",
+        "email",
+        "in_store",
+        "system_generated",
+        "other"
+      ],
+      "enumDescriptions": {
+        "website": "Event occurred on a website",
+        "app": "Event occurred in a mobile or desktop app",
+        "offline": "Event occurred offline (imported data)",
+        "phone_call": "Event originated from a phone call",
+        "chat": "Event originated from a chat conversation",
+        "email": "Event originated from an email interaction",
+        "in_store": "Event occurred at a physical retail location",
+        "system_generated": "Event generated by an automated system",
+        "other": "Other source (specify in ext)"
+      }
+    },
+    "external:core/vendor-metric-value.json": {
+      "title": "Vendor Metric Value",
+      "description": "A reported value for a vendor-defined metric, emitted in `delivery-metrics.json` `vendor_metric_values` parallel to standard scalars. Identifies the vendor (BrandRef), the metric name within that vendor's vocabulary, the value, and the coverage denominator (`measurable_impressions`) — vendor measurement is rarely 100% coverage. The `breakdown` slot accommodates vendors that emit structured payloads beyond a single scalar (panel demographic breakouts, co-view ratios, incremental decompositions). To add fields beyond what this schema defines, vendors place them inside `breakdown` rather than alongside the standard envelope.",
+      "type": "object",
+      "properties": {
+        "vendor": {
+          "$ref": "#/$defs/external:core~1brand-ref.json",
+          "description": "Vendor that produced this value. Matches a `vendor_metrics[].vendor` declaration on the product."
+        },
+        "metric_id": {
+          "$ref": "#/$defs/external:core~1vendor-metric-id.json",
+          "description": "Identifier for the metric within the vendor's vocabulary. Matches a `vendor_metrics[].metric_id` declaration on the product."
+        },
+        "value": {
+          "type": "number",
+          "description": "The reported value. Unit semantics are vendor-defined — see `unit` field below and the vendor's `brand.json` measurement-agent documentation."
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit of the value. Free-form to accommodate the heterogeneity of vendor metrics (e.g., `score`, `seconds`, `persons`, `gCO2e`, `USD`, `lift_percent`). When the value is monetary, use the ISO 4217 code (e.g., `USD`, `EUR`); for non-monetary, use whatever the vendor publishes. Optional on every row — the canonical unit lives at the vendor's measurement-agent metric definition (`brand.json` `agents[type='measurement']`). When sellers populate it inline they SHOULD match the vendor's published unit; buyers MAY resolve from the vendor's measurement agent when this field is absent.",
+          "examples": [
+            "score",
+            "seconds",
+            "persons",
+            "gCO2e",
+            "USD",
+            "lift_percent",
+            "index"
+          ]
+        },
+        "measurable_impressions": {
+          "type": "number",
+          "description": "Number of impressions in this reporting period that the vendor was able to measure. Coverage denominator — buyers compute coverage rate as `measurable_impressions / impressions`. When absent, coverage is unspecified — buyers MUST NOT compute a coverage rate or assume full coverage. When the vendor measured zero impressions but is integrated, set to 0 explicitly. When the entry is omitted from `vendor_metric_values` entirely, the buyer infers no measurement happened (no integration). This pattern parallels `viewability.measurable_impressions` (`delivery-metrics.json#/properties/viewability`), which has handled vendor coverage in the IAS/DV/MRC ecosystem for over a decade — same convention: absence is unknown, not full.",
+          "minimum": 0
+        },
+        "breakdown": {
+          "type": "object",
+          "description": "Optional structured payload for vendor metrics that don't fit a single scalar — panel demographic breakouts, co-view audience composition, incremental reach + frequency + lift decompositions. Free-form; the keys and value semantics are defined by the vendor (see the vendor's `brand.json` measurement-agent docs). Buyers MUST treat this object as opaque without consulting the vendor's documentation. Vendors place any fields beyond the standard envelope (e.g., confidence intervals, panel sizes) inside this object rather than at the top level.",
+          "x-adcp-open-payload": true,
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "vendor",
+        "metric_id",
+        "value"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "vendor": {
+            "domain": "attentionvendor.example"
+          },
+          "metric_id": "attention_units",
+          "value": 4.2,
+          "unit": "score",
+          "measurable_impressions": 8000
+        },
+        {
+          "vendor": {
+            "domain": "emissionsvendor.example"
+          },
+          "metric_id": "gco2e_per_impression",
+          "value": 0.85,
+          "unit": "gCO2e"
+        },
+        {
+          "vendor": {
+            "domain": "panelmeasurement.example"
+          },
+          "metric_id": "demographic_reach",
+          "value": 1500000,
+          "unit": "persons",
+          "measurable_impressions": 9200000,
+          "breakdown": {
+            "age_18_34_male": 320000,
+            "age_18_34_female": 295000,
+            "age_35_54_male": 405000,
+            "age_35_54_female": 480000
+          }
+        }
+      ]
+    },
+    "external:core/vendor-metric-id.json": {
+      "title": "Vendor Metric ID",
+      "description": "Identifier for a vendor-defined metric within the vendor's vocabulary. Stable lookup key; the vendor publishes the canonical list (with category, methodology, and standard alignment) in `brand.json` `agents[type='measurement']`. Lowercase with underscores so a future enum promotion into `available-metric.json` is a literal string lift. Identifier is namespaced by the vendor — the same `metric_id` may mean different things in different vendors' vocabularies.",
+      "type": "string",
+      "x-entity": "vendor_metric",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "examples": [
+        "attention_units",
+        "gco2e_per_impression",
+        "demographic_reach",
+        "co_view_index",
+        "incremental_lift_percent"
+      ]
+    },
+    "external:enums/delivery-status.json": {
+      "title": "Delivery Status",
+      "description": "Operational delivery state of a media buy package. Consumers MUST tolerate unrecognized values.",
+      "type": "string",
+      "enum": [
+        "delivering",
+        "not_delivering",
+        "completed",
+        "budget_exhausted",
+        "flight_ended",
+        "goal_met"
+      ],
+      "enumDescriptions": {
+        "delivering": "Package is actively delivering impressions within its scheduled flight",
+        "not_delivering": "Package is within its scheduled flight but is not delivering impressions for the observation window defined by the response surface",
+        "completed": "Package has finished its scheduled flight",
+        "budget_exhausted": "Package has spent its full allocated budget",
+        "flight_ended": "Package's scheduled flight window has ended",
+        "goal_met": "Package has reached its delivery goal"
+      }
+    },
+    "external:core/error.json": {
+      "title": "Error",
+      "description": "Standard error structure for task-specific errors and warnings",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Error code for programmatic handling. The error-code vocabulary is open: `error.code` is wire-typed `string` (not a closed enum), the standard codes published in `enums/error-code.json` are documentary, and senders MAY emit codes outside that set (platform-specific codes, or codes introduced in a later AdCP version). Receivers MUST decode unknown codes — treat the response as well-formed, read `error.recovery` for the recovery classification, and fall back to `transient` when `recovery` is absent. See `error-handling.mdx#forward-compatible-decoding-normative` for the full forward-compat contract — this rule is what lets future maintenance lines ship new codes additively."
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error message"
+        },
+        "field": {
+          "type": "string",
+          "description": "Field path associated with the error in JSONPath-lite format (e.g., 'packages[0].targeting'). When `issues[]` is also present, sellers MUST set this to `issues[0].pointer` translated from RFC 6901 to JSONPath-lite (e.g., '/packages/0/targeting' → 'packages[0].targeting') so pre-3.1 consumers reading `field` only get deterministic behavior. Will be deprecated in a future major version in favor of `issues[].pointer`."
+        },
+        "suggestion": {
+          "type": "string",
+          "description": "Suggested fix for the error"
+        },
+        "retry_after": {
+          "type": "number",
+          "description": "Seconds to wait before retrying the operation. AdCP 3.2 producers MUST emit an integer from 1 through 3600. The 3.x schema continues to accept finite fractional values for backward compatibility with earlier producers; consumers receiving one MUST round up to the next whole second before clamping so the retry is never scheduled earlier than intended. Non-finite values are treated as absent.",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "issues": {
+          "type": "array",
+          "description": "Structured list of validation failures. Primary use is `VALIDATION_ERROR`, where multi-field rejections are common and `field` (singular) cannot carry the full pointer map. MAY appear on other error codes that reject multiple fields at once. When `issues` is present, sellers MUST also populate `field` from `issues[0]` for backward compatibility with pre-3.1 consumers that read `field` only — translating the RFC 6901 `pointer` format to the JSONPath-lite format `field` uses (e.g., `/packages/0/targeting` → `packages[0].targeting`). MUST (not SHOULD) so consumers reading `field` get deterministic behavior across sellers — the cost is one line of dual-write per seller; the cost of SHOULD is a long tail of seller-A-vs-seller-B inconsistency. Future major versions will deprecate `field` in favor of `issues[].pointer`.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string",
+                "description": "RFC 6901 JSON Pointer to the offending field in the request payload (e.g., '/packages/0/targeting/geo_countries/2'). Format chosen to match Ajv's native validation output (`instancePath`); standardized and unambiguous on keys containing `/` or `~`. NOTE: this differs from the legacy top-level `field` which uses JSONPath-lite (`packages[0].targeting.geo_countries[2]`). When sellers populate `field` from `issues[0].pointer` for backward compatibility (see `field` description), they MUST translate the format — `/packages/0/x` → `packages[0].x`. Future major versions will deprecate `field` in favor of `issues[].pointer`."
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable description of why this specific field was rejected."
+              },
+              "keyword": {
+                "type": "string",
+                "description": "Schema keyword that rejected the payload, drawn from the JSON Schema vocabulary (e.g., 'required', 'type', 'format', 'enum', 'pattern', 'minimum', 'maxLength'). Matches the keyword names emitted by JSON Schema validators (Ajv, jsonschema, etc.) so agents can pattern-match on rejection class without parsing message text. Implementers SHOULD use the validator's native keyword name; do not invent custom values here."
+              },
+              "schemaPath": {
+                "type": "string",
+                "description": "Optional. JSON Schema tree path of the rejecting keyword (e.g. '#/properties/packages/items/oneOf/1'). 3.1+ consumers SHOULD prefer `schema_id`; `schemaPath` is retained for 3.0.x compatibility (renamed to `schema_path` in a future major). See error-handling.mdx for the validator-internals production-emit rules."
+              },
+              "schema_id": {
+                "type": "string",
+                "description": "Optional. `$id` of the rejecting (sub-)schema (e.g. `/schemas/3.1.0/core/activation-key.json`). MUST resolve to a `$id` published in the spec at the version the seller advertises via `get_adcp_capabilities` — either a deep sub-schema (the typical case) or the response-root `$id` (the bundled-tree fallback for tools served from bundles built before #3868). Sellers MUST NOT emit when the rejection occurred against a private extension, server-only sub-schema, or pre-release element — the public-spec replay rationale only holds when the rejecting element is reachable from the public bundle. Sellers populating `schemaPath` SHOULD also populate `schema_id` when they have it so 3.1+ readers don't get strictly less than 3.0.x readers. See error-handling.mdx for resolution guidance and the bundled-tree caveat."
+              },
+              "discriminator": {
+                "type": "array",
+                "description": "Optional. Const-discriminator property/value pair(s) identifying the variant the validator selected from values present in the payload. Sellers MUST populate only when (a) the rejecting schema is a const-discriminated `oneOf` / `anyOf` and (b) the discriminator property is present in the payload — emission on partial-match inference would fingerprint the seller's validator implementation. MUST omit when zero variants survive. Compound discriminators (e.g. `(type, value_type)`) produce multiple entries ordered by declaration in the rejecting schema's `properties` block. Same private-extensions / version-skew carve-out as `schema_id`. See error-handling.mdx.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "property_name": {
+                      "type": "string",
+                      "description": "Discriminator property name (e.g., `type`, `value_type`). Aligns with OpenAPI 3.x `discriminator.propertyName`."
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ],
+                      "description": "Value the caller sent at `property_name`. Typically a string for const-discriminated unions; numeric/boolean/null permitted. Object and array values are forbidden — const discriminators are scalars, and emitting a structured value would conflate 'caller sent a complex shape' with 'validator inferred from a structural match'."
+                    }
+                  },
+                  "required": [
+                    "property_name",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "pointer",
+              "message",
+              "keyword"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "details": {
+          "type": "object",
+          "description": "Additional task-specific error details. Sellers MAY mirror `issues[]` here as `details.issues` for backward compatibility with pre-3.1 consumers reading from `details`; new consumers SHOULD prefer the top-level `issues` field.\n\n**Canonical rejection-set shape (3.1+).** When the error reports a rejected value against a closed set of accepted values (e.g., enum mismatch, unsupported pricing option, invalid signal id), sellers SHOULD use the canonical key `accepted_values: <array>` under `details` rather than seller-specific variants observed in the wild (`available`, `allowed`, `accepted_values` at the error root, etc.). The canonical shape:\n\n```json\n{\n  \"code\": \"INVALID_PRICING_OPTION\",\n  \"message\": \"Pricing option not found: po_prism_abandoner_cpm\",\n  \"field\": \"pricing_option_id\",\n  \"details\": {\n    \"rejected_value\": \"po_prism_abandoner_cpm\",\n    \"accepted_values\": [\"po_prism_cart_cpm\", \"po_prism_view_cpm\"]\n  }\n}\n```\n\n- `rejected_value` (optional): the offending value the buyer supplied, echoed for buyer-side diagnostic clarity (especially when the offending field is nested or transformed before validation).\n- `accepted_values` (optional): the closed set the seller would have accepted at this field on this call. Sellers MUST NOT enumerate the full ecosystem-wide accepted set if it differs from what's accepted for *this caller in this context* (account, brand, scope) — leaking ecosystem-wide accepted sets to a per-caller rejection turns the error into an enumeration oracle.\n\nThis is **SHOULD-level guidance**, not MUST: `details` remains `additionalProperties: true` and pre-3.1 sellers using `available` / `allowed` / `accepted_values` at the error root remain conformant. The canonical shape lets buyer-side diagnostic tooling (SDK runner hints, dashboards, error classifiers) reliably surface the accepted-set without per-seller pattern matching. SDKs SHOULD accept any of the legacy variants and normalize on read; the canonical shape is what new sellers and 3.1+ adopters should emit going forward.",
+          "additionalProperties": true
+        },
+        "recovery": {
+          "type": "string",
+          "enum": [
+            "transient",
+            "correctable",
+            "terminal"
+          ],
+          "description": "Agent recovery classification. transient: retry after delay (rate limit, service unavailable, timeout). correctable: fix the request and resend (invalid field, budget too low, creative rejected). terminal: requires human action (account suspended, payment required, account not found). Senders SHOULD populate `recovery` on every error from 3.1 onward — it is the normative carrier of recovery semantics across version skew. A receiver that does not recognize `error.code` (a newer code, or a platform-specific code) MUST still be able to classify the error from `recovery`. The `enumMetadata.recovery` block in `enums/error-code.json` is the documentary mirror for known codes; `error.recovery` on the wire is authoritative."
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "producer",
+            "sdk"
+          ],
+          "description": "Who emitted this error entry. `producer` (default when absent): emitted by the response's authoring agent (the seller for `get_products`, the creative agent for `build_creative`, etc.). `sdk`: augmented by a consuming SDK that detected a non-fatal advisory condition on consumption (e.g., `FORMAT_PROJECTION_FAILED` when the buyer SDK couldn't project a v1 format to a canonical, or `FORMAT_DECLARATION_DIVERGENT` when the SDK detected a producer bug on read). SDK-augmented entries SHOULD also set `sdk_id` so downstream consumers can identify which intermediate processor inserted the entry.\n\n**Multi-hop propagation (normative).** AdCP is a federated agent network — responses commonly traverse multiple SDKs (e.g., sales agent → interchange → DSP → buyer). When an SDK augments `errors[]` with a consumption-detected entry, the augmented response carries the entry forward to subsequent hops. Each hop that detects the same condition independently SHOULD deduplicate by `(code, field)` rather than re-emit; the existing entry's `sdk_id` identifies which earlier processor saw it first. Producer entries (those without `source: \"sdk\"`) are authoritative for what the response's authoring agent self-detected; SDK entries are observations made on top.\n\n**Replay/audit safety.** Persisted or replayed responses carry `source` and `sdk_id` so the audit trail can distinguish seller-emitted entries from SDK-augmented ones. Without `source`, a downstream consumer can't tell whether a code came from the seller or an intermediate SDK, which corrupts attribution."
+        },
+        "sdk_id": {
+          "type": "string",
+          "description": "Optional identifier for the SDK that augmented this error entry. Format: `<sdk_package_name>@<version>` (e.g., `@adcontextprotocol/adcp@7.3.0`, `adcontextprotocol-adcp-python@1.2.0`). MUST be set when `source: \"sdk\"`; MUST be absent when `source: \"producer\"` or absent. Lets downstream consumers identify which intermediate processor inserted the entry, useful for debugging cross-SDK divergence (e.g., one SDK detects a projection failure that another SDK's registry version doesn't)."
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/context.json": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

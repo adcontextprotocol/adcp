@@ -58,7 +58,7 @@ The Media Buy Protocol provides these common standardized tasks:
 
 Products carry `format_options[]`: a list of `ProductFormatDeclaration` entries describing the creative shapes the product accepts. Each declaration carries:
 
-- `format_kind` — one of the 12 canonicals: `image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `sponsored_placement`, `native_in_feed`, `responsive_creative`, or `agent_placement`; use `custom` only with `format_shape` and `format_schema`
+- `format_kind` — one of the 14 canonicals: `image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `sponsored_placement`, `native_in_feed`, `responsive_creative`, `agent_placement`, `seller_rendered_stateful_display`, or `coordinated_placements`; use `custom` only with `format_shape` and `format_schema`
 - `params` — per-canonical parameters narrowing the format (dimensions, durations, codecs, char limits, CTA enums)
 - Optional `format_option_id` — disambiguates product options and identifies publisher-catalog declarations when paired with `publisher_domain`
 - Optional `v1_format_ref: [{agent_url, id}]` — array linking this v2 declaration to one or more v1 named formats (for dual emission during the v1↔v2 migration). Multi-size declarations should carry one ref per size

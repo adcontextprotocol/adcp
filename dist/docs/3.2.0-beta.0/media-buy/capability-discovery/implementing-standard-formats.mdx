@@ -1,0 +1,115 @@
+---
+title: Implementing Standard Format Support
+description: "How AdCP 3.2 sales agents declare standard creative acceptance with canonical product format options."
+"og:title": "AdCP — Implementing Standard Format Support"
+---
+
+This guide is for sales agents declaring the creative contracts their inventory accepts. In AdCP 3.2, author canonical `Product.format_options[]`. `list_creative_formats`, recursive creative-agent catalogs, and compound named format IDs are deprecated compatibility surfaces.
+
+## Choose the authority first
+
+| Question | Authoritative surface |
+|---|---|
+| What does a publisher surface accept? | Publisher `adagents.json.formats[]` |
+| What can this seller deliver for a product? | That product's closed `format_options[]` set |
+| Which creative agent can produce or validate it? | `get_adcp_capabilities.creative.supported_formats[]` |
+
+The seller declares deliverability; it does not nominate a creative producer. Buyers can use the AgenticAdvertising.org registry to find creative agents whose self-declared canonical envelope satisfies the product declaration.
+
+Zero registry matches is a valid result: it means no protocol-exposed build, validation, or preview service currently advertises that contract. The buyer may still supply an already-conforming finished manifest or use a seller-returned preview, but MUST NOT infer a renderer from the publisher or product format declaration.
+
+## Standard formats
+
+For standard display, video, audio, and native shapes, use the canonical `format_kind` and narrow it with explicit parameters and slots. Do not create a new identifier merely because your product has a different price or placement name.
+
+```json
+{
+  "product_id": "daily_pulse_homepage_display",
+  "name": "Daily Pulse homepage display",
+  "format_options": [
+    {
+      "format_option_id": "homepage_image_300x250",
+      "format_kind": "image",
+      "params": {
+        "width": 300,
+        "height": 250,
+        "slots": [
+          { "asset_group_id": "image_main", "asset_type": "image", "required": true },
+          { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true }
+        ]
+      }
+    }
+  ]
+}
+```
+
+`format_options[]` is a closed set. A package or creative selector outside it must be rejected. Price, floor, availability, and deal eligibility stay on the product or pricing option, not in format parameters.
+
+## Publisher-owned formats
+
+When a product sells a publisher-catalog format, repeat its namespace and canonical declaration inline:
+
+```json
+{
+  "format_options": [
+    {
+      "publisher_domain": "shorts.streamhaus.example",
+      "format_option_id": "vertical_video",
+      "format_kind": "video_hosted",
+      "params": {
+        "width": 1080,
+        "height": 1920,
+        "duration_ms_range": [5000, 60000],
+        "slots": [
+          { "asset_group_id": "video_main", "asset_type": "video", "required": true }
+        ]
+      }
+    }
+  ]
+}
+```
+
+Resolve the publisher's `/.well-known/adagents.json` first. If the publisher has not adopted AdCP, use an explicitly identified AgenticAdvertising.org community mirror. Do not promote one sales agent's product declaration into a publisher fact.
+
+## Custom formats
+
+Use `format_kind: "custom"` only when the structural creative contract cannot be expressed by a canonical kind. Supply both `format_shape` and an immutable, digest-pinned `format_schema`.
+
+```json
+{
+  "format_option_id": "homepage_takeover",
+  "format_kind": "custom",
+  "format_shape": "multi_placement_takeover",
+  "format_schema": {
+    "uri": "https://formats.daily-pulse.example/homepage-takeover.schema.json",
+    "digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  },
+  "canonical_formats_only": true,
+  "params": {}
+}
+```
+
+## Multi-placement coverage
+
+Product-level options are the upper bound. Placement-level options may narrow that set but cannot broaden it. For every included delivery placement, the selected package format set must have a non-empty compatible intersection. Reject or refine a package that cannot cover all included placements; never silently drop inventory.
+
+## Finding a creative producer
+
+Sales agents do not publish a recursive list of creative agents. A buyer can reverse-query the registry and then verify the selected agent directly:
+
+```http
+GET /api/registry/agents?publisher_domain=shorts.streamhaus.example&format_option_id=vertical_video&creative_operation=build
+```
+
+The creative agent's `supported_formats[]` entry supplies its local `capability_id`. That string is passed to `build_creative.target_capability_id`; it is never copied onto the product or returned manifest.
+
+## 3.x compatibility
+
+A 3.2 seller may project canonical declarations into deprecated `format_ids[]` for an older peer. When both fields are emitted, they must describe the same underlying contracts and canonical fields win. Do not independently author or extend the legacy catalog.
+
+## Related documentation
+
+- [Canonical formats](/dist/docs/3.2.0-beta.0/creative/canonical-formats)
+- [Media products](/dist/docs/3.2.0-beta.0/media-buy/product-discovery/media-products)
+- [Creative-agent capabilities](/dist/docs/3.2.0-beta.0/protocol/get_adcp_capabilities)
+- [Deprecated `list_creative_formats`](/dist/docs/3.2.0-beta.0/creative/task-reference/list_creative_formats)

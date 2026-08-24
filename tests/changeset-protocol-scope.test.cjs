@@ -72,6 +72,7 @@ assert.strictEqual(isProtocolScopedPath('static/openapi/registry.yaml'), false);
 assert.strictEqual(isProtocolScopedPath('static/schemas/source/core/registry-feed-response.json'), true);
 assert.strictEqual(isProtocolScopedPath('docs/reference/versioning.mdx'), true);
 assert.strictEqual(isProtocolScopedPath('docs/registry/index.mdx'), false);
+assert.strictEqual(isProtocolScopedPath('scripts/run-storyboards-isolated.mjs'), true);
 assert.strictEqual(isProtocolScopedPath('server/src/billing/subscription-sync.ts'), false);
 assert.strictEqual(isProtocolScopedPath('.changeset/billing-fix.md'), false);
 assert.strictEqual(

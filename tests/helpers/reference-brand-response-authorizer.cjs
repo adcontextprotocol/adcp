@@ -37,6 +37,10 @@ function canonicalizeFixtureUrl(raw) {
     if (!url.hostname) return null;
     url.protocol = url.protocol.toLowerCase();
     url.hostname = url.hostname.toLowerCase();
+    if (!url.hostname.startsWith('[') && url.hostname.includes('..')) return null;
+    if (!url.hostname.startsWith('[') && url.hostname.endsWith('.')) {
+      url.hostname = url.hostname.slice(0, -1);
+    }
     url.username = '';
     url.password = '';
     url.hash = '';

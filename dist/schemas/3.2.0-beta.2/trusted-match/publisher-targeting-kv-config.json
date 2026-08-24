@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/trusted-match/publisher-targeting-kv-config.json",
+  "title": "Publisher Targeting KV Mapping",
+  "description": "Publisher-owned deployment configuration that maps each context provider's local targeting keys to the publisher's ad-server targeting destinations on one surface. The mapping never travels on either Trusted Match protocol hop. Providers emit `{key, value}` pairs in their own vocabulary, the router preserves those pairs under the registered `provider_id` in `signals_by_provider`, and the publisher resolves each `(provider_id, key)` through this configuration before setting ad-server targeting. Unmapped tuples are dropped and provider-local keys are never treated as publisher-owned destinations by default.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "targeting_kv_mapping": {
+      "type": "object",
+      "description": "Map from the publisher-assigned `provider_id` to that provider's key-to-destination mapping for this surface. Outer keys use the `provider_id` charset from provider-registration.json. Inner keys are exact provider-local targeting keys from `signals_by_provider[provider_id].targeting_kvs`; no separator, prefix, or case normalization is applied. Values are publisher-local ad-server targeting destinations. At serve time, the publisher applies a mapping only when both the provider and key are own properties of their respective maps. Missing providers and missing keys are dropped independently, without falling back to the provider-local key. Multiple tuples may intentionally map to one destination; each mapped tuple contributes its value and MUST NOT overwrite another value. Publishers SHOULD warn at startup when this map names a provider that is not registered.",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_]+$",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "additionalProperties": {
+        "type": "object",
+        "description": "Map from an exact provider-local targeting key to the publisher-local destination used on this surface.",
+        "additionalProperties": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "minProperties": 1
+      }
+    }
+  },
+  "required": [
+    "targeting_kv_mapping"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "targeting_kv_mapping": {
+        "outdoor_media": {
+          "segment": "adcp_seg",
+          "package": "adcp_pkg"
+        },
+        "commerce_media": {
+          "segment": "commerce_seg"
+        }
+      }
+    }
+  ]
+}

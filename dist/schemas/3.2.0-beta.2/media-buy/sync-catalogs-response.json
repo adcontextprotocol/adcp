@@ -1,0 +1,413 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/sync-catalogs-response.json",
+  "title": "Sync Catalogs Response",
+  "description": "Response from catalog sync or item availability operation. Exactly one of three shapes: (1) synchronous success — per-catalog results, availability update acknowledgements, and/or current-state query results; (2) terminal failure — errors array with no resources processed; (3) submitted task envelope — status 'submitted' with task_id when a catalog-only operation is queued. The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. These three shapes are mutually exclusive — a response has exactly one.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/protocol-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "title": "SyncCatalogsSuccess",
+      "description": "Success response - sync operation processed catalogs (may include per-catalog failures)",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "completed",
+          "description": "Availability and synchronous catalog results are terminal and complete."
+        },
+        "dry_run": {
+          "type": "boolean",
+          "description": "Whether this was a dry run (no actual changes made)"
+        },
+        "catalogs": {
+          "type": "array",
+          "description": "Results for each catalog processed. Items with action='failed' indicate per-catalog validation/processing failures, not operation-level failures.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "catalog_id": {
+                "type": "string",
+                "description": "Catalog ID from the request",
+                "x-entity": "catalog"
+              },
+              "catalog_generation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Opaque token for this catalog incarnation. Sellers declaring catalog_item_availability_updates MUST return it for every accessible buyer-managed catalog result, including discovery. It remains stable across ordinary upserts and feed refreshes, changes after deletion and recreation, and is never reused for the same resolved account and catalog_id.",
+                "x-entity": "catalog_generation"
+              },
+              "action": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/catalog-action.json",
+                "description": "Action taken for this catalog"
+              },
+              "platform_id": {
+                "type": "string",
+                "description": "Platform-specific ID assigned to the catalog"
+              },
+              "item_count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Total number of items in the catalog after sync. Required when action is 'created', 'updated', or 'unchanged'. Omitted on 'failed' and 'deleted'."
+              },
+              "items_approved": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of items approved by the platform. Populated when the platform performs item-level review."
+              },
+              "items_pending": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of items pending platform review. Common for product catalogs where items must pass content policy checks."
+              },
+              "items_rejected": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Number of items rejected by the platform. Check item_issues for rejection reasons."
+              },
+              "item_issues": {
+                "type": "array",
+                "description": "Per-item issues reported by the platform (rejections, warnings). Only present when the platform performs item-level review.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "item_id": {
+                      "type": "string",
+                      "description": "ID of the catalog item with an issue"
+                    },
+                    "status": {
+                      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/catalog-item-status.json",
+                      "description": "Item review status"
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "description": "Reasons for rejection or warning",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "item_id",
+                    "status"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "last_synced_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp of when the most recent sync was accepted by the platform"
+              },
+              "next_fetch_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp of when the platform will next fetch the feed URL. Only present for URL-based catalogs with update_frequency."
+              },
+              "changes": {
+                "type": "array",
+                "description": "Field names that were modified (only present when action='updated')",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "errors": {
+                "type": "array",
+                "description": "Validation or processing errors (only present when action='failed')",
+                "items": {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/error.json"
+                }
+              },
+              "warnings": {
+                "type": "array",
+                "description": "Non-fatal warnings about this catalog",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "catalog_id",
+              "action"
+            ],
+            "additionalProperties": true,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "action": {
+                      "enum": [
+                        "created",
+                        "updated",
+                        "unchanged"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "action"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "item_count"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "item_availability_updates": {
+          "type": "array",
+          "description": "Acknowledgements for item_availability_updates. The array length MUST equal the request array length; entry N MUST have request_index N, occupy position N, and exactly echo catalog_id, catalog_generation, item_id, and action from request entry N. Buyers MUST reject the response as non-conformant if count, ordering, request_index, or echoed identity differs. Lenient-mode failures stay in their request positions. In strict mode, any per-entry failure instead produces the operation-level error branch before mutation and this array is absent.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog-item-availability-update-result.json"
+          },
+          "minItems": 1,
+          "maxItems": 1000
+        },
+        "item_availability_states": {
+          "type": "array",
+          "description": "Current-state results for item_availability_queries, evaluated after updates in a mixed request. The array length MUST equal the request query length; entry N MUST have request_index N, occupy position N, and exactly echo catalog_id, catalog_generation, and item_id. Buyers MUST reject any mismatch. A replayed response is historical; use a fresh query idempotency_key before treating it as current after time-dependent expiry or catalog deletion/recreation.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog-item-availability-state.json"
+          },
+          "minItems": 1,
+          "maxItems": 1000
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+        }
+      },
+      "required": [
+        "catalogs"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "title": "SyncCatalogsError",
+      "description": "Error response - operation failed completely, no catalogs were processed",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Operation-level errors that prevented processing any catalogs (e.g., authentication failure, service unavailable, invalid request format)",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/error.json"
+              },
+              {
+                "if": {
+                  "properties": {
+                    "code": {
+                      "const": "REFERENCE_NOT_FOUND"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ]
+                },
+                "then": {
+                  "description": "Availability lookups use the closed error variant; the field-qualified branch preserves the established catalog_ids filter error.",
+                  "anyOf": [
+                    {
+                      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog-item-reference-not-found-error.json"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "field": {
+                          "const": "catalog_ids"
+                        }
+                      },
+                      "required": [
+                        "field"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "errors": {
+                "contains": {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog-item-reference-not-found-error.json"
+                }
+              }
+            },
+            "required": [
+              "errors"
+            ]
+          },
+          "then": {
+            "propertyNames": {
+              "enum": [
+                "status",
+                "errors",
+                "adcp_error",
+                "message",
+                "context",
+                "context_id",
+                "timestamp",
+                "replayed",
+                "adcp_version",
+                "adcp_major_version"
+              ]
+            },
+            "properties": {
+              "errors": {
+                "maxItems": 1,
+                "items": {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog-item-reference-not-found-error.json"
+                }
+              },
+              "adcp_error": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog-item-reference-not-found-error.json"
+              },
+              "message": {
+                "type": "string",
+                "const": "Catalog item not found"
+              }
+            }
+          }
+        }
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "catalogs"
+            ]
+          },
+          {
+            "required": [
+              "item_availability_updates"
+            ]
+          },
+          {
+            "required": [
+              "item_availability_states"
+            ]
+          },
+          {
+            "required": [
+              "dry_run"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          },
+          {
+            "properties": {
+              "status": {
+                "const": "submitted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "SyncCatalogsSubmitted",
+      "description": "Async task envelope returned when a catalog-only sync cannot be confirmed before the response — for example, when catalog ingestion and deduplication are queued for batch processing. A request containing item_availability_updates or item_availability_queries MUST NOT return this branch because availability operations are synchronous; mixed requests whose catalog work cannot finish synchronously and atomically fail before mutation and are retried as separate calls. For catalog-only requests, the buyer invokes get_task_status with task_id or receives a webhook when the task completes; the per-catalog results land in the terminal result, not this envelope.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted",
+          "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, whose catalogs array is issued in-line. See task-status.json for the full task-status enum."
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Task handle the buyer uses with get_task_status (or the legacy AdCP tasks/get alias), and that the seller references on push-notification callbacks. This AdCP application-layer handle remains the snake_case task_id in every transport payload and is distinct from any transport-native A2A Task id.",
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Catalog ingestion queued; typical turnaround 5–15 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+        },
+        "errors": {
+          "type": "array",
+          "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/error.json"
+          }
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/context.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "catalogs"
+            ]
+          },
+          {
+            "required": [
+              "item_availability_updates"
+            ]
+          },
+          {
+            "required": [
+              "item_availability_states"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "properties": {}
+}

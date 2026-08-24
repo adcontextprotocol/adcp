@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/error-details/accessibility-violation.json",
+  "title": "Accessibility Violation Details",
+  "description": "Experimental recommended error.details shape for accessibility-related CREATIVE_REJECTED errors. Batches bounded diagnostic failures without minting a new top-level error code. Each pointer is rooted at the complete task request payload, matching core error pointer conventions. When the rejected manifest was resolved from a creative_id and no asset path exists in the request, pointer is /creative_id (or the corresponding batch-item creative_id path); that pointer is attribution only, not a nested repair path. Producers populate error.field from the first violation's request-rooted pointer in JSONPath-lite form for backward-compatible clients. Producers include at most four complete violations, set truncated when more exist, and MUST measure the complete error after JSON serialization to keep it at or below 4096 bytes; field caps reduce ordinary payload size but do not replace that serialized-size check. Producers omit additional violations or remediation text rather than truncating a JSON Pointer token.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "violations": {
+      "type": "array",
+      "description": "Accessibility requirements the creative or its assets failed. This is distinct from error.issues, which carries JSON Schema validator failures.",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "properties": {
+          "pointer": {
+            "type": "string",
+            "maxLength": 256,
+            "pattern": "^(?:/(?:[^~/\\u0000-\\u001F\\u007F]|~0|~1)*)*$",
+            "description": "RFC 6901 JSON Pointer rooted at the complete task request payload, not at the nested creative manifest. For example, inline build_creative uses /creative_manifest/assets/hero_image and a sync_creatives batch uses /creatives/0/assets/hero_image. If build_creative resolves a stored manifest from creative_id, use /creative_id because the failing asset is not present in the request."
+          },
+          "criterion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32,
+            "pattern": "^[^\\u0000-\\u001F\\u007F]+$",
+            "description": "Stable criterion identifier within criterion_source, for example 1.4.3. Open string so external standards can evolve without an AdCP enum update."
+          },
+          "criterion_source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z][A-Za-z0-9._:-]{0,63}$",
+            "description": "Standard or policy namespace defining the criterion, for example WCAG21, WCAG22, or EN301549."
+          },
+          "required_level": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[^\\u0000-\\u001F\\u007F]+$",
+            "description": "Conformance level or policy threshold that applied, for example AA. Kept open because not every accessibility standard uses WCAG's A/AA/AAA vocabulary."
+          },
+          "failure_kind": {
+            "description": "Diagnostic failure category. Canonical values cover common portable cases. Vendor-local extensions use an x_ prefix. Portable recovery dispatches on criterion_source plus criterion after validating this details schema; failure_kind may refine diagnostics but does not select the recovery class.",
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "alt_text_missing",
+                  "contrast_ratio_insufficient",
+                  "captions_missing",
+                  "transcript_missing",
+                  "keyboard_navigation_failure",
+                  "focus_order_invalid",
+                  "aria_label_missing",
+                  "other"
+                ]
+              },
+              {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^x_[a-z0-9]+(?:_[a-z0-9]+)*$"
+              }
+            ]
+          },
+          "remediation": {
+            "type": "string",
+            "maxLength": 256,
+            "pattern": "^[^\\u0000-\\u001F\\u007F]*$",
+            "description": "Optional human-readable correction guidance. Plain text only; consumers treat it as untrusted agent input."
+          }
+        },
+        "required": [
+          "pointer",
+          "criterion",
+          "criterion_source",
+          "required_level",
+          "failure_kind"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "truncated": {
+      "type": "boolean",
+      "description": "True when the producer omitted additional violations or remediation text to keep the complete serialized error within the 4096-byte transport safety limit. Omission means false."
+    }
+  },
+  "required": [
+    "violations"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "violations": [
+        {
+          "pointer": "/creative_manifest/assets/hero_image",
+          "criterion": "1.4.3",
+          "criterion_source": "WCAG21",
+          "required_level": "AA",
+          "failure_kind": "contrast_ratio_insufficient",
+          "remediation": "For normal-sized text, increase contrast to at least 4.5:1; evaluate WCAG exceptions separately."
+        }
+      ]
+    }
+  ]
+}

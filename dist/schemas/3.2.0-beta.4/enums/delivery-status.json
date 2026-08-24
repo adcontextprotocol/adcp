@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/delivery-status.json",
+  "title": "Delivery Status",
+  "description": "Operational delivery state of a media buy package. Consumers MUST tolerate unrecognized values.",
+  "type": "string",
+  "enum": [
+    "delivering",
+    "not_delivering",
+    "completed",
+    "budget_exhausted",
+    "flight_ended",
+    "goal_met"
+  ],
+  "enumDescriptions": {
+    "delivering": "Package is actively delivering impressions within its scheduled flight",
+    "not_delivering": "Package is within its scheduled flight but is not delivering impressions for the observation window defined by the response surface",
+    "completed": "Package has finished its scheduled flight",
+    "budget_exhausted": "Package has spent its full allocated budget",
+    "flight_ended": "Package's scheduled flight window has ended",
+    "goal_met": "Package has reached its delivery goal"
+  }
+}

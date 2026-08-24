@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/indicator.json",
+  "title": "Indicator",
+  "description": "A compact current seller assertion identifying a material risk or optimization opportunity that warrants buyer attention on the containing media buy, package, or package–creative relationship. An indicator is read-side state, not an error, warning, durable event record, authorization, executable action, or independently addressable resource. The responding seller is the source. Different sellers may use different methodologies for the same standard type; native scores, evaluation windows, suggested actions, deep links, and upstream attribution belong in ext.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/indicator-type.json"
+    },
+    "detected_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller first detected the current uninterrupted occurrence of this indicator. Keep this value stable while the condition remains present. If the condition clears and is later detected again, use the new detection time. Optional because some upstream platforms expose current assessments without an original detection timestamp."
+    },
+    "scope": {
+      "type": "array",
+      "description": "Optional narrower publisher or placement scope within the enclosing media buy, package, or package–creative assignment. Omit only when the seller evaluated and asserts the indicator across the whole enclosing resource/relationship. When partial indicators_evaluated_scope is declared, every returned indicator MUST include scope and every entry MUST fall within that coverage. This is scope, not source: the responding seller remains the source.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/indicator-scope.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/ext.json",
+      "description": "Seller- or provider-specific detail such as scores, thresholds, evaluation windows, methodology identifiers, or upstream attribution. Core consumers must not need ext to understand the broad meaning of type."
+    }
+  },
+  "required": [
+    "type"
+  ],
+  "additionalProperties": true
+}

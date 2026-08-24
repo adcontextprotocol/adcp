@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/mcp/2026-07-28/profiles/production/governance/report-plan-adjustment-request.json",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "report"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "then": {
+        "required": [
+          "outcome_id",
+          "seller_reference",
+          "seller_adjustment_id",
+          "adjustment_type",
+          "amount",
+          "reason",
+          "effective_at",
+          "evidence"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "review"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "then": {
+        "required": [
+          "adjustment_id",
+          "decision"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "review"
+          },
+          "decision": {
+            "const": "dispute"
+          }
+        },
+        "required": [
+          "action",
+          "decision"
+        ]
+      },
+      "then": {
+        "required": [
+          "reason"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "adjustment_type": {
+            "const": "decommitment"
+          }
+        },
+        "required": [
+          "adjustment_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "properties": {
+              "evidence_type": {
+                "const": "decommitment_agreement"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "adjustment_type": {
+            "const": "refund"
+          }
+        },
+        "required": [
+          "adjustment_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "properties": {
+              "evidence_type": {
+                "const": "refund_settlement"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "adjustment_type": {
+            "const": "credit"
+          }
+        },
+        "required": [
+          "adjustment_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "properties": {
+              "evidence_type": {
+                "const": "credit_note"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "adjustment_type": {
+            "const": "makegood"
+          }
+        },
+        "required": [
+          "adjustment_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "properties": {
+              "evidence_type": {
+                "const": "makegood_agreement"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "x-status": "experimental",
+  "x-mutates-state": true,
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "report",
+        "review"
+      ]
+    },
+    "plan_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "governance_plan"
+    },
+    "outcome_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "governance_outcome"
+    },
+    "adjustment_id": {
+      "type": "string",
+      "x-entity": "governance_adjustment"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "accept",
+        "dispute"
+      ]
+    },
+    "seller_reference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "seller_adjustment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "seller_adjustment"
+    },
+    "adjustment_type": {
+      "type": "string",
+      "enum": [
+        "decommitment",
+        "refund",
+        "credit",
+        "makegood"
+      ]
+    },
+    "amount": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "effective_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "x-entity": "governance_adjustment_evidence"
+        },
+        "evidence_type": {
+          "type": "string",
+          "enum": [
+            "decommitment_agreement",
+            "refund_settlement",
+            "credit_note",
+            "makegood_agreement"
+          ]
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "issued_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "evidence_type",
+        "digest",
+        "issued_at"
+      ],
+      "additionalProperties": false
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "action",
+    "plan_id",
+    "idempotency_key"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

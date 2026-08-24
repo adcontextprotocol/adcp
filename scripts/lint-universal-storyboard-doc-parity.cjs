@@ -21,7 +21,7 @@
  *
  * "Graded" means the YAML has a `phases:` array. Filters out non-graded
  * fixtures (storyboard-schema.yaml, runner-output-contract.yaml,
- * fictional-entities.yaml) which live alongside graded storyboards but
+ * fictional-entities.yaml, governance.yaml) which live alongside graded storyboards but
  * aren't run by the suite.
  *
  * Slug forms differ across the two docs by design (existing convention,

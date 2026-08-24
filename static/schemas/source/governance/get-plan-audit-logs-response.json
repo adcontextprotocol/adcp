@@ -46,9 +46,41 @@
                 "type": "number",
                 "description": "Total authorized budget from the plan."
               },
+              "accounting_mode": {
+                "type": "string",
+                "enum": ["gross_commitment", "verified_net_cost"]
+              },
               "committed": {
                 "type": "number",
-                "description": "Total budget committed from confirmed outcomes."
+                "description": "Legacy 3.x alias for net_committed after verified headroom-restoring adjustments."
+              },
+              "gross_committed": {
+                "type": "number",
+                "description": "Total authoritative commitment recorded from completed outcomes before adjustments."
+              },
+              "adjustments_reported": {
+                "type": "number",
+                "description": "Sum of all append-only adjustment amounts, including audit-only refunds, credits, and makegoods."
+              },
+              "adjustments_verified": {
+                "type": "number",
+                "description": "Sum of buyer-accepted economic reductions in plan currency; accepted makegoods contribute zero."
+              },
+              "net_cost": {
+                "type": "number",
+                "description": "Gross commitment minus verified economic reductions, independent of whether accounting_mode restores headroom."
+              },
+              "headroom_restored": {
+                "type": "number",
+                "description": "Sum of verified adjustments eligible to restore reusable headroom under accounting_mode."
+              },
+              "net_committed": {
+                "type": "number",
+                "description": "Current plan obligation after verified headroom-restoring adjustments."
+              },
+              "ledger_committed": {
+                "type": "number",
+                "description": "Current amount charged against plan headroom under accounting_mode."
               },
               "remaining": {
                 "type": "number",
@@ -90,6 +122,14 @@
               "outcomes_reported": {
                 "type": "integer",
                 "description": "Total outcomes reported."
+              },
+              "adjustments_reported": {
+                "type": "integer",
+                "description": "Total append-only adjustment records reported."
+              },
+              "adjustments_verified": {
+                "type": "integer",
+                "description": "Count of adjustment records accepted by the plan owner, including makegoods."
               },
               "statuses": {
                 "type": "object",
@@ -235,7 +275,8 @@
                   "type": "string",
                   "enum": [
                     "check",
-                    "outcome"
+                    "outcome",
+                    "adjustment"
                   ],
                   "description": "Entry type."
                 },
@@ -344,9 +385,96 @@
                     "additionalProperties": false
                   }
                 },
+                "delivery_statement": {
+                  "type": "object",
+                  "description": "Canonical seller statement retained on a delivery check entry.",
+                  "properties": {
+                    "statement_id": { "type": "string", "x-entity": "governance_delivery_statement" },
+                    "statement_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+                    "sequence": { "type": "integer", "minimum": 1 },
+                    "issued_at": { "type": "string", "format": "date-time" },
+                    "seller_reference": { "type": "string" },
+                    "cumulative_spend": { "type": "number", "minimum": 0 },
+                    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+                    "reporting_period": {
+                      "type": "object",
+                      "properties": {
+                        "start": { "type": "string", "format": "date-time" },
+                        "end": { "type": "string", "format": "date-time" }
+                      },
+                      "required": ["start", "end"],
+                      "additionalProperties": false
+                    },
+                    "canonical_payload": {
+                      "type": "object",
+                      "description": "Exact retained payload used to verify statement_digest after removing delivery_metrics.statement_digest.",
+                      "properties": {
+                        "seller_reference": { "type": "string" },
+                        "delivery_metrics": { "type": "object", "additionalProperties": true }
+                      },
+                      "required": ["seller_reference", "delivery_metrics"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["statement_id", "statement_digest", "sequence", "issued_at", "seller_reference", "cumulative_spend", "currency", "reporting_period", "canonical_payload"],
+                  "additionalProperties": false
+                },
                 "outcome": {
                   "$ref": "/schemas/enums/outcome-type.json",
                   "description": "Outcome type (present for outcome entries)."
+                },
+                "outcome_id": {
+                  "type": "string",
+                  "description": "Source completed outcome (present for adjustment entries).",
+                  "x-entity": "governance_outcome"
+                },
+                "seller_adjustment_id": {
+                  "type": "string",
+                  "description": "Seller-issued source adjustment identifier (present for adjustment entries).",
+                  "x-entity": "seller_adjustment"
+                },
+                "adjustment_type": {
+                  "type": "string",
+                  "enum": [
+                    "decommitment",
+                    "refund",
+                    "credit",
+                    "makegood"
+                  ],
+                  "description": "Commercial adjustment type (present for adjustment entries)."
+                },
+                "amount": {
+                  "type": "object",
+                  "description": "Adjustment amount and currency (present for adjustment entries).",
+                  "properties": {
+                    "amount": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "currency": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{3}$"
+                    }
+                  },
+                  "required": [
+                    "amount",
+                    "currency"
+                  ],
+                  "additionalProperties": false
+                },
+                "headroom_restored": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Current-obligation headroom restored by this adjustment. Zero for audit-only types."
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "Seller-supplied adjustment reason."
+                },
+                "effective_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the seller's adjustment became effective."
                 },
                 "committed_budget": {
                   "type": "number",
@@ -363,8 +491,72 @@
                 },
                 "delivery": {
                   "type": "object",
-                  "deprecated": true,
-                  "description": "Deprecated buyer delivery snapshot retained as audit evidence on a delivery outcome.",
+                  "description": "Buyer-attributed observation retained as audit evidence on a delivery outcome. It never overwrites the seller statement.",
+                  "properties": {
+                    "observation_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255,
+                      "description": "Stable buyer-issued identifier for this observation.",
+                      "x-entity": "governance_delivery_observation"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "seller_statement_copy",
+                        "buyer_measurement"
+                      ],
+                      "description": "Whether the buyer is forwarding the seller statement it received or reporting an independently measured observation. A forwarded seller statement is not independent evidence."
+                    },
+                    "observed_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "seller_statement_id": {
+                      "type": "string",
+                      "description": "Seller statement identifier as received by the buyer. Required for seller_statement_copy.",
+                      "x-entity": "governance_delivery_statement"
+                    },
+                    "seller_statement_digest": {
+                      "type": "string",
+                      "pattern": "^sha256:[a-f0-9]{64}$",
+                      "description": "Digest received with the seller statement. Governance compares it to the seller-authenticated canonical digest."
+                    },
+                    "reporting_period": {
+                      "type": "object",
+                      "description": "Start and end timestamps for the reporting window.",
+                      "properties": {
+                        "start": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "end": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "start",
+                        "end"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "cumulative_spend": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "Buyer-attributed cumulative spend for the governed action."
+                    },
+                    "currency": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{3}$"
+                    },
+                    "period_closed": {
+                      "type": "boolean",
+                      "default": false,
+                      "description": "Buyer-declared operational closure of this governance reporting period. When true, governance freezes the period after recording this observation. An unresolved mismatch becomes closed_unresolved and no longer blocks later governance. Closure is not final billing or commercial settlement."
+                    },
+                    "impressions": { "type": "integer", "minimum": 0 }
+                  },
                   "additionalProperties": true
                 },
                 "governance_context": {
@@ -407,7 +599,35 @@
                 "outcome_status": {
                   "type": "string",
                   "description": "Outcome status (present for outcome entries)."
-                }
+                },
+                "delivery_reconciliation_status": {
+                  "type": "string",
+                  "enum": ["consistent", "measurement_variance", "disputed", "unmatched", "closed_unresolved"]
+                },
+                "delivery_period_state": {
+                  "type": "string",
+                  "enum": ["open", "closed"],
+                  "description": "Operational governance-window state for this delivery observation."
+                },
+                "adjustment_state": {
+                  "type": "string",
+                  "enum": ["reported", "verified", "disputed"]
+                },
+                "verified_amount": { "type": "number", "minimum": 0 },
+                "evidence": {
+                  "type": "object",
+                  "properties": {
+                    "evidence_id": { "type": "string", "x-entity": "governance_adjustment_evidence" },
+                    "evidence_type": { "type": "string", "enum": ["decommitment_agreement", "refund_settlement", "credit_note", "makegood_agreement"] },
+                    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+                    "issued_at": { "type": "string", "format": "date-time" }
+                  },
+                  "required": ["evidence_id", "evidence_type", "digest", "issued_at"],
+                  "additionalProperties": false
+                },
+                "reviewed_by": { "type": "string", "format": "uri" },
+                "reviewed_at": { "type": "string", "format": "date-time" },
+                "review_reason": { "type": "string" }
               },
               "required": [
                 "id",
@@ -429,7 +649,7 @@
           },
           "governed_actions": {
             "type": "array",
-            "description": "Per-action breakdown grouped by governance context.",
+            "description": "Per-action breakdown joined by the governance agent's stable opaque action binding. governance_context is the original intent context exposed for correlation; lifecycle tokens may differ because each approval is freshly signed.",
             "items": {
               "type": "object",
               "properties": {
@@ -452,7 +672,53 @@
                 },
                 "committed": {
                   "type": "number",
-                  "description": "Budget committed for this action."
+                  "description": "Gross authoritative commitment recorded for this action."
+                },
+                "adjustments_reported": {
+                  "type": "number",
+                  "description": "Sum of all append-only adjustment amounts for this action."
+                },
+                "adjustments_verified": {
+                  "type": "number",
+                  "description": "Buyer-accepted economic reductions for this action."
+                },
+                "net_cost": {
+                  "type": "number",
+                  "description": "Gross action commitment minus verified economic reductions."
+                },
+                "headroom_restored": {
+                  "type": "number",
+                  "description": "Verified adjustments eligible to restore headroom under the plan accounting mode."
+                },
+                "net_committed": {
+                  "type": "number",
+                  "description": "Current ledger obligation for this action after restored headroom."
+                },
+                "seller_reported_spend": { "type": "number", "minimum": 0 },
+                "buyer_observed_spend": { "type": "number", "minimum": 0 },
+                "delivery_reporting_period": {
+                  "type": "object",
+                  "properties": {
+                    "start": { "type": "string", "format": "date-time" },
+                    "end": { "type": "string", "format": "date-time" }
+                  },
+                  "required": ["start", "end"],
+                  "additionalProperties": false,
+                  "description": "Current seller statement period summarized for this governed action."
+                },
+                "conservative_exposure": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Greater of seller-reported and buyer-observed spend while evidence is unresolved."
+                },
+                "delivery_reconciliation_status": {
+                  "type": "string",
+                  "enum": ["consistent", "measurement_variance", "disputed", "unmatched", "closed_unresolved"]
+                },
+                "delivery_period_state": {
+                  "type": "string",
+                  "enum": ["open", "closed"],
+                  "description": "Whether the current governance reporting period remains actionable. Closure is not final billing."
                 },
                 "check_count": {
                   "type": "integer",

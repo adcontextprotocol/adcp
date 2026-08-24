@@ -9,12 +9,14 @@ import { attemptStripeReconciliation } from '../../../src/billing/lazy-reconcile
 
 const mockQuery = vi.fn();
 const mockCustomersRetrieve = vi.fn();
+const mockProductsRetrieve = vi.fn();
 
 function makeDeps() {
   return {
     pool: { query: mockQuery } as any,
     stripe: {
       customers: { retrieve: mockCustomersRetrieve },
+      products: { retrieve: mockProductsRetrieve },
     } as unknown as Stripe,
     logger: {
       info: vi.fn(), warn: vi.fn(), error: vi.fn(),
@@ -27,6 +29,7 @@ function makeDeps() {
 beforeEach(() => {
   mockQuery.mockReset();
   mockCustomersRetrieve.mockReset();
+  mockProductsRetrieve.mockReset();
 });
 
 function fakeOrg(overrides: Partial<{
@@ -34,6 +37,7 @@ function fakeOrg(overrides: Partial<{
   subscription_status: string | null;
   subscription_canceled_at: Date | null;
   stripe_subscription_id: string | null;
+  membership_tier: string | null;
   subscription_price_lookup_key: string | null;
   subscription_amount: number | null;
 }> = {}) {
@@ -42,21 +46,28 @@ function fakeOrg(overrides: Partial<{
   return {
     workos_organization_id: 'org_x',
     stripe_customer_id: 'stripe_customer_id' in overrides ? overrides.stripe_customer_id : 'cus_x',
+    is_personal: false,
     subscription_status: 'subscription_status' in overrides ? overrides.subscription_status : null,
     subscription_canceled_at: overrides.subscription_canceled_at ?? null,
     stripe_subscription_id:
       'stripe_subscription_id' in overrides ? overrides.stripe_subscription_id : null,
+    membership_tier: 'membership_tier' in overrides ? overrides.membership_tier : null,
     subscription_price_lookup_key:
       'subscription_price_lookup_key' in overrides ? overrides.subscription_price_lookup_key : null,
     subscription_amount:
       'subscription_amount' in overrides ? overrides.subscription_amount : null,
+    updated_at_token: '2026-08-19 12:00:00.123456+00',
   };
 }
 
-function fakeCustomerWithSubs(subs: unknown[]): Stripe.Customer {
+function fakeCustomerWithSubs(
+  subs: unknown[],
+  stampedOrgId: string | null = 'org_x',
+): Stripe.Customer {
   return {
     id: 'cus_x',
     deleted: false,
+    metadata: stampedOrgId ? { workos_organization_id: stampedOrgId } : {},
     subscriptions: { data: subs },
   } as unknown as Stripe.Customer;
 }
@@ -66,6 +77,7 @@ function fakeMembershipSub(overrides: Partial<{
   status: Stripe.Subscription.Status;
   lookup_key: string | null;
   unit_amount: number;
+  product: string;
 }> = {}) {
   return {
     id: overrides.id ?? 'sub_x',
@@ -79,6 +91,7 @@ function fakeMembershipSub(overrides: Partial<{
           currency: 'usd',
           recurring: { interval: 'year' },
           lookup_key: 'lookup_key' in overrides ? overrides.lookup_key : 'aao_membership_professional_250',
+          product: overrides.product ?? 'prod_member',
         },
       }],
     },
@@ -144,6 +157,66 @@ describe('attemptStripeReconciliation', () => {
     expect(updateParams).toContain('aao_membership_corporate_under5m');
   });
 
+  it('uses legacy membership product metadata to restore a zero-dollar founding tier', async () => {
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [fakeOrg({
+          subscription_status: null,
+          stripe_subscription_id: null,
+          membership_tier: null,
+          subscription_price_lookup_key: null,
+          subscription_amount: null,
+        })],
+      })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ workos_organization_id: 'org_x' }] });
+    mockCustomersRetrieve.mockResolvedValueOnce(
+      fakeCustomerWithSubs([
+        fakeMembershipSub({ lookup_key: null, unit_amount: 0, product: 'prod_founding' }),
+      ]),
+    );
+    mockProductsRetrieve.mockResolvedValueOnce({
+      id: 'prod_founding',
+      deleted: false,
+      name: 'Founding membership',
+      metadata: { category: 'membership', tier: 'company_standard' },
+    });
+
+    const result = await attemptStripeReconciliation('org_x', makeDeps());
+
+    expect(result.healed).toBe(true);
+    expect(mockProductsRetrieve).toHaveBeenCalledWith('prod_founding');
+    expect(mockQuery.mock.calls[1][1]).toContain('company_standard');
+  });
+
+  it('preserves an existing tier and product fields when Stripe omits canonical metadata', async () => {
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [fakeOrg({
+          subscription_status: 'canceled',
+          stripe_subscription_id: 'sub_x',
+          membership_tier: 'company_standard',
+          subscription_price_lookup_key: 'aao_membership_legacy',
+          subscription_amount: 25000,
+        })],
+      })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ workos_organization_id: 'org_x' }] });
+    mockCustomersRetrieve.mockResolvedValueOnce(
+      fakeCustomerWithSubs([
+        fakeMembershipSub({ lookup_key: 'aao_membership_unmapped', unit_amount: 0 }),
+      ]),
+    );
+
+    const result = await attemptStripeReconciliation('org_x', makeDeps());
+
+    expect(result.healed).toBe(true);
+    const [updateSql, updateParams] = mockQuery.mock.calls[1] as [string, unknown[]];
+    expect(updateSql).toContain(
+      'subscription_product_name = COALESCE($9, subscription_product_name)',
+    );
+    expect(updateSql).toContain('subscription_amount = COALESCE($4, subscription_amount)');
+    expect(updateParams[11]).toBe('company_standard');
+  });
+
   it('heals when status=active but only stripe_subscription_id is missing (lookup_key set)', async () => {
     // Less common partial state, but still a sync gap. Either field missing
     // means lazy-reconcile should fill it in.
@@ -164,6 +237,33 @@ describe('attemptStripeReconciliation', () => {
     expect(result.healed).toBe(true);
   });
 
+  it('heals a fully populated row whose canceled status is stale', async () => {
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [fakeOrg({
+          subscription_status: 'canceled',
+          stripe_subscription_id: 'sub_x',
+          membership_tier: 'company_standard',
+          subscription_price_lookup_key: 'aao_membership_professional_250',
+          subscription_amount: 25000,
+        })],
+      })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ workos_organization_id: 'org_x' }] });
+    mockCustomersRetrieve.mockResolvedValueOnce(fakeCustomerWithSubs([fakeMembershipSub()]));
+
+    const result = await attemptStripeReconciliation('org_x', makeDeps());
+
+    expect(result).toEqual({
+      healed: true,
+      reason: 'healed_from_stripe',
+      subscriptionStatus: 'active',
+    });
+    expect(mockQuery.mock.calls[1][0]).toContain("subscription_status NOT IN ('active', 'trialing', 'past_due')");
+    expect(mockQuery.mock.calls[0][0]).toContain('updated_at::text AS updated_at_token');
+    expect(mockQuery.mock.calls[1][0]).toContain('updated_at = $14::timestamptz');
+    expect(mockQuery.mock.calls[1][1].at(-1)).toBe('2026-08-19 12:00:00.123456+00');
+  });
+
   it('skips when org has no Stripe customer id', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [fakeOrg({ stripe_customer_id: null })] });
 
@@ -180,6 +280,26 @@ describe('attemptStripeReconciliation', () => {
     const result = await attemptStripeReconciliation('org_x', makeDeps());
 
     expect(result).toEqual({ healed: false, reason: 'customer_deleted' });
+  });
+
+  it.each([
+    ['missing', null],
+    ['mismatched', 'org_other'],
+  ])('refuses to heal when Stripe customer org metadata is %s', async (_label, stampedOrgId) => {
+    mockQuery.mockResolvedValueOnce({ rows: [fakeOrg()] });
+    mockCustomersRetrieve.mockResolvedValueOnce(
+      fakeCustomerWithSubs([fakeMembershipSub()], stampedOrgId),
+    );
+    const deps = makeDeps();
+
+    const result = await attemptStripeReconciliation('org_x', deps);
+
+    expect(result).toEqual({ healed: false, reason: 'customer_org_mismatch' });
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(deps.logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_x', stampedOrgId }),
+      expect.stringContaining('metadata mismatch'),
+    );
   });
 
   it('skips when Stripe customer has no membership sub', async () => {

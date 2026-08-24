@@ -1,0 +1,159 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "streamhaus_coordinated_takeover_sequenced",
+  "name": "StreamHaus sequenced homepage takeover",
+  "description": "An exclusive homepage takeover whose single manifest supplies a page skin, a leaderboard, and two sequential message cards. The skin is restricted to first-party serving while the leaderboard allows third-party tags, and the two message cards present in order rather than simultaneously. Video and CTA assets are shared where the consuming components accept those slots.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "streamhaus.example",
+      "selection_type": "all"
+    }
+  ],
+  "channels": ["display"],
+  "delivery_type": "guaranteed",
+  "exclusivity": "exclusive",
+  "placements": [
+    { "kind": "seller_inline", "placement_id": "takeover_skin", "publisher_domain": "streamhaus.example", "name": "Homepage skin", "mode": "included" },
+    { "kind": "seller_inline", "placement_id": "takeover_leaderboard", "publisher_domain": "streamhaus.example", "name": "Homepage leaderboard", "mode": "included" },
+    { "kind": "seller_inline", "placement_id": "takeover_message_a", "publisher_domain": "streamhaus.example", "name": "Message card A", "mode": "included" },
+    { "kind": "seller_inline", "placement_id": "takeover_message_b", "publisher_domain": "streamhaus.example", "name": "Message card B", "mode": "included" }
+  ],
+  "pricing_options": [
+    {
+      "pricing_option_id": "sequenced_takeover_flat_rate",
+      "pricing_model": "flat_rate",
+      "currency": "USD",
+      "fixed_price": 95000
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 120,
+    "timezone": "America/New_York",
+    "supports_webhooks": true,
+    "available_metrics": ["impressions", "clicks", "spend", "ctr", "viewability"],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "seller_rendered_stateful_display",
+      "format_option_id": "takeover_skin_format",
+      "display_name": "Homepage skin",
+      "canonical_formats_only": true,
+      "experimental": true,
+      "params": {
+        "experimental": true,
+        "composition_model": "deterministic",
+        "supply_mode": "components",
+        "initial_state_id": "skin",
+        "states": [
+          {
+            "state_id": "skin",
+            "anchoring": "underlay",
+            "close_affordance": false,
+            "slot_bindings": ["imagery"],
+            "breakpoints": [
+              { "breakpoint_id": "desktop", "width_mode": "gutter_residual", "height": 1440 }
+            ]
+          }
+        ],
+        "user_controls": {
+          "dismissible": false,
+          "user_collapsible": false
+        }
+      }
+    },
+    {
+      "format_kind": "seller_rendered_stateful_display",
+      "format_option_id": "takeover_leaderboard_format",
+      "display_name": "Homepage leaderboard",
+      "canonical_formats_only": true,
+      "experimental": true,
+      "params": {
+        "experimental": true,
+        "composition_model": "deterministic",
+        "supply_mode": "components",
+        "initial_state_id": "static",
+        "states": [
+          {
+            "state_id": "static",
+            "anchoring": "inline",
+            "close_affordance": false,
+            "slot_bindings": ["imagery", "video_main", "landing_page_url"],
+            "breakpoints": [
+              { "breakpoint_id": "desktop", "width": 970, "height": 250 }
+            ]
+          }
+        ],
+        "user_controls": {
+          "dismissible": false,
+          "user_collapsible": false
+        }
+      }
+    },
+    {
+      "format_kind": "image",
+      "format_option_id": "takeover_message_format",
+      "display_name": "Message card",
+      "canonical_formats_only": true,
+      "params": {
+        "width": 300,
+        "height": 250
+      }
+    },
+    {
+      "format_kind": "coordinated_placements",
+      "format_option_id": "sequenced_takeover",
+      "display_name": "Sequenced homepage takeover",
+      "canonical_formats_only": true,
+      "experimental": true,
+      "params": {
+        "experimental": true,
+        "components": [
+          {
+            "component_id": "skin",
+            "placement_ref": { "publisher_domain": "streamhaus.example", "placement_id": "takeover_skin" },
+            "required": true,
+            "serving_policy": "seller_served_only",
+            "format_option_ref": { "scope": "product", "format_option_id": "takeover_skin_format" }
+          },
+          {
+            "component_id": "leaderboard",
+            "placement_ref": { "publisher_domain": "streamhaus.example", "placement_id": "takeover_leaderboard" },
+            "required": true,
+            "serving_policy": "third_party_allowed",
+            "format_option_ref": { "scope": "product", "format_option_id": "takeover_leaderboard_format" }
+          },
+          {
+            "component_id": "message_a",
+            "placement_ref": { "publisher_domain": "streamhaus.example", "placement_id": "takeover_message_a" },
+            "required": false,
+            "sequence": 1,
+            "format_option_ref": { "scope": "product", "format_option_id": "takeover_message_format" }
+          },
+          {
+            "component_id": "message_b",
+            "placement_ref": { "publisher_domain": "streamhaus.example", "placement_id": "takeover_message_b" },
+            "required": false,
+            "sequence": 2,
+            "format_option_ref": { "scope": "product", "format_option_id": "takeover_message_format" }
+          }
+        ],
+        "shared_slots": [
+          {
+            "asset_group_id": "video_main",
+            "asset_type": "video",
+            "required": false,
+            "consumed_by": ["leaderboard"]
+          },
+          {
+            "asset_group_id": "cta",
+            "asset_type": "text",
+            "required": false,
+            "consumed_by": ["skin", "leaderboard", "message_a", "message_b"]
+          }
+        ]
+      }
+    }
+  ]
+}

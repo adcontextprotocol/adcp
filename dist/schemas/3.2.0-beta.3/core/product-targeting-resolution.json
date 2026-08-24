@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/product-targeting-resolution.json",
+  "title": "Product Targeting Resolution",
+  "description": "Discovery-only targeting resolution bound to a configured Product. modifications sparsely disclose product-specific differences from get_products.targeting_overlay. Request-level brief interpretation and package execution details are not valid here.",
+  "type": "object",
+  "properties": {
+    "modifications": {
+      "type": "array",
+      "description": "Ordered changes applied to the requested targeting_overlay. Sellers apply entries in array order and MUST validate the complete resulting overlay before returning the product.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/targeting-modification.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "effective_targeting_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Optional digest of the canonical effective targeting overlay. Until AdCP defines a cross-implementation canonicalization algorithm, this value is an opaque seller audit handle and buyers MUST NOT attempt to reproduce or compare it across sellers."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "modifications"
+  ],
+  "additionalProperties": false
+}

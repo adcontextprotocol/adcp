@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/protocol/sync-agent-notification-configs-request.json",
+  "title": "Sync Agent Notification Configs Request",
+  "description": "Register, replace, pause, or clear caller-scoped agent-level webhook subscribers. This task manages notifications whose lifecycle belongs to the seller agent itself rather than to an account or media buy. The initial use case is `capabilities.changed`, which invalidates cached `get_adcp_capabilities` responses. Declarative semantics match account-level `notification_configs[]`, but the replacement is scoped to the authenticated caller or registry identity: the submitted array is that caller's complete desired set, keyed by `subscriber_id`; persisted subscribers for that caller whose `subscriber_id` does not appear in the submitted array are removed; sending `[]` clears only that caller's set. Sellers MUST reject this task unless `get_adcp_capabilities.adcp.capability_changes.notifications.supported` is true.",
+  "x-tool-summary": "Register, replace, pause, or clear caller-scoped webhooks for agent-level notifications.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/version-envelope.json"
+    }
+  ],
+  "x-mutates-state": true,
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. The task mutates the authenticated caller's persistent agent-level subscriber set and may trigger endpoint proof-of-control challenges, so retries MUST reuse the same key and same payload. Use a fresh UUID v4 for each logical replacement.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_configs": {
+      "type": "array",
+      "description": "Complete desired set of agent-level notification subscribers for the authenticated caller or registry identity. Omit is invalid; send an empty array to remove every subscriber owned by this caller. Each entry registers a URL, the agent-level event types the subscriber wants, and optional legacy auth. Duplicate `subscriber_id` values are rejected within this caller-scoped array. If any entry fails validation or activation proof, the seller rejects the replacement and leaves this caller's previous set unchanged.",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/agent-notification-config.json"
+          },
+          {
+            "if": {
+              "required": [
+                "authentication"
+              ]
+            },
+            "then": {
+              "properties": {
+                "authentication": {
+                  "required": [
+                    "credentials"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "maxItems": 16
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, validate the replacement and report what would be persisted without applying it or sending endpoint proof-of-control challenges."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_configs"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Register a registry cache invalidation endpoint",
+      "data": {
+        "idempotency_key": "b6aa9428-9d5f-4d16-a6d2-1a27db67ef5b",
+        "notification_configs": [
+          {
+            "subscriber_id": "registry-cache",
+            "url": "https://registry.example/webhooks/adcp/capabilities",
+            "event_types": [
+              "capabilities.changed"
+            ],
+            "active": true
+          }
+        ]
+      }
+    },
+    {
+      "description": "Clear all agent-level subscribers",
+      "data": {
+        "idempotency_key": "f9f9a5ea-b3f1-41e1-9227-64c67b1bda18",
+        "notification_configs": []
+      }
+    }
+  ]
+}

@@ -9,7 +9,7 @@
  * they're meant to reject.
  *
  * Filed against PR #3307 review comment R3 (composability of top-level
- * discriminator + allOf if/then/else + 12-branch oneOf on
+ * discriminator + allOf if/then/else + canonical-kind oneOf on
  * product-format-declaration.json). Adopters and SDK authors will rely on
  * the schema's negative-side behavior; without these tests, regressions to
  * silent-pass on malformed declarations would slip through.
@@ -228,6 +228,23 @@ const NEGATIVE_CASES = {
           ],
         },
       },
+    },
+  ],
+  '/schemas/formats/canonical/video_vast.json': [
+    {
+      label: 'ordinary linear VAST accepts SIMID',
+      expected: true,
+      doc: { creative_type: 'linear', simid_supported: true },
+    },
+    ...['pause', 'screensaver', 'overlay', 'squeezeback', 'in_scene'].map(ctv_ad_experience => ({
+      label: `${ctv_ad_experience} nonlinear CTV profile rejects SIMID`,
+      expected: false,
+      doc: { ctv_ad_experience, creative_type: 'nonlinear', simid_supported: true },
+    })),
+    {
+      label: 'nonlinear CTV profile accepts explicit SIMID false',
+      expected: true,
+      doc: { ctv_ad_experience: 'pause', creative_type: 'nonlinear', simid_supported: false },
     },
   ],
   '/schemas/formats/canonical/image.json': [

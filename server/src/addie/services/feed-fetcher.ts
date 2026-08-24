@@ -10,6 +10,8 @@ import { createLogger } from '../../logger.js';
 
 const logger = createLogger('feed-fetcher');
 import { decodeHtmlEntities } from '../../utils/html-entities.js';
+import { safeFetch } from '../../utils/url-security.js';
+import { readResponseTextWithLimit } from '../../utils/bounded-response.js';
 import {
   getFeedsToFetch,
   getFeedById,
@@ -27,6 +29,9 @@ const parser = new Parser({
     Accept: 'application/rss+xml, application/xml, text/xml',
   },
 });
+
+const FEED_FETCH_TIMEOUT_MS = 30_000;
+const FEED_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 
 /**
  * Validate that content is actually RSS/Atom XML, not HTML
@@ -105,20 +110,22 @@ async function fetchFeed(feed: IndustryFeed): Promise<RssArticleInput[]> {
 
   // Pre-fetch content to validate it's actually RSS/XML before parsing
   // This prevents cryptic XML parsing errors when sites return HTML
-  const response = await fetch(feed.feed_url, {
+  const response = await safeFetch(feed.feed_url, {
+    maxRedirects: 3,
     headers: {
       'User-Agent': 'AddieBot/1.0 (AgenticAdvertising.org industry monitor)',
       Accept: 'application/rss+xml, application/xml, text/xml',
     },
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(FEED_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
+    response.body?.cancel().catch(() => {});
     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
   }
 
   const contentType = response.headers.get('content-type') || '';
-  const content = await response.text();
+  const content = await readResponseTextWithLimit(response, FEED_MAX_RESPONSE_BYTES);
 
   // Validate content is RSS/XML, not HTML (e.g., from a redirect)
   const validation = validateRssContent(content, contentType);

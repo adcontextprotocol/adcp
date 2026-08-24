@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/media-buy/product-discovery-criteria.json",
+  "title": "Product Discovery Criteria",
+  "description": "Structured criteria shared by product listing and proposal requests. Offer filters decide which commercial offers may be returned; targeting_overlay constrains deliverable inventory; required_overlay_support requires package-level targeting capability for values the buyer will supply later.",
+  "type": "object",
+  "properties": {
+    "product_ids": {
+      "type": "array",
+      "description": "Exact seller-issued products to retrieve or use as proposal candidates.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "x-entity": "product"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "offer_filters": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/product-offer-filters.json",
+      "description": "Hard commercial and product-characteristic filters. Every returned product MUST satisfy them. These fields do not become package delivery targeting."
+    },
+    "targeting_overlay": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/targeting.json",
+      "description": "Concrete delivery constraints the buyer expects to carry into create_media_buy. Returned product pricing and forecasts MUST reflect the effective targeting. A product that cannot apply the request exactly is omitted or returned as a distinct configured product with sparse Product.targeting_resolution modifications; absence of that resolution means exact acceptance."
+    },
+    "required_overlay_support": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/targeting-overlay-requirements.json",
+      "description": "Minimum product-scoped targeting dimensions the buyer must be able to select independently on packages later. This requests capability, not current values, value-specific availability, a forecast for every later value, or one product per value."
+    },
+    "outcome_target": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/media-buy/outcome-target.json"
+        }
+      ],
+      "x-adcp-schema-uri": "/schemas/media-buy/outcome-target.json"
+    },
+    "catalog": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/catalog-selection.json"
+    },
+    "policy_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ext": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "minProperties": 1,
+  "additionalProperties": false
+}

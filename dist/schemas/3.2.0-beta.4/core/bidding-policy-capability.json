@@ -1,0 +1,221 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/bidding-policy-capability.json",
+  "title": "Bidding Policy Capability",
+  "description": "Structured declaration of the canonical bidding policies a seller can preserve without semantic translation. Media-buy/package authored scope and fixed/seller-optimized allocation context are advertised independently. Buyers MUST inspect the exact scope, allocation context, mode, strength, and combination rather than treating presence of this object as blanket support.",
+  "x-adcp-hoist": true,
+  "type": "object",
+  "properties": {
+    "media_buy": {
+      "$ref": "#/definitions/scope_capability",
+      "description": "Policies accepted at media-buy scope and inherited by packages that omit a package override."
+    },
+    "package": {
+      "$ref": "#/definitions/scope_capability",
+      "description": "Policies accepted as package-authored policies, including explicit automatic overrides."
+    }
+  },
+  "minProperties": 1,
+  "additionalProperties": false,
+  "definitions": {
+    "scope_capability": {
+      "type": "object",
+      "description": "Support at one authored scope, partitioned by the media buy's resulting allocation mode. Omitted contexts are unsupported; claims in one context make no claim about the other.",
+      "properties": {
+        "fixed": {
+          "$ref": "#/definitions/policy_profile",
+          "description": "Policies supported when budget allocation is fixed or omitted."
+        },
+        "seller_optimized": {
+          "$ref": "#/definitions/policy_profile",
+          "description": "Policies supported when budget_allocation.mode is seller_optimized."
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "policy_profile": {
+      "type": "object",
+      "properties": {
+        "modes": {
+          "type": "array",
+          "description": "Standalone policy modes accepted in this exact scope and allocation context. Combination-only components belong only in supported_combinations and need not appear here. `automatic` means the seller accepts and preserves an explicit `{automatic:true}` authored block; omission only invokes inheritance/default behavior.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "automatic",
+              "bid_amount",
+              "max_bid",
+              "cost_per",
+              "roas"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "cost_per_strengths": {
+          "type": "array",
+          "description": "Supported standalone cost_per strengths in this profile. Required exactly when modes includes cost_per.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "cap",
+              "target"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "roas_strengths": {
+          "type": "array",
+          "description": "Supported standalone roas strengths in this profile. Required exactly when modes includes roas.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "floor",
+              "target"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "supported_combinations": {
+          "type": "array",
+          "description": "Multi-field policies supported in this exact scope and allocation context. Each entry independently qualifies the strengths supported in that combination; standalone strength support does not imply combination support. Absence means no multi-field combination is claimed.",
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/definitions/max_bid_with_cost_per"
+              },
+              {
+                "$ref": "#/definitions/max_bid_with_roas"
+              }
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "modes"
+          ]
+        },
+        {
+          "required": [
+            "supported_combinations"
+          ]
+        }
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "modes": {
+                "contains": {
+                  "const": "cost_per"
+                }
+              }
+            },
+            "required": [
+              "modes"
+            ]
+          },
+          "then": {
+            "required": [
+              "cost_per_strengths"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "cost_per_strengths"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "modes": {
+                "contains": {
+                  "const": "roas"
+                }
+              }
+            },
+            "required": [
+              "modes"
+            ]
+          },
+          "then": {
+            "required": [
+              "roas_strengths"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "roas_strengths"
+              ]
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "max_bid_with_cost_per": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "max_bid_with_cost_per"
+        },
+        "cost_per_strengths": {
+          "type": "array",
+          "description": "cost_per strengths supported when combined with max_bid.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "cap",
+              "target"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kind",
+        "cost_per_strengths"
+      ],
+      "additionalProperties": false
+    },
+    "max_bid_with_roas": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "max_bid_with_roas"
+        },
+        "roas_strengths": {
+          "type": "array",
+          "description": "roas strengths supported when combined with max_bid.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "floor",
+              "target"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kind",
+        "roas_strengths"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

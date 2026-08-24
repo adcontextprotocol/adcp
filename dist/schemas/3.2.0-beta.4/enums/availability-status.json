@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/availability-status.json",
+  "title": "Availability Status",
+  "description": "Bookability of the inventory a forecast row describes, as of the forecast's generated_at. A snapshot, never a hold: valid_until bounds freshness, and proposal finalization or purchase remains the commitment boundary.",
+  "type": "string",
+  "enum": [
+    "available",
+    "unavailable"
+  ],
+  "enumDescriptions": {
+    "available": "The inventory described by this row can be booked as of generated_at. This is a snapshot, not a reservation — another buyer can take the window before this buyer commits.",
+    "unavailable": "The inventory described by this row cannot be booked. Sellers MUST apply all product booking eligibility constraints — including minimum and maximum bookable duration, day-of-week restrictions, and other scheduling rules — before reporting status; a window that fails any such constraint is 'unavailable' even when no competing hold exists. Rows may carry empty metrics. Sellers MUST NOT disclose who holds a conflicting booking."
+  }
+}

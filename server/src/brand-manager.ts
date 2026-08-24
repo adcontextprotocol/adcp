@@ -1369,6 +1369,20 @@ export class BrandManager {
   }
 
   /**
+   * Resolve a leaf named by a known house portfolio. Unlike resolveBrand(),
+   * this preserves the house-side assertion when the leaf does not point
+   * back, producing `house_only` instead of incorrectly classifying the leaf
+   * as standalone. The crawler uses this while indexing brand_refs[].
+   */
+  async resolveHouseBrandReference(
+    ref: NonNullable<HousePortfolioVariant['brand_refs']>[number],
+    houseDomain: string,
+    options: { skipCache?: boolean } = {},
+  ): Promise<ResolvedBrand | null> {
+    return this.resolveBrandPointer(ref, options, houseDomain);
+  }
+
+  /**
    * A House Redirect the named house has not reciprocated. The requested
    * domain keeps its own identity and the house stays a claim — the house's
    * brand is never handed to a domain it does not name.

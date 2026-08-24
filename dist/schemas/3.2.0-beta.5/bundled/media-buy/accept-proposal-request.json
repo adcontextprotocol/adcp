@@ -1,0 +1,679 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/bundled/media-buy/accept-proposal-request.json",
+  "title": "Accept Proposal Request",
+  "description": "Accept one committed immutable proposal. Depending on proposal_kind, acceptance creates a MediaBuy, applies an amendment, or applies a negotiated cancellation. The proposal already contains the commercial terms, so callers do not repeat packages, dates, targeting, or creatives.",
+  "x-tool-summary": "Accept a committed proposal to create or amend a media buy, or apply a negotiated cancellation.",
+  "type": "object",
+  "x-mutates-state": true,
+  "x-governed-commitment": {
+    "scope": "conditional",
+    "triggers": [
+      "creates_commitment",
+      "increases_obligation",
+      "extends_term",
+      "resumes_execution",
+      "reallocates_delivery"
+    ],
+    "exemptions": [
+      "negotiated_cancellation",
+      "decrease_only"
+    ],
+    "precedence": "trigger_overrides_exemption"
+  },
+  "x-operation-family": "accept_proposal",
+  "x-added-in": "3.2.0",
+  "x-legacy-fallback": {
+    "tool": "create_media_buy",
+    "mode": "orchestrated"
+  },
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+      "examples": [
+        "3.0",
+        "3.1",
+        "3.1-beta",
+        "3.1-rc.1"
+      ]
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "deprecated": true,
+      "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "account": {
+      "title": "Canonical Account Reference",
+      "description": "Compact advertiser-account identity for canonical 3.2 tools. Uses either the seller/storefront account_id returned by list_accounts or the buyer-declared natural key without BrandRef inline overrides. The natural key is brand + operator + optional operator_unit.id + optional fixed currency + optional buyer-selected account timezone + sandbox. brand.countries qualifies the commercial advertiser identity without targeting delivery; operator_unit identifies the operator-owned buying context. operator_unit.name is display metadata and is excluded from identity.",
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "minLength": 1,
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "title": "Brand Key",
+              "description": "Stable brand identity used to resolve the canonical brand manifest, optionally qualified by the countries of a commercial advertiser entity. The manifest URL is derived from domain; callers do not send brand assets or per-call brand overrides. Countries do not target delivery.",
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "description": "Domain that hosts /.well-known/brand.json or is registered for the brand.",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                },
+                "brand_id": {
+                  "title": "Brand ID",
+                  "description": "Brand within a house-of-brands manifest. Omit for a single-brand domain.",
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+$",
+                  "x-entity": "advertiser_brand",
+                  "examples": [
+                    "tide",
+                    "cheerios",
+                    "air_jordan",
+                    "nike",
+                    "pampers"
+                  ],
+                  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/brand-id.json"
+                },
+                "countries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{2}$"
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit when the identity is global or the house does not split the brand geographically. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account and proposal identity and is not delivery targeting."
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false,
+              "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/brand-key.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "title": "Operator Unit",
+              "description": "Optional operator-owned business unit, agency seat, or platform account. Only id participates in identity; name is mutable display metadata.",
+              "x-entity": "operator_unit",
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+                  "description": "Stable identifier assigned by the operator. Numeric platform IDs and durable slugs are both valid. Scoped by the enclosing operator domain."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "Human-readable seat or business-unit name, such as Nova EMEA. This label may change and is not part of the natural account key."
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false,
+              "examples": [
+                {
+                  "id": "234284238",
+                  "name": "Nova EMEA"
+                },
+                {
+                  "id": "benelux-seat",
+                  "name": "Nova Benelux"
+                }
+              ],
+              "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/operator-unit.json"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "Immutable ISO 4217 transaction currency when the advertiser object is currency-bound. When present, this is part of the natural key and all media buys on the account use it. Omit for per-media-buy currency selection."
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Immutable account timezone. Include it in the natural key only for buyer-selected account_fixed provisioning."
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "examples": [
+        {
+          "account_id": "acc_nova_nl"
+        },
+        {
+          "brand": {
+            "domain": "nova-athletics.example",
+            "countries": [
+              "NL"
+            ]
+          },
+          "operator": "nova-athletics.example",
+          "operator_unit": {
+            "id": "234284238",
+            "name": "Nova EMEA"
+          },
+          "currency": "EUR",
+          "timezone": "Europe/Amsterdam"
+        }
+      ],
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/canonical-account-ref.json"
+    },
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "proposal"
+    },
+    "proposal_terms_digest": {
+      "type": "string",
+      "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
+      "description": "terms_digest from the committed proposal. The seller MUST atomically verify both ID and digest before acceptance."
+    },
+    "total_budget": {
+      "type": "object",
+      "description": "Execution amount when the committed proposal defines scalable percentages or constraints rather than a fixed total.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional hard aggregate daily spend ceiling applied when the committed proposal is accepted. It constrains execution without changing the proposal's negotiated pricing."
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional shared IANA cap-day timezone override. Requires buyer_timezone_override support. When omitted, budget_capping.timezone_basis selects Account.timezone or fixed_timezone."
+    },
+    "io_acceptance": {
+      "type": "object",
+      "properties": {
+        "io_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accepted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "signatory": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 250
+        },
+        "signature_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "io_id",
+        "accepted_at",
+        "signatory"
+      ],
+      "additionalProperties": false
+    },
+    "purchase_order_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "governance_context": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "push_notification_config": {
+      "title": "Push Notification Config",
+      "description": "Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfig structure. By default, webhooks are signed with the AdCP RFC 9421 profile (see docs/building/by-layer/L1/security.mdx#webhook-callbacks) — the seller signs outbound with a key published at the jwks_uri on its own brand.json `agents[]` entry and the buyer verifies against that JWKS, so no shared secret crosses the wire. The optional `authentication` block selects the legacy Bearer or HMAC-SHA256 fallback for compatibility with receivers that have not yet adopted the 9421 profile; this fallback is deprecated and will be removed in AdCP 4.0. Note: the `idempotency_key` that receivers dedup on lives inside the webhook **payload** body (see docs/building/by-layer/L3/webhooks.mdx#reliability and the mcp-webhook-payload schema), not in this configuration object — this schema only describes the receiver-side transport config sent to the seller. This schema is designed for composition via allOf - consuming schemas should define their own additionalProperties constraints.",
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Webhook endpoint URL for task status notifications. The wire contract is unconstrained beyond `format: \"uri\"` — in particular, publishers SHOULD NOT enforce a destination-port allowlist by default, since buyers legitimately host receivers on non-standard TLS ports (`:9443`, `:4443`, path-routed multi-tenant gateways). The SSRF guard the protocol relies on is the IP-range check + DNS-rebinding-resistant connect pin defined in [Webhook URL validation (SSRF)](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf), not port filtering. Operators who want a hardened destination-port allowlist as defense-in-depth (e.g., locked-down enterprise egress) opt in explicitly — see [Destination port: permissive by default](/docs/building/by-layer/L1/security#destination-port-permissive-by-default)."
+        },
+        "operation_id": {
+          "type": "string",
+          "description": "Buyer-supplied correlation identifier for the operation that will produce webhooks against this registration. The seller MUST echo this value verbatim into every webhook payload's `operation_id` field (see [`mcp-webhook-payload.json`](/schemas/core/mcp-webhook-payload.json) and [Webhooks — Operation IDs](/docs/building/by-layer/L3/webhooks#operation-ids-and-url-templates)). Buyers SHOULD generate a unique value per task invocation (UUID recommended). This field is the canonical registration channel for `operation_id`; buyers MAY additionally embed routing values in the URL path or query as an aid for their own HTTP server, but the URL is opaque to the seller and the wire-level source of truth is this field. Sellers MUST NOT parse the URL to recover `operation_id`. For 3.x schema compatibility the member remains optional, but a seller MUST reject a task that registers an AdCP webhook without it using `INVALID_REQUEST`; otherwise the required webhook envelope cannot be emitted.",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "token": {
+          "type": "string",
+          "description": "Optional client-provided token for webhook validation. The seller MUST echo this value verbatim in every webhook payload's `token` field (see [`mcp-webhook-payload.json`](/schemas/core/mcp-webhook-payload.json) for the receiver-side validation obligation). Length bounds give receivers a defensive range check on the echoed value; senders SHOULD generate tokens with at least 128 bits of entropy (≥22 base64url characters). This is a complementary authenticity mechanism that can layer on top of the RFC 9421 webhook signature — unlike the `authentication` block below, it is not on the 4.0 removal track. Receivers that registered both a signing key (RFC 9421) and a `token` MUST NOT treat a valid token echo as authorization to skip signature verification; both checks remain independent obligations.",
+          "minLength": 16,
+          "maxLength": 4096
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "description": "Legacy authentication configuration (A2A-compatible). Opts the seller into Bearer or HMAC-SHA256 signing instead of the default RFC 9421 webhook profile. Deprecated; removed in AdCP 4.0. **Precedence is a switch, not a fallback:** presence of this block selects the legacy scheme; absence selects 9421. A seller MUST NOT sign the same webhook both ways, and a buyer MUST NOT attempt 'try 9421 first, fall back to HMAC' verification — signature mode is determined solely by whether this block was present at registration time. The seller's baseline 9421 webhook key is published at its brand.json `agents[]` `jwks_uri` using `adcp_use: \"request-signing\"` (deprecated `webhook-signing` keys remain accepted during the compatibility window); it does not override this selector and is only used when `authentication` is omitted. See docs/building/by-layer/L1/security.mdx#webhook-callbacks for the full precedence and downgrade-resistance rules (including the `webhook_mode_mismatch` rejection a buyer MUST apply when a received webhook's signing mode does not match the registered mode).",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated; new integrations SHOULD omit `authentication` and use the RFC 9421 webhook profile.",
+              "items": {
+                "$ref": "#/$defs/AuthenticationScheme"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "reporting_webhook": {
+      "title": "Reporting Webhook",
+      "description": "Optional reporting delivery configuration established atomically when the proposal is accepted. This is execution metadata and does not alter the accepted commercial terms digest.",
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Webhook endpoint URL for reporting notifications"
+        },
+        "token": {
+          "type": "string",
+          "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
+          "minLength": 16
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "description": "Legacy authentication configuration for webhook delivery (A2A-compatible). Opts the receiver into Bearer or HMAC-SHA256 signing. Both schemes are deprecated; the preferred signing profile for new integrations is RFC 9421, where the seller signs with a key published at its brand.json agents[] entry and the buyer verifies against the seller's JWKS — no shared secret crosses the wire (see docs/building/implementation/security.mdx#webhook-callbacks). This field is required in AdCP 3.x; the requirement is removed in AdCP 4.0 when the default RFC 9421 path becomes the only path.",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "description": "Array of authentication schemes. ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated; new integrations SHOULD use the RFC 9421 webhook signing profile instead.",
+              "items": {
+                "$ref": "#/$defs/AuthenticationScheme"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        },
+        "reporting_frequency": {
+          "type": "string",
+          "enum": [
+            "hourly",
+            "daily",
+            "monthly"
+          ],
+          "description": "Frequency for automated reporting delivery. Must be supported by all products in the media buy."
+        },
+        "requested_metrics": {
+          "type": "array",
+          "description": "Optional list of metrics to include in webhook notifications. If omitted, all available metrics are included. Must be subset of product's available_metrics.",
+          "items": {
+            "title": "Available Metric",
+            "description": "Standard delivery and performance metrics available for reporting",
+            "type": "string",
+            "enum": [
+              "impressions",
+              "spend",
+              "clicks",
+              "ctr",
+              "views",
+              "completed_views",
+              "completion_rate",
+              "conversions",
+              "conversion_value",
+              "commissionable_value",
+              "roas",
+              "cost_per_acquisition",
+              "new_to_brand_rate",
+              "leads",
+              "reach",
+              "frequency",
+              "grps",
+              "engagements",
+              "engagement_rate",
+              "follows",
+              "saves",
+              "profile_visits",
+              "viewability",
+              "quartile_data",
+              "dooh_metrics",
+              "cost_per_click",
+              "cost_per_completed_view",
+              "cpm",
+              "downloads",
+              "units_sold",
+              "new_to_brand_units",
+              "plays",
+              "incremental_sales_lift",
+              "brand_lift",
+              "foot_traffic",
+              "conversion_lift",
+              "brand_search_lift"
+            ],
+            "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/available-metric.json"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "url",
+        "authentication",
+        "reporting_frequency"
+      ],
+      "additionalProperties": true
+    },
+    "opportunity": {
+      "allOf": [
+        {
+          "title": "Opportunity Context",
+          "description": "Buyer-supplied context for one planning cycle across proposal request, decline, and media-buy creation. The opaque opportunity_id is stable within the seller and account scope; sellers associate it with proposals without treating it as proposal identity.",
+          "type": "object",
+          "properties": {
+            "opportunity_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+              "x-entity": "opportunity",
+              "description": "Opaque buyer-assigned identifier for this planning cycle, scoped to the seller and account."
+            },
+            "phase": {
+              "type": "string",
+              "enum": [
+                "exploratory",
+                "planning",
+                "active_sourcing"
+              ],
+              "description": "Current stage of buyer planning."
+            },
+            "intent": {
+              "type": "string",
+              "enum": [
+                "test",
+                "speculative",
+                "planning",
+                "live_rfp"
+              ],
+              "description": "How seriously the buyer is evaluating supply in this cycle."
+            },
+            "planning_horizon": {
+              "title": "Date Range",
+              "description": "Inclusive calendar range in which the buyer expects the campaign to run.",
+              "type": "object",
+              "properties": {
+                "start": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "Start date (inclusive), ISO 8601"
+                },
+                "end": {
+                  "type": "string",
+                  "format": "date",
+                  "description": "End date (inclusive), ISO 8601"
+                }
+              },
+              "required": [
+                "start",
+                "end"
+              ],
+              "additionalProperties": true,
+              "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/date-range.json"
+            },
+            "response_deadline": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Deadline by which the buyer needs a seller response."
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "closed"
+              ],
+              "description": "Whether the planning cycle remains open. On calls after initial creation, omission means no status update and MUST NOT reopen or close the opportunity implicitly, except that successful create_media_buy proposal execution explicitly infers accepted closure."
+            },
+            "close_reason": {
+              "type": "string",
+              "enum": [
+                "accepted_with_seller",
+                "purchased_elsewhere",
+                "selected_alternative",
+                "not_pursued",
+                "budget_changed",
+                "timing_changed",
+                "other"
+              ],
+              "description": "Why the opportunity closed. Required when status is closed."
+            },
+            "close_detail": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "description": "Optional non-sensitive context about closure. MUST NOT identify a competitor or disclose confidential clearing terms."
+            }
+          },
+          "required": [
+            "opportunity_id"
+          ],
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "closed"
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              },
+              "then": {
+                "required": [
+                  "close_reason"
+                ]
+              },
+              "else": {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "close_reason"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "close_detail"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "close_reason": {
+                    "const": "other"
+                  }
+                },
+                "required": [
+                  "close_reason"
+                ]
+              },
+              "then": {
+                "required": [
+                  "close_detail"
+                ]
+              }
+            }
+          ],
+          "additionalProperties": false,
+          "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/opportunity-context.json"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "closed"
+            }
+          },
+          "if": {
+            "properties": {
+              "status": {
+                "const": "closed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "close_reason": {
+                "const": "accepted_with_seller"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Optional planning-cycle closure. Success infers closed with accepted_with_seller when status is omitted. If the proposal carries opportunity_id, a supplied ID MUST match; the accepted proposal preserves that association."
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true,
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/context.json"
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true,
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "account",
+    "proposal_id",
+    "proposal_terms_digest"
+  ],
+  "additionalProperties": false,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "packages"
+        ]
+      },
+      {
+        "required": [
+          "purchases"
+        ]
+      },
+      {
+        "required": [
+          "creatives"
+        ]
+      },
+      {
+        "required": [
+          "creative_assignments"
+        ]
+      }
+    ]
+  },
+  "$defs": {
+    "AuthenticationScheme": {
+      "title": "Authentication Scheme",
+      "deprecated": true,
+      "description": "Legacy authentication schemes for the webhook auth block. Bearer: token sent in Authorization header. HMAC-SHA256: legacy shared-secret signing. Both are deprecated; new integrations SHOULD omit the authentication block and use the RFC 9421 webhook signing profile (applicable on schemas where authentication is optional). Removed in AdCP 4.0.",
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ],
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/auth-scheme.json"
+    }
+  },
+  "_bundled": {
+    "generatedAt": "2026-08-22T14:50:28.898Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

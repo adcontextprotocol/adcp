@@ -9,6 +9,7 @@
     "budget": { "type": "number", "minimum": 0 },
     "product_id": { "type": "string", "x-entity": "product" },
     "dimensions": { "$ref": "/schemas/core/forecast-point-dimensions.json" },
+    "availability_status": { "$ref": "/schemas/enums/availability-status.json" },
     "metrics": {
       "type": "object",
       "additionalProperties": { "$ref": "/schemas/core/forecast-range.json" }

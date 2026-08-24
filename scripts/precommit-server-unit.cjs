@@ -53,7 +53,11 @@ function pathsFromNameStatus(output) {
 }
 
 function stagedFiles() {
-  const output = execFileSync('git', ['diff', '--cached', '--name-status', '--diff-filter=ACMRD', '-z']);
+  // Merge commits with main can stage tens of thousands of dist/ files;
+  // Node's default 1 MB maxBuffer overflows (ENOBUFS) on the -z listing.
+  const output = execFileSync('git', ['diff', '--cached', '--name-status', '--diff-filter=ACMRD', '-z'], {
+    maxBuffer: 64 * 1024 * 1024,
+  });
   return pathsFromNameStatus(output);
 }
 
@@ -100,7 +104,7 @@ function main() {
   }
 
   console.log(`Running ${plan.files.length} changed server unit test file(s).`);
-  return run('npm', ['exec', '--', 'vitest', 'run', ...plan.files]);
+  return run('npm', ['exec', '--', 'vitest', 'run', '--config', 'server/vitest.config.ts', ...plan.files]);
 }
 
 if (require.main === module) {

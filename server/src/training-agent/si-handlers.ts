@@ -172,7 +172,7 @@ const SANDBOX_OFFERINGS: Record<string, Record<string, unknown>> = {
   },
 };
 
-export async function handleSiGetOffering(args: ToolArgs, _ctx: TrainingContext): Promise<unknown> {
+export async function handleSiGetOffering(args: ToolArgs, ctx: TrainingContext): Promise<unknown> {
   const a = args as ToolArgs & Record<string, unknown>;
   const offeringId = a.offering_id as string | undefined;
   if (!offeringId) {
@@ -209,6 +209,10 @@ export async function handleSiGetOffering(args: ToolArgs, _ctx: TrainingContext)
 
   return {
     available: true,
+    // The released 3.0 SI storyboard captures this legacy top-level field
+    // before passing it into the session lifecycle. Current responses keep
+    // the canonical identifier nested on `offering`.
+    ...(ctx.storyboardCompat?.version === '3.0' && { offering_id: offeringId }),
     offering_token: `tok_${offeringId}_sandbox`,
     ttl_seconds: 3600,
     checked_at: new Date().toISOString(),

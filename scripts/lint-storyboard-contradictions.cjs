@@ -490,6 +490,7 @@ function classifyOutcome(step) {
       check === 'envelope_field_pattern' ||
       check === 'field_value' ||
       check === 'field_value_or_absent' ||
+      check === 'field_greater_than' ||
       check === 'http_status' ||
       check === 'http_status_in'
     );

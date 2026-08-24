@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/media-buy/provide-performance-feedback-request.json",
+  "title": "Provide Performance Feedback Request",
+  "description": "Submits one compact optimizer-ready assertion. Measurement agents submit to a buyer-controlled orchestrator gateway through this task; the orchestrator validates, normalizes, and forwards feedback to sellers under the buyer's identity.",
+  "x-tool-summary": "Submit an optimizer-ready performance assertion for validation and forwarding to a seller.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/performance-feedback-assertion.json"
+    }
+  ],
+  "x-mutates-state": true,
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this logical assertion. MUST be unique per receiving agent to prevent cross-agent correlation; use a fresh UUID v4 for each new assertion. Retries use the same key and payload.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key"
+  ],
+  "additionalProperties": true
+}

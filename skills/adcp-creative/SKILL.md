@@ -32,7 +32,7 @@ The Creative Protocol provides standardized discovery, build, and preview tasks:
 
 ## Canonical formats (AdCP 3.2)
 
-Products and manifests use 12 canonical `format_kind` values: `image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `sponsored_placement`, `native_in_feed`, `responsive_creative`, and `agent_placement`. Use `custom` only for a shape outside those canonicals, with required `format_shape` and `format_schema`.
+Products and manifests use 14 canonical `format_kind` values: `image`, `html5`, `display_tag`, `image_carousel`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `sponsored_placement`, `native_in_feed`, `responsive_creative`, `agent_placement`, `seller_rendered_stateful_display`, and `coordinated_placements`. Use `custom` only for a shape outside those canonicals, with required `format_shape` and `format_schema`.
 
 A `ProductFormatDeclaration` carries:
 

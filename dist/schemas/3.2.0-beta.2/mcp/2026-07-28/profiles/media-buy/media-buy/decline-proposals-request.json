@@ -1,0 +1,334 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/mcp/2026-07-28/profiles/media-buy/media-buy/decline-proposals-request.json",
+  "type": "object",
+  "x-mutates-state": true,
+  "x-operation-family": "decline_proposals",
+  "x-added-in": "3.2.0",
+  "x-legacy-fallback": {
+    "mode": "none"
+  },
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "context_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "context": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1context.json"
+        }
+      ],
+      "x-adcp-schema-uri": "/schemas/core/context.json"
+    },
+    "governance_context": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "push_notification_config": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1push-notification-config.json"
+        }
+      ],
+      "x-adcp-schema-uri": "/schemas/core/push-notification-config.json"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "declines": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:media-buy~1proposal-decline.json"
+      },
+      "minItems": 1,
+      "maxItems": 25,
+      "uniqueItems": true
+    },
+    "opportunity": {
+      "$ref": "#/$defs/external:core~1opportunity-context.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "declines"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/push-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 4096
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "deprecated": true,
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:media-buy/proposal-decline.json": {
+      "type": "object",
+      "properties": {
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "x-entity": "proposal"
+        },
+        "reason": {
+          "$ref": "#/$defs/external:enums~1proposal-decline-reason.json"
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "proposal_id",
+        "reason"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "const": "other"
+              }
+            },
+            "required": [
+              "reason"
+            ]
+          },
+          "then": {
+            "required": [
+              "detail"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/proposal-decline-reason.json": {
+      "type": "string",
+      "enum": [
+        "price",
+        "inventory_fit",
+        "audience_fit",
+        "creative_unsupported",
+        "measurement_unsupported",
+        "policy",
+        "timing",
+        "budget_changed",
+        "selected_alternative",
+        "other"
+      ]
+    },
+    "external:core/opportunity-context.json": {
+      "type": "object",
+      "properties": {
+        "opportunity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "opportunity"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "exploratory",
+            "planning",
+            "active_sourcing"
+          ]
+        },
+        "intent": {
+          "type": "string",
+          "enum": [
+            "test",
+            "speculative",
+            "planning",
+            "live_rfp"
+          ]
+        },
+        "planning_horizon": {
+          "$ref": "#/$defs/external:core~1date-range.json"
+        },
+        "response_deadline": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "closed"
+          ]
+        },
+        "close_reason": {
+          "type": "string",
+          "enum": [
+            "accepted_with_seller",
+            "purchased_elsewhere",
+            "selected_alternative",
+            "not_pursued",
+            "budget_changed",
+            "timing_changed",
+            "other"
+          ]
+        },
+        "close_detail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "opportunity_id"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "closed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "close_reason"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "close_reason"
+                  ]
+                },
+                {
+                  "required": [
+                    "close_detail"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "close_reason": {
+                "const": "other"
+              }
+            },
+            "required": [
+              "close_reason"
+            ]
+          },
+          "then": {
+            "required": [
+              "close_detail"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:core/date-range.json": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date"
+        },
+        "end": {
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    }
+  }
+}

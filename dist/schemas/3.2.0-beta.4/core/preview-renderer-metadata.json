@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/preview-renderer-metadata.json",
+  "title": "Preview Renderer Metadata",
+  "description": "Audit metadata identifying the implementation that actually produced a preview render. This metadata records implementation origin and safety behavior; it never grants authority. Consumers determine authority only from an applicable publisher-origin preview_provider delegation.",
+  "type": "object",
+  "required": [
+    "renderer_id",
+    "version",
+    "export",
+    "rendering_origin",
+    "tracking_suppressed"
+  ],
+  "properties": {
+    "renderer_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable implementation identifier."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "description": "Exact semantic version of the renderer implementation."
+    },
+    "export": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Renderer export or entry-point name used for this render."
+    },
+    "rendering_origin": {
+      "type": "string",
+      "enum": [
+        "platform_native",
+        "agent_approximation"
+      ],
+      "description": "Informational implementation origin copied from the selected route. It does not grant authority."
+    },
+    "tracking_suppressed": {
+      "type": "boolean",
+      "description": "True only when the produced output cannot initiate impression, click, billing, conversion, viewability, or asset-fetch side effects. Renderers that retain any remote asset URL or navigation MUST emit false."
+    }
+  },
+  "additionalProperties": true
+}

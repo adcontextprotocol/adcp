@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/get-geo-place-resolution-response.json",
+  "title": "Get Geographic Place Resolution Response",
+  "description": "Paginated read-only resolver response containing seller-accepted place identifiers from one exact system version and echoing the request used to produce them.",
+  "x-adcp-validation": {
+    "resolver_response_binding": {
+      "system": "capability_key",
+      "system_version": "request.system_version_or_catalog.current_version",
+      "match_fields": [
+        "country",
+        "subdivision",
+        "place_type"
+      ]
+    },
+    "description": "The response system MUST equal the geo_places capability key for the resolver. system_version MUST equal the requested version, or catalog.current_version when omitted. Every match MUST equal request country and any requested subdivision/place_type. For a value lookup, the result MUST describe that value or its lifecycle replacement; for q search, the seller may apply documented text matching."
+  },
+  "type": "object",
+  "properties": {
+    "request": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/get-geo-place-resolution-request.json",
+      "description": "Exact normalized request represented by this page. Pagination responses repeat the original query fields and may carry the page cursor."
+    },
+    "system": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/geo-place-system.json"
+    },
+    "system_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "matches": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/geo-place-catalog-entry.json"
+      }
+    },
+    "next_cursor": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "request",
+    "system",
+    "system_version",
+    "matches"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "system": {
+            "enum": [
+              "geonames",
+              "google_ads",
+              "microsoft_ads"
+            ]
+          }
+        },
+        "required": [
+          "system"
+        ]
+      },
+      "then": {
+        "properties": {
+          "matches": {
+            "items": {
+              "properties": {
+                "value": {
+                  "pattern": "^[0-9]+$"
+                },
+                "replaced_by_values": {
+                  "items": {
+                    "pattern": "^[0-9]+$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

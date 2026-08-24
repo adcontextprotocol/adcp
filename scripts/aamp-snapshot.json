@@ -1,0 +1,12 @@
+{
+  "asOf": "2026-08-23",
+  "claimSurfaces": [
+    "docs/faq.mdx (How does AdCP compare to AAMP?)",
+    "server/src/addie/rules/knowledge.md (AAO and IAB Tech Lab — dated snapshot)"
+  ],
+  "org": "IABTechLab",
+  "expectNoTags": ["AAMP", "agentic-direct", "agentic-audiences", "agentic-mobile"],
+  "expectLatestTag": {
+    "agentic-real-time-framework": "v1.0"
+  }
+}

@@ -1,0 +1,1424 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/mcp/2026-07-28/profiles/production/property/list-property-lists-response.json",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    },
+    {
+      "$ref": "#/$defs/external:core~1protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "lists": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:property~1property-list.json"
+      }
+    },
+    "pagination": {
+      "$ref": "#/$defs/external:core~1pagination-response.json"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "lists"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/protocol-envelope.json": {
+      "type": "object",
+      "properties": {
+        "context_id": {
+          "type": "string"
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "task_id": {
+          "type": "string",
+          "x-entity": "task"
+        },
+        "status": {
+          "$ref": "#/$defs/external:enums~1task-status.json"
+        },
+        "message": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "replayed": {
+          "type": "boolean",
+          "default": false
+        },
+        "adcp_error": {
+          "$ref": "#/$defs/external:core~1error.json"
+        },
+        "push_notification_config": {
+          "$ref": "#/$defs/external:core~1push-notification-config.json"
+        },
+        "governance_context": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^[\\x20-\\x7E]+$"
+        },
+        "payload": {
+          "type": "object",
+          "x-adcp-open-payload": true,
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "task_status"
+            ]
+          },
+          {
+            "required": [
+              "response_status"
+            ]
+          }
+        ]
+      },
+      "notes": [
+        "Task response schemas (e.g., get-products-response.json) define ONLY the body fields; protocol-layer fields live on this envelope.",
+        "Transport serialization (normative):",
+        "  - MCP: envelope fields and task-body fields are siblings at the root of the tool response. The `payload` object is NOT serialized as a nested key — its body fields are flattened to the root alongside `status`, `context_id`, `context`, etc. This matches MCP's native `structuredContent` convention and is what shipping SDKs (@adcp/client) emit. Conformant MCP receivers parse from the flat root; receivers that expect a nested `payload` key MUST migrate.",
+        "  - A2A 1.0 with the AdCP profile extension: `task.status.state` carries the transport invocation lifecycle used to select the extraction location; `task.contextId` carries `context_id`, while `task.id` is an independent A2A transport identifier. The complete AdCP response, including its protocol-level `status` and any application-layer `task_id`, is canonically carried in `task.artifacts[0].parts[].DataPart` on final states; `task.status.message.parts[].DataPart` is the fallback container used only for interim A2A states (working, native submitted, input-required) where no final artifact has been emitted yet. For a structured AdCP business rejection or Submitted response, A2A is `completed` while the DataPart carries `status: rejected` or `status: submitted` because the handler invocation succeeded. An AdCP `task_id` MUST NOT be copied into artifact metadata or inferred from `task.id`. Receivers MUST prefer artifacts when present and MUST NOT overwrite a DataPart's status with the A2A state. See `a2a-profile-extension.mdx` and `a2a-response-extraction.mdx` for the full binding and extraction algorithm.",
+        "  - REST: envelope fields MAY ride on HTTP headers (e.g., `X-AdCP-Status`, `X-AdCP-Context-Id`) or as JSON body siblings; body fields appear at the JSON body root. Implementers choosing the header path SHOULD also mirror to body siblings for non-streaming callers.",
+        "Across all three: envelope and body fields are conceptually a single response object. A task response schema MAY declare body fields with the same name as envelope fields (e.g., `errors[]` body-level for per-record validation results vs envelope-level for fatal task failure) and the two MUST be treated as distinct fields by name within their respective namespaces — see `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`.",
+        "`status` is REQUIRED on the conceptual AdCP response across all transports. On MCP and REST it appears as a sibling field at the JSON root (or `structuredContent` root for MCP). On A2A it is carried inside the authoritative DataPart alongside the task body; `task.status.state` separately carries the A2A transport lifecycle and selects where that DataPart is found. Receivers MUST preserve the DataPart status when present. The schema-level `required: [status]` enforces the post-extraction AdCP shape. `payload` remains intentionally NOT required — it is a documentary grouping construct, never a required wire field. See `mcp-guide.mdx` and `a2a-guide.mdx` for the wire-level patterns receivers MUST implement.",
+        "Receivers MUST handle absence of an envelope field (e.g., `replayed` omitted) as the field's documented default — see each field's `default` clause."
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:enums/task-status.json": {
+      "type": "string",
+      "enum": [
+        "submitted",
+        "working",
+        "input-required",
+        "completed",
+        "canceled",
+        "failed",
+        "rejected",
+        "auth-required",
+        "unknown"
+      ]
+    },
+    "external:core/error.json": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "keyword": {
+                "type": "string"
+              },
+              "schemaPath": {
+                "type": "string"
+              },
+              "schema_id": {
+                "type": "string"
+              },
+              "discriminator": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "property_name": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "property_name",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "pointer",
+              "message",
+              "keyword"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "recovery": {
+          "type": "string",
+          "enum": [
+            "transient",
+            "correctable",
+            "terminal"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "producer",
+            "sdk"
+          ]
+        },
+        "sdk_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/push-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 4096
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "deprecated": true,
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:property/property-list.json": {
+      "type": "object",
+      "properties": {
+        "list_id": {
+          "type": "string",
+          "x-entity": "property_list"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "account": {
+          "$ref": "#/$defs/external:core~1account-ref.json"
+        },
+        "base_properties": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:property~1base-property-source.json"
+          }
+        },
+        "filters": {
+          "$ref": "#/$defs/external:property~1property-list-filters.json"
+        },
+        "brand": {
+          "$ref": "#/$defs/external:core~1brand-ref.json"
+        },
+        "webhook_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "cache_duration_hours": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 24
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "property_count": {
+          "type": "integer"
+        },
+        "pricing_options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1vendor-pricing-option.json"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "list_id",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/account-ref.json": {
+      "type": "object",
+      "oneOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-ref.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:core/brand-ref.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "industries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data_subject_contestation": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "email"
+              ]
+            }
+          ],
+          "additionalProperties": false
+        },
+        "brand_kit_override": {
+          "type": "object",
+          "properties": {
+            "logo": {
+              "$ref": "#/$defs/external:core~1assets~1image-asset.json"
+            },
+            "colors": {
+              "type": "object",
+              "properties": {
+                "primary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "secondary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "accent": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                }
+              },
+              "additionalProperties": true
+            },
+            "voice": {
+              "type": "string"
+            },
+            "tagline": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand"
+    },
+    "external:core/assets/image-asset.json": {
+      "type": "object",
+      "properties": {
+        "asset_type": {
+          "type": "string",
+          "const": "image"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pixel_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "format": {
+          "type": "string"
+        },
+        "alt_text": {
+          "type": "string",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "#/$defs/external:core~1provenance.json"
+        }
+      },
+      "required": [
+        "asset_type",
+        "url",
+        "width",
+        "height"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/provenance.json": {
+      "type": "object",
+      "properties": {
+        "digital_source_type": {
+          "$ref": "#/$defs/external:enums~1digital-source-type.json"
+        },
+        "synthetic_depiction": {
+          "type": "boolean"
+        },
+        "ai_tool": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "human_oversight": {
+          "type": "string",
+          "enum": [
+            "none",
+            "prompt_only",
+            "selected",
+            "edited",
+            "directed"
+          ]
+        },
+        "declared_by": {
+          "type": "object",
+          "properties": {
+            "agent_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "creator",
+                "advertiser",
+                "agency",
+                "platform",
+                "tool"
+              ]
+            }
+          },
+          "required": [
+            "role"
+          ]
+        },
+        "declared_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "created_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "c2pa": {
+          "type": "object",
+          "properties": {
+            "manifest_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": [
+            "manifest_url"
+          ]
+        },
+        "embedded_provenance": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "$ref": "#/$defs/external:enums~1embedded-provenance-method.json"
+              },
+              "standard": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "verify_agent": {
+                "type": "object",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  "feature_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "method",
+              "provider"
+            ]
+          }
+        },
+        "watermarks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "media_type": {
+                "$ref": "#/$defs/external:enums~1watermark-media-type.json"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "verify_agent": {
+                "type": "object",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  "feature_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "c2pa_action": {
+                "$ref": "#/$defs/external:enums~1c2pa-watermark-action.json"
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "media_type",
+              "provider"
+            ]
+          }
+        },
+        "disclosure": {
+          "type": "object",
+          "properties": {
+            "required": {
+              "type": "boolean"
+            },
+            "jurisdictions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "country": {
+                    "type": "string"
+                  },
+                  "region": {
+                    "type": "string"
+                  },
+                  "regulation": {
+                    "type": "string"
+                  },
+                  "label_text": {
+                    "type": "string"
+                  },
+                  "render_guidance": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "properties": {
+                      "persistence": {
+                        "$ref": "#/$defs/external:enums~1disclosure-persistence.json"
+                      },
+                      "min_duration_ms": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "positions": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/external:enums~1disclosure-position.json"
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      },
+                      "ext": {
+                        "$ref": "#/$defs/external:core~1ext.json"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "country",
+                  "regulation"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "required"
+          ]
+        },
+        "verification": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "verified_by": {
+                "type": "string"
+              },
+              "verified_time": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "authentic",
+                  "ai_generated",
+                  "ai_modified",
+                  "inconclusive"
+                ]
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "details_url": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "required": [
+              "verified_by",
+              "result"
+            ]
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      }
+    },
+    "external:enums/digital-source-type.json": {
+      "type": "string",
+      "enum": [
+        "digital_capture",
+        "digital_creation",
+        "trained_algorithmic_media",
+        "composite_with_trained_algorithmic_media",
+        "algorithmic_media",
+        "composite_capture",
+        "composite_synthetic",
+        "human_edits",
+        "data_driven_media"
+      ]
+    },
+    "external:enums/embedded-provenance-method.json": {
+      "type": "string",
+      "enum": [
+        "manifest_wrapper",
+        "provenance_markers"
+      ]
+    },
+    "external:enums/watermark-media-type.json": {
+      "type": "string",
+      "enum": [
+        "audio",
+        "image",
+        "video",
+        "text"
+      ]
+    },
+    "external:enums/c2pa-watermark-action.json": {
+      "type": "string",
+      "enum": [
+        "c2pa.watermarked.bound",
+        "c2pa.watermarked.unbound"
+      ]
+    },
+    "external:enums/disclosure-persistence.json": {
+      "type": "string",
+      "enum": [
+        "continuous",
+        "initial",
+        "flexible"
+      ]
+    },
+    "external:enums/disclosure-position.json": {
+      "type": "string",
+      "enum": [
+        "prominent",
+        "footer",
+        "audio",
+        "subtitle",
+        "overlay",
+        "end_card",
+        "pre_roll",
+        "companion"
+      ]
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/operator-unit.json": {
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "external:property/base-property-source.json": {
+      "discriminator": {
+        "propertyName": "selection_type"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "selection_type": {
+              "type": "string",
+              "const": "publisher_tags"
+            },
+            "publisher_domain": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:core~1property-tag.json"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "selection_type",
+            "publisher_domain",
+            "tags"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "selection_type": {
+              "type": "string",
+              "const": "publisher_ids"
+            },
+            "publisher_domain": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            },
+            "property_ids": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:core~1property-id.json"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "selection_type",
+            "publisher_domain",
+            "property_ids"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "selection_type": {
+              "type": "string",
+              "const": "identifiers"
+            },
+            "identifiers": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:core~1identifier.json"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "selection_type",
+            "identifiers"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:core/property-tag.json": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "external:core/property-id.json": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "property"
+    },
+    "external:core/identifier.json": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/external:enums~1identifier-types.json"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/identifier-types.json": {
+      "type": "string",
+      "enum": [
+        "domain",
+        "subdomain",
+        "network_id",
+        "ios_bundle",
+        "android_package",
+        "apple_app_store_id",
+        "google_play_id",
+        "roku_store_id",
+        "fire_tv_asin",
+        "samsung_app_id",
+        "apple_tv_bundle",
+        "bundle_id",
+        "venue_id",
+        "screen_id",
+        "openooh_venue_type",
+        "rss_url",
+        "apple_podcast_id",
+        "spotify_collection_id",
+        "podcast_guid",
+        "station_id",
+        "facility_id"
+      ]
+    },
+    "external:property/property-list-filters.json": {
+      "type": "object",
+      "properties": {
+        "countries_all": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1
+        },
+        "channels_any": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1channels.json"
+          },
+          "minItems": 1
+        },
+        "property_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1property-type.json"
+          },
+          "minItems": 1
+        },
+        "feature_requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1feature-requirement.json"
+          },
+          "minItems": 1
+        },
+        "exclude_identifiers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1identifier.json"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:enums/channels.json": {
+      "type": "string",
+      "enum": [
+        "display",
+        "olv",
+        "social",
+        "search",
+        "ctv",
+        "linear_tv",
+        "radio",
+        "streaming_audio",
+        "podcast",
+        "dooh",
+        "ooh",
+        "print",
+        "cinema",
+        "email",
+        "gaming",
+        "retail_media",
+        "influencer",
+        "affiliate",
+        "product_placement",
+        "sponsored_intelligence"
+      ]
+    },
+    "external:enums/property-type.json": {
+      "type": "string",
+      "enum": [
+        "website",
+        "mobile_app",
+        "ctv_app",
+        "desktop_app",
+        "dooh",
+        "podcast",
+        "radio",
+        "linear_tv",
+        "streaming_audio",
+        "ai_assistant"
+      ]
+    },
+    "external:core/feature-requirement.json": {
+      "type": "object",
+      "properties": {
+        "feature_id": {
+          "type": "string"
+        },
+        "min_value": {
+          "type": "number"
+        },
+        "max_value": {
+          "type": "number"
+        },
+        "allowed_values": {
+          "type": "array",
+          "items": {},
+          "minItems": 1
+        },
+        "if_not_covered": {
+          "type": "string",
+          "enum": [
+            "exclude",
+            "include"
+          ],
+          "default": "exclude"
+        },
+        "policy_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "feature_id"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/vendor-pricing-option.json": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "pricing_option_id": {
+              "type": "string",
+              "x-entity": "vendor_pricing_option"
+            },
+            "applies_to_output_format_ids": {
+              "type": "array",
+              "deprecated": true,
+              "items": {
+                "$ref": "#/$defs/external:core~1format-id.json"
+              },
+              "minItems": 1
+            },
+            "applies_to_output_capability_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]+$"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "pricing_option_id"
+          ]
+        },
+        {
+          "$ref": "#/$defs/external:core~1signal-pricing.json"
+        }
+      ]
+    },
+    "external:core/format-id.json": {
+      "deprecated": true,
+      "x-entity": "creative_format",
+      "type": "object",
+      "properties": {
+        "agent_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 1
+        },
+        "pixel_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "agent_url",
+        "id"
+      ],
+      "additionalProperties": true,
+      "dependentRequired": {
+        "width": [
+          "height"
+        ],
+        "height": [
+          "width"
+        ],
+        "pixel_ratio": [
+          "width",
+          "height"
+        ]
+      }
+    },
+    "external:core/signal-pricing.json": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "model"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string",
+              "const": "cpm"
+            },
+            "cpm": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "ext": {
+              "$ref": "#/$defs/external:core~1ext.json"
+            }
+          },
+          "required": [
+            "model",
+            "cpm",
+            "currency"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string",
+              "const": "percent_of_media"
+            },
+            "percent": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            },
+            "max_cpm": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "ext": {
+              "$ref": "#/$defs/external:core~1ext.json"
+            }
+          },
+          "required": [
+            "model",
+            "percent",
+            "currency"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string",
+              "const": "flat_fee"
+            },
+            "amount": {
+              "type": "number",
+              "minimum": 0
+            },
+            "period": {
+              "type": "string",
+              "enum": [
+                "monthly",
+                "quarterly",
+                "annual",
+                "campaign"
+              ]
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "ext": {
+              "$ref": "#/$defs/external:core~1ext.json"
+            }
+          },
+          "required": [
+            "model",
+            "amount",
+            "period",
+            "currency"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string",
+              "const": "per_unit"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "unit_price": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "ext": {
+              "$ref": "#/$defs/external:core~1ext.json"
+            }
+          },
+          "required": [
+            "model",
+            "unit",
+            "unit_price",
+            "currency"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "model": {
+              "type": "string",
+              "const": "custom"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "metadata": {
+              "type": "object",
+              "additionalProperties": true,
+              "minProperties": 1,
+              "properties": {
+                "summary_for_operator": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "ext": {
+              "$ref": "#/$defs/external:core~1ext.json"
+            }
+          },
+          "required": [
+            "model",
+            "description",
+            "metadata"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/pagination-response.json": {
+      "type": "object",
+      "properties": {
+        "has_more": {
+          "type": "boolean"
+        },
+        "cursor": {
+          "type": "string"
+        },
+        "total_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "has_more"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

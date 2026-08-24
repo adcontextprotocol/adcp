@@ -152,10 +152,33 @@
     },
     {
       "if": {
-        "properties": { "phase": { "const": "delivery" } },
-        "required": ["phase"]
+        "anyOf": [
+          {
+            "properties": { "phase": { "const": "delivery" } },
+            "required": ["phase"]
+          },
+          {
+            "properties": { "governance_phase": { "const": "delivery" } },
+            "required": ["governance_phase"]
+          }
+        ]
       },
-      "then": { "required": ["governance_context", "planned_delivery", "delivery_metrics"] }
+      "then": {
+        "required": ["governance_context", "planned_delivery", "delivery_metrics"],
+        "properties": {
+          "delivery_metrics": {
+            "required": [
+              "statement_id",
+              "statement_digest",
+              "sequence",
+              "issued_at",
+              "reporting_period",
+              "cumulative_spend",
+              "currency"
+            ]
+          }
+        }
+      }
     },
     {
       "not": {
@@ -284,8 +307,30 @@
     },
     "delivery_metrics": {
       "type": "object",
-      "description": "Actual delivery performance data. MUST be present for 'delivery' phase. The governance agent compares these metrics against the planned delivery to detect drift.",
+      "description": "Seller-attributed canonical delivery statement. MUST be present for 'delivery' phase. The authenticated seller binds one immutable statement_id and digest to a monotonically increasing sequence; the buyer can later submit the copy it received or an independent observation through report_plan_outcome.",
       "properties": {
+        "statement_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "description": "Stable seller-issued identifier for this immutable delivery statement.",
+          "x-entity": "governance_delivery_statement"
+        },
+        "statement_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "SHA-256 digest of RFC 8785 JCS over {seller_reference, delivery_metrics}, excluding statement_digest itself. The authenticated submission binds the seller to this digest."
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Monotonically increasing sequence for this governed action. A statement ID or sequence cannot be reused with different content."
+        },
+        "issued_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the seller issued the canonical statement."
+        },
         "reporting_period": {
           "type": "object",
           "description": "Start and end timestamps for the reporting window.",
@@ -314,6 +359,11 @@
           "type": "number",
           "minimum": 0,
           "description": "Total spend since the governed action started."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Currency of spend fields; must match the plan and planned delivery."
         },
         "impressions": {
           "type": "integer",

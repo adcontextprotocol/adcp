@@ -20,17 +20,15 @@ import { createLogger } from '../logger.js';
 const logger = createLogger('org-intake-lock');
 
 /**
- * Hard caps on lock acquisition + statement execution inside the locked
- * transaction. Without these, a stuck Stripe call (network blip, slow
- * webhook hop) parks a pool connection indefinitely and queues every other
- * intake for the same org behind it.
+ * Hard caps on lock acquisition + SQL execution inside the transaction.
+ * Remote calls are bounded separately by the Stripe client's request timeout;
+ * PostgreSQL statement_timeout does not apply while JavaScript awaits I/O.
  *
  * - lock_timeout: how long the inner `pg_advisory_xact_lock` may wait for
  *   another transaction to release the same key. After this, PG raises an
  *   error and we roll back; the caller surfaces a 500 and the user retries.
- * - statement_timeout: ceiling for any single statement inside the
- *   transaction. Stripe's slowest p99 invoice/subscription create is well
- *   under 30s; this is a safety net, not a performance budget.
+ * - statement_timeout: ceiling for any single SQL statement inside the
+ *   transaction.
  */
 const LOCK_TIMEOUT_MS = 10_000;
 const STATEMENT_TIMEOUT_MS = 30_000;
@@ -58,8 +56,8 @@ export async function withOrgIntakeLock<T>(
   try {
     try {
       await client.query('BEGIN');
-      // Per-transaction timeouts: prevents a stuck Stripe call from parking
-      // this connection indefinitely and queueing other same-org intakes.
+      // Per-transaction database timeouts. Stripe requests have their own
+      // client timeout in stripe-client.ts.
       await client.query(`SET LOCAL lock_timeout = '${LOCK_TIMEOUT_MS}ms'`);
       await client.query(`SET LOCAL statement_timeout = '${STATEMENT_TIMEOUT_MS}ms'`);
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [orgId]);

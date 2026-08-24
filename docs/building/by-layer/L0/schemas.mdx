@@ -214,16 +214,22 @@ change a server's MCP registration. MCP disables automatic network
 dereferencing by default, so each projected schema is a compact, self-contained
 document containing only local fragment references.
 
-The 3.2 projection changes schema syntax, not the AdCP payload contract. It is
-generated from the canonical draft-07 schemas and MUST preserve the same
-validation outcomes. In particular, it does not add
-`unevaluatedProperties: false` or otherwise close extension points. The build
-tests inspect every projected schema for dialect, local-reference integrity,
-and self-containment; enforce AdCP-defined defensive depth, schema-object, and
-compact-serialization byte bounds following MCP guidance; compile
-representative schemas from every protocol; and compare the source and
-projected dialects across representative instances. Repeated shared schemas are
-stored once under `$defs` rather than recursively inlined.
+The 3.2 projection separates MCP discovery from canonical validation. Projected
+`outputSchema` files preserve the canonical draft-07 validation outcomes.
+Projected `inputSchema` files are host-compatible `tools/list` hints: the build
+flattens unconditional object properties and optional version fields into the
+root, but omits root `allOf`, `anyOf`, `oneOf`, conditionals, and negations that
+strict tool hosts reject. Nested combinators remain intact. Servers MUST
+validate every call against the canonical draft-07 request schema referenced by
+the version-root manifest; a payload accepted by discovery can still receive a
+structured `INVALID_REQUEST` at call time.
+
+The build tests inspect every projected schema for dialect, local-reference
+integrity, and self-containment; enforce AdCP-defined defensive depth,
+schema-object, and compact-serialization byte bounds following MCP guidance;
+and assert that discovery inputs retain their structural property surfaces.
+Repeated shared schemas are stored once under `$defs` rather than recursively
+inlined.
 
 #### Production surface profile
 
@@ -233,12 +239,13 @@ The MCP projection also publishes a filtered production profile:
 https://adcontextprotocol.org/schemas/{version}/mcp/2026-07-28/profiles/production/manifest.json
 ```
 
-For AdCP 3.2, this is the clean active structural catalog: it excludes the
+For AdCP 3.2, this is the clean active discovery catalog: it excludes the
 compliance-only controller and tools deprecated by 3.2, including the
 `get_products` and `list_creative_formats` compatibility facades. Its schemas
-remove only presentation annotations (`description`, `enumDescriptions`,
-`title`, `examples`, and `$comment`), so validation semantics are identical to
-the full MCP projection.
+remove low-signal presentation annotations while retaining descriptions needed
+to explain root constraints omitted from discovery. Output validation semantics
+remain identical to the full MCP projection; input schemas remain permissive
+discovery hints.
 Each manifest tool retains its `protocol` classification for deterministic
 selection.
 
@@ -247,8 +254,9 @@ agent context. It currently spans 66 tools across the protocol families. A
 production host MUST expose only the protocols and tools it implements and
 SHOULD further select the smallest capability-appropriate subset for each
 agent session. Use the full projection for documentation, compatibility, and
-conformance; use this profile as the filtered catalog and structural validation
-source from which a host builds that subset. Removing descriptions makes the
+conformance; use this profile as the filtered catalog from which a host builds
+that subset, and use the canonical draft-07 schemas for request validation.
+Removing descriptions makes the
 artifacts smaller, but does not by itself solve `tools/list` context cost.
 
 #### Active role catalogs

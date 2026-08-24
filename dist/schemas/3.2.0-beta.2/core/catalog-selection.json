@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog-selection.json",
+  "title": "Catalog Selection",
+  "description": "Reference and item selectors for a catalog already known to the seller. Feed URLs, mappings, schedules, and inline catalog data belong to sync_catalogs. Different selector fields combine with AND semantics; values within ids, gtins, or tags use OR semantics.",
+  "type": "object",
+  "properties": {
+    "catalog_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "catalog",
+      "description": "Seller-known catalog identifier returned by sync_catalogs."
+    },
+    "type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog.json#/properties/type"
+    },
+    "ids": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog.json#/properties/ids"
+        }
+      ],
+      "uniqueItems": true
+    },
+    "gtins": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog.json#/properties/gtins"
+        }
+      ],
+      "uniqueItems": true
+    },
+    "tags": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog.json#/properties/tags"
+        }
+      ],
+      "uniqueItems": true
+    },
+    "category": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog.json#/properties/category"
+    },
+    "query": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/catalog.json#/properties/query"
+        }
+      ],
+      "minLength": 1
+    }
+  },
+  "required": [
+    "catalog_id"
+  ],
+  "additionalProperties": false
+}

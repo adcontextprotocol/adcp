@@ -1,0 +1,471 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/media-buy/create-media-buy-request.json",
+  "title": "Create Media Buy Request",
+  "description": "Deprecated AdCP 3.x compatibility request for creating a MediaBuy. New 3.2 callers use buy_products for direct published-offer purchases or accept_proposal for proposal execution. Existing package and proposal payloads remain valid throughout 3.x.",
+  "type": "object",
+  "deprecated": true,
+  "x-deprecated-in": "3.2.0",
+  "x-superseded-by": [
+    "buy_products",
+    "accept_proposal"
+  ],
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "required": [
+          "opportunity"
+        ]
+      },
+      "then": {
+        "required": [
+          "proposal_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "bidding"
+        ]
+      },
+      "then": {
+        "properties": {
+          "packages": {
+            "items": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "bid_price"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "optimization_goals": {
+                        "contains": {
+                          "properties": {
+                            "target": {
+                              "properties": {
+                                "kind": {
+                                  "enum": [
+                                    "cost_per",
+                                    "per_ad_spend"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "target"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "optimization_goals"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "x-mutates-state": true,
+  "x-governed-commitment": {
+    "scope": "always"
+  },
+  "properties": {
+    "governance_context": {
+      "type": "string",
+      "description": "Opaque intent authorization for this media-buy commitment. Required when governance applies to the resolved account.",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. If a request with the same idempotency_key and account has already been processed, the seller returns the existing media buy rather than creating a duplicate. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "DEPRECATED on seller-facing requests. New buyers send the approved governance_context on the protocol envelope; the seller forwards that opaque context and does not need the plan identifier. If both are present, the governance agent MUST reject a mismatch. Removed in 4.0.",
+      "deprecated": true,
+      "x-entity": "governance_plan"
+    },
+    "account": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/account-ref.json",
+      "description": "Account to bill for this media buy. Pass a natural key (brand, operator, optional sandbox) or a seller-assigned account_id from list_accounts."
+    },
+    "proposal_id": {
+      "type": "string",
+      "x-entity": "proposal",
+      "description": "ID of the exact committed proposal snapshot to execute. With total_budget, the publisher creates packages using the proposal's fixed percentages or seller-optimized constraints. Mutually exclusive: provide packages or proposal_id, not both. AdCP 3.2 request_proposals and ordinary refine_proposals revisions issue drafts; refine_proposals action finalize creates the executable committed hold. Sellers reject draft, declined, or previously executed snapshots, while exact retries with the original idempotency key replay historical success. Changed commercial terms are issued under a new proposal_id, so no separate proposal version is required."
+    },
+    "opportunity": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/opportunity-context.json"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "closed"
+            }
+          },
+          "if": {
+            "properties": {
+              "status": {
+                "const": "closed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "close_reason": {
+                "const": "accepted_with_seller"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Optional planning-cycle closure. Sellers infer successful proposal execution as closed with close_reason accepted_with_seller when status is omitted; when status is present it MUST be closed with that reason. If the proposal was issued under an opportunity_id, a supplied ID MUST match it."
+    },
+    "total_budget": {
+      "type": "object",
+      "description": "Hard aggregate lifetime budget for the media buy. Required when executing a proposal and for seller-optimized explicit packages. Optional in fixed explicit-package mode; when present there, amount MUST equal the sum of package budgets. For a fixed proposal, the publisher applies allocation percentages to this amount. For a seller-optimized proposal or explicit buy, packages draw dynamically from this shared total.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "description": "Total budget amount",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional hard aggregate daily spend ceiling in the media-buy currency. It limits total spend without allocating package amounts. Package caps are subordinate and need not sum to it. Requires advertised media_buy budget-capping scope; otherwise rejected with UNSUPPORTED_FEATURE."
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional shared IANA day boundary override for all caps. Requires buyer_timezone_override; otherwise rejected with UNSUPPORTED_FEATURE. When omitted, budget_capping.timezone_basis selects Account.timezone or the advertised fixed_timezone."
+    },
+    "budget_allocation": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/budget-allocation.json"
+        }
+      ],
+      "description": "How budget is allocated across explicit packages. Omit for legacy fixed allocation. In proposal mode the committed proposal supplies this configuration and callers MUST omit it here."
+    },
+    "packages": {
+      "type": "array",
+      "description": "Array of package configurations. Required when not using proposal_id. Mutually exclusive: provide packages or proposal_id, not both. Fixed allocation requires budget on every package. Seller-optimized allocation permits package budget to be omitted or to act as a hard cap. When executing a proposal, omit packages; the seller derives them from the committed proposal.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/media-buy/package-request.json"
+      },
+      "minItems": 1
+    },
+    "brand": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/brand-ref.json",
+      "description": "Brand reference for this media buy. Resolved to full brand identity at execution time from brand.json or the registry."
+    },
+    "advertiser_industry": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/advertiser-industry.json",
+      "description": "Industry classification for this specific campaign. A brand may operate across multiple industries (brand.json industries field), but each media buy targets one. For example, a consumer health company running a wellness campaign sends 'healthcare.wellness', not 'cpg'. Sellers map this to platform-native codes (e.g., Spotify ADV categories, LinkedIn industry IDs). When omitted, sellers may infer from the brand manifest's industries field."
+    },
+    "invoice_recipient": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/business-entity.json",
+      "description": "Override the account's default billing entity for this specific buy. When provided, the seller invoices this entity instead. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
+    },
+    "io_acceptance": {
+      "type": "object",
+      "description": "Acceptance of an insertion order from a committed proposal. Required when the proposal's insertion_order has requires_signature: true. References the io_id from the proposal's insertion_order.",
+      "properties": {
+        "io_id": {
+          "type": "string",
+          "description": "The io_id from the proposal's insertion_order being accepted"
+        },
+        "accepted_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the IO was accepted"
+        },
+        "signatory": {
+          "type": "string",
+          "description": "Who accepted the IO — agent identifier or human name",
+          "minLength": 1,
+          "maxLength": 250
+        },
+        "signature_id": {
+          "type": "string",
+          "description": "Reference to the electronic signature from the signing service, when signing_url was used"
+        }
+      },
+      "required": [
+        "io_id",
+        "accepted_at",
+        "signatory"
+      ],
+      "additionalProperties": true
+    },
+    "po_number": {
+      "type": "string",
+      "description": "Purchase order number for tracking"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "\\S",
+      "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. When supplied, the seller MUST persist it and echo it unchanged on the create success response and subsequent get_media_buys reads. This display label is not an identifier or financial reference."
+    },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Agency estimate or authorization number. Primary financial reference for broadcast buys — links the order to the agency's media plan and billing system. Travels with the order and creative traffic identifiers through the transaction lifecycle."
+    },
+    "start_time": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/start-timing.json"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Campaign end date/time in ISO 8601 format"
+    },
+    "pacing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/pacing.json",
+      "description": "Aggregate pacing strategy for the media-buy budget across the media-buy flight. This controls how much the buy spends over time. Package pacing is subordinate and influences which package receives the aggregate spend; package pacing MUST NOT cause aggregate delivery to exceed this strategy. Defaults to even when total_budget is present. When executing a proposal that carries pacing, omit this field or send the identical value; the seller MUST reject a conflicting override with TERMS_REJECTED."
+    },
+    "bidding": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/bidding-policy.json"
+        }
+      ],
+      "description": "Complete media-buy bidding default inherited by packages that omit package.bidding. `{automatic:true}` records an explicit automatic policy. In seller-optimized mode, cost_per/roas bind to the primary budget_allocation.optimization_goals goal. In fixed mode, inherited cost_per is valid only when inheriting package primary-goal result units are compatible; inherited roas requires value-bearing primary goals. Every monetary field uses total_budget.currency or the single currency derived for the media buy, and every affected pricing option MUST declare that currency. Sellers MUST reject incompatible units, combinations, currency, or overrides before mutation with BIDDING_PLACEMENT_CONFLICT. Media-buy bidding combined with any inheriting package's legacy bid_price or legacy monetary optimization-goal target is ambiguous and MUST be rejected with AMBIGUOUS_BIDDING_POLICY."
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Create the media buy in a paused delivery state. When true, and the buy would otherwise be active because creatives are assigned and the flight has started, the seller returns media_buy_status 'paused'. Setup blockers still take precedence: a buy with no creatives remains 'pending_creatives', and a future-dated buy remains 'pending_start' until its flight can start. Defaults to false.",
+      "default": false
+    },
+    "push_notification_config": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/push-notification-config.json",
+      "description": "Optional webhook configuration for async task status notifications. Publisher will send webhooks when status changes (working, input-required, completed, failed, canceled). Buyers SHOULD supply `push_notification_config.operation_id` as the canonical correlation value; publishers echo that field back verbatim in webhook payloads and MUST NOT parse the URL to derive it."
+    },
+    "reporting_webhook": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/reporting-webhook.json",
+      "description": "Optional webhook configuration for automated reporting delivery"
+    },
+    "artifact_webhook": {
+      "$comment": "Webhook configuration for content artifact delivery - enables governance validation. Same authentication structure as reporting_webhook.",
+      "type": "object",
+      "description": "Optional webhook configuration for content artifact delivery. Used by governance agents to validate content adjacency. Seller pushes artifacts to this endpoint; orchestrator forwards to governance agent for validation.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Webhook endpoint URL for artifact delivery"
+        },
+        "token": {
+          "type": "string",
+          "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
+          "minLength": 16
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "description": "Legacy authentication configuration for webhook delivery (A2A-compatible). Opts the receiver into Bearer or HMAC-SHA256 signing. Both schemes are deprecated; the preferred signing profile for new integrations is RFC 9421, where the seller signs with a key published at its brand.json agents[] entry and the buyer verifies against the seller's JWKS — no shared secret crosses the wire (see docs/building/implementation/security.mdx#webhook-callbacks). This field is required in AdCP 3.x; the requirement is removed in AdCP 4.0 when the default RFC 9421 path becomes the only path.",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "description": "Array of authentication schemes. ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated; new integrations SHOULD use the RFC 9421 webhook signing profile instead.",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        },
+        "delivery_mode": {
+          "type": "string",
+          "enum": [
+            "realtime",
+            "batched"
+          ],
+          "description": "How artifacts are delivered. 'realtime' pushes artifacts as impressions occur. 'batched' aggregates artifacts and pushes periodically (see batch_frequency)."
+        },
+        "batch_frequency": {
+          "type": "string",
+          "enum": [
+            "hourly",
+            "daily"
+          ],
+          "description": "For batched delivery, how often to push artifacts. Required when delivery_mode is 'batched'."
+        },
+        "sampling_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of impressions to include (0-1). 1.0 = all impressions, 0.1 = 10% sample. Default: 1.0"
+        }
+      },
+      "required": [
+        "url",
+        "authentication",
+        "delivery_mode"
+      ],
+      "additionalProperties": true
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "account",
+    "brand",
+    "start_time",
+    "end_time"
+  ],
+  "anyOf": [
+    {
+      "title": "Explicit packages with fixed allocation",
+      "properties": {
+        "budget_allocation": {
+          "properties": {
+            "mode": {
+              "const": "fixed"
+            }
+          },
+          "required": [
+            "mode"
+          ]
+        },
+        "packages": {
+          "items": {
+            "allOf": [
+              {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/media-buy/package-request.json"
+              },
+              {
+                "required": [
+                  "budget"
+                ]
+              },
+              {
+                "not": {
+                  "required": [
+                    "min_spend_target"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "packages"
+      ],
+      "not": {
+        "required": [
+          "proposal_id"
+        ]
+      }
+    },
+    {
+      "title": "Explicit packages with seller-optimized allocation",
+      "properties": {
+        "budget_allocation": {
+          "properties": {
+            "mode": {
+              "const": "seller_optimized"
+            }
+          },
+          "required": [
+            "mode"
+          ]
+        }
+      },
+      "required": [
+        "packages",
+        "total_budget",
+        "budget_allocation"
+      ],
+      "not": {
+        "required": [
+          "proposal_id"
+        ]
+      }
+    },
+    {
+      "title": "Committed proposal execution",
+      "required": [
+        "proposal_id",
+        "total_budget"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "packages"
+            ]
+          },
+          {
+            "required": [
+              "budget_allocation"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "dependencies": {
+    "proposal_id": [
+      "total_budget"
+    ]
+  },
+  "additionalProperties": true
+}

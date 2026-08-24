@@ -1,0 +1,78 @@
+---
+title: list_creative_formats (deprecated)
+description: "Deprecated AdCP 3.x named-format discovery task and its canonical 3.2 replacements."
+"og:title": "AdCP — list_creative_formats (deprecated)"
+testable: true
+---
+
+`list_creative_formats` is deprecated in AdCP 3.2. It combined three different questions into one agent-global list and therefore could not accurately describe publisher acceptance, product deliverability, and creative production at the same time.
+
+Existing 3.x agents MAY continue serving the task for compatibility. New implementations MUST use the canonical surfaces below and SHOULD derive any legacy response mechanically from canonical declarations rather than maintaining a second catalog. The task follows its own compatibility schedule; removal of exact plural `format_ids` fields in AdCP 4.0 does not itself remove this task.
+
+## Use the surface that owns the fact
+
+| Question | Canonical source |
+|---|---|
+| What formats does a publisher declare? | The publisher's `/.well-known/adagents.json` `formats[]`, with AgenticAdvertising.org community-mirror fallback when the publisher has not adopted |
+| What formats can this sales agent deliver for a product? | [`get_products`](/dist/docs/3.2.0-beta.3/media-buy/task-reference/get_products) → `Product.format_options[]` |
+| What can this creative agent build, validate, or preview? | [`get_adcp_capabilities`](/dist/docs/3.2.0-beta.3/protocol/get_adcp_capabilities) → `creative.supported_formats[]` |
+
+Sales agents MUST NOT use an agent-global format list as a purchasability promise. Product `format_options[]` is the closed sellable set, and placement declarations may narrow it.
+
+Creative agents advertise stable build routing separately from publisher/product format identity:
+
+```json
+{
+  "creative": {
+    "supported_formats": [
+      {
+        "capability_id": "streamhaus_vertical_video",
+        "operations": ["build", "validate", "preview"],
+        "format": {
+          "publisher_domain": "shorts.streamhaus.example",
+          "format_option_id": "vertical_video",
+          "format_kind": "video_hosted",
+          "params": {
+            "aspect_ratio": "9:16",
+            "duration_ms_range": [3000, 60000]
+          }
+        }
+      }
+    ],
+    "preview": {
+      "routes": [{
+        "capability_id": "streamhaus_vertical_video",
+        "rendering_origin": "agent_approximation"
+      }]
+    }
+  }
+}
+```
+
+The buyer passes `streamhaus_vertical_video` as `target_capability_id` to [`build_creative`](/dist/docs/3.2.0-beta.3/creative/task-reference/build_creative). The returned manifest carries canonical `format_kind: "video_hosted"`; capability IDs never appear on products or manifests.
+
+## Registry reverse discovery
+
+The AgenticAdvertising.org registry indexes canonical creative capabilities. To find creative agents that claim they can build an exact publisher format:
+
+```http
+GET /api/registry/agents?publisher_domain=shorts.streamhaus.example&format_option_id=vertical_video&creative_operation=build
+```
+
+Generic agents can advertise a canonical parameter envelope without publisher identity. A match is valid only when the capability can satisfy every target constraint—not merely because both declarations share the same `format_kind`.
+
+## Compatibility behavior
+
+The deprecated request and response schemas remain available at:
+
+- [`/schemas/3.2.0-beta.3/media-buy/list-creative-formats-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/media-buy/list-creative-formats-request.json)
+- [`/schemas/3.2.0-beta.3/media-buy/list-creative-formats-response.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/media-buy/list-creative-formats-response.json)
+
+Compatibility implementations SHOULD:
+
+1. Keep canonical declarations as the only authored source.
+2. Project named formats only for a peer that still requires them.
+3. Never infer a publisher catalog from one seller's products.
+4. Never return publisher-declared formats as if every format were deliverable by the responding sales agent.
+
+See [Canonical formats](/dist/docs/3.2.0-beta.3/creative/canonical-formats) for the complete matching and ownership model.

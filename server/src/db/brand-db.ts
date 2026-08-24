@@ -9,7 +9,9 @@ import type {
   RegistryRevision,
   MemberBrandInfo,
   BrandLogo,
+  RelationshipTrust,
 } from '../types.js';
+import { isValidRelationshipTrust } from '../types.js';
 
 /**
  * Brand-manifest keys that must not be accepted from caller-supplied
@@ -881,6 +883,76 @@ export class BrandDatabase {
   }
 
   /**
+   * Persist relationship trust fields computed by BrandManager.resolveBrand().
+   * Called by the crawler after each brand.json resolution cycle so that
+   * list endpoints can return trust without a per-row resolveBrand() call.
+   */
+  async updateRelationshipTrust(
+    domain: string,
+    trust: {
+      relationship_trust: RelationshipTrust;
+      relationship_verified_at?: Date | null;
+      claimed_house_domain?: string | null;
+      /** Verified house domain from resolveBrand(). Omit to preserve; pass null to clear a stale edge. */
+      house_domain?: string | null;
+    },
+  ): Promise<void> {
+    const canonicalDomain = canonicalizeBrandDomain(domain);
+    assertValidBrandDomain(canonicalDomain);
+    const writesHouseDomain = Object.prototype.hasOwnProperty.call(trust, 'house_domain');
+    const canonicalHouseDomain = writesHouseDomain
+      ? validateHouseDomainArg(trust.house_domain, canonicalDomain) ?? null
+      : null;
+
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      await lockBrandHouseDomainWriter(client, canonicalDomain);
+      const priorResult = await client.query<{ house_domain: string | null }>(
+        'SELECT house_domain FROM brands WHERE domain = $1',
+        [canonicalDomain],
+      );
+      const priorHouseDomain = priorResult.rows[0]?.house_domain ?? null;
+      const result = await client.query<{ house_domain: string | null }>(
+        `UPDATE brands
+         SET relationship_trust = $2,
+             relationship_verified_at = $3,
+             claimed_house_domain = $4,
+             house_domain = CASE WHEN $6::boolean THEN $5::TEXT ELSE house_domain END,
+             relationship_trust_computed_at = NOW()
+         WHERE domain = $1
+         RETURNING house_domain`,
+        [
+          canonicalDomain,
+          trust.relationship_trust,
+          trust.relationship_verified_at ?? null,
+          trust.claimed_house_domain ?? null,
+          canonicalHouseDomain,
+          writesHouseDomain,
+        ],
+      );
+
+      if (writesHouseDomain && result.rows[0]) {
+        await recordBrandHouseDomainChange(client, {
+          domain: canonicalDomain,
+          prior_house_domain: priorHouseDomain,
+          new_house_domain: result.rows[0].house_domain ?? null,
+          audit: {
+            actor_user_id: 'system:brand-crawler',
+            source: 'relationship_trust_resolution',
+          },
+        });
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch { /* preserve original error */ }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
    * Get discovered brand by domain
    */
   async getDiscoveredBrandByDomain(domain: string): Promise<DiscoveredBrand | null> {
@@ -1053,6 +1125,9 @@ export class BrandDatabase {
     parent_brand?: string;
     brand_agent_url?: string;
     source: string;
+    relationship_trust?: RelationshipTrust;
+    relationship_verified_at?: Date;
+    claimed_house_domain?: string;
   }>> {
     const limit = options.limit ?? 10;
     const escaped = rawQuery.trim().replace(/[%_\\]/g, '\\$&');
@@ -1067,6 +1142,9 @@ export class BrandDatabase {
       parent_brand: string | null;
       brand_agent_url: string | null;
       source_type: string;
+      relationship_trust: string | null;
+      relationship_verified_at: Date | null;
+      claimed_house_domain: string | null;
     }>(
       `SELECT
         domain,
@@ -1076,7 +1154,10 @@ export class BrandDatabase {
         keller_type,
         parent_brand,
         brand_agent_url,
-        source_type
+        source_type,
+        relationship_trust,
+        relationship_verified_at,
+        claimed_house_domain
       FROM brands
       WHERE
         brand_name ILIKE $1
@@ -1103,6 +1184,9 @@ export class BrandDatabase {
       parent_brand: row.parent_brand ?? undefined,
       brand_agent_url: row.brand_agent_url ?? undefined,
       source: row.source_type,
+      relationship_trust: isValidRelationshipTrust(row.relationship_trust) ? row.relationship_trust : undefined,
+      relationship_verified_at: row.relationship_verified_at ?? undefined,
+      claimed_house_domain: row.claimed_house_domain ?? undefined,
     }));
   }
 
@@ -1130,6 +1214,9 @@ export class BrandDatabase {
     industries: string[];
     sub_brand_count: number;
     employee_count: number;
+    relationship_trust?: RelationshipTrust;
+    relationship_verified_at?: Date;
+    claimed_house_domain?: string;
   }>> {
     const params: unknown[] = [];
     let paramIndex = 1;
@@ -1175,13 +1262,16 @@ export class BrandDatabase {
       source: 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub';
       has_manifest: boolean;
       verified: boolean;
-      house_domain?: string;
+      house_domain: string | null;
       keller_type?: string;
       logo_url?: string;
       primary_color?: string;
       industries: string[];
       sub_brand_count: number;
       employee_count: number;
+      relationship_trust: string | null;
+      relationship_verified_at: Date | null;
+      claimed_house_domain: string | null;
     }>(
       `
       SELECT
@@ -1197,7 +1287,10 @@ export class BrandDatabase {
         COALESCE(brands.brand_manifest->'company'->'industries', brands.brand_manifest->'brands'->0->'industries', '[]'::jsonb) as industries,
         (SELECT COUNT(*)::int FROM brands sub WHERE sub.house_domain = brands.domain) as sub_brand_count,
         COALESCE(CASE WHEN brands.brand_manifest->'company'->>'employees' ~ '^\\d+$'
-          THEN (brands.brand_manifest->'company'->>'employees')::int ELSE 0 END, 0) as employee_count
+          THEN (brands.brand_manifest->'company'->>'employees')::int ELSE 0 END, 0) as employee_count,
+        brands.relationship_trust,
+        brands.relationship_verified_at,
+        brands.claimed_house_domain
       FROM brands
       ${whereClause}
       ORDER BY employee_count DESC, brand_name, brands.domain
@@ -1207,7 +1300,13 @@ export class BrandDatabase {
       params
     );
 
-    return result.rows;
+    return result.rows.map(row => ({
+      ...row,
+      house_domain: row.house_domain ?? undefined,
+      relationship_trust: isValidRelationshipTrust(row.relationship_trust) ? row.relationship_trust : undefined,
+      relationship_verified_at: row.relationship_verified_at ?? undefined,
+      claimed_house_domain: row.claimed_house_domain ?? undefined,
+    }));
   }
 
   /**

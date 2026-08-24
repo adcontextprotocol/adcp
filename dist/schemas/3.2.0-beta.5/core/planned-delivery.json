@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/planned-delivery.json",
+  "title": "Planned Delivery",
+  "description": "The seller's interpreted delivery parameters for a media buy. Represents what the seller will actually run, which may differ from what the buyer requested (e.g., the seller may apply additional targeting, frequency caps, or adjust geo to match their inventory). Used for authorization verification and audit.",
+  "type": "object",
+  "properties": {
+    "media_buy_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Seller-assigned media buy identifier. Optional on a purchase-phase prepare/check because the service may not assign the identifier until commit; required on modification and delivery lifecycle checks.",
+      "x-entity": "media_buy"
+    },
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "proposal",
+      "description": "Proposal snapshot being executed or currently governing the MediaBuy."
+    },
+    "proposal_terms_digest": {
+      "type": "string",
+      "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
+      "description": "Digest of the proposal commercial_terms. The governance agent compares it to the digest bound during the intent check."
+    },
+    "geo": {
+      "type": "object",
+      "description": "Geographic targeting the seller will apply.",
+      "properties": {
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "ISO 3166-1 alpha-2 country codes where ads will deliver."
+        },
+        "regions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "ISO 3166-2 subdivision codes where ads will deliver."
+        }
+      },
+      "additionalProperties": true
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/channels.json"
+      },
+      "description": "Channels the seller will deliver on."
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Actual flight start the seller will use."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Actual flight end the seller will use."
+    },
+    "frequency_cap": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/frequency-cap.json",
+      "description": "Frequency cap the seller will apply."
+    },
+    "audience_summary": {
+      "type": "string",
+      "description": "Human-readable summary of the audience the seller will target."
+    },
+    "audience_targeting": {
+      "type": "array",
+      "description": "Structured audience targeting the seller will activate. Each entry is either a signal reference or a descriptive criterion. When present, governance agents MUST use this for bias/fairness validation and SHOULD ignore audience_summary for validation purposes. The audience_summary field is a human-readable rendering of this array, not an independent declaration.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/audience-selector.json"
+      },
+      "minItems": 1
+    },
+    "total_budget": {
+      "type": "number",
+      "description": "Total budget the seller will deliver against.",
+      "minimum": 0
+    },
+    "daily_budget_cap": {
+      "type": "number",
+      "description": "Hard aggregate daily spend ceiling the seller will enforce. Governance checks compare it with the authorized execution controls; it does not allocate spend to packages.",
+      "minimum": 0
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "description": "IANA timezone defining the calendar-day boundary for every daily cap on the planned media buy."
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code for the budget. Governance execution checks require it whenever total_budget is present and require it to match the intent-authorized currency.",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "budget_allocation": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/budget-allocation.json"
+        }
+      ],
+      "description": "Seller-accepted cross-package allocation authority and goals. Presence with seller_optimized mode means automatic within-buy reallocations are part of the committed delivery, not separate modification actions."
+    },
+    "pacing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/pacing.json",
+      "description": "Aggregate pacing strategy the seller will apply to total_budget."
+    },
+    "bidding": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/bidding-policy.json"
+        }
+      ],
+      "description": "Seller-interpreted media-buy bidding policy used for governance and delivery transparency. Goal-bound controls follow budget-allocation scope semantics and monetary fields use the planned delivery currency. Package-authored overrides, including explicit automatic overrides, remain on packages rather than being copied into this aggregate field."
+    },
+    "enforced_policies": {
+      "type": "array",
+      "description": "Registry policy IDs the seller will enforce for this delivery.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "proposal_id"
+        ]
+      },
+      "then": {
+        "required": [
+          "proposal_terms_digest"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "proposal_terms_digest"
+        ]
+      },
+      "then": {
+        "required": [
+          "proposal_id"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": true
+}

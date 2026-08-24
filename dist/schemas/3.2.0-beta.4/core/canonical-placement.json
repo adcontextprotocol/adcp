@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-placement.json",
+  "title": "Canonical Product Placement",
+  "description": "Compact product placement with canonical format narrowing only.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "publisher_ref",
+        "seller_inline"
+      ]
+    },
+    "placement_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "placement"
+    },
+    "publisher_domain": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "targetable",
+        "included"
+      ]
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "format_options": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-format-option.json"
+      },
+      "minItems": 1
+    },
+    "video_placement_types": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/video-placement-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "audio_distribution_types": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/audio-distribution-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "sponsored_placement_types": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/sponsored-placement-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "social_placement_surfaces": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/social-placement-surface.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "kind",
+    "placement_id",
+    "mode"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "publisher_ref"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "publisher_domain"
+        ]
+      },
+      "else": {
+        "required": [
+          "name"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

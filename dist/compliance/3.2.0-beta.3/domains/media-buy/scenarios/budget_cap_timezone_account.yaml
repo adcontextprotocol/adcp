@@ -1,0 +1,308 @@
+id: media_buy_seller/budget_cap_timezone_account
+version: "1.0.0"
+title: "Account-based budget-cap timezone resolution"
+category: media_buy_seller
+summary: "Verifies that aggregate and package daily caps default to Account.timezone and remain stable on readback."
+track: media_buy
+introduced_in: "3.2"
+
+requires_capability:
+  path: media_buy.budget_capping.timezone_basis
+  equals: account
+
+requires:
+  - controller
+
+required_tools:
+  - get_adcp_capabilities
+  - list_accounts
+  - create_media_buy
+  - get_media_buys
+  - comply_test_controller
+
+narrative: |
+  When daily budget caps use the account clock, omitting a buyer override must
+  resolve the media buy's shared cap boundary to Account.timezone. Aggregate
+  and package scopes are exercised independently when advertised. The same
+  scenario deliberately seeds a different product reporting timezone; no
+  equality between the operational and reporting clocks is inferred.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - daily_budget_caps
+    - account_based_cap_timezone
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The controller seeds a sandbox account and product with deliberately distinct account and reporting clocks."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_timezone_account_basis"
+      brand:
+        domain: "acmeoutdoor.example"
+      operator: "pinnacle-agency.example"
+      billing: "operator"
+      status: "active"
+      sandbox: true
+      timezone: "America/New_York"
+  products:
+    - product_id: "timezone_account_display"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "Europe/London"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+  pricing_options:
+    - product_id: "timezone_account_display"
+      pricing_option_id: "timezone_account_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 5
+
+phases:
+  - id: establish_clocks
+    title: "Read the independently declared clocks"
+    steps:
+      - id: confirm_account_basis
+        title: "Confirm account-based cap resolution"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request: {}
+        validations:
+          - check: response_schema
+            description: "Capability response matches the canonical schema"
+          - check: field_value
+            path: "media_buy.budget_capping.timezone_basis"
+            value: "account"
+            description: "Daily caps resolve from Account.timezone"
+          - check: field_absent
+            path: "media_buy.budget_capping.fixed_timezone"
+            description: "Account basis does not declare a feature-fixed timezone"
+
+      - id: read_seeded_account
+        title: "Read the operational account clock"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "acct_timezone_account_basis"
+        validations:
+          - check: response_schema
+            description: "Account response matches the canonical schema"
+          - check: field_value
+            path: "accounts[0].timezone"
+            value: "America/New_York"
+            description: "Account exposes its operational day boundary"
+
+      - id: read_reporting_clock
+        title: "Read the product reporting clock independently"
+        task: list_products
+        requires_tool: list_products
+        schema_ref: "media-buy/list-products-request.json"
+        response_schema_ref: "media-buy/list-products-response.json"
+        doc_ref: "/media-buy/task-reference/list_products"
+        stateful: false
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#budget_cap_timezone_account_get_products"
+          account:
+            account_id: "acct_timezone_account_basis"
+          criteria:
+            product_ids: ["timezone_account_display"]
+          fields: ["product_id", "reporting_capabilities"]
+          max_results: 1
+        validations:
+          - check: response_schema
+            description: "Product response matches the canonical schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "timezone_account_display"
+            description: "Exact product lookup returns the seeded product"
+          - check: field_value
+            path: "products[0].reporting_capabilities.timezone"
+            value: "Europe/London"
+            description: "Reporting retains its explicit clock instead of inheriting Account.timezone"
+
+  - id: aggregate_cap
+    title: "Resolve an aggregate daily cap"
+    depends_on: [establish_clocks]
+    requires_capability:
+      path: media_buy.budget_capping.supported_scopes
+      contains: media_buy
+    steps:
+      - id: create_aggregate_cap_buy
+        title: "Create an aggregate-capped buy without an override"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acct_timezone_account_basis"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 3000
+            currency: "USD"
+          daily_budget_cap: 100
+          packages:
+            - product_id: "timezone_account_display"
+              pricing_option_id: "timezone_account_cpm"
+              budget: 3000
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#budget_cap_timezone_account_aggregate_create"
+        context_outputs:
+          - name: aggregate_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Create response matches the canonical schema"
+          - check: field_value
+            path: "daily_budget_cap"
+            value: 100
+            description: "Aggregate hard cap is accepted"
+          - check: field_value
+            path: "budget_cap_timezone"
+            value: "America/New_York"
+            description: "Omitted override resolves to Account.timezone"
+
+      - id: read_aggregate_cap_buy
+        title: "Read back the aggregate cap boundary"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "acct_timezone_account_basis"
+          media_buy_ids: ["$context.aggregate_media_buy_id"]
+        validations:
+          - check: response_schema
+            description: "Read response matches the canonical schema"
+          - check: field_value
+            path: "media_buys[0].daily_budget_cap"
+            value: 100
+            description: "Aggregate cap survives readback"
+          - check: field_value
+            path: "media_buys[0].budget_cap_timezone"
+            value: "America/New_York"
+            description: "Resolved account boundary survives readback"
+
+  - id: package_cap
+    title: "Resolve a package daily cap"
+    depends_on: [establish_clocks]
+    requires_capability:
+      path: media_buy.budget_capping.supported_scopes
+      contains: package
+    steps:
+      - id: create_package_cap_buy
+        title: "Create a package-capped buy without an override"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acct_timezone_account_basis"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 3000
+            currency: "USD"
+          packages:
+            - product_id: "timezone_account_display"
+              pricing_option_id: "timezone_account_cpm"
+              budget: 3000
+              daily_budget_cap: 80
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#budget_cap_timezone_account_package_create"
+        context_outputs:
+          - name: package_media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Create response matches the canonical schema"
+          - check: field_value
+            path: "packages[0].daily_budget_cap"
+            value: 80
+            description: "Package hard cap is accepted"
+          - check: field_value
+            path: "budget_cap_timezone"
+            value: "America/New_York"
+            description: "Package-only cap still resolves to Account.timezone"
+
+      - id: read_package_cap_buy
+        title: "Read back the package cap boundary"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "acct_timezone_account_basis"
+          media_buy_ids: ["$context.package_media_buy_id"]
+        validations:
+          - check: response_schema
+            description: "Read response matches the canonical schema"
+          - check: field_value
+            path: "media_buys[0].packages[0].daily_budget_cap"
+            value: 80
+            description: "Package cap survives readback"
+          - check: field_value
+            path: "media_buys[0].budget_cap_timezone"
+            value: "America/New_York"
+            description: "Resolved account boundary survives readback"
+
+  - id: billing_clock
+    title: "Consume the explicit billing clock"
+    depends_on: [establish_clocks]
+    requires_capability:
+      path: account.account_financials
+      equals: true
+    steps:
+      - id: read_financial_timezone
+        title: "Read the financial period timezone"
+        task: get_account_financials
+        requires_tool: get_account_financials
+        schema_ref: "account/get-account-financials-request.json"
+        response_schema_ref: "account/get-account-financials-response.json"
+        doc_ref: "/accounts/tasks/get_account_financials"
+        stateful: false
+        sample_request:
+          account:
+            account_id: "acct_timezone_account_basis"
+        validations:
+          - check: response_schema
+            description: "Financial response matches the canonical schema"
+          - check: field_present
+            path: "timezone"
+            description: "Billing declares its own period timezone; no equality with account, cap, or reporting clocks is inferred"

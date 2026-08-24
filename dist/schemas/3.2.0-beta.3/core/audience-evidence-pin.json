@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/audience-evidence-pin.json",
+  "title": "Audience Evidence Pin",
+  "description": "Buyer-authored pin to one exact immutable audience-evidence snapshot selected during discovery. Sellers MUST match all four fields against a single published snapshot; they MUST reject the package rather than substitute a newer version or reuse snapshot_id with changed content. A confirmed package MUST return the same identity in audience_evidence_selections with decision_use package_construction.",
+  "type": "object",
+  "properties": {
+    "evidence_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "audience_evidence"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "audience_evidence_snapshot"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "content_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "snapshot_id",
+    "version",
+    "content_digest"
+  ],
+  "additionalProperties": false
+}

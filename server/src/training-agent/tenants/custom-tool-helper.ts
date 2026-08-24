@@ -45,6 +45,10 @@ interface CustomToolOptions {
   payloadErrorsAsSuccess?: boolean;
   responseSummary?: (result: Record<string, unknown>) => string | undefined;
   trainingContext?: Partial<TrainingContext>;
+  resolveAuthenticatedAgentUrl?: (
+    authInfo: { clientId?: string; extra?: Record<string, unknown> } | undefined,
+    params: Record<string, unknown>,
+  ) => Promise<string | undefined>;
 }
 
 interface IdempotencyClaim {
@@ -168,10 +172,16 @@ export function customToolFor(
     ...(options.annotations ? { annotations: options.annotations } : {}),
     handler: async (args: unknown, extra: unknown) => {
       const params = (args as Record<string, unknown>) ?? {};
-      const authInfo = ((extra as { authInfo?: { clientId?: string } } | undefined)?.authInfo) ?? undefined;
+      const authInfo = ((extra as {
+        authInfo?: { clientId?: string; extra?: Record<string, unknown> };
+      } | undefined)?.authInfo) ?? undefined;
+      const authenticatedAgentUrl = options.resolveAuthenticatedAgentUrl
+        ? await options.resolveAuthenticatedAgentUrl(authInfo, params)
+        : undefined;
       const trainingCtx: TrainingContext = {
         mode: 'open',
         principal: authInfo?.clientId ?? 'anonymous',
+        ...(authenticatedAgentUrl && { authenticatedAgentUrl }),
         ...options.trainingContext,
       };
       const { context: callerContext, ...handlerArgs } = params;

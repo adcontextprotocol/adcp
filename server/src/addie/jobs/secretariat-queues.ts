@@ -179,6 +179,7 @@ async function searchIssues(token: string, repo: string, qualifiers: string, isP
     sort: 'created',
     order: 'asc',
     per_page: String(SEARCH_PAGE_SIZE),
+    advanced_search: 'true',
   });
   const resp = await ghFetch(token, `https://api.github.com/search/issues?${params.toString()}`);
   if (!resp.ok) {

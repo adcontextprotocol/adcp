@@ -14,7 +14,7 @@ This page covers every breaking change when upgrading from AdCP 2.x to 3.0, with
 </Info>
 
 <Info>
-**Preparing for 3.2?** See [Migrating secured asset access](/docs/reference/migration/asset-access) to replace inline provider credentials with signed URLs or pre-authorized workload identity.
+**Preparing for 3.2?** Start with the [3.1 to 3.2 migration guide](/docs/reference/migration/3-1-to-3-2). During beta, also read the [3.2 beta program](/docs/reference/3-2-beta) for the protocol-first beta.0, initial SDK wave, beta.1 protocol convergence, and exact beta.1 SDK refresh.
 </Info>
 
 <Warning>
@@ -134,8 +134,20 @@ During migration, sellers can accept both v2 and v3 traffic and buyers can route
 ## 3.2 migration guides
 
 <CardGroup cols={2}>
+  <Card title="3.1 to 3.2" icon="rocket" href="/docs/reference/migration/3-1-to-3-2">
+    Role-based beta checklist, required behavior changes, capability adoption, and rollback
+  </Card>
+  <Card title="Targeting-aware discovery" icon="bullseye" href="/docs/reference/migration/targeting-aware-discovery">
+    Move legacy filters and brief constraints into targeting overlays and support declarations
+  </Card>
+  <Card title="Media buy status" icon="circle-check" href="/docs/reference/migration/media-buy-status">
+    Remove the deprecated body-level status and use `media_buy_status` on create/update success
+  </Card>
   <Card title="Secured asset access" icon="key" href="/docs/reference/migration/asset-access">
     Replace inline provider credentials with signed URLs or pre-authorized workload identity
+  </Card>
+  <Card title="Cross-role governance" icon="shield" href="/docs/reference/migration/cross-role-governance-enforcement">
+    Adopt the experimental task-scoped authorization and outcome contract as one migration
   </Card>
 </CardGroup>
 
@@ -149,8 +161,5 @@ You can stay on 3.0 without breaking compatibility. To claim the 3.1 badge, comp
   </Card>
   <Card title="Creative transformers" icon="wand-magic-sparkles" href="/docs/reference/migration/creative-transformers">
     Move build capability discovery and pricing from formats to transformers
-  </Card>
-  <Card title="Media buy status" icon="circle-check" href="/docs/reference/migration/media-buy-status">
-    Split body-level buy status from envelope task status on success responses
   </Card>
 </CardGroup>

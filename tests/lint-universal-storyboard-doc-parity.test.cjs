@@ -101,13 +101,14 @@ test('catalog can list storyboard slugs through an imported MDX snippet', () => 
   assert.deepEqual(errors, []);
 });
 
-test('non-graded fixtures (storyboard-schema, runner-output-contract, fictional-entities) are not required in docs', () => {
+test('non-graded support artifacts are not required in docs', () => {
   const { sourceDir, repoRoot } = makeFixture();
   writeStoryboard(sourceDir, 'capability-discovery');
   // These three live in the real universal/ directory but aren't graded.
   writeStoryboard(sourceDir, 'storyboard-schema', { graded: false });
   writeStoryboard(sourceDir, 'runner-output-contract', { graded: false });
   writeStoryboard(sourceDir, 'fictional-entities', { graded: false });
+  writeStoryboard(sourceDir, 'governance', { graded: false });
   writeConformance(repoRoot, [['capability_discovery', 'shape']]);
   writeCatalog(repoRoot, [['capability-discovery', 'shape']]);
 

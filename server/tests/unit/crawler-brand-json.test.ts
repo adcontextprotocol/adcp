@@ -26,6 +26,7 @@ describe('CrawlerService brand.json ingestion', () => {
           variant: 'brand_canonical',
           raw_data: canonical,
         }),
+        resolveBrand: vi.fn().mockResolvedValue(null),
       },
       brandDb: { upsertDiscoveredBrand },
       upsertBrandProperties,
@@ -81,6 +82,116 @@ describe('CrawlerService brand.json ingestion', () => {
     expect(upsertDiscoveredBrand).not.toHaveBeenCalled();
   });
 
+  it('indexes house-only relationships from house portfolio brand_refs', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const portfolio = {
+      house: { domain: 'house.example', name: 'Example House' },
+      brands: [],
+      brand_refs: [{ domain: 'leaf.example', brand_id: 'leaf' }],
+    };
+    const leafResolution = {
+      canonical_id: 'leaf',
+      canonical_domain: 'leaf.example',
+      brand_name: 'Leaf Brand',
+      names: [{ en: 'Leaf Brand' }],
+      relationship_trust: 'house_only' as const,
+      brand_manifest: { id: 'leaf', names: [{ en: 'Leaf Brand' }] },
+      source: 'brand_json' as const,
+    };
+    const upsertDiscoveredBrand = vi.fn().mockResolvedValue(undefined);
+    const updateRelationshipTrust = vi.fn().mockResolvedValue(undefined);
+    const resolveHouseBrandReference = vi.fn().mockResolvedValue(leafResolution);
+
+    Object.assign(ctx, {
+      brandManager: {
+        validateDomain: vi.fn().mockResolvedValue({
+          valid: true,
+          errors: [],
+          warnings: [],
+          domain: 'house.example',
+          url: 'https://house.example/.well-known/brand.json',
+          variant: 'house_portfolio',
+          raw_data: portfolio,
+        }),
+        resolveHouseBrandReference,
+        resolveBrand: vi.fn().mockResolvedValue({
+          canonical_id: 'house',
+          canonical_domain: 'house.example',
+          brand_name: 'Example House',
+          relationship_trust: 'inline',
+          house_domain: 'house.example',
+          source: 'brand_json',
+        }),
+      },
+      brandDb: { upsertDiscoveredBrand, updateRelationshipTrust },
+      upsertBrandProperties: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await ctx.scanBrandForDomain('house.example');
+
+    expect(resolveHouseBrandReference).toHaveBeenCalledWith(
+      portfolio.brand_refs[0],
+      'house.example',
+      { skipCache: true },
+    );
+    expect(upsertDiscoveredBrand).toHaveBeenCalledWith(expect.objectContaining({
+      domain: 'leaf.example',
+      brand_id: 'leaf',
+      brand_name: 'Leaf Brand',
+      source_type: 'brand_json',
+    }));
+    expect(updateRelationshipTrust).toHaveBeenCalledWith('leaf.example', {
+      relationship_trust: 'house_only',
+      relationship_verified_at: null,
+      claimed_house_domain: null,
+      house_domain: null,
+    });
+  });
+
+  it('bounds house portfolio fan-out and rechecks the crawl lock', async () => {
+    const { CrawlerService } = await import('../../src/crawler.js');
+    const ctx = Object.create((CrawlerService as any).prototype);
+    const brandRefs = Array.from({ length: 21 }, (_, index) => ({
+      domain: `leaf-${index}.example`,
+      brand_id: `leaf-${index}`,
+    }));
+    const portfolio = {
+      house: { domain: 'house.example', name: 'Example House' },
+      brand_refs: brandRefs,
+    };
+    const resolveHouseBrandReference = vi.fn().mockResolvedValue(null);
+    const assertExecutionLock = vi.fn();
+
+    Object.assign(ctx, {
+      brandManager: {
+        validateDomain: vi.fn().mockResolvedValue({
+          valid: true,
+          errors: [],
+          warnings: [],
+          domain: 'house.example',
+          url: 'https://house.example/.well-known/brand.json',
+          variant: 'house_portfolio',
+          raw_data: portfolio,
+        }),
+        resolveHouseBrandReference,
+        resolveBrand: vi.fn().mockResolvedValue(null),
+      },
+      brandDb: { upsertDiscoveredBrand: vi.fn().mockResolvedValue(undefined) },
+      upsertBrandProperties: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await ctx.scanBrandForDomain('house.example', assertExecutionLock);
+
+    expect(resolveHouseBrandReference).toHaveBeenCalledTimes(20);
+    expect(resolveHouseBrandReference).not.toHaveBeenCalledWith(
+      brandRefs[20],
+      'house.example',
+      { skipCache: true },
+    );
+    expect(assertExecutionLock).toHaveBeenCalled();
+  });
+
   it('reports a valid redirect without claiming that a full manifest was persisted', async () => {
     const { CrawlerService } = await import('../../src/crawler.js');
     const ctx = Object.create((CrawlerService as any).prototype);
@@ -96,6 +207,7 @@ describe('CrawlerService brand.json ingestion', () => {
           variant: 'house_redirect',
           raw_data: { house: 'house.example' },
         }),
+        resolveBrand: vi.fn().mockResolvedValue(null),
       },
       brandDb: { upsertDiscoveredBrand },
     });

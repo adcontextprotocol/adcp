@@ -112,6 +112,7 @@ describe('preview_creative opt-in async contract', () => {
     const validateWebhook = await compile('/schemas/core/mcp-webhook-payload.json');
     assert.equal(validateWebhook({
       idempotency_key: 'whk_preview_001_abcdef',
+      notification_id: 'task_preview_001.terminal',
       operation_id: 'preview-op-001',
       task_id: taskEnvelope.task_id,
       task_type: taskEnvelope.task_type,

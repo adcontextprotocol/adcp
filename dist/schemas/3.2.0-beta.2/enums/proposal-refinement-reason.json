@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/proposal-refinement-reason.json",
+  "title": "Proposal Refinement Reason",
+  "description": "Machine-readable reason a proposal revision was only partially applied or could not be produced.",
+  "type": "string",
+  "enum": [
+    "commercially_declined",
+    "constraint_unsatisfiable",
+    "unsupported_dimension",
+    "uninterpreted",
+    "alternatives_unavailable",
+    "source_unavailable",
+    "hold_unavailable",
+    "batch_aborted"
+  ],
+  "enumDescriptions": {
+    "commercially_declined": "The seller understood terms requested through the free-text ask but declined to offer them. An unmet typed constraint or product change always uses constraint_unsatisfiable instead, whether the seller cannot or will not meet it.",
+    "constraint_unsatisfiable": "One or more typed hard constraints or product changes were not satisfied. Takes precedence over every other code when failures co-occur.",
+    "unsupported_dimension": "The seller cannot parse or validate one or more typed refinement dimensions used by the request.",
+    "uninterpreted": "The seller could not interpret some or all of the free-text ask.",
+    "alternatives_unavailable": "The seller produced fewer distinct draft alternatives than requested.",
+    "source_unavailable": "The source proposal was not found, visible, or eligible for revision by this caller.",
+    "hold_unavailable": "The seller declined or failed to reserve inventory for this finalize, whether from sell-through since drafting or from hold policy such as a concurrent-hold cap.",
+    "batch_aborted": "This entry failed only because a sibling entry in the all-or-none finalize batch failed; the entry itself was otherwise eligible."
+  }
+}

@@ -43,7 +43,24 @@
       "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
       "description": "Base64url SHA-256 digest of the RFC 8785 JCS serialization of commercial_terms, prefixed with sha256:."
     },
-    "insertion_order": { "$ref": "/schemas/core/insertion-order.json" }
+    "insertion_order": { "$ref": "/schemas/core/insertion-order.json" },
+    "total_budget_guidance": {
+      "type": "object",
+      "description": "Optional budget guidance for this proposal — the planning answer to criteria.outcome_target and to open-budget briefs. commercial_terms.total_budget remains the concrete figure the plan is priced at; this band expresses the seller's recommended range around it.",
+      "properties": {
+        "min": { "type": "number", "minimum": 0 },
+        "recommended": { "type": "number", "minimum": 0 },
+        "max": { "type": "number", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      },
+      "required": ["currency"],
+      "anyOf": [{ "required": ["recommended"] }, { "required": ["min"] }, { "required": ["max"] }],
+      "additionalProperties": false
+    },
+    "forecast": {
+      "allOf": [{ "$ref": "/schemas/core/canonical-delivery-forecast.json" }],
+      "description": "Aggregate forecasted delivery for the proposal. For outcome_target requests, points carry the goal's metric or event key in metrics."
+    }
   },
   "required": ["proposal_id", "proposal_kind", "proposal_status", "name", "commercial_terms", "terms_digest"],
   "allOf": [

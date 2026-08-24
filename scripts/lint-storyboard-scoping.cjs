@@ -97,6 +97,7 @@ const TENANT_SCOPED_TASKS = new Set([
  *     split from #2577:
  *       - `check_governance`       — required `plan_id`
  *       - `report_plan_outcome`    — required `plan_id`
+ *       - `report_plan_adjustment` — required `plan_id`
  *       - `get_plan_audit_logs`    — required via anyOf over `plan_ids` / `portfolio_plan_ids` / `governance_contexts`
  *       - `acquire_rights`         — required `rights_id` + `buyer` + `campaign`
  *       - `log_event`              — required `event_source_id`
@@ -127,12 +128,14 @@ const EXEMPT_FROM_LINT = new Set([
   'list_creative_formats',
   'list_accounts',
   // (b) Global brand/rights catalog reads
+  'search_brands',
   'get_brand_identity',
   'get_rights',
   'update_rights',
   // (c) Identity implicit via required globally-unique ID
   'check_governance',
   'report_plan_outcome',
+  'report_plan_adjustment',
   'get_plan_audit_logs',
   'acquire_rights',
   'log_event',

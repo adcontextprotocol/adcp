@@ -24,6 +24,10 @@
       "$ref": "/schemas/core/targeting-overlay-requirements.json",
       "description": "Minimum product-scoped targeting dimensions the buyer must be able to select independently on packages later. This requests capability, not current values, value-specific availability, a forecast for every later value, or one product per value."
     },
+    "outcome_target": {
+      "allOf": [{ "$ref": "/schemas/media-buy/outcome-target.json" }],
+      "x-adcp-schema-uri": "/schemas/media-buy/outcome-target.json"
+    },
     "catalog": { "$ref": "/schemas/core/catalog-selection.json" },
     "policy_ids": {
       "type": "array",

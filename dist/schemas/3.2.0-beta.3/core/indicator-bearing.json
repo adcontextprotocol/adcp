@@ -1,0 +1,299 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/indicator-bearing.json",
+  "title": "Indicator-bearing resource state",
+  "description": "Reusable contract for current indicator snapshots on media buys, packages, and package–creative assignments. This schema contributes sibling properties through allOf; it does not create an indicator_state wrapper on the wire.",
+  "type": "object",
+  "properties": {
+    "indicators": {
+      "type": "array",
+      "description": "Current seller assertions for the indicator types and publisher/placement coverage named by the sibling evaluation fields. Omitted means unknown or not evaluated. A present empty array means evaluated with no current assertion for indicator_types_evaluated in the evaluated scope.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/indicator.json"
+      },
+      "uniqueItems": true
+    },
+    "indicator_types_evaluated": {
+      "type": "array",
+      "description": "Indicator types covered by this snapshot. Required whenever indicators is present. Types omitted from this list remain unknown even when indicators is empty. Every returned indicator.type MUST appear in this list.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/indicator-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "indicators_as_of": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller completed this evaluation. Required whenever indicators is present, including an empty array. State changes require a strictly newer timestamp; equal-timestamp conflicts are invalid and buyers retain stored state."
+    },
+    "indicators_evaluated_scope": {
+      "type": "array",
+      "description": "Optional publisher or placement coverage for this evaluation. Omit when the named indicator types were evaluated across the whole enclosing resource or relationship. Unlisted scopes remain unknown. When present, every returned indicator MUST include scope and every scope entry MUST be contained by this coverage.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/indicator-scope.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "dependencies": {
+    "indicators": [
+      "indicator_types_evaluated",
+      "indicators_as_of"
+    ],
+    "indicator_types_evaluated": [
+      "indicators",
+      "indicators_as_of"
+    ],
+    "indicators_as_of": [
+      "indicators",
+      "indicator_types_evaluated"
+    ],
+    "indicators_evaluated_scope": [
+      "indicators",
+      "indicator_types_evaluated",
+      "indicators_as_of"
+    ]
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "indicators_evaluated_scope"
+        ]
+      },
+      "then": {
+        "properties": {
+          "indicators": {
+            "items": {
+              "required": [
+                "scope"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "indicators": {
+            "contains": {
+              "properties": {
+                "type": {
+                  "const": "creative_fatigue"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          }
+        },
+        "required": [
+          "indicators"
+        ]
+      },
+      "then": {
+        "properties": {
+          "indicator_types_evaluated": {
+            "contains": {
+              "const": "creative_fatigue"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "indicators": {
+            "contains": {
+              "properties": {
+                "type": {
+                  "const": "creative_quality_opportunity"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          }
+        },
+        "required": [
+          "indicators"
+        ]
+      },
+      "then": {
+        "properties": {
+          "indicator_types_evaluated": {
+            "contains": {
+              "const": "creative_quality_opportunity"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "indicators": {
+            "contains": {
+              "properties": {
+                "type": {
+                  "const": "creative_diversity_low"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          }
+        },
+        "required": [
+          "indicators"
+        ]
+      },
+      "then": {
+        "properties": {
+          "indicator_types_evaluated": {
+            "contains": {
+              "const": "creative_diversity_low"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "indicators": {
+            "contains": {
+              "properties": {
+                "type": {
+                  "const": "audience_saturation"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          }
+        },
+        "required": [
+          "indicators"
+        ]
+      },
+      "then": {
+        "properties": {
+          "indicator_types_evaluated": {
+            "contains": {
+              "const": "audience_saturation"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "indicators": {
+            "contains": {
+              "properties": {
+                "type": {
+                  "const": "inventory_shortfall_forecast"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          }
+        },
+        "required": [
+          "indicators"
+        ]
+      },
+      "then": {
+        "properties": {
+          "indicator_types_evaluated": {
+            "contains": {
+              "const": "inventory_shortfall_forecast"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "indicators": {
+            "contains": {
+              "properties": {
+                "type": {
+                  "const": "pacing_risk"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          }
+        },
+        "required": [
+          "indicators"
+        ]
+      },
+      "then": {
+        "properties": {
+          "indicator_types_evaluated": {
+            "contains": {
+              "const": "pacing_risk"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "indicators": {
+            "contains": {
+              "properties": {
+                "type": {
+                  "const": "budget_constrained"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          }
+        },
+        "required": [
+          "indicators"
+        ]
+      },
+      "then": {
+        "properties": {
+          "indicator_types_evaluated": {
+            "contains": {
+              "const": "budget_constrained"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "indicator_snapshot_semantics": {
+        "assertion_scope_must_be_contained_by_evaluated_scope": true,
+        "logical_key_unique_by_type_and_normalized_scope_set": true
+      }
+    },
+    "spec": "specs/relationship-scoped-indicators.md#evaluation-contract"
+  },
+  "additionalProperties": true
+}

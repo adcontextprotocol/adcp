@@ -1,0 +1,226 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/product-audience-evidence-requirements.json",
+  "title": "Product Audience Evidence Requirements",
+  "description": "Buyer-authored evidence policy for compact product discovery. Organization selectors are stable keys and never carry brand assets or content provenance.",
+  "type": "object",
+  "properties": {
+    "requirement_mode": {
+      "type": "string",
+      "enum": [
+        "required",
+        "preferred"
+      ]
+    },
+    "evidence_presence": {
+      "type": "string",
+      "enum": [
+        "required",
+        "when_available"
+      ]
+    },
+    "accepted_methodologies": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/audience-evidence-methodology.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "excluded_methodologies": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/audience-evidence-methodology.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "accepted_evidence_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "measured",
+          "forecast",
+          "seller_declared"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "accepted_providers": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/brand-key.json"
+      },
+      "minItems": 1
+    },
+    "excluded_providers": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/brand-key.json"
+      },
+      "minItems": 1
+    },
+    "accepted_subject_types": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/audience-subject-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "accepted_resolution_methods": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/audience-resolution-method.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "minimum_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "maximum_age": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/duration.json"
+        },
+        {
+          "properties": {
+            "unit": {
+              "enum": [
+                "seconds",
+                "minutes",
+                "hours",
+                "days"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "methodology_documentation_required": {
+      "type": "boolean",
+      "default": false
+    },
+    "independent_attestation_required": {
+      "type": "boolean",
+      "default": false
+    },
+    "accepted_attestation_issuers": {
+      "type": "array",
+      "items": {
+        "discriminator": {
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "brand"
+              },
+              "brand": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/brand-key.json"
+              },
+              "ext": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+              }
+            },
+            "required": [
+              "type",
+              "brand"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "agent"
+              },
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$"
+              },
+              "ext": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+              }
+            },
+            "required": [
+              "type",
+              "agent_url"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "origin"
+              },
+              "origin": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https://[^/?#@]+$"
+              },
+              "ext": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+              }
+            },
+            "required": [
+              "type",
+              "origin"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "accepted_attestation_claim_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "requirement_mode",
+    "evidence_presence"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "independent_attestation_required": {
+            "const": true
+          }
+        },
+        "required": [
+          "independent_attestation_required"
+        ]
+      },
+      "then": {
+        "required": [
+          "accepted_attestation_issuers"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

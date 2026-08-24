@@ -1,0 +1,324 @@
+---
+title: Content Artifacts
+description: "Artifacts in AdCP represent the content context adjacent to ad placements, enabling brand suitability evaluation without exposing raw content."
+"og:title": "AdCP — Content Artifacts"
+sidebarTitle: Artifacts
+---
+
+# Artifacts
+
+An **artifact** is a unit of content adjacent to an ad placement. When evaluating brand suitability, you're asking: "Is this artifact appropriate for my brand's ads?"
+
+## What Is an Artifact?
+
+Artifacts represent the content context where an ad appears:
+
+- A **news article** on a website
+- A **podcast segment** between ad breaks
+- A **video chapter** in a YouTube video
+- A **social media post** in a feed
+- A **scene** in a CTV show
+- An **AI-generated image** in a chat conversation
+
+Artifacts are identified by `property_id` + `artifact_id` - the property defines where the content lives, and the artifact_id is an opaque identifier for that specific piece of content. The artifact_id scheme is flexible - it could be a URL path, a platform-specific ID, or any consistent identifier the property owner uses internally.
+
+## Structure
+
+**Schema**: [artifact.json](https://adcontextprotocol.org/schemas/3.2.0-beta.3/content-standards/artifact.json)
+
+Web article:
+
+```json
+{
+  "property_id": {"type": "domain", "value": "reddit.com"},
+  "artifact_id": "r_fitness_post_abc123",
+  "assets": [
+    {"type": "text", "role": "title", "content": "Best protein sources for muscle building", "language": "en"},
+    {"type": "text", "role": "paragraph", "content": "Looking for recommendations on high-quality protein sources...", "language": "en"},
+    {"type": "image", "url": "https://cdn.reddit.com/fitness-image.jpg", "alt_text": "Person lifting weights"}
+  ]
+}
+```
+
+Podcast segment (note: no `url` — the property is identified by `apple_podcast_id`, and the audio asset uses a secured URL):
+
+```json
+{
+  "property_id": {"type": "apple_podcast_id", "value": "1234567890"},
+  "artifact_id": "episode_42_segment_3",
+  "assets": [
+    {"type": "text", "role": "title", "content": "The Future of Running Shoes", "language": "en"},
+    {"type": "audio", "url": "https://cdn.example.com/secured/ep42_seg3.mp3", "transcript": "Today we're talking to Dr. Chen about biomechanics research...", "duration_ms": 480000}
+  ],
+  "metadata": {
+    "json_ld": [{"@type": "PodcastEpisode", "episodeNumber": 42}]
+  }
+}
+```
+
+CTV scene (the artifact_id encodes show, season, episode, and scene):
+
+```json
+{
+  "property_id": {"type": "app_id", "value": "com.streamingservice.tv"},
+  "artifact_id": "show_running_s2e5_scene_14",
+  "assets": [
+    {"type": "text", "role": "title", "content": "Championship Race - Final Stretch", "language": "en"},
+    {"type": "video", "url": "https://cdn.streaming.example.com/secured/s2e5_scene14.mp4", "transcript": "The runners round the final corner as the crowd erupts...", "duration_ms": 120000}
+  ]
+}
+```
+
+### Required Fields
+
+| Field | Description |
+|-------|-------------|
+| `property_id` | Where this artifact lives - uses standard identifier types (`domain`, `app_id`, `apple_podcast_id`, etc.) |
+| `artifact_id` | Unique identifier within the property - the property owner defines their scheme |
+| `assets` | Content in document order - text blocks, images, video, audio |
+
+### Optional Fields
+
+| Field | Description |
+|-------|-------------|
+| `variant_id` | Identifies a specific variant (A/B test, translation, temporal version) |
+| `format_kind` | Optional canonical media/creative kind associated with the artifact |
+| `url` | Web URL if the artifact has one |
+| `metadata` | Artifact-level metadata (Open Graph, JSON-LD, author info) |
+| `published_time` | When the artifact was published |
+| `last_update_time` | When the artifact was last modified |
+
+## Variants
+
+The same artifact may have multiple variants:
+
+- **Translations** - English version vs Spanish version
+- **A/B tests** - Different headlines being tested
+- **Temporal versions** - Content that changed on Wednesday
+
+Use `variant_id` to distinguish between them:
+
+```json
+// English version
+{
+  "property_id": {"type": "domain", "value": "nytimes.com"},
+  "artifact_id": "article_12345",
+  "variant_id": "en",
+  "assets": [
+    {"type": "text", "role": "title", "content": "Breaking News Story", "language": "en"}
+  ]
+}
+
+// Spanish translation
+{
+  "property_id": {"type": "domain", "value": "nytimes.com"},
+  "artifact_id": "article_12345",
+  "variant_id": "es",
+  "assets": [
+    {"type": "text", "role": "title", "content": "Noticia de última hora", "language": "es"}
+  ]
+}
+
+// A/B test variant
+{
+  "property_id": {"type": "domain", "value": "nytimes.com"},
+  "artifact_id": "article_12345",
+  "variant_id": "headline_test_b",
+  "assets": [
+    {"type": "text", "role": "title", "content": "Alternative Headline Being Tested", "language": "en"}
+  ]
+}
+```
+
+The combination of `artifact_id` + `variant_id` must be unique within a property. This lets you track which variant a user saw and correlate it with delivery reports.
+
+## Asset Types
+
+Assets are the actual content within an artifact. Everything is an asset - titles, paragraphs, images, videos.
+
+### Text
+
+```json
+{"type": "text", "role": "title", "content": "Article Title", "language": "en"}
+{"type": "text", "role": "paragraph", "content": "The article body text...", "language": "en"}
+{"type": "text", "role": "description", "content": "A summary of the article", "language": "en"}
+{"type": "text", "role": "heading", "content": "Section Header", "heading_level": 2}
+{"type": "text", "role": "quote", "content": "A quoted statement"}
+```
+
+Roles: `title`, `description`, `paragraph`, `heading`, `caption`, `quote`, `list_item`
+
+Each text asset can have its own `language` tag for mixed-language content.
+
+### Image
+
+```json
+{
+  "type": "image",
+  "url": "https://cdn.example.com/photo.jpg",
+  "alt_text": "Description of the image"
+}
+```
+
+### Video
+
+```json
+{
+  "type": "video",
+  "url": "https://cdn.example.com/video.mp4",
+  "transcript": "Full transcript of the video content...",
+  "duration_ms": 180000
+}
+```
+
+### Audio
+
+```json
+{
+  "type": "audio",
+  "url": "https://cdn.example.com/podcast.mp3",
+  "transcript": "Today we're discussing...",
+  "duration_ms": 3600000
+}
+```
+
+## Metadata
+
+Artifact-level metadata describes the artifact as a whole, not individual assets:
+
+```json
+{
+  "metadata": {
+    "author": "Jane Smith",
+    "canonical": "https://example.com/article/12345",
+    "open_graph": {
+      "og:type": "article",
+      "og:site_name": "Example News"
+    },
+    "json_ld": [
+      {
+        "@type": "NewsArticle",
+        "datePublished": "2025-01-15"
+      }
+    ]
+  }
+}
+```
+
+This is separate from assets because it's about the artifact container, not the content itself.
+
+## Secured Asset Access
+
+Many assets aren't publicly accessible—AI-generated images, private conversations, and paywalled content are common examples. The artifact schema supports three access methods without requiring every consumer to understand cloud IAM.
+
+### Choosing an access method
+
+Use the simplest method that fits the relationship:
+
+1. **Use `signed_url` by default** for one-off asset delivery. The consumer performs an ordinary HTTPS `GET`; no additional authentication integration is required.
+2. **Use `service_account` for established, higher-volume relationships** where the asset origin has already authorized a workload identity controlled by the consumer.
+3. **Use `bearer_token` only when the origin cannot support either option.** Tokens must be short-lived and scoped to the individual asset.
+
+Never place long-lived API keys, service-account private keys, cloud access keys, or other standing credentials in an artifact payload.
+
+### Signed URLs (recommended)
+
+For one-off access, place the complete pre-signed URL in the asset's `url` and mark the access method:
+
+```json
+{
+  "type": "video",
+  "url": "https://assets.streamhaus.example/video/scene-14.mp4?expires=...&signature=...",
+  "access": {
+    "method": "signed_url"
+  }
+}
+```
+
+The URL itself is a bearer capability. Producers should scope it to one asset and the shortest practical access window under a documented maximum TTL. Consumers must redact the complete URL from logs, traces, errors, metrics, analytics, model context, and durable storage because providers may place credential material in either its path or query string. Do not forward a signed URL outside its intended recipient or trust boundary.
+
+### Workload identity
+
+For ongoing partnerships, the asset origin can authorize an identity already controlled by the component that performs the asset fetch. At fetch time, that component uses its normal cloud credential chain, such as GCP Application Default Credentials or AWS SigV4. No credential is sent in the artifact. If an orchestrator forwards an artifact to a governance agent, it must either fetch the asset itself or arrange out-of-band authorization for the governance agent's identity.
+
+```json
+{
+  "type": "audio",
+  "url": "https://storage.streamhaus.example/episodes/42/segment-3.mp3",
+  "access": {
+    "method": "service_account",
+    "provider": "gcp"
+  }
+}
+```
+
+The `service_account.credentials` field is deprecated in AdCP 3.2. Its presence denotes only the legacy inline-credential form, not workload-identity authorization. Consumers must continue parsing and validating the field for 3.x wire compatibility, but must not activate received credentials automatically. They may process the legacy form only for a peer explicitly allowlisted for legacy compatibility; otherwise they must reject or quarantine it. New producers must omit it. The field is eligible for removal in 4.0 or later only after the six-month notice and full-release-cycle gates in the deprecation policy are satisfied.
+
+### Bearer tokens
+
+When neither signed URLs nor pre-configured workload identity is available, attach a short-lived, asset-scoped token:
+
+```json
+{
+  "type": "image",
+  "url": "https://assets.streamhaus.example/images/frame-382.png",
+  "access": {
+    "method": "bearer_token",
+    "token": "short-lived-asset-token"
+  }
+}
+```
+
+Send the token only in the `Authorization` header to the HTTPS origin authorized for that asset. Never forward the header across redirects. Redact the token from logs, traces, errors, metrics, analytics, model context, and durable storage.
+
+For artifacts with many assets, prefer signed URLs or pre-configured workload identity rather than repeating bearer tokens throughout the payload.
+
+The asset `url` may differ from the artifact's canonical or published URL. For example, a published article at `https://news.pinnacle.example/article/123` might have assets served from `https://assets.pinnacle.example/secured/...`.
+
+### Safe fetching
+
+Treat every asset URL and its access metadata as untrusted input. Consumers must require HTTPS and, after DNS resolution and after every redirect, reject loopback, link-local, metadata-service, private, and other locally disallowed destinations unless a specific destination was explicitly approved during authenticated onboarding. Access metadata alone must never select an ambient credential: workload identity is limited to the pre-authorized origin and resource prefix, and bearer tokens are limited to the authorized origin.
+
+Fail closed on authorization or destination-check failures. Do not retry by switching among signed URLs, workload identity, bearer tokens, or legacy inline credentials. Temporary encrypted caching of signed URLs, tokens, or legacy credentials must end no later than both the credential expiry and the consumer's configured maximum lifetime.
+
+### Access methods at a glance
+
+| Method | Use Case |
+|--------|----------|
+| `signed_url` | Recommended default for one-off access. Ordinary HTTPS fetch; the complete URL is a time-limited secret. |
+| `service_account` | Credential-free workload identity for a pre-configured relationship. No keys or access secrets appear in the payload. |
+| `bearer_token` | Compatibility path for origins requiring an Authorization header. The token must be short-lived, asset-scoped, and handled as a secret. |
+
+See [Migrating secured asset access for AdCP 3.2](/dist/docs/3.2.0-beta.3/reference/migration/asset-access) for producer and consumer changes.
+
+## Property Identifier Types
+
+The `property_id` uses standard identifier types from the AdCP property schema:
+
+| Type | Example | Use Case |
+|------|---------|----------|
+| `domain` | `reddit.com` | Websites |
+| `app_id` | `com.spotify.music` | Mobile apps |
+| `apple_podcast_id` | `1234567890` | Apple Podcasts |
+| `spotify_collection_id` | `4rOoJ6Egrf8K2IrywzwOMk` | Spotify podcasts |
+| `youtube_channel_id` | `UCddiUEpeqJcYeBxX1IVBKvQ` | YouTube channels |
+| `rss_url` | `https://feeds.example.com/podcast.xml` | RSS feeds |
+
+## Artifact ID Schemes
+
+The property owner defines their artifact_id scheme. Examples:
+
+| Property Type | Artifact ID Pattern | Example |
+|---------------|---------------------|---------|
+| News website | `article_{id}` | `article_12345` |
+| Reddit | `r_{subreddit}_{post_id}` | `r_fitness_abc123` |
+| Podcast | `episode_{num}_segment_{num}` | `episode_42_segment_2` |
+| CTV | `show_{id}_s{season}e{episode}_scene_{num}` | `show_abc_s3e5_scene_12` |
+| Social feed | `post_{id}` | `post_xyz789` |
+
+The verification agent doesn't need to understand the scheme - it's opaque. The property owner uses it to correlate artifacts with their content.
+
+## Related
+
+- [Content Standards Overview](.) - How artifacts fit into the content standards workflow
+- [calibrate_content](./tasks/calibrate_content) - Sending artifacts for calibration

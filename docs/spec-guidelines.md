@@ -351,11 +351,13 @@ When making breaking changes:
 ### Dialect roadmap
 
 AdCP 3.x source schemas remain JSON Schema draft-07. The 3.2 build generates a
-semantics-preserving JSON Schema 2020-12 projection under
-`/schemas/{version}/mcp/2026-07-28/` for MCP tool `inputSchema` and
-`outputSchema` declarations. Do not author 2020-12-only validation behavior in
-3.x source schemas; the two dialects must continue to accept and reject the
-same AdCP payloads.
+JSON Schema 2020-12 projection under `/schemas/{version}/mcp/2026-07-28/` for
+MCP tool declarations. Projected `outputSchema` files preserve canonical
+validation semantics. Projected `inputSchema` files are intentionally
+permissive discovery hints: unconditional object surfaces are flattened, while
+strict-host-incompatible root combinators are omitted and enforced by canonical
+draft-07 validation at call time. Do not author 2020-12-only validation behavior
+in 3.x source schemas.
 
 AdCP 4.0 will move the canonical source dialect directly to JSON Schema
 2020-12. Contract tightening such as selective `unevaluatedProperties: false`

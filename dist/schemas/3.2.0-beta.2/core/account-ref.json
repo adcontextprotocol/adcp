@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/account-ref.json",
+  "title": "Account Reference",
+  "description": "Reference to an advertiser account by seller-assigned ID or natural key. account_id is the seller/storefront handle returned by list_accounts. The natural key is brand + operator + optional operator_unit.id + optional fixed currency + optional buyer-selected account timezone + sandbox; it describes the advertiser object the seller resolves or provisions. After a capability-gated identity rekey, the former natural key is tombstoned and returns ACCOUNT_MOVED to authorized callers rather than resolving or provisioning another account. brand.countries qualifies the advertiser's geographic identity. operator_unit identifies the operator-owned buying seat or business unit and is distinct from the seller account. operator_unit.name is display metadata and does not participate in identity. Use account_id when the seller or upstream platform owns the canonical account namespace; use the natural key for buyer-declared accounts (require_operator_auth: false).",
+  "type": "object",
+  "oneOf": [
+    {
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "description": "Seller-assigned account identifier. For upstream-managed account namespaces, this value comes from list_accounts; for seller-defined namespaces without a list_accounts surface, it is supplied out-of-band. Buyer-declared account sellers MAY echo account_id from sync_accounts as an internal handle, but they MUST continue accepting the account's current natural-key AccountRef on subsequent calls. A former key tombstoned by identity reconciliation returns ACCOUNT_MOVED to authorized callers.",
+          "x-entity": "account"
+        }
+      },
+      "required": [
+        "account_id"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "brand": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/brand-ref.json",
+          "description": "Brand reference identifying the advertiser"
+        },
+        "operator": {
+          "type": "string",
+          "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "x-entity": "operator"
+        },
+        "operator_unit": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/operator-unit.json",
+          "description": "Optional operator-owned business unit, agency seat, or platform account. Only id participates in the natural account key; name is mutable display metadata."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Immutable ISO 4217 transaction currency when the seller's advertiser object is currency-bound. When present, this is part of the natural account key and media buys on the account MUST use it. Omit when currency is selected independently per media buy."
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Immutable account timezone. Include it in the natural key when get_adcp_capabilities.account.timezone declares account_fixed with buyer_selected; omit it for seller_fixed or seller_assigned accounts."
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, references the sandbox account for this brand/operator pair. Defaults to false (production account).",
+          "default": false
+        }
+      },
+      "required": [
+        "brand",
+        "operator"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "examples": [
+    {
+      "account_id": "acc_acme_001"
+    },
+    {
+      "brand": {
+        "domain": "acme-corp.com"
+      },
+      "operator": "acme-corp.com"
+    },
+    {
+      "brand": {
+        "domain": "nova-brands.com",
+        "brand_id": "spark"
+      },
+      "operator": "pinnacle-media.com"
+    },
+    {
+      "brand": {
+        "domain": "nova-athletics.example",
+        "countries": [
+          "NL"
+        ]
+      },
+      "operator": "nova-athletics.example",
+      "operator_unit": {
+        "id": "234284238",
+        "name": "Nova EMEA"
+      },
+      "currency": "EUR",
+      "timezone": "Europe/Amsterdam"
+    },
+    {
+      "brand": {
+        "domain": "acme-corp.com"
+      },
+      "operator": "acme-corp.com",
+      "sandbox": true
+    }
+  ]
+}

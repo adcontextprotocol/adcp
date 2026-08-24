@@ -1,0 +1,474 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/mcp/2026-07-28/profiles/production/signals/activate-signal-response.json",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    },
+    {
+      "$ref": "#/$defs/external:core~1protocol-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "deployments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1deployment.json"
+          }
+        },
+        "sandbox": {
+          "type": "boolean"
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "deployments"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "deployments"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "properties": {},
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/protocol-envelope.json": {
+      "type": "object",
+      "properties": {
+        "context_id": {
+          "type": "string"
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "task_id": {
+          "type": "string",
+          "x-entity": "task"
+        },
+        "status": {
+          "$ref": "#/$defs/external:enums~1task-status.json"
+        },
+        "message": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "replayed": {
+          "type": "boolean",
+          "default": false
+        },
+        "adcp_error": {
+          "$ref": "#/$defs/external:core~1error.json"
+        },
+        "push_notification_config": {
+          "$ref": "#/$defs/external:core~1push-notification-config.json"
+        },
+        "governance_context": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^[\\x20-\\x7E]+$"
+        },
+        "payload": {
+          "type": "object",
+          "x-adcp-open-payload": true,
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "task_status"
+            ]
+          },
+          {
+            "required": [
+              "response_status"
+            ]
+          }
+        ]
+      },
+      "notes": [
+        "Task response schemas (e.g., get-products-response.json) define ONLY the body fields; protocol-layer fields live on this envelope.",
+        "Transport serialization (normative):",
+        "  - MCP: envelope fields and task-body fields are siblings at the root of the tool response. The `payload` object is NOT serialized as a nested key — its body fields are flattened to the root alongside `status`, `context_id`, `context`, etc. This matches MCP's native `structuredContent` convention and is what shipping SDKs (@adcp/client) emit. Conformant MCP receivers parse from the flat root; receivers that expect a nested `payload` key MUST migrate.",
+        "  - A2A 1.0 with the AdCP profile extension: `task.status.state` carries the transport invocation lifecycle used to select the extraction location; `task.contextId` carries `context_id`, while `task.id` is an independent A2A transport identifier. The complete AdCP response, including its protocol-level `status` and any application-layer `task_id`, is canonically carried in `task.artifacts[0].parts[].DataPart` on final states; `task.status.message.parts[].DataPart` is the fallback container used only for interim A2A states (working, native submitted, input-required) where no final artifact has been emitted yet. For a structured AdCP business rejection or Submitted response, A2A is `completed` while the DataPart carries `status: rejected` or `status: submitted` because the handler invocation succeeded. An AdCP `task_id` MUST NOT be copied into artifact metadata or inferred from `task.id`. Receivers MUST prefer artifacts when present and MUST NOT overwrite a DataPart's status with the A2A state. See `a2a-profile-extension.mdx` and `a2a-response-extraction.mdx` for the full binding and extraction algorithm.",
+        "  - REST: envelope fields MAY ride on HTTP headers (e.g., `X-AdCP-Status`, `X-AdCP-Context-Id`) or as JSON body siblings; body fields appear at the JSON body root. Implementers choosing the header path SHOULD also mirror to body siblings for non-streaming callers.",
+        "Across all three: envelope and body fields are conceptually a single response object. A task response schema MAY declare body fields with the same name as envelope fields (e.g., `errors[]` body-level for per-record validation results vs envelope-level for fatal task failure) and the two MUST be treated as distinct fields by name within their respective namespaces — see `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`.",
+        "`status` is REQUIRED on the conceptual AdCP response across all transports. On MCP and REST it appears as a sibling field at the JSON root (or `structuredContent` root for MCP). On A2A it is carried inside the authoritative DataPart alongside the task body; `task.status.state` separately carries the A2A transport lifecycle and selects where that DataPart is found. Receivers MUST preserve the DataPart status when present. The schema-level `required: [status]` enforces the post-extraction AdCP shape. `payload` remains intentionally NOT required — it is a documentary grouping construct, never a required wire field. See `mcp-guide.mdx` and `a2a-guide.mdx` for the wire-level patterns receivers MUST implement.",
+        "Receivers MUST handle absence of an envelope field (e.g., `replayed` omitted) as the field's documented default — see each field's `default` clause."
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:enums/task-status.json": {
+      "type": "string",
+      "enum": [
+        "submitted",
+        "working",
+        "input-required",
+        "completed",
+        "canceled",
+        "failed",
+        "rejected",
+        "auth-required",
+        "unknown"
+      ]
+    },
+    "external:core/error.json": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "keyword": {
+                "type": "string"
+              },
+              "schemaPath": {
+                "type": "string"
+              },
+              "schema_id": {
+                "type": "string"
+              },
+              "discriminator": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "property_name": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "property_name",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "pointer",
+              "message",
+              "keyword"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "recovery": {
+          "type": "string",
+          "enum": [
+            "transient",
+            "correctable",
+            "terminal"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "producer",
+            "sdk"
+          ]
+        },
+        "sdk_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/push-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 4096
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "deprecated": true,
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:core/deployment.json": {
+      "discriminator": {
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "platform"
+            },
+            "platform": {
+              "type": "string"
+            },
+            "account": {
+              "type": "string"
+            },
+            "is_live": {
+              "type": "boolean"
+            },
+            "activation_key": {
+              "$ref": "#/$defs/external:core~1activation-key.json"
+            },
+            "estimated_activation_duration_minutes": {
+              "type": "number",
+              "minimum": 0
+            },
+            "deployed_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "type",
+            "platform",
+            "is_live"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "agent"
+            },
+            "agent_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "account": {
+              "type": "string"
+            },
+            "is_live": {
+              "type": "boolean"
+            },
+            "activation_key": {
+              "$ref": "#/$defs/external:core~1activation-key.json"
+            },
+            "estimated_activation_duration_minutes": {
+              "type": "number",
+              "minimum": 0
+            },
+            "deployed_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "type",
+            "agent_url",
+            "is_live"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/activation-key.json": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "segment_id"
+            },
+            "segment_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "segment_id"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "key_value"
+            },
+            "key": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "key",
+            "value"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

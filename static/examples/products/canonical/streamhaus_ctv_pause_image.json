@@ -1,0 +1,54 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "streamhaus_ctv_pause_image",
+  "name": "StreamHaus CTV Pause Ad — Image",
+  "description": "Full-screen pause-frame unit shown when the viewer pauses content, in the Netflix/Hulu-class pattern: a raw 1920x1080 image plus copy, no VAST tag involved. Ends on viewer or device resume — no duration floor. QR code activation is an engagement event layered on the one rendered impression.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "tv.streamhaus.example",
+      "selection_type": "all"
+    }
+  ],
+  "channels": ["ctv"],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "streamhaus_pause_image_cpm",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 32
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 120,
+    "timezone": "America/Los_Angeles",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "engagements", "spend"],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "image",
+      "format_option_id": "streamhaus_pause_frame",
+      "display_name": "StreamHaus Pause Frame — 1920x1080",
+      "params": {
+        "ctv_ad_experience": "pause",
+        "motion_level": "static",
+        "activation_methods": ["qr_code"],
+        "width": 1920,
+        "height": 1080,
+        "image_formats": ["jpg", "png"],
+        "max_file_size_kb": 800,
+        "ssl_required": true,
+        "asset_source": "buyer_uploaded",
+        "slots": [
+          { "asset_group_id": "image_main", "asset_type": "image", "required": true },
+          { "asset_group_id": "headline", "asset_type": "text", "required": false },
+          { "asset_group_id": "body_text", "asset_type": "text", "required": false },
+          { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+        ]
+      }
+    }
+  ]
+}

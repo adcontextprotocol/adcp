@@ -1,0 +1,130 @@
+id: media_buy_seller/account_timezone_seller_fixed
+version: "1.0.0"
+title: "Seller-fixed account timezone resolution"
+category: media_buy_seller
+summary: "Verifies that seller-fixed account capabilities declare one timezone and every account write and read echoes it."
+track: media_buy
+introduced_in: "3.2"
+
+requires_capability:
+  path: account.timezone.mode
+  equals: seller_fixed
+
+required_tools:
+  - get_adcp_capabilities
+  - sync_accounts
+  - list_accounts
+
+narrative: |
+  A seller-fixed account clock is one seller-wide operational timezone. The
+  capability must declare that value, buyers omit timezone during provisioning,
+  and the seller echoes the effective value on both sync and list surfaces.
+  Buyer-local labels or preferences such as West Coast and East Coast never
+  override this contract: when the seller is fixed to UTC, both buyer teams use
+  UTC for the account even though their own local clocks differ.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - seller_fixed_account_timezone
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The seller advertises account.timezone.mode seller_fixed."
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discover_and_provision
+    title: "Discover and apply the seller-wide timezone"
+    steps:
+      - id: discover_seller_timezone
+        title: "Read the seller-fixed timezone"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request: {}
+        context_outputs:
+          - name: account_timezone
+            path: "account.timezone.fixed_timezone"
+        validations:
+          - check: response_schema
+            description: "Capability response matches the canonical schema"
+          - check: field_value
+            path: "account.timezone.mode"
+            value: "seller_fixed"
+            description: "Seller declares the seller-fixed mode"
+          - check: field_present
+            path: "account.timezone.fixed_timezone"
+            description: "Seller-fixed mode declares its mandatory timezone"
+          - check: field_absent
+            path: "account.timezone.account_selection"
+            description: "Seller-fixed mode does not expose per-account selection"
+          - check: field_absent
+            path: "account.timezone.supported_timezones"
+            description: "Seller-fixed mode does not expose a buyer selection list"
+
+      - id: provision_without_timezone
+        title: "Provision without buyer timezone input"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#account_timezone_seller_fixed_provision"
+        validations:
+          - check: response_schema
+            description: "Provisioning response matches the canonical schema"
+          - check: field_value
+            path: "accounts[0].action"
+            allowed_values: ["created", "updated", "unchanged"]
+            description: "Provisioning succeeds instead of returning a per-account failure"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "account_timezone"
+            description: "Provisioning echoes the seller-wide timezone"
+          - check: field_value
+            path: "accounts[0].brand.domain"
+            value: "acmeoutdoor.example"
+            description: "Provisioning echoes the reusable brand natural key"
+          - check: field_value
+            path: "accounts[0].operator"
+            value: "pinnacle-agency.example"
+            description: "Provisioning echoes the reusable operator natural key"
+
+  - id: readback
+    title: "Read back the immutable account timezone"
+    depends_on: [discover_and_provision]
+    steps:
+      - id: list_seller_fixed_account
+        title: "Read the provisioned account"
+        task: list_accounts
+        schema_ref: "account/list-accounts-request.json"
+        response_schema_ref: "account/list-accounts-response.json"
+        doc_ref: "/accounts/tasks/list_accounts"
+        stateful: false
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+        validations:
+          - check: response_schema
+            description: "Account read matches the canonical schema"
+          - check: field_equals_context
+            path: "accounts[0].timezone"
+            context_key: "account_timezone"
+            description: "Readback preserves the seller-wide timezone"

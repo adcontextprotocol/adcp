@@ -44,30 +44,36 @@ test("portfolio routing scope is authoritative when present and advisory in 3.2"
     1
   );
 
-  const [legacyRunnerResult] = runValidations(
-    [
-      {
-        check: "all_fields_in_context_array",
-        path: "products[*].channels[*]",
-        context_key: "portfolio_channels",
-        description: "Every product channel stays within declared scope",
-      },
-    ],
-    {
-      taskName: "get_products",
-      taskResult: {
-        success: true,
-        data: { products: [{ channels: ["display"] }] },
-      },
-      agentUrl: "https://seller.example",
-      contributions: new Set(),
-      storyboardContext: { portfolio_channels: ["display"] },
-    }
-  );
-  assert.equal(legacyRunnerResult.passed, true);
-  assert.equal(
-    legacyRunnerResult.not_applicable,
-    true,
-    "pre-implementation SDKs must skip the additive check, not false-fail it"
-  );
+  const validation = {
+    check: "all_fields_in_context_array",
+    path: "products[*].channels[*]",
+    context_key: "portfolio_channels",
+    description: "Every product channel stays within declared scope",
+  };
+  const runnerContext = {
+    taskName: "get_products",
+    agentUrl: "https://seller.example",
+    contributions: new Set(),
+    storyboardContext: { portfolio_channels: ["display"] },
+  };
+
+  const [inScopeRunnerResult] = runValidations([validation], {
+    ...runnerContext,
+    taskResult: {
+      success: true,
+      data: { products: [{ channels: ["display"] }] },
+    },
+  });
+  assert.equal(inScopeRunnerResult.passed, true);
+
+  const [outOfScopeRunnerResult] = runValidations([validation], {
+    ...runnerContext,
+    taskResult: {
+      success: true,
+      data: { products: [{ channels: ["audio"] }] },
+    },
+  });
+  assert.equal(outOfScopeRunnerResult.passed, false);
+  assert.deepEqual(outOfScopeRunnerResult.expected, ["display"]);
+  assert.deepEqual(outOfScopeRunnerResult.actual, ["audio"]);
 });

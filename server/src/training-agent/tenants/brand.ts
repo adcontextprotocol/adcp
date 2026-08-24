@@ -17,8 +17,8 @@ import type { TenantConfig } from '@adcp/sdk/server';
 import { TrainingBrandPlatform } from '../v6-brand-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { customToolFor } from './custom-tool-helper.js';
-import { listAccountsTool } from './account-tools.js';
-import { handleCreativeApproval } from '../brand-handlers.js';
+import { listAccountsTool, syncGovernanceTool } from './account-tools.js';
+import { handleCreativeApproval, handleSearchBrands } from '../brand-handlers.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
 import { verifyBrandClaimHandler, verifyBrandClaimsHandler } from '../brand-claim-handlers.js';
 import type { TrainingContext } from '../types.js';
@@ -46,6 +46,18 @@ const COMPLY_TEST_CONTROLLER_SCHEMA = {
     sandbox: z.literal(true),
   }).passthrough(),
   params: z.object({}).passthrough().optional(),
+  context: CONTEXT_REF,
+};
+
+const SEARCH_BRANDS_SCHEMA = {
+  query: z.string().max(2000),
+  industries: z.array(z.string()).min(1).optional(),
+  countries: z.array(z.string().regex(/^[A-Z]{2}$/)).min(1).optional(),
+  buyer_brand: z.object({}).passthrough().optional(),
+  pagination: z.object({
+    max_results: z.number().int().min(1).max(100).optional(),
+    cursor: z.string().optional(),
+  }).strict().optional(),
   context: CONTEXT_REF,
 };
 
@@ -105,6 +117,14 @@ export function buildBrandTenantConfig(host: string, options: { storyboardCompat
       serverOptions: {
         customTools: {
           ...(options.storyboardCompat?.version !== '3.0' && {
+            sync_governance: syncGovernanceTool(options.storyboardCompat),
+            search_brands: customToolFor(
+              'search_brands',
+              'Search the agent roster and return public brand stubs with canonical relationship trust state.',
+              SEARCH_BRANDS_SCHEMA,
+              handleSearchBrands,
+              { annotations: { readOnlyHint: true, idempotentHint: true } },
+            ),
             comply_test_controller: customToolFor(
               'comply_test_controller',
               'Triggers sandbox-only state transitions for brand-rights compliance testing.',

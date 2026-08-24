@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/geo-place-requirement.json",
+  "title": "Geographic Place Requirement",
+  "description": "Identifier systems and collision-safe country/type pairs the buyer must be allowed to select later.",
+  "type": "object",
+  "definitions": {
+    "catalogRequirement": {
+      "type": "object",
+      "description": "Required country/type pairs and optional exact catalog versions for one identifier system. Country keys prevent a false Cartesian product between countries and place types.",
+      "properties": {
+        "countries": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Z]{2}$"
+          },
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/geo-place-type.json"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "minProperties": 1
+        },
+        "system_versions": {
+          "type": "array",
+          "description": "Optional exact catalog versions that must remain selectable. Versions are opaque strings, not ordered ranges.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "countries"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "systems": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/geo-place-system.json"
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/catalogRequirement"
+      },
+      "minProperties": 1
+    }
+  },
+  "required": [
+    "systems"
+  ],
+  "additionalProperties": false
+}

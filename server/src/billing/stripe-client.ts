@@ -17,6 +17,7 @@ if (!STRIPE_SECRET_KEY) {
 export const stripe = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY, {
       apiVersion: Stripe.API_VERSION,
+      timeout: 20_000,
     })
   : null;
 
@@ -1481,6 +1482,8 @@ export interface CheckoutSessionData {
   // Discount - provide coupon ID or promotion code (not both)
   couponId?: string; // Stripe coupon ID to pre-apply
   promotionCode?: string; // Promotion code to pre-apply (mutually exclusive with couponId)
+  /** Stable key for callers that must collapse concurrent Stripe writes. */
+  idempotencyKey?: string;
 }
 
 /**
@@ -1570,7 +1573,7 @@ export async function createCheckoutSession(
         invoice_creation: { enabled: true },
         ...(!data.customerId ? { customer_creation: 'always' as const } : {}),
       } : {}),
-    });
+    }, data.idempotencyKey ? { idempotencyKey: data.idempotencyKey } : undefined);
 
     logger.info({
       sessionId: session.id,
@@ -2287,7 +2290,7 @@ export interface CreatePromotionCodeInput {
 /**
  * Create a Stripe coupon with percentage or fixed amount discount
  */
-export async function createCoupon(input: CreateCouponInput): Promise<{
+export async function createCoupon(input: CreateCouponInput, idempotencyKey?: string): Promise<{
   coupon_id: string;
   name: string;
 } | null> {
@@ -2311,7 +2314,7 @@ export async function createCoupon(input: CreateCouponInput): Promise<{
         : {}),
       ...(input.max_redemptions ? { max_redemptions: input.max_redemptions } : {}),
       ...(input.redeem_by ? { redeem_by: Math.floor(input.redeem_by.getTime() / 1000) } : {}),
-    });
+    }, idempotencyKey ? { idempotencyKey } : undefined);
 
     logger.info({
       couponId: coupon.id,

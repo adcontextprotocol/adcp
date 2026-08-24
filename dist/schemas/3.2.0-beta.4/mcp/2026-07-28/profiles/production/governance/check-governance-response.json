@@ -1,0 +1,674 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/mcp/2026-07-28/profiles/production/governance/check-governance-response.json",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    },
+    {
+      "if": {
+        "required": [
+          "check_type"
+        ]
+      },
+      "then": {
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "verdict": {
+                  "const": "conditions"
+                }
+              },
+              "required": [
+                "verdict"
+              ]
+            },
+            "then": {
+              "required": [
+                "conditions",
+                "consultation_context"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "governance_context"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "expires_at"
+                    ]
+                  }
+                ]
+              },
+              "properties": {
+                "check_type": {
+                  "const": "intent"
+                },
+                "conditions": {
+                  "minItems": 1
+                }
+              }
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "conditions"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "consultation_context"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "verdict": {
+                  "const": "denied"
+                }
+              },
+              "required": [
+                "verdict"
+              ]
+            },
+            "then": {
+              "required": [
+                "findings"
+              ],
+              "properties": {
+                "findings": {
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "verdict": {
+                  "const": "approved"
+                }
+              },
+              "required": [
+                "verdict"
+              ]
+            },
+            "then": {
+              "required": [
+                "expires_at",
+                "governance_context"
+              ]
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "governance_context"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "expires_at"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "else": {
+        "allOf": [
+          {
+            "required": [
+              "plan_id"
+            ]
+          },
+          {
+            "if": {
+              "properties": {
+                "verdict": {
+                  "const": "conditions"
+                }
+              },
+              "required": [
+                "verdict"
+              ]
+            },
+            "then": {
+              "required": [
+                "conditions"
+              ],
+              "properties": {
+                "conditions": {
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "verdict": {
+                  "const": "denied"
+                }
+              },
+              "required": [
+                "verdict"
+              ]
+            },
+            "then": {
+              "required": [
+                "findings"
+              ],
+              "properties": {
+                "findings": {
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "verdict": {
+                  "enum": [
+                    "approved",
+                    "conditions"
+                  ]
+                }
+              },
+              "required": [
+                "verdict"
+              ]
+            },
+            "then": {
+              "required": [
+                "expires_at"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "runtime_attestation_evaluations"
+        ]
+      },
+      "then": {
+        "required": [
+          "runtime_attestation_binding_digest"
+        ]
+      }
+    }
+  ],
+  "x-status": "experimental",
+  "properties": {
+    "check_id": {
+      "type": "string",
+      "x-entity": "governance_check"
+    },
+    "verdict": {
+      "$ref": "#/$defs/external:enums~1governance-decision.json"
+    },
+    "check_type": {
+      "type": "string",
+      "enum": [
+        "intent",
+        "execution"
+      ]
+    },
+    "plan_id": {
+      "type": "string",
+      "x-entity": "governance_plan"
+    },
+    "explanation": {
+      "type": "string"
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": "string"
+          },
+          "policy_id": {
+            "type": "string"
+          },
+          "source_plan_id": {
+            "type": "string",
+            "x-entity": "governance_plan"
+          },
+          "severity": {
+            "$ref": "#/$defs/external:enums~1escalation-severity.json"
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "uncertainty_reason": {
+            "type": "string"
+          },
+          "attestation_reference_digest": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "category_id",
+          "severity",
+          "explanation"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "conditions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "required_value": {},
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "consultation_context": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "next_check": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "delivery_statement": {
+      "type": "object",
+      "properties": {
+        "statement_id": {
+          "type": "string",
+          "x-entity": "governance_delivery_statement"
+        },
+        "statement_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "issued_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "seller_reference": {
+          "type": "string"
+        },
+        "reporting_period": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "end": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": false
+        },
+        "cumulative_spend": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "canonical_payload": {
+          "type": "object",
+          "properties": {
+            "seller_reference": {
+              "type": "string"
+            },
+            "delivery_metrics": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "seller_reference",
+            "delivery_metrics"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "statement_id",
+        "statement_digest",
+        "sequence",
+        "issued_at",
+        "seller_reference",
+        "reporting_period",
+        "cumulative_spend",
+        "currency",
+        "canonical_payload"
+      ],
+      "additionalProperties": false
+    },
+    "categories_evaluated": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "policies_evaluated": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mode": {
+      "$ref": "#/$defs/external:enums~1governance-mode.json"
+    },
+    "runtime_attestation_evaluations": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/external:core~1attestation-evaluation.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action_binding": {
+                "type": "object",
+                "properties": {
+                  "action_type": {
+                    "type": "string",
+                    "const": "https://adcontextprotocol.org/actions/governance-check"
+                  }
+                },
+                "required": [
+                  "action_type",
+                  "action_id"
+                ]
+              }
+            },
+            "required": [
+              "action_binding"
+            ]
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 10
+    },
+    "runtime_attestation_binding_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "governance_context": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "check_id",
+    "verdict",
+    "explanation"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:enums/governance-decision.json": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "denied",
+        "conditions"
+      ]
+    },
+    "external:enums/escalation-severity.json": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ]
+    },
+    "external:enums/governance-mode.json": {
+      "x-status": "experimental",
+      "type": "string",
+      "enum": [
+        "audit",
+        "advisory",
+        "enforce"
+      ]
+    },
+    "external:core/attestation-evaluation.json": {
+      "type": "object",
+      "properties": {
+        "reference_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "credential_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "proof_format": {
+          "type": "string",
+          "format": "uri"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "not_found",
+            "expired",
+            "revoked",
+            "invalid",
+            "unsupported",
+            "unverifiable",
+            "untrusted_issuer",
+            "untrusted_resolver",
+            "subject_mismatch",
+            "digest_mismatch",
+            "resolution_failed"
+          ]
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "evaluated_by": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$"
+        },
+        "verifier_agent_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$"
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "revocation_checked_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "valid_until": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "action_binding": {
+          "type": "object",
+          "properties": {
+            "action_type": {
+              "type": "string",
+              "format": "uri"
+            },
+            "action_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "action_digest": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "action_type"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "action_id"
+              ]
+            },
+            {
+              "required": [
+                "action_digest"
+              ]
+            }
+          ],
+          "additionalProperties": false
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "reference_digest",
+        "outcome",
+        "evaluated_at",
+        "evaluated_by"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "verified",
+                  "expired",
+                  "revoked",
+                  "invalid",
+                  "subject_mismatch",
+                  "digest_mismatch"
+                ]
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "required": [
+              "credential_digest",
+              "proof_format"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "credential_digest"
+            ]
+          },
+          "then": {
+            "required": [
+              "proof_format"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

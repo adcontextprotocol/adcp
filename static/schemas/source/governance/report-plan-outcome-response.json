@@ -13,7 +13,8 @@
   "properties": {
     "outcome_id": {
       "type": "string",
-      "description": "Unique identifier for this outcome record."
+      "description": "Unique identifier for this outcome record.",
+      "x-entity": "governance_outcome"
     },
     "outcome_state": {
       "type": "string",
@@ -26,6 +27,22 @@
     "committed_budget": {
       "type": "number",
       "description": "Budget committed from this outcome. Present for 'completed' and 'failed' outcomes."
+    },
+    "delivery_reconciliation_status": {
+      "type": "string",
+      "enum": [
+        "consistent",
+        "measurement_variance",
+        "disputed",
+        "unmatched",
+        "closed_unresolved"
+      ],
+      "description": "Comparison state between the buyer-attributed observation and canonical seller statement. Present for delivery outcomes. A disputed state blocks adjustment verification while the period is open. measurement_variance records a buyer-measured cumulative_spend that differs from the seller statement; it never blocks verification — the higher amount bounds conservative exposure and decommitments instead. closed_unresolved preserves the discrepancy after operational closure without claiming a final billing result."
+    },
+    "delivery_period_state": {
+      "type": "string",
+      "enum": ["open", "closed"],
+      "description": "Operational state of the governance reporting period. Closure freezes governance evidence for that period but is not billing settlement."
     },
     "findings": {
       "type": "array",

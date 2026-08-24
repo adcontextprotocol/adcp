@@ -1,0 +1,134 @@
+---
+title: Multi-Agent Creative Orchestration
+description: "Route canonical creative contracts across sellers and creative agents in AdCP 3.2."
+"og:title": "AdCP — Multi-agent creative orchestration"
+---
+
+Multi-agent creative orchestration connects three independent decisions: what inventory accepts, who can produce it, and where the completed manifest is trafficked.
+
+## End-to-end flow
+
+1. Discover inventory with `get_products` and collect each product's `format_options[]`.
+2. Resolve publisher-backed options from publisher `adagents.json.formats[]`.
+3. Group compatible target declarations using canonical constraint satisfaction.
+4. Find creative agents through registry reverse lookup.
+5. Confirm each selected agent's live `creative.supported_formats[]` declaration.
+6. Call `build_creative` with the agent-local `target_capability_id` or `target_capability_ids[]`.
+7. Distribute the returned canonical manifests to sellers through `sync_creatives`.
+8. Track approval and delivery independently on each destination.
+
+There is no recursive `creative_agents[]` graph in the canonical flow. `list_creative_formats` and named format ownership are deprecated in 3.2.
+
+## Compare contracts, not IDs
+
+Two sellers may accept the same underlying creative without sharing any local identifier. Compare `format_kind`, parameters, and slots:
+
+```json
+{
+  "format_kind": "image",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "max_file_size_kb": 200,
+    "slots": [
+      { "asset_group_id": "image_main", "asset_type": "image", "required": true },
+      { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true }
+    ]
+  }
+}
+```
+
+A producer is compatible only if its advertised capability can satisfy every target constraint. Equal `format_kind` alone is insufficient.
+
+## Find a producer
+
+Exact publisher format:
+
+```http
+GET /api/registry/agents?publisher_domain=shorts.streamhaus.example&format_option_id=vertical_video&creative_operation=build
+```
+
+Generic canonical format:
+
+```http
+GET /api/registry/agents?format_kind=image&creative_operation=build
+```
+
+Registry results are cached self-claims. Before building, call the selected endpoint's `get_adcp_capabilities` and choose the matching live entry.
+
+## Build multiple outputs
+
+```json
+{
+  "message": "Create an adventurous spring launch campaign for Acme Outdoor",
+  "brand": { "domain": "acmeoutdoor.example" },
+  "target_capability_ids": [
+    "display_image_300x250",
+    "display_image_728x90"
+  ],
+  "quality": "production"
+}
+```
+
+The response preserves request order and returns portable canonical manifests:
+
+```json
+{
+  "status": "completed",
+  "creative_manifests": [
+    {
+      "format_kind": "image",
+      "assets": {
+        "image_main": {
+          "asset_type": "image",
+          "url": "https://cdn.acmeoutdoor.example/spring-300x250.png",
+          "width": 300,
+          "height": 250
+        }
+      }
+    },
+    {
+      "format_kind": "image",
+      "assets": {
+        "image_main": {
+          "asset_type": "image",
+          "url": "https://cdn.acmeoutdoor.example/spring-728x90.png",
+          "width": 728,
+          "height": 90
+        }
+      }
+    }
+  ]
+}
+```
+
+Capability IDs do not travel with these manifests. When a seller product needs exact routing, add the target product/publisher `format_option_ref` before trafficking.
+
+## Route by interaction model
+
+| Need | Capability signal | Task |
+|---|---|---|
+| Generate from a brief | `supports_generation` plus a matching build operation | `build_creative` |
+| Transform an existing manifest | `supports_transformation` plus `list_transformers` output | `build_creative` with `transformer_id` |
+| Retrieve a serving tag | `has_creative_library` and a matching build operation | `build_creative` with `creative_id` |
+| Preview seller/publisher chrome | Matching `preview` operation | `preview_creative` on that endpoint |
+
+## Distribute and correlate
+
+Call `sync_creatives` separately on each destination. Reuse your buyer-owned `creative_id` and `concept_id` across sellers for correlation, while setting each manifest's canonical `format_kind` and target-specific `format_option_ref`.
+
+Approval is destination-specific. One seller may approve while another rejects or remains pending; do not treat that as a protocol inconsistency.
+
+## Failure handling
+
+- Refresh capabilities if a cached `capability_id` returns `FORMAT_NOT_SUPPORTED`.
+- Reject a package plan when selected formats do not cover every included placement.
+- Treat an exact publisher-format capability as the creative agent's claim, not publisher endorsement.
+- Do not silently relax dimensions, duration, required slots, or publisher identity.
+
+## Related
+
+- [Canonical formats](/dist/docs/3.2.0-beta.2/creative/canonical-formats)
+- [`build_creative`](/dist/docs/3.2.0-beta.2/creative/task-reference/build_creative)
+- [Creative manifests](/dist/docs/3.2.0-beta.2/creative/creative-manifests)
+- [Creative libraries](/dist/docs/3.2.0-beta.2/creative/creative-libraries)

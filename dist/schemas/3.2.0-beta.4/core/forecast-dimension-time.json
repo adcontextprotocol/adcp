@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/forecast-dimension-time.json",
+  "title": "Time Forecast Dimension",
+  "description": "A calendar-window dimension for a ForecastPoint row. Variant of ForecastPoint dimensions; see forecast-point-dimensions.json for dispatch rules. Windows are half-open intervals [start_time, end_time): the row covers instants at or after start_time and strictly before end_time, so adjacent windows share a boundary without overlapping. end_time MUST be after start_time; JSON Schema draft-07 cannot compare sibling values, so conformance tooling enforces the ordering. Within one forecast, sellers MUST emit non-overlapping windows and SHOULD coalesce adjacent windows whose availability_status and metrics do not materially differ. When the request scoped the forecast with offer_filters.availability_horizon, a complete forecast partitions the requested horizon; a seller that cannot cover the full horizon signals the gap through the response's incomplete[] mechanism rather than silently omitting windows.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "time",
+      "description": "Dimension family discriminator."
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Inclusive window start (RFC 3339 date-time with timezone offset)."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Exclusive window end (RFC 3339 date-time with timezone offset). MUST be after start_time."
+    }
+  },
+  "required": [
+    "kind",
+    "start_time",
+    "end_time"
+  ],
+  "additionalProperties": false
+}

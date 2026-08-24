@@ -1,35 +1,15 @@
-import { z } from 'zod';
+import { TOOL_REQUEST_SCHEMAS } from '@adcp/sdk/schemas';
 import { customToolFor } from './custom-tool-helper.js';
-import { handleListAccounts } from '../account-handlers.js';
+import { handleListAccounts, handleSyncGovernance } from '../account-handlers.js';
 import type { TrainingContext } from '../types.js';
 
-const ACCOUNT_REF_SCHEMA = z.union([
-  z.object({
-    account_id: z.string(),
-  }),
-  z.object({
-    brand: z.object({
-      domain: z.string(),
-      brand_id: z.string().optional(),
-    }),
-    operator: z.string(),
-    sandbox: z.boolean().optional(),
-  }),
-]);
+const SYNC_GOVERNANCE_SCHEMA = TOOL_REQUEST_SCHEMAS.sync_governance.shape;
 
 function listAccountsSchema(storyboardCompat?: TrainingContext['storyboardCompat']) {
-  return {
-    ...(storyboardCompat?.version === '3.0' ? {} : { account: ACCOUNT_REF_SCHEMA.optional() }),
-    status: z.enum(['active', 'pending_approval', 'rejected', 'payment_required', 'suspended', 'closed']).optional(),
-    sandbox: z.boolean().optional(),
-    pagination: z.object({
-      max_results: z.number().int().min(1).max(100).optional(),
-      cursor: z.string().optional(),
-    }).optional(),
-    idempotency_key: z.string().optional(),
-    context: z.any().optional(),
-    ext: z.any().optional(),
-  };
+  const { account, ...baseShape } = TOOL_REQUEST_SCHEMAS.list_accounts.shape;
+  return storyboardCompat?.version === '3.0'
+    ? baseShape
+    : { ...baseShape, account };
 }
 
 export function listAccountsTool(storyboardCompat?: TrainingContext['storyboardCompat']) {
@@ -40,6 +20,20 @@ export function listAccountsTool(storyboardCompat?: TrainingContext['storyboardC
     handleListAccounts,
     {
       annotations: { readOnlyHint: true, idempotentHint: true },
+      ...(storyboardCompat && { trainingContext: { storyboardCompat } }),
+    },
+  );
+}
+
+export function syncGovernanceTool(storyboardCompat?: TrainingContext['storyboardCompat']) {
+  return customToolFor(
+    'sync_governance',
+    'Register one governance agent endpoint on each account. Uses replace semantics and supplies the relationship used to require signed authorization before governed commitments.',
+    SYNC_GOVERNANCE_SCHEMA,
+    handleSyncGovernance,
+    {
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+      enforceIdempotency: true,
       ...(storyboardCompat && { trainingContext: { storyboardCompat } }),
     },
   );

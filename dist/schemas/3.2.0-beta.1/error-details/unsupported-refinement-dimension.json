@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/error-details/unsupported-refinement-dimension.json",
+  "title": "Unsupported Refinement Dimension Details",
+  "description": "Recommended details shape for UNSUPPORTED_FEATURE errors rejecting a refine_proposals request that uses a typed dimension omitted from the seller's explicit proposal_refinement.supported_dimensions. Lets an authorized buyer remove or translate the unsupported fields without another capability round trip.",
+  "type": "object",
+  "properties": {
+    "unsupported_dimension": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The first typed revision dimension in the request that the seller does not support, named with the supported_dimensions vocabulary."
+    },
+    "supported_dimensions": {
+      "type": "array",
+      "description": "The seller's complete supported_dimensions declaration, echoed so the buyer can reconstruct a valid request. An empty array means ask-only refinement.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "unsupported_dimension",
+    "supported_dimensions"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "unsupported_dimension": "criteria",
+      "supported_dimensions": [
+        "total_budget",
+        "alternatives"
+      ]
+    },
+    {
+      "unsupported_dimension": "total_budget",
+      "supported_dimensions": []
+    }
+  ]
+}

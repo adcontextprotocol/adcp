@@ -1,0 +1,256 @@
+id: si_baseline
+version: "1.0.0"
+title: "Sponsored intelligence baseline"
+protocol: sponsored-intelligence
+category: si_baseline
+summary: "Baseline domain storyboard — every SI agent must discover offerings, initiate a session, exchange messages, and terminate cleanly."
+track: si
+required_tools:
+  - si_initiate_session
+
+narrative: |
+  You run an AI platform that supports sponsored intelligence — conversational ad experiences
+  embedded in AI-powered search, chat, or assistant products. A buyer agent connects to
+  discover what SI offerings are available, initiate a session, send messages within the
+  conversation, and cleanly terminate when done.
+
+  Sponsored intelligence is fundamentally different from display or video advertising. The
+  ad experience is conversational — the user asks a question, the AI responds, and sponsored
+  content is woven into the response in a way that is transparent and relevant.
+
+  This storyboard covers the SI session lifecycle from the buyer's perspective: discovering
+  what the platform offers, starting a conversation, exchanging messages, and ending the
+  session.
+
+agent:
+  interaction_model: si_platform
+  capabilities:
+    - sponsored_intelligence
+  examples:
+    - "Perplexity"
+    - "ChatGPT Search"
+    - "Arc Browser"
+    - "AI assistants with ad support"
+
+caller:
+  role: buyer_agent
+  example: "Nova Motors (advertiser)"
+
+prerequisites:
+  description: |
+    The caller needs brand context and campaign parameters for SI. The test kit provides
+    a sample brand (Nova Motors) with signal definitions suitable for conversational
+    ad experiences.
+  test_kit: "test-kits/nova-motors.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports sponsored intelligence before initiating sessions.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring sponsored_intelligence in supported_protocols, confirming the agent supports conversational ad experiences.
+        sample_request:
+          context:
+            correlation_id: "si_session--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "si_session--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: offering_discovery
+    title: "Discover SI offerings"
+    narrative: |
+      Before initiating any session, the buyer discovers what sponsored intelligence
+      offerings the platform has available. This determines what kinds of conversational
+      experiences can be sponsored and at what pricing.
+
+    steps:
+      - id: si_get_offering
+        title: "Get available SI offerings"
+        narrative: |
+          The buyer calls si_get_offering to learn what conversational ad experiences
+          the platform supports. The response describes available offerings with pricing,
+          targeting options, and format specifications.
+        task: si_get_offering
+        schema_ref: "sponsored-intelligence/si-get-offering-request.json"
+        response_schema_ref: "sponsored-intelligence/si-get-offering-response.json"
+        doc_ref: "/sponsored-intelligence/tasks/si_get_offering"
+        comply_scenario: si_availability
+        stateful: false
+        expected: |
+          Return available SI offerings:
+          - Offering descriptions with pricing
+          - Supported conversation types
+          - Targeting and context options
+          - Format specifications for sponsored content
+
+        sample_request:
+          offering_id: "novamotors_conversational_v1"
+          context:
+            correlation_id: "si_session--si_get_offering"
+
+        context_outputs:
+          - name: offering_id
+            path: 'offering_id'
+        validations:
+          - check: response_schema
+            description: "Response matches si-get-offering-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "si_session--si_get_offering"
+            description: "Context correlation_id returned unchanged"
+  - id: session_lifecycle
+    title: "Session lifecycle"
+    narrative: |
+      The buyer initiates a session, exchanges messages within it, and terminates
+      cleanly. Each session represents a single conversational ad experience — the
+      buyer provides context and the platform weaves sponsored content into the
+      conversation.
+
+    steps:
+      - id: si_initiate_session
+        title: "Start a conversation session"
+        narrative: |
+          The buyer initiates a new SI session with campaign context. The platform
+          creates a session and returns a session ID that the buyer uses for subsequent
+          messages.
+        task: si_initiate_session
+        schema_ref: "sponsored-intelligence/si-initiate-session-request.json"
+        response_schema_ref: "sponsored-intelligence/si-initiate-session-response.json"
+        doc_ref: "/sponsored-intelligence/tasks/si_initiate_session"
+        comply_scenario: si_session_lifecycle
+        stateful: true
+        expected: |
+          Return a new session:
+          - session_id: platform-assigned session identifier
+          - status: active
+          - Initial context acknowledgment
+          - Available interaction modes
+
+        sample_request:
+          intent: "User is researching electric vehicles for long road trips and wants to talk to Nova Motors"
+          identity:
+            consent_granted: true
+            consent_timestamp: "2026-04-22T14:00:00Z"
+            user:
+              locale: "en-US"
+
+          idempotency_key: "$generate:uuid_v4#si_baseline_session_lifecycle_si_initiate_session"
+          context:
+            correlation_id: "si_session--si_initiate_session"
+        context_outputs:
+          - name: session_id
+            path: 'session_id'
+        validations:
+          - check: response_schema
+            description: "Response matches si-initiate-session-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "si_session--si_initiate_session"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "session_id"
+            description: "Platform assigns session_id — must be echoed in si_send_message and si_terminate_session"
+      - id: si_send_message
+        title: "Exchange messages"
+        narrative: |
+          The buyer sends a message within the active session. The platform processes
+          the message and returns a response that may include sponsored content woven
+          into the conversational experience.
+        task: si_send_message
+        schema_ref: "sponsored-intelligence/si-send-message-request.json"
+        response_schema_ref: "sponsored-intelligence/si-send-message-response.json"
+        doc_ref: "/sponsored-intelligence/tasks/si_send_message"
+        comply_scenario: si_session_lifecycle
+        stateful: true
+        expected: |
+          Process the message and return a response:
+          - Message acknowledgment
+          - Response content (may include sponsored elements)
+          - Session state (active, waiting, etc.)
+
+        sample_request:
+          session_id: "$context.session_id"
+          message: "What are the best electric vehicles for long road trips?"
+
+          idempotency_key: "$generate:uuid_v4#si_baseline_session_lifecycle_si_send_message"
+          context:
+            correlation_id: "si_session--si_send_message"
+        validations:
+          - check: response_schema
+            description: "Response matches si-send-message-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "si_session--si_send_message"
+            description: "Context correlation_id returned unchanged"
+      - id: si_terminate_session
+        title: "End the session"
+        narrative: |
+          The buyer terminates the SI session. The platform records session metrics
+          and returns a summary of the conversation including any sponsored content
+          that was delivered.
+        task: si_terminate_session
+        schema_ref: "sponsored-intelligence/si-terminate-session-request.json"
+        response_schema_ref: "sponsored-intelligence/si-terminate-session-response.json"
+        doc_ref: "/sponsored-intelligence/tasks/si_terminate_session"
+        comply_scenario: si_handoff
+        stateful: true
+        expected: |
+          Terminate the session and return a summary:
+          - session_id: confirms which session was terminated
+          - status: terminated
+          - Session metrics (duration, messages exchanged)
+          - Sponsored content delivery summary
+
+        sample_request:
+          session_id: "$context.session_id"
+          reason: "handoff_complete"
+
+          context:
+            correlation_id: "si_session--si_terminate_session"
+        validations:
+          - check: response_schema
+            description: "Response matches si-terminate-session-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "si_session--si_terminate_session"
+            description: "Context correlation_id returned unchanged"

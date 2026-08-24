@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/account-currency-mode.json",
+  "title": "Account Currency Mode",
+  "description": "How a seller binds transaction currency to advertiser accounts.",
+  "type": "string",
+  "enum": [
+    "fixed",
+    "per_media_buy"
+  ],
+  "enumDescriptions": {
+    "fixed": "The advertiser account is bound to one immutable ISO 4217 currency supplied during provisioning; currency participates in the natural account key.",
+    "per_media_buy": "The advertiser account is not currency-bound; omit account currency and select currency in each proposal or media buy."
+  }
+}

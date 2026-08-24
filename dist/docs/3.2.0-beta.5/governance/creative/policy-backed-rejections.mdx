@@ -1,0 +1,196 @@
+---
+title: Policy-backed creative rejections
+description: "Use registry policy IDs as stable rejection codes while governance agents retain independent detection methods."
+"og:title": "AdCP — Policy-backed creative rejections"
+sidebarTitle: Policy-backed rejections
+---
+
+AdCP separates four questions that are often collapsed into one rejection code:
+
+1. **What was observed?** A creative feature such as an automatic redirect, credential-harvesting form, or excessive tracker count.
+2. **Which rule did that observation violate?** A versioned policy in the shared policy registry.
+3. **Who detected it?** The creative governance agent and methodology used for the evaluation.
+4. **Where is the creative in its lifecycle?** Initial review failure, later policy revocation, or content drift.
+
+Keeping these axes separate gives buyers stable, actionable identifiers without putting every scanner signature, platform rule, or vendor outcome into a protocol enum.
+
+## The policy-backed feature convention
+
+A policy-backed creative feature uses `registry:{policy_id}`. Its value is a binary compliance result:
+
+- `true` — the creative complies with the resolved policy.
+- `false` — the creative violates the resolved policy.
+
+The governance agent may also return its own observation features. For example, `auto_redirect: true` describes the detected behavior, while `registry:creative_security_auto_redirect: false` describes the policy result. Buyers that only need an interoperable pass/fail decision can request the registry-backed feature. Buyers that need richer diagnostics can also request the agent-defined features or follow its `detail_url`.
+
+```json
+{
+  "governance": {
+    "creative_features": [
+      {
+        "feature_id": "registry:creative_security_auto_redirect",
+        "type": "binary",
+        "description": "Compliance with the shared no-automatic-redirect policy",
+        "methodology_url": "https://scanner.example/methodology/redirects"
+      },
+      {
+        "feature_id": "auto_redirect",
+        "type": "binary",
+        "description": "Automatic navigation observed without user interaction",
+        "methodology_url": "https://scanner.example/methodology/redirects"
+      }
+    ]
+  }
+}
+```
+
+The first identifier is stable across governance agents because it resolves through the policy registry. The second is agent-defined and may evolve with the agent's methodology. A shared ID standardizes the question being answered; it does not force every agent to use the same scanner or prevent sellers from applying published, seller-specific limits where a policy explicitly allows them.
+
+## Responsibilities
+
+| Participant | Responsibility |
+|---|---|
+| AdCP schemas | Carry open feature values, registry policy references, lifecycle reasons, and error recovery semantics. The schemas do not enumerate every rejection cause. |
+| Policy registry | Own stable policy IDs, versions, natural-language rules, calibration exemplars, and buyer remediation guidance. New policies are registry data, not new wire enums. |
+| Creative governance agent | Advertise the registry policies it can evaluate as `registry:` features; resolve the current policy text and exemplars; publish any seller-specific limits used by parameterized policies; evaluate the creative; return the compliance value, confidence when applicable, methodology version, and optional detailed report. |
+| Seller | Select which registry policies it enforces, publish them on products through `enforced_policies`, choose its trusted governance agents, and cite the applicable `policy_id` with a version-pinned `policy_url` when rejecting. The seller remains the decision-maker; a governance result is evidence used by the seller. |
+| Buyer | Filter discovery with `required_policies`, preflight creatives through a capable governance agent, resolve a rejected `policy_id`, apply the documented remediation, and resubmit only when the rejection is correctable. |
+
+## End-to-end workflow
+
+### 1. Discover seller requirements
+
+Sellers publish policy IDs on products. Buyers that require predictable enforcement can filter during discovery:
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Display inventory for a spring launch",
+  "required_policies": [
+    "creative_security_auto_redirect",
+    "creative_measurement_approved_collectors"
+  ]
+}
+```
+
+A matching product includes the same IDs in `enforced_policies`.
+
+### 2. Preflight the creative
+
+The buyer calls a creative governance agent that advertises the corresponding registry-backed features:
+
+```json
+{
+  "creative_manifest": {
+    "format_kind": "display_tag",
+    "assets": {
+      "tag_url": {
+        "asset_type": "url",
+        "url": "https://creative.example/tag/launch"
+      }
+    }
+  },
+  "feature_ids": [
+    "registry:creative_security_auto_redirect",
+    "registry:creative_measurement_approved_collectors"
+  ]
+}
+```
+
+```json
+{
+  "results": [
+    {
+      "feature_id": "registry:creative_security_auto_redirect",
+      "value": false,
+      "confidence": 0.99,
+      "methodology_version": "4.2"
+    },
+    {
+      "feature_id": "registry:creative_measurement_approved_collectors",
+      "value": true,
+      "methodology_version": "4.2"
+    }
+  ],
+  "detail_url": "https://scanner.example/reports/eval_123"
+}
+```
+
+The buyer can correct the automatic redirect before submitting the creative to the seller.
+
+### 3. Attribute a seller rejection
+
+If the seller independently detects the same violation, it uses the existing `CREATIVE_REJECTED` error and cites the registry policy ID:
+
+```json
+{
+  "code": "CREATIVE_REJECTED",
+  "message": "Creative failed seller policy review",
+  "recovery": "correctable",
+  "suggestion": "Remove navigation that occurs without user interaction and resubmit.",
+  "details": {
+    "policy_id": "creative_security_auto_redirect",
+    "policy_url": "https://adcontextprotocol.org/api/policies/resolve?policy_id=creative_security_auto_redirect&version=1.0.0",
+    "reasons": [
+      "The creative navigated away from the publisher context before any user interaction."
+    ]
+  }
+}
+```
+
+The policy ID is the durable code; the pinned URL identifies the exact registry version used for this decision. When an error-array surface reports several failures, sellers emit one error entry per policy rather than inventing a combined code. This preserves one stable resolution and remediation path per entry.
+
+### 4. Keep lifecycle reasons orthogonal
+
+The policy ID explains **which rule failed**. Creative lifecycle webhooks separately explain **when and why the status changed**:
+
+- `review_failure` — the policy failed during initial review.
+- `policy_revocation` — an approved creative later failed because the seller's policy changed or an earlier violation was discovered.
+- `content_drift` — the creative or destination changed after approval.
+
+A scanner or verification company is detection provenance, not a rejection reason. The same automatic redirect must resolve to `creative_security_auto_redirect` regardless of which trusted governance agent detected it.
+
+## Initial registry policies
+
+The first policy-backed creative rejection vocabulary focuses on runtime behavior rather than file-format constraints:
+
+| Policy ID | Covers | Typical buyer remediation |
+|---|---|---|
+| `creative_security_malicious_code` | Malware, exploit behavior, or unauthorized compute in the payload | Replace the compromised or malicious asset and audit its supply chain |
+| `creative_security_auto_redirect` | Navigation without user interaction | Remove redirect, click-hijacking, or forced-open logic |
+| `creative_security_credential_harvest` | Deceptive collection of credentials or sensitive information | Remove the collection flow and use an authorized destination |
+| `creative_security_deceptive_destination` | Fake downloads, impersonation, or materially deceptive landing experiences | Replace the destination and align claims with the actual service |
+| `creative_security_risky_network_origin` | Calls to origins the seller's current risk controls classify as unsafe | Remove or replace the flagged dependency; appeal reputation decisions out of band when necessary |
+| `creative_security_impression_manipulation` | Creative-caused stacking, stuffing, or hidden impression generation | Remove hidden or duplicate rendering behavior |
+| `creative_security_https_only` | Insecure network requests from a secure serving context | Move every dependency to HTTPS |
+| `creative_content_baseline_safety` | Hate, graphic, shock, or similarly unsafe baseline content | Replace the offending content; use category-specific registry policies for regulated categories |
+| `creative_ux_non_intrusive` | Unauthorized overlays, pop-ups, sticky behavior, layout changes, or autoplay audio | Remove intrusive behavior or use a product/format that explicitly permits it |
+| `creative_resource_limits` | CPU, main-thread, memory, or network use beyond the seller's evaluated limits | Reduce execution and request cost; consult the evaluator report for observed values |
+| `creative_measurement_approved_collectors` | Trackers or collectors outside the seller's accepted set | Remove or replace the collector |
+| `creative_measurement_tracker_limits` | Tracker count or waterfall depth beyond the seller's evaluated limits | Consolidate trackers and shorten redirect chains |
+
+The policies concerning risky origins, permitted UX, resource use, approved collectors, and tracker limits are intentionally parameterized by the enforcing seller. For those policies, the seller or its governance agent must publish the applied list, permission, or limit through its methodology documentation and include the observed value in the detailed report or rejection reason. The shared policy ID remains stable while the declared operating limit can differ by product.
+
+These policies deliberately do not include:
+
+- **Advertiser, campaign, or account deny-lists.** Those are seller relationship or transaction constraints, not creative observations. A destination-domain policy may still reject a creative when changing the destination is a valid remediation.
+- **Verification-vendor blocks.** The vendor is who detected a violation, not what the violation was.
+- **Regulated-category catch-alls.** Alcohol, gambling, political, pharmaceutical, weapons, and similar rules resolve through their category-specific registry policies rather than one ambiguous `sensitive_category` code.
+- **File-format validation.** Dimensions, duration, file size, codec, and other mechanically declared format constraints remain on the creative-format and validation surfaces.
+
+## Why this does not pollute the protocol
+
+The protocol defines one reusable mechanism: open feature IDs plus a registry-reference convention. The shared registry supplies optional vocabulary as versioned data. Governance agents decide how to measure compliance, sellers decide which policies they enforce, and buyers decide which policies they require or preflight.
+
+Adding a new threat signature therefore does not require an AdCP release. A governance agent can expose it immediately as an agent-defined feature. When the ecosystem needs a stable cross-agent contract, contributors publish a reviewed policy entry and agents opt into the corresponding `registry:` feature. The wire format remains unchanged.
+
+## Current readback limitation
+
+The structured `policy_id` bridge is available on `CREATIVE_REJECTED` error details. Persistent creative and package approval readbacks still carry human-readable `rejection_reason` strings, and lifecycle webhooks carry `reason_code` plus `reason_detail`. Until those readback surfaces gain a reusable structured policy-reference field, buyers should retain the original rejection error with the transaction context needed to correlate it to the submitted creative. This limitation is tracked in [GitHub issue #6652](https://github.com/adcontextprotocol/adcp/issues/6652).
+
+## Related
+
+- [Policy Registry](/dist/docs/3.2.0-beta.5/governance/policy-registry)
+- [`get_creative_features`](./get_creative_features)
+- [Policy attribution](/dist/docs/3.2.0-beta.5/governance/policy-attribution)
+- [Error handling](/dist/docs/3.2.0-beta.5/building/by-layer/L3/error-handling)

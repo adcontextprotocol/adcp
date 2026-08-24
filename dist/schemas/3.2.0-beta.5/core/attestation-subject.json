@@ -1,0 +1,112 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/attestation-subject.json",
+  "title": "Attestation Subject",
+  "description": "Typed identity of the entity or object an attestation credential is about. Brand and agent subjects reuse canonical AdCP identities. Other resources use an open, URI-namespaced resource_type plus an identifier whose namespace is explicit. Evaluators MUST compare the resolved credential subject to this complete typed identity, not to id alone.",
+  "discriminator": {
+    "propertyName": "type"
+  },
+  "oneOf": [
+    {
+      "title": "AttestationBrandSubject",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "brand"
+        },
+        "brand": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/brand-ref.json"
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+        }
+      },
+      "required": [
+        "type",
+        "brand"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "AttestationAgentSubject",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "agent"
+        },
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+          "description": "Canonical HTTPS endpoint of the agent the claim concerns."
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+        }
+      },
+      "required": [
+        "type",
+        "agent_url"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "AttestationResourceSubject",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "resource"
+        },
+        "resource_type": {
+          "type": "string",
+          "format": "uri",
+          "description": "Open, absolute URI naming the subject vocabulary, such as https://adcontextprotocol.org/claims/subjects/signal. AdCP does not maintain an exhaustive enum."
+        },
+        "namespace": {
+          "type": "string",
+          "format": "uri",
+          "description": "Absolute URI identifying the namespace in which id is unique. This may be an AdCP agent endpoint, a catalog origin, or a domain-specific namespace URI."
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "Stable identifier for the subject within namespace. It MUST NOT be compared without resource_type and namespace."
+        },
+        "content_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "Optional SHA-256 pin for the exact content or immutable snapshot identified by this resource subject. This is part of the complete typed subject identity and is distinct from AttestationReference.content_digest, which pins credential bytes."
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+        }
+      },
+      "required": [
+        "type",
+        "resource_type",
+        "namespace",
+        "id"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "examples": [
+    {
+      "type": "brand",
+      "brand": {
+        "domain": "nova-brands.example",
+        "brand_id": "nova_motors"
+      }
+    },
+    {
+      "type": "resource",
+      "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+      "namespace": "https://signals.meridian.example/adcp",
+      "id": "signal_urban_commuters"
+    }
+  ]
+}

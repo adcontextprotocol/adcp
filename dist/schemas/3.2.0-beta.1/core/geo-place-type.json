@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/geo-place-type.json",
+  "title": "Geographic Place Type",
+  "description": "Canonical place classification. Registered tokens have protocol-defined meanings. Catalog-specific classifications without a registered mapping MUST use an absolute HTTPS URI controlled by the vocabulary owner; consumers compare URI types as exact opaque strings.",
+  "anyOf": [
+    {
+      "type": "string",
+      "enum": [
+        "airport",
+        "borough",
+        "city",
+        "city_region",
+        "commune",
+        "county",
+        "district",
+        "municipality",
+        "neighborhood",
+        "post_town",
+        "prefecture",
+        "province",
+        "quarter",
+        "state",
+        "territory",
+        "ward"
+      ]
+    },
+    {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    }
+  ],
+  "examples": [
+    "city",
+    "municipality",
+    "borough",
+    "neighborhood",
+    "post_town",
+    "city_region",
+    "county",
+    "https://seller.example/geo/place-types/trade-area"
+  ]
+}

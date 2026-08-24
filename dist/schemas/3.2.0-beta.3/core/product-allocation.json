@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/product-allocation.json",
+  "title": "Product Allocation",
+  "description": "A product included in a proposal's budget plan. Fixed proposals use allocation_percentage. Seller-optimized proposals use optional minimum-spend targets and maximum-spend constraints instead of an exact allocation.",
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "ID of the product (must reference a product in the products array)"
+    },
+    "allocation_percentage": {
+      "type": "number",
+      "description": "Exact percentage of total budget allocated to this product in a fixed proposal. Percentages across all allocations MUST sum to 100. Must be absent in a seller-optimized proposal.",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "min_spend_target_percentage": {
+      "type": "number",
+      "description": "Soft minimum-spend target as a percentage of the executed total budget. Only valid in seller-optimized proposals. The seller SHOULD attempt to reach it, but it is not a delivery guarantee. Minimum targets across allocations MUST sum to no more than 100.",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "max_spend_percentage": {
+      "type": "number",
+      "description": "Hard maximum share of the executed total budget that this product may spend. Only valid in seller-optimized proposals. Maximums across allocations MUST collectively permit 100 percent of the budget to be spent.",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "pacing": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/pacing.json",
+      "description": "Recommended subordinate package pacing. On proposal execution this becomes pacing on the derived package and MUST NOT cause delivery to exceed aggregate proposal/media-buy pacing. On a committed proposal it is a firm delivery term."
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "Selected pricing option ID from the product's pricing_options array. Required when the containing proposal is committed so create_media_buy executes the exact disclosed commercial terms; optional on legacy draft proposals."
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Explanation of why this product and allocation are recommended"
+    },
+    "sequence": {
+      "type": "integer",
+      "description": "Optional ordering hint for multi-line-item plans (1-based)",
+      "minimum": 1
+    },
+    "tags": {
+      "type": "array",
+      "description": "Categorical tags for this allocation (e.g., 'desktop', 'german', 'mobile') - useful for grouping/filtering allocations by dimension",
+      "items": {
+        "type": "string"
+      }
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Recommended flight start date/time for this allocation in ISO 8601 format. Allows publishers to propose per-flight scheduling within a proposal. When omitted, the allocation applies to the full campaign date range."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Recommended flight end date/time for this allocation in ISO 8601 format. Allows publishers to propose per-flight scheduling within a proposal. When omitted, the allocation applies to the full campaign date range."
+    },
+    "daypart_targets": {
+      "type": "array",
+      "description": "Recommended time windows for this allocation in spot-plan proposals.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/daypart-target.json"
+      },
+      "minItems": 1
+    },
+    "forecast": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/delivery-forecast.json",
+      "description": "Forecasted delivery metrics for this allocation"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "product_id"
+  ],
+  "additionalProperties": true
+}

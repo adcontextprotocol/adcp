@@ -74,11 +74,13 @@ export interface StoryboardSummary {
   step_count: number;
 }
 
-const testKits = new Map<string, TestKit>();
+type StoryboardComplianceOptions = ReturnType<typeof hostedComplianceOptions>;
 
-function findTestKitsDir(): string | null {
+const testKitsByDir = new Map<string, Map<string, TestKit>>();
+
+function findTestKitsDir(options: StoryboardComplianceOptions): string | null {
   try {
-    const dir = join(getComplianceCacheDir(complianceOptions), 'test-kits');
+    const dir = join(getComplianceCacheDir(options), 'test-kits');
     return existsSync(dir) ? dir : null;
   } catch (err) {
     logger.info({ err }, 'Compliance cache not resolvable; test-kit features disabled');
@@ -86,13 +88,18 @@ function findTestKitsDir(): string | null {
   }
 }
 
-function loadTestKits(): void {
+function loadTestKits(options: StoryboardComplianceOptions): Map<string, TestKit> {
   try {
-    const dir = findTestKitsDir();
+    const dir = findTestKitsDir(options);
     if (!dir) {
       logger.info('Test kits directory not found; test kit features disabled');
-      return;
+      return new Map();
     }
+
+    const cached = testKitsByDir.get(dir);
+    if (cached) return cached;
+
+    const testKits = new Map<string, TestKit>();
 
     const files = readdirSync(dir).filter((f) => f.endsWith('.yaml'));
     for (const file of files) {
@@ -108,14 +115,17 @@ function loadTestKits(): void {
       }
     }
 
+    testKitsByDir.set(dir, testKits);
     logger.info({ testKits: testKits.size }, 'Test kits loaded');
+    return testKits;
   } catch (err) {
     logger.error({ err }, 'Failed to load test kits');
+    return new Map();
   }
 }
 
 // Load test kits on import
-loadTestKits();
+loadTestKits(complianceOptions);
 
 // ── Public API ──────────────────────────────────────────────────
 
@@ -198,17 +208,23 @@ export function getStoryboardIdsForVersion(adcpVersion: string): string[] {
   return getStoryboardsForVersion(adcpVersion).map((sb) => sb.id);
 }
 
-export function getTestKit(id: string): TestKit | undefined {
-  return testKits.get(id);
+export function getTestKit(
+  id: string,
+  options: StoryboardComplianceOptions = complianceOptions,
+): TestKit | undefined {
+  return loadTestKits(options).get(id);
 }
 
-export function getTestKitForStoryboard(storyboardId: string): TestKit | undefined {
-  const sb = getComplianceStoryboardById(storyboardId, complianceOptions);
+export function getTestKitForStoryboard(
+  storyboardId: string,
+  options: StoryboardComplianceOptions = complianceOptions,
+): TestKit | undefined {
+  const sb = getComplianceStoryboardById(storyboardId, options);
   if (!sb?.prerequisites?.test_kit) return undefined;
 
   // test_kit is like "test-kits/acme-outdoor.yaml" — extract the id
   const filename = sb.prerequisites.test_kit.replace(/^test-kits\//, '').replace(/\.yaml$/, '');
   // Convert filename to id format (acme-outdoor → acme_outdoor)
   const kitId = filename.replace(/-/g, '_');
-  return testKits.get(kitId);
+  return getTestKit(kitId, options);
 }

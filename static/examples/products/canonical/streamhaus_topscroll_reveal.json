@@ -1,0 +1,67 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "streamhaus_topscroll_reveal",
+  "name": "StreamHaus mobile topscroll reveal",
+  "description": "Single-state mobile topscroll. The unit is a full-bleed underlay that reveals through a clip window as the reader scrolls past it — there is no second state, because the reveal is presentation of one canvas, not a layout change. Buyer supplies a short muted video in the default `components` supply mode.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "streamhaus.example",
+      "selection_type": "all"
+    }
+  ],
+  "channels": ["display"],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "topscroll_flat_rate",
+      "pricing_model": "flat_rate",
+      "currency": "USD",
+      "fixed_price": 9000
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 120,
+    "timezone": "America/New_York",
+    "supports_webhooks": true,
+    "available_metrics": ["impressions", "clicks", "spend", "viewability", "completion_rate"],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "seller_rendered_stateful_display",
+      "format_option_id": "topscroll_reveal",
+      "display_name": "Mobile topscroll (reveal)",
+      "canonical_formats_only": true,
+      "experimental": true,
+      "params": {
+        "experimental": true,
+        "composition_model": "deterministic",
+        "supply_mode": "components",
+        "reveal": "clip_window",
+        "initial_state_id": "reveal",
+        "states": [
+          {
+            "state_id": "reveal",
+            "anchoring": "underlay",
+            "close_affordance": false,
+            "slot_bindings": ["video_main", "landing_page_url"],
+            "breakpoints": [
+              { "breakpoint_id": "mobile", "width_mode": "full_bleed", "viewport_height_percent": 80 }
+            ]
+          }
+        ],
+        "user_controls": {
+          "dismissible": true,
+          "user_collapsible": false
+        },
+        "duration_ms_exact": 6000,
+        "aspect_ratio": "9:16",
+        "containers": ["mp4"],
+        "video_playback": "auto_muted",
+        "max_initial_load_kb": 400,
+        "polite_load": true
+      }
+    }
+  ]
+}

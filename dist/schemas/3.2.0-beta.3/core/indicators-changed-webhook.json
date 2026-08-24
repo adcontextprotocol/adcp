@@ -1,0 +1,179 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/indicators-changed-webhook.json",
+  "title": "Indicators Changed Webhook",
+  "description": "Account-anchored invalidation fired when the semantic indicator snapshot or its evaluation coverage changes on a media buy, package, or package–creative assignment. Registered prospectively through sync_accounts notification_configs with event_types: [\"indicators.changed\"]; activation does not replay current indicators, so buyers establish a complete get_media_buys baseline by enumerating known IDs or requesting every media-buy status and exhausting pagination, without an indicator filter. The payload is not authoritative indicator state: receivers verify signing, dedupe by idempotency_key, then use get_media_buys without an indicator filter. Re-evaluation that changes only indicators_as_of MUST NOT fire; a material in-place creative update invalidates prior assignment evaluations and MUST fire.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "description": "Random fire identifier reused across retries. Receivers dedupe within the authenticated sender scope."
+    },
+    "notification_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "description": "Stable identity for this logical snapshot change across re-emissions. A later semantic change receives a new value."
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "indicators.changed"
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "subscriber_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "account_id": {
+      "type": "string",
+      "x-entity": "account"
+    },
+    "relationship_kind": {
+      "type": "string",
+      "enum": [
+        "media_buy",
+        "package",
+        "creative_assignment"
+      ],
+      "description": "Identifies which indicator-bearing snapshot changed."
+    },
+    "media_buy_id": {
+      "type": "string",
+      "x-entity": "media_buy"
+    },
+    "package_id": {
+      "type": "string",
+      "x-entity": "package"
+    },
+    "creative_id": {
+      "type": "string",
+      "x-entity": "creative"
+    },
+    "change_kind": {
+      "type": "string",
+      "enum": [
+        "asserted",
+        "cleared",
+        "updated",
+        "invalidated",
+        "coverage_changed",
+        "assignment_removed"
+      ],
+      "description": "Coarse invalidation reason. Buyers MUST reread rather than applying this value as state. invalidated is emitted when a material creative-content update retires the prior evaluation and the relationship becomes unknown until reevaluated. assignment_removed is emitted to indicator subscribers when deletion retires keys for a package–creative relationship."
+    },
+    "changed_indicator_types": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/indicator-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Types known to be affected. This is a reread hint, not a complete current set."
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller observed the semantic snapshot change."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_id",
+    "notification_type",
+    "fired_at",
+    "subscriber_id",
+    "account_id",
+    "relationship_kind",
+    "media_buy_id",
+    "change_kind",
+    "changed_indicator_types",
+    "observed_at"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "relationship_kind": {
+            "const": "package"
+          }
+        },
+        "required": [
+          "relationship_kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "package_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "relationship_kind": {
+            "const": "creative_assignment"
+          }
+        },
+        "required": [
+          "relationship_kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "package_id",
+          "creative_id"
+        ]
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "lifecycle_event_fires": {
+        "subscriber_activated": [],
+        "assertion_set_changed": [
+          "indicators.changed"
+        ],
+        "indicators_as_of_only_changed": [],
+        "creative_content_materially_changed": [
+          "indicators.changed"
+        ]
+      }
+    },
+    "spec": "specs/relationship-scoped-indicators.md#webhook-contract"
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Creative fatigue changed for one assignment",
+      "data": {
+        "idempotency_key": "whk_01K2INDICATOR4EXAMPLE8Q7M5",
+        "notification_id": "indchg_mb_a_pkg_social_cr_video_17",
+        "notification_type": "indicators.changed",
+        "fired_at": "2026-08-04T12:01:00Z",
+        "subscriber_id": "buyer-primary",
+        "account_id": "acc_example",
+        "relationship_kind": "creative_assignment",
+        "media_buy_id": "mb_a",
+        "package_id": "pkg_social",
+        "creative_id": "cr_summer_video",
+        "change_kind": "asserted",
+        "changed_indicator_types": [
+          "creative_fatigue"
+        ],
+        "observed_at": "2026-08-04T12:00:00Z"
+      }
+    }
+  ]
+}

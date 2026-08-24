@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import type { TaskRegistry, TenantConfig } from '@adcp/sdk/server';
+import { TOOL_INPUT_SHAPES } from '@adcp/sdk/schemas';
 import {
   TrainingSalesPlatform,
   legacyGetProductsHandler,
@@ -15,14 +16,14 @@ import {
 } from '../v6-sales-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
-import { listAccountsTool } from './account-tools.js';
+import { listAccountsTool, syncGovernanceTool } from './account-tools.js';
 import { reportUsageTool } from './report-usage-tool.js';
 import { validateInputTool } from './validate-input-tool.js';
 import { buildCreativeTool, previewCreativeTool } from './creative-tools.js';
 import { customToolFor } from './custom-tool-helper.js';
-import { handleSyncGovernance } from '../account-handlers.js';
 import { handleSyncCatalogs } from '../catalog-event-handlers.js';
 import type { TrainingContext } from '../types.js';
+import { syncAgentNotificationConfigsLegacy } from '../agent-notification-configs.js';
 
 const TENANT_ID = 'sales';
 
@@ -57,24 +58,12 @@ const SYNC_CATALOGS_SCHEMA = {
   ext: z.any().optional(),
 };
 
-const SYNC_GOVERNANCE_SCHEMA = {
-  accounts: z.array(z.object({
-    account: ACCOUNT_REF,
-    governance_agents: z.array(z.object({
-      url: z.string(),
-      authentication: z.object({
-        schemes: z.array(z.string()),
-        credentials: z.string(),
-      }),
-    })).min(1),
-  })),
-  idempotency_key: z.string().optional(),
-  context: z.any().optional(),
-};
-
 export function buildSalesTenantConfig(
   host: string,
-  options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {},
+  options: {
+    storyboardCompat?: TrainingContext['storyboardCompat'];
+    proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'];
+  } = {},
   taskRegistry?: TaskRegistry,
 ): {
   tenantId: string;
@@ -87,9 +76,14 @@ export function buildSalesTenantConfig(
       agentUrl: `${host}/${TENANT_ID}`,
       signingKey: material.signingKey,
       label: 'Training agent — sales',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      platform: new TrainingSalesPlatform(options.storyboardCompat) as any,
+      platform: new TrainingSalesPlatform(
+        options.storyboardCompat,
+        options.proposalNegotiationProfile ?? 'ask-only',
+      ),
       serverOptions: {
+        // The public training sandbox intentionally exposes both current
+        // compact tools and registered compatibility aliases.
+        mcpToolProfile: 'all',
         // These operations intentionally remain the legacy wire facade for
         // AdCP 3.0 callers. Current application paths use canonical format
         // identity; the raw seam preserves exact legacy tuples at the wire and
@@ -117,12 +111,18 @@ export function buildSalesTenantConfig(
           // and fail the older response schema. Gate it off 3.0 like the
           // creative tools below. (/signals keeps it across versions.)
           ...(options.storyboardCompat?.version === '3.0' ? {} : {
-            sync_governance: customToolFor(
-              'sync_governance',
-              'Register governance agent endpoints on accounts. The seller calls these agents via check_governance during media buy lifecycle events. Uses replace semantics: each call replaces previously synced agents on the specified accounts.',
-              SYNC_GOVERNANCE_SCHEMA,
-              handleSyncGovernance,
+            sync_agent_notification_configs: customToolFor(
+              'sync_agent_notification_configs',
+              'Register, replace, pause, or clear caller-scoped agent-level capability-change webhook subscribers.',
+              TOOL_INPUT_SHAPES.sync_agent_notification_configs!,
+              syncAgentNotificationConfigsLegacy,
+              {
+                annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+                enforceIdempotency: true,
+                payloadErrorsAsSuccess: true,
+              },
             ),
+            sync_governance: syncGovernanceTool(options.storyboardCompat),
             build_creative: buildCreativeTool({
               tenantId: TENANT_ID,
               creativeBillsThroughAdcp: false,

@@ -5,7 +5,7 @@
  *
  * Scope is intentionally narrow. The broader security guide documents
  * discovery/runtime errors that are not graded by request-signing vectors.
- * This lint checks concrete request_signature_* literals and first-column
+ * This lint checks concrete request-signing taxonomy literals and first-column
  * code-table entries inside request-signing.mdx's "Error codes" section — the
  * exact surface that previously published seven invented, unprefixed codes.
  */
@@ -26,8 +26,8 @@ const DEFAULT_CONTRACT_ROOT = path.join(
   'test-vectors',
   'request-signing',
 );
-const CONCRETE_REQUEST_CODE_PATTERN = /\brequest_signature_[a-z0-9_]*[a-z0-9]\b/g;
-const EXACT_REQUEST_CODE_PATTERN = /^request_signature_[a-z0-9_]*[a-z0-9]$/;
+const CONCRETE_REQUEST_CODE_PATTERN = /\brequest_(?:signature_[a-z0-9_]*[a-z0-9]|target_uri_malformed)\b/g;
+const EXACT_REQUEST_CODE_PATTERN = /^request_(?:signature_[a-z0-9_]*[a-z0-9]|target_uri_malformed)$/;
 const SNAKE_CASE_CODE_PATTERN = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/;
 
 function walkJsonFiles(directory) {
@@ -59,7 +59,7 @@ function collectContractCodes(contractRoot = DEFAULT_CONTRACT_ROOT) {
     }
     const code = vector && vector.expected_outcome && vector.expected_outcome.error_code;
     if (typeof code !== 'string' || !EXACT_REQUEST_CODE_PATTERN.test(code)) {
-      throw new Error(`${file}: negative vector is missing a request_signature_* expected_outcome.error_code`);
+      throw new Error(`${file}: negative vector is missing a request-signing expected_outcome.error_code`);
     }
     codes.add(code);
   }

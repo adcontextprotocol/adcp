@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/trusted-match/provider-context-match-response.json",
+  "title": "Context Match Response (Provider → Router)",
+  "description": "Provider-to-router shape of the Context Match response. A context provider returns offers, optional cache guidance, and response-level signals using its own targeting vocabulary in signals.targeting_kvs. The router attributes those targeting pairs using the publisher-assigned provider_id from registration; a provider MUST NOT author signals_by_provider or choose its attribution bucket. Publisher-local targeting destination names never travel on this hop. Envelope extension fields (ext, context) are intentionally omitted and forbidden because extension data in the context path could inadvertently carry or correlate user identity signals.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/protocol-envelope.json"
+    }
+  ],
+  "x-status": "experimental",
+  "definitions": {
+    "targeting_kvs": {
+      "type": "array",
+      "description": "Provider-local key-value pairs for ad-server targeting. The router preserves each pair unchanged under the emitting provider's registered provider_id.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Provider-local targeting key. It is not a globally unique or publisher-owned ad-server destination."
+          },
+          "value": {
+            "type": "string",
+            "description": "Targeting value that the router preserves unchanged."
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "context_match_response",
+      "description": "Message type discriminator for deserialization. Same const as the router→publisher variant so decoders can key off type before dispatching on hop shape."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Echoed request identifier from the context match request."
+    },
+    "offers": {
+      "type": "array",
+      "description": "Offers from this provider, one per activated package. An empty array means no packages matched. For simple activation, each offer has just package_id. For richer responses, offers include brand, price, summary, and creative manifest.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/trusted-match/offer.json"
+      }
+    },
+    "cache_ttl": {
+      "type": "integer",
+      "description": "Optional override for the router's default 5-minute response cache TTL, in seconds. When present, the router MUST use this value instead of its default. Set to 0 to disable caching.",
+      "minimum": 0,
+      "maximum": 86400
+    },
+    "signals": {
+      "type": "object",
+      "description": "Provider-origin response-level signals. Targeting pairs use the provider's local key vocabulary; the router preserves and attributes them rather than passing them through as flattened publisher targeting.",
+      "properties": {
+        "segments": {
+          "type": "array",
+          "description": "Contextual segment identifiers.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "targeting_kvs": {
+          "$ref": "#/definitions/targeting_kvs"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "type",
+    "request_id",
+    "offers"
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "signals_by_provider"
+        ]
+      },
+      {
+        "required": [
+          "context"
+        ]
+      },
+      {
+        "required": [
+          "ext"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": true
+}

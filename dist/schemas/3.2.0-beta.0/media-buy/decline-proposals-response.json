@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/media-buy/decline-proposals-response.json",
+  "title": "Decline Proposals Response",
+  "description": "One ordered terminal result for each requested proposal decline.",
+  "type": "object",
+  "anyOf": [
+    {
+      "required": [
+        "results"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "status"
+            ]
+          },
+          {
+            "required": [
+              "task_id"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/compact-task-submitted.json"
+    }
+  ],
+  "properties": {
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "outcome"
+        },
+        "properties": {
+          "proposal_id": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "proposal"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "declined",
+              "unable"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Why the seller could not apply a decline. Present only for outcome unable."
+          }
+        },
+        "required": [
+          "proposal_id",
+          "outcome"
+        ],
+        "oneOf": [
+          {
+            "properties": {
+              "outcome": {
+                "const": "declined"
+              }
+            },
+            "required": [
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "reason"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "outcome": {
+                "const": "unable"
+              }
+            },
+            "required": [
+              "outcome",
+              "reason"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      }
+    },
+    "status": {
+      "type": "string",
+      "const": "submitted"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "task"
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/ext.json"
+    },
+    "replayed": {
+      "type": "boolean",
+      "const": true
+    }
+  },
+  "additionalProperties": false
+}

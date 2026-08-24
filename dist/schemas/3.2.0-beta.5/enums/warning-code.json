@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/warning-code.json",
+  "title": "Warning Code",
+  "description": "Closed warning vocabulary for the negotiated AdCP release. A non-blocking condition observed while an operation still succeeded. New values are added through normal protocol releases; buyers validate against the negotiated release.",
+  "type": "string",
+  "enum": [
+    "inventory_shortfall_forecast",
+    "flight_change_creates_pacing_risk",
+    "fields_ignored_due_to_precedence"
+  ],
+  "enumDescriptions": {
+    "inventory_shortfall_forecast": "The operation succeeded, but the seller's current forecast is materially below the requested delivery goal. If the condition remains current, the seller also exposes inventory_shortfall_forecast on the affected package read.",
+    "flight_change_creates_pacing_risk": "The requested flight change was accepted, but the seller projects material over- or under-delivery risk. If the condition remains current, the seller also exposes pacing_risk on the affected package read.",
+    "fields_ignored_due_to_precedence": "The operation succeeded, but one or more submitted fields were intentionally ignored because another field has defined precedence, such as canceled: true overriding other media-buy updates. details SHOULD list the ignored field paths."
+  }
+}

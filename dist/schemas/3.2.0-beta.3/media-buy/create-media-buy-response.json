@@ -1,0 +1,327 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/media-buy/create-media-buy-response.json",
+  "title": "Create Media Buy Response",
+  "description": "Response payload for create_media_buy. Exactly one of three shapes: (1) synchronous success — media_buy_id and packages are issued in-line, optional warnings[] reports non-blocking observations, media_buy_status MAY carry the lifecycle value (pending_creatives / pending_start / active / paused), and confirmed_at is either the seller commitment timestamp or null for a provisional buy that already exists; provisional buys with confirmed_at: null cannot be active and cannot carry packages[].committed_metrics; (2) terminal failure — an errors array with no media-buy artifact and status != 'submitted'; (3) submitted task envelope — status 'submitted' with task_id when no media_buy_id is being returned to the buyer and the media buy is queued or awaiting a human decision (e.g., IO signing). In the submitted branch, media_buy_id / packages land on the task's completion artifact, not this response. The submitted branch MAY carry advisory errors for non-blocking warnings; terminal failures belong in the error branch. A continuing condition first surfaced as a synchronous success warning MUST also appear on its authoritative read surface. These three shapes are mutually exclusive — a response has exactly one.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/protocol-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "title": "CreateMediaBuySuccess",
+      "description": "Success response - media buy created successfully",
+      "type": "object",
+      "properties": {
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "proposal",
+          "description": "The immutable committed proposal executed by this media buy, echoed when proposal_id was supplied in the request."
+        },
+        "media_buy_id": {
+          "type": "string",
+          "description": "Seller's unique identifier for the created media buy",
+          "x-entity": "media_buy"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "\\S",
+          "description": "Persisted human-readable name for this media buy. When create_media_buy supplied name, the seller MUST echo it unchanged here. This display label is shared for trafficking UI display and operational communication; it is not an identifier or financial reference."
+        },
+        "account": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/account.json",
+          "description": "Account billed for this media buy. Includes advertiser, billing proxy (if any), and rate card applied."
+        },
+        "invoice_recipient": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/business-entity.json",
+          "description": "Per-buy invoice recipient, echoed from the request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only)."
+        },
+        "media_buy_status": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/media-buy-status.json",
+          "description": "Initial media buy status. Either 'pending_creatives' (awaiting creative assets), 'pending_start' (ready to serve, waiting for flight date), 'active' (immediate activation), or 'paused' (created with delivery held after all activation prerequisites are satisfied). This field carries the media buy lifecycle state; top-level `status` is reserved for the protocol-envelope TaskStatus (`completed` on synchronous success)."
+        },
+        "confirmed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this media buy was committed by the seller. Stable after it is set; do not update on later pause/resume/status/reporting transitions. May be null in deferred or manual-approval flows until seller commitment occurs."
+        },
+        "creative_deadline": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp for creative upload deadline"
+        },
+        "revision": {
+          "type": "integer",
+          "description": "Initial revision number for this media buy. Use in subsequent update_media_buy requests intended to change state for optimistic concurrency.",
+          "minimum": 1
+        },
+        "currency": {
+          "type": "string",
+          "description": "Single ISO 4217 currency code for total_budget, package budget constraints, and canonical BiddingPolicy monetary fields. Every selected pricing option MUST declare this currency; packages needing another currency belong in another media buy. In proposal mode the seller derives it from total_budget.currency; in explicit-package mode the seller derives or validates one common pricing-option currency. Matches subsequent get_media_buys responses.",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "total_budget": {
+          "type": "number",
+          "description": "Hard aggregate lifetime budget, denominated in currency. The request encodes total_budget as an object {amount, currency}; this response flattens amount and promotes currency to its sibling field. Present for proposal and seller-optimized modes, and when supplied or deterministically derived in fixed explicit-package mode. Matches subsequent get_media_buys responses.",
+          "minimum": 0
+        },
+        "daily_budget_cap": {
+          "type": "number",
+          "description": "Accepted hard aggregate daily spend ceiling, denominated in currency. Sellers MUST echo it whenever the request set an aggregate daily cap.",
+          "minimum": 0
+        },
+        "budget_cap_timezone": {
+          "type": "string",
+          "description": "Accepted IANA timezone shared by every aggregate and package daily cap. Sellers MUST echo it whenever any daily cap is set on the media buy."
+        },
+        "budget_allocation": {
+          "allOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/budget-allocation.json"
+            }
+          ],
+          "description": "Accepted cross-package allocation configuration. Omitted means fixed allocation for legacy buys."
+        },
+        "pacing": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/pacing.json",
+          "description": "Accepted aggregate media-buy pacing strategy."
+        },
+        "bidding": {
+          "allOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/bidding-policy.json"
+            }
+          ],
+          "description": "Accepted media-buy-authored bidding policy with goal binding and monetary denomination preserved. Packages that inherit it omit package.bidding; explicit package policies, including `{automatic:true}`, remain at package scope."
+        },
+        "valid_actions": {
+          "type": "array",
+          "deprecated": true,
+          "description": "Flat-vocabulary actions the buyer can perform on this media buy after creation. Saves a round-trip to get_media_buys. Deprecated in favor of `available_actions[]`, which carries `mode`, optional SLA, and optional `terms_ref`. Sellers SHOULD populate both during the 3.x deprecation window; consumers MUST prefer `available_actions[]` when both are present. Removed in 4.0.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/media-buy-valid-action.json"
+          }
+        },
+        "available_actions": {
+          "type": "array",
+          "description": "Structured per-buy resolution of actions available immediately after creation. Authoritative — see `get-media-buys-response.json` for full semantics.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/media-buy-available-action.json"
+          },
+          "uniqueItems": true
+        },
+        "packages": {
+          "type": "array",
+          "description": "Array of created packages with complete state information",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/package.json"
+          }
+        },
+        "planned_delivery": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/planned-delivery.json",
+          "description": "The seller's interpreted delivery parameters. Describes what the seller will actually run -- geo, channels, flight dates, frequency caps, and budget. Present when the account has governance_agents or when the seller chooses to provide delivery transparency."
+        },
+        "warnings": {
+          "type": "array",
+          "description": "Optional non-blocking observations accompanying this successful creation. The media buy was still created. Buyers SHOULD surface recognized codes operationally rather than treating this as an error; continuing conditions also appear on get_media_buys as current resource state.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/warning.json"
+          },
+          "uniqueItems": true
+        },
+        "sandbox": {
+          "type": "boolean",
+          "description": "When true, this response contains simulated data from sandbox mode."
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/context.json",
+          "description": "Opaque media-buy-level correlation data echoed unchanged from the create_media_buy request. Sellers MUST echo this object verbatim when the originating request carried context, including synchronous success, error, submitted, and webhook task-status payloads. Sellers MUST NOT parse this object for business logic."
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "confirmed_at": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "confirmed_at"
+            ]
+          },
+          "then": {
+            "not": {
+              "properties": {
+                "media_buy_status": {
+                  "const": "active"
+                }
+              },
+              "required": [
+                "media_buy_status"
+              ]
+            },
+            "properties": {
+              "packages": {
+                "items": {
+                  "not": {
+                    "required": [
+                      "committed_metrics"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "required": [
+        "media_buy_id",
+        "confirmed_at",
+        "revision",
+        "packages"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "title": "CreateMediaBuyError",
+      "description": "Error response - operation failed, no media buy created",
+      "type": "object",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "description": "Array of errors explaining why the operation failed",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/context.json",
+          "description": "Opaque media-buy-level correlation data echoed unchanged from the create_media_buy request. Sellers MUST echo this object verbatim when the originating request carried context, including synchronous success, error, submitted, and webhook task-status payloads. Sellers MUST NOT parse this object for business logic."
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+        }
+      },
+      "required": [
+        "errors"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "media_buy_id"
+            ]
+          },
+          {
+            "required": [
+              "packages"
+            ]
+          },
+          {
+            "required": [
+              "sandbox"
+            ]
+          },
+          {
+            "required": [
+              "warnings"
+            ]
+          },
+          {
+            "properties": {
+              "status": {
+                "const": "submitted"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "CreateMediaBuySubmitted",
+      "description": "Async task envelope returned when the media buy cannot be confirmed before the response is emitted — for example, when a guaranteed buy requires IO signing, when governance review is outstanding, or when the seller has queued the request for batch processing. The buyer invokes get_task_status with task_id or receives a webhook when the task completes; the media_buy_id and packages land in the terminal result, not this envelope. Do not use a 'pending_approval' MediaBuy.status for this case — that value is not in MediaBuyStatus; IO review and similar pre-issuance workflows are modeled at the task layer only.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted",
+          "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, which uses `media_buy_status` for lifecycle state. See task-status.json for the full task-status enum."
+        },
+        "task_id": {
+          "type": "string",
+          "description": "Task handle the buyer uses with get_task_status (or the legacy AdCP tasks/get alias), and that the seller references on push-notification callbacks. The media_buy_id is issued on the completion artifact, not here. This AdCP application-layer handle remains the snake_case task_id in every transport payload and is distinct from any transport-native A2A Task id.",
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Awaiting IO signature from sales team; typical turnaround 2–4 hours.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+        },
+        "errors": {
+          "type": "array",
+          "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/error.json"
+          }
+        },
+        "context": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/context.json",
+          "description": "Opaque media-buy-level correlation data echoed unchanged from the create_media_buy request. Sellers MUST echo this object verbatim when the originating request carried context, including synchronous success, error, submitted, and webhook task-status payloads. Sellers MUST NOT parse this object for business logic."
+        },
+        "ext": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "media_buy_id"
+            ]
+          },
+          {
+            "required": [
+              "packages"
+            ]
+          },
+          {
+            "required": [
+              "warnings"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "properties": {}
+}

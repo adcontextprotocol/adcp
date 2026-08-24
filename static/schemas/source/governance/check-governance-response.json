@@ -231,6 +231,40 @@
       "format": "date-time",
       "description": "When the seller should next call check_governance with delivery metrics. Present when the governance agent expects ongoing delivery reporting."
     },
+    "delivery_statement": {
+      "type": "object",
+      "description": "Canonical seller-attributed delivery statement retained by governance. Present on delivery execution checks. The buyer binds any later observation to this exact statement through report_plan_outcome.",
+      "properties": {
+        "statement_id": { "type": "string", "x-entity": "governance_delivery_statement" },
+        "statement_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "issued_at": { "type": "string", "format": "date-time" },
+        "seller_reference": { "type": "string" },
+        "reporting_period": {
+          "type": "object",
+          "properties": {
+            "start": { "type": "string", "format": "date-time" },
+            "end": { "type": "string", "format": "date-time" }
+          },
+          "required": ["start", "end"],
+          "additionalProperties": false
+        },
+        "cumulative_spend": { "type": "number", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "canonical_payload": {
+          "type": "object",
+          "description": "Exact retained digest-bearing payload. To verify statement_digest, apply RFC 8785 JCS after removing delivery_metrics.statement_digest.",
+          "properties": {
+            "seller_reference": { "type": "string" },
+            "delivery_metrics": { "type": "object", "additionalProperties": true }
+          },
+          "required": ["seller_reference", "delivery_metrics"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["statement_id", "statement_digest", "sequence", "issued_at", "seller_reference", "reporting_period", "cumulative_spend", "currency", "canonical_payload"],
+      "additionalProperties": false
+    },
     "categories_evaluated": {
       "type": "array",
       "items": {

@@ -2,16 +2,16 @@
 title: request_proposals
 description: "Request one or more seller-authored draft media plans."
 "og:title": "AdCP request_proposals Task"
-testable: false
+testable: true
 ---
 
-`request_proposals` creates one or more immutable draft media-plan proposal snapshots from a brief. It can begin a consultative workflow directly or use `product_ids` returned by [`list_products`](/docs/media-buy/task-reference/list_products). Success always contains at least one proposal; returning products without a proposal does not satisfy this task.
+`request_proposals` creates one or more immutable draft media-plan proposal snapshots from a brief. It can begin a consultative workflow directly or use `product_ids` returned by [`list_products`](/docs/media-buy/task-reference/list_products). Native seller success always contains at least one proposal; returning products without a proposal does not satisfy a native 3.2 implementation. The temporary projection-only exception for older peers is documented below.
 
 `brand` contains only the stable BrandKey (`domain`, optional `brand_id`, and optional ISO country `countries[]`); the seller resolves the canonical brand manifest rather than receiving a full brand file in every call. Countries qualify commercial advertiser identity and do not target delivery. `account` is optional and adds seller-specific commercial terms. A natural-key account can supply the request's sole brand identity and qualify it with an operator-owned unit and fixed account currency.
 
 {/* Using latest because this schema is not yet released in any version.
     Update to the correct version alias after the next release. */}
-**Request schema:** [`/schemas/latest/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/request-proposals-request.json)
+**Request schema:** [`/schemas/3.2.0-beta.0/media-buy/request-proposals-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.0/media-buy/request-proposals-request.json)
 
 ```json
 {
@@ -49,12 +49,79 @@ testable: false
 
 Put machine-representable requirements in `criteria`: `offer_filters` select commercial offers, `targeting_overlay` supplies concrete delivery constraints that must be reflected in pricing and forecasts, and `required_overlay_support` identifies dimensions the buyer must be able to choose later. Keep goals, semantic audience meaning, and requirements without a structured AdCP field in `brief`.
 
+## Reverse forecasting with outcome_target
+
+A proposal request is a solve over three coupled variables — time window, budget, and outcome. The buyer fixes what they know and the seller solves for the rest. Fixing dates and budget yields a delivery forecast; fixing the outcome inverts the question: "I need 10,000 clicks — what does my budget need to be?"
+
+Sellers declaring `media_buy.outcome_target` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) accept the structured form in `criteria`:
+
+```json
+{
+  "criteria": {
+    "outcome_target": {
+      "goal": { "kind": "metric", "metric": "clicks" },
+      "volume": 10000
+    }
+  }
+}
+```
+
+The `goal` is a compact planning-time object with two variants: a delivery metric (`kind: "metric"`, using the same `forecastable-metric` vocabulary forecast points report) or a conversion event (`kind: "event"`, using the same `event-type` vocabulary). That construction means every permitted goal has a defined answer: the seller responds with `total_budget_guidance` (`min`/`recommended`/`max`) on each proposal and forecasts whose points carry the goal's metric or event key in `metrics`, with `forecast_range_unit` `clicks` or `conversions` structuring the curve where those units apply. Execution machinery — targets, priorities, event sources, vendor bindings — belongs to the package-level `optimization-goal`, which shares this vocabulary, so buyers carry the same metric or event name from plan to buy.
+
+An `outcome_target` is a planning input, not a delivery guarantee: pricing and delivery obligations arise only at proposal finalization, and any performance commitment lives in the committed terms, not in the forecast. Sellers that do not declare the capability MUST NOT silently ignore a structured `outcome_target` — they reject it with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); buyers fall back to expressing the goal in `brief` prose. Declaring sellers MAY reject a goal they cannot plan against (for example `spend`, which restates budget) with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) naming `criteria.outcome_target.goal`.
+
 Explicit hard requirements in the brief remain binding. When the seller's structured interpretation materially affects product eligibility, pricing, or forecasting, the response includes `targeting_resolution.brief_targeting`. Exact structured overlays are not echoed; any product-specific alternative appears as sparse `Product.targeting_resolution.modifications` for buyer approval.
 
 Every returned purchase references the exact `product_id` and `pricing_option_id` whose pricing and forecast the seller used. The returned `proposal_id` is the only proposal linkage needed by [`refine_proposals`](/docs/media-buy/task-reference/refine_proposals) and [`decline_proposals`](/docs/media-buy/task-reference/decline_proposals). Each ID identifies one immutable commercial snapshot; refinement and finalization mint new IDs instead of adding a second version field. A draft is indicative and does not reserve inventory. Finalize it through `refine_proposals` before passing the resulting committed proposal to [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal). The deprecated [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) proposal mode remains the 3.x compatibility adapter.
 
 `opportunity` is optional shared planning-cycle context and must be open when supplied here. Its buyer-assigned `opportunity_id` can span request, decline, and purchase calls without becoming part of proposal identity. Sellers associate it with every proposal created by the request, and revised proposals inherit the same association.
 
-The response uses `outcome: "proposed"` for a successful draft set and `outcome: "rejected"` with a reason when the seller cannot construct a viable plan.
+The native response uses `outcome: "proposed"` for a successful draft set and `outcome: "rejected"` with a reason when the seller cannot construct a viable plan. A compatibility coordinator may also return the projection-only `products_available` outcome defined below.
+
+## Products-only legacy compatibility
+
+A native 3.2 seller never reports products without a proposal as successful
+`request_proposals`; `outcome: "proposed"` continues to require at least one
+seller-authored immutable draft. Compatibility coordinators have one temporary
+exception for older peers: a valid 2.5, 3.0, or 3.1 [`get_products`](/docs/media-buy/task-reference/get_products) brief may
+return useful products and no proposal. The coordinator preserves that result
+as the projection-only `products_available` outcome instead of dropping the
+products or fabricating a proposal.
+
+`products_available` carries one discriminated `purchase_continuation`:
+
+- `listed_purchase` means the coordinator successfully re-read the exact
+  products from a real seller-issued, account-scoped feed and obtained its
+  feed and pricing fences. The buyer continues through ordinary
+  [`buy_products`](/docs/media-buy/task-reference/buy_products) with those
+  seller-issued values.
+- `legacy_create` means no truthful fence is available. The coordinator can
+  continue through explicit-package
+  [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), but
+  only after the caller accepts every named loss for that logical operation.
+  The response always names `feed_version_not_atomic` and
+  `pricing_version_not_atomic`; an AdCP 2.5 source also names
+  `mutation_idempotency_not_guaranteed` because that release has no mutation
+  replay contract.
+
+The second path fails closed by default. A compatibility token may bind the
+observed products and prices to the caller and account, but it is not a feed or
+pricing fence. The coordinator MUST NOT synthesize a proposal,
+`commercial_terms`, `terms_digest`, `feed_version`, or `pricing_version`.
+Products with incomplete or unconfirmed pricing cannot use `listed_purchase`.
+The legacy seller revalidates price, expiry, and availability at create time,
+and its rejection is terminal for that attempt.
+
+Legacy `incomplete[]` remains a completeness statement. The coordinator
+preserves its compatible product, pricing, forecast, and proposal scopes;
+`scope: "proposals"` explains the absence of a proposal and is not a business
+rejection. Legacy brief pagination limits products, not proposals, and a legacy
+`time_budget` instructs the seller not to begin work it cannot complete in
+time. A 3.2 compatibility facade must preserve those semantics rather than
+silently converting them into an unbounded, apparently complete proposal call.
+
+This bridge is deprecated with the established lifecycle in 3.2 and removed in
+AdCP 4.0. See the [full compatibility and transaction-boundary
+matrix](https://github.com/adcontextprotocol/adcp/blob/main/specs/legacy-compact-lifecycle-compatibility.md).
 
 Sellers MAY respond asynchronously with `status: "submitted"` when consultative planning requires upstream system queries or human sales-desk review. In that case the response contains a `task_id` for polling via [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get-task-status-request.json); terminal draft proposals are delivered on the completion artifact or via push notification if `push_notification_config` was supplied.

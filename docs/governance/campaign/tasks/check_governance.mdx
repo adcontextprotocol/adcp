@@ -357,12 +357,17 @@ On the first `check_governance` call, the governance agent extracts what it need
       "enforced_policies": ["us_coppa"]
     },
     "delivery_metrics": {
+      "statement_id": "stmt_mb_seller_456_0001",
+      "statement_digest": "sha256:4b55f1157094ed8df2635250f71568701d294cb0da57845eba886a62e5434633",
+      "sequence": 1,
+      "issued_at": "2026-03-22T01:00:00Z",
       "reporting_period": {
         "start": "2026-03-15T00:00:00Z",
         "end": "2026-03-22T00:00:00Z"
       },
       "spend": 12500,
       "cumulative_spend": 12500,
+      "currency": "USD",
       "impressions": 850000,
       "cumulative_impressions": 850000,
       "geo_distribution": { "US": 100 },
@@ -437,6 +442,59 @@ The seller proceeds with the media buy. The presence of `next_check` signals tha
   "check_type": "execution",
   "verdict": "approved",
   "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight. Geo and channel distribution match plan parameters.",
+  "delivery_statement": {
+    "statement_id": "stmt_mb_seller_456_0001",
+    "statement_digest": "sha256:4b55f1157094ed8df2635250f71568701d294cb0da57845eba886a62e5434633",
+    "sequence": 1,
+    "issued_at": "2026-03-22T01:00:00Z",
+    "seller_reference": "mb_seller_456",
+    "reporting_period": {
+      "start": "2026-03-15T00:00:00Z",
+      "end": "2026-03-22T00:00:00Z"
+    },
+    "cumulative_spend": 12500,
+    "currency": "USD",
+    "canonical_payload": {
+      "seller_reference": "mb_seller_456",
+      "delivery_metrics": {
+        "statement_id": "stmt_mb_seller_456_0001",
+        "statement_digest": "sha256:4b55f1157094ed8df2635250f71568701d294cb0da57845eba886a62e5434633",
+        "sequence": 1,
+        "issued_at": "2026-03-22T01:00:00Z",
+        "reporting_period": {
+          "start": "2026-03-15T00:00:00Z",
+          "end": "2026-03-22T00:00:00Z"
+        },
+        "spend": 12500,
+        "cumulative_spend": 12500,
+        "currency": "USD",
+        "impressions": 850000,
+        "cumulative_impressions": 850000,
+        "geo_distribution": { "US": 100 },
+        "channel_distribution": { "olv": 100 },
+        "pacing": "on_track",
+        "audience_distribution": {
+          "baseline": "platform",
+          "indices": {
+            "age:18-24": 0.8,
+            "age:25-34": 1.4,
+            "age:35-44": 1.3,
+            "age:45-54": 1.1,
+            "gender:female": 1.05,
+            "gender:male": 0.95
+          },
+          "cumulative_indices": {
+            "age:18-24": 0.85,
+            "age:25-34": 1.35,
+            "age:35-44": 1.25,
+            "age:45-54": 1.1,
+            "gender:female": 1.03,
+            "gender:male": 0.97
+          }
+        }
+      }
+    }
+  },
   "expires_at": "2026-03-29T00:00:00Z",
   "governance_context": "eyJhbGciOiJFZERTQSIsInR5cCI6ImFkY3AtZ292K2p3cyJ9.delivery.signature",
   "next_check": "2026-03-29T00:00:00Z"
@@ -536,7 +594,14 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 | `consultation_context` | string | Intent re-check | Non-authorizing handle from a conditions response. Return only with the adjusted intent and the same authenticated principal, caller, plan, tool, purchase type, and target audience; never forward it to a service. |
 | `phase` | enum | Execution | `purchase`, `modification`, or `delivery`. Defaults to `purchase`. Present on execution checks. |
 | `planned_delivery` | object | Execution | What will actually be delivered. Present on execution checks. When `total_budget` is present, `currency` is required and must equal the intent-authorized currency. Creates compare the total with the ceiling. Updates carry their seller-computed positive delta separately in `execution_commitment`; `total_budget` remains the post-update delivery total. `media_buy_id` is optional during purchase prepare and required for modification/delivery. See [planned delivery](/docs/governance/campaign/specification#integration-with-create_media_buy). |
-| `delivery_metrics` | object | Delivery | Actual delivery performance data. Required when `phase` is `delivery`. |
+| `delivery_metrics` | object | Delivery | Seller-attributed canonical delivery statement. Required when `phase` is `delivery`; it describes an existing commitment and is never charged again. |
+| `delivery_metrics.statement_id` | string | Delivery | Immutable seller-issued statement ID. Reuse with different content is a conflict. |
+| `delivery_metrics.statement_digest` | string | Delivery | `sha256:` plus lowercase hex SHA-256 of RFC 8785 JCS over `{seller_reference, delivery_metrics}`, excluding this field. |
+| `delivery_metrics.sequence` | integer | Delivery | Monotonically increasing sequence for the governed action. |
+| `delivery_metrics.issued_at` | date-time | Delivery | When the seller issued the statement. |
+| `delivery_metrics.reporting_period` | object | Delivery | Exact start and end timestamps for this statement. |
+| `delivery_metrics.cumulative_spend` | number | Delivery | Finite, non-negative cumulative seller-attributed spend. |
+| `delivery_metrics.currency` | string | Delivery | Plan currency for spend fields. |
 | `delivery_metrics.audience_distribution` | object | No | Audience demographic composition relative to a baseline. Used for bias/fairness drift detection. |
 | `delivery_metrics.audience_distribution.baseline` | enum | Yes | Reference population: `census` (national population), `platform` (platform's user base), or `custom`. |
 | `delivery_metrics.audience_distribution.baseline_description` | string | No | Description of the baseline when `baseline` is `custom` (e.g., "US adults 18+ with broadband access"). |
@@ -576,6 +641,8 @@ The seller MUST pause delivery immediately and correct the geo targeting before 
 | `mode` | enum | `audit`, `advisory`, or `enforce` — governance mode active when this check was evaluated. Recorded by the governance agent from its runtime configuration at check time, not from a plan field. Lets counterparties, regulators, and auditors distinguish whether an `approved` decision reflects deliberate `enforce` enforcement or `audit`-mode silent logging. |
 | `expires_at` | string | Present only when `verdict` is `approved`. The caller must act before this time or re-call. |
 | `next_check` | string | When the seller should next call `check_governance` with delivery metrics. Present when the governance agent expects ongoing delivery reporting. |
+| `delivery_statement` | object | Canonical retained seller statement. Present on delivery execution checks and used by the buyer as the exact reconciliation target in `report_plan_outcome`. |
+| `delivery_statement.canonical_payload` | object | Exact `{seller_reference, delivery_metrics}` record retained so auditors can recompute the statement digest after excluding `statement_digest`. |
 | `runtime_attestation_evaluations` | AttestationEvaluation[] | Ordered evaluator-of-record results, exactly one per request presentation. Each result binds to `check_id`. |
 | `runtime_attestation_binding_digest` | string | Required with runtime evaluations. Digest of ordered evaluations and attestation-bound findings; the signed governance context and audit log carry the same value. |
 | `governance_context` | string | Opaque authorization context. Present only when `verdict` is `approved`. Attach it to the protocol envelope and forward it on subsequent governance calls; conditions and denied responses never carry one. When runtime attestations are evaluated, the signed context carries the same `runtime_attestation_binding_digest` returned in the response. |

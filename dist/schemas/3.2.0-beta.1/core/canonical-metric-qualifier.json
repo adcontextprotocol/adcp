@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/canonical-metric-qualifier.json",
+  "title": "Canonical Metric Qualifier",
+  "description": "Compact qualifier set that distinguishes incompatible reporting definitions for the same metric ID.",
+  "type": "object",
+  "properties": {
+    "viewability_standard": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/viewability-standard.json"
+    },
+    "completion_source": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/completion-source.json"
+    },
+    "attribution_methodology": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/attribution-methodology.json"
+    },
+    "attribution_window": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/duration.json"
+    },
+    "lift_dimension": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/lift-dimension.json"
+    }
+  },
+  "additionalProperties": false
+}

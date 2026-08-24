@@ -14,21 +14,25 @@
 import { createHash, createPublicKey, generateKeyPairSync, randomUUID } from 'node:crypto';
 import {
   createWebhookEmitter,
-  memoryWebhookKeyStore,
+  memoryWebhookDeliveryStore,
   type WebhookEmitter,
   type WebhookAuthentication,
+  type WebhookDeliveryRecovery,
+  type WebhookDeliveryStore,
   type WebhookEmitParams,
   type WebhookEmitResult,
 } from '@adcp/sdk/server';
 import type { SignerKey, SigningProvider } from '@adcp/sdk/signing';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import { createLogger } from '../logger.js';
+import { isDatabaseInitialized } from '../db/client.js';
 import { createTrainingWebhookFetch } from './webhook-fetch.js';
 import { getWebhookSigningProvider } from '../security/gcp-kms-signer.js';
 import {
   WEBHOOK_SIGNING_KID,
   WEBHOOK_SIGNING_PUBLIC_KEY_PEM,
 } from '../security/expected-public-key.js';
+import { PostgresWebhookDeliveryPersistence } from './webhook-delivery-store.js';
 
 const logger = createLogger('training-agent-webhooks');
 
@@ -154,37 +158,44 @@ function extractWebhookAuthentication(args: Record<string, unknown>): WebhookAut
   return undefined;
 }
 
-/** Derive a stable scope key for the **webhook idempotency-key store** —
- *  NOT the wire-level `operation_id`. Two emissions with the same scope key
- *  reuse the same `idempotency_key` across retries. Prefers a buyer-facing
- *  entity id from the response so retries from the same buyer collapse;
- *  falls back to the request's idempotency_key.
+/** Derive a stable scope key for the **webhook delivery store** — NOT the
+ *  wire-level `operation_id`. Two emissions with the same scope key reuse the
+ *  same payload `idempotency_key` across retries. Prefers the request's
+ *  idempotency key because it names one logical fire; falls back to a
+ *  buyer-facing response entity only when the request has no such identity.
  *
  *  Scoped by the caller's principal so two buyers sharing the public sandbox
  *  token who happen to land on the same deterministic response entity id
  *  (e.g. both get `mb_abc123`) produce distinct webhook idempotency_keys.
- *  Without the prefix, a receiver that dedupes across tenants on
+ *  Without the principal input, a receiver that dedupes across tenants on
  *  `idempotency_key` would drop the second buyer's event as a duplicate of
  *  the first. The principal is the same scoped string the request-side
  *  idempotency cache uses (`scopedPrincipal(auth, accountScope)`), so both
  *  caches partition identically.
  *
- *  This value is **never** placed on the wire — it embeds the seller-side
- *  principal token and is used only to key the idempotency-key store. The
- *  wire `operation_id` field comes from the buyer-supplied
- *  `push_notification_config.operation_id` (see `extractBuyerOperationId`). */
+ *  The returned delivery ID is an opaque digest: neither the seller-side
+ *  principal nor the request key is persisted or placed on the wire. The
+ *  wire `operation_id` field comes from the buyer-supplied configuration
+ *  (see `extractBuyerOperationId`). */
 export function deriveWebhookIdempotencyScope(
   toolName: string,
   response: Record<string, unknown>,
   requestIdempotencyKey: string | undefined,
   principal: string,
 ): string {
+  const opaqueDeliveryId = (kind: string, value: string): string => `whd_${createHash('sha256')
+    .update(JSON.stringify([principal, toolName, kind, value]), 'utf8')
+    .digest('hex')}`;
+  // A request idempotency key identifies the exact logical fire. Prefer it
+  // over response entity IDs: two intentional updates to one media buy must
+  // not collide merely because both responses contain the same media_buy_id.
+  // Exact request retries, conversely, retain one delivery identity.
+  if (requestIdempotencyKey) return opaqueDeliveryId('request', requestIdempotencyKey);
   for (const field of ['media_buy_id', 'creative_id', 'activation_id', 'signal_activation_id', 'task_id', 'list_id', 'account_id']) {
     const v = response[field];
-    if (typeof v === 'string' && v.length > 0) return `${principal}|${toolName}.${v}`;
+    if (typeof v === 'string' && v.length > 0) return opaqueDeliveryId(field, v);
   }
-  if (requestIdempotencyKey) return `${principal}|${toolName}.${requestIdempotencyKey}`;
-  return `${principal}|${toolName}.${randomUUID()}`;
+  return opaqueDeliveryId('random', randomUUID());
 }
 
 /**
@@ -221,10 +232,10 @@ export function maybeEmitCompletionWebhook(opts: {
   if (!webhookUrl || !(opts.toolName in TOOL_TO_TASK_TYPE)) return;
   const tool = opts.toolName as WebhookEmittingTool;
 
-  const emitter = getWebhookEmitter();
+  const emitter = getWebhookEmitter().forTenantScope(tenantScopeFromTrustedValue(opts.principal));
   const idempotencyScope = deriveWebhookIdempotencyScope(opts.toolName, opts.response, opts.requestIdempotencyKey, opts.principal);
   const webhookTaskId = (opts.response.task_id as string | undefined)
-    ?? `tsk_${idempotencyScope.slice(0, 32).replace(/[^A-Za-z0-9_.:-]/g, '_')}`;
+    ?? `tsk_${idempotencyScope.slice(4, 36)}`;
   // Wire `operation_id` MUST be the buyer-supplied value. When the buyer
   // registers without one (non-conformant per push-notification-config.json,
   // but tolerated for sandbox testing), fall back to `task_id` — a buyer-
@@ -247,7 +258,7 @@ export function maybeEmitCompletionWebhook(opts: {
   void emitter.emit({
     url: webhookUrl,
     payload,
-    operation_id: idempotencyScope,
+    delivery_id: idempotencyScope,
     ...(authentication !== undefined && { authentication }),
   })
     .catch(err => logger.warn({ err, tool: opts.toolName, url: webhookUrl }, 'Webhook emission failed'));
@@ -260,11 +271,13 @@ export async function emitAccountNotificationWebhook(opts: {
   notificationType: string;
   authentication?: WebhookAuthentication;
 }): Promise<WebhookEmitResult> {
-  const emitter = getWebhookEmitter();
+  const emitter = getWebhookEmitter().forTenantScope(tenantScopeFromTrustedValue(
+    `${opts.notificationType}:${opts.operationId.split(':', 1)[0] ?? 'unknown'}`,
+  ));
   return emitter.emit({
     url: opts.url,
     payload: opts.payload,
-    operation_id: opts.operationId,
+    delivery_id: opts.operationId,
     ...(opts.authentication !== undefined && { authentication: opts.authentication }),
   });
 }
@@ -300,10 +313,10 @@ export function emitPropertyListChangedWebhook(opts: PropertyListChangedWebhookP
     signature: 'rfc9421',
   };
 
-  void getWebhookEmitter().emit({
+  void getWebhookEmitter().forTenantScope('property-list-notifications').emit({
     url: opts.url,
     payload,
-    operation_id: opts.operationId,
+    delivery_id: opts.operationId,
   }).catch(err => logger.warn(
     { err, listId: opts.listId, url: opts.url },
     'Property-list change webhook emission failed',
@@ -319,6 +332,27 @@ type WebhookMaterial =
 
 let material: WebhookMaterial | null = null;
 let emitter: WebhookEmitter | null = null;
+let durablePersistence: PostgresWebhookDeliveryPersistence | null = null;
+let recoveryTimer: ReturnType<typeof setInterval> | null = null;
+let recoveryRunning = false;
+
+const WEBHOOK_PUBLISHER_SCOPE = 'adcp-training-agent';
+const DEFAULT_WEBHOOK_TENANT_SCOPE = 'training-agent-system';
+const DELIVERY_RETRY_HORIZON_SECONDS = 86_400;
+const RECOVERY_POLL_MS = 60_000;
+
+function requiresDurableWebhookState(): boolean {
+  return process.env.NODE_ENV !== 'test' && process.env.NODE_ENV !== 'development';
+}
+
+function getDurablePersistence(): PostgresWebhookDeliveryPersistence {
+  durablePersistence ??= new PostgresWebhookDeliveryPersistence();
+  return durablePersistence;
+}
+
+function tenantScopeFromTrustedValue(value: string): string {
+  return `tenant-${createHash('sha256').update(value, 'utf8').digest('hex')}`;
+}
 
 function generateEphemeralKey(): { signer: SignerKey; publicJwk: AdcpJsonWebKey } {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
@@ -455,12 +489,94 @@ export function getPublicJwks(): { keys: AdcpJsonWebKey[] } {
 /** Expose the webhook signer to framework-server config — exactly one of
  *  `signerKey` or `signerProvider` per the SDK's discriminated config. */
 export function getWebhookSigningMaterial():
-  | { signerKey: SignerKey }
-  | { signerProvider: SigningProvider } {
+  | ({ signerKey: SignerKey } & {
+      publisherScope?: string;
+      deliveryStore?: WebhookDeliveryStore;
+      deliveryRecovery?: WebhookDeliveryRecovery;
+      deliveryRetryHorizonSeconds?: number;
+      fetch?: typeof fetch;
+      userAgent?: string;
+    })
+  | ({ signerProvider: SigningProvider } & {
+      publisherScope?: string;
+      deliveryStore?: WebhookDeliveryStore;
+      deliveryRecovery?: WebhookDeliveryRecovery;
+      deliveryRetryHorizonSeconds?: number;
+      fetch?: typeof fetch;
+      userAgent?: string;
+    }) {
   const m = ensureMaterial();
+  const durableConfig = requiresDurableWebhookState()
+    ? {
+        publisherScope: WEBHOOK_PUBLISHER_SCOPE,
+        deliveryStore: getDurablePersistence(),
+        deliveryRecovery: getDurablePersistence(),
+        deliveryRetryHorizonSeconds: DELIVERY_RETRY_HORIZON_SECONDS,
+      }
+    : {};
+  const emitterConfig = {
+    ...durableConfig,
+    userAgent: 'adcp-training-agent/1.0',
+    fetch: createTrainingWebhookFetch(),
+  };
+  if (requiresDurableWebhookState() && !emitter) {
+    // Tenant servers are constructed before the database pool. Queue the
+    // recovery emitter so it exists for restart replay without making tenant
+    // registration perform I/O; the worker waits for DB initialization.
+    queueMicrotask(() => { getWebhookEmitter(); });
+  }
   return m.kind === 'kms'
-    ? { signerProvider: m.signerProvider }
-    : { signerKey: m.signerKey };
+    ? { signerProvider: m.signerProvider, ...emitterConfig }
+    : { signerKey: m.signerKey, ...emitterConfig };
+}
+
+async function recoverPendingWebhookDeliveries(): Promise<void> {
+  if (!emitter || !durablePersistence || recoveryRunning || !isDatabaseInitialized()) return;
+  recoveryRunning = true;
+  try {
+    const deliveries = await durablePersistence.claimRecoverable(WEBHOOK_PUBLISHER_SCOPE);
+    for (const delivery of deliveries) {
+      try {
+        const result = await emitter.forTenantScope(delivery.key.tenantScope).emit(delivery.params);
+        if (!result.delivered) {
+          const horizonEnd = delivery.createdAtMs + DELIVERY_RETRY_HORIZON_SECONDS * 1_000;
+          if (Date.now() >= horizonEnd) {
+            await durablePersistence.settle(delivery.key, 'terminal');
+            logger.warn(
+              { deliveryId: delivery.key.deliveryId },
+              'Webhook recovery horizon elapsed; terminalized pending delivery',
+            );
+          } else {
+            await durablePersistence.releaseRecoverable(delivery.key, RECOVERY_POLL_MS);
+          }
+        }
+      } catch (err) {
+        const horizonEnd = delivery.createdAtMs + DELIVERY_RETRY_HORIZON_SECONDS * 1_000;
+        if (Date.now() >= horizonEnd) {
+          await durablePersistence.settle(delivery.key, 'terminal');
+        } else {
+          await durablePersistence.releaseRecoverable(delivery.key, RECOVERY_POLL_MS);
+        }
+        logger.warn(
+          { err, deliveryId: delivery.key.deliveryId },
+          'Pending webhook recovery attempt failed',
+        );
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Webhook recovery outbox scan failed');
+  } finally {
+    recoveryRunning = false;
+  }
+}
+
+function startWebhookRecoveryWorker(): void {
+  if (!requiresDurableWebhookState() || recoveryTimer) return;
+  void recoverPendingWebhookDeliveries();
+  recoveryTimer = setInterval(() => {
+    void recoverPendingWebhookDeliveries();
+  }, RECOVERY_POLL_MS);
+  recoveryTimer.unref?.();
 }
 
 /** Return the only training-agent webhook emitter.
@@ -472,18 +588,24 @@ export function getWebhookSigningMaterial():
 export function getWebhookEmitter(): WebhookEmitter {
   if (emitter) return emitter;
   const m = ensureMaterial();
+  const durable = requiresDurableWebhookState() ? getDurablePersistence() : undefined;
   emitter = createWebhookEmitter({
     ...(m.kind === 'kms' ? { signerProvider: m.signerProvider } : { signerKey: m.signerKey }),
-    idempotencyKeyStore: memoryWebhookKeyStore(),
+    deliveryStore: durable ?? memoryWebhookDeliveryStore(),
+    ...(durable !== undefined && { deliveryRecovery: durable }),
+    publisherScope: WEBHOOK_PUBLISHER_SCOPE,
+    tenantScope: DEFAULT_WEBHOOK_TENANT_SCOPE,
+    deliveryRetryHorizonSeconds: DELIVERY_RETRY_HORIZON_SECONDS,
     userAgent: 'adcp-training-agent/1.0',
     fetch: createTrainingWebhookFetch(),
   });
+  startWebhookRecoveryWorker();
   return emitter;
 }
 
 export async function emitFrameworkTaskWebhook(params: WebhookEmitParams): Promise<WebhookEmitResult> {
   const taskId = typeof params.payload.task_id === 'string' ? params.payload.task_id : undefined;
-  return getWebhookEmitter().emit({
+  return getWebhookEmitter().forTenantScope('framework-task-notifications').emit({
     ...params,
     payload: {
       ...params.payload,
@@ -494,6 +616,10 @@ export async function emitFrameworkTaskWebhook(params: WebhookEmitParams): Promi
 
 /** Reset state — tests only. */
 export function resetWebhookSigning(): void {
+  if (recoveryTimer) clearInterval(recoveryTimer);
+  recoveryTimer = null;
+  recoveryRunning = false;
   material = null;
   emitter = null;
+  durablePersistence = null;
 }

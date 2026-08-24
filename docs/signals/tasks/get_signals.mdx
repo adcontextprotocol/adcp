@@ -559,26 +559,21 @@ A buyer with credentials for both The Trade Desk and Amazon DSP receives keys fo
 ### A2A Request
 
 #### Natural Language Invocation
-```javascript
-await a2a.send({
-  message: {
-    parts: [{
-      kind: "text",
-      text: "Find me signals for high-income households interested in luxury goods that can be deployed on The Trade Desk and Amazon DSP in the US, with a maximum CPM of $5.00."
-    }]
-  }
-});
-```
+
+Text-only invocation requires a separate generic A2A interface whose Agent
+Card does not mark the AdCP v3 profile as required. It is not an AdCP profile
+invocation.
 
 #### Explicit Skill Invocation
 ```javascript
 await a2a.send({
   message: {
+    messageId: crypto.randomUUID(),
+    role: "ROLE_USER",
     parts: [{
-      kind: "data",
       data: {
         skill: "get_signals",
-        parameters: {
+        input: {
           signal_spec: "High-income households interested in luxury goods",
           destinations: [
             {
@@ -607,62 +602,43 @@ await a2a.send({
 ```
 
 ### A2A Response
-A2A returns results as artifacts with the same data structure:
+
+A non-streaming `SendMessage` response selects the Task branch:
+
 ```json
 {
-  "artifacts": [{
+  "task": {
+    "id": "task-signal-discovery-001",
+    "contextId": "ctx-signals-123",
+    "status": { "state": "TASK_STATE_COMPLETED" },
+    "artifacts": [{
       "artifactId": "artifact-signal-discovery-def456",
       "name": "signal_discovery_result",
       "parts": [
-        {
-          "kind": "text",
-          "text": "Found 1 luxury segment matching your criteria. Available on The Trade Desk, pending activation on Amazon DSP."
-        },
-        {
-          "kind": "data",
-          "data": {
-            "context_id": "ctx-signals-123",
-            "signals": [
-              {
-                "signal_ref": {
-                  "scope": "data_provider",
-                  "data_provider_domain": "experian.com",
-                  "signal_id": "luxury_auto_intenders"
-                },
-                "signal_agent_segment_id": "luxury_auto_intenders",
-                "name": "Luxury Automotive Intenders",
-                "description": "High-income individuals researching luxury vehicles",
-                "signal_type": "marketplace",
-                "data_provider": "Experian",
-                "coverage_percentage": 12,
-                "deployments": [
-                  {
-                    "type": "agent",
-                    "agent_url": "https://thetradedesk.com",
-                    "account": "agency-123",
-                    "is_live": true
-                  },
-                  {
-                    "type": "agent",
-                    "agent_url": "https://advertising.amazon.com/dsp",
-                    "is_live": false,
-                    "estimated_activation_duration_minutes": 60
-                  }
-                ],
-                "pricing_options": [
-                  {
-                    "pricing_option_id": "po_cpm_usd",
-                    "model": "cpm",
-                    "cpm": 3.50,
-                    "currency": "USD"
-                  }
-                ]
-              }
-            ]
-          }
-        }
+        { "text": "Found one matching luxury segment." },
+        { "data": {
+          "status": "completed",
+          "cache_scope": "account",
+          "signals": [{
+            "signal_ref": {
+              "scope": "data_provider",
+              "data_provider_domain": "provider.example",
+              "signal_id": "luxury_auto_intenders"
+            },
+            "signal_agent_segment_id": "luxury_auto_intenders",
+            "name": "Luxury Automotive Intenders",
+            "description": "People researching luxury vehicles",
+            "signal_type": "marketplace",
+            "deployments": [{
+              "type": "platform",
+              "platform": "the-trade-desk",
+              "is_live": false
+            }]
+          }]
+        } }
       ]
     }]
+  }
 }
 ```
 

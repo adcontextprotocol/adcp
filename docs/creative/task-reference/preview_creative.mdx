@@ -89,7 +89,7 @@ Response contains raw HTML:
 ```
 
 <Warning>
-Only use `output_format: "html"` with trusted creative agents. Direct HTML embedding bypasses iframe sandboxing.
+Treat `preview_html` and `preview_url` as untrusted even when the provider is publisher-designated. Never inject returned HTML into the host DOM. Render HTML via iframe `srcdoc` and URLs in a cross-origin iframe, in both cases with an empty sandbox token set and caller-enforced restrictive CSP. Provider-supplied embedding recommendations are advisory and MUST NOT loosen that policy.
 </Warning>
 
 ### Batch Preview (Multiple Creatives)
@@ -193,7 +193,9 @@ All modes use a single flat object with `request_type` as the discriminant.
 
 **Required** column values: *Conditional* = single requests and batch items require one of `creative_manifest` or `creative_id`; *Batch* = required when `request_type` is `"batch"`; *Variant* = required when `"variant"`.
 
-Discover renderers from `get_adcp_capabilities.creative.supported_formats[]` by selecting entries whose `operations` contains `preview` and whose canonical `format` satisfies the manifest. `capability_id` is an agent-local renderer route; it never belongs in the portable manifest. If multiple renderers match, the caller must select one explicitly.
+Discover renderers from `get_adcp_capabilities.creative.supported_formats[]` by selecting entries whose `operations` contains `preview` and whose canonical `format` satisfies the manifest. New 3.2 producers MUST list routable entries in `creative.preview.routes[]`, whose capability-ID set equals the preview-operation capability IDs. Each route declares informational `rendering_origin` as `platform_native` or `agent_approximation`. `capability_id` is an agent-local renderer route; it never belongs in the portable manifest. If multiple renderers match, the caller must select one explicitly.
+
+An agent cannot grant itself authority. Even `platform_native` remains informational unless a matching publisher-origin placement `preview_provider` delegates that endpoint and capability route. Buyers preserve the origin label and follow the [rendering authority and composition rules](/docs/creative/canonical-formats#rendering-authority-and-fallback-order).
 
 ### Opt-in asynchronous preview
 
@@ -360,6 +362,10 @@ These formats have the widest gap between pre-flight and post-flight: a pre-flig
 
 The preview quality tier describes render fidelity, not merely the renderer's relative cost or speed. It is not a validation result, compliance or brand-safety clearance, seller acceptance, or authorization to serve. Buyers use the applicable validation, governance, and seller creative-review workflows for those decisions.
 
+Quality and authority are independent. `quality_used: "production"` means full fidelity within the selected renderer; it does not turn an undelegated route into publisher-authoritative presentation. Buyer tooling MUST retain quality, rendering origin, and delegation provenance when it records or presents a preview.
+
+Each rendered piece may include `renderer` audit metadata: a stable `renderer_id`, exact semantic `version`, export name, informational `rendering_origin`, and whether the actual output suppresses every tracking, navigation, and remote-asset request. This metadata makes a render reproducible but does not grant authority. Buyers resolve authority only from a matching publisher-origin placement `preview_provider` delegation.
+
 - **`draft`** is an iteration render for reviewing creative direction. It MUST preserve the supplied manifest or brief's core concept, content, and non-fidelity constraints, but it MAY use lower-resolution or placeholder assets; approximate layout, typography, color, motion, audio, or interactive behavior; and omit final polish. The protocol does not guarantee that any of those listed fidelity dimensions is final in a draft preview.
 - **`production`** is a fidelity-accurate review render. For standard or otherwise deterministic creative, it MUST faithfully render the supplied manifest—or the stored manifest resolved from `creative_id`—and its assets using the serve-time presentation controlled by the selected renderer. In `preview_creative`, material asset substitution or approximation requires `quality_used: "draft"`. It MUST include disclosure and compliance elements required by the manifest and those owned by that rendering layer for the supplied context.
 
@@ -463,7 +469,7 @@ Preview multiple creatives for a grid layout:
 
 ## Key Points
 
-- Every render's `preview_url` returns an HTML page for iframe embedding
+- Every render's `preview_url` returns an untrusted HTML page for cross-origin iframe embedding with an empty sandbox token set
 - Use `output_format: "html"` for grids of 10+ previews (no iframe overhead)
 - Batch mode is 5-10x faster than individual requests
 - Preview URLs expire only when `expires_at` is present; omitted `expires_at` means no protocol-level expiration

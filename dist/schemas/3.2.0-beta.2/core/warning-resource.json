@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/warning-resource.json",
+  "title": "Warning affected resource",
+  "description": "Typed AdCP identity for the resource or relationship affected by a successful-operation warning. Buyers use this locator to join the receipt to durable readback without parsing message or details.",
+  "type": "object",
+  "properties": {
+    "resource_type": {
+      "type": "string",
+      "enum": [
+        "media_buy",
+        "package",
+        "creative",
+        "creative_assignment"
+      ]
+    },
+    "media_buy_id": {
+      "type": "string",
+      "x-entity": "media_buy"
+    },
+    "package_id": {
+      "type": "string",
+      "x-entity": "package"
+    },
+    "creative_id": {
+      "type": "string",
+      "x-entity": "creative"
+    }
+  },
+  "required": [
+    "resource_type"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "resource_type": {
+            "const": "media_buy"
+          }
+        },
+        "required": [
+          "resource_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "media_buy_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resource_type": {
+            "const": "package"
+          }
+        },
+        "required": [
+          "resource_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "media_buy_id",
+          "package_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resource_type": {
+            "const": "creative"
+          }
+        },
+        "required": [
+          "resource_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "creative_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "resource_type": {
+            "const": "creative_assignment"
+          }
+        },
+        "required": [
+          "resource_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "media_buy_id",
+          "package_id",
+          "creative_id"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

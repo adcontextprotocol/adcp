@@ -1,0 +1,126 @@
+id: media_buy_seller/list_creatives_filter_behavior
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Sales agent applies deterministic creative filters"
+category: media_buy_seller
+summary: "Verifies a sales agent applies creative-status and media-buy-assignment filters conjunctively."
+track: creative
+
+required_tools:
+  - list_creatives
+  - comply_test_controller
+
+narrative: |
+  A sales agent may expose its creative library through list_creatives, where
+  both approval status and media-buy assignment are deterministic predicates.
+  The controller seeds one matching creative and two independent negative
+  controls so ignoring either accepted filter produces an observable superset.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - has_creative_library
+  examples:
+    - "Publishers and SSPs that manage creative assignments for media buys"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Three creatives are seeded across two media buys: a rejected target, an
+    approved status negative control on the target buy, and a rejected
+    assignment negative control on another buy.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  creatives:
+    - creative_id: "creative_filter_match"
+      name: "Rejected creative on requested buy"
+      status: "rejected"
+      format_id:
+        id: "display_300x250"
+    - creative_id: "creative_filter_wrong_status"
+      name: "Approved creative on requested buy"
+      status: "approved"
+      format_id:
+        id: "display_300x250"
+    - creative_id: "creative_filter_wrong_buy"
+      name: "Rejected creative on another buy"
+      status: "rejected"
+      format_id:
+        id: "display_300x250"
+  media_buys:
+    - media_buy_id: "creative_filter_target_buy"
+      account: &seed_account
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "acmeoutdoor.example"
+        sandbox: true
+      status: "active"
+      currency: "USD"
+      start_time: "2026-01-01T00:00:00Z"
+      end_time: "2099-12-31T00:00:00Z"
+      packages:
+        - package_id: "creative_filter_target_package"
+          product_id: "creative_filter_product"
+          pricing_option_id: "creative_filter_pricing"
+          budget: 1000
+          creative_assignments:
+            - "creative_filter_match"
+            - "creative_filter_wrong_status"
+    - media_buy_id: "creative_filter_other_buy"
+      account: *seed_account
+      status: "active"
+      currency: "USD"
+      start_time: "2026-01-01T00:00:00Z"
+      end_time: "2099-12-31T00:00:00Z"
+      packages:
+        - package_id: "creative_filter_other_package"
+          product_id: "creative_filter_product"
+          pricing_option_id: "creative_filter_pricing"
+          budget: 1000
+          creative_assignments: ["creative_filter_wrong_buy"]
+
+phases:
+  - id: creative_membership
+    title: "Apply status and assignment filters conjunctively"
+    steps:
+      - id: list_filtered_creatives
+        title: "Exclude both independent negative controls"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "acmeoutdoor.example"
+          filters:
+            statuses: ["rejected"]
+            media_buy_ids: ["creative_filter_target_buy"]
+          context:
+            correlation_id: "list_creatives_filter_behavior--combined"
+        expected: |
+          Return only the rejected creative assigned to the requested buy.
+          The approved creative catches a status no-op and the rejected
+          creative on the other buy catches an assignment-filter no-op.
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "creative_filter_match"
+            description: "DR-0001 / list_creatives filter contract: the returned creative is assigned to the requested buy"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "rejected"
+            description: "DR-0001 / list_creatives filter contract: the returned creative satisfies statuses"
+          - check: field_absent
+            path: "creatives[1]"
+            description: "Both independent negative-control creatives are excluded"

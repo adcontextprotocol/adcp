@@ -46,6 +46,11 @@
     },
     "min_bitrate_kbps": { "type": "integer", "minimum": 1 },
     "max_bitrate_kbps": { "type": "integer", "minimum": 1 },
+    "max_file_size_mb": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Maximum hosted audio file size in decimal megabytes. Agents that proxy or cache media SHOULD advertise their effective transport ceiling here."
+    },
     "loudness_lufs": {
       "type": "number",
       "description": "Required integrated loudness in LUFS (typical: -16 for streaming/podcast, -23 for broadcast). Negative values."

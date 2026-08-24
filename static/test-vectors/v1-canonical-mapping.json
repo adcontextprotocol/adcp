@@ -1,7 +1,7 @@
 {
   "version": 3,
   "registry": "/schemas/registries/v1-canonical-mapping.json",
-  "registry_version": "1.5.1",
+  "registry_version": "1.5.2",
   "description": "Reference vectors for literal v1 format-id projection, seller-authored projection precedence, and the normative v2-narrows-v1 comparison. Resolution uses the first exact format_id_glob match only when no higher-priority seller canonical annotation exists; these vectors do not provide a format definition for structural fallback. Narrowing vectors express the registry-expanded v1 baseline as exact, range, or set constraints so every SDK can apply the same parameter-by-parameter subsumption rules.",
   "vectors": [
     {
@@ -42,6 +42,11 @@
       "id": "display-300-by-600",
       "format_id": "display_300x600",
       "expected_v2": { "canonical": "image", "parameters": { "width": 300, "height": 600 } }
+    },
+    {
+      "id": "display-160-by-600",
+      "format_id": "display_160x600",
+      "expected_v2": { "canonical": "image", "parameters": { "width": 160, "height": 600 } }
     },
     {
       "id": "display-970-by-250",

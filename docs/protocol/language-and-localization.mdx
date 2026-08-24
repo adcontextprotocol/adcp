@@ -87,17 +87,16 @@ language. Published-content work should reuse the tag profile while defining
 whole-value maps and explicit defaults rather than agent capability or error
 semantics.
 
-**`targeting.language` is a known vocabulary divergence.** The language filter
-in [`get_products`](/docs/media-buy/task-reference/get_products) and related tasks uses ISO 639-1 two-letter codes only
-(`^[a-z]{2}$`), not the shared BCP 47 tag profile. It is the one legacy field
-that can appear in the same request as creative locale eligibility: a buyer
-targeting `language: ["fr"]` against a creative with
-`accepted_language_ranges: ["fr-CA"]` carries two distinct vocabularies in one
-request — `fr` is valid for targeting and is a valid Basic Filtering range, but
-the creative policy is constrained to `fr-CA` and its more-specific descendants.
-This is a documented divergence; neither side is wrong. The `^[a-z]{2}$`
-pattern also cannot express ISO 639-3-only languages, which is an additional
-pre-existing limitation on that field.
+**`targeting.language` uses the shared BCP 47 wire profile.** The language
+filter in [`get_products`](/docs/media-buy/task-reference/get_products) and related tasks carries canonical language ranges and applies RFC 4647 §3.3.1
+Basic Filtering in the direction buyer range → user language-preference tag.
+Thus `fr` accepts `fr`, `fr-CA`, and `fr-FR`, while `fr-CA` accepts only
+`fr-CA` and its more-specific descendants. Capability discovery is deliberately
+stricter: `media_buy.execution.targeting.language.supported_languages` lists
+exact selectable request values, so a seller declaring `fr` has not also
+declared that it accepts `fr-CA` as a request value. This exact capability
+membership prevents buyers from inferring narrower execution controls that the
+seller did not advertise.
 
 **`locale_policy` absence, populated array, and `und` have distinct semantics.**
 Omitting `locale_policy` entirely means unconstrained — no locale restriction,

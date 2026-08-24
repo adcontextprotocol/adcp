@@ -1,0 +1,155 @@
+id: media_buy_seller/budget_cap_timezone_override_rejected
+version: "1.0.0"
+title: "Unadvertised budget-cap timezone override rejection"
+category: media_buy_seller
+summary: "Verifies that an aggregate-cap timezone override is rejected when buyer override support is false or absent."
+track: media_buy
+introduced_in: "3.2"
+
+requires_capability:
+  path: media_buy.budget_capping.supported_scopes
+  contains: media_buy
+
+requires:
+  - controller
+
+required_tools:
+  - get_adcp_capabilities
+  - create_media_buy
+  - comply_test_controller
+
+narrative: |
+  A seller that supports aggregate daily caps but does not advertise
+  buyer_timezone_override must reject a submitted cap-day override with
+  UNSUPPORTED_FEATURE. Explicit false and omitted capability values are
+  exercised as separate applicability branches; exactly one runs for a seller.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - daily_budget_caps
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The controller seeds a sandbox account and non-guaranteed product for an aggregate-cap rejection probe."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_timezone_override_rejected"
+      brand:
+        domain: "acmeoutdoor.example"
+      operator: "pinnacle-agency.example"
+      billing: "operator"
+      status: "active"
+      sandbox: true
+      timezone: "America/New_York"
+  products:
+    - product_id: "timezone_override_rejected_display"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
+      reporting_capabilities:
+        available_reporting_frequencies: ["daily"]
+        expected_delay_minutes: 60
+        timezone: "Europe/London"
+        supports_webhooks: false
+        available_metrics: ["impressions", "spend"]
+        date_range_support: "date_range"
+  pricing_options:
+    - product_id: "timezone_override_rejected_display"
+      pricing_option_id: "timezone_override_rejected_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 5
+
+phases:
+  - id: explicitly_disabled
+    title: "Reject an override when capability is false"
+    depends_on: []
+    requires_capability:
+      path: media_buy.budget_capping.buyer_timezone_override
+      equals: false
+    steps:
+      - id: reject_explicitly_disabled_override
+        title: "Submit an aggregate cap with a disabled buyer override"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          account:
+            account_id: "acct_timezone_override_rejected"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 3000
+            currency: "USD"
+          daily_budget_cap: 100
+          budget_cap_timezone: "Pacific/Honolulu"
+          packages:
+            - product_id: "timezone_override_rejected_display"
+              pricing_option_id: "timezone_override_rejected_cpm"
+              budget: 3000
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#budget_cap_timezone_override_explicitly_disabled"
+        validations:
+          - check: response_schema
+            description: "Error response matches the canonical create schema"
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Explicit false capability rejects the buyer timezone override"
+
+  - id: not_advertised
+    title: "Reject an override when capability is absent"
+    depends_on: []
+    requires_capability:
+      path: media_buy.budget_capping.buyer_timezone_override
+      present: false
+    steps:
+      - id: reject_unadvertised_override
+        title: "Submit an aggregate cap with an unadvertised buyer override"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        sample_request:
+          account:
+            account_id: "acct_timezone_override_rejected"
+          brand:
+            domain: "acmeoutdoor.example"
+          total_budget:
+            amount: 3000
+            currency: "USD"
+          daily_budget_cap: 100
+          budget_cap_timezone: "Pacific/Honolulu"
+          packages:
+            - product_id: "timezone_override_rejected_display"
+              pricing_option_id: "timezone_override_rejected_cpm"
+              budget: 3000
+          start_time: "asap"
+          end_time: "2099-12-31T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#budget_cap_timezone_override_not_advertised"
+        validations:
+          - check: response_schema
+            description: "Error response matches the canonical create schema"
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Absent capability rejects the buyer timezone override"

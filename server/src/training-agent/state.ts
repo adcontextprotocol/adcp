@@ -29,7 +29,6 @@ import {
 } from '@adcp/sdk/server';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
-import { getAgentUrl } from './config.js';
 import { REPLAY_TTL_SECONDS } from './idempotency.js';
 
 const logger = createLogger('training-agent-state');
@@ -72,6 +71,7 @@ const knownSessionKeys = new Set<string>();
 const MAX_KNOWN_IN_MEMORY_SESSION_KEYS = 10_000;
 const projectedFixtureMaps = new WeakMap<SessionState, {
   seededProducts: SessionState['complyExtensions']['seededProducts'];
+  seededProductAvailability: SessionState['complyExtensions']['seededProductAvailability'];
   seededPricingOptions: SessionState['complyExtensions']['seededPricingOptions'];
   seededMeasurementCatalogs: SessionState['complyExtensions']['seededMeasurementCatalogs'];
 }>();
@@ -260,19 +260,25 @@ function stableStringify(value: unknown): string {
 function createSession(): SessionState {
   const now = new Date();
   return {
+    agentNotificationConfigs: new Map(),
     mediaBuys: new Map(),
     governancePlans: new Map(),
     governanceChecks: new Map(),
     governanceOutcomes: new Map(),
+    governanceAdjustments: new Map(),
     propertyLists: new Map(),
     collectionLists: new Map(),
     contentStandards: new Map(),
     rightsGrants: new Map(),
     negotiatedPricingOptions: new Map(),
+    configuredProducts: new Map(),
+    configuredProductTargeting: new Map(),
     proposalLifecycleLinks: new Map(),
+    proposalRefinementRecords: new Map(),
     creatives: new Map(),
     signalActivations: new Map(),
     buildVariantTargets: new Map(),
+    buildVariantGovernance: new Map(),
     usageRecords: [],
     complyExtensions: {
       accountStatuses: new Map(),
@@ -280,6 +286,7 @@ function createSession(): SessionState {
       deliverySimulations: new Map(),
       budgetSimulations: new Map(),
       seededProducts: new Map(),
+      seededProductAvailability: new Map(),
       seededPricingOptions: new Map(),
       seededCreativeFormats: new Map(),
       seededMeasurementCatalogs: new Map(),
@@ -309,14 +316,13 @@ function createSession(): SessionState {
  *  - `build_creative` / `report_usage` fall through to the fixtures when a
  *    requested `creative_id` is not in the session map.
  *
- * Agent URL is resolved lazily so the default propagates correctly in CI
- * and local runs alike.
  */
 export function getComplianceCreatives(): CreativeState[] {
   return [
     {
       creativeId: 'campaign_hero_video',
-      formatId: { agent_url: getAgentUrl(), id: 'vast_30s' },
+      formatKind: 'video_vast',
+      formatOptionRef: { scope: 'product', format_option_id: 'video_preroll_video_vast' },
       name: 'Campaign Hero Video',
       status: 'approved',
       syncedAt: new Date(0).toISOString(),
@@ -440,6 +446,15 @@ export function getComplianceMediaBuy(id: string): MediaBuyState | undefined {
  */
 function serializeSession(session: SessionState): Record<string, unknown> {
   const localFixtures = projectedFixtureMaps.get(session);
+  const proposalContext = session.lastGetProductsContext;
+  const proposalProductIds = new Set(
+    (proposalContext?.proposals ?? []).flatMap(proposal =>
+      proposal.allocations.map(allocation => allocation.product_id),
+    ),
+  );
+  const proposalProducts = (proposalContext?.products ?? []).filter(product =>
+    proposalProductIds.has(product.product_id),
+  );
   const persisted = {
     ...session,
     ...(localFixtures && {
@@ -448,11 +463,15 @@ function serializeSession(session: SessionState): Record<string, unknown> {
         ...localFixtures,
       },
     }),
-    // `products` is deterministic from the catalog — dropped from persistence
-    // so callers re-derive on the next request. Only `proposals` (session-
-    // specific drafts from refine workflows) ride along.
-    lastGetProductsContext: session.lastGetProductsContext?.proposals?.length
-      ? { proposals: session.lastGetProductsContext.proposals }
+    // Persist only the immutable product snapshots that support session-
+    // specific proposals. Ordinary catalog results remain deterministic and
+    // are re-derived, while controller-seeded proposal inputs survive the
+    // request boundary required by account-less compact refinement.
+    lastGetProductsContext: proposalContext?.proposals?.length
+      ? {
+          proposals: proposalContext.proposals,
+          ...(proposalProducts.length > 0 && { products: proposalProducts }),
+        }
       : undefined,
   };
   return structuredSerialize(persisted) as Record<string, unknown>;
@@ -484,19 +503,28 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
   return {
     ...fresh,
     ...hydrated,
+    agentNotificationConfigs: asMap(hydrated.agentNotificationConfigs, fresh.agentNotificationConfigs),
     mediaBuys: asMap(hydrated.mediaBuys, fresh.mediaBuys),
     creatives: asMap(hydrated.creatives, fresh.creatives),
     signalActivations: asMap(hydrated.signalActivations, fresh.signalActivations),
     governancePlans: asMap(hydrated.governancePlans, fresh.governancePlans),
     governanceChecks: asMap(hydrated.governanceChecks, fresh.governanceChecks),
     governanceOutcomes: asMap(hydrated.governanceOutcomes, fresh.governanceOutcomes),
+    governanceAdjustments: asMap(hydrated.governanceAdjustments, fresh.governanceAdjustments),
     propertyLists: asMap(hydrated.propertyLists, fresh.propertyLists),
     collectionLists: asMap(hydrated.collectionLists, fresh.collectionLists),
     contentStandards: asMap(hydrated.contentStandards, fresh.contentStandards),
     rightsGrants: asMap(hydrated.rightsGrants, fresh.rightsGrants),
     negotiatedPricingOptions: asMap(hydrated.negotiatedPricingOptions, fresh.negotiatedPricingOptions),
+    configuredProducts: asMap(hydrated.configuredProducts, fresh.configuredProducts),
+    configuredProductTargeting: asMap(
+      hydrated.configuredProductTargeting,
+      fresh.configuredProductTargeting,
+    ),
     proposalLifecycleLinks: asMap(hydrated.proposalLifecycleLinks, fresh.proposalLifecycleLinks),
+    proposalRefinementRecords: asMap(hydrated.proposalRefinementRecords, fresh.proposalRefinementRecords),
     buildVariantTargets: asMap(hydrated.buildVariantTargets, fresh.buildVariantTargets),
+    buildVariantGovernance: asMap(hydrated.buildVariantGovernance, fresh.buildVariantGovernance),
     usageRecords: Array.isArray(hydrated.usageRecords) ? hydrated.usageRecords : [],
     complyExtensions: {
       accountStatuses: asMap(hydratedComply.accountStatuses, fresh.complyExtensions.accountStatuses),
@@ -504,6 +532,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
       deliverySimulations: asMap(hydratedComply.deliverySimulations, fresh.complyExtensions.deliverySimulations),
       budgetSimulations: asMap(hydratedComply.budgetSimulations, fresh.complyExtensions.budgetSimulations),
       seededProducts: asMap(hydratedComply.seededProducts, fresh.complyExtensions.seededProducts),
+      seededProductAvailability: asMap(hydratedComply.seededProductAvailability, fresh.complyExtensions.seededProductAvailability),
       seededPricingOptions: asMap(hydratedComply.seededPricingOptions, fresh.complyExtensions.seededPricingOptions),
       seededCreativeFormats: asMap(hydratedComply.seededCreativeFormats, fresh.complyExtensions.seededCreativeFormats),
       seededMeasurementCatalogs: asMap(hydratedComply.seededMeasurementCatalogs, fresh.complyExtensions.seededMeasurementCatalogs),
@@ -571,10 +600,15 @@ export async function getSession(key: string, controllerFixtureSessionKey?: stri
     const local = session.complyExtensions;
     projectedFixtureMaps.set(session, {
       seededProducts: local.seededProducts,
+      seededProductAvailability: local.seededProductAvailability,
       seededPricingOptions: local.seededPricingOptions,
       seededMeasurementCatalogs: local.seededMeasurementCatalogs,
     });
     local.seededProducts = new Map([...shared.seededProducts, ...local.seededProducts]);
+    local.seededProductAvailability = new Map([
+      ...shared.seededProductAvailability,
+      ...local.seededProductAvailability,
+    ]);
     local.seededPricingOptions = new Map([
       ...shared.seededPricingOptions,
       ...local.seededPricingOptions,

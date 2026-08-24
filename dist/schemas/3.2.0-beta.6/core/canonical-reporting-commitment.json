@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/canonical-reporting-commitment.json",
+  "title": "Canonical Reporting Commitment",
+  "description": "One metric the seller commits to report for a commercial product term. Vendor identity uses BrandKey so the compact lifecycle does not inline brand or provenance documents.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "scope"
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "standard"
+        },
+        "metric_id": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/available-metric.json"
+        },
+        "qualifier": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/canonical-metric-qualifier.json"
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "scope",
+        "metric_id"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "scope": {
+          "type": "string",
+          "const": "vendor"
+        },
+        "vendor": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/brand-key.json"
+        },
+        "metric_id": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/vendor-metric-id.json"
+        },
+        "qualifier": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/canonical-metric-qualifier.json"
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "scope",
+        "vendor",
+        "metric_id"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

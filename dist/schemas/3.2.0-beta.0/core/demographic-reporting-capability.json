@@ -1,0 +1,177 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/demographic-reporting-capability.json",
+  "title": "Demographic Reporting Capability",
+  "description": "Product-scoped demographic breakdown capability. Reporting capability is independent of demographic targeting capability: a product can execute an exact buyer age predicate while its measurement source reports only fixed age intervals. Buyers compare requested reporting ranges with this declaration before requesting by_demographic rows and MUST NOT infer reporting alignment from Product.demographic_targeting.",
+  "type": "object",
+  "properties": {
+    "age": {
+      "type": "object",
+      "description": "Machine-comparable age ranges this product can report.",
+      "properties": {
+        "reporting_modes": {
+          "type": "array",
+          "description": "Ways this product can produce age rows. exact_predicates accepts requested canonical age predicates within the declared bounds. enumerated_intervals reports only the exact intervals declared in intervals; buyers may aggregate adjacent complete intervals but MUST NOT treat a wider or narrower interval as the requested audience.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "exact_predicates",
+              "enumerated_intervals"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "min_reportable_age": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 150,
+          "description": "Lowest explicit min or max bound accepted by exact_predicates. Required when that mode is declared."
+        },
+        "max_reportable_age": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 150,
+          "description": "Highest explicit min or max bound accepted by exact_predicates. Required when that mode is declared."
+        },
+        "supports_unbounded_min": {
+          "type": "boolean",
+          "description": "Whether exact_predicates accepts a canonical age predicate with min omitted. Required when that mode is declared."
+        },
+        "supports_unbounded_max": {
+          "type": "boolean",
+          "description": "Whether exact_predicates accepts a canonical age predicate with max omitted. Required when that mode is declared."
+        },
+        "intervals": {
+          "type": "array",
+          "description": "Fixed reportable age intervals for enumerated_intervals. Bounds are authoritative capability data, not a protocol-wide bucket taxonomy. Optional native labels identify the measurement-system code returned with the interval.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "age": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/demographic-age-range.json"
+              },
+              "demographic": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S",
+                "description": "Optional native demographic label returned for this interval."
+              },
+              "demographic_system": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/demographic-system.json"
+              }
+            },
+            "required": [
+              "age"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "required": [
+                    "demographic"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "demographic_system"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "required": [
+                    "demographic_system"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "demographic"
+                  ]
+                }
+              }
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "reporting_modes"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reporting_modes": {
+                "contains": {
+                  "const": "exact_predicates"
+                }
+              }
+            },
+            "required": [
+              "reporting_modes"
+            ]
+          },
+          "then": {
+            "required": [
+              "min_reportable_age",
+              "max_reportable_age",
+              "supports_unbounded_min",
+              "supports_unbounded_max"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reporting_modes": {
+                "contains": {
+                  "const": "enumerated_intervals"
+                }
+              }
+            },
+            "required": [
+              "reporting_modes"
+            ]
+          },
+          "then": {
+            "required": [
+              "intervals"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "demographic_systems": {
+      "type": "array",
+      "description": "Measurement-system notations this product may return. A code remains opaque unless its capability interval and response row also carry a canonical age predicate.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/demographic-system.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "may_suppress_small_cells": {
+      "type": "boolean",
+      "description": "Whether privacy, policy, or measurement thresholds may suppress otherwise reportable demographic rows. When true, buyers must inspect by_demographic_suppressed before testing whether rows reconcile to package totals."
+    }
+  },
+  "required": [
+    "may_suppress_small_cells"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "age"
+      ]
+    },
+    {
+      "required": [
+        "demographic_systems"
+      ]
+    }
+  ],
+  "additionalProperties": false
+}

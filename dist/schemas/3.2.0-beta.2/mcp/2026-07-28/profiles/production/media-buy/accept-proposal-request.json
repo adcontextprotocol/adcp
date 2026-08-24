@@ -1,0 +1,604 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/mcp/2026-07-28/profiles/production/media-buy/accept-proposal-request.json",
+  "type": "object",
+  "x-mutates-state": true,
+  "x-governed-commitment": {
+    "scope": "conditional",
+    "triggers": [
+      "creates_commitment",
+      "increases_obligation",
+      "extends_term",
+      "resumes_execution",
+      "reallocates_delivery"
+    ],
+    "exemptions": [
+      "negotiated_cancellation",
+      "decrease_only"
+    ],
+    "precedence": "trigger_overrides_exemption"
+  },
+  "x-operation-family": "accept_proposal",
+  "x-added-in": "3.2.0",
+  "x-legacy-fallback": {
+    "tool": "create_media_buy",
+    "mode": "orchestrated"
+  },
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "account": {
+      "$ref": "#/$defs/external:core~1canonical-account-ref.json"
+    },
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "proposal"
+    },
+    "proposal_terms_digest": {
+      "type": "string",
+      "pattern": "^sha256:[A-Za-z0-9_-]{43}$"
+    },
+    "total_budget": {
+      "type": "object",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "minLength": 1
+    },
+    "io_acceptance": {
+      "type": "object",
+      "properties": {
+        "io_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accepted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "signatory": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 250
+        },
+        "signature_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "io_id",
+        "accepted_at",
+        "signatory"
+      ],
+      "additionalProperties": false
+    },
+    "purchase_order_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "governance_context": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "push_notification_config": {
+      "$ref": "#/$defs/external:core~1push-notification-config.json"
+    },
+    "reporting_webhook": {
+      "$ref": "#/$defs/external:core~1reporting-webhook.json"
+    },
+    "opportunity": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/external:core~1opportunity-context.json"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "closed"
+            }
+          },
+          "if": {
+            "properties": {
+              "status": {
+                "const": "closed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "close_reason": {
+                "const": "accepted_with_seller"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "account",
+    "proposal_id",
+    "proposal_terms_digest"
+  ],
+  "additionalProperties": false,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "packages"
+        ]
+      },
+      {
+        "required": [
+          "purchases"
+        ]
+      },
+      {
+        "required": [
+          "creatives"
+        ]
+      },
+      {
+        "required": [
+          "creative_assignments"
+        ]
+      }
+    ]
+  },
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/canonical-account-ref.json": {
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "minLength": 1,
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand"
+    },
+    "external:core/operator-unit.json": {
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/push-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 4096
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "deprecated": true,
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:core/reporting-webhook.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        },
+        "reporting_frequency": {
+          "type": "string",
+          "enum": [
+            "hourly",
+            "daily",
+            "monthly"
+          ]
+        },
+        "requested_metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1available-metric.json"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "url",
+        "authentication",
+        "reporting_frequency"
+      ],
+      "additionalProperties": true
+    },
+    "external:enums/available-metric.json": {
+      "type": "string",
+      "enum": [
+        "impressions",
+        "spend",
+        "clicks",
+        "ctr",
+        "views",
+        "completed_views",
+        "completion_rate",
+        "conversions",
+        "conversion_value",
+        "commissionable_value",
+        "roas",
+        "cost_per_acquisition",
+        "new_to_brand_rate",
+        "leads",
+        "reach",
+        "frequency",
+        "grps",
+        "engagements",
+        "engagement_rate",
+        "follows",
+        "saves",
+        "profile_visits",
+        "viewability",
+        "quartile_data",
+        "dooh_metrics",
+        "cost_per_click",
+        "cost_per_completed_view",
+        "cpm",
+        "downloads",
+        "units_sold",
+        "new_to_brand_units",
+        "plays",
+        "incremental_sales_lift",
+        "brand_lift",
+        "foot_traffic",
+        "conversion_lift",
+        "brand_search_lift"
+      ]
+    },
+    "external:core/opportunity-context.json": {
+      "type": "object",
+      "properties": {
+        "opportunity_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "opportunity"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "exploratory",
+            "planning",
+            "active_sourcing"
+          ]
+        },
+        "intent": {
+          "type": "string",
+          "enum": [
+            "test",
+            "speculative",
+            "planning",
+            "live_rfp"
+          ]
+        },
+        "planning_horizon": {
+          "$ref": "#/$defs/external:core~1date-range.json"
+        },
+        "response_deadline": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "closed"
+          ]
+        },
+        "close_reason": {
+          "type": "string",
+          "enum": [
+            "accepted_with_seller",
+            "purchased_elsewhere",
+            "selected_alternative",
+            "not_pursued",
+            "budget_changed",
+            "timing_changed",
+            "other"
+          ]
+        },
+        "close_detail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "opportunity_id"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "closed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "close_reason"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "close_reason"
+                  ]
+                },
+                {
+                  "required": [
+                    "close_detail"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "close_reason": {
+                "const": "other"
+              }
+            },
+            "required": [
+              "close_reason"
+            ]
+          },
+          "then": {
+            "required": [
+              "close_detail"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:core/date-range.json": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date"
+        },
+        "end": {
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

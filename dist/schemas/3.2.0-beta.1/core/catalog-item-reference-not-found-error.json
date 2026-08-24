@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/catalog-item-reference-not-found-error.json",
+  "title": "Catalog Item Reference Not Found Error",
+  "description": "Privacy-preserving error for an unknown, inaccessible, unauthorized, or stale-generation catalog item reference. The invariant closed shape prevents resource enumeration.",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "const": "REFERENCE_NOT_FOUND"
+    },
+    "message": {
+      "type": "string",
+      "const": "Catalog item not found"
+    },
+    "recovery": {
+      "type": "string",
+      "const": "correctable"
+    }
+  },
+  "required": [
+    "code",
+    "message",
+    "recovery"
+  ],
+  "additionalProperties": false
+}

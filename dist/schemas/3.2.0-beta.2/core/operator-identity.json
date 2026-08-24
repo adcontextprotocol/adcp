@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/operator-identity.json",
+  "title": "Operator Identity",
+  "description": "The buyer-desired operator portion of an advertiser account identity. The operator domain identifies the entity operating for the brand; operator_unit identifies that operator's internal buying context. Buyers that already administer the account control unit metadata and identity within the current operator. Changing the operator domain is an inter-entity handoff that requires seller-mediated approval by the current account authority, the brand, and the destination operator. When used as a sync_accounts settings-update value, this object is a complete desired replacement: omitting operator_unit removes the current unit rather than preserving it.",
+  "type": "object",
+  "properties": {
+    "operator": {
+      "type": "string",
+      "description": "Domain of the entity operating on the brand's behalf. When the brand operates directly, this is the brand's domain.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "x-entity": "operator"
+    },
+    "operator_unit": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/operator-unit.json",
+      "description": "Optional operator-owned business unit, agency seat, or platform account. Its id participates in account identity; name is mutable display metadata. Omission from a complete desired replacement means the account should have no operator unit."
+    }
+  },
+  "required": [
+    "operator"
+  ],
+  "additionalProperties": false
+}

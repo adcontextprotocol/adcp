@@ -100,8 +100,9 @@ export function computeEngagementTier(org: {
   has_users?: boolean;
   has_engaged_users?: boolean;
 }): EngagementTier {
-  // Member: active, non-canceled subscription (includes comped members)
-  if (org.subscription_status === 'active' && !org.subscription_canceled_at) {
+  // Active subscriptions remain memberships through the end of their paid
+  // period, even when cancellation is scheduled. Trials are memberships too.
+  if (org.subscription_status === 'active' || org.subscription_status === 'trialing') {
     return 'member';
   }
 

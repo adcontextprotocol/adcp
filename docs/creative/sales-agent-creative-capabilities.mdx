@@ -44,7 +44,13 @@ If the same endpoint can build, validate, or preview creatives, include `creativ
           "params": { "width": 300, "height": 250 }
         }
       }
-    ]
+    ],
+    "preview": {
+      "routes": [{
+        "capability_id": "homepage_image_builder",
+        "rendering_origin": "agent_approximation"
+      }]
+    }
   }
 }
 ```

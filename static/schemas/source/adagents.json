@@ -88,6 +88,11 @@
           "maxLength": 255,
           "description": "Opaque publisher-controlled cache validator for the public catalog portions of this file (`properties[]`, `collections[]`, `placements[]`, `formats[]`, `signals[]`, and tag metadata). Publishers SHOULD change this value whenever any catalog entry or catalog-scoped authorization changes, even when the hosting URL and HTTP validators stay the same. Buyer SDKs SHOULD cache resolved catalog lookups by URL plus `catalog_etag` (falling back to HTTP ETag/Last-Modified, then bounded TTL when absent) and re-resolve placement, format, collection, property, and signal references when it changes. This value is not a cryptographic digest; it is a compact version token such as a deployment hash, revision ID, or ISO timestamp."
         },
+        "catalog_role": {
+          "type": "string",
+          "const": "community_format_registry",
+          "description": "Marks a catalog payload intended for the fixed AgenticAdvertising.org community-format registry. This self-description is not provenance: consumers accept reference_renderer only when the document was obtained from the configured, reviewed community-registry origin."
+        },
         "properties": {
           "type": "array",
           "description": "Array of all properties covered by this adagents.json file. Defines the canonical property list that authorized agents reference.",
@@ -165,6 +170,24 @@
                     "description": "Optional property tags from this file's `tags` map that this format declaration applies to. When omitted, the declaration applies to all properties in the file. Useful for network-wide formats (e.g., a managed network declaring `applies_to_property_tags: [\"premium_video\"]`). Compatible with `applies_to_property_ids` — a property is in scope if it matches either ID list or tag list.",
                     "items": { "$ref": "/schemas/core/property-tag.json" },
                     "minItems": 1
+                  },
+                  "reference_renderer": {
+                    "$ref": "/schemas/core/reference-renderer.json",
+                    "description": "Optional only for an AgenticAdvertising.org community-registry format entry fetched from the configured registry origin. Points to a pinned browser-ESM OSS renderer package export that provides a non-authoritative reference presentation. The named export's contract, not the package major, MUST implement this enclosing format entry's revision. Non-JavaScript clients use hosted preview_creative or display the manifest. Publisher-origin catalogs and seller product declarations do not use this field: publishers describe placement-specific chrome with placements[].presentation_ref and grant route-specific preview authority with placements[].preview_provider."
+                  },
+                  "format_revision": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)$",
+                    "description": "Registry-managed revision of this community format entry. Required when reference_renderer is present and MUST equal reference_renderer.format_revision."
+                  }
+                },
+                "allOf": [{
+                  "if": { "required": ["reference_renderer"] },
+                  "then": { "required": ["format_revision"] }
+                }],
+                "x-adcp-validation": {
+                  "verifier_constraints": {
+                    "reference_renderer.format_revision": "equals_format_revision"
                   }
                 }
               }
@@ -724,6 +747,20 @@
             { "properties": { "collections": { "minItems": 1 } }, "required": ["collections"] },
             { "properties": { "signals": { "minItems": 1 } }, "required": ["signals"] }
           ]
+        },
+        {
+          "$comment": "Executable renderer references are valid only in a cache-versioned community registry catalog. Consumers additionally verify the fetch origin; catalog_role is not an authority claim.",
+          "if": {
+            "properties": {
+              "formats": {
+                "contains": { "type": "object", "required": ["reference_renderer"] }
+              }
+            },
+            "required": ["formats"]
+          },
+          "then": {
+            "required": ["catalog_etag", "catalog_role"]
+          }
         }
       ]
     }

@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/decline-proposals-request.json",
+  "title": "Decline Proposals Request",
+  "description": "Terminally decline one or more immutable proposals. Repeating an already-applied decline with a new idempotency key succeeds with outcome declined and preserves the first recorded reason and detail; the proposal cannot later be executed.",
+  "x-tool-summary": "Terminally decline one or more proposals and record the buyer's reason.",
+  "type": "object",
+  "x-mutates-state": true,
+  "x-operation-family": "decline_proposals",
+  "x-added-in": "3.2.0",
+  "x-legacy-fallback": {
+    "mode": "none"
+  },
+  "properties": {
+    "adcp_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/version-envelope.json#/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/version-envelope.json#/properties/adcp_major_version"
+    },
+    "context_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "context": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/context.json"
+        }
+      ],
+      "x-adcp-schema-uri": "/schemas/core/context.json"
+    },
+    "governance_context": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "push_notification_config": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/push-notification-config.json"
+        }
+      ],
+      "x-adcp-schema-uri": "/schemas/core/push-notification-config.json"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key required for retry-safe proposal decline.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "declines": {
+      "type": "array",
+      "description": "Proposal declines to apply. proposal_id is the semantic uniqueness key and values MUST be unique even when two entries otherwise differ; implementations enforce this rule because JSON Schema uniqueItems only compares whole objects. Results preserve request order.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/proposal-decline.json"
+      },
+      "minItems": 1,
+      "maxItems": 25,
+      "uniqueItems": true
+    },
+    "opportunity": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/opportunity-context.json",
+      "description": "Optional planning-cycle update. Every named proposal MUST belong to this opportunity_id. Sellers apply the update only when every result is declined; if any result is unable, the opportunity remains unchanged. Use status closed when these declines end the broader opportunity."
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "declines"
+  ],
+  "additionalProperties": false
+}

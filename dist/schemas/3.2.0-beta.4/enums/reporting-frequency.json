@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/reporting-frequency.json",
+  "title": "Reporting Frequency",
+  "description": "Available frequencies for delivery reports and metrics updates. Weekly and quarterly match audience-currency publication cycles in measured channels (e.g. weekly OOH/radio increments, quarterly circulation updates); post_campaign is a single report after the flight ends. Buyers should treat a product's declared frequencies as an optimization-eligibility signal — mid-flight optimization is not meaningful against data that arrives quarterly or post-campaign.",
+  "type": "string",
+  "enum": [
+    "hourly",
+    "daily",
+    "weekly",
+    "monthly",
+    "quarterly",
+    "post_campaign"
+  ]
+}

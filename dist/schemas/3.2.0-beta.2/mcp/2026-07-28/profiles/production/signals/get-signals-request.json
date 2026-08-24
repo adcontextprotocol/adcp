@@ -1,0 +1,1138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/mcp/2026-07-28/profiles/production/signals/get-signals-request.json",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    },
+    {
+      "if": {
+        "anyOf": [
+          {
+            "required": [
+              "if_wholesale_feed_version"
+            ]
+          },
+          {
+            "required": [
+              "if_pricing_version"
+            ]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "discovery_mode": {
+            "const": "wholesale"
+          }
+        },
+        "required": [
+          "discovery_mode"
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "discovery_mode": {
+      "type": "string",
+      "enum": [
+        "brief",
+        "wholesale"
+      ],
+      "default": "brief"
+    },
+    "account": {
+      "$ref": "#/$defs/external:core~1account-ref.json"
+    },
+    "signal_spec": {
+      "type": "string"
+    },
+    "signal_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:core~1signal-ref.json"
+      },
+      "minItems": 1
+    },
+    "signal_ids": {
+      "type": "array",
+      "deprecated": true,
+      "items": {
+        "$ref": "#/$defs/external:core~1signal-id.json"
+      },
+      "minItems": 1
+    },
+    "destinations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:core~1destination.json"
+      },
+      "minItems": 1
+    },
+    "countries": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "filters": {
+      "$ref": "#/$defs/external:core~1signal-filters.json"
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "signal_ref",
+          "signal_id",
+          "signal_agent_segment_id",
+          "name",
+          "description",
+          "value_type",
+          "categories",
+          "range",
+          "demographic_predicate",
+          "signal_type",
+          "data_provider",
+          "coverage_percentage",
+          "deployments",
+          "pricing_options",
+          "taxonomy",
+          "data_sources",
+          "methodology",
+          "segmentation_criteria",
+          "criteria_url",
+          "refresh_cadence",
+          "lookback_window",
+          "onboarder",
+          "modeling",
+          "audience_expansion",
+          "device_expansion",
+          "countries",
+          "consent_basis",
+          "restricted_attributes",
+          "policy_categories",
+          "art9_basis",
+          "data_subject_rights",
+          "last_updated"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "max_results": {
+      "type": "integer",
+      "deprecated": true,
+      "minimum": 1
+    },
+    "pagination": {
+      "$ref": "#/$defs/external:core~1pagination-request.json"
+    },
+    "push_notification_config": {
+      "$ref": "#/$defs/external:core~1push-notification-config.json"
+    },
+    "if_wholesale_feed_version": {
+      "type": "string"
+    },
+    "if_pricing_version": {
+      "type": "string"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "if": {
+    "properties": {
+      "discovery_mode": {
+        "const": "wholesale"
+      }
+    },
+    "required": [
+      "discovery_mode"
+    ]
+  },
+  "then": {
+    "not": {
+      "anyOf": [
+        {
+          "required": [
+            "signal_spec"
+          ]
+        },
+        {
+          "required": [
+            "signal_refs"
+          ]
+        },
+        {
+          "required": [
+            "signal_ids"
+          ]
+        }
+      ]
+    }
+  },
+  "else": {
+    "anyOf": [
+      {
+        "required": [
+          "signal_spec"
+        ]
+      },
+      {
+        "required": [
+          "signal_refs"
+        ]
+      },
+      {
+        "required": [
+          "signal_ids"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/account-ref.json": {
+      "type": "object",
+      "oneOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-ref.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:core/brand-ref.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "industries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data_subject_contestation": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "email"
+              ]
+            }
+          ],
+          "additionalProperties": false
+        },
+        "brand_kit_override": {
+          "type": "object",
+          "properties": {
+            "logo": {
+              "$ref": "#/$defs/external:core~1assets~1image-asset.json"
+            },
+            "colors": {
+              "type": "object",
+              "properties": {
+                "primary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "secondary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "accent": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                }
+              },
+              "additionalProperties": true
+            },
+            "voice": {
+              "type": "string"
+            },
+            "tagline": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand"
+    },
+    "external:core/assets/image-asset.json": {
+      "type": "object",
+      "properties": {
+        "asset_type": {
+          "type": "string",
+          "const": "image"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "file_size_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pixel_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "format": {
+          "type": "string"
+        },
+        "alt_text": {
+          "type": "string",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "#/$defs/external:core~1provenance.json"
+        }
+      },
+      "required": [
+        "asset_type",
+        "url",
+        "width",
+        "height"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/provenance.json": {
+      "type": "object",
+      "properties": {
+        "digital_source_type": {
+          "$ref": "#/$defs/external:enums~1digital-source-type.json"
+        },
+        "synthetic_depiction": {
+          "type": "boolean"
+        },
+        "ai_tool": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "human_oversight": {
+          "type": "string",
+          "enum": [
+            "none",
+            "prompt_only",
+            "selected",
+            "edited",
+            "directed"
+          ]
+        },
+        "declared_by": {
+          "type": "object",
+          "properties": {
+            "agent_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "creator",
+                "advertiser",
+                "agency",
+                "platform",
+                "tool"
+              ]
+            }
+          },
+          "required": [
+            "role"
+          ]
+        },
+        "declared_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "created_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "c2pa": {
+          "type": "object",
+          "properties": {
+            "manifest_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": [
+            "manifest_url"
+          ]
+        },
+        "embedded_provenance": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "$ref": "#/$defs/external:enums~1embedded-provenance-method.json"
+              },
+              "standard": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "verify_agent": {
+                "type": "object",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  "feature_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "method",
+              "provider"
+            ]
+          }
+        },
+        "watermarks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "media_type": {
+                "$ref": "#/$defs/external:enums~1watermark-media-type.json"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "verify_agent": {
+                "type": "object",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  "feature_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "c2pa_action": {
+                "$ref": "#/$defs/external:enums~1c2pa-watermark-action.json"
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "media_type",
+              "provider"
+            ]
+          }
+        },
+        "disclosure": {
+          "type": "object",
+          "properties": {
+            "required": {
+              "type": "boolean"
+            },
+            "jurisdictions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "country": {
+                    "type": "string"
+                  },
+                  "region": {
+                    "type": "string"
+                  },
+                  "regulation": {
+                    "type": "string"
+                  },
+                  "label_text": {
+                    "type": "string"
+                  },
+                  "render_guidance": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "properties": {
+                      "persistence": {
+                        "$ref": "#/$defs/external:enums~1disclosure-persistence.json"
+                      },
+                      "min_duration_ms": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "positions": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/external:enums~1disclosure-position.json"
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      },
+                      "ext": {
+                        "$ref": "#/$defs/external:core~1ext.json"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "country",
+                  "regulation"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "required"
+          ]
+        },
+        "verification": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "verified_by": {
+                "type": "string"
+              },
+              "verified_time": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "authentic",
+                  "ai_generated",
+                  "ai_modified",
+                  "inconclusive"
+                ]
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "details_url": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "required": [
+              "verified_by",
+              "result"
+            ]
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      }
+    },
+    "external:enums/digital-source-type.json": {
+      "type": "string",
+      "enum": [
+        "digital_capture",
+        "digital_creation",
+        "trained_algorithmic_media",
+        "composite_with_trained_algorithmic_media",
+        "algorithmic_media",
+        "composite_capture",
+        "composite_synthetic",
+        "human_edits",
+        "data_driven_media"
+      ]
+    },
+    "external:enums/embedded-provenance-method.json": {
+      "type": "string",
+      "enum": [
+        "manifest_wrapper",
+        "provenance_markers"
+      ]
+    },
+    "external:enums/watermark-media-type.json": {
+      "type": "string",
+      "enum": [
+        "audio",
+        "image",
+        "video",
+        "text"
+      ]
+    },
+    "external:enums/c2pa-watermark-action.json": {
+      "type": "string",
+      "enum": [
+        "c2pa.watermarked.bound",
+        "c2pa.watermarked.unbound"
+      ]
+    },
+    "external:enums/disclosure-persistence.json": {
+      "type": "string",
+      "enum": [
+        "continuous",
+        "initial",
+        "flexible"
+      ]
+    },
+    "external:enums/disclosure-position.json": {
+      "type": "string",
+      "enum": [
+        "prominent",
+        "footer",
+        "audio",
+        "subtitle",
+        "overlay",
+        "end_card",
+        "pre_roll",
+        "companion"
+      ]
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/operator-unit.json": {
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/signal-ref.json": {
+      "x-entity": "signal",
+      "discriminator": {
+        "propertyName": "scope"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "product"
+            },
+            "signal_id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            }
+          },
+          "required": [
+            "scope",
+            "signal_id"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "data_provider_domain"
+                ]
+              },
+              {
+                "required": [
+                  "signal_source_url"
+                ]
+              },
+              {
+                "required": [
+                  "agent_url"
+                ]
+              },
+              {
+                "required": [
+                  "source"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "data_provider"
+            },
+            "data_provider_domain": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            },
+            "signal_id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            }
+          },
+          "required": [
+            "scope",
+            "data_provider_domain",
+            "signal_id"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "agent_url"
+                ]
+              },
+              {
+                "required": [
+                  "signal_source_url"
+                ]
+              },
+              {
+                "required": [
+                  "source"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "signal_source"
+            },
+            "signal_source_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "signal_id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            }
+          },
+          "required": [
+            "scope",
+            "signal_source_url",
+            "signal_id"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "data_provider_domain"
+                ]
+              },
+              {
+                "required": [
+                  "agent_url"
+                ]
+              },
+              {
+                "required": [
+                  "source"
+                ]
+              },
+              {
+                "required": [
+                  "id"
+                ]
+              }
+            ]
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/signal-id.json": {
+      "deprecated": true,
+      "x-entity": "signal",
+      "discriminator": {
+        "propertyName": "source"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "const": "catalog"
+            },
+            "data_provider_domain": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            }
+          },
+          "required": [
+            "source",
+            "data_provider_domain",
+            "id"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "const": "agent"
+            },
+            "agent_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "id": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9_-]+$"
+            }
+          },
+          "required": [
+            "source",
+            "agent_url",
+            "id"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/destination.json": {
+      "discriminator": {
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "platform"
+            },
+            "platform": {
+              "type": "string"
+            },
+            "account": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "platform"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "agent"
+            },
+            "agent_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "account": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "agent_url"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "external:core/signal-filters.json": {
+      "type": "object",
+      "properties": {
+        "catalog_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1signal-catalog-type.json"
+          },
+          "minItems": 1
+        },
+        "data_providers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "max_cpm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_percent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "min_coverage_percentage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "additionalProperties": true
+    },
+    "external:enums/signal-catalog-type.json": {
+      "type": "string",
+      "enum": [
+        "marketplace",
+        "custom",
+        "owned"
+      ]
+    },
+    "external:core/pagination-request.json": {
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50
+        },
+        "cursor": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:core/push-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 4096
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "deprecated": true,
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "dependentRequired": {
+    "if_pricing_version": [
+      "if_wholesale_feed_version"
+    ]
+  }
+}

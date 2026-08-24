@@ -1,0 +1,153 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/catalog-item-availability-update.json",
+  "title": "Catalog Item Availability Update",
+  "description": "An immediate buyer-authored availability override for an item in one immutable incarnation of a buyer-managed catalog. This overlay is distinct from seller review status: suppress makes an otherwise approved item ineligible, while restore removes only the buyer suppression and cannot override seller rejection, withdrawal, policy, rights, or inventory decisions. A suppress overlay persists across scheduled feed fetches and catalog upserts until an explicit restore, expires_at, or deletion of the containing catalog.",
+  "type": "object",
+  "properties": {
+    "catalog_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Buyer-assigned ID of the buyer-managed catalog containing the item.",
+      "x-entity": "catalog"
+    },
+    "catalog_generation": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Opaque seller-issued token for the catalog incarnation. Obtain it from sync_catalogs discovery or mutation results. A generation mismatch is treated as REFERENCE_NOT_FOUND, preventing a delayed update from affecting a deleted-and-recreated catalog.",
+      "x-entity": "catalog_generation"
+    },
+    "item_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Exact canonical item key used by Catalog.ids. For typed catalogs this is the type-specific identifier field; for product, inventory, and promotion catalogs it is the stable normalized source identifier retained during ingestion.",
+      "x-entity": "catalog_item"
+    },
+    "expected_overlay_revision": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Required optimistic-concurrency token obtained from item_availability_states. Revision 0 is the initial active state. The seller MUST compare this value atomically with the write and return CONFLICT without mutation when it differs from current state."
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "suppress",
+        "restore"
+      ],
+      "description": "suppress makes the item and known derived creative variants ineligible immediately; restore removes the buyer-authored suppression but does not bypass seller controls."
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "out_of_stock",
+        "back_in_stock",
+        "content_unavailable",
+        "content_available",
+        "promotion_start",
+        "promotion_end",
+        "time_window_started",
+        "time_window_expired",
+        "buyer_request",
+        "other"
+      ],
+      "description": "Machine-readable reason for the transition. Use other only when no standard reason applies and explain the condition in reason_detail."
+    },
+    "reason_detail": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000,
+      "description": "Optional human-readable context. Required when reason is other. Plain text only; receivers MUST treat it as untrusted buyer input."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Optional expiry for a suppress overlay. At this instant the seller automatically removes the buyer-authored suppression as if it received restore. Valid only with action suppress; omit for an indefinite suppression. Sellers MUST reject a timestamp that is not in the future when the request is processed. On a repeated suppress, this value is complete replacement state: a changed timestamp replaces the prior expiry, and omission clears a prior expiry to make suppression indefinite. Either change returns status applied, not unchanged."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+    }
+  },
+  "required": [
+    "catalog_id",
+    "catalog_generation",
+    "item_id",
+    "expected_overlay_revision",
+    "action",
+    "reason"
+  ],
+  "if": {
+    "properties": {
+      "reason": {
+        "const": "other"
+      }
+    },
+    "required": [
+      "reason"
+    ]
+  },
+  "then": {
+    "required": [
+      "reason_detail"
+    ]
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "suppress"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reason": {
+            "enum": [
+              "out_of_stock",
+              "content_unavailable",
+              "promotion_end",
+              "time_window_expired",
+              "buyer_request",
+              "other"
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "reason": {
+            "enum": [
+              "back_in_stock",
+              "content_available",
+              "promotion_start",
+              "time_window_started",
+              "buyer_request",
+              "other"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "expires_at"
+        ]
+      },
+      "then": {
+        "properties": {
+          "action": {
+            "const": "suppress"
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

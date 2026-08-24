@@ -76,6 +76,7 @@ const storyboard = {
 } as unknown as Storyboard;
 
 const searchResponse = {
+  cache_scope: 'public',
   signals: [
     {
       signal_id: { source: 'catalog', data_provider_domain: 'prism.example', id: 'abandoner' },
@@ -148,7 +149,7 @@ describe('e2e: real runner → formatter — context_value_rejected fix plan', (
     expect(steps).toHaveLength(2);
 
     const search = steps.find(s => s.step_id === 'search_by_spec')!;
-    expect(search.passed).toBe(true);
+    expect(search.passed, JSON.stringify(search, null, 2)).toBe(true);
 
     const activate = steps.find(s => s.step_id === 'activate')!;
     expect(activate.passed).toBe(false);
@@ -239,8 +240,7 @@ const shapeDriftStoryboard = {
           title: 'build creative',
           task: 'build_creative',
           sample_request: {
-            format_id: { agent_url: 'https://x.example', id: 'audio_ad' },
-            assets: {},
+            message: 'Build a short audio ad.',
           },
         },
       ],

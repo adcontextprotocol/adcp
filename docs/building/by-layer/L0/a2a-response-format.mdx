@@ -13,6 +13,8 @@ Examples below use **A2A 1.0** wire format: Parts carry no `kind` discriminator 
 
 There are two distinct status layers. A2A `task.status.state` describes transport execution; the AdCP DataPart's top-level `status` describes the task-specific protocol result. They usually align, but they are not aliases. For example, a structured `get_products` business rejection uses A2A `TASK_STATE_COMPLETED` and DataPart `status: "rejected"`: the invocation completed and produced a deliberate commercial-refusal result.
 
+The [AdCP A2A Profile Extension v3](/docs/building/by-layer/L0/a2a-profile-extension) also pins an AdCP `status: "submitted"` response inside an A2A `TASK_STATE_COMPLETED` Task. Native A2A `TASK_STATE_SUBMITTED` is an interim transport state before the AdCP handler returns; it is not the mapping for queued AdCP work.
+
 For v0.3 servers, the same DataPart becomes `{ "kind": "data", "data": {...} }` and states become lowercase. Extraction clients accept both shapes during the compatibility period.
 
 ## Required Structure
@@ -25,27 +27,34 @@ For v0.3 servers, the same DataPart becomes `{ "kind": "data", "data": {...} }` 
 - Use the last DataPart as authoritative when multiple data parts exist
 - NOT wrap AdCP payloads in custom framework objects (no `{ response: {...} }` wrappers)
 
-**Recommended pattern:**
+**Recommended non-streaming `SendMessageResponse` pattern:**
 
 ```json
 {
-  "status": "completed",
-  "taskId": "task_123",
-  "contextId": "ctx_456",
-  "artifacts": [{
-    "name": "task_result",
-    "parts": [
-      {
-        "text": "Found 12 video products perfect for pet food campaigns"
-      },
-      {
-        "data": {
-          "products": [...],
-          "total": 12
+  "task": {
+    "id": "task_123",
+    "contextId": "ctx_456",
+    "status": {
+      "state": "TASK_STATE_COMPLETED"
+    },
+    "artifacts": [{
+      "artifactId": "task-result",
+      "name": "task_result",
+      "parts": [
+        {
+          "text": "Found 12 video products perfect for pet food campaigns"
+        },
+        {
+          "data": {
+            "status": "completed",
+            "cache_scope": "account",
+            "products": [...],
+            "total": 12
+          }
         }
-      }
-    ]
-  }]
+      ]
+    }]
+  }
 }
 ```
 
@@ -53,9 +62,37 @@ For v0.3 servers, the same DataPart becomes `{ "kind": "data", "data": {...} }` 
 - **DataPart** (Part with `data` field): Structured AdCP response payload — **required**
 - **FilePart** (Part with `url` or `raw` field): Optional file references (previews, reports)
 
-**Multiple artifacts:** Only for fundamentally distinct deliverables (e.g., creative asset + separate trafficking report). Rare in AdCP - prefer single artifact with multiple parts.
+AdCP profile responses use exactly one artifact. Put related TextParts,
+DataParts, and FileParts in that artifact; model fundamentally separate
+deliverables as separate AdCP tasks.
 
-### Interim Responses (working, submitted, input-required, auth-required)
+### AdCP Submitted Responses (A2A completed)
+
+When the AdCP handler returns `status: "submitted"`, the handler invocation is finished even though the durable AdCP operation is queued. The profile therefore uses an A2A completed Task and carries the Submitted response in the artifact:
+
+```json
+{
+  "task": {
+    "id": "a2a-task-create-42",
+    "contextId": "ctx-create-42",
+    "status": { "state": "TASK_STATE_COMPLETED" },
+    "artifacts": [{
+      "artifactId": "adcp-result",
+      "parts": [{
+        "data": {
+          "status": "submitted",
+          "task_id": "adcp-task-9a21",
+          "message": "Awaiting IO signature"
+        }
+      }]
+    }]
+  }
+}
+```
+
+The A2A Task id and AdCP `task_id` are independent. The AdCP handle MUST remain only in the direct DataPart; do not copy it to `artifact.metadata.adcp_task_id`. Poll by sending a new profile invocation with `skill: "get_task_status"` and `input.task_id: "adcp-task-9a21"`, not by polling the completed A2A Task.
+
+### Interim A2A Responses (working, native submitted, input-required, auth-required)
 
 Interim status updates are delivered as `TaskStatusUpdateEvent`, with optional progress/challenge data carried in `status.message.parts[]` (not in `artifacts`). Artifacts accumulate during the task lifecycle but are read as the final deliverable once the task reaches a terminal state.
 
@@ -67,6 +104,9 @@ Interim status updates are delivered as `TaskStatusUpdateEvent`, with optional p
     "state": "TASK_STATE_WORKING",
     "timestamp": "2026-01-22T10:15:00.000Z",
     "message": {
+      "messageId": "msg-progress-001",
+      "taskId": "task_123",
+      "contextId": "ctx_456",
       "role": "ROLE_AGENT",
       "parts": [
         {
@@ -84,7 +124,7 @@ Interim status updates are delivered as `TaskStatusUpdateEvent`, with optional p
 }
 ```
 
-When delivered over SSE or as a push notification, this event is wrapped in the A2A 1.0 `StreamResponse` oneof: `{ "statusUpdate": { … } }`. Non-streaming responses (e.g. `tasks/get`) deliver the bare object. Clients unwrap before reading `status.state` — see [A2A Response Extraction](/docs/building/by-layer/L0/a2a-response-extraction#extraction-algorithm).
+When delivered over SSE or as a push notification, this event is wrapped in the A2A 1.0 `StreamResponse` oneof: `{ "statusUpdate": { … } }`. Non-streaming responses such as native A2A Get Task deliver the bare object. Clients unwrap before reading `status.state` — see [A2A Response Extraction](/docs/building/by-layer/L0/a2a-response-extraction#extraction-algorithm).
 
 **Interim response characteristics:**
 - **TextPart** is recommended for human-readable status
@@ -111,7 +151,9 @@ When delivered over SSE or as a push notification, this event is wrapped in the 
 // ✅ CORRECT - Direct AdCP payload
 {
   "data": {
-    "products": [...]       // ← Direct schema-compliant response
+    "status": "completed",
+    "cache_scope": "account",
+    "products": []
   }
 }
 ```
@@ -133,7 +175,7 @@ This section defines EXACTLY how clients MUST extract AdCP responses from A2A pr
 | Status | Webhook Type | Data Location | Schema Required? | Returns |
 |--------|--------------|---------------|-----------------|---------|
 | `working` | `TaskStatusUpdateEvent` | `status.message.parts[]` | ✅ Yes (if present) | `{ status, taskId, message, data? }` |
-| `submitted` | `TaskStatusUpdateEvent` | `status.message.parts[]` | ✅ Yes (if present) | `{ status, taskId, message, data? }` |
+| native A2A `submitted` | `TaskStatusUpdateEvent` | `status.message.parts[]` | ✅ Yes (if present) | `{ status, taskId, message, data? }` |
 | `input-required` | `TaskStatusUpdateEvent` | `status.message.parts[]` | ✅ Yes (if present) | `{ status, taskId, message, data? }` |
 | `auth-required` (1.0) | `TaskStatusUpdateEvent` | `status.message.parts[]` | ✅ Yes (auth challenge) | `{ status, taskId, message, data }` |
 | `completed` | `Task` | `.artifacts[]` (fallback: `status.message.parts[]`) | ✅ Required | `{ status, taskId, message, data }` |
@@ -291,8 +333,11 @@ Putting it all together with proper handling of both Task and TaskStatusUpdateEv
 ```javascript
 async function executeTask(taskName, params) {
   const response = await a2aClient.send({
-    task: taskName,
-    params: params
+    message: {
+      messageId: crypto.randomUUID(),
+      role: 'ROLE_USER',
+      parts: [{ data: { skill: taskName, input: params } }]
+    }
   });
 
   // 1. Status-based handling (extracts from correct location)
@@ -332,30 +377,24 @@ if (result.status === 'working') {
 <details>
 <summary><strong>Why this pattern?</strong></summary>
 
-During streaming operations, intermediate responses may include old progress data:
+An artifact can accumulate multiple DataParts while streaming. Only the final
+Task artifact uses last-DataPart authority:
 
 ```json
-// Working status with progress
 {
-  "status": "working",
-  "artifacts": [{
-    "parts": [
-      {"text": "Searching inventory..."},
-      {"data": {"progress": 25}}
-    ]
-  }]
-}
-
-// Completed - last data part is authoritative
-{
-  "status": "completed",
-  "artifacts": [{
-    "parts": [
-      {"text": "Found 12 products"},
-      {"data": {"progress": 25}},                      // Old
-      {"data": {"products": [...], "total": 12}}        // ← Authoritative
-    ]
-  }]
+  "task": {
+    "id": "task_123",
+    "contextId": "ctx_456",
+    "status": { "state": "TASK_STATE_COMPLETED" },
+    "artifacts": [{
+      "artifactId": "product-result",
+      "parts": [
+        {"text": "Found 12 products"},
+        {"data": {"progress": 25}},
+        {"data": {"status": "completed", "cache_scope": "account", "products": [...], "total": 12}}
+      ]
+    }]
+  }
 }
 ```
 
@@ -374,6 +413,9 @@ const workingResponse = {
   status: {
     state: 'TASK_STATE_WORKING',
     message: {
+      messageId: 'msg-progress-001',
+      taskId: 'task_123',
+      contextId: 'ctx_456',
       role: 'ROLE_AGENT',
       parts: [
         { text: 'Processing inventory...' },
@@ -389,16 +431,17 @@ assert(result1.message === 'Processing inventory...', 'Should extract text from 
 
 // Test 2: Completed status (Task) - extract from .artifacts
 const completedResponse = {
-  taskId: 'task_123',
+  id: 'task_123',
   contextId: 'ctx_456',
   status: {
     state: 'TASK_STATE_COMPLETED',
     timestamp: '2026-01-22T10:30:00.000Z'
   },
   artifacts: [{
+    artifactId: 'product-result',
     parts: [
       { text: 'Found 3 products' },
-      { data: { products: [...], total: 3 } }
+      { data: { status: 'completed', cache_scope: 'account', products: [...], total: 3 } }
     ]
   }]
 };
@@ -409,9 +452,10 @@ assert(Array.isArray(result2.data.products), 'Data should be direct AdCP payload
 
 // Test 3: Wrapper detection (should reject)
 const wrappedResponse = {
-  taskId: 'task_123',
+  id: 'task_123',
   status: { state: 'TASK_STATE_COMPLETED' },
   artifacts: [{
+    artifactId: 'product-result',
     parts: [
       { data: { response: { products: [...] } } }
     ]
@@ -455,331 +499,148 @@ function badClientUsage(result) {
 }
 ```
 
+
 ## Error Handling
 
-### Task-Level Errors (Partial Failures)
-
-Task executed but couldn't complete fully. Use `errors` array in DataPart with `status: "completed"`:
+A schema-valid business outcome, including a partial result with an `errors[]`
+member, is still a completed A2A invocation. A non-streaming `SendMessage`
+response selects the task branch:
 
 ```json
 {
-  "status": "completed",
-  "taskId": "task_123",
-  "artifacts": [{
-    "parts": [
-      {
-        "text": "Signal discovery completed with partial results"
-      },
-      {
+  "task": {
+    "id": "task_123",
+    "contextId": "ctx_456",
+    "status": { "state": "TASK_STATE_COMPLETED" },
+    "artifacts": [{
+      "artifactId": "signal-result",
+      "parts": [{
         "data": {
-          "signals": [...],
+          "status": "completed",
+          "signals": [],
           "errors": [{
             "code": "NO_DATA_IN_REGION",
-            "message": "No signal data available for Australia",
-            "field": "countries[1]",
-            "details": {
-              "requested_country": "AU",
-              "available_countries": ["US", "CA", "GB"]
-            }
+            "message": "No signal data available for Australia"
           }]
         }
-      }
-    ]
-  }]
-}
-```
-
-**When to use errors array:**
-- Platform authorization issues (`PLATFORM_UNAUTHORIZED`)
-- Partial data availability
-- Validation issues in subset of data
-
-### Protocol-Level Errors (Fatal)
-
-Task couldn't execute. Use `status: "failed"` with message:
-
-```json
-{
-  "taskId": "task_456",
-  "status": "failed",
-  "message": {
-    "role": "ROLE_AGENT",
-    "parts": [{
-      "text": "Authentication failed: Invalid or expired API token"
+      }]
     }]
   }
 }
 ```
 
-**When to use status: failed:**
-- Authentication failures (invalid credentials, expired tokens)
-- Invalid request parameters (malformed JSON, missing required fields)
-- Resource not found (unknown taskId, expired context)
-- System errors (database unavailable, internal service failure)
+A fatal failure after execution starts uses a failed Task and carries structured
+error data in its artifact. Pre-task routing failures use the A2A binding error
+mechanism.
 
-### Where the Error Lives: Decision Rule
+```json
+{
+  "task": {
+    "id": "task_456",
+    "contextId": "ctx_456",
+    "status": { "state": "TASK_STATE_FAILED" },
+    "artifacts": [{
+      "artifactId": "adcp-error",
+      "parts": [{
+        "data": {
+          "adcp_error": {
+            "code": "AUTHENTICATION_FAILED",
+            "message": "The API token is invalid or expired"
+          }
+        }
+      }]
+    }]
+  }
+}
+```
 
-Placement is chosen by what the server has and which state it's in:
-
-| Situation | State | Location | Payload |
-|---|---|---|---|
-| Task executed, subset failed | `completed` | `artifacts[0].parts[]` DataPart | `{ <success_fields>, errors: [...] }` |
-| Task failed with structured error | `failed` | `artifacts[0].parts[]` DataPart | `{ adcp_error: {...} }` |
-| Task rejected by policy/validation (1.0) | `rejected` | `artifacts[0].parts[]` DataPart | `{ adcp_error: {...} }` |
-| System-initiated cancel (timeout, upstream failure) | `canceled` | `artifacts[0].parts[]` DataPart | `{ adcp_error: {...} }` |
-| User-initiated cancel (`tasks/cancel`) | `canceled` | `status.message.parts[]` TextPart | Human-readable text only |
-| Protocol/transport failure, no artifact produced | `failed` | `status.message.parts[]` TextPart | Human-readable text only |
-
-**Rule of thumb:** if the server has structured error data, put it in artifacts as a DataPart. `status.message` is the free-text fallback for cases where no task artifact was ever produced (JSON-RPC parse errors, auth handshake failures, malformed requests, or a user-initiated cancel with no further detail). A2A 1.0 §3.7 reinforces this: *"Messages SHOULD NOT be used to deliver task outputs. Results SHOULD be returned using Artifacts."*
-
-**Native A2A `rejected` vs `failed`.** Use native A2A `rejected` when the server refuses to execute the invocation (for example, an authentication, tier, or transport-level policy check before task work starts). Use `failed` when execution started and encountered a fatal error. Both carry `adcp_error` in the artifact. A task-specific AdCP business rejection is different: A2A is `completed`, the DataPart carries `status: "rejected"`, and there is no `adcp_error`.
-
-**Cancel origin is client-reconciled, not seller-attributed.** `status.state: "canceled"` (or `TASK_STATE_CANCELED`) does not tell the caller whether the cancel was user-initiated or system-initiated — a seller could place `adcp_error` in artifacts for what was actually a user-initiated cancel to mislead the buyer's bookkeeping or retry logic. Clients MUST reconcile cancel origin locally: if the caller has an outstanding `tasks/cancel` request for this `taskId`, treat the cancel as user-initiated regardless of payload and ignore any `adcp_error` the seller attached. Clients MUST NOT retry a user-initiated cancel on the basis of a seller-sent `adcp_error.recovery` hint.
-
-## Status Mapping
-
-AdCP uses A2A's TaskState enum directly:
-
-| A2A Status | Payload Type | Data Location | AdCP Usage |
-|------------|--------------|---------------|------------|
-| `completed` | `Task` | `.artifacts` | Task finished successfully, data in DataPart, optional errors array |
-| `failed` | `Task` | `.artifacts` (or `status.message` for text-only) | Fatal error preventing completion, `adcp_error` when structured |
-| `rejected` (1.0) | `Task` | `.artifacts` | Native A2A invocation rejection, `adcp_error` with rejection reason |
-| `canceled` | `Task` | `.artifacts` (typically none) | Task canceled by user or system |
-| `input-required` | `TaskStatusUpdateEvent` | `status.message.parts` | Need user input/approval, data + text explaining what's needed |
-| `auth-required` (1.0) | `TaskStatusUpdateEvent` | `status.message.parts` | Authentication challenge during task execution (scheme, URL, scopes) |
-| `working` | `TaskStatusUpdateEvent` | `status.message.parts` | Processing (< 120s), optional progress data |
-| `submitted` | `TaskStatusUpdateEvent` | `status.message.parts` | Long-running (hours/days), minimal data, use webhooks/polling |
+| Situation | A2A state | Data location |
+|---|---|---|
+| Schema-valid success, partial result, business rejection, or AdCP Submitted result | `TASK_STATE_COMPLETED` | `task.artifacts[0].parts[]` |
+| Fatal failure after execution starts | `TASK_STATE_FAILED` | `task.artifacts[0].parts[]` |
+| Native A2A policy rejection | `TASK_STATE_REJECTED` | `task.artifacts[0].parts[]` |
+| Working, input-required, auth-required, or native submitted update | matching interim state | `statusUpdate.status.message.parts[]` |
 
 ## Webhook Payloads
 
-Async operations (`status: "submitted"`) deliver the same artifact structure in webhooks:
+A2A push notifications use a `StreamResponse` branch. Terminal delivery wraps
+the same Task structure used by `SendMessageResponse`:
 
 ```json
-POST /webhook-endpoint
 {
-  "taskId": "task_123",
-  "status": "completed",
-  "timestamp": "2026-01-22T10:30:00.000Z",
-  "artifacts": [{
-    "parts": [
-      {"text": "Media buy approved and live"},
-      {"data": {
-        "media_buy_id": "mb_456",
-        "packages": [...],
-        "creative_deadline": "2026-01-30T23:59:59.000Z"
-      }}
-    ]
-  }]
+  "task": {
+    "id": "task_123",
+    "contextId": "ctx_456",
+    "status": {
+      "state": "TASK_STATE_COMPLETED",
+      "timestamp": "2026-01-22T10:30:00.000Z"
+    },
+    "artifacts": [{
+      "artifactId": "media-buy-result",
+      "parts": [
+        { "text": "Media buy approved and live" },
+        { "data": { "status": "completed", "media_buy_id": "mb_456", "confirmed_at": "2026-01-22T10:30:00.000Z", "revision": 1, "packages": [] } }
+      ]
+    }]
+  }
 }
 ```
 
-Extract AdCP data using the same last-DataPart pattern. **For webhook authentication, retry patterns, and security**, see [Webhooks](/docs/building/by-layer/L3/webhooks).
+Interim delivery selects `statusUpdate`, and its server-authored Message carries
+its own `messageId` plus the matching `taskId` and `contextId`:
+
+```json
+{
+  "statusUpdate": {
+    "taskId": "task_123",
+    "contextId": "ctx_456",
+    "status": {
+      "state": "TASK_STATE_INPUT_REQUIRED",
+      "timestamp": "2026-01-22T10:20:00.000Z",
+      "message": {
+        "messageId": "msg-input-001",
+        "taskId": "task_123",
+        "contextId": "ctx_456",
+        "role": "ROLE_AGENT",
+        "parts": [
+          { "text": "Select a supported campaign start time." },
+          { "data": { "reason": "START_TIME_REQUIRED" } }
+        ]
+      }
+    }
+  }
+}
+```
 
 ## File Parts in Responses
 
-Creative operations MAY include file references:
+File references may accompany the authoritative DataPart inside the Task
+artifact. They never replace the typed AdCP response:
 
 ```json
 {
-  "status": "completed",
-  "artifacts": [{
-    "parts": [
-      {"text": "Creative uploaded and preview generated"},
-      {"data": {
-        "creative_id": "cr_789",
-        "format_kind": "video_hosted",
-        "status": "ready"
-      }},
-      {"url": "https://cdn.example.com/cr_789/preview.mp4", "filename": "preview.mp4", "mediaType": "video/mp4"}
-    ]
-  }]
+  "task": {
+    "id": "task_creative_789",
+    "contextId": "ctx_creative_789",
+    "status": { "state": "TASK_STATE_COMPLETED" },
+    "artifacts": [{
+      "artifactId": "creative-result",
+      "parts": [
+        { "data": { "status": "completed", "creative_id": "cr_789" } },
+        { "url": "https://cdn.example.com/cr_789/preview.mp4", "filename": "preview.mp4", "mediaType": "video/mp4" }
+      ]
+    }]
+  }
 }
 ```
-
-**File part usage:** Preview URLs, generated assets, trafficking reports. **Not for** raw AdCP response data (always use DataPart).
 
 ## Retry and Idempotency
 
-### TaskId-Based Deduplication
-
-A2A's `taskId` enables retry detection. Agents SHOULD:
-- Return cached response if `taskId` matches a completed operation (within TTL window)
-- Reject duplicate `taskId` submission if operation is still in progress
-
-```json
-// Duplicate taskId during active operation
-{
-  "taskId": "task_123",
-  "status": "failed",
-  "message": {
-    "role": "ROLE_AGENT",
-    "parts": [{
-      "text": "Task 'task_123' is already in progress. Use tasks/get to check status."
-    }]
-  }
-}
-```
-
-## Examples
-
-<details>
-<summary><strong>Product Discovery Success</strong></summary>
-
-```json
-{
-  "status": "completed",
-  "taskId": "task_001",
-  "contextId": "ctx_abc",
-  "artifacts": [{
-    "name": "product_catalog",
-    "parts": [
-      {
-        "text": "Found 8 CTV products targeting sports fans under $50 CPM"
-      },
-      {
-        "data": {
-          "products": [
-            {
-              "product_id": "ctv_sports_premium",
-              "name": "Premium Sports CTV"
-            }
-            // ... 7 more products
-          ]
-        }
-      }
-    ]
-  }]
-}
-```
-</details>
-
-<details>
-<summary><strong>Media Buy with Approval Required</strong></summary>
-
-```json
-{
-  "status": "input-required",
-  "taskId": "task_002",
-  "contextId": "ctx_def",
-  "artifacts": [{
-    "name": "approval_request",
-    "parts": [
-      {
-        "text": "Media buy exceeds auto-approval limit ($100K). Please approve to proceed."
-      },
-      {
-        "data": {
-          "media_buy_id": "mb_pending_456",
-          "packages": [
-            { "package_id": "pkg_pending_001" },
-            { "package_id": "pkg_pending_002" }
-          ],
-          "total_budget": 150000,
-          "currency": "USD",
-          "creative_deadline": "2026-02-01T23:59:59.000Z"
-        }
-      }
-    ]
-  }]
-}
-```
-</details>
-
-<details>
-<summary><strong>Signal Discovery with Partial Failure</strong></summary>
-
-```json
-{
-  "status": "completed",
-  "taskId": "task_003",
-  "contextId": "ctx_ghi",
-  "artifacts": [{
-    "name": "signal_results",
-    "parts": [
-      {
-        "text": "Found 3 signals for luxury automotive. Note: No data available for Australia region."
-      },
-      {
-        "data": {
-          "signals": [
-            {
-              "signal_id": "lux_auto_us",
-              "name": "Luxury Auto Intenders - US",
-              "reach": 2500000
-            }
-          ],
-          "total": 3,
-          "errors": [{
-            "code": "NO_DATA_IN_REGION",
-            "message": "No signal data available for requested region: Australia",
-            "field": "countries[1]",
-            "details": {
-              "requested_country": "AU",
-              "available_countries": ["US", "CA", "GB"]
-            }
-          }]
-        }
-      }
-    ]
-  }]
-}
-```
-</details>
-
-<details>
-<summary><strong>Platform Authorization Issue (Task-Level Error)</strong></summary>
-
-Platform/operation-specific authorization failures are task-level errors:
-
-```json
-{
-  "status": "completed",
-  "taskId": "task_004",
-  "contextId": "ctx_jkl",
-  "artifacts": [{
-    "name": "signal_activation_result",
-    "parts": [
-      {
-        "text": "Signal activation failed: Account not authorized for Peer39 data on PubMatic"
-      },
-      {
-        "data": {
-          "errors": [{
-            "code": "PLATFORM_UNAUTHORIZED",
-            "message": "Account 'brand-456-pm' not authorized for Peer39 data on PubMatic. Contact your PubMatic account manager to enable access.",
-            "details": {
-              "platform": "pubmatic",
-              "account_id": "brand-456-pm",
-              "data_provider": "peer39"
-            }
-          }]
-        }
-      }
-    ]
-  }]
-}
-```
-</details>
-
-<details>
-<summary><strong>Protocol-Level Failure (Fatal)</strong></summary>
-
-Authentication failures are protocol-level errors:
-
-```json
-{
-  "taskId": "task_005",
-  "status": "failed",
-  "message": {
-    "role": "ROLE_AGENT",
-    "parts": [{
-      "text": "Authentication failed: Invalid or expired API token. Please refresh your credentials and retry."
-    }]
-  }
-}
-```
-</details>
+A continuation of an input-required A2A Task sends a new Message containing a
+new `messageId`, the existing `taskId` and `contextId`, and a complete typed
+profile invocation. Ordinary AdCP idempotency rules still apply to the task
+input. Native `GetTask` observes an A2A transport Task; it does not replace
+`get_task_status` for a durable AdCP operation.
 
 ## Implementation Checklist
 
@@ -793,8 +654,9 @@ When implementing A2A responses for AdCP:
 - [ ] **Use last DataPart as authoritative** if multiple exist
 - [ ] **Never nest AdCP data in custom wrappers** (no `{ response: {...} }` objects)
 - [ ] **DataPart content MUST match AdCP schemas** (validate against `[task]-response.json`)
+- [ ] **Map an AdCP `status: "submitted"` response to A2A completed**, keep `task_id` only in the DataPart, and direct clients to the AdCP `get_task_status` task
 
-**Interim Responses (status: "working", "submitted", "input-required") - Use `TaskStatusUpdateEvent`:**
+**Interim A2A Responses (status: "working", native "submitted", "input-required") - Use `TaskStatusUpdateEvent`:**
 - [ ] **Use `status.message.parts[]` for optional data** (not `.artifacts`)
 - [ ] **TextPart** is recommended for human-readable status updates
 - [ ] **DataPart** is optional but follows AdCP schemas when provided (`[task]-async-response-[status].json`)

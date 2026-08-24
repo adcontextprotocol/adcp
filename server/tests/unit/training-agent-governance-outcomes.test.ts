@@ -6,6 +6,7 @@ import {
   handleReportPlanOutcome,
   handleSyncPlans,
 } from '../../src/training-agent/governance-handlers.js';
+import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
 import { clearSessions, getSession, runWithSessionContext } from '../../src/training-agent/state.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
@@ -181,21 +182,54 @@ describe('report_plan_outcome authorization and ledger binding', () => {
     await runWithSessionContext(async () => {
       const intent = await setupIntent(100);
       await report(intent, 100);
-      const delivery = {
+      const deliveryMetrics = {
+        statement_id: 'stmt_mb_001_0001',
+        sequence: 1,
+        issued_at: '2027-01-02T01:00:00Z',
         reporting_period: { start: '2027-01-01T00:00:00Z', end: '2027-01-02T00:00:00Z' },
-        spend: 40,
-        impressions: 2_000,
+        cumulative_spend: 40,
+        currency: 'USD',
       };
-      const result = await handleReportPlanOutcome({
+      const sellerStatement = await handleCheckGovernance({
+        caller: SELLER_CTX.authenticatedAgentUrl,
+        governance_context: intent.governance_context,
+        phase: 'delivery',
+        planned_delivery: { media_buy_id: 'mb_001', total_budget: 100, currency: 'USD' },
+        delivery_metrics: {
+          ...deliveryMetrics,
+          statement_digest: computeDeliveryStatementDigest('mb_001', deliveryMetrics),
+        },
+      }, SELLER_CTX) as Record<string, any>;
+      const delivery = {
+        observation_id: 'obs_mb_001_0001',
+        source: 'seller_statement_copy',
+        observed_at: '2027-01-02T01:05:00Z',
+        reporting_period: deliveryMetrics.reporting_period,
+        cumulative_spend: 40,
+        currency: 'USD',
+        seller_statement_id: deliveryMetrics.statement_id,
+        seller_statement_digest: computeDeliveryStatementDigest('mb_001', deliveryMetrics),
+      };
+      const observationRequest = {
         plan_id: PLAN.plan_id,
         idempotency_key: `delivery_${intent.check_id}_0001`,
+        check_id: sellerStatement.check_id,
+        governance_context: sellerStatement.governance_context,
         outcome: 'delivery',
         delivery,
+      } as const;
+      const result = await handleReportPlanOutcome(observationRequest, BUYER_CTX) as Record<string, any>;
+      const equivocation = await handleReportPlanOutcome({
+        ...observationRequest,
+        idempotency_key: `delivery_${intent.check_id}_0002`,
+        delivery: { ...delivery, cumulative_spend: 41 },
       }, BUYER_CTX) as Record<string, any>;
       const logs = await audit();
       const deliveryEntry = logs.plans[0].entries.find((entry: any) => entry.outcome === 'delivery');
 
       expect(result.status).toBe('accepted');
+      expect(result.delivery_reconciliation_status).toBe('consistent');
+      expect(equivocation.errors?.[0]).toMatchObject({ code: 'CONFLICT' });
       expect(logs.plans[0].budget.committed).toBe(100);
       expect(deliveryEntry.delivery).toEqual(delivery);
     });
@@ -260,6 +294,502 @@ describe('report_plan_outcome authorization and ledger binding', () => {
 
       expect(result.errors?.[0]?.code).toBe('VALIDATION_ERROR');
       expect((await audit()).plans[0].budget.committed).toBe(0);
+    });
+  });
+});
+
+describe('delivery observation binds to the canonical statement', () => {
+  beforeEach(() => clearSessions());
+  afterEach(() => clearSessions());
+
+  it('rejects an observation naming a superseded seller statement and accepts one naming the corrected canonical statement', async () => {
+    await runWithSessionContext(async () => {
+      const intent = await setupIntent(100);
+      await report(intent, 100);
+      const period = { start: '2027-01-01T00:00:00Z', end: '2027-01-08T00:00:00Z' };
+
+      const seq1Metrics = {
+        statement_id: 'stmt_canonical_seq1',
+        sequence: 1,
+        issued_at: '2027-01-08T01:00:00Z',
+        reporting_period: period,
+        cumulative_spend: 40,
+        currency: 'USD',
+      };
+      const seq1Check = await handleCheckGovernance({
+        caller: SELLER_CTX.authenticatedAgentUrl,
+        governance_context: intent.governance_context,
+        phase: 'delivery',
+        planned_delivery: { media_buy_id: 'mb_canonical', total_budget: 100, currency: 'USD' },
+        delivery_metrics: {
+          ...seq1Metrics,
+          statement_digest: computeDeliveryStatementDigest('mb_canonical', seq1Metrics),
+        },
+      }, SELLER_CTX) as Record<string, any>;
+      expect(seq1Check.verdict, JSON.stringify(seq1Check)).toBe('approved');
+
+      // Seller issues a corrected, higher-sequence statement for the same open period.
+      const seq2Metrics = {
+        statement_id: 'stmt_canonical_seq2',
+        sequence: 2,
+        issued_at: '2027-01-08T02:00:00Z',
+        reporting_period: period,
+        cumulative_spend: 45,
+        currency: 'USD',
+      };
+      const seq2Check = await handleCheckGovernance({
+        caller: SELLER_CTX.authenticatedAgentUrl,
+        governance_context: intent.governance_context,
+        phase: 'delivery',
+        planned_delivery: { media_buy_id: 'mb_canonical', total_budget: 100, currency: 'USD' },
+        delivery_metrics: {
+          ...seq2Metrics,
+          statement_digest: computeDeliveryStatementDigest('mb_canonical', seq2Metrics),
+        },
+      }, SELLER_CTX) as Record<string, any>;
+      expect(seq2Check.verdict, JSON.stringify(seq2Check)).toBe('approved');
+
+      // An observation naming the superseded seq-1 check is rejected.
+      const staleObservation = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: seq1Check.check_id,
+        governance_context: seq1Check.governance_context,
+        idempotency_key: 'canonical_stale_observation_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'obs_canonical_stale',
+          source: 'buyer_measurement',
+          observed_at: '2027-01-08T02:05:00Z',
+          reporting_period: period,
+          cumulative_spend: 40,
+          currency: 'USD',
+        },
+      }, BUYER_CTX) as Record<string, any>;
+      expect(staleObservation.errors?.[0]).toMatchObject({ code: 'CONFLICT' });
+
+      // An observation naming the corrected, canonical seq-2 check compares
+      // normally, and the corrected statement is the comparison target.
+      const canonicalObservation = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: seq2Check.check_id,
+        governance_context: seq2Check.governance_context,
+        idempotency_key: 'canonical_observation_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'obs_canonical_current',
+          source: 'buyer_measurement',
+          observed_at: '2027-01-08T02:10:00Z',
+          reporting_period: period,
+          cumulative_spend: 45,
+          currency: 'USD',
+        },
+      }, BUYER_CTX) as Record<string, any>;
+      expect(canonicalObservation.delivery_reconciliation_status).toBe('consistent');
+    });
+  });
+});
+
+describe('delivery statement digest integrity', () => {
+  beforeEach(() => clearSessions());
+  afterEach(() => clearSessions());
+
+  it('matches the golden digest vector from the check_governance documentation example', () => {
+    // Verbatim from docs/governance/campaign/tasks/check_governance.mdx —
+    // the "Execution check -- delivery" example. This digest was
+    // independently verified against the doc; if the computed value ever
+    // differs, the transcription above is wrong, not the helper.
+    const deliveryMetrics = {
+      statement_id: 'stmt_mb_seller_456_0001',
+      statement_digest: 'sha256:4b55f1157094ed8df2635250f71568701d294cb0da57845eba886a62e5434633',
+      sequence: 1,
+      issued_at: '2026-03-22T01:00:00Z',
+      reporting_period: {
+        start: '2026-03-15T00:00:00Z',
+        end: '2026-03-22T00:00:00Z',
+      },
+      spend: 12500,
+      cumulative_spend: 12500,
+      currency: 'USD',
+      impressions: 850000,
+      cumulative_impressions: 850000,
+      geo_distribution: { US: 100 },
+      channel_distribution: { olv: 100 },
+      pacing: 'on_track',
+      audience_distribution: {
+        baseline: 'platform',
+        indices: {
+          'age:18-24': 0.8,
+          'age:25-34': 1.4,
+          'age:35-44': 1.3,
+          'age:45-54': 1.1,
+          'gender:female': 1.05,
+          'gender:male': 0.95,
+        },
+        cumulative_indices: {
+          'age:18-24': 0.85,
+          'age:25-34': 1.35,
+          'age:35-44': 1.25,
+          'age:45-54': 1.1,
+          'gender:female': 1.03,
+          'gender:male': 0.97,
+        },
+      },
+    };
+
+    expect(computeDeliveryStatementDigest('mb_seller_456', deliveryMetrics))
+      .toBe('sha256:4b55f1157094ed8df2635250f71568701d294cb0da57845eba886a62e5434633');
+  });
+
+  it('rejects a delivery statement whose statement_digest does not match the canonical recomputation', async () => {
+    await runWithSessionContext(async () => {
+      const intent = await setupIntent(100);
+      const deliveryMetrics = {
+        statement_id: 'stmt_digest_mismatch_0001',
+        sequence: 1,
+        issued_at: '2027-01-02T01:00:00Z',
+        reporting_period: { start: '2027-01-01T00:00:00Z', end: '2027-01-02T00:00:00Z' },
+        cumulative_spend: 40,
+        currency: 'USD',
+      };
+      const result = await handleCheckGovernance({
+        caller: SELLER_CTX.authenticatedAgentUrl,
+        governance_context: intent.governance_context,
+        phase: 'delivery',
+        planned_delivery: { media_buy_id: 'mb_digest_mismatch', total_budget: 100, currency: 'USD' },
+        delivery_metrics: {
+          ...deliveryMetrics,
+          statement_digest: `sha256:${'0'.repeat(64)}`,
+        },
+      }, SELLER_CTX) as Record<string, any>;
+
+      expect(result.errors?.[0]).toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'delivery_metrics.statement_digest does not match the canonical delivery statement.',
+      });
+    });
+  });
+});
+
+describe('delivery observation reporting authority', () => {
+  const OWNER_CTX: TrainingContext = { ...CTX, authenticatedAgentUrl: 'https://owner-f4.example' };
+  const DELEGATE_CTX: TrainingContext = { ...CTX, authenticatedAgentUrl: 'https://delegate-f4.example' };
+  const PLAN_F4 = {
+    plan_id: 'plan-delivery-authority',
+    brand: { domain: 'delivery-authority.example' },
+    objectives: 'Verify plan-owner closing authority for delivery reporting periods.',
+    budget: { total: 1_000, currency: 'USD', reallocation_threshold: 1_000 },
+    flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+    delegations: [{ agent_url: DELEGATE_CTX.authenticatedAgentUrl, authority: 'full' as const }],
+  };
+
+  beforeEach(() => clearSessions());
+  afterEach(() => clearSessions());
+
+  async function setupDelegatedIntent() {
+    await handleSyncPlans({ plans: [PLAN_F4] }, OWNER_CTX);
+    return handleCheckGovernance({
+      plan_id: PLAN_F4.plan_id,
+      caller: DELEGATE_CTX.authenticatedAgentUrl,
+      target_agent: SELLER_CTX.authenticatedAgentUrl,
+      tool: 'create_media_buy',
+      payload: { total_budget: { amount: 100, currency: 'USD' } },
+    }, DELEGATE_CTX) as Promise<Record<string, any>>;
+  }
+
+  it('rejects a delegated intent caller closing a reporting period but allows the plan owner to report and close it', async () => {
+    await runWithSessionContext(async () => {
+      const intent = await setupDelegatedIntent();
+      const settlement = await handleReportPlanOutcome({
+        plan_id: PLAN_F4.plan_id,
+        check_id: intent.check_id,
+        governance_context: intent.governance_context,
+        idempotency_key: 'f4_settlement_0001',
+        outcome: 'completed',
+        seller_response: { seller_reference: 'mb_f4', committed_budget: 100 },
+      }, DELEGATE_CTX) as Record<string, any>;
+      expect(settlement.errors, JSON.stringify(settlement)).toBeUndefined();
+
+      const deliveryMetrics = {
+        statement_id: 'stmt_f4_0001',
+        sequence: 1,
+        issued_at: '2027-01-08T01:00:00Z',
+        reporting_period: { start: '2027-01-01T00:00:00Z', end: '2027-01-08T00:00:00Z' },
+        cumulative_spend: 40,
+        currency: 'USD',
+      };
+      const deliveryCheck = await handleCheckGovernance({
+        caller: SELLER_CTX.authenticatedAgentUrl,
+        governance_context: intent.governance_context,
+        phase: 'delivery',
+        planned_delivery: { media_buy_id: 'mb_f4', total_budget: 100, currency: 'USD' },
+        delivery_metrics: {
+          ...deliveryMetrics,
+          statement_digest: computeDeliveryStatementDigest('mb_f4', deliveryMetrics),
+        },
+      }, SELLER_CTX) as Record<string, any>;
+      expect(deliveryCheck.verdict, JSON.stringify(deliveryCheck)).toBe('approved');
+
+      // The delegated intent caller may report delivery, but may not close the period.
+      const delegateCloseAttempt = await handleReportPlanOutcome({
+        plan_id: PLAN_F4.plan_id,
+        check_id: deliveryCheck.check_id,
+        governance_context: deliveryCheck.governance_context,
+        idempotency_key: 'f4_delegate_close_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'f4_delegate_close_obs',
+          source: 'buyer_measurement',
+          observed_at: '2027-01-08T01:05:00Z',
+          reporting_period: deliveryMetrics.reporting_period,
+          cumulative_spend: 40,
+          currency: 'USD',
+          period_closed: true,
+        },
+      }, DELEGATE_CTX) as Record<string, any>;
+      expect(delegateCloseAttempt.errors?.[0]).toMatchObject({ code: 'PERMISSION_DENIED' });
+
+      // The plan owner — who never placed the intent — may report a delivery observation.
+      const ownerObservation = await handleReportPlanOutcome({
+        plan_id: PLAN_F4.plan_id,
+        check_id: deliveryCheck.check_id,
+        governance_context: deliveryCheck.governance_context,
+        idempotency_key: 'f4_owner_observation_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'f4_owner_obs',
+          source: 'buyer_measurement',
+          observed_at: '2027-01-08T01:10:00Z',
+          reporting_period: deliveryMetrics.reporting_period,
+          cumulative_spend: 40,
+          currency: 'USD',
+        },
+      }, OWNER_CTX) as Record<string, any>;
+      expect(ownerObservation.errors, JSON.stringify(ownerObservation)).toBeUndefined();
+
+      // The plan owner may close the period.
+      const ownerClose = await handleReportPlanOutcome({
+        plan_id: PLAN_F4.plan_id,
+        check_id: deliveryCheck.check_id,
+        governance_context: deliveryCheck.governance_context,
+        idempotency_key: 'f4_owner_close_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'f4_owner_close_obs',
+          source: 'buyer_measurement',
+          observed_at: '2027-01-08T01:15:00Z',
+          reporting_period: deliveryMetrics.reporting_period,
+          cumulative_spend: 40,
+          currency: 'USD',
+          period_closed: true,
+        },
+      }, OWNER_CTX) as Record<string, any>;
+      expect(ownerClose.delivery_period_state).toBe('closed');
+    });
+  });
+
+  it('deduplicates delivery observations by the authenticated reporter, not the plan owner', async () => {
+    await runWithSessionContext(async () => {
+      const intent = await setupDelegatedIntent();
+      await handleReportPlanOutcome({
+        plan_id: PLAN_F4.plan_id,
+        check_id: intent.check_id,
+        governance_context: intent.governance_context,
+        idempotency_key: 'f5_settlement_0001',
+        outcome: 'completed',
+        seller_response: { seller_reference: 'mb_f5', committed_budget: 100 },
+      }, DELEGATE_CTX);
+
+      const deliveryMetrics = {
+        statement_id: 'stmt_f5_0001',
+        sequence: 1,
+        issued_at: '2027-01-08T01:00:00Z',
+        reporting_period: { start: '2027-01-01T00:00:00Z', end: '2027-01-08T00:00:00Z' },
+        cumulative_spend: 40,
+        currency: 'USD',
+      };
+      const deliveryCheck = await handleCheckGovernance({
+        caller: SELLER_CTX.authenticatedAgentUrl,
+        governance_context: intent.governance_context,
+        phase: 'delivery',
+        planned_delivery: { media_buy_id: 'mb_f5', total_budget: 100, currency: 'USD' },
+        delivery_metrics: {
+          ...deliveryMetrics,
+          statement_digest: computeDeliveryStatementDigest('mb_f5', deliveryMetrics),
+        },
+      }, SELLER_CTX) as Record<string, any>;
+
+      const firstObservation = {
+        plan_id: PLAN_F4.plan_id,
+        check_id: deliveryCheck.check_id,
+        governance_context: deliveryCheck.governance_context,
+        idempotency_key: 'f5_delegate_obs_0001',
+        outcome: 'delivery' as const,
+        delivery: {
+          observation_id: 'f5_dedup_obs',
+          source: 'buyer_measurement' as const,
+          observed_at: '2027-01-08T01:05:00Z',
+          reporting_period: deliveryMetrics.reporting_period,
+          cumulative_spend: 40,
+          currency: 'USD',
+        },
+      };
+      const first = await handleReportPlanOutcome(firstObservation, DELEGATE_CTX) as Record<string, any>;
+      expect(first.errors, JSON.stringify(first)).toBeUndefined();
+
+      // Same observation_id, different evidence: the authenticated reporter
+      // (the delegate) is what dedup must scope to, not the plan owner.
+      const conflicting = await handleReportPlanOutcome({
+        ...firstObservation,
+        idempotency_key: 'f5_delegate_obs_0002',
+        delivery: { ...firstObservation.delivery, cumulative_spend: 41 },
+      }, DELEGATE_CTX) as Record<string, any>;
+      expect(conflicting.errors?.[0]).toMatchObject({ code: 'CONFLICT' });
+
+      const replay = await handleReportPlanOutcome(firstObservation, DELEGATE_CTX) as Record<string, any>;
+      expect(replay).toMatchObject({ replayed: true });
+    });
+  });
+});
+
+describe('evidence-source-dependent delivery reconciliation', () => {
+  beforeEach(() => clearSessions());
+  afterEach(() => clearSessions());
+
+  async function setupCanonicalStatement(cumulativeSpend = 500) {
+    const intent = await setupIntent(1_000);
+    await report(intent, 1_000);
+    const deliveryMetrics = {
+      statement_id: 'stmt_variance_0001',
+      sequence: 1,
+      issued_at: '2027-01-08T01:00:00Z',
+      reporting_period: { start: '2027-01-01T00:00:00Z', end: '2027-01-08T00:00:00Z' },
+      cumulative_spend: cumulativeSpend,
+      currency: 'USD',
+    };
+    const sellerStatement = await handleCheckGovernance({
+      caller: SELLER_CTX.authenticatedAgentUrl,
+      governance_context: intent.governance_context,
+      phase: 'delivery',
+      planned_delivery: { media_buy_id: 'mb_variance', total_budget: 1_000, currency: 'USD' },
+      delivery_metrics: {
+        ...deliveryMetrics,
+        statement_digest: computeDeliveryStatementDigest('mb_variance', deliveryMetrics),
+      },
+    }, SELLER_CTX) as Record<string, any>;
+    expect(sellerStatement.check_id, JSON.stringify(sellerStatement)).toBeTruthy();
+    return { intent, sellerStatement, deliveryMetrics };
+  }
+
+  it('records measurement_variance -- not disputed -- for a buyer_measurement spend difference with matching period and currency', async () => {
+    await runWithSessionContext(async () => {
+      const { sellerStatement, deliveryMetrics } = await setupCanonicalStatement(500);
+      const result = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: sellerStatement.check_id,
+        governance_context: sellerStatement.governance_context,
+        idempotency_key: 'variance_buyer_measurement_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'obs_variance_buyer_measurement',
+          source: 'buyer_measurement',
+          observed_at: '2027-01-08T01:05:00Z',
+          reporting_period: deliveryMetrics.reporting_period,
+          cumulative_spend: 520,
+          currency: 'USD',
+        },
+      }, BUYER_CTX) as Record<string, any>;
+
+      expect(result).toMatchObject({
+        outcome_state: 'findings',
+        delivery_reconciliation_status: 'measurement_variance',
+        delivery_period_state: 'open',
+        findings: [{
+          category_id: 'delivery_measurement_variance',
+          severity: 'warning',
+          details: {
+            field: 'delivery.cumulative_spend',
+            seller_stated: 500,
+            buyer_observed: 520,
+          },
+        }],
+      });
+    });
+  });
+
+  it('marks a buyer_measurement with a mismatched reporting_period as disputed, not measurement_variance', async () => {
+    await runWithSessionContext(async () => {
+      const { sellerStatement, deliveryMetrics } = await setupCanonicalStatement(500);
+      const result = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: sellerStatement.check_id,
+        governance_context: sellerStatement.governance_context,
+        idempotency_key: 'variance_period_mismatch_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'obs_period_mismatch',
+          source: 'buyer_measurement',
+          observed_at: '2027-01-08T01:05:00Z',
+          reporting_period: { start: deliveryMetrics.reporting_period.start, end: '2027-01-09T00:00:00Z' },
+          cumulative_spend: 500,
+          currency: 'USD',
+        },
+      }, BUYER_CTX) as Record<string, any>;
+
+      expect(result).toMatchObject({
+        outcome_state: 'findings',
+        delivery_reconciliation_status: 'disputed',
+        delivery_period_state: 'open',
+      });
+    });
+  });
+
+  it('rejects a seller_statement_copy with matching identity but different values as a validation error, recording no outcome', async () => {
+    await runWithSessionContext(async () => {
+      const { sellerStatement, deliveryMetrics } = await setupCanonicalStatement(500);
+      const canonicalDigest = sellerStatement.delivery_statement.statement_digest;
+      const inconsistentCopy = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: sellerStatement.check_id,
+        governance_context: sellerStatement.governance_context,
+        idempotency_key: 'variance_inconsistent_copy_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'obs_inconsistent_copy',
+          source: 'seller_statement_copy',
+          observed_at: '2027-01-08T01:05:00Z',
+          reporting_period: deliveryMetrics.reporting_period,
+          cumulative_spend: 600,
+          currency: 'USD',
+          seller_statement_id: deliveryMetrics.statement_id,
+          seller_statement_digest: canonicalDigest,
+        },
+      }, BUYER_CTX) as Record<string, any>;
+
+      expect(inconsistentCopy.errors?.[0]).toMatchObject({ code: 'VALIDATION_ERROR' });
+
+      const logs = await audit();
+      const deliveryEntries = logs.plans[0].entries.filter((entry: any) => entry.outcome === 'delivery');
+      expect(deliveryEntries).toHaveLength(0);
+
+      // A subsequent, internally-consistent replay of the same statement still works.
+      const validCopy = await handleReportPlanOutcome({
+        plan_id: PLAN.plan_id,
+        check_id: sellerStatement.check_id,
+        governance_context: sellerStatement.governance_context,
+        idempotency_key: 'variance_valid_copy_0001',
+        outcome: 'delivery',
+        delivery: {
+          observation_id: 'obs_valid_copy',
+          source: 'seller_statement_copy',
+          observed_at: '2027-01-08T01:10:00Z',
+          reporting_period: deliveryMetrics.reporting_period,
+          cumulative_spend: deliveryMetrics.cumulative_spend,
+          currency: 'USD',
+          seller_statement_id: deliveryMetrics.statement_id,
+          seller_statement_digest: canonicalDigest,
+        },
+      }, BUYER_CTX) as Record<string, any>;
+      expect(validCopy).toMatchObject({ delivery_reconciliation_status: 'consistent' });
     });
   });
 });

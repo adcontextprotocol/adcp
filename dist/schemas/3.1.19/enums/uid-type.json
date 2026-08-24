@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.19/enums/uid-type.json",
+  "title": "UID Type",
+  "description": "Type of user identifier. Used in audience sync, event logging, and TMP identity match requests to tell the receiver how to interpret and resolve the identifier; some types, including PAIR, are publisher-scoped rather than universal identity-graph tokens.",
+  "type": "string",
+  "enum": [
+    "rampid",
+    "rampid_derived",
+    "id5",
+    "uid2",
+    "euid",
+    "pairid",
+    "maid",
+    "hashed_email",
+    "publisher_first_party",
+    "world_id_nullifier",
+    "other"
+  ],
+  "enumDescriptions": {
+    "rampid": "LiveRamp RampID maintained form (XY, 32 bytes on the wire)",
+    "rampid_derived": "LiveRamp RampID derived form (Xi, 48 bytes on the wire)",
+    "id5": "ID5 universal ID",
+    "uid2": "Unified ID 2.0",
+    "euid": "European Unified ID",
+    "pairid": "Publisher Addressable Identity via IAB Tech Lab PAIR. The OpenRTB profile uses User.eids[].source pair-protocol.com, EID.mm 3, EID.matcher set to the publisher's canonical ads.txt ownerdomain, and uids[].atype 3. The URL-safe Base64-encoded KsKp Publisher Identifier must be interpreted with that matcher scope. It is stable across a publisher's advertiser matches only within a Ks key epoch; Ks rotates every 30 days, and current and prior Publisher Identifiers can overlap during rollover. TMP identity objects do not carry matcher or ownerdomain, so a bridge requires an authenticated out-of-band binding to preserve PAIR scope.",
+    "maid": "Mobile Advertising ID (IDFA/GAID)",
+    "hashed_email": "SHA-256 hashed email address. Pseudonymous PII, not anonymous — unsalted SHA-256 of the email namespace is recoverable via precomputed dictionaries; treat as PII. See docs/reference/privacy-considerations#unsalted-hashed-identifiers-are-pseudonymous-not-anonymous.",
+    "publisher_first_party": "Publisher's own first-party identifier, opaque to buyers",
+    "world_id_nullifier": "World ID nullifier — a Sybil-resistant, relying-party-scoped, unlinkable pseudonym. Carries NO personhood or age assertion on its own; trust comes only from an accompanying verified `attestation`, never from this type tag. Distinct from the `world_id` value in the age-verification-method enum, which names a method, not an identifier.",
+    "other": "Other universal ID type (specify in ext)"
+  }
+}

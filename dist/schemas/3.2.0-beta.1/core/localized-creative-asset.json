@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/localized-creative-asset.json",
+  "title": "Localized Creative Asset",
+  "description": "An asset inside a materialized creative locale variant. Text and markdown assets may omit language when they make no language claim. When language is present, it MUST use the shared AdCP BCP 47 wire profile; conformance additionally requires exact equality with the enclosing variant locale.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "language_asset_types": [
+        "text",
+        "markdown"
+      ],
+      "language_when_present": {
+        "schema": "/schemas/core/locale-tag.json",
+        "must_equal": "enclosing_variant.locale"
+      },
+      "language_omitted": "no_asset_language_claim"
+    },
+    "spec": "docs/creative/specification.mdx#native-creative-localization"
+  },
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/assets/asset-union.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "asset_type": {
+            "enum": [
+              "text",
+              "markdown"
+            ]
+          }
+        },
+        "required": [
+          "asset_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "language": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/locale-tag.json"
+          }
+        }
+      }
+    }
+  ]
+}

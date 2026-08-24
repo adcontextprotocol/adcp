@@ -1,0 +1,656 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/mcp/2026-07-28/profiles/media-buy/media-buy/control-media-buy-response.json",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "status"
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "completed"
+        },
+        "media_buy_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "media_buy"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "media_buy_status": {
+          "$ref": "#/$defs/external:enums~1media-buy-status.json"
+        },
+        "implementation_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "affected_package_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "package"
+          },
+          "uniqueItems": true
+        },
+        "available_actions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1canonical-media-buy-action.json"
+          },
+          "uniqueItems": true
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/external:core~1warning.json"
+              },
+              {
+                "properties": {
+                  "code": {
+                    "const": "inventory_shortfall_forecast"
+                  }
+                }
+              }
+            ]
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        },
+        "replayed": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "status",
+        "media_buy_id",
+        "revision"
+      ],
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "errors"
+        ]
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "failed"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        },
+        "replayed": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "status",
+        "errors"
+      ],
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "media_buy_id"
+        ]
+      }
+    },
+    {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "submitted"
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1error.json"
+          }
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        },
+        "replayed": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "status",
+        "task_id"
+      ],
+      "additionalProperties": false,
+      "not": {
+        "required": [
+          "media_buy_id"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "external:enums/media-buy-status.json": {
+      "type": "string",
+      "enum": [
+        "pending_creatives",
+        "pending_start",
+        "active",
+        "paused",
+        "completed",
+        "rejected",
+        "canceled"
+      ]
+    },
+    "external:core/canonical-media-buy-action.json": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "task"
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "task": {
+              "type": "string",
+              "const": "control_media_buy"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "pause",
+                "resume",
+                "cancel",
+                "increase_budget",
+                "decrease_budget",
+                "reallocate_budget",
+                "update_budget_allocation",
+                "update_targeting",
+                "update_pacing",
+                "update_bidding",
+                "update_frequency_caps",
+                "update_catalog_assignments",
+                "update_keywords",
+                "update_optimization_goals",
+                "update_impression_goal",
+                "update_spend_target",
+                "update_reporting_webhook",
+                "remove_packages"
+              ]
+            },
+            "mode": {
+              "$ref": "#/$defs/external:enums~1canonical-media-buy-action-mode.json"
+            },
+            "sla": {
+              "$ref": "#/$defs/external:core~1sla-window.json"
+            },
+            "terms_ref": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task",
+            "action",
+            "mode"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "task": {
+              "type": "string",
+              "const": "refine_proposals"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "cancel",
+                "extend_flight",
+                "shorten_flight",
+                "update_flight_dates",
+                "increase_budget",
+                "decrease_budget",
+                "reallocate_budget",
+                "update_budget_allocation",
+                "update_targeting",
+                "update_pacing",
+                "update_bidding",
+                "update_frequency_caps",
+                "add_packages",
+                "remove_packages"
+              ]
+            },
+            "mode": {
+              "$ref": "#/$defs/external:enums~1canonical-media-buy-action-mode.json"
+            },
+            "sla": {
+              "$ref": "#/$defs/external:core~1sla-window.json"
+            },
+            "terms_ref": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task",
+            "action",
+            "mode"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "task": {
+              "type": "string",
+              "const": "sync_creatives"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "replace_creative",
+                "update_creative_assignments",
+                "remove_creative"
+              ]
+            },
+            "mode": {
+              "$ref": "#/$defs/external:enums~1canonical-media-buy-action-mode.json"
+            },
+            "sla": {
+              "$ref": "#/$defs/external:core~1sla-window.json"
+            },
+            "terms_ref": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task",
+            "action",
+            "mode"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:enums/canonical-media-buy-action-mode.json": {
+      "type": "string",
+      "enum": [
+        "self_serve",
+        "conditional_self_serve",
+        "requires_approval"
+      ]
+    },
+    "external:core/sla-window.json": {
+      "type": "object",
+      "properties": {
+        "response_max": {
+          "type": "string",
+          "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$"
+        },
+        "completion_max": {
+          "type": "string",
+          "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:core/warning.json": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/external:enums~1warning-code.json"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "affected_resource": {
+          "$ref": "#/$defs/external:core~1warning-resource.json"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "affected_resource"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "enum": [
+                  "inventory_shortfall_forecast",
+                  "flight_change_creates_pacing_risk"
+                ]
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "affected_resource": {
+                "properties": {
+                  "resource_type": {
+                    "const": "package"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "code": {
+                "const": "fields_ignored_due_to_precedence"
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "properties": {
+              "affected_resource": {
+                "properties": {
+                  "resource_type": {
+                    "enum": [
+                      "media_buy",
+                      "package"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "warning_capability_requirements": {
+            "inventory_shortfall_forecast": {
+              "supported_indicator_type": "inventory_shortfall_forecast"
+            },
+            "flight_change_creates_pacing_risk": {
+              "supported_indicator_type": "pacing_risk"
+            },
+            "fields_ignored_due_to_precedence": null
+          }
+        },
+        "spec": "specs/relationship-scoped-indicators.md#warning-contract"
+      },
+      "additionalProperties": true
+    },
+    "external:enums/warning-code.json": {
+      "type": "string",
+      "enum": [
+        "inventory_shortfall_forecast",
+        "flight_change_creates_pacing_risk",
+        "fields_ignored_due_to_precedence"
+      ]
+    },
+    "external:core/warning-resource.json": {
+      "type": "object",
+      "properties": {
+        "resource_type": {
+          "type": "string",
+          "enum": [
+            "media_buy",
+            "package",
+            "creative",
+            "creative_assignment"
+          ]
+        },
+        "media_buy_id": {
+          "type": "string",
+          "x-entity": "media_buy"
+        },
+        "package_id": {
+          "type": "string",
+          "x-entity": "package"
+        },
+        "creative_id": {
+          "type": "string",
+          "x-entity": "creative"
+        }
+      },
+      "required": [
+        "resource_type"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "media_buy"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "media_buy_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "package"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "media_buy_id",
+              "package_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "creative"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "creative_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "resource_type": {
+                "const": "creative_assignment"
+              }
+            },
+            "required": [
+              "resource_type"
+            ]
+          },
+          "then": {
+            "required": [
+              "media_buy_id",
+              "package_id",
+              "creative_id"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/error.json": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "keyword": {
+                "type": "string"
+              },
+              "schemaPath": {
+                "type": "string"
+              },
+              "schema_id": {
+                "type": "string"
+              },
+              "discriminator": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "property_name": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "property_name",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "pointer",
+              "message",
+              "keyword"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "recovery": {
+          "type": "string",
+          "enum": [
+            "transient",
+            "correctable",
+            "terminal"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "producer",
+            "sdk"
+          ]
+        },
+        "sdk_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": true
+    }
+  }
+}

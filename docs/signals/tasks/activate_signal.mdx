@@ -245,26 +245,22 @@ After polling for completion:
 ### A2A Request
 
 #### Natural Language Invocation
-```javascript
-await a2a.send({
-  message: {
-    parts: [{
-      kind: "text",
-      text: "Please activate the luxury_auto_intenders signal on The Trade Desk for account agency-123-ttd."
-    }]
-  }
-});
-```
+
+Text-only invocation requires a separate generic A2A interface whose Agent
+Card does not mark the AdCP v3 profile as required. It is not an AdCP profile
+invocation.
 
 #### Explicit Skill Invocation
 ```javascript
 await a2a.send({
   message: {
+    messageId: crypto.randomUUID(),
+    role: "ROLE_USER",
     parts: [{
-      kind: "data",
       data: {
         skill: "activate_signal",
-        parameters: {
+        input: {
+          idempotency_key: crypto.randomUUID(),
           signal_agent_segment_id: "luxury_auto_intenders",
           pricing_option_id: "po_cpm_usd",
           destinations: [{
@@ -279,45 +275,46 @@ await a2a.send({
 });
 ```
 
-### A2A Response (with streaming)
-Initial response:
+### A2A Response
+
+A non-streaming `SendMessage` response selects the completed Task branch. A
+client that needs transport progress uses the official `SendStreamingMessage`
+or `SubscribeToTask` operation and consumes `StreamResponse` SSE frames.
+
 ```json
 {
-  "taskId": "task-signal-001",
-  "status": { "state": "working" }
+  "task": {
+    "id": "task-signal-001",
+    "contextId": "ctx-signals-123",
+    "status": { "state": "TASK_STATE_COMPLETED" },
+    "artifacts": [{
+      "artifactId": "artifact-signal-activation-abc123",
+      "name": "signal_activation_result",
+      "parts": [
+        { "text": "Signal successfully activated on The Trade Desk" },
+        { "data": {
+          "status": "completed",
+          "deployments": [{
+            "type": "platform",
+            "platform": "the-trade-desk",
+            "account": "agency-123-ttd",
+            "is_live": true,
+            "activation_key": {
+              "type": "segment_id",
+              "segment_id": "ttd_agency123_lux_auto"
+            },
+            "deployed_at": "2025-01-15T14:30:00Z"
+          }]
+        } }
+      ]
+    }]
+  }
 }
-```
-
-Then via Server-Sent Events:
-```
-data: {"message": "Validating signal access permissions..."}
-data: {"message": "Configuring deployment on The Trade Desk..."}
-data: {"message": "Finalizing activation..."}
-data: {"status": {"state": "completed"}, "artifacts": [{
-  "artifactId": "artifact-signal-activation-abc123",
-  "name": "signal_activation_result",
-  "parts": [
-    {"kind": "text", "text": "Signal successfully activated on The Trade Desk"},
-    {"kind": "data", "data": {
-      "context_id": "ctx-signals-123",
-      "deployments": [{
-        "type": "platform",
-        "platform": "the-trade-desk",
-        "account": "agency-123-ttd",
-        "activation_key": {
-          "type": "segment_id",
-          "segment_id": "ttd_agency123_lux_auto"
-        },
-        "deployed_at": "2025-01-15T14:30:00Z"
-      }]
-    }}
-  ]
-}]}
 ```
 
 ### Protocol Transport
 - **MCP**: Returns task_id for polling-based asynchronous operation tracking or webhook-based push notifications
-- **A2A**: Uses Server-Sent Events for real-time progress updates and completion
+- **A2A**: Returns the typed result in a completed Task; clients may opt into the official streaming operations for transport progress
 - **Data Consistency**: Both protocols contain identical AdCP data structures and version information
 
 ### Webhook Support

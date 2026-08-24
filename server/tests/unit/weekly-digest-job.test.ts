@@ -9,6 +9,10 @@ const getUserWorkingGroupMap = vi.fn();
 const sendTrackedBatchMarketingEmails = vi.fn();
 const buildPromptMarkdown = vi.fn(() => 'Rendered Prompt markdown');
 const publishDigestAsPerspective = vi.fn(async () => undefined);
+const withNewsletterSendLock = vi.fn(async (_newsletterId: string, _editionId: number, work: () => Promise<unknown>) => ({
+  acquired: true as const,
+  value: await work(),
+}));
 
 vi.mock('../../src/db/digest-db.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/db/digest-db.js')>();
@@ -73,6 +77,10 @@ vi.mock('../../src/newsletters/cover.js', () => ({
   generateCoverForEdition: vi.fn(),
 }));
 
+vi.mock('../../src/newsletters/send-lock.js', () => ({
+  withNewsletterSendLock,
+}));
+
 vi.mock('../../src/db/newsletter-suggestions-db.js', () => ({
   markSuggestionsIncluded: vi.fn(),
 }));
@@ -107,6 +115,10 @@ function approvedDigest(overrides: Partial<DigestRecord> = {}): DigestRecord {
 describe('runWeeklyDigestJob', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    withNewsletterSendLock.mockImplementation(async (_newsletterId: string, _editionId: number, work: () => Promise<unknown>) => ({
+      acquired: true as const,
+      value: await work(),
+    }));
     getDigestEmailRecipients.mockResolvedValue([
       {
         workos_user_id: 'user_123',
@@ -126,6 +138,7 @@ describe('runWeeklyDigestJob', () => {
     getUserWorkingGroupMap.mockResolvedValue(new Map());
     sendTrackedBatchMarketingEmails.mockResolvedValue({ sent: 1, skipped: 0, failed: 0 });
     markSent.mockResolvedValue(true);
+    getDigestByDate.mockResolvedValue(approvedDigest());
   });
 
   it('sends an older approved digest even when today is not a cadence day', async () => {
@@ -147,6 +160,19 @@ describe('runWeeklyDigestJob', () => {
         'Rendered Prompt markdown',
       );
     });
-    expect(getDigestByDate).not.toHaveBeenCalled();
+    expect(getDigestByDate).toHaveBeenCalledWith('2026-06-05');
+    expect(withNewsletterSendLock).toHaveBeenCalledWith('the_prompt', 123, expect.any(Function));
+  });
+
+  it('does not deliver when a manual sender holds the edition lock', async () => {
+    getLatestApprovedDigest.mockResolvedValue(approvedDigest());
+    withNewsletterSendLock.mockResolvedValueOnce({ acquired: false });
+
+    const { runWeeklyDigestJob } = await import('../../src/addie/jobs/weekly-digest.js');
+    const result = await runWeeklyDigestJob();
+
+    expect(result.sent).toBe(0);
+    expect(sendTrackedBatchMarketingEmails).not.toHaveBeenCalled();
+    expect(markSent).not.toHaveBeenCalled();
   });
 });

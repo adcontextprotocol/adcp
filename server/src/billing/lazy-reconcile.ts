@@ -1,7 +1,8 @@
 /**
  * Lazy reconciliation: when a paywall gate is about to deny a request from
- * an org that has a `stripe_customer_id` but no `subscription_status`, pull
- * fresh state from Stripe and self-heal the org row before the deny fires.
+ * an org that has a `stripe_customer_id` but stale or incomplete subscription
+ * state, pull fresh state from Stripe and self-heal the org row before the deny
+ * fires.
  *
  * Catches a real drift class observed in production: a Stripe customer can
  * be re-linked between orgs (admin audit, support fix-up) without the
@@ -13,21 +14,28 @@
  * never sees the drift.
  *
  * Deliberate scope:
- *  - Only writes the subscription_* columns on the org row.
+ *  - Only writes billing-derived subscription_* columns and membership_tier.
  *  - Does NOT write `agreement_signed_at`, `user_agreement_acceptances`,
  *    or `org_activities` rows. The webhook handler (handle-subscription-created)
  *    is the canonical place for those side effects, and it's keyed off
  *    `pending_agreement_user_id` set at checkbox-click time. A user clicking
  *    a paywall is action-signal but not a fresh consent event.
- *  - Idempotent: `WHERE subscription_status IS NULL` guards against
- *    overwriting a status set by a webhook that landed between read and write.
+ *  - Uses a lossless `updated_at` token to avoid overwriting a webhook update
+ *    that lands between the read and repair write.
+ *  - Requires the Stripe customer's organization metadata to match exactly,
+ *    so a stale customer link cannot transfer entitlement across orgs.
  *  - Safe to call on every paywall hit; only does Stripe work when the org
  *    actually looks drifted.
  */
 import type { Pool } from 'pg';
 import type Stripe from 'stripe';
 import type { Logger } from 'pino';
-import { pickMembershipSub } from './membership-prices.js';
+import {
+  buildSubscriptionUpdate,
+  resolveMembershipTierForSubscriptionWrite,
+} from '../db/organization-db.js';
+import { invalidateMembershipCache } from '../db/org-filters.js';
+import { pickMembershipSubWithProductFetch } from './membership-prices.js';
 
 /**
  * Stripe statuses that grant entitlement at AAO. Mirrors the gate logic
@@ -46,17 +54,21 @@ export type LazyReconcileSkipReason =
   | 'no_stripe_customer'
   | 'stripe_error'
   | 'customer_deleted'
+  | 'customer_org_mismatch'
   | 'no_membership_sub'
   | 'sub_not_entitled';
 
 interface OrgRow {
   workos_organization_id: string;
   stripe_customer_id: string | null;
+  is_personal: boolean;
   subscription_status: string | null;
   subscription_canceled_at: Date | null;
   stripe_subscription_id: string | null;
+  membership_tier: string | null;
   subscription_price_lookup_key: string | null;
   subscription_amount: number | null;
+  updated_at_token: string;
 }
 
 /**
@@ -75,7 +87,7 @@ interface OrgRow {
 function isFullySynced(org: OrgRow): boolean {
   if (!org.subscription_status || !ENTITLED_STATUSES.has(org.subscription_status)) return false;
   if (!org.stripe_subscription_id) return false;
-  if (org.subscription_price_lookup_key === null && (org.subscription_amount ?? 0) <= 0) return false;
+  if (!org.membership_tier && org.subscription_price_lookup_key === null && (org.subscription_amount ?? 0) <= 0) return false;
   return true;
 }
 
@@ -88,8 +100,8 @@ export interface LazyReconcileDeps {
 /**
  * Attempt to heal an org row from Stripe state.
  *
- * Returns `{ healed: true, ... }` only if the row went from "no live
- * subscription" to a written entitlement. Returns `{ healed: false, reason }`
+ * Returns `{ healed: true, ... }` only if Stripe entitlement was written to a
+ * stale, missing, or partial org row. Returns `{ healed: false, reason }`
  * for every skip path so callers can log the reason without taking action.
  */
 export async function attemptStripeReconciliation(
@@ -99,8 +111,10 @@ export async function attemptStripeReconciliation(
   const { pool, stripe, logger } = deps;
 
   const orgResult = await pool.query<OrgRow>(
-    `SELECT workos_organization_id, stripe_customer_id, subscription_status, subscription_canceled_at,
-            stripe_subscription_id, subscription_price_lookup_key, subscription_amount
+    `SELECT workos_organization_id, stripe_customer_id, is_personal,
+            subscription_status, subscription_canceled_at, stripe_subscription_id,
+            membership_tier, subscription_price_lookup_key, subscription_amount,
+            updated_at::text AS updated_at_token
        FROM organizations
       WHERE workos_organization_id = $1`,
     [orgId],
@@ -133,47 +147,75 @@ export async function attemptStripeReconciliation(
     return { healed: false, reason: 'customer_deleted' };
   }
 
+  const stampedOrgId = (customer as Stripe.Customer).metadata?.workos_organization_id;
+  if (stampedOrgId !== orgId) {
+    logger.warn(
+      { orgId, customerId: org.stripe_customer_id, stampedOrgId: stampedOrgId ?? null },
+      'lazy-reconcile: Stripe customer org metadata mismatch; refusing heal',
+    );
+    return { healed: false, reason: 'customer_org_mismatch' };
+  }
+
   const subs = (customer as Stripe.Customer).subscriptions?.data ?? [];
-  const sub = pickMembershipSub(subs);
-  if (!sub) return { healed: false, reason: 'no_membership_sub' };
-  if (!ENTITLED_STATUSES.has(sub.status)) return { healed: false, reason: 'sub_not_entitled' };
+  const picked = await pickMembershipSubWithProductFetch(
+    subs,
+    (productId) => stripe.products.retrieve(productId),
+  );
+  if (!picked) return { healed: false, reason: 'no_membership_sub' };
+  if (!ENTITLED_STATUSES.has(picked.sub.status)) return { healed: false, reason: 'sub_not_entitled' };
 
-  const price = sub.items.data[0]?.price;
+  const payload = buildSubscriptionUpdate(
+    picked.sub as Parameters<typeof buildSubscriptionUpdate>[0],
+    org.is_personal,
+    picked.product?.metadata ?? null,
+  );
+  const membershipTier = resolveMembershipTierForSubscriptionWrite(
+    payload,
+    org.membership_tier,
+  );
 
-  // The WHERE clause only writes when the row is still in a partial-truth
-  // state (no entitled status, or status set but key product fields missing).
-  // If a webhook beat us to a fully-synced state between our read and write,
-  // the update is a no-op — the webhook is the source of truth for live
-  // transitions; lazy reconcile only fills gaps.
+  // Optimistically lock on updated_at. This permits repair of a fully populated
+  // but stale non-entitled row (for example DB=canceled while Stripe=active)
+  // without overwriting a newer webhook transition that lands after our read.
   const updated = await pool.query(
     `UPDATE organizations
        SET subscription_status = $1,
            stripe_subscription_id = $2,
-           subscription_amount = $3,
-           subscription_currency = $4,
-           subscription_interval = $5,
-           subscription_current_period_end = $6,
+           subscription_current_period_end = $3,
+           subscription_amount = COALESCE($4, subscription_amount),
+           subscription_currency = COALESCE($5, subscription_currency),
+           subscription_interval = COALESCE($6, subscription_interval),
            subscription_canceled_at = $7,
-           subscription_price_lookup_key = $8,
+           subscription_product_id = $8,
+           subscription_product_name = COALESCE($9, subscription_product_name),
+           subscription_price_id = $10,
+           subscription_price_lookup_key = $11,
+           membership_tier = $12,
            updated_at = NOW()
-     WHERE workos_organization_id = $9
+     WHERE workos_organization_id = $13
+       AND updated_at = $14::timestamptz
        AND (
          subscription_status IS NULL
-         OR subscription_status = 'none'
+         OR subscription_status NOT IN ('active', 'trialing', 'past_due')
          OR stripe_subscription_id IS NULL
-         OR (subscription_price_lookup_key IS NULL AND COALESCE(subscription_amount, 0) <= 0)
+         OR (membership_tier IS NULL AND subscription_price_lookup_key IS NULL AND COALESCE(subscription_amount, 0) <= 0)
        )
      RETURNING workos_organization_id`,
     [
-      sub.status,
-      sub.id,
-      price?.unit_amount ?? null,
-      price?.currency ?? 'usd',
-      price?.recurring?.interval ?? null,
-      sub.current_period_end ? new Date(sub.current_period_end * 1000) : null,
-      sub.canceled_at ? new Date(sub.canceled_at * 1000) : null,
-      price?.lookup_key ?? null,
+      payload.subscription_status,
+      payload.stripe_subscription_id,
+      payload.subscription_current_period_end,
+      payload.subscription_amount,
+      payload.subscription_currency,
+      payload.subscription_interval,
+      payload.subscription_canceled_at,
+      payload.subscription_product_id,
+      payload.subscription_product_name,
+      payload.subscription_price_id,
+      payload.subscription_price_lookup_key,
+      membershipTier,
       orgId,
+      org.updated_at_token,
     ],
   );
 
@@ -181,7 +223,7 @@ export async function attemptStripeReconciliation(
     // A webhook arrived between our read and write. The webhook is more
     // authoritative; treat as already-entitled.
     logger.info(
-      { orgId, customerId: org.stripe_customer_id, subId: sub.id },
+      { orgId, customerId: org.stripe_customer_id, subId: picked.sub.id },
       'lazy-reconcile: row was already updated by a concurrent webhook; deferring',
     );
     return { healed: false, reason: 'already_entitled' };
@@ -191,16 +233,18 @@ export async function attemptStripeReconciliation(
     {
       orgId,
       customerId: org.stripe_customer_id,
-      subId: sub.id,
-      lookupKey: price?.lookup_key ?? null,
-      stripeStatus: sub.status,
+      subId: picked.sub.id,
+      lookupKey: payload.subscription_price_lookup_key,
+      stripeStatus: payload.subscription_status,
     },
-    'lazy-reconcile: healed missing subscription_status from Stripe',
+    'lazy-reconcile: healed stale subscription state from Stripe',
   );
+
+  invalidateMembershipCache(orgId);
 
   return {
     healed: true,
     reason: 'healed_from_stripe',
-    subscriptionStatus: sub.status,
+    subscriptionStatus: payload.subscription_status,
   };
 }

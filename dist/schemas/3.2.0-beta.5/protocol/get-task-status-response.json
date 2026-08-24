@@ -1,0 +1,202 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/protocol/get-task-status-response.json",
+  "title": "Get Task Status Response",
+  "description": "Response from the get_task_status AdCP tool, a 3.x protocol-namespace alias for legacy AdCP tasks/get. Contains AdCP application-layer task status, task metadata, and optional conversation history or terminal result payload; distinct from transport-native MCP/A2A task responses.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/protocol-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "task_type": {
+            "const": "get_products"
+          },
+          "result": {
+            "properties": {
+              "status": {
+                "const": "rejected"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        },
+        "required": [
+          "task_type",
+          "result"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/get-products-rejected.json"
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "Unique identifier for this task",
+      "x-entity": "task"
+    },
+    "task_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/task-type.json",
+      "description": "Type of AdCP operation"
+    },
+    "protocol": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/adcp-protocol.json",
+      "description": "AdCP protocol this task belongs to"
+    },
+    "status": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/task-status.json",
+      "description": "Current task status"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the task was initially created (ISO 8601)"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the task was last updated (ISO 8601)"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the task completed (ISO 8601, only for completed/failed/canceled tasks)"
+    },
+    "has_webhook": {
+      "type": "boolean",
+      "description": "Whether this task has webhook configuration"
+    },
+    "progress": {
+      "type": "object",
+      "description": "Progress information for long-running tasks",
+      "properties": {
+        "percentage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Completion percentage (0-100)"
+        },
+        "current_step": {
+          "type": "string",
+          "description": "Current step or phase of the operation"
+        },
+        "total_steps": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Total number of steps in the operation"
+        },
+        "step_number": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Current step number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "error": {
+      "type": "object",
+      "description": "Convenience summary for failed tasks. When include_result was true and the canonical terminal result is also present, this error MUST agree with the canonical fatal error in result. A legacy poll carrying only this singular summary proves failure status but not equivalence to a richer terminal webhook artifact.",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Error code for programmatic handling"
+        },
+        "message": {
+          "type": "string",
+          "description": "Detailed error message"
+        },
+        "details": {
+          "type": "object",
+          "description": "Additional error context",
+          "properties": {
+            "protocol": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/adcp-protocol.json",
+              "description": "AdCP protocol where error occurred"
+            },
+            "operation": {
+              "type": "string",
+              "description": "Specific operation that failed"
+            },
+            "specific_context": {
+              "type": "object",
+              "description": "Domain-specific error context",
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    "history": {
+      "type": "array",
+      "description": "Complete conversation history for this task (only included if include_history was true in request)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this exchange occurred (ISO 8601)"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "request",
+              "response"
+            ],
+            "description": "Whether this was a request from client or response from server"
+          },
+          "data": {
+            "type": "object",
+            "description": "The full request or response payload",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "timestamp",
+          "type",
+          "data"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Canonical task-specific terminal payload. Present when include_result was true and a completed, failed, or rejected task produced a terminal artifact; canceled tasks may omit it. For failed tasks, the singular error field is a convenience summary and MUST agree with the canonical fatal error represented here. Consumers and sellers MUST resolve and validate the exact schema through manifest.task_result_resolution: use terminal_schema_overrides[task_type] when present, otherwise tools[task_type].response_schema. The polling envelope keeps this field generic so get_task_status does not embed every task response schema."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+    }
+  },
+  "required": [
+    "task_id",
+    "task_type",
+    "protocol",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": true
+}

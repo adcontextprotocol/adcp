@@ -24,6 +24,8 @@ primary_region = 'iad'
   # Disabled - migrations now run via release_command
   RUN_MIGRATIONS = "false"
   PUBLISHER_CRAWL_QUEUE_ENABLED = "true"
+  # AdCP 3.2 beta is public; expose the deterministic proposal-negotiation labs.
+  ENABLE_ADCP_3_2_PROPOSAL_PROFILES = "true"
   # Use pre-cloned repos from Docker build, skip runtime git fetch.
   # Production image has no git binary — unsetting this degrades gracefully
   # (repos skip indexing) but does not crash.

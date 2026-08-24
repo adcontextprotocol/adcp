@@ -1,0 +1,406 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/media-buy/refine-proposals-response.json",
+  "title": "Refine Proposals Response",
+  "description": "One ordered result per requested source proposal. Revision results may carry multiple immutable draft proposals when alternatives were requested; finalization remains one committed proposal per source. Products contains the compact canonical products needed to evaluate the resulting terms.",
+  "type": "object",
+  "anyOf": [
+    {
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "completed"
+        }
+      },
+      "required": [
+        "results",
+        "products"
+      ],
+      "not": {
+        "required": [
+          "task_id"
+        ]
+      }
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/compact-task-submitted.json"
+    }
+  ],
+  "properties": {
+    "adcp_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/version-envelope.json#/properties/adcp_version"
+    },
+    "results": {
+      "type": "array",
+      "description": "Ordered results. If any result is finalized, every result MUST be finalized; a finalize batch either creates every requested hold or none. Every returned proposal carries parent_proposal_id equal to the result's source_proposal_id, making negotiation lineage reconstructible from the proposals alone.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "outcome"
+        },
+        "properties": {
+          "source_proposal_id": {
+            "type": "string",
+            "minLength": 1,
+            "x-entity": "proposal"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "revised",
+              "partial",
+              "finalized",
+              "unable"
+            ]
+          },
+          "proposal": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-proposal.json"
+          },
+          "proposals": {
+            "type": "array",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-proposal.json"
+            },
+            "minItems": 1,
+            "description": "Draft successors produced for a revision. Without alternatives this contains one proposal. With alternatives.count, revised contains exactly that many proposals with unique terms_digest values; fewer or commercially duplicate proposals require partial."
+          },
+          "reason_code": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/enums/proposal-refinement-reason.json",
+            "description": "Single most-significant code for this result. constraint_unsatisfiable takes precedence over every other code; an alternatives shortfall alongside an unsatisfied constraint remains visible through proposals.length."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "unsatisfied_constraints": {
+            "type": "array",
+            "description": "Stable keys from the request constraints object that were not satisfied by every returned draft. A result carrying any key here MUST use outcome partial or unable, never revised.",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "unsatisfied_product_changes": {
+            "allOf": [
+              {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/product-change-map.json"
+              }
+            ],
+            "description": "Requested product actions not satisfied by every returned draft. This is a subset of the request product_changes map and is valid only on partial or unable results."
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "targeting_resolution": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/media-buy/get-products-targeting-resolution.json",
+            "description": "Confirmation of structured targeting interpreted from this refinement's explicit hard prose instructions. Required when that interpretation materially affects the revised proposal's eligibility, pricing, or forecast; otherwise a best practice."
+          }
+        },
+        "required": [
+          "source_proposal_id",
+          "outcome"
+        ],
+        "oneOf": [
+          {
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "const": "revised"
+              },
+              "proposals": {
+                "items": {
+                  "properties": {
+                    "proposal_status": {
+                      "type": "string",
+                      "const": "draft"
+                    }
+                  },
+                  "required": [
+                    "proposal_status",
+                    "parent_proposal_id"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "outcome",
+              "proposals"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "proposal"
+                  ]
+                },
+                {
+                  "required": [
+                    "reason_code"
+                  ]
+                },
+                {
+                  "required": [
+                    "reason"
+                  ]
+                },
+                {
+                  "required": [
+                    "unsatisfied_constraints"
+                  ]
+                },
+                {
+                  "required": [
+                    "unsatisfied_product_changes"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "const": "partial"
+              },
+              "proposals": {
+                "items": {
+                  "properties": {
+                    "proposal_status": {
+                      "type": "string",
+                      "const": "draft"
+                    }
+                  },
+                  "required": [
+                    "proposal_status",
+                    "parent_proposal_id"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "outcome",
+              "proposals",
+              "reason_code",
+              "reason"
+            ],
+            "not": {
+              "required": [
+                "proposal"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "const": "finalized"
+              },
+              "proposal": {
+                "properties": {
+                  "proposal_status": {
+                    "type": "string",
+                    "const": "committed"
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "proposal_status",
+                  "expires_at",
+                  "parent_proposal_id"
+                ]
+              }
+            },
+            "required": [
+              "outcome",
+              "proposal"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "proposals"
+                  ]
+                },
+                {
+                  "required": [
+                    "reason_code"
+                  ]
+                },
+                {
+                  "required": [
+                    "reason"
+                  ]
+                },
+                {
+                  "required": [
+                    "unsatisfied_constraints"
+                  ]
+                },
+                {
+                  "required": [
+                    "unsatisfied_product_changes"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "properties": {
+              "outcome": {
+                "type": "string",
+                "const": "unable"
+              }
+            },
+            "required": [
+              "outcome",
+              "reason_code",
+              "reason"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "proposal"
+                  ]
+                },
+                {
+                  "required": [
+                    "proposals"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "reason_code": {
+                  "const": "constraint_unsatisfiable"
+                }
+              },
+              "required": [
+                "reason_code"
+              ]
+            },
+            "then": {
+              "anyOf": [
+                {
+                  "required": [
+                    "unsatisfied_constraints"
+                  ]
+                },
+                {
+                  "required": [
+                    "unsatisfied_product_changes"
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "additionalProperties": false
+      },
+      "allOf": [
+        {
+          "if": {
+            "contains": {
+              "properties": {
+                "outcome": {
+                  "type": "string",
+                  "const": "finalized"
+                }
+              },
+              "required": [
+                "outcome"
+              ]
+            }
+          },
+          "then": {
+            "items": {
+              "properties": {
+                "outcome": {
+                  "type": "string",
+                  "const": "finalized"
+                }
+              },
+              "required": [
+                "outcome"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/canonical-product.json"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "submitted"
+      ]
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "task"
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+    },
+    "replayed": {
+      "type": "boolean",
+      "const": true
+    }
+  },
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "proposals"
+        ]
+      },
+      {
+        "required": [
+          "refinement_applied"
+        ]
+      },
+      {
+        "required": [
+          "pagination"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/rights-constraint.json",
+  "title": "Rights Constraint",
+  "description": "Rights metadata attached to a creative. Each entry represents constraints from a single rights holder. Buyer-carried fields are a presentation, not authorization. In AdCP 3.2, a serving party treats a constraint as machine-verified only after one attestation_refs entry evaluates to verified under its own adcp.attestations policy and matches the complete digest-pinned grant.",
+  "type": "object",
+  "properties": {
+    "rights_id": {
+      "type": "string",
+      "description": "Rights grant identifier from the acquire_rights response"
+    },
+    "rights_agent": {
+      "type": "object",
+      "description": "The agent that granted these rights",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "MCP endpoint URL of the rights agent"
+        },
+        "id": {
+          "type": "string",
+          "description": "Agent identifier"
+        }
+      },
+      "required": [
+        "url",
+        "id"
+      ]
+    },
+    "rights_holder": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/brand-ref.json",
+      "description": "Canonical BrandRef for the rights holder that issued the grant through an authorized rights agent. Required whenever attestation_refs is present. Evaluators first match this exact BrandRef against local issuer policy, then resolve the authoritative brand.json and bind the credential verification key to exactly one matching agents[] entry with type rights. Sibling-brand agents are never authority. Legacy unattested constraints may omit this field but remain machine-unverified."
+    },
+    "valid_from": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Start of the rights validity period"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "End of the rights validity period. Creative should not be served after this time."
+    },
+    "uses": {
+      "type": "array",
+      "description": "Rights uses covered by this constraint",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/right-use.json"
+      },
+      "minItems": 1
+    },
+    "countries": {
+      "type": "array",
+      "description": "Countries where this creative may be served under these rights (ISO 3166-1 alpha-2). If omitted, no country restriction. When both countries and excluded_countries are present, the effective set is countries minus excluded_countries.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "excluded_countries": {
+      "type": "array",
+      "description": "Countries excluded from rights availability (ISO 3166-1 alpha-2). Use when the grant is worldwide except specific markets.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      }
+    },
+    "impression_cap": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum total impressions allowed for the full validity period (valid_from to valid_until). This is the absolute cap across all creatives using this rights grant, not a per-creative or per-period limit."
+    },
+    "right_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/right-type.json",
+      "description": "Type of rights (talent, music, etc.). Helps identify constraints when a creative combines multiple rights types."
+    },
+    "approval_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "description": "Approval status from the rights holder at manifest creation time (snapshot, not a live value)"
+    },
+    "grant_status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "paused",
+        "revoked"
+      ],
+      "description": "Authoritative lifecycle state bound into the grant digest and credential status evidence. Only active can evaluate to verified. paused and revoked credentials are ineligible for serving; resumption issues a fresh active credential and reference."
+    },
+    "restrictions": {
+      "type": "array",
+      "description": "Normalized enforceable content and usage restrictions issued with the grant. When present these values are part of content_digest and cannot be omitted or changed without invalidating the attestation.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "disclosure": {
+      "type": "object",
+      "description": "Disclosure obligation issued with the grant and bound by content_digest.",
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "required"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "required": {
+                "const": true
+              }
+            },
+            "required": [
+              "required"
+            ]
+          },
+          "then": {
+            "required": [
+              "text"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "creative_approval_required": {
+      "type": "boolean",
+      "description": "Whether each creative produced under this grant requires holder approval before distribution. This enforceable term is bound by content_digest."
+    },
+    "verification_url": {
+      "type": "string",
+      "format": "uri",
+      "deprecated": true,
+      "description": "DEPRECATED legacy informational locator. It is not proof of grant status, a revocation source, a credential locator, or permission to make a network request. Receivers MUST NOT fetch it during rights evaluation, and HTTP status codes have no AdCP authorization meaning. Rights authorization uses attestation_refs and a verifier-of-record evaluation under evaluator-owned policy."
+    },
+    "content_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 of UTF8(JCS(rights_constraint minus content_digest, attestation_refs, and verification_url)), formatted as sha256:<lowercase hex>. This binds all serving-relevant grant fields, including future extension fields, while deliberately excluding the legacy non-authoritative URL."
+    },
+    "attestation_refs": {
+      "type": "array",
+      "description": "Alternative portable presentations of a holder-issued rights-grant credential signed by its authorized rights agent. The buyer carries references only; the serving party remains verifier-of-record. At least one reference must evaluate to verified and match rights_holder, rights_id, rights_agent, content_digest, validity, revocation state, and local policy before this constraint can contribute to serving eligibility.",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/attestation-reference.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "issuer": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "brand"
+                  },
+                  "brand": {
+                    "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/brand-ref.json"
+                  }
+                },
+                "required": [
+                  "type",
+                  "brand"
+                ]
+              },
+              "claim_type": {
+                "type": "string",
+                "const": "https://adcontextprotocol.org/claims/rights/grant"
+              },
+              "subject": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "resource"
+                  },
+                  "resource_type": {
+                    "type": "string",
+                    "const": "https://adcontextprotocol.org/claims/subjects/rights-grant"
+                  }
+                },
+                "required": [
+                  "type",
+                  "resource_type",
+                  "namespace",
+                  "id",
+                  "content_digest"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 4,
+      "uniqueItems": true
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "rights_id",
+    "rights_agent",
+    "uses"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "attestation_refs"
+        ]
+      },
+      "then": {
+        "required": [
+          "rights_holder",
+          "grant_status",
+          "content_digest"
+        ]
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "rights_attestation_profile": {
+      "claim_type": "https://adcontextprotocol.org/claims/rights/grant",
+      "subject_resource_type": "https://adcontextprotocol.org/claims/subjects/rights-grant",
+      "cross_field_equality": [
+        "attestation_ref.issuer.brand == rights_holder (exact BrandRef)",
+        "attestation_ref.subject.namespace == rights_agent.url (canonical URL)",
+        "attestation_ref.subject.id == rights_id",
+        "attestation_ref.subject.content_digest == content_digest"
+      ],
+      "digest_excludes": [
+        "content_digest",
+        "attestation_refs",
+        "verification_url"
+      ],
+      "resolution_limits": {
+        "pre_network_checks": [
+          "accepted issuer",
+          "accepted claim",
+          "accepted proof format",
+          "accepted delivery method",
+          "accepted resolver or origin"
+        ],
+        "maximum_references": 4,
+        "deduplicate_equivalent_references": true,
+        "apply_account_and_evaluator_rate_limits": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -99,7 +99,7 @@
     },
     "error": {
       "type": "object",
-      "description": "Error details for failed tasks",
+      "description": "Convenience summary for failed tasks. When include_result was true and the canonical terminal result is also present, this error MUST agree with the canonical fatal error in result. A legacy poll carrying only this singular summary proves failure status but not equivalence to a richer terminal webhook artifact.",
       "properties": {
         "code": {
           "type": "string",
@@ -172,7 +172,7 @@
     "result": {
       "type": "object",
       "additionalProperties": true,
-      "description": "Task-specific terminal payload. Present when include_result was true and the task has a result; absent otherwise. For failed tasks, use the error field instead. Consumers and sellers MUST resolve and validate the exact schema through manifest.task_result_resolution: use terminal_schema_overrides[task_type] when present, otherwise tools[task_type].response_schema. The polling envelope keeps this field generic so get_task_status does not embed every task response schema."
+      "description": "Canonical task-specific terminal payload. Present when include_result was true and a completed, failed, or rejected task produced a terminal artifact; canceled tasks may omit it. For failed tasks, the singular error field is a convenience summary and MUST agree with the canonical fatal error represented here. Consumers and sellers MUST resolve and validate the exact schema through manifest.task_result_resolution: use terminal_schema_overrides[task_type] when present, otherwise tools[task_type].response_schema. The polling envelope keeps this field generic so get_task_status does not embed every task response schema."
     },
     "context": {
       "$ref": "/schemas/core/context.json"

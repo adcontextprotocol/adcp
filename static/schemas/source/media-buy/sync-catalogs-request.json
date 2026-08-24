@@ -2,35 +2,60 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/sync-catalogs-request.json",
   "title": "Sync Catalogs Request",
-  "description": "Request parameters for syncing catalog feeds with upsert semantics. Supports bulk operations across multiple catalog types (products, inventory, stores, promotions, offerings). Existing catalogs matched by catalog_id are updated, new ones are created. When catalogs is omitted, the call is discovery-only: returns all catalogs on the account without modification.",
-  "x-tool-summary": "List or synchronize account catalog feeds across products, inventory, stores, promotions, and offerings.",
+  "description": "Request parameters for syncing buyer-managed catalog feeds, pushing immediate item availability overrides, and reading current availability state. Supports bulk operations across multiple catalog types. Existing catalogs matched by catalog_id are updated, new ones are created. When catalogs, item_availability_updates, and item_availability_queries are all omitted, the call is discovery-only.",
+  "x-tool-summary": "List or synchronize buyer-managed account catalog feeds, suppress or restore specific items, and read current availability state.",
   "type": "object",
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "not": {
+        "properties": {
+          "dry_run": { "const": true }
+        },
+        "required": ["dry_run", "item_availability_updates"]
+      },
+      "errorMessage": "dry_run cannot be combined with item_availability_updates because immediate availability acknowledgements represent applied state, not a preview"
     }
   ],
   "x-mutates-state": true,
   "properties": {
     "idempotency_key": {
       "type": "string",
-      "description": "Client-generated unique key for at-most-once execution. `catalog_id` gives resource-level dedup per catalog, but the sync envelope emits audit events and triggers platform review for large feeds — this key prevents those side effects from firing twice on retry. Also serves as a request ID on discovery-only calls (when `catalogs` is omitted). MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
+      "description": "Client-generated unique key for at-most-once execution. Catalog upserts and item availability transitions can emit audit events or trigger platform work — this key prevents those side effects from firing twice on retry. Also serves as a request ID on discovery-only calls. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
       "minLength": 16,
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
-      "description": "Account that owns these catalogs."
+      "description": "Seller account containing these buyer-managed catalogs."
     },
     "catalogs": {
       "type": "array",
-      "description": "Array of catalog feeds to sync (create or update). When omitted, the call is discovery-only and returns all existing catalogs on the account without modification.",
+      "description": "Array of catalog feeds to sync (create or update). When omitted together with item_availability_updates and item_availability_queries, the call is discovery-only and returns all existing catalogs on the account without modification.",
       "items": {
         "$ref": "/schemas/core/catalog.json"
       },
       "minItems": 1,
       "maxItems": 50
+    },
+    "item_availability_updates": {
+      "type": "array",
+      "description": "Immediate suppress or restore operations for items in buyer-managed catalogs. Sellers declaring media_buy.features.catalog_item_availability_updates MUST process these updates synchronously and MUST NOT silently ignore them or return a submitted task. A seller that does not declare the capability MUST reject the request with UNSUPPORTED_FEATURE before lookup or mutation and MUST NOT interpret it as discovery. The combined number of item_availability_updates and item_availability_queries MUST NOT exceed 1,000; excess entries are an operation-level INVALID_REQUEST before lookup or mutation. Each (catalog_id, catalog_generation, item_id) tuple MUST appear at most once in updates; a duplicate is an operation-level INVALID_REQUEST before mutation in every validation mode. For mixed catalog/update requests, the seller MUST validate and stage the entire request against the post-upsert candidate state, then commit catalog and availability changes atomically. It MUST reject before any mutation if synchronous atomic commit is unavailable. A successful suppress acknowledgement means the seller MUST stop selecting or rendering the item and every cached or pre-generated creative it materialized from the item. Seller-internal generation lineage MUST retain resolved_account_id, catalog_id, catalog_generation, and item_id. If the seller cannot enforce that guarantee, it MUST return a failed per-item result. Suppression persists across scheduled feed fetches and catalog upserts until explicit restore, expires_at, or deletion of the containing catalog. Restore removes only an existing buyer-authored overlay or tombstone in the same catalog generation and cannot override seller rejection, withdrawal, policy, rights, or inventory controls. A restore for an absent item without such prior state fails with REFERENCE_NOT_FOUND.",
+      "items": {
+        "$ref": "/schemas/core/catalog-item-availability-update.json"
+      },
+      "minItems": 1,
+      "maxItems": 1000
+    },
+    "item_availability_queries": {
+      "type": "array",
+      "description": "Read current buyer-authored availability state. Queries require media_buy.features.catalog_item_availability_updates; a seller that does not declare it rejects with UNSUPPORTED_FEATURE before lookup. Any request containing queries is synchronous. In a mixed request the seller validates and stages catalog upserts and availability updates first, evaluates queries against that post-upsert/post-update candidate state, and atomically commits the staged mutations before returning those query results. If the mixed work cannot commit synchronously, it rejects before mutation. The seller returns exactly one item_availability_states entry per query in the same order and echoes request_index and the complete identity. Unknown, inaccessible, stale-generation, and unauthorized references use the normalized REFERENCE_NOT_FOUND shape described by validation_mode. Use a fresh idempotency_key for a current read; a replayed response is a historical snapshot.",
+      "items": { "$ref": "/schemas/core/catalog-item-availability-ref.json" },
+      "minItems": 1,
+      "maxItems": 1000
     },
     "catalog_ids": {
       "type": "array",
@@ -45,17 +70,17 @@
     "delete_missing": {
       "type": "boolean",
       "default": false,
-      "description": "When true, buyer-managed catalogs on the account not included in this sync will be removed. Does not affect seller-managed catalogs. Do not combine with an omitted catalogs array or all buyer-managed catalogs will be deleted."
+      "description": "When true, buyer-managed catalogs on the account not included in this sync will be removed. Does not affect seller-managed catalogs. Requires catalogs; item_availability_updates alone cannot define deletion scope."
     },
     "dry_run": {
       "type": "boolean",
       "default": false,
-      "description": "When true, preview changes without applying them. Returns what would be created/updated/deleted."
+      "description": "When true, preview catalog create, update, and delete changes without applying them. MUST NOT be combined with item_availability_updates."
     },
     "validation_mode": {
       "$ref": "/schemas/enums/validation-mode.json",
       "default": "strict",
-      "description": "Validation strictness. 'strict' fails entire sync on any validation error. 'lenient' processes valid catalogs and reports errors."
+      "description": "Validation strictness for semantically valid-looking catalog and item entries. In strict mode (default), an unknown, inaccessible, unauthorized, or stale-generation catalog/item reference, a known seller-managed catalog, a stale expected_overlay_revision, or another per-entry error fails the entire operation before any catalog or availability mutation. In lenient mode, the seller returns a positionally matched failed result for each such item entry and processes the remaining valid entries. Unknown, inaccessible, unauthorized, and stale-generation references MUST be observationally equivalent: code REFERENCE_NOT_FOUND, message exactly 'Catalog item not found', recovery 'correctable', and no field, suggestion, retry_after, issues, details, or resource metadata. Authorization and lookup MUST use the same externally observable failure path and SHOULD avoid materially distinguishable timing. A known seller-managed catalog may use INVALID_REQUEST only after catalog access is authorized. Request-schema failures, duplicate identity tuples, unsupported capability, batch-limit excess, dry_run conflicts, and mixed requests that cannot commit synchronously and atomically are operation-level failures before lookup or mutation in both modes. A stale revision uses CONFLICT without mutation."
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
@@ -156,6 +181,33 @@
         "account": {
           "account_id": "acct_acmecorp"
         }
+      }
+    },
+    {
+      "description": "Immediately suppress an out-of-stock item and restore another item without re-sending either catalog feed.",
+      "data": {
+        "idempotency_key": "d4a8f1b2-0123-489f-a123-45678901234d",
+        "account": {
+          "account_id": "acct_acmecorp"
+        },
+        "item_availability_updates": [
+          {
+            "catalog_id": "product-feed",
+            "catalog_generation": "catgen_01K2ABCD",
+            "item_id": "SKU-12345",
+            "expected_overlay_revision": 0,
+            "action": "suppress",
+            "reason": "out_of_stock"
+          },
+          {
+            "catalog_id": "product-feed",
+            "catalog_generation": "catgen_01K2ABCD",
+            "item_id": "SKU-67890",
+            "expected_overlay_revision": 3,
+            "action": "restore",
+            "reason": "back_in_stock"
+          }
+        ]
       }
     }
   ]

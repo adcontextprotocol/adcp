@@ -13,37 +13,13 @@
  * those registered governance agents.
  */
 
-import { z } from 'zod';
 import type { TenantConfig } from '@adcp/sdk/server';
 import { TrainingPlatform } from '../v6-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
-import { customToolFor } from './custom-tool-helper.js';
-import { listAccountsTool } from './account-tools.js';
-import { handleSyncGovernance } from '../account-handlers.js';
+import { listAccountsTool, syncGovernanceTool } from './account-tools.js';
 import type { TrainingContext } from '../types.js';
 
 const TENANT_ID = 'signals';
-
-const ACCOUNT_REF = z.object({
-  account_id: z.string().optional(),
-  brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
-  operator: z.string().optional(),
-}).passthrough();
-
-const SYNC_GOVERNANCE_SCHEMA = {
-  accounts: z.array(z.object({
-    account: ACCOUNT_REF,
-    governance_agents: z.array(z.object({
-      url: z.string(),
-      authentication: z.object({
-        schemes: z.array(z.string()),
-        credentials: z.string(),
-      }),
-    })).min(1),
-  })),
-  idempotency_key: z.string().optional(),
-  context: z.any().optional(),
-};
 
 export function buildSignalsTenantConfig(host: string, options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): {
   tenantId: string;
@@ -61,12 +37,7 @@ export function buildSignalsTenantConfig(host: string, options: { storyboardComp
       serverOptions: {
         customTools: {
           list_accounts: listAccountsTool(options.storyboardCompat),
-          sync_governance: customToolFor(
-            'sync_governance',
-            'Register governance agent endpoints on accounts. The seller calls these agents via check_governance during signal activation. Uses replace semantics: each call replaces previously synced agents on the specified accounts.',
-            SYNC_GOVERNANCE_SCHEMA,
-            handleSyncGovernance,
-          ),
+          sync_governance: syncGovernanceTool(options.storyboardCompat),
         },
       },
     },

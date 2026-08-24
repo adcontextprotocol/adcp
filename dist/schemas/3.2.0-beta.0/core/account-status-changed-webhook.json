@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/account-status-changed-webhook.json",
+  "title": "Account Status Changed Webhook",
+  "description": "Account-anchored webhook payload fired when an account's lifecycle status changes after the initial sync_accounts result. Registered through sync_accounts.accounts[].notification_configs[] using event_types: [\"account.status_changed\"]. The payload is an invalidation signal, not a replacement account document: receivers SHOULD re-run list_accounts for the account_id and reconcile from the fresh account snapshot. The setup block intentionally omits setup.url because setup URLs are often single-use or sensitive; receivers fetch the current setup URL, when visible to that caller, from list_accounts.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same fire. Sellers MUST generate a cryptographically random value (UUID v4 recommended) per distinct fire and reuse it on every retry of the same fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_id": {
+      "type": "string",
+      "description": "Stable identifier for this logical account status transition. Stability key is (account_id, previous_status, status, observed_at): retries and re-emissions of the same transition reuse the id under a new idempotency_key, while a later transition cycle receives a new id.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "account.status_changed",
+      "description": "Fixed notification type discriminator. Matches the value registered on the subscriber's event_types."
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller initiated this fire. Distinct from observed_at, which is when the seller recorded the account transition."
+    },
+    "subscriber_id": {
+      "type": "string",
+      "description": "Identifies which sync_accounts.accounts[].notification_configs[] entry is receiving this fire. Echoed verbatim from the entry's subscriber_id.",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "account_id": {
+      "type": "string",
+      "description": "Seller-assigned account identifier whose status changed. Sellers MUST assign account_id before activating an account.status_changed subscriber, including accounts still pending external approval, so later pending_approval -> rejected or pending_approval -> active transitions can be delivered and repaired through list_accounts.",
+      "x-entity": "account"
+    },
+    "previous_status": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/account-status.json",
+      "description": "Account status immediately before this transition."
+    },
+    "status": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/account-status.json",
+      "description": "Account status after this transition. Receivers SHOULD treat this as advisory and re-read list_accounts for the authoritative account snapshot."
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller recorded the account status transition. Used in the notification_id stability key; this is seller wall time for the transition, not webhook fire time."
+    },
+    "reason_code": {
+      "type": "string",
+      "enum": [
+        "seller_approved",
+        "seller_rejected",
+        "payment_required",
+        "credit_limit_reached",
+        "funds_depleted",
+        "setup_required",
+        "policy_review",
+        "policy_violation",
+        "compliance_hold",
+        "buyer_requested",
+        "seller_closed",
+        "manual_update",
+        "other"
+      ],
+      "description": "Machine-readable reason for the transition. This is advisory routing/debug metadata; receivers MUST re-read list_accounts rather than relying on the reason code as the source of truth."
+    },
+    "reason_detail": {
+      "type": "string",
+      "description": "Optional short human-readable detail. Treat as untrusted text. Sellers MUST NOT include secrets, setup tokens, internal stack traces, or regulated financial details.",
+      "maxLength": 500
+    },
+    "setup": {
+      "type": "object",
+      "description": "Reduced setup hint when the new status requires human action. This block intentionally omits setup.url; receivers fetch the current setup URL from list_accounts if the caller is authorized to see it.",
+      "properties": {
+        "message": {
+          "type": "string",
+          "description": "Human-readable setup message safe to fan out to every active account notification subscriber."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the setup action or hint expires, if known."
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_id",
+    "notification_type",
+    "fired_at",
+    "subscriber_id",
+    "account_id",
+    "previous_status",
+    "status",
+    "observed_at",
+    "reason_code"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Account requires payment action",
+      "data": {
+        "idempotency_key": "whk_01K18GM0Z7J3Q6WBH7DYK2R4VM",
+        "notification_id": "acctchg_acc_glow_20260719T100712Z",
+        "notification_type": "account.status_changed",
+        "fired_at": "2026-07-19T10:07:15Z",
+        "subscriber_id": "buyer-primary",
+        "account_id": "acc_glow_pending",
+        "previous_status": "pending_approval",
+        "status": "payment_required",
+        "observed_at": "2026-07-19T10:07:12Z",
+        "reason_code": "setup_required",
+        "setup": {
+          "message": "Complete advertiser billing setup.",
+          "expires_at": "2026-07-30T00:00:00Z"
+        }
+      }
+    }
+  ]
+}

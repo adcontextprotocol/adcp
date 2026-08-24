@@ -1,0 +1,952 @@
+---
+title: sync_creatives
+description: "sync_creatives uploads and manages creative assets in an AdCP library with bulk uploads, upsert semantics, and generative creative support."
+"og:title": "AdCP — sync_creatives"
+testable: true
+---
+
+
+Upload and manage creative assets in a creative library. Supports bulk uploads, upsert semantics, and generative creatives. Implemented by any agent that hosts a creative library — creative agents (ad servers, creative management platforms) and sales agents that manage creatives.
+
+**Response time**: Instant to days (returns `completed`, or `submitted` for review that takes hours/days)
+
+{/* Using latest because these schemas are not yet released in any version.
+     Update to correct version alias after the next release. */}
+**Request Schema**: [`creative/sync-creatives-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/creative/sync-creatives-request.json)
+**Response Schema**: [`creative/sync-creatives-response.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/creative/sync-creatives-response.json)
+
+## Quick start
+
+Upload creative assets:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncCreativesResponseSchema } from "@adcp/sdk";
+import { randomUUID } from "node:crypto";
+
+const result = await testAgent.syncCreatives({
+  account: {
+    brand: { domain: "acmecorp.com" },
+    operator: "acmecorp.com",
+    sandbox: true,
+  },
+  idempotency_key: randomUUID(),
+  creatives: [
+    {
+      creative_id: "creative_video_001",
+      name: "Summer Sale 30s",
+      format_kind: "video_hosted",
+      assets: {
+        video: {
+          asset_type: "video",
+          url: "https://cdn.example.com/summer-sale-30s.mp4",
+          width: 1920,
+          height: 1080,
+          duration_ms: 30000,
+        },
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+// Validate response against schema
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+// Three-shape discriminated union: errors | submitted | creatives
+if ("errors" in validated && validated.errors && !("creatives" in validated) && !("status" in validated)) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("status" in validated && validated.status === "submitted") {
+  // Whole sync queued asynchronously — invoke get_task_status with task_id or await webhook
+  console.log(`Sync queued as task ${validated.task_id}: ${validated.message ?? ""}`);
+} else if ("creatives" in validated) {
+  console.log(`Synced ${validated.creatives.length} creatives`);
+  for (const c of validated.creatives) {
+    // c.status carries review state: approved, pending_review, rejected, processing, archived
+    if (c.status === "pending_review" || c.status === "processing") {
+      console.log(`  ${c.creative_id}: awaiting review (${c.status})`);
+    }
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from uuid import uuid4
+
+async def main():
+    result = await test_agent.simple.sync_creatives(
+        account={
+            'brand': {'domain': 'acmecorp.com'},
+            'operator': 'acmecorp.com',
+            'sandbox': True
+        },
+        idempotency_key=str(uuid4()),
+        creatives=[{
+            'creative_id': 'creative_video_001',
+            'name': 'Summer Sale 30s',
+            'format_kind': 'video_hosted',
+            'assets': {
+                'video': {
+                    'asset_type': 'video',
+                    'url': 'https://cdn.example.com/summer-sale-30s.mp4',
+                    'width': 1920,
+                    'height': 1080,
+                    'duration_ms': 30000
+                }
+            }
+        }]
+    )
+
+    # Three-shape discriminated union: errors | submitted | creatives
+    if getattr(result, 'status', None) == 'submitted':
+        # Whole sync queued asynchronously — invoke get_task_status with task_id or await webhook
+        print(f"Sync queued as task {result.task_id}: {getattr(result, 'message', '') or ''}")
+        return
+
+    if getattr(result, 'errors', None) and not getattr(result, 'creatives', None):
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"Synced {len(result.creatives)} creatives")
+    for c in result.creatives:
+        # c.status carries review state: approved, pending_review, rejected, processing, archived
+        if getattr(c, 'status', None) in ('pending_review', 'processing'):
+            print(f"  {c.creative_id}: awaiting review ({c.status})")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+**Note:** Per-creative async review is surfaced via `creatives[].status` (e.g., `pending_review`) on the synchronous success response. When the *whole* operation is queued (batch ingestion, governance review gating the sync), the response is a submitted envelope with top-level `status: "submitted"` and a `task_id`. See [Async approval workflow](#async-approval-workflow).
+
+## Read-after-write visibility
+
+Creatives accepted via a synchronous `sync_creatives` success response MUST be committed to the creative library before the response is returned. They MUST be immediately visible to subsequent [`list_creatives`](/dist/docs/3.2.0-beta.3/creative/task-reference/list_creatives) calls from the same account and authorized caller, including creatives whose review lifecycle status is `processing` or `pending_review`.
+
+Implementations that acknowledge a creative on the synchronous success branch but buffer the library write until a later background commit are not conformant. If the whole sync operation cannot commit before returning, use the submitted task envelope instead; the visibility requirement then applies when the task completes with accepted creatives.
+
+## Request parameters
+
+| Parameter         | Type       | Required | Description                                                                                                                                                              |
+| ----------------- | ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `account`         | object     | Yes      | Account reference identifying the advertiser/workspace for this sync ([account-ref](/dist/docs/3.2.0-beta.3/accounts/overview)) |
+| `idempotency_key` | string     | Yes      | Client-generated key that makes retries safe. Use a fresh UUID or other unique value per request. |
+| `creatives`       | Creative[] | Yes      | Creative assets to upload/update (max 100)                                                                                                                               |
+| `creative_ids`    | string[]   | No       | Optional filter to limit sync scope to specific creative IDs. Only these creatives are affected, others remain untouched. Useful for partial updates and error recovery. |
+| `assignments`     | array      | No       | Array of `{creative_id, package_id}` objects for bulk assignment. Optional `weight` and `placement_ids` per assignment.                                                  |
+| `dry_run`         | boolean    | No       | When true, rehearse this exact sync operation without applying it (default: false). Use this for seller trafficking acceptance checks; use [`validate_input`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/creative/validate-input-request.json) for manifest-only preflight against canonical/product format targets. |
+| `validation_mode` | string     | No       | Validation strictness: `"strict"` (default) or `"lenient"`                                                                                                               |
+| `delete_missing`  | boolean    | No       | When true, creatives not in this sync are archived (default: false). Cannot be combined with `creative_ids`. Cannot delete creatives assigned to active, non-paused packages. |
+
+### Creative object
+
+| Field               | Type                | Required    | Description                                                        |
+| ------------------- | ------------------- | ----------- | ------------------------------------------------------------------ |
+| `creative_id`       | string              | Yes         | Unique identifier for this creative                                |
+| `name`              | string              | Yes         | Human-readable name                                                |
+| `format_kind`       | CanonicalFormatKind | Yes for 3.2 authoring | Portable canonical format path. Pair with `format_option_ref` when exact routing is required. |
+| `format_id`         | FormatId            | Deprecated | Named-format compatibility path for older 3.x peers; mutually exclusive with `format_kind`. |
+| `format_option_ref` | FormatOptionRef     | No          | Optional structured reference to a product or publisher format option. Required when the target product has multiple options with the same `format_kind`. |
+| `assets`            | object              | Yes         | Assets keyed by the selected format's slot name (`asset_group_id` for canonical formats). Catalogs are included as assets with `asset_type: "catalog"`. See [Catalogs](/dist/docs/3.2.0-beta.3/creative/catalogs). |
+| `localization`      | object \| null       | No          | Sync-only explicit source and target locale variants. Requires `get_adcp_capabilities.creative.localization`. An object replaces the complete locale set; null removes it. Omission preserves existing localization only when source assets are exactly unchanged. |
+| `tags`              | string[]            | No          | Searchable tags for creative organization                          |
+
+New 3.2 integrations use `format_kind` with `format_option_ref` when routing depends on a product's declared option. A compatibility implementation may accept the legacy branch from an older peer, but never mixes both shapes.
+
+Before uploading, buyers MUST verify each creative manifest against the target product's canonical `format_options[]`. The manifest MUST include every asset slot that the selected format option declares as required, keyed by that slot's `asset_group_id`.
+
+### Native localization
+
+Discover support before writing. The agent's
+`get_adcp_capabilities.creative.localization` block advertises structural
+support, RFC 4647 Lookup, and an optional target ceiling. Locale, format, and
+account support is validated against each request. A seller MUST reject an
+unsupported locale/format pair, duplicate target locale/ID, target locale/ID
+that reuses the source value, missing materialized assets, or invalid default
+reference before mutating seller systems or the creative library. JSON Schema `uniqueItems`
+compares whole objects and is not sufficient for those property-level rules;
+conformance verifiers consume the schema's `x-adcp-validation` constraints.
+
+This is the only localization mutation surface. Inline package creatives in
+[`create_media_buy`](/dist/docs/3.2.0-beta.3/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/dist/docs/3.2.0-beta.3/media-buy/task-reference/update_media_buy) reject `localization`; sync the
+localized library creative here, then assign it by `creative_id`.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/creative/sync-creatives-request.json",
+  "adcp_version": "3.1",
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+  "account": { "account_id": "acct_nova" },
+  "creatives": [
+    {
+      "creative_id": "summer_image_localized",
+      "name": "Summer image — localized",
+      "format_kind": "image",
+      "assets": {
+        "image": {
+          "asset_type": "image",
+          "url": "https://cdn.nova.example/summer-en.jpg",
+          "width": 1080,
+          "height": 1080
+        },
+        "headline": {
+          "asset_type": "text",
+          "content": "Summer starts here",
+          "language": "en-US"
+        }
+      },
+      "localization": {
+        "source": {
+          "locale_variant_id": "loc_en_us",
+          "locale": "en-US"
+        },
+        "target_variants": [
+          {
+            "locale_variant_id": "loc_es_mx",
+            "locale": "es-MX",
+            "assets": {
+              "image": {
+                "asset_type": "image",
+                "url": "https://cdn.nova.example/summer-es-mx.jpg",
+                "width": 1080,
+                "height": 1080
+              },
+              "headline": {
+                "asset_type": "text",
+                "content": "El verano empieza aquí",
+                "language": "es-MX"
+              }
+            }
+          }
+        ],
+        "locale_fallbacks": [
+          {
+            "language_range": "es",
+            "locale_variant_id": "loc_es_mx"
+          }
+        ],
+        "default_locale_variant_id": "loc_en_us",
+        "unmatched_locale_action": "do_not_serve"
+      }
+    }
+  ]
+}
+```
+
+Source identifies production provenance, not the serving default. Every target
+contains materialized locale-specific overrides; missing slots inherit source.
+`target_variants` may be empty to declare the canonical locale of a monolingual
+source-only creative, such as a single `fr-CA` creative for French-only Québec
+inventory. Do not invent a second locale variant merely to declare source
+language.
+`default_locale_variant_id` may select source or target. This task never asks
+the seller to translate: use buyer tooling, [`build_creative`](/dist/docs/3.2.0-beta.3/creative/task-reference/build_creative), or a separate
+translation/transformation agent first, then sync the resulting assets.
+
+At delivery, the seller applies RFC 4647 Lookup to ordered locale preferences.
+Each progressively truncated requested range matches only an equal available
+canonical tag; it does not prefix-match sibling regional tags.
+The ordered list comes from the seller's serving environment and is outside
+this task: AdCP does not define how browser, content, geography, user, app, or
+platform signals produce it or their precedence.
+For each preference, a strict miss is followed by the most-specific matching
+`locale_fallbacks` rule before the next preference is tried. The example's `es`
+rule lets an `es-ES` preference use `loc_es_mx`; without that rule, no regional
+substitution is inferred. After every preference misses both paths, the seller
+follows `unmatched_locale_action`: serve `default_locale_variant_id` or make the
+creative ineligible. It never silently assumes the source is the default.
+
+Standalone library sync has no product context and does not apply product locale
+policy. When `assignments[]` binds a creative to a package whose effective
+format option has `locale_policy`, the
+seller uses RFC 4647 Basic Filtering to derive the eligible source/target
+variant set before running the buyer algorithm above. For example, seller range
+`fr` accepts `fr-CA` and `fr-FR`. The assignment fails with
+[`CREATIVE_LOCALE_NOT_ACCEPTED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-creative-locale-not-accepted) if no materialized variant matches. If
+`unmatched_locale_action` is `serve_default`, the default variant must also be
+seller-eligible. Buyer fallback and default rules never override the product or
+placement constraint; nonmatching variants remain stored for other products.
+The seller runs this check independently for every placement where the
+assignment may serve. If one placement fails, the assignment is rejected unless
+the buyer narrows its placement scope to compatible placements.
+
+Accepted localized results include `localization` as a complete
+source-plus-target variant list. The response preserves the request's exact
+source ID/locale, target ID/locale set, fallback-rule set, default ID, and unmatched action. Each
+variant returns complete resolved assets under the same buyer-assigned
+`locale_variant_id`; no seller- or platform-assigned variant ID is required.
+The enclosing creative's single `status` governs the complete set. If the
+seller cannot read back any one of those values exactly, the item fails rather
+than silently falling back to the source language.
+
+Every accepted localized result (`created`, `updated`, or `unchanged`) MUST
+carry top-level aggregate `status` and complete `localization`; `failed` and
+`deleted` results MUST omit localization. A later
+[`list_creatives`](/dist/docs/3.2.0-beta.3/creative/task-reference/list_creatives) read preserves the exact source/target identities.
+
+`delete_missing` remains creative-scoped. If it archives a creative, every
+locale variant follows the whole creative lifecycle, and omitted target locales
+are never treated as missing creatives. A non-null `localization` object
+transactionally replaces top-level source assets and the complete locale set;
+failure leaves the prior state unchanged and must not expose orphaned locale
+variants.
+Null removes localization. Omission preserves localization only when top-level
+source assets exactly equal the prior source assets. The normal active-delivery
+update protection applies to all three operations.
+
+### Promoting a build_creative variant
+
+When a buyer keeps a produced build leaf, the canonical promotion is to use the kept `build_variant_id` as the new `creative_id`. The seller does not need to hold a separate lineage mapping; delivery reporting can join back to the build leaf through the normal `creative_id`.
+
+```json test=false
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+  "account": { "account_id": "acct_acmecorp" },
+  "creatives": [
+    {
+      "creative_id": "bv_card01_a",
+      "name": "Summer card - studio take",
+      "format_kind": "image",
+      "assets": {
+        "headline_0_text": {
+          "asset_type": "text",
+          "content": "Summer Sale - 50% Off"
+        },
+        "image_0_url": {
+          "asset_type": "image",
+          "url": "https://cdn.example.com/beach-hero.jpg",
+          "width": 300,
+          "height": 250
+        }
+      }
+    }
+  ]
+}
+```
+
+Later, [`get_creative_delivery`](/dist/docs/3.2.0-beta.3/creative/task-reference/get_creative_delivery) uses `creative_id` as the join key. A workflow that mints a different library id instead of using the kept `build_variant_id` loses this protocol-visible join unless a future scoped lineage field is adopted.
+
+### Asset structure
+
+Assets are keyed by role name. Each role contains the asset details:
+
+```json test=false
+{
+  "assets": {
+    "video": {
+      "url": "https://cdn.example.com/video.mp4",
+      "width": 1920,
+      "height": 1080,
+      "duration_ms": 30000
+    },
+    "thumbnail": {
+      "url": "https://cdn.example.com/thumb.jpg",
+      "width": 300,
+      "height": 250
+    }
+  }
+}
+```
+
+For published-post reference products, the asset role is usually `published_post` and the payload contains a post URL or platform post ID instead of uploaded media bytes. Buyers can submit these assets through the canonical creative path, for example `format_kind: "video_hosted"` plus the product's `format_option_ref`, instead of creating a platform-specific `format_id`. If the seller can resolve the post but lacks a required downstream platform connection, such as the publisher identity that owns the post, the correctable error is [`AUTHORIZATION_REQUIRED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-authorization-required). New implementations should include `error.details.missing_connections[]` so the caller can send a human through the correct connections flow and retry after authorization is restored.
+
+### Assignments structure
+
+Assignments are at the request level, mapping creative IDs to package IDs. Standalone creative agents that do not manage media buys ignore this field.
+
+```json test=false
+{
+  "assignments": [
+    { "creative_id": "creative_video_001", "package_id": "pkg_premium" },
+    { "creative_id": "creative_video_001", "package_id": "pkg_standard" },
+    { "creative_id": "creative_display_002", "package_id": "pkg_standard" }
+  ]
+}
+```
+
+**Adopter note (`@adcp/sdk` server-side):** the typed `syncCreatives(creatives, ctx)` signature does not surface `assignments` as a positional argument. The wire envelope lands on `RequestContext.input`, so handlers read `ctx.input.assignments` to fan out package bindings and emit `creatives[i].assigned_to` in the response. The same escape hatch applies to any request field the typed signature intentionally does not model. See [`adcp#5797`](https://github.com/adcontextprotocol/adcp/issues/5797) for the trace that motivated this note (SDK ≥ 11.1.0 threads `params` into `ctx.input`; earlier lines dropped the field at the projector seam).
+
+## Response
+
+Responses use discriminated unions — a response has exactly one of three shapes, never mixed:
+
+**1. Synchronous success** — per-creative results:
+
+- `creatives` - Results for each creative processed (includes both successful and failed items)
+- `dry_run` - Boolean indicating if this was a dry run (optional)
+
+**2. Terminal error** — no creatives processed:
+
+- `errors` - Array of operation-level errors (auth failure, service unavailable)
+
+**3. Submitted task envelope** — whole operation queued asynchronously (batch ingestion, governance review gating the sync):
+
+- `status` - Always `"submitted"`
+- `task_id` - Handle for polling via [`get_task_status`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/protocol/get-task-status-request.json) on the A2A profile (or the advertised AdCP polling task on MCP), or receiving a webhook on completion
+- `message` - Optional human-readable explanation of the queue state
+
+The final per-creative `creatives` array lands on the task completion artifact, not on the submitted envelope. Per-item async review (one creative in `pending_review` while the rest of the sync resolves synchronously) belongs on the synchronous success branch with `status: "pending_review"` on that item, not here.
+
+**Each creative in the success response includes:**
+
+- All request fields
+- `platform_id` - Platform's internal ID (when `action` is not `failed`)
+- `action` - Lifecycle operation performed by this sync: `created`, `updated`, `unchanged`, `failed`, `deleted`
+- `status` - **Advisory** review-lifecycle state ([`CreativeStatus`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/creative-status.json)): `processing`, `pending_review`, `approved`, `suspended`, `rejected`, `archived`. A UI hint and polling-scheduling signal — **not** a spend-authorization gate. Orthogonal to `action` — `action` describes what the sync did, `status` describes where the creative is in the review lifecycle. Values come from `CreativeStatus` only, never from `CreativeAction` (never put `created`/`updated`/`failed` in `status`). Sellers with async review return `processing` or `pending_review`; sellers with synchronous review MAY return a terminal value (`approved`/`rejected`) or `suspended` when a recoverable dependency/authorization gate prevents serving. **Buyers MUST NOT gate downstream spend or package activation on `status: approved` from this response** — reconcile via [`list_creatives`](/dist/docs/3.2.0-beta.3/creative/task-reference/list_creatives) or a signed review webhook before committing spend. Authoritative state is always via `list_creatives`. **MUST be omitted** when `action` is `failed` or `deleted` — failed items have no meaningful review state (see `errors`); deleted items are gone from the library. The schema enforces the omission rule via a conditional constraint.
+- `localization` - Exact materialized source/target locale state. Required with top-level `status` on every accepted localized item, omitted on failed/deleted/unlocalized items. The top-level status is the single creative-wide review state.
+- `errors` - Array of error messages (only when `action: "failed"`)
+- `warnings` - Array of non-fatal warnings (optional)
+
+**See schema for complete field list**: [sync-creatives-response.json](https://adcontextprotocol.org/schemas/3.2.0-beta.3/creative/sync-creatives-response.json)
+
+## Common scenarios
+
+### Bulk upload
+
+Upload multiple creatives in one call:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncCreativesResponseSchema } from "@adcp/sdk";
+import { randomUUID } from "node:crypto";
+
+const result = await testAgent.syncCreatives({
+  account: {
+    brand: { domain: "acmecorp.com" },
+    operator: "acmecorp.com",
+    sandbox: true,
+  },
+  idempotency_key: randomUUID(),
+  creatives: [
+    {
+      creative_id: "creative_display_001",
+      name: "Summer Sale Banner 300x250",
+      format_kind: "image",
+      assets: {
+        image: {
+          asset_type: "image",
+          url: "https://cdn.example.com/banner-300x250.jpg",
+          width: 300,
+          height: 250,
+        },
+      },
+    },
+    {
+      creative_id: "creative_video_002",
+      name: "Product Demo 15s",
+      format_kind: "video_hosted",
+      assets: {
+        video: {
+          asset_type: "video",
+          url: "https://cdn.example.com/demo-15s.mp4",
+          width: 1920,
+          height: 1080,
+          duration_ms: 15000,
+        },
+      },
+    },
+    {
+      creative_id: "creative_display_002",
+      name: "Summer Sale Banner 728x90",
+      format_kind: "image",
+      assets: {
+        image: {
+          asset_type: "image",
+          url: "https://cdn.example.com/banner-728x90.jpg",
+          width: 728,
+          height: 90,
+        },
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("creatives" in validated) {
+  console.log(`Successfully synced ${validated.creatives.length} creatives`);
+  validated.creatives.forEach((creative) => {
+    console.log(`  ${creative.creative_id}: ${creative.action}`);
+  });
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from uuid import uuid4
+
+async def main():
+    result = await test_agent.simple.sync_creatives(
+        account={
+            'brand': {'domain': 'acmecorp.com'},
+            'operator': 'acmecorp.com',
+            'sandbox': True
+        },
+        idempotency_key=str(uuid4()),
+        creatives=[
+            {
+                'creative_id': 'creative_display_001',
+                'name': 'Summer Sale Banner 300x250',
+                'format_kind': 'image',
+                'assets': {
+                    'image': {
+                        'asset_type': 'image',
+                        'url': 'https://cdn.example.com/banner-300x250.jpg',
+                        'width': 300,
+                        'height': 250
+                    }
+                }
+            },
+            {
+                'creative_id': 'creative_video_002',
+                'name': 'Product Demo 15s',
+                'format_kind': 'video_hosted',
+                'assets': {
+                    'video': {
+                        'asset_type': 'video',
+                        'url': 'https://cdn.example.com/demo-15s.mp4',
+                        'width': 1920,
+                        'height': 1080,
+                        'duration_ms': 15000
+                    }
+                }
+            },
+            {
+                'creative_id': 'creative_display_002',
+                'name': 'Summer Sale Banner 728x90',
+                'format_kind': 'image',
+                'assets': {
+                    'image': {
+                        'asset_type': 'image',
+                        'url': 'https://cdn.example.com/banner-728x90.jpg',
+                        'width': 728,
+                        'height': 90
+                    }
+                }
+            }
+        ]
+    )
+
+    # Check for operation-level errors first
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"Successfully synced {len(result.creatives)} creatives")
+    for creative in result.creatives:
+        print(f"  {creative.creative_id}: {creative.action}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Generative creatives
+
+Use the creative agent to generate creatives from brand identity data. See the [Generative Creatives guide](/dist/docs/3.2.0-beta.3/creative/generative-creative) for complete workflow details.
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncCreativesResponseSchema } from "@adcp/sdk";
+import { randomUUID } from "node:crypto";
+
+const result = await testAgent.syncCreatives({
+  account: {
+    brand: { domain: "acmecorp.com" },
+    operator: "acmecorp.com",
+    sandbox: true,
+  },
+  idempotency_key: randomUUID(),
+  creatives: [
+    {
+      creative_id: "creative_gen_001",
+      name: "AI-Generated Summer Banner",
+      format_kind: "image",
+      assets: {
+        prompt: {
+          asset_type: "text",
+          content: "Create a summer banner for outdoor enthusiasts. Headline: Summer gear built for every trail. CTA: Shop the collection.",
+        },
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("creatives" in validated) {
+  console.log(
+    "Generative creative synced:",
+    validated.creatives[0].creative_id
+  );
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from uuid import uuid4
+
+async def main():
+    result = await test_agent.simple.sync_creatives(
+        account={
+            'brand': {'domain': 'acmecorp.com'},
+            'operator': 'acmecorp.com',
+            'sandbox': True
+        },
+        idempotency_key=str(uuid4()),
+        creatives=[{
+            'creative_id': 'creative_gen_001',
+            'name': 'AI-Generated Summer Banner',
+            'format_kind': 'image',
+            'assets': {
+                'prompt': {
+                    'asset_type': 'text',
+                    'content': 'Create a summer banner for outdoor enthusiasts. Headline: Summer gear built for every trail. CTA: Shop the collection.'
+                }
+            }
+        }]
+    )
+
+    # Check for operation-level errors first
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    print(f"Generative creative synced: {result.creatives[0].creative_id}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Dry run validation
+
+Validate creative configuration without uploading:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncCreativesResponseSchema } from "@adcp/sdk";
+import { randomUUID } from "node:crypto";
+
+const result = await testAgent.syncCreatives({
+  account: {
+    brand: { domain: "acmecorp.com" },
+    operator: "acmecorp.com",
+    sandbox: true,
+  },
+  idempotency_key: randomUUID(),
+  dry_run: true,
+  creatives: [
+    {
+      creative_id: "creative_test_001",
+      name: "Test Creative",
+      format_kind: "video_hosted",
+      assets: {
+        video: {
+          asset_type: "video",
+          url: "https://cdn.example.com/test-video.mp4",
+          width: 1920,
+          height: 1080,
+          duration_ms: 30000,
+        },
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors && validated.errors.length > 0) {
+  console.log("Validation errors found:");
+  validated.errors.forEach((error) => console.log(`  - ${error.message}`));
+} else if (
+  "creatives" in validated && validated.creatives?.some((creative) => creative.action === "failed")
+) {
+  console.log("Creative validation errors found.");
+} else if (
+  "assignments" in validated && validated.assignments?.some((assignment) => assignment.status === "error")
+) {
+  console.log("Assignment validation errors found.");
+} else {
+  console.log("Validation passed! Ready to sync.");
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from uuid import uuid4
+
+async def main():
+    result = await test_agent.simple.sync_creatives(
+        account={
+            'brand': {'domain': 'acmecorp.com'},
+            'operator': 'acmecorp.com',
+            'sandbox': True
+        },
+        idempotency_key=str(uuid4()),
+        dry_run=True,
+        creatives=[{
+            'creative_id': 'creative_test_001',
+            'name': 'Test Creative',
+            'format_kind': 'video_hosted',
+            'assets': {
+                'video': {
+                    'asset_type': 'video',
+                    'url': 'https://cdn.example.com/test-video.mp4',
+                    'width': 1920,
+                    'height': 1080,
+                    'duration_ms': 30000
+                }
+            }
+        }]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        error_messages = [error.message for error in result.errors]
+        raise Exception(f"Validation errors: {error_messages}")
+    if any(getattr(creative, 'action', None) == 'failed' for creative in getattr(result, 'creatives', [])):
+        raise Exception('Creative validation errors found')
+    if any(getattr(assignment, 'status', None) == 'error' for assignment in getattr(result, 'assignments', [])):
+        raise Exception('Assignment validation errors found')
+
+    print('Validation passed! Ready to sync.')
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Scoped update with creative_ids filter
+
+Update only specific creatives from a large library without affecting others:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncCreativesResponseSchema } from "@adcp/sdk";
+import { randomUUID } from "node:crypto";
+
+// Update just 2 creatives out of 100+ in the library
+const result = await testAgent.syncCreatives({
+  account: {
+    brand: { domain: "acmecorp.com" },
+    operator: "acmecorp.com",
+    sandbox: true,
+  },
+  idempotency_key: randomUUID(),
+  creative_ids: ["creative_video_001", "creative_display_001"],
+  creatives: [
+    {
+      creative_id: "creative_video_001",
+      name: "Summer Sale 30s - Updated",
+      format_kind: "video_hosted",
+      assets: {
+        video: {
+          asset_type: "video",
+          url: "https://cdn.example.com/updated-video.mp4",
+          width: 1920,
+          height: 1080,
+          duration_ms: 30000,
+        },
+      },
+    },
+    {
+      creative_id: "creative_display_001",
+      name: "Summer Sale Banner - Updated",
+      format_kind: "image",
+      assets: {
+        image: {
+          asset_type: "image",
+          url: "https://cdn.example.com/updated-banner.jpg",
+          width: 300,
+          height: 250,
+        },
+      },
+    },
+  ],
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncCreativesResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
+}
+
+if ("creatives" in validated) {
+  console.log(
+    `Updated ${validated.creatives.length} creatives, others untouched`
+  );
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+from uuid import uuid4
+
+async def main():
+    # Update just 2 creatives out of 100+ in the library
+    result = await test_agent.simple.sync_creatives(
+        account={
+            'brand': {'domain': 'acmecorp.com'},
+            'operator': 'acmecorp.com',
+            'sandbox': True
+        },
+        idempotency_key=str(uuid4()),
+        creative_ids=['creative_video_001', 'creative_display_001'],
+        creatives=[
+            {
+                'creative_id': 'creative_video_001',
+                'name': 'Summer Sale 30s - Updated',
+                'format_kind': 'video_hosted',
+                'assets': {
+                    'video': {
+                        'asset_type': 'video',
+                        'url': 'https://cdn.example.com/updated-video.mp4',
+                        'width': 1920,
+                        'height': 1080,
+                        'duration_ms': 30000
+                    }
+                }
+            },
+            {
+                'creative_id': 'creative_display_001',
+                'name': 'Summer Sale Banner - Updated',
+                'format_kind': 'image',
+                'assets': {
+                    'image': {
+                        'asset_type': 'image',
+                        'url': 'https://cdn.example.com/updated-banner.jpg',
+                        'width': 300,
+                        'height': 250
+                    }
+                }
+            }
+        ]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Update failed: {result.errors}")
+
+    print(f"Updated {len(result.creatives)} creatives, others untouched")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+**Why use creative_ids filter:**
+
+- Scoped updates: Only specified creatives modified, even with 100+ in library
+- Error recovery: Retry only failed creatives after bulk sync validation failures
+- Performance: Publisher can optimize processing when scope is known upfront
+- Safety: Explicit targeting reduces risk of unintended changes
+
+## Async approval workflow
+
+Two distinct async patterns — match the right one to the agent's behavior:
+
+**Per-creative async review** (common): the sync operation itself resolves synchronously, but one or more creatives require downstream review (brand safety, policy compliance). Items in review come back on the synchronous success response with `status: "pending_review"` (or `processing` during ingestion). The buyer reconciles terminal state via [`list_creatives`](/dist/docs/3.2.0-beta.3/creative/task-reference/list_creatives) or a webhook.
+
+**Operation-level async** (less common): the whole sync is queued — the seller cannot return any per-item results before responding, because ingestion is batched or governance review gates the entire sync. The response is a submitted envelope:
+
+- Top-level `status: "submitted"` with `task_id`
+- `message` — optional human-readable explanation
+- No `creatives` array on this envelope
+
+Invoke [`get_task_status`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/protocol/get-task-status-request.json) on the A2A profile (or the advertised AdCP polling task on MCP), or wait for the webhook. The completion artifact carries the `creatives` array with per-item `action`/`status` results; operation-level failures surface as `status: "failed"` on the task.
+
+**See:** [Webhooks](/dist/docs/3.2.0-beta.3/building/by-layer/L3/webhooks) for webhook configuration.
+
+## Sync modes
+
+### Upsert (default)
+
+- Creates new creatives or updates existing by `creative_id`
+- `assignments[]` remains the deprecated additive assignment shorthand
+- `assignment_operations[]` can traffic existing IDs without resending creative bodies: `assign` upserts weight/placement scope, `unassign` removes one assignment, and `replace` atomically swaps an existing creative for a replacement
+- Updates provided fields, leaves others unchanged
+- Use `creative_ids` filter to limit scope to specific creatives
+
+### Dry run
+
+- Rehearses the same `sync_creatives` acceptance path without committing library, assignment, review, or serving changes
+- Returns operation-level errors, per-creative failures, assignment errors, and warnings the seller can determine before mutation
+- Does not create or update creatives, package assignments, review state, or serving state
+- Use for seller trafficking acceptance checks; use [`validate_input`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/creative/validate-input-request.json) for manifest-only canonical/product preflight
+
+## Error handling
+
+| Error Code                | Description                                       | Resolution                                                           |
+| ------------------------- | ------------------------------------------------- | -------------------------------------------------------------------- |
+| [`UNSUPPORTED_FEATURE`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-unsupported-feature)     | Format not supported by this seller or product    | Check the product's canonical `format_options[]`                      |
+| [`VALIDATION_ERROR`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-validation-error)        | Manifest failed format validation: an asset file is corrupt or invalid, or assets don't match the format's requirements (codec, dimensions, duration). `error.field` identifies the offending asset path | Verify asset types and specifications match the format definition |
+| [`PACKAGE_NOT_FOUND`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-package-not-found)       | Package ID doesn't exist in media buy             | Verify `package_id`; for legacy package correlation use [`get_media_buys`](/dist/docs/3.2.0-beta.3/media-buy/task-reference/get_media_buys) + package `context.buyer_ref` |
+| [`CREATIVE_REJECTED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-creative-rejected)       | Creative failed content-policy, brand-safety, or accessibility review | Revise according to the applicable policy or validated accessibility criteria |
+| [`CREATIVE_LOCALE_NOT_ACCEPTED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-creative-locale-not-accepted) | Assigned creative has no materialized variant accepted by the package's effective format `locale_policy`, lacks locale topology, or uses an ineligible `serve_default` | Supply a matching source/target variant, choose a compatible format option, or change the default policy |
+| [`INVALID_STATE`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-invalid-state)           | Creative is assigned to an active, non-paused package (blocks updates and `delete_missing` deletions) | Pause the package first, or create a new creative version        |
+
+Sellers that declare `creative_specs.vast_validation` of `document` or `wrapper` additionally validate `vast` assets at sync time (including `dry_run`) and can return [`VAST_PARSE_FAILED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-vast-parse-failed), [`VAST_VERSION_MISMATCH`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-vast-version-mismatch), or [`VAST_WRAPPER_DEPTH_EXCEEDED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-vast-wrapper-depth-exceeded). See [VAST Validation](/dist/docs/3.2.0-beta.3/creative/channels/video#vast-validation).
+
+## Best practices
+
+1. **Use upsert semantics** - Same `creative_id` updates existing creative rather than creating duplicates. This allows iterative creative development. Note: updates are blocked for creatives in active delivery (see #6).
+
+2. **Rehearse seller acceptance first** - Use `dry_run: true` when you need to catch upload, upsert, assignment, account, policy, or format errors before mutating the seller's creative library. Use [`validate_input`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/creative/validate-input-request.json) earlier in the workflow only for manifest-structure preflight or multi-target product comparison.
+
+3. **Batch assignment operations** - Use one idempotent `assignment_operations[]` call for assignment updates, removals, and replacements. This keeps creative trafficking separate from MediaBuy commercial controls and avoids races between calls.
+
+4. **CDN-hosted assets** - Use publicly accessible CDN URLs for faster processing. Platforms can fetch assets directly without proxy delays.
+
+5. **Brand identity** - For generative creatives, validate brand identity schema before syncing to avoid processing failures.
+
+6. **Active delivery protection** - Creatives assigned to active, non-paused packages cannot be updated or deleted via `delete_missing`. Pause the package first, use `assignment_operations` to unassign or replace the creative, or create a new creative with a different `creative_id`.
+
+## Related tasks
+
+- [Canonical formats](/dist/docs/3.2.0-beta.3/creative/canonical-formats) - Check product and publisher format contracts before upload
+- [`list_creatives`](/dist/docs/3.2.0-beta.3/creative/task-reference/list_creatives) - Browse and filter creatives in a library
+- [`build_creative`](/dist/docs/3.2.0-beta.3/creative/task-reference/build_creative) - Build manifests from library creatives or generate from scratch
+- [`preview_creative`](/dist/docs/3.2.0-beta.3/creative/task-reference/preview_creative) - Generate previews of creative manifests
+- [Creative Asset Types](/dist/docs/3.2.0-beta.3/creative/asset-types) - Technical requirements for assets

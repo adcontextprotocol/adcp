@@ -1,0 +1,67 @@
+name: AAMP snapshot check
+
+# The FAQ and Addie's knowledge rules make dated absence claims about
+# IAB Tech Lab's AAMP components ("no tagged specification release" as of
+# the pinned snapshot date). Those claims become false the day IAB
+# publishes. This weekly check compares the pinned snapshot in
+# scripts/aamp-snapshot.json against the IABTechLab GitHub org and opens
+# (or updates) a tracking issue when the docs need a refresh.
+
+on:
+  schedule:
+    - cron: '23 9 * * 1' # weekly, Monday 09:23 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: aamp-snapshot-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Compare snapshot to IABTechLab org
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Run snapshot check
+        id: drift
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          node scripts/check-aamp-snapshot.cjs > /tmp/drift-report.md
+          rc=$?
+          set -e
+          if [ "$rc" -eq 1 ]; then
+            echo "::error::Snapshot check failed to run."
+            cat /tmp/drift-report.md
+            exit 1
+          fi
+          echo "drift=$([ "$rc" -eq 3 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          cat /tmp/drift-report.md
+
+      - name: Open or update tracking issue
+        if: steps.drift.outputs.drift == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          title="AAMP snapshot drift: dated comparison in FAQ and Addie rules needs refresh"
+          existing=$(gh issue list --repo "$REPO" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            echo "Updating existing issue #$existing"
+            gh issue comment "$existing" --repo "$REPO" --body-file /tmp/drift-report.md
+          else
+            gh issue create --repo "$REPO" --title "$title" --body-file /tmp/drift-report.md
+          fi

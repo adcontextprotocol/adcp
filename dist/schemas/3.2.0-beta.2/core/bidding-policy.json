@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/bidding-policy.json",
+  "title": "Bidding Policy",
+  "description": "Buyer-authored execution policy for automatic delivery, auction bidding, average outcome cost, or return on ad spend. The containing object determines authored scope: media-buy `bidding` is a complete inherited default and package `bidding` is a complete package override. Sellers MUST preserve authored scope on readback and MUST NOT copy an inherited media-buy policy into package `bidding`. Every monetary field in this block is denominated in the media-buy currency; the selected pricing option supplies the auction unit, never another denomination. Auction-unit identity is the pricing_model plus every canonical billing-event qualifier after defaults are applied: for example CPV view threshold, CPP demographic system/demographic, CPA event tuple, time time_unit, and flat-rate/DOOH parameters. An extension qualifier participates only when its registered extension specification explicitly defines how it contributes to auction-unit identity. A media-buy bid_amount or max_bid is valid only when every inheriting package resolves the same auction-unit identity. Every affected pricing option MUST use the media-buy currency; split currency-mismatched packages into separate buys. Seller-optimized media-buy cost_per/roas bind to the primary budget_allocation.optimization_goals goal. Package-authored cost_per/roas bind to the package primary optimization goal. The primary goal is the earliest array entry among goals with the lowest explicit numeric priority; unprioritized goals follow explicitly prioritized goals; when all priorities are absent, the first entry is primary. In fixed allocation, an inherited media-buy cost_per is valid only when all inheriting packages have compatible primary-goal result units; inherited roas requires value-bearing primary goals on every inheriting package. Canonical ROAS requires each value-bearing event source to declare the media-buy currency in value_currencies; each buy consumes only exact-currency records and sellers MUST NOT convert them. Absence invokes inheritance or provider automatic delivery; `{automatic:true}` is an explicit authored policy that overrides inheritance. Sellers MUST reject unsupported modes, combinations, units, currency, goal bindings, or native placements before any provider mutation and MUST NOT silently translate semantics.",
+  "type": "object",
+  "properties": {
+    "automatic": {
+      "type": "boolean",
+      "const": true,
+      "description": "Explicitly use seller/provider automatic bidding at this authored scope. At package scope this is a complete override of a media-buy policy, not inheritance. It MUST be the only field in the block and MUST be preserved on readback."
+    },
+    "bid_amount": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Manual auction bid denominated in the media-buy currency and expressed per the selected pricing option's auction unit. For example, a CPM option interprets the amount per thousand impressions. This is the amount submitted to the auction, not a promise that the clearing price equals it. Requires an auction-priced pricing option whose currency equals the media-buy currency."
+    },
+    "max_bid": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Hard per-auction ceiling denominated in the media-buy currency and expressed per the selected pricing option's auction unit. This is the only canonical hard auction ceiling and MUST NOT be translated into an average outcome-cost control. Requires an auction-priced pricing option whose currency equals the media-buy currency. May stand alone or supplement cost_per/roas only when the relevant scope capability advertises that combination."
+    },
+    "cost_per": {
+      "type": "object",
+      "description": "Average cost control per result of the scope-bound primary optimization goal. At seller-optimized media-buy scope it binds to budget_allocation.optimization_goals; at package scope it binds to that package's optimization_goals; at fixed media-buy scope it binds independently to each inheriting package and is valid only when their primary-goal result units are compatible. Metric goals are compatible only when metric and every result-defining qualifier match; vendor_metric goals only when vendor and metric_id match; event goals only when the event_type/custom_event_name set and resolved attribution_window match. Primary is the earliest array entry among goals tied for the lowest explicit numeric priority; unprioritized goals follow explicitly prioritized goals; when all priorities are absent, the first entry is primary.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Average cost amount per scope-bound primary-goal result, denominated in the media-buy currency."
+        },
+        "strength": {
+          "type": "string",
+          "enum": [
+            "cap",
+            "target"
+          ],
+          "description": "`cap` optimizes for an average at or below the amount and accepts underdelivery when necessary; `target` optimizes around the amount while balancing volume and spend. Neither is a per-result or per-auction guarantee."
+        }
+      },
+      "required": [
+        "amount",
+        "strength"
+      ],
+      "additionalProperties": false
+    },
+    "roas": {
+      "type": "object",
+      "description": "Dimensionless return-on-ad-spend control bound to the same scope-specific primary goal rules as cost_per. The bound goal must be value-bearing; a fixed media-buy default requires a value-bearing primary goal on every inheriting package. Every referenced value-bearing event source MUST declare value_currencies containing the media-buy currency. The seller validates this at buy creation; each buy consumes only exact-currency records, while other declared currencies remain available to other buys. Sellers MUST NOT perform currency conversion.",
+      "properties": {
+        "value": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Return per unit of ad spend; 4 means 4 units of value per 1 unit spent."
+        },
+        "strength": {
+          "type": "string",
+          "enum": [
+            "floor",
+            "target"
+          ],
+          "description": "`floor` prefers underdelivery to knowingly optimizing below the requested return; `target` optimizes around the requested return. Neither guarantees realized return."
+        }
+      },
+      "required": [
+        "value",
+        "strength"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "minProperties": 1,
+  "allOf": [
+    {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "automatic",
+              "bid_amount"
+            ]
+          },
+          {
+            "required": [
+              "automatic",
+              "max_bid"
+            ]
+          },
+          {
+            "required": [
+              "automatic",
+              "cost_per"
+            ]
+          },
+          {
+            "required": [
+              "automatic",
+              "roas"
+            ]
+          },
+          {
+            "required": [
+              "bid_amount",
+              "max_bid"
+            ]
+          },
+          {
+            "required": [
+              "bid_amount",
+              "cost_per"
+            ]
+          },
+          {
+            "required": [
+              "bid_amount",
+              "roas"
+            ]
+          },
+          {
+            "required": [
+              "cost_per",
+              "roas"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

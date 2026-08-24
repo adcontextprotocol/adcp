@@ -23,7 +23,11 @@
     },
     "dimensions": {
       "$ref": "/schemas/core/forecast-point-dimensions.json",
-      "description": "Dimension constraints represented by this forecast point, such as country, region, placement, device type, platform, audience, signal value, or intersections such as placement x country or product x signal. Each item declares one dimension family; when multiple items are present, the point represents their intersection. Sellers MUST NOT emit more than one item for each `kind` on a point; consumers MUST NOT treat repeated kinds as OR semantics. Use multiple points with dimensions to expose country/placement/signal availability within one product, proposal, or signal coverage forecast without creating separate products solely for each dimension. Dimensions describe the forecast row and are independent of pricing_options."
+      "description": "Dimension constraints represented by this forecast point, such as country, region, placement, device type, platform, audience, signal value, time window, or intersections such as placement x country or product x signal. Each item declares one dimension family; when multiple items are present, the point represents their intersection. Sellers MUST NOT emit more than one item for each `kind` on a point; consumers MUST NOT treat repeated kinds as OR semantics. Use multiple points with dimensions to expose country/placement/signal availability within one product, proposal, or signal coverage forecast without creating separate products solely for each dimension. Dimensions describe the forecast row and are independent of pricing_options."
+    },
+    "availability_status": {
+      "$ref": "/schemas/enums/availability-status.json",
+      "description": "Bookability of the inventory this row describes, as of the forecast's generated_at. Most meaningful on rows with a time dimension in an availability forecast (forecast_range_unit 'availability'). This is a snapshot, not a hold: valid_until bounds freshness, and proposal finalization or purchase remains the commitment boundary. When omitted, the row makes no bookability claim. 'unavailable' rows may carry empty metrics."
     },
     "metrics": {
       "type": "object",

@@ -1,0 +1,198 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/demographic-targeting-resolution.json",
+  "title": "Demographic Targeting Resolution",
+  "description": "Lossless package readback for exact demographic targeting. requested preserves canonical buyer intent; applied states the canonical predicate actually booked; execution identifies the seller mechanism. Sellers MUST book only when requested and applied denote exactly the same set, including unknown-age membership. Unsupported predicates are rejected; a buyer that chooses another supported predicate submits it as a new request. Buyers SHOULD recompute equality from the two predicates.",
+  "type": "object",
+  "properties": {
+    "requested": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/demographic-targeting-intent.json",
+      "description": "Canonical demographic predicate and determination constraints requested by the buyer."
+    },
+    "applied": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/demographic-predicate.json",
+      "description": "Canonical demographic predicate actually applied by the seller."
+    },
+    "equivalent": {
+      "type": "boolean",
+      "const": true,
+      "description": "Always true for a stored package. requested and applied MUST denote exactly the same set, including unknown-age membership; sellers reject non-equivalent requests instead of storing an alternative."
+    },
+    "execution": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "continuous_bounds"
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "enumerated_intervals"
+            },
+            "interval_ids": {
+              "type": "array",
+              "description": "Seller-scoped interval identifiers whose union produced applied.",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "x-entity": "demographic_interval_id"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+            }
+          },
+          "required": [
+            "type",
+            "interval_ids"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "signals"
+            },
+            "signal_refs": {
+              "type": "array",
+              "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/signal-ref.json"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "ext": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+            }
+          },
+          "required": [
+            "type",
+            "signal_refs"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    },
+    "applied_bases": {
+      "type": "array",
+      "description": "Effective user-level determination bases configured for this package after intersecting buyer accepted_bases, product supported_bases, and age_restriction. This is an auditable configuration readback, not proof that every impression used every listed basis.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/age-determination-basis.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "applied_verification_methods": {
+      "type": "array",
+      "description": "Effective verification methods when applied_bases contains verified. A method name does not establish that a particular proof or claim was valid; runtime verification and claim entailment remain required.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/age-verification-method.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+    }
+  },
+  "required": [
+    "requested",
+    "applied",
+    "equivalent",
+    "execution"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "requested": {
+            "properties": {
+              "age": {
+                "required": [
+                  "accepted_bases"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "applied_bases"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "applied_verification_methods"
+        ]
+      },
+      "then": {
+        "required": [
+          "applied_bases"
+        ],
+        "properties": {
+          "applied_bases": {
+            "contains": {
+              "const": "verified"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "applied_bases": {
+            "contains": {
+              "const": "verified"
+            }
+          }
+        },
+        "required": [
+          "applied_bases"
+        ]
+      },
+      "then": {
+        "required": [
+          "applied_verification_methods"
+        ]
+      }
+    }
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "difference_reason"
+        ]
+      },
+      {
+        "required": [
+          "buyer_approved"
+        ]
+      }
+    ]
+  },
+  "additionalProperties": true
+}

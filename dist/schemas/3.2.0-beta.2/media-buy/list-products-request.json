@@ -1,0 +1,150 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/list-products-request.json",
+  "title": "List Products Request",
+  "description": "Read seller offers with structured discovery criteria. Each invocation completes synchronously, while durable wholesale product-feed webhooks registered through sync_accounts keep buyer mirrors current without polling. list_products is the authoritative bootstrap and repair read for those subscriptions; proposal creation is handled by request_proposals.",
+  "x-tool-summary": "List seller products that match structured discovery criteria.",
+  "type": "object",
+  "x-operation-family": "list_products",
+  "x-added-in": "3.2.0",
+  "x-legacy-fallback": {
+    "tool": "get_products",
+    "mode": "orchestrated"
+  },
+  "properties": {
+    "adcp_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/version-envelope.json#/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/version-envelope.json#/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "description": "Optional replay key accepted uniformly on read calls."
+    },
+    "context_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "context": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/context.json"
+        }
+      ],
+      "x-adcp-schema-uri": "/schemas/core/context.json"
+    },
+    "governance_context": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "push_notification_config": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/push-notification-config.json"
+        }
+      ],
+      "x-adcp-schema-uri": "/schemas/core/push-notification-config.json",
+      "description": "Uniform per-call envelope field accepted for SDK compatibility. This does not register a wholesale feed subscription; durable product.* and wholesale_feed.bulk_change subscribers are registered through sync_accounts notification_configs."
+    },
+    "account": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/canonical-account-ref.json"
+        }
+      ],
+      "description": "Account scope for pricing and availability. A natural-key account is the single brand source and MUST NOT be combined with top-level brand."
+    },
+    "brand": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/brand-key.json"
+    },
+    "criteria": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/product-discovery-criteria.json"
+    },
+    "fields": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/product-fields.json"
+    },
+    "cursor": {
+      "type": "string",
+      "minLength": 1
+    },
+    "max_results": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 25
+    },
+    "if_feed_version": {
+      "type": "string",
+      "description": "Opaque feed version returned by a prior list_products response or wholesale product-feed webhook for the same cache scope and canonicalized selection. Used for repair and conditional reconciliation, not routine polling when webhooks are active."
+    },
+    "if_pricing_version": {
+      "type": "string",
+      "description": "Opaque pricing version returned by a prior list_products response. Valid only with if_feed_version."
+    }
+  },
+  "dependencies": {
+    "if_pricing_version": [
+      "if_feed_version"
+    ]
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "criteria": {
+            "required": [
+              "catalog"
+            ]
+          }
+        },
+        "required": [
+          "criteria"
+        ]
+      },
+      "then": {
+        "anyOf": [
+          {
+            "required": [
+              "brand"
+            ]
+          },
+          {
+            "properties": {
+              "account": {
+                "required": [
+                  "brand",
+                  "operator"
+                ]
+              }
+            },
+            "required": [
+              "account"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "not": {
+        "properties": {
+          "account": {
+            "required": [
+              "brand",
+              "operator"
+            ]
+          }
+        },
+        "required": [
+          "account",
+          "brand"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false
+}

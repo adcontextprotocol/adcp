@@ -1,0 +1,237 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/attestation-capabilities.json",
+  "title": "Attestation Capabilities",
+  "description": "Trust and delivery capabilities published by an agent that evaluates portable attestations. This is an allowlist declaration, not a claim that every listed credential will verify. Presenters use it to select compatible claim, issuer, resolver, verifier, proof, and delivery paths; the evaluator still applies current authorization, signature, subject, scope, validity, revocation, and local policy checks to each credential.",
+  "type": "object",
+  "properties": {
+    "accepted_claim_types": {
+      "type": "array",
+      "description": "Open claim identifiers the evaluator is prepared to evaluate. Each value is an absolute URI. Absence means the evaluator has not advertised portable-attestation support; an empty list is not permitted.",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "accepted_proof_formats": {
+      "type": "array",
+      "description": "Open credential/proof format identifiers the evaluator can verify. Values are absolute URIs rather than a protocol enum so issuers can adopt new formats without AdCP endorsement.",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "supported_delivery_methods": {
+      "type": "array",
+      "description": "Credential delivery paths this evaluator supports. credential_uri resolves an HTTPS credential URI from the presentation; issuer_credential_id combines issuer, credential_id, and an evaluator-published resolver_id; embedded accepts an inline credential.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "credential_uri",
+          "issuer_credential_id",
+          "embedded"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "accepted_issuers": {
+      "type": "array",
+      "description": "Issuer allowlist and resolver policy. Matching is on the canonical AttestationIssuer identity. A presenter-supplied issuer or credential URI that does not match this policy is rejected without an outbound request.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "issuer": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/attestation-issuer.json"
+          },
+          "claim_types": {
+            "type": "array",
+            "description": "Optional subset of accepted_claim_types this issuer may assert. Omit to allow any globally accepted claim type for this issuer.",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "proof_formats": {
+            "type": "array",
+            "description": "Optional subset of accepted_proof_formats allowed for this issuer. Omit to allow any globally accepted proof format for this issuer.",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "credential_origins": {
+            "type": "array",
+            "description": "Canonical HTTPS origins from which credential_uri locators may be fetched for this issuer. Exact origin matching happens after URL canonicalization and before DNS resolution. Paths in the credential URI may vary; userinfo is forbidden.",
+            "items": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://[^/?#@]+$"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "resolvers": {
+            "type": "array",
+            "description": "Evaluator-approved resolver endpoints for issuer_credential_id delivery. Presentations carry only resolver_id; they cannot replace url or authentication policy.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resolver_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "pattern": "^[A-Za-z0-9._:-]+$"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri",
+                  "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+                  "description": "Evaluator-configured HTTPS resolver endpoint. Calls use POST with Content-Type application/json and a body containing only credential_id; query-string and path interpolation are forbidden. The evaluator still applies the attestation fetch contract before every call."
+                },
+                "authentication": {
+                  "type": "string",
+                  "enum": [
+                    "none",
+                    "evaluator_managed"
+                  ],
+                  "description": "Whether the resolver is public or uses credentials managed outside AdCP task payloads. Presenter-supplied credentials are never accepted."
+                }
+              },
+              "required": [
+                "resolver_id",
+                "url",
+                "authentication"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1
+          },
+          "ext": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+          }
+        },
+        "required": [
+          "issuer"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "accepted_verifiers": {
+      "type": "array",
+      "description": "Verifier agents the evaluator may call. A presenter's verify_agent nomination must match one of these canonicalized URLs, but the evaluator remains verifier-of-record and chooses whether to use the nominated agent, another accepted agent, or local verification.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "agent_url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$"
+          },
+          "claim_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "proof_formats": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "ext": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+          }
+        },
+        "required": [
+          "agent_url"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "max_embedded_credential_bytes": {
+      "type": "integer",
+      "minimum": 1024,
+      "maximum": 1048576,
+      "description": "Maximum UTF-8 byte size accepted for one embedded credential. Evaluators MUST enforce this limit before parsing the credential. The protocol ceiling is 1 MiB."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+    }
+  },
+  "required": [
+    "accepted_claim_types",
+    "accepted_proof_formats",
+    "supported_delivery_methods",
+    "accepted_issuers"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "supported_delivery_methods": {
+            "contains": {
+              "const": "embedded"
+            }
+          }
+        },
+        "required": [
+          "supported_delivery_methods"
+        ]
+      },
+      "then": {
+        "required": [
+          "max_embedded_credential_bytes"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "accepted_claim_types": [
+        "https://claims.example/audience/methodology-reviewed"
+      ],
+      "accepted_proof_formats": [
+        "https://www.w3.org/TR/vc-jose-cose/"
+      ],
+      "supported_delivery_methods": [
+        "issuer_credential_id",
+        "embedded"
+      ],
+      "accepted_issuers": [
+        {
+          "issuer": {
+            "type": "origin",
+            "origin": "https://credentials.example"
+          },
+          "resolvers": [
+            {
+              "resolver_id": "primary",
+              "url": "https://resolver.credentials.example/v1/credentials",
+              "authentication": "evaluator_managed"
+            }
+          ]
+        }
+      ],
+      "max_embedded_credential_bytes": 262144
+    }
+  ]
+}

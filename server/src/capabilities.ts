@@ -42,6 +42,12 @@ export interface CreativeCapabilities {
     operations: Array<'build' | 'validate' | 'preview'>;
     [key: string]: unknown;
   }>;
+  preview?: {
+    routes: Array<{
+      capability_id: string;
+      rendering_origin: 'platform_native' | 'agent_approximation';
+    }>;
+  };
   can_generate: boolean;
   can_validate: boolean;
   can_preview: boolean;
@@ -208,12 +214,55 @@ export async function sanitizeCreativeCapabilities(raw: unknown): Promise<Creati
   }
 
   const hasBuildCapability = supportedFormats.some(entry => entry.operations.includes('build'));
+  const previewCapabilityIds = supportedFormats
+    .filter(entry => entry.operations.includes('preview'))
+    .map(entry => entry.capability_id);
+  const routablePreviewCapabilityIds = previewCapabilityIds.filter((id): id is string => id !== undefined);
+  const rawPreview = block.preview;
+  let preview: CreativeCapabilities['preview'];
+  if (routablePreviewCapabilityIds.length > 0 || rawPreview !== undefined) {
+    if (!rawPreview || typeof rawPreview !== 'object' || Array.isArray(rawPreview)) {
+      throw new Error('creative.preview: required object when supported_formats advertises preview');
+    }
+    const previewBlock = rawPreview as Record<string, unknown>;
+    const routes = previewBlock.routes;
+    if (!Array.isArray(routes) || routes.length === 0
+      || routes.some(route => !route || typeof route !== 'object' || Array.isArray(route))) {
+      throw new Error('creative.preview.routes: non-empty route array required');
+    }
+    const sanitizedRoutes = routes.map((rawRoute, index) => {
+      const route = rawRoute as Record<string, unknown>;
+      if (typeof route.capability_id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(route.capability_id)) {
+        throw new Error(`creative.preview.routes[${index}].capability_id: stable identifier required`);
+      }
+      if (!['platform_native', 'agent_approximation'].includes(String(route.rendering_origin))) {
+        throw new Error(`creative.preview.routes[${index}].rendering_origin: expected platform_native or agent_approximation`);
+      }
+      return {
+        capability_id: route.capability_id,
+        rendering_origin: route.rendering_origin as 'platform_native' | 'agent_approximation',
+      };
+    });
+    const declaredIds = sanitizedRoutes.map(route => route.capability_id).sort();
+    if (new Set(declaredIds).size !== declaredIds.length) {
+      throw new Error('creative.preview.routes: capability_id values must be unique');
+    }
+    const advertisedIds = [...routablePreviewCapabilityIds].sort();
+    if (advertisedIds.length !== declaredIds.length
+      || advertisedIds.some((id, index) => id !== declaredIds[index])) {
+      throw new Error('creative.preview.routes: must equal advertised routable preview capability IDs');
+    }
+    preview = {
+      routes: sanitizedRoutes,
+    };
+  }
   const declaresBuild = ['supports_generation', 'supports_transformation', 'supports_transformers', 'supports_refinement']
     .some(flag => block[flag] === true);
 
   const sanitized: CreativeCapabilities = {
     ...block,
     supported_formats: supportedFormats,
+    ...(preview === undefined ? {} : { preview }),
     can_generate: hasBuildCapability || declaresBuild,
     can_validate: supportedFormats.some(entry => entry.operations.includes('validate')),
     can_preview: supportedFormats.some(entry => entry.operations.includes('preview')),

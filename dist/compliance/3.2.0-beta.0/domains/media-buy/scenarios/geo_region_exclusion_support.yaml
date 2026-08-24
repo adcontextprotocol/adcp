@@ -1,0 +1,209 @@
+id: media_buy_seller/geo_region_exclusion_support
+version: "1.0.0"
+title: "Seller proves independent ISO subdivision exclusion support"
+category: media_buy_seller
+summary: "Verifies that finite subdivision exclusion support can be discovered and executed without inclusion support."
+track: media_buy
+
+requires_capability:
+  path: media_buy.execution.targeting.geo_regions_exclude.countries.FR.values
+  contains: FR-44
+
+required_tools:
+  - get_adcp_capabilities
+  - get_products
+  - create_media_buy
+  - get_media_buys
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  Region inclusion and exclusion are independent capabilities. This scenario
+  applies to sellers declaring finite French exclusion support and never
+  assumes that geo_regions inclusion exists. It proves product-scoped future
+  exclusion permission, exclusion-only create, and exact package readback.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_non_guaranteed
+    - value_aware_region_targeting
+  examples:
+    - "Sales agents supporting canonical subdivision exclusions independently"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller declares French region exclusion support and exposes a product
+    with the same finite exclusion set. Inclusion support is deliberately absent.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "geo_region_exclusion_fr"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+      overlay_support:
+        geo_regions_exclude:
+          countries:
+            FR:
+              values: ["FR-44", "FR-49"]
+          catalog_version: "2026-08"
+          as_of: "2026-08-01"
+      forecast:
+        forecast_range_unit: "availability"
+        method: "modeled"
+        currency: "EUR"
+        points:
+          - metrics:
+              impressions: { mid: 1000000 }
+  pricing_options:
+    - product_id: "geo_region_exclusion_fr"
+      pricing_option_id: "geo_region_exclusion_fr_cpm"
+      pricing_model: "cpm"
+      currency: "EUR"
+      floor_price: 3.00
+
+phases:
+  - id: discover_exclusion_only_product
+    title: "Discover independent exclusion support"
+    steps:
+      - id: get_region_exclusion_capability
+        title: "Read finite French subdivision exclusion support"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "geo_region_exclusion_support--get_capability"
+        expected: |
+          Return FR-44 exclusion support without requiring geo_regions inclusion.
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_contains
+            path: "media_buy.execution.targeting.geo_regions_exclude.countries.FR.values[*]"
+            value: "FR-44"
+            description: "Seller explicitly declares FR-44 exclusion support"
+
+      - id: get_region_exclusion_product
+        title: "Request future FR-44 exclusion permission"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: true
+        sample_request:
+          buying_mode: "wholesale"
+          filters:
+            channels: ["display"]
+            is_fixed_price: false
+          required_overlay_support:
+            geo_regions_exclude:
+              countries:
+                FR:
+                  values: ["FR-44"]
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "geo_region_exclusion_support--get_product"
+        expected: |
+          Return a product whose finite exclusion support contains FR-44.
+        context_outputs:
+          - key: "exclusion_product_id"
+            path: "products[0].product_id"
+          - key: "exclusion_pricing_option_id"
+            path: "products[0].pricing_options[0].pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json"
+          - check: field_contains
+            path: "products[0].overlay_support.geo_regions_exclude.countries.FR.values[*]"
+            value: "FR-44"
+            description: "Product grants the requested exclusion permission"
+
+  - id: execute_exclusion_only_targeting
+    title: "Create and read back exclusion-only targeting"
+    depends_on: [discover_exclusion_only_product]
+    steps:
+      - id: create_region_exclusion_buy
+        title: "Create a buy with only a region exclusion"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-09-30T23:59:59Z"
+          packages:
+            - product_id: "$context.exclusion_product_id"
+              pricing_option_id: "$context.exclusion_pricing_option_id"
+              bid_price: 3.50
+              budget: 5000
+              targeting_overlay:
+                geo_regions_exclude: ["FR-44"]
+          idempotency_key: "$generate:uuid_v4#geo_region_exclusion_support_create"
+          context:
+            correlation_id: "geo_region_exclusion_support--create"
+        expected: |
+          Accept exclusion-only targeting and do not synthesize an inclusion.
+        context_outputs:
+          - key: "exclusion_media_buy_id"
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Exclusion-only buy is created"
+
+      - id: get_region_exclusion_buy
+        title: "Verify exclusion-only package readback"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          media_buy_ids: ["$context.exclusion_media_buy_id"]
+          context:
+            correlation_id: "geo_region_exclusion_support--get_buy"
+        expected: |
+          Echo FR-44 as the complete exclusion state and omit synthetic inclusion.
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json"
+          - check: field_value
+            path: "media_buys[0].packages[0].targeting_overlay.geo_regions_exclude"
+            value: ["FR-44"]
+            description: "Exact exclusion persists"
+          - check: field_absent
+            path: "media_buys[0].packages[0].targeting_overlay.geo_regions"
+            description: "Seller does not synthesize region inclusion"

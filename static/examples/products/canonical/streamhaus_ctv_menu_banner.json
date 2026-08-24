@@ -1,0 +1,52 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "streamhaus_ctv_menu_banner",
+  "name": "StreamHaus CTV Home Screen — Headline Banner",
+  "description": "Static headline banner across the top of StreamHaus's smart-TV home screen (OpenRTB Native plcmttype 3). Buyer ships a native_in_feed asset bundle with no video slot — the banner is a static image-plus-copy unit with no focus-triggered playback.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "tv.streamhaus.example",
+      "selection_type": "all"
+    }
+  ],
+  "channels": ["ctv"],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "streamhaus_menu_banner_cpm",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 38
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 120,
+    "timezone": "America/Los_Angeles",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "spend"],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "native_in_feed",
+      "format_option_id": "streamhaus_menu_headline_banner",
+      "display_name": "StreamHaus Headline Banner — static",
+      "params": {
+        "ctv_ad_experience": "menu",
+        "menu_placement": "headline_banner",
+        "focus_behavior": "none",
+        "motion_level": "static",
+        "asset_source": "buyer_uploaded",
+        "ssl_required": true,
+        "slots": [
+          { "asset_group_id": "title", "asset_type": "text", "required": true, "max_chars": 60 },
+          { "asset_group_id": "main_image", "asset_type": "image", "required": true },
+          { "asset_group_id": "advertiser_name", "asset_type": "text", "required": true },
+          { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true },
+          { "asset_group_id": "impression_tracker", "asset_type": "pixel_tracker", "required": false }
+        ]
+      }
+    }
+  ]
+}

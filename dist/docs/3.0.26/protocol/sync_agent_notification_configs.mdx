@@ -1,0 +1,131 @@
+---
+title: sync_agent_notification_configs
+description: "Register agent-level webhook subscribers, starting with capabilities.changed notifications that invalidate cached get_adcp_capabilities responses."
+"og:title": "AdCP — sync_agent_notification_configs"
+---
+
+Register, replace, pause, or clear caller-scoped agent-level webhook subscribers. This task manages notifications whose lifecycle belongs to the seller agent itself rather than to an account, media buy, creative, or other account-scoped resource.
+
+The initial event type is `capabilities.changed`, an invalidation signal for cached [`get_adcp_capabilities`](/dist/docs/3.0.26/protocol/get_adcp_capabilities) responses.
+
+**Request Schema**: [`/schemas/3.0.26/protocol/sync-agent-notification-configs-request.json`](https://adcontextprotocol.org/schemas/3.0.26/protocol/sync-agent-notification-configs-request.json)
+**Response Schema**: [`/schemas/3.0.26/protocol/sync-agent-notification-configs-response.json`](https://adcontextprotocol.org/schemas/3.0.26/protocol/sync-agent-notification-configs-response.json)
+
+## When to call
+
+First call [`get_adcp_capabilities`](/dist/docs/3.0.26/protocol/get_adcp_capabilities). Only call this task when the seller advertises:
+
+```json
+{
+  "adcp": {
+    "capability_changes": {
+      "capabilities_version": "rev_20260702_091455",
+      "cache_ttl_seconds": 3600,
+      "notifications": {
+        "supported": true,
+        "registration_task": "sync_agent_notification_configs",
+        "event_types": ["capabilities.changed"]
+      }
+    }
+  }
+}
+```
+
+Sellers that do not advertise support MUST reject the task rather than silently accepting a subscriber that will never fire. When `notifications.supported: true`, the same `capability_changes` block MUST include `cache_ttl_seconds` and `capabilities_version` so receivers have a bounded polling fallback and a stable comparison after missed webhooks.
+
+## Authentication and Caller Scope
+
+This task MUST only be accepted when the transport request resolves to a stable authenticated principal. The principal can be an OAuth client subject, API-key subject, verified signed-request subject, registry identity, or equivalent deployment identity, but it MUST be stable across retries and future replacements. Sellers MUST reject NO_AUTH, anonymous, or otherwise unbound registrations with [`AUTH_MISSING`](/dist/docs/3.0.26/building/verification/compliance-catalog#error-code-auth-missing) when no credentials are present, [`AUTH_INVALID`](/dist/docs/3.0.26/building/verification/compliance-catalog#error-code-auth-invalid) when presented credentials fail validation, or [`INVALID_REQUEST`](/dist/docs/3.0.26/building/verification/compliance-catalog#error-code-invalid-request) when the transport exposes anonymous registration as a malformed request.
+
+The authenticated principal is the owner key for declarative replacement. Sellers MUST NOT key agent-level subscribers only by `subscriber_id` or URL, because two callers can legitimately choose the same local subscriber ID. One caller's replacement set MUST NOT read, delete, pause, overwrite, or infer subscribers owned by another principal.
+
+## Request Parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `idempotency_key` | string | **Required.** Unique key for at-most-once replacement. Reuse the same key and same payload on retry. |
+| `notification_configs` | array | **Required.** Complete desired agent-level subscriber set for the authenticated principal. Send `[]` to clear this principal's subscribers. |
+| `dry_run` | boolean | Optional. Validate without applying changes or sending endpoint proof challenges. |
+
+Each `notification_configs[]` entry has:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `subscriber_id` | string | **Required.** Stable logical key for this caller's endpoint. Re-sending the same ID replaces that caller's subscriber. |
+| `url` | URI | **Required.** HTTPS webhook endpoint. Sellers apply the same SSRF protections and proof-of-control rules as other webhook configs. |
+| `event_types` | string[] | **Required.** Currently only `capabilities.changed` is valid. |
+| `authentication` | object | Optional legacy Bearer or HMAC-SHA256 selector. Omit for the default RFC 9421 webhook profile. Credentials are write-only. |
+| `active` | boolean | Optional, default `true`. Set `false` to pause a subscriber without removing it. |
+
+## Endpoint proof
+
+Before activating a new or changed active subscriber, the seller MUST validate the URL and complete endpoint proof of control. The challenge POST is signed with the seller's RFC 9421 webhook profile key and uses [`agent-webhook-challenge.json`](https://adcontextprotocol.org/schemas/3.0.26/core/agent-webhook-challenge.json). The receiver echoes the challenge with [`webhook-challenge-response.json`](https://adcontextprotocol.org/schemas/3.0.26/core/webhook-challenge-response.json).
+
+Agent-level challenges intentionally do not carry `account_id` because capability notifications are valid before any account exists. The proof scope is `(authenticated caller identity, seller_agent_url, subscriber_id, normalized url, authentication mode/credential binding, normalized event_types)`. Changing any element of that tuple requires fresh proof before the subscriber can become active.
+
+## Replacement Semantics
+
+The submitted array is declarative and complete for the authenticated principal:
+
+- Omit `notification_configs` is invalid.
+- Send `notification_configs: []` to remove every agent-level subscriber owned by this caller.
+- Send a non-empty array to replace this caller's current set with exactly those entries.
+- `subscriber_id` is the match key within the caller scope. Existing IDs owned by this caller are replaced; this caller's persisted IDs missing from the submitted array are removed.
+- Duplicate `subscriber_id` values in one request are invalid within that caller-scoped array.
+- If any entry fails validation or endpoint proof, the seller rejects the replacement and leaves the caller's prior set unchanged.
+
+One caller's replacement MUST NOT delete, pause, or mutate subscribers registered by another authenticated caller. Sellers that host shared registry and buyer subscribers on the same agent therefore need an owner key in storage even though that owner is not exposed in the webhook payload.
+
+## Webhook Payload
+
+When the seller's advertised capability document materially changes, it publishes the new [`get_adcp_capabilities`](/dist/docs/3.0.26/protocol/get_adcp_capabilities) snapshot first, then fires `capabilities.changed` to active subscribers:
+
+```json
+{
+  "idempotency_key": "whk_01J1T3K6YZR7V5P9Q2M4N6B8CD",
+  "notification_id": "capchg_20260702_0001",
+  "notification_type": "capabilities.changed",
+  "fired_at": "2026-07-02T09:15:30Z",
+  "subscriber_id": "registry-cache",
+  "agent_url": "https://seller.example/adcp",
+  "changed_at": "2026-07-02T09:14:55Z",
+  "reason": "capability_enabled",
+  "capabilities_version": "rev_20260702_091455",
+  "changed_paths": ["/account/sandbox"]
+}
+```
+
+The webhook does not carry the full capability document. The `capabilities_version` in the webhook is the post-change revision token and MUST be observable in `get_adcp_capabilities` before the seller sends the webhook. Receivers SHOULD re-run `get_adcp_capabilities`, compare `adcp.capability_changes.capabilities_version` with the webhook's `capabilities_version`, and replace their local cache with the fresh response. If the webhook's `capabilities_version` is not yet observable, receivers SHOULD retry `get_adcp_capabilities` with normal transient-error backoff and MUST retain their prior cached snapshot until a fresher authoritative snapshot is read or the cache TTL expires.
+
+## Example
+
+```json
+{
+  "idempotency_key": "b6aa9428-9d5f-4d16-a6d2-1a27db67ef5b",
+  "notification_configs": [
+    {
+      "subscriber_id": "registry-cache",
+      "url": "https://registry.example/webhooks/adcp/capabilities",
+      "event_types": ["capabilities.changed"],
+      "active": true
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "status": "completed",
+  "action": "updated",
+  "notification_configs": [
+    {
+      "subscriber_id": "registry-cache",
+      "url": "https://registry.example/webhooks/adcp/capabilities",
+      "event_types": ["capabilities.changed"],
+      "active": true
+    }
+  ]
+}
+```

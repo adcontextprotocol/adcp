@@ -560,7 +560,7 @@
       if (status === 'draft') {
         return `
           <div class="send-status-title">Draft only</div>
-          <div class="send-status-copy">This edition has not been queued. Send tests, finish edits, then approve it for the scheduled sender.</div>
+          <div class="send-status-copy">This edition has not been queued. Finish edits, then approve it for the scheduled sender or approve and send it immediately.</div>
           <div class="send-status-meta">
             <span class="send-status-chip">${esc(formatSendWindowChip())}</span>
             ${recipientCount ? `<span class="send-status-chip">${esc(String(recipientCount.emailCount))} eligible email recipients</span>` : ''}
@@ -701,6 +701,7 @@
             <span class="status-badge status-${esc(status)}">${esc(status)}</span>
             ${status === 'draft' || status === 'approved' ? `<button class="btn btn-outline" onclick="sendTest()">Send test</button>` : ''}
             ${status === 'draft' ? `<button class="btn btn-success" onclick="approveEdition()">Approve for scheduled send</button>` : ''}
+            ${status === 'draft' ? `<button class="btn btn-nl" onclick="sendNow(event)">Approve and send now</button>` : ''}
             ${status === 'approved' ? `<button class="btn btn-nl" onclick="sendNow(event)">Send now</button>` : ''}
           </div>
           ${optInBar}
@@ -1157,8 +1158,11 @@
 
     async function sendNow(event) {
       const btn = event?.currentTarget;
+      const originalButtonText = btn?.textContent || 'Send now';
       const count = recipientCount ? ` This will go to ${recipientCount.emailCount} recipients and post to Slack if configured.` : '';
-      if (!confirm('Send this approved edition now?' + count)) return;
+      const isDraft = currentDigest.status === 'draft';
+      const prompt = isDraft ? 'Approve this draft and send it now?' : 'Send this approved edition now?';
+      if (!confirm(prompt + count)) return;
       try {
         if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; }
         const res = await api('/editions/' + currentDigest.id + '/send-now', { method: 'POST' });
@@ -1173,7 +1177,7 @@
         toast(Number.isFinite(sent) ? `Sent ${sent} emails` : 'Sent');
       } catch (err) {
         toast('Send failed: ' + esc(err.message));
-        if (btn) { btn.disabled = false; btn.textContent = 'Send now'; }
+        if (btn) { btn.disabled = false; btn.textContent = originalButtonText; }
       }
     }
 

@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/product-change-map.json",
+  "title": "Product Change Map",
+  "description": "Product IDs mapped to deterministic membership actions. Object keys are product identifiers, so contradictory actions for one product cannot be represented.",
+  "type": "object",
+  "propertyNames": {
+    "minLength": 1,
+    "x-entity": "product"
+  },
+  "additionalProperties": {
+    "enum": [
+      "include",
+      "omit"
+    ]
+  },
+  "minProperties": 1
+}

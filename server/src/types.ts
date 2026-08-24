@@ -15,6 +15,16 @@ export function isValidAgentType(value: unknown): value is AgentType {
   return typeof value === 'string' && VALID_AGENT_TYPES.includes(value as AgentType);
 }
 
+export type RelationshipTrust = 'inline' | 'mutual' | 'leaf_only' | 'house_only' | 'standalone' | 'unverifiable';
+
+const VALID_RELATIONSHIP_TRUST: ReadonlyArray<RelationshipTrust> = [
+  'inline', 'mutual', 'leaf_only', 'house_only', 'standalone', 'unverifiable',
+];
+
+export function isValidRelationshipTrust(value: unknown): value is RelationshipTrust {
+  return typeof value === 'string' && VALID_RELATIONSHIP_TRUST.includes(value as RelationshipTrust);
+}
+
 export interface FormatInfo {
   name: string;
   dimensions?: string;
@@ -201,6 +211,18 @@ export interface PlacementTagDefinition {
   description: string;
 }
 
+export interface PreviewProviderRoute {
+  format_option_id: string;
+  capability_id: string;
+  covers_placement_presentation?: boolean;
+}
+
+export interface PreviewProvider {
+  agent_url: string;
+  authority: "publisher_designated";
+  routes: PreviewProviderRoute[];
+}
+
 export interface PlacementDefinition {
   placement_id: string;
   name?: string;
@@ -212,6 +234,13 @@ export interface PlacementDefinition {
   collection_ids?: string[];
   channels?: string[];
   format_options?: Array<Record<string, unknown>>;
+  presentation_ref?: {
+    uri: string;
+    digest: string;
+    media_type: "application/vnd.adcp.placement-presentation+json";
+    schema_version: "1.0";
+  };
+  preview_provider?: PreviewProvider;
 }
 
 export interface AuthorizedAgentEntry {
@@ -596,6 +625,14 @@ export interface DiscoveredBrand {
   manifest_orphaned?: boolean;
   /** WorkOS organization id that previously owned this brand (set when manifest_orphaned). */
   prior_owner_org_id?: string;
+  /** Cached trust verdict from the last crawler resolution. NULL means not yet computed, not standalone. */
+  relationship_trust?: RelationshipTrust;
+  /** When the mutual-assertion edge was last confirmed. Only set when relationship_trust = 'mutual'. */
+  relationship_verified_at?: Date;
+  /** Unilateral parent claim from the brand's own document. Not trust-extending. */
+  claimed_house_domain?: string;
+  /** When relationship_trust was last computed by the crawler. */
+  relationship_trust_computed_at?: Date;
 }
 
 /**

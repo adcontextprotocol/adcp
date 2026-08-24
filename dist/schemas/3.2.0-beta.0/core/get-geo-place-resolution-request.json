@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/get-geo-place-resolution-request.json",
+  "title": "Get Geographic Place Resolution Request",
+  "description": "Read-only query parameters for a geo-place resolver. Supply exactly one of q (unresolved human intent) or value (an existing identifier to refresh). Country is mandatory. Optional subdivision, place_type, system_version, and locale further constrain matching.",
+  "type": "object",
+  "properties": {
+    "q": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unresolved place name or alias supplied by the user."
+    },
+    "value": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Existing identifier to look up in the requested/current catalog version for lifecycle refresh or replacement discovery. Mutually exclusive with q."
+    },
+    "country": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$",
+      "description": "ISO 3166-1 alpha-2 country code used to disambiguate the query."
+    },
+    "subdivision": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}-[A-Z0-9]{1,3}$",
+      "description": "Optional ISO 3166-2 subdivision constraint."
+    },
+    "place_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/geo-place-type.json"
+    },
+    "system_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional exact supported catalog version to search."
+    },
+    "locale": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/locale-tag.json",
+      "description": "Optional BCP 47 language tag for returned labels."
+    },
+    "cursor": {
+      "type": "string",
+      "minLength": 1
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 20
+    }
+  },
+  "required": [
+    "country"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "q"
+      ]
+    },
+    {
+      "required": [
+        "value"
+      ]
+    }
+  ],
+  "not": {
+    "required": [
+      "q",
+      "value"
+    ]
+  },
+  "additionalProperties": false
+}

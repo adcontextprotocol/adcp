@@ -113,6 +113,43 @@ value-specific forecast for every later selection. Rediscover with concrete
 floors remain binding for supported selections; price guidance remains
 non-binding.
 
+Products can disclose per-package cardinality without changing the requirement
+shape. For example, a buyer can require future country and radius selection:
+
+```json
+{
+  "required_overlay_support": {
+    "geo_countries": true,
+    "geo_proximity": { "radius": true }
+  }
+}
+```
+
+A matching Product can respond with constrained support:
+
+```json
+{
+  "overlay_support": {
+    "geo_countries": { "max_values_per_package": 1 },
+    "geo_proximity": {
+      "radius": true,
+      "max_values_per_package": 5
+    }
+  }
+}
+```
+
+These limits apply to each package field independently. They are not buyer
+requirements, value allowlists, inventory guarantees, or cross-package
+constraints. Sellers reject an over-limit create or update atomically with
+`UNSUPPORTED_FEATURE`. Legacy support `true` remains valid.
+
+Numeric limits are ignored for future-support matching, not for concrete
+targeting acceptance. A returned Product's accepted effective targeting must
+already satisfy every maximum it discloses. Sellers exclude an over-limit
+candidate unless they return a distinct configured Product with a disclosed,
+compliant targeting modification.
+
 ISO subdivision support follows the same split but can be country/value aware:
 
 ```json

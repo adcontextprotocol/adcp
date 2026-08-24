@@ -41,8 +41,34 @@
     },
     "standard_formats_only": { "type": "boolean" },
     "min_exposures": { "type": "integer", "minimum": 1 },
-    "start_date": { "type": "string", "format": "date" },
-    "end_date": { "type": "string", "format": "date" },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fixed-flight availability filter: with end_date, declares the exact flight the buyer intends to run. Returned products MUST be able to serve that flight, and pricing and forecasts are scoped to it. Mutually exclusive with availability_horizon."
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Fixed-flight availability filter end. See start_date. Mutually exclusive with availability_horizon."
+    },
+    "availability_horizon": {
+      "type": "object",
+      "description": "Flexible-window availability discovery: the buyer is open to any bookable window inside [start_time, end_time) and asks the seller to describe when the returned inventory can run, instead of filtering to one exact flight. Sellers that support this field partition the horizon into time-dimensioned forecast rows (forecast-dimension-time) carrying availability_status; sellers that cannot cover the full horizon signal the gap via the response's incomplete[] mechanism. Unlike start_date/end_date this is not an eligibility filter — products remain returnable when only part of the horizon is open. The resulting availability is a snapshot bounded by the forecast's valid_until, never a hold. Mutually exclusive with start_date and end_date, which declare a fixed flight; buyers that already know their dates use those instead.",
+      "properties": {
+        "start_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Inclusive horizon start (RFC 3339 date-time with timezone offset)."
+        },
+        "end_time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Exclusive horizon end (RFC 3339 date-time with timezone offset). MUST be after start_time."
+        }
+      },
+      "required": ["start_time", "end_time"],
+      "additionalProperties": false
+    },
     "budget_range": {
       "$ref": "/schemas/core/budget-range.json"
     },
@@ -161,5 +187,15 @@
     },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
+  "allOf": [
+    {
+      "not": {
+        "anyOf": [
+          { "required": ["availability_horizon", "start_date"] },
+          { "required": ["availability_horizon", "end_date"] }
+        ]
+      }
+    }
+  ],
   "additionalProperties": false
 }

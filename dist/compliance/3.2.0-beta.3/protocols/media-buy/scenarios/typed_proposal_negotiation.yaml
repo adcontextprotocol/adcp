@@ -1,0 +1,771 @@
+id: media_buy_seller/typed_proposal_negotiation
+version: "1.0.0"
+title: "Seller handles typed proposal negotiation with constraints, product changes, and alternatives"
+category: media_buy_seller
+summary: "Verifies the AdCP 3.2 typed negotiation lifecycle: capability-gated constraint satisfaction, product changes, digest-verified alternatives, partial invariant, immutable lineage, finalize atomicity, and idempotent replay through refine_proposals."
+track: media_buy
+required_tools:
+  - refine_proposals
+  - accept_proposal
+
+requires_capability:
+  path: media_buy.proposal_refinement.supported_dimensions
+  present: true
+
+narrative: |
+  AdCP 3.2 introduces typed proposal negotiation through refine_proposals.
+  Buyers declare hard constraints (total_budget, cpm, impressions, flight),
+  product changes, requested alternatives, and structured criteria alongside
+  the free-text ask. Sellers return immutable successor proposals with
+  deterministic outcomes — revised, partial, unable, or finalized — and
+  machine-readable reason codes.
+
+  This storyboard exercises the complete typed negotiation surface:
+
+  1. Capability discovery — the seller declares proposal_refinement with
+     supported_dimensions and optional max_alternatives.
+  2. Typed budget constraint — satisfied (revised) and unsatisfied (partial
+     with constraint_unsatisfiable and unsatisfied_constraints).
+  3. Product changes — include/omit actions checked against purchases.
+  4. Alternatives — exact count with unique terms_digest values.
+  5. Partial invariant — drafts on a partial satisfy every constraint absent
+     from unsatisfied_constraints.
+  6. Unsupported dimension — task-level UNSUPPORTED_FEATURE rejection with
+     the registered error-details shape.
+  7. Finalize — committed snapshot with inventory hold and expires_at.
+  8. Idempotent replay — same idempotency_key returns cached response.
+  9. Immutable lineage — parent_proposal_id equals source on every successor.
+  10. Accept — proposal_terms_digest verified acceptance creating a MediaBuy.
+
+  Legacy sellers that do not declare proposal_refinement are not tested by
+  this storyboard; their unstructured proposal path is covered by
+  proposal_finalize.yaml.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+    - generates_proposals
+  examples:
+    - "Full-service publisher with typed negotiation support"
+    - "Retail media network with structured constraint handling"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity and operator credentials. The seller
+    must declare proposal_refinement.supported_dimensions in capabilities.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+fixtures:
+  products:
+    - product_id: "premium_video_q4"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_options:
+        - format_option_id: "video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+    - product_id: "display_standard_q4"
+      delivery_type: "guaranteed"
+      channels: ["display"]
+      format_options:
+        - format_option_id: "display_300x250"
+          format_kind: "image"
+          params:
+            width: 300
+            height: 250
+    - product_id: "native_feed_q4"
+      delivery_type: "guaranteed"
+      channels: ["native"]
+      format_options:
+        - format_option_id: "native_article"
+          format_kind: "native"
+  pricing_options:
+    - product_id: "premium_video_q4"
+      pricing_option_id: "cpm_guaranteed"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 28.0
+    - product_id: "display_standard_q4"
+      pricing_option_id: "cpm_display"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 12.0
+    - product_id: "native_feed_q4"
+      pricing_option_id: "cpm_native"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 18.0
+
+phases:
+  - id: capability_discovery
+    title: "Discover typed negotiation capabilities"
+    narrative: |
+      Confirm the seller declares proposal_refinement with explicit
+      supported_dimensions. The buyer uses these to decide which typed
+      fields to send on revise requests.
+
+    steps:
+      - id: get_capabilities
+        title: "Check proposal refinement capabilities"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities with proposal_refinement.supported_dimensions
+          declaring at least one typed dimension. If alternatives is declared,
+          max_alternatives may limit the count ceiling below the protocol
+          maximum of 10.
+        sample_request:
+          context:
+            correlation_id: "typed_negotiation--get_capabilities"
+        context_outputs:
+          - path: "media_buy.proposal_refinement.supported_dimensions"
+            key: "supported_dimensions"
+          - path: "media_buy.proposal_refinement.max_alternatives"
+            key: "max_alternatives"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "media_buy.proposal_refinement.supported_dimensions"
+            description: "Seller declares supported typed dimensions"
+
+  - id: account_setup
+    title: "Account setup"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#typed_negotiation_setup_sync_accounts"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+  - id: seed_proposals
+    title: "Brief to seed initial proposals"
+    narrative: |
+      Send a brief to obtain draft proposals for subsequent typed revision.
+      The buyer needs at least one proposal_id to target with refine_proposals.
+
+    steps:
+      - id: get_products_brief
+        title: "Send a brief and receive proposals"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products and proposals matching the brief. At least one
+          proposal with proposal_id is required for the typed revision phases.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#typed_negotiation_seed_get_products_brief"
+          buying_mode: "brief"
+          brief: "Premium video and display across sports and outdoor lifestyle. Q4 flight, $75K budget. Adults 25-54, US."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+        context_outputs:
+          - path: "proposals[0].proposal_id"
+            key: "seed_proposal_id"
+          - name: finalize_idempotency_key
+            generate: uuid_v4
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "proposals"
+            description: "Response contains proposals"
+          - check: field_present
+            path: "proposals[0].proposal_id"
+            description: "Proposals have IDs"
+          - check: field_present
+            path: "proposals[0].proposal_id"
+            description: "Proposals have unique IDs"
+
+  - id: typed_budget_satisfied
+    title: "Typed budget constraint — satisfied"
+    requires_capability:
+      path: media_buy.proposal_refinement.supported_dimensions
+      contains: "total_budget"
+    narrative: |
+      Send a revise request with a total_budget constraint that the seller
+      can satisfy. The result must be outcome revised with the returned draft
+      meeting the budget bounds.
+
+    steps:
+      - id: revise_with_budget
+        title: "Revise with satisfiable total_budget constraint"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        expected: |
+          Return outcome revised with proposals[] containing one draft.
+          The draft's commercial_terms.total_budget.amount must fall within
+          the requested bounds. parent_proposal_id must equal the source.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#typed_negotiation_budget_satisfied"
+          refinements:
+            - proposal_id: "$context.seed_proposal_id"
+              action: "revise"
+              constraints:
+                total_budget:
+                  max: 80000
+                  currency: "USD"
+              ask: "Optimize for reach within the budget ceiling."
+
+        context_outputs:
+          - path: "results[0].proposals[0].proposal_id"
+            key: "budget_revised_proposal_id"
+          - path: "results[0].proposals[0].terms_digest"
+            key: "budget_revised_terms_digest"
+
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json schema"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "revised"
+            description: "Outcome is revised when budget constraint is satisfied"
+          - check: field_present
+            path: "results[0].proposals[0].proposal_id"
+            description: "Revised draft has a new proposal_id"
+          - check: field_present
+            path: "results[0].proposals[0].parent_proposal_id"
+            description: "Revised draft carries parent_proposal_id"
+          - check: field_value
+            path: "results[0].source_proposal_id"
+            value: "$context.seed_proposal_id"
+            description: "Result echoes the source proposal_id"
+          - check: field_value
+            path: "results[0].proposals[0].parent_proposal_id"
+            value: "$context.seed_proposal_id"
+            description: "parent_proposal_id equals source_proposal_id for lineage"
+          - check: field_absent
+            path: "results[0].reason_code"
+            description: "No reason_code on a fully satisfied revision"
+          - check: field_absent
+            path: "results[0].unsatisfied_constraints"
+            description: "No unsatisfied_constraints on a fully satisfied revision"
+
+  - id: typed_budget_unsatisfied
+    title: "Typed budget constraint — unsatisfied (partial)"
+    requires_capability:
+      path: media_buy.proposal_refinement.supported_dimensions
+      contains: "total_budget"
+    narrative: |
+      Send a revise request with a total_budget constraint the seller cannot
+      fully satisfy. The seller must return partial or unable with
+      reason_code constraint_unsatisfiable and total_budget echoed in
+      unsatisfied_constraints. A partial result may still carry honest drafts
+      that satisfy every other constraint absent from unsatisfied_constraints.
+
+    steps:
+      - id: revise_with_tight_budget
+        title: "Revise with unsatisfiable total_budget constraint"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        expected: |
+          Return outcome partial or unable. reason_code must be
+          constraint_unsatisfiable. unsatisfied_constraints must include
+          total_budget. If partial, returned drafts must satisfy every
+          constraint not listed in unsatisfied_constraints.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#typed_negotiation_budget_unsatisfied"
+          refinements:
+            - proposal_id: "$context.seed_proposal_id"
+              action: "revise"
+              constraints:
+                total_budget:
+                  max: 100
+                  currency: "USD"
+              ask: "Best effort within this ceiling."
+
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json schema"
+          - check: field_value
+            path: "results[0].outcome"
+            allowed_values: ["partial", "unable"]
+            description: "Outcome is partial or unable when budget is unsatisfiable"
+          - check: field_value
+            path: "results[0].reason_code"
+            value: "constraint_unsatisfiable"
+            description: "reason_code is constraint_unsatisfiable for a typed failure"
+          - check: field_contains
+            path: "results[0].unsatisfied_constraints"
+            value: "total_budget"
+            description: "unsatisfied_constraints echoes the failing constraint key"
+
+  - id: product_changes
+    title: "Product changes — include and omit"
+    requires_capability:
+      path: media_buy.proposal_refinement.supported_dimensions
+      contains: "product_changes"
+    narrative: |
+      Send a revise request with product_changes requesting inclusion and
+      omission of specific products. The seller evaluates each action against
+      the resulting commercial_terms.purchases.
+
+    steps:
+      - id: revise_with_product_changes
+        title: "Revise with product include/omit map"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        expected: |
+          Return outcome revised (all product actions met) or partial
+          (some unmet, echoed in unsatisfied_product_changes).
+          parent_proposal_id equals source on every returned draft.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#typed_negotiation_product_changes"
+          refinements:
+            - proposal_id: "$context.seed_proposal_id"
+              action: "revise"
+              product_changes:
+                premium_video_q4: "include"
+                display_standard_q4: "omit"
+              ask: "Replace display spend with additional video inventory."
+
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json schema"
+          - check: field_value
+            path: "results[0].outcome"
+            allowed_values: ["revised", "partial"]
+            description: "Outcome is revised or partial"
+          - check: field_value
+            path: "results[0].source_proposal_id"
+            value: "$context.seed_proposal_id"
+            description: "Result echoes the source proposal_id"
+          - check: field_present
+            path: "results[0].proposals[0].parent_proposal_id"
+            description: "Successor carries parent_proposal_id for lineage"
+
+  - id: alternatives_requested
+    title: "Alternatives — multiple drafts with unique digests"
+    requires_capability:
+      path: media_buy.proposal_refinement.supported_dimensions
+      contains: "alternatives"
+    narrative: |
+      Request multiple alternative drafts. Revised requires exactly the
+      requested count with unique terms_digest on each. Fewer alternatives
+      or commercially duplicate digests require partial with
+      alternatives_unavailable.
+
+    steps:
+      - id: revise_with_alternatives
+        title: "Request alternative drafts"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        expected: |
+          Return outcome revised with exactly the requested number of drafts,
+          each with a unique terms_digest. Or partial with
+          alternatives_unavailable if fewer distinct drafts are possible.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#typed_negotiation_alternatives"
+          refinements:
+            - proposal_id: "$context.seed_proposal_id"
+              action: "revise"
+              alternatives:
+                count: 3
+              ask: "Use materially different product mixes while preserving reach."
+
+        context_outputs:
+          - path: "results[0].proposals[0].proposal_id"
+            key: "alt_proposal_id_0"
+          - path: "results[0].proposals[0].terms_digest"
+            key: "alt_digest_0"
+
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json schema"
+          - check: field_value
+            path: "results[0].outcome"
+            allowed_values: ["revised", "partial"]
+            description: "Outcome is revised or partial"
+          - check: field_present
+            path: "results[0].proposals"
+            description: "Result carries proposals array"
+          - check: field_present
+            path: "results[0].proposals[0].terms_digest"
+            description: "Each draft carries a terms_digest"
+
+  - id: unsupported_dimension_rejection
+    title: "Unsupported dimension — task-level UNSUPPORTED_FEATURE"
+    narrative: |
+      Send a revise request using a typed dimension the seller has omitted
+      from supported_dimensions. The seller MUST reject the entire request
+      at task level with UNSUPPORTED_FEATURE before creating any proposal.
+      The error details should match the unsupported-refinement-dimension
+      shape, echoing the offending dimension and the seller's declaration.
+
+      This phase sends a constraints.flight dimension; sellers that include
+      flight in supported_dimensions skip this phase.
+
+    skip_if:
+      context_key: "supported_dimensions"
+      contains: "flight"
+
+    steps:
+      - id: revise_unsupported_dimension
+        title: "Reject unsupported typed dimension at task level"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with UNSUPPORTED_FEATURE at task level. No proposal is
+          created. Error details should include unsupported_dimension and
+          supported_dimensions per the registered details shape.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#typed_negotiation_unsupported_dimension"
+          refinements:
+            - proposal_id: "$context.seed_proposal_id"
+              action: "revise"
+              constraints:
+                flight:
+                  start_no_later_than: "2026-10-01T00:00:00Z"
+              ask: "Must start by October."
+
+        validations:
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Unsupported dimension is rejected with UNSUPPORTED_FEATURE"
+          - check: field_present
+            path: "adcp_error.details.unsupported_dimension"
+            description: "Error details identify the unsupported dimension"
+          - check: field_present
+            path: "adcp_error.details.supported_dimensions"
+            description: "Error details echo the seller's supported dimensions"
+
+  - id: finalize_proposal
+    title: "Finalize draft into committed snapshot"
+    narrative: |
+      Finalize the initial seed draft. The seller creates a committed
+      successor with firm pricing and an inventory hold. The committed
+      proposal carries expires_at and its proposal_status is committed. This
+      lifecycle path is independent of every optional typed dimension.
+
+    steps:
+      - id: finalize_draft
+        title: "Finalize the revised draft"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        expected: |
+          Return outcome finalized with a single committed proposal.
+          The proposal has proposal_status committed, expires_at timestamp,
+          and parent_proposal_id equal to the source draft.
+        sample_request:
+          idempotency_key: "$context.finalize_idempotency_key"
+          refinements:
+            - proposal_id: "$context.seed_proposal_id"
+              action: "finalize"
+
+        context_outputs:
+          - path: "results[0].proposal.proposal_id"
+            key: "committed_proposal_id"
+          - path: "results[0].proposal.terms_digest"
+            key: "committed_terms_digest"
+          - path: "results[0].proposal.expires_at"
+            key: "committed_expires_at"
+
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json schema"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "finalized"
+            description: "Outcome is finalized"
+          - check: field_value
+            path: "results[0].proposal.proposal_status"
+            value: "committed"
+            description: "Committed proposal has proposal_status committed"
+          - check: field_present
+            path: "results[0].proposal.expires_at"
+            description: "Committed proposal has expires_at for the hold window"
+          - check: field_value
+            path: "results[0].proposal.parent_proposal_id"
+            value: "$context.seed_proposal_id"
+            description: "Committed proposal parent_proposal_id equals source draft"
+          - check: field_value
+            path: "results[0].source_proposal_id"
+            value: "$context.seed_proposal_id"
+            description: "Result echoes the source proposal_id"
+
+  - id: finalize_idempotent_replay
+    title: "Idempotent finalize replay"
+    narrative: |
+      Replay the exact finalize request with the same idempotency_key. The
+      seller must return the cached committed proposal with replayed: true.
+      The original inventory-hold expiry and proposal_id must be preserved.
+
+    steps:
+      - id: replay_finalize
+        title: "Replay finalize with same idempotency_key"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$context.finalize_idempotency_key"
+          refinements:
+            - proposal_id: "$context.seed_proposal_id"
+              action: "finalize"
+
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json schema"
+          - check: field_value
+            path: "replayed"
+            value: true
+            description: "Replay is served from idempotency cache"
+          - check: field_value
+            path: "results[0].proposal.proposal_id"
+            value: "$context.committed_proposal_id"
+            description: "Replay preserves the original committed proposal_id"
+          - check: field_value
+            path: "results[0].proposal.expires_at"
+            value: "$context.committed_expires_at"
+            description: "Replay preserves the original hold expiry"
+
+  - id: accept_committed
+    title: "Accept committed proposal to create MediaBuy"
+    narrative: |
+      The buyer accepts the committed proposal by passing the proposal_id
+      and proposal_terms_digest. The seller atomically verifies both before
+      creating the MediaBuy.
+
+    steps:
+      - id: accept_proposal
+        title: "Accept the committed proposal"
+        task: accept_proposal
+        schema_ref: "media-buy/accept-proposal-request.json"
+        response_schema_ref: "media-buy/accept-proposal-response.json"
+        doc_ref: "/media-buy/task-reference/accept_proposal"
+        stateful: true
+        expected: |
+          Create a MediaBuy from the committed proposal. The response
+          includes a media_buy_id and confirms the proposal was accepted.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#typed_negotiation_accept_committed"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          proposal_id: "$context.committed_proposal_id"
+          proposal_terms_digest: "$context.committed_terms_digest"
+          io_acceptance:
+            io_id: "IO-2026-ACME-Q4"
+            accepted_at: "2026-09-15T10:00:00Z"
+            signatory: "ops@pinnacle-agency.example"
+
+        context_outputs:
+          - path: "media_buy_id"
+            key: "media_buy_id"
+
+        validations:
+          - check: response_schema
+            description: "Response matches accept-proposal-response.json schema"
+
+  - id: amendment_from_accepted
+    title: "Amendment proposal from accepted source"
+    narrative: |
+      The buyer creates an amendment proposal against the accepted source.
+      This exercises the change_kind: amendment path. The source remains
+      accepted and unchanged; the result is a new draft amendment successor.
+
+    steps:
+      - id: revise_amendment
+        title: "Create amendment draft from accepted proposal"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        expected: |
+          Return outcome revised or partial with a draft amendment proposal.
+          parent_proposal_id equals the accepted source.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#typed_negotiation_amendment"
+          refinements:
+            - proposal_id: "$context.committed_proposal_id"
+              action: "revise"
+              change_kind: "amendment"
+              ask: "Extend flight by two weeks and redistribute budget proportionally."
+
+        context_outputs:
+          - path: "results[0].proposals[0].proposal_id"
+            key: "amendment_proposal_id"
+
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json schema"
+          - check: field_value
+            path: "results[0].outcome"
+            allowed_values: ["revised", "partial"]
+            description: "Amendment produces a draft successor"
+          - check: field_present
+            path: "results[0].proposals[0].parent_proposal_id"
+            description: "Amendment draft carries parent_proposal_id"
+
+  - id: cancellation_from_accepted
+    title: "Cancellation proposal from accepted source"
+    narrative: |
+      The buyer creates a cancellation proposal against the accepted source.
+      The source remains accepted and unchanged; the result is a new draft
+      cancellation successor that, once finalized and accepted, cancels the
+      MediaBuy.
+
+    steps:
+      - id: revise_cancellation
+        title: "Create cancellation draft from accepted proposal"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        expected: |
+          Return outcome revised or partial with a draft cancellation proposal.
+          parent_proposal_id equals the accepted source.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#typed_negotiation_cancellation"
+          refinements:
+            - proposal_id: "$context.committed_proposal_id"
+              action: "revise"
+              change_kind: "cancellation"
+              ask: "Campaign objectives met early; requesting negotiated wind-down."
+
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json schema"
+          - check: field_value
+            path: "results[0].outcome"
+            allowed_values: ["revised", "partial", "unable"]
+            description: "Cancellation attempt produces an outcome"
+          - check: field_value
+            path: "results[0].source_proposal_id"
+            value: "$context.committed_proposal_id"
+            description: "Result echoes the accepted source"
+
+  - id: double_finalize_rejected
+    title: "Double-finalize of committed proposal"
+    narrative: |
+      Attempt to finalize a proposal that is already committed (not a draft).
+      The seller must reject with INVALID_STATE at task level because
+      finalize targets drafts only.
+
+    steps:
+      - id: finalize_committed_again
+        title: "Reject double-finalize of committed proposal"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with INVALID_STATE. Finalize targets drafts; a committed
+          proposal is not eligible. No new proposal is created.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#typed_negotiation_double_finalize"
+          refinements:
+            - proposal_id: "$context.committed_proposal_id"
+              action: "finalize"
+
+        validations:
+          - check: error_code
+            value: "INVALID_STATE"
+            description: "Double-finalize of committed proposal returns INVALID_STATE"
+
+  - id: multi_source_batch
+    title: "Multi-source batch with mixed outcomes"
+    narrative: |
+      Send a batch revise request targeting two sources in one call. Each
+      entry gets its own outcome — one may be revised while another is
+      partial or unable. Results preserve request order.
+
+    steps:
+      - id: revise_multi_source
+        title: "Batch revise across two source proposals"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        expected: |
+          Return results[] with one entry per source, preserving request
+          order. Each entry has its own outcome and source_proposal_id.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#typed_negotiation_multi_source_batch"
+          refinements:
+            - proposal_id: "$context.seed_proposal_id"
+              action: "revise"
+              ask: "Maximize video allocation."
+            - proposal_id: "$context.amendment_proposal_id"
+              action: "revise"
+              ask: "Add native inventory alongside existing products."
+
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json schema"
+          - check: field_present
+            path: "results[1]"
+            description: "Results contain one entry per source proposal"
+          - check: field_value
+            path: "results[0].source_proposal_id"
+            value: "$context.seed_proposal_id"
+            description: "First result echoes first source"
+          - check: field_value
+            path: "results[1].source_proposal_id"
+            value: "$context.amendment_proposal_id"
+            description: "Second result echoes second source"

@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/get-products-targeting-resolution.json",
+  "title": "Product Discovery Targeting Resolution",
+  "description": "Confirmation of hard targeting the seller inferred from natural-language discovery instructions. This is emitted once for the result set or refinement it governs; product-specific differences from an explicit structured overlay remain on Product.targeting_resolution.modifications. The filename remains stable for get_products compatibility.",
+  "type": "object",
+  "properties": {
+    "brief_targeting": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/targeting.json",
+      "description": "Structured delivery constraints the seller resolved from explicit hard targeting in the brief. This is the seller's literal interpretation, not a counteroffer: products that cannot honor it are omitted. Sellers MUST emit this confirmation when the interpretation materially affects product eligibility, pricing, or forecasting; otherwise it is a best practice. Unchanged structured targeting_overlay values are not repeated."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+    }
+  },
+  "required": [
+    "brief_targeting"
+  ],
+  "additionalProperties": false
+}

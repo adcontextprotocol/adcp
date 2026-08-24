@@ -171,6 +171,7 @@ async function runTests() {
 
   const webhookEnvelope = {
     idempotency_key: 'whk_01HW9D2T3VXQ5M7K9N1P3R5S7U',
+    notification_id: 'task_get_products_rejected.terminal',
     operation_id: 'op_get_products_rejected',
     task_id: taskResultEnvelope.task_id,
     task_type: 'get_products',

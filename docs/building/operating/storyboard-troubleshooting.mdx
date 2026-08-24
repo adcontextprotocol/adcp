@@ -110,6 +110,8 @@ The `mechanism_required` phase found no contribution to `auth_mechanism_verified
 
 **The `--auth TOKEN` distinction:** The `--auth TOKEN` flag you pass to the runner is the runner's own session credential — it authorizes the runner's own requests to your agent. It is entirely separate from `test_kit.auth.api_key` or `test_kit.auth.basic`, which are the specific credentials the static-credential phases send during positive and invalid-credential probes. These are not the same token and are not interchangeable.
 
+**`prerequisites.test_kit` is a loading directive, not decoration:** when a storyboard declares `prerequisites.test_kit` (for example `comply_controller_mode_gate` declares `test-kits/acme-outdoor-live.yaml`), the runner loads that kit from the active compliance cache and its credentials flow into the storyboard's `from_test_kit` and `$test_kit.*` references without any CLI flag. An explicitly supplied kit (`options.test_kit` / hosted-run configuration) still wins. A step whose `auth.from_test_kit` resolves no credential fails with an explicit configuration error rather than sending an unauthenticated probe — a probe with no credential cannot test a credential-keyed contract.
+
 **Fix for Bearer API key agents:** Every default AdCP brand test kit declares its probe API key under `auth.api_key` using the `demo-<kit>-v1` naming convention. The default test kit (`acme-outdoor`) uses `demo-acme-outdoor-v1`. Configure your agent to accept the kit's probe key as a valid compliance-testing credential alongside your production key. The `demo-<kit>-` prefix is the AdCP conformance handle — accept any Bearer token matching the prefix for the kits you run against (the suffix can rotate across spec versions, the prefix stays stable):
 
 ```typescript

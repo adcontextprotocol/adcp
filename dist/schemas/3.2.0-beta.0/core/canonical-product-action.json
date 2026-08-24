@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/canonical-product-action.json",
+  "title": "Canonical Product Action",
+  "description": "Fine-grained action template advertised on a compact product. The resulting MediaBuy exposes the authoritative routed task in available_actions.",
+  "type": "object",
+  "properties": {
+    "action": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/canonical-media-buy-action.json"
+    },
+    "modes": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/canonical-media-buy-action-mode.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "allowed_statuses": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/media-buy-status.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "sla": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/sla-window.json"
+    },
+    "terms_ref": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "action",
+    "modes"
+  ],
+  "additionalProperties": false
+}

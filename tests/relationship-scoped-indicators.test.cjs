@@ -217,7 +217,8 @@ describe('relationship-scoped indicators', () => {
         supported: true,
         profile: 'adcp/webhook-signing/v1',
         algorithms: ['ed25519'],
-        legacy_hmac_fallback: false
+        legacy_hmac_fallback: false,
+        delivery_retry_horizon_seconds: 86400
       }
     };
     assertValid(validateCapabilities, fullCapabilities);
@@ -267,7 +268,8 @@ describe('relationship-scoped indicators', () => {
         supported: true,
         profile: 'adcp/webhook-signing/v1',
         algorithms: ['ed25519'],
-        legacy_hmac_fallback: false
+        legacy_hmac_fallback: false,
+        delivery_retry_horizon_seconds: 86400
       }
     });
 
@@ -292,7 +294,8 @@ describe('relationship-scoped indicators', () => {
         supported: true,
         profile: 'adcp/webhook-signing/v1',
         algorithms: ['ed25519'],
-        legacy_hmac_fallback: false
+        legacy_hmac_fallback: false,
+        delivery_retry_horizon_seconds: 86400
       }
     };
     assertValid(validateCapabilities, inlineOnlyCapabilities);

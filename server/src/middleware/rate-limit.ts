@@ -77,6 +77,24 @@ export const nativeAuthTokenRateLimiter = rateLimit({
   },
 });
 
+/** Bound anonymous endpoints that fan out into outbound agent probes. */
+export const agentCardValidationRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('agent-card-validation:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (_req: Request, res: Response) => {
+    res.status(429).json({
+      success: false,
+      error: 'Agent-card validation rate limit exceeded. Try again later.',
+      retryAfter: 60,
+    });
+  },
+});
+
 /**
  * Skip rate limiting for AAO platform admins. Falls back to the ADMIN_EMAILS
  * env var for emergency access, matching requireAdmin semantics.

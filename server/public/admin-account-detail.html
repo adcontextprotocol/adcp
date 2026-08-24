@@ -107,6 +107,14 @@
       background: var(--color-success-600);
       color: var(--color-text-on-dark);
     }
+    .member-badge.engaged {
+      background: var(--color-brand);
+      color: var(--color-text-on-dark);
+    }
+    .member-badge.registered {
+      background: var(--color-info-500);
+      color: var(--color-text-on-dark);
+    }
     .member-badge.trial {
       background: var(--color-warning-500);
       color: var(--color-text-on-dark);
@@ -1582,11 +1590,13 @@
       } else {
         const statusLabels = {
           member: 'Member',
+          engaged: 'Active',
+          registered: 'Registered',
           trial: 'Trial',
           lapsed: 'Lapsed',
           prospect: 'Prospect'
         };
-        memberBadge.textContent = statusLabels[a.member_status] || 'Prospect';
+        memberBadge.textContent = statusLabels[a.member_status] || 'Unknown';
       }
 
       // Inherited membership notice

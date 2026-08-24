@@ -1,7 +1,7 @@
 import type { AccountRef, OperatorUnit } from './types.js';
 
 const ACCOUNT_ID_KEYS = new Set(['account_id']);
-const NATURAL_ACCOUNT_KEYS = new Set(['brand', 'operator', 'operator_unit', 'currency', 'sandbox']);
+const NATURAL_ACCOUNT_KEYS = new Set(['brand', 'operator', 'operator_unit', 'currency', 'timezone', 'sandbox']);
 const BRAND_REF_KEYS = new Set([
   'domain',
   'brand_id',
@@ -27,6 +27,7 @@ export type CanonicalAccountRef =
       operator: string;
       operator_unit?: OperatorUnit;
       currency?: string;
+      timezone?: string;
       sandbox: boolean;
     };
 
@@ -158,6 +159,13 @@ export function canonicalizeAccountRef(value: unknown): CanonicalAccountRef {
     }
     currency = value.currency;
   }
+  let timezone: string | undefined;
+  if (Object.prototype.hasOwnProperty.call(value, 'timezone')) {
+    if (typeof value.timezone !== 'string' || value.timezone.length === 0) {
+      invalid('account.timezone must be a non-empty IANA timezone name.');
+    }
+    timezone = value.timezone;
+  }
   if (value.sandbox !== undefined && typeof value.sandbox !== 'boolean') {
     invalid('account.sandbox must be a boolean when provided.');
   }
@@ -172,6 +180,7 @@ export function canonicalizeAccountRef(value: unknown): CanonicalAccountRef {
     operator,
     ...(operatorUnit !== undefined && { operator_unit: operatorUnit }),
     ...(currency !== undefined && { currency }),
+    ...(timezone !== undefined && { timezone }),
     sandbox: value.sandbox ?? false,
   };
 }
@@ -185,6 +194,7 @@ export function accountScopeFromRef(value: AccountRef | unknown): string {
     operator: account.operator,
     operator_unit_id: account.operator_unit?.id ?? null,
     currency: account.currency ?? null,
+    timezone: account.timezone ?? null,
     sandbox: account.sandbox,
   })}`;
 }

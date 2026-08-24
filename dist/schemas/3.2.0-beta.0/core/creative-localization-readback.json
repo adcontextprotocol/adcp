@@ -1,0 +1,228 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/creative-localization-readback.json",
+  "title": "Creative Localization Readback",
+  "description": "Exact materialized locale state for one creative, including source-only monolingual topology. Review and serving eligibility remain creative-wide on the enclosing creative; locale variants do not have independent lifecycle states. Presence means every source/target variant was read back completely. Sellers MUST return localization_unavailable on list_creatives rather than a partial or lossy localization object.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "unique_variant_properties": [
+        "locale_variant_id",
+        "locale"
+      ],
+      "exact_role_counts": {
+        "source": 1
+      },
+      "default_locale_variant_id": "must_reference_exactly_one_variant",
+      "source_assets": "must_equal_enclosing_creative.assets",
+      "locale_matching": "rfc4647_lookup",
+      "locale_match_comparison": "canonical_tag_equality_after_requested_range_truncation",
+      "delivery_locale_preferences": "ordered_external_input_not_defined_by_adcp",
+      "unique_locale_fallback_properties": [
+        "language_range"
+      ],
+      "locale_fallback_variant_ids": "must_reference_exactly_one_variant",
+      "selection_order": "for_each_preference_strict_lookup_then_most_specific_explicit_fallback_then_next_preference_then_unmatched_action",
+      "localized_asset_language": {
+        "asset_types": [
+          "text",
+          "markdown"
+        ],
+        "when_present": "must_equal_enclosing_variant.locale",
+        "omitted": "no_asset_language_claim"
+      }
+    },
+    "spec": "docs/creative/task-reference/list_creatives.mdx#localized-creative-readback"
+  },
+  "type": "object",
+  "properties": {
+    "default_locale_variant_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "The source or target locale variant used after strict Lookup and explicit fallback rules both miss when unmatched_locale_action is serve_default.",
+      "x-entity": "creative_locale_variant"
+    },
+    "unmatched_locale_action": {
+      "type": "string",
+      "enum": [
+        "serve_default",
+        "do_not_serve"
+      ],
+      "description": "Final action after strict Lookup and explicit locale_fallbacks both miss."
+    },
+    "locale_matching": {
+      "type": "string",
+      "const": "rfc4647_lookup",
+      "description": "Strict RFC 4647 section 3.4 Lookup applied to an ordered language-preference list supplied by the seller's serving environment. AdCP does not carry or define how that list is derived. The seller progressively truncates each requested range and matches only an available canonical tag equal to that range; it does not prefix-match sibling regional tags."
+    },
+    "locale_fallbacks": {
+      "type": "array",
+      "description": "Exact buyer-declared language-family substitutions preserved from sync. For each requested preference, rules are checked from the most specific progressively truncated range to the least specific only after strict Lookup finds no equal available tag for that preference.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "language_range": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/locale-tag.json"
+          },
+          "locale_variant_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "x-entity": "creative_locale_variant"
+          }
+        },
+        "required": [
+          "language_range",
+          "locale_variant_id"
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true
+    },
+    "variants": {
+      "type": "array",
+      "description": "The source variant followed by every target variant, or only the source for monolingual topology. Assets are fully resolved after source inheritance. The enclosing creative status applies to the set as a whole.",
+      "items": {
+        "discriminator": {
+          "propertyName": "role"
+        },
+        "oneOf": [
+          {
+            "title": "SourceLocalizationReadback",
+            "type": "object",
+            "properties": {
+              "locale_variant_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Buyer-assigned stable locale-variant identity from the request.",
+                "x-entity": "creative_locale_variant"
+              },
+              "locale": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/locale-tag.json"
+              },
+              "role": {
+                "type": "string",
+                "const": "source"
+              },
+              "assets": {
+                "$ref": "#/definitions/resolvedAssets"
+              }
+            },
+            "required": [
+              "locale_variant_id",
+              "locale",
+              "role",
+              "assets"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "translation_mode"
+                  ]
+                },
+                {
+                  "required": [
+                    "status"
+                  ]
+                },
+                {
+                  "required": [
+                    "launch_status"
+                  ]
+                }
+              ]
+            },
+            "additionalProperties": true
+          },
+          {
+            "title": "TargetLocalizationReadback",
+            "type": "object",
+            "properties": {
+              "locale_variant_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Buyer-assigned stable locale-variant identity from the request.",
+                "x-entity": "creative_locale_variant"
+              },
+              "locale": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/locale-tag.json"
+              },
+              "role": {
+                "type": "string",
+                "const": "target"
+              },
+              "assets": {
+                "$ref": "#/definitions/resolvedAssets"
+              }
+            },
+            "required": [
+              "locale_variant_id",
+              "locale",
+              "role",
+              "assets"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "translation_mode"
+                  ]
+                },
+                {
+                  "required": [
+                    "status"
+                  ]
+                },
+                {
+                  "required": [
+                    "launch_status"
+                  ]
+                }
+              ]
+            },
+            "additionalProperties": true
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 51,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "default_locale_variant_id",
+    "unmatched_locale_action",
+    "locale_matching",
+    "variants"
+  ],
+  "additionalProperties": true,
+  "definitions": {
+    "resolvedAssets": {
+      "type": "object",
+      "description": "Complete resolved assets for this locale, keyed by creative slot.",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z0-9_]+$": {
+          "anyOf": [
+            {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/localized-creative-asset.json"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/localized-creative-asset.json"
+              },
+              "minItems": 1
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

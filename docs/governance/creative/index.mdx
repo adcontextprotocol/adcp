@@ -17,7 +17,7 @@ Creative governance agents evaluate creatives and return feature values. Differe
 | **Creative quality** | `brand_consistency`, `platform_optimized`, `creative_quality_score` | Quantitative, binary |
 | **Content categorization** | `iab_casinos_gambling`, `iab_automotive` | Binary (with confidence) |
 
-The protocol doesn't define a fixed feature taxonomy. Vendors declare what they evaluate via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) and compete on coverage.
+The wire schema does not define a closed feature taxonomy. Vendors declare what they evaluate via [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) and compete on coverage. When multiple agents need a shared compliance vocabulary, they expose [policy-backed features](./policy-backed-rejections) using the existing `registry:{policy_id}` convention instead of adding feature or rejection enums to the protocol.
 
 ## How it works
 
@@ -141,6 +141,8 @@ The orchestrator evaluates the feature values against buyer-defined requirements
 - Categorization: reject if `iab_casinos_gambling` is `true` and campaign excludes gambling
 
 ## Design principles
+
+**Shared policy IDs, open detection methods.** Agent-defined features such as `auto_redirect` describe observations. Registry-backed features such as `registry:creative_security_auto_redirect` answer whether a creative complies with a shared policy. The registry stabilizes the policy identifier, text, version, exemplars, and remediation guidance; each governance agent remains responsible for its own detection methodology. Sellers cite the policy ID—not a scanner vendor or private rule name—when that policy causes a rejection. See [Policy-backed creative rejections](./policy-backed-rejections).
 
 **Feature IDs enforce strictness, not schema rigidity.** A categorization agent that declares `iab_casinos_gambling` using IAB Content Taxonomy 3.1 ID 181 is as strict as any custom schema — the discipline lives in the agent's methodology, not in the wire format. An orchestrator that requires `iab_casinos_gambling: false` gets a binary pass/fail answer regardless of how the agent detected the content. The feature ID is the contract. The protocol staying schema-agnostic means adding a new IAB category or scanning technique does not require a protocol change.
 

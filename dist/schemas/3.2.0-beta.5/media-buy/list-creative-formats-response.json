@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/media-buy/list-creative-formats-response.json",
+  "title": "List Creative Formats Response",
+  "deprecated": true,
+  "description": "**DEPRECATED in 3.2.** Compatibility response containing legacy named-format definitions. It is not a sales-agent deliverability contract. Use Product.format_options, publisher adagents.json formats, or get_adcp_capabilities creative.supported_formats according to the question being answered.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "formats": {
+      "type": "array",
+      "deprecated": true,
+      "description": "Deprecated named-format definitions projected for older 3.x callers. This list is neither the publisher acceptance catalog nor the seller's canonical product deliverability contract.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/format.json"
+      }
+    },
+    "source": {
+      "type": "string",
+      "deprecated": true,
+      "enum": [
+        "publisher",
+        "aao_mirror",
+        "agent_derived"
+      ],
+      "description": "Deprecated compatibility provenance. `publisher` means publisher-origin catalog; `aao_mirror` means community catalog; `agent_derived` is retained only to parse historical 3.x responses and MUST NOT be produced by a new 3.2 implementation because seller products are not publisher authority."
+    },
+    "creative_agents": {
+      "type": "array",
+      "deprecated": true,
+      "description": "Deprecated recursive discovery projection retained for historical 3.x responses. New buyers query the registry's canonical creative capability index and confirm candidates with get_adcp_capabilities; they do not recursively walk agent-provided lists.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "agent_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Base URL for the creative agent (e.g., 'https://reference.example.com', 'https://dco.example.com')."
+          },
+          "agent_name": {
+            "type": "string",
+            "description": "Human-readable name for the creative agent"
+          },
+          "capabilities": {
+            "type": "array",
+            "description": "Capabilities this creative agent provides",
+            "items": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/enums/creative-agent-capability.json"
+            }
+          }
+        },
+        "required": [
+          "agent_url"
+        ]
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., format availability issues)",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/error.json"
+      }
+    },
+    "pagination": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/pagination-response.json"
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "When true, this response contains simulated data from sandbox mode."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.5/core/ext.json"
+    }
+  },
+  "required": [
+    "formats"
+  ],
+  "additionalProperties": true
+}

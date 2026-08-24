@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/pricing-options/revenue-share-option.json",
+  "title": "Revenue Share Pricing Option",
+  "description": "Revenue-share pricing. The advertiser pays a fixed decimal commission rate applied to settled commissionable_value attributed to the declared conversion event and event source. Spend is rounded once to the ISO 4217 minor-unit precision of currency after multiplication: spend = round_currency(commissionable_value × commission_rate). This is contingent pricing, not fixed-unit pricing or an auction.",
+  "type": "object",
+  "properties": {
+    "pricing_option_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for this pricing option within the product"
+    },
+    "pricing_model": {
+      "type": "string",
+      "const": "revenue_share",
+      "description": "Percentage commission on settled attributed conversion value"
+    },
+    "event_type": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/enums/event-type.json"
+        }
+      ],
+      "description": "Conversion event whose attributed value may become commissionable (for example purchase or subscribe)"
+    },
+    "custom_event_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Name of the custom event when event_type is custom. Required for custom events and absent otherwise."
+    },
+    "event_source_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Event source whose attribution is authoritative for billing. Must match an event source configured through sync_event_sources."
+    },
+    "commission_rate": {
+      "type": "number",
+      "description": "Decimal proportion applied to commissionable_value. For example, 0.04 means 4%.",
+      "exclusiveMinimum": 0,
+      "maximum": 1
+    },
+    "currency": {
+      "type": "string",
+      "description": "ISO 4217 currency code for commissionable_value and resulting spend",
+      "pattern": "^[A-Z]{3}$",
+      "examples": [
+        "USD",
+        "EUR",
+        "GBP",
+        "JPY"
+      ]
+    },
+    "commission_basis_description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000,
+      "description": "Human-readable definition of inclusions, exclusions, and return or cancellation treatment used by the billing authority to calculate commissionable_value."
+    }
+  },
+  "required": [
+    "pricing_option_id",
+    "pricing_model",
+    "event_type",
+    "event_source_id",
+    "commission_rate",
+    "currency",
+    "commission_basis_description"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "custom"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "custom_event_name"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "custom_event_name"
+          ]
+        }
+      }
+    },
+    {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "fixed_price"
+            ]
+          },
+          {
+            "required": [
+              "floor_price"
+            ]
+          },
+          {
+            "required": [
+              "price_guidance"
+            ]
+          },
+          {
+            "required": [
+              "max_bid"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/mcp/2026-07-28/profiles/production/brand/verify-brand-claim-request.json",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "claim_type"
+  },
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "properties": {
+        "claim_type": {
+          "type": "string",
+          "const": "subsidiary"
+        },
+        "claim": {
+          "type": "object",
+          "properties": {
+            "subsidiary_domain": {
+              "type": "string",
+              "format": "hostname"
+            },
+            "subsidiary_brand_id": {
+              "type": "string",
+              "pattern": "^[a-z0-9_]+$"
+            },
+            "observed_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "subsidiary_domain"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "claim_type",
+        "claim"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "properties": {
+        "claim_type": {
+          "type": "string",
+          "const": "parent"
+        },
+        "claim": {
+          "type": "object",
+          "properties": {
+            "parent_domain": {
+              "type": "string",
+              "format": "hostname"
+            },
+            "claimant_says": {
+              "type": "string"
+            },
+            "observed_at": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "parent_domain"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "claim_type",
+        "claim"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "properties": {
+        "claim_type": {
+          "type": "string",
+          "const": "property"
+        },
+        "claim": {
+          "type": "object",
+          "properties": {
+            "property": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "$ref": "#/$defs/external:enums~1property-type.json"
+                },
+                "identifier": {
+                  "type": "string"
+                },
+                "store": {
+                  "type": "string",
+                  "enum": [
+                    "apple",
+                    "google",
+                    "amazon",
+                    "roku",
+                    "fire_tv",
+                    "samsung",
+                    "lg",
+                    "vizio",
+                    "other"
+                  ]
+                },
+                "region": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "identifier"
+              ],
+              "additionalProperties": true
+            },
+            "use_case": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "property"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "claim_type",
+        "claim"
+      ],
+      "additionalProperties": true
+    },
+    {
+      "properties": {
+        "claim_type": {
+          "type": "string",
+          "const": "trademark"
+        },
+        "claim": {
+          "type": "object",
+          "properties": {
+            "mark": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "registry": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "number": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "countries": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 2
+              }
+            },
+            "use_case": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "mark"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "claim_type",
+        "claim"
+      ],
+      "additionalProperties": true
+    }
+  ],
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:enums/property-type.json": {
+      "type": "string",
+      "enum": [
+        "website",
+        "mobile_app",
+        "ctv_app",
+        "desktop_app",
+        "dooh",
+        "podcast",
+        "radio",
+        "linear_tv",
+        "streaming_audio",
+        "ai_assistant"
+      ]
+    }
+  }
+}

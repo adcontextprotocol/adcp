@@ -326,6 +326,11 @@
       "variants": 2,
       "note": "shared-required=[∅]; 0:string | 1:ref-only(/schemas/core/property-id.json)"
     },
+    "protocol/get-adcp-capabilities-response.json##/properties/media_buy/properties/execution/properties/targeting/properties/language/oneOf": {
+      "kind": "dangerous",
+      "variants": 2,
+      "note": "shared-required=[∅]; 0:boolean | 1:req=[∅]"
+    },
     "registries/v1-canonical-mapping.json##/properties/mappings/items/properties/v1_pattern/oneOf": {
       "kind": "narrowable",
       "variants": 2,

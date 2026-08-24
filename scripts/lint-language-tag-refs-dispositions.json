@@ -162,11 +162,6 @@
       "rationale": "Existing rights-channel language values predate the canonical primitive."
     },
     {
-      "path": "core/targeting.json#/properties/language",
-      "disposition": "legacy-language-boundary",
-      "rationale": "Legacy targeting uses ISO 639-1 values and intentionally retains its published wire shape."
-    },
-    {
       "path": "protocol/get-adcp-capabilities-response.json#/properties/creative/properties/localization/properties/locale_matching",
       "disposition": "not-a-language-tag",
       "rationale": "Capability enum naming a supported matching algorithm, not a language tag."

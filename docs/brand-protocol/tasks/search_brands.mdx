@@ -17,7 +17,7 @@ description: "Discover brands on a brand agent's roster before retrieving identi
 {
   "query": "automotive brands with electric vehicles",
   "countries": ["US"],
-  "pagination": { "limit": 20 },
+  "pagination": { "max_results": 20 },
   "context": { "correlation_id": "brand-search-001" }
 }
 ```
@@ -35,6 +35,8 @@ description: "Discover brands on a brand agent's roster before retrieving identi
         "domain": "novamotors.example",
         "name": "Nova Motors"
       },
+      "relationship_trust": "mutual",
+      "relationship_verified_at": "2026-08-15T12:00:00Z",
       "names": [{ "en-US": "Nova Motors" }],
       "description": "Electric mobility and vehicle technology",
       "industries": ["automotive"],
@@ -61,4 +63,6 @@ An empty `brands` array is a successful response when no roster entry matches. R
 | `buyer_brand` | No | Buyer brand used for compatibility filtering |
 | `pagination` | No | Page size and continuation cursor |
 
-Each result includes `brand_id`, `house`, and localized `names`. Other public discovery fields such as description, industries, logos, architecture type, and rights availability are optional.
+Each result includes `brand_id` and localized `names`; `house` is present when a house affiliation is on record. `relationship_trust` reports whether that affiliation is reciprocated: only `mutual` and `inline` extend trust to `house.domain`. `leaf_only`, `house_only`, and `unverifiable` are one-sided or unverified states, while `standalone` means the brand declares no house. A missing `relationship_trust` means the agent has not computed a verdict and MUST NOT be interpreted as `standalone`. `claimed_house_domain` preserves a leaf's unverified parent claim, and `relationship_verified_at` records the last bilateral confirmation for `mutual` results.
+
+Other public discovery fields such as description, industries, logos, architecture type, and rights availability are optional.

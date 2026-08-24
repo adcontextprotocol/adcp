@@ -1,0 +1,188 @@
+---
+title: Brief expectations
+description: "How buyers and sellers use briefs alongside offer filters, targeting overlays, future targeting requirements, and refinement."
+"og:title": "AdCP — Brief expectations"
+---
+
+A brief gives a seller the campaign meaning needed for curation. It is not a
+second schema written in prose. Buyers preserve goals, context, semantic intent,
+preferences, and requirements without a structured AdCP representation in the
+brief; they put machine-representable facts in typed fields.
+
+## When a brief is used
+
+| Task | Brief rule | Purpose |
+|---|---|---|
+| `list_products` | Not accepted | Read matching product offers without seller curation |
+| `request_proposals` | Required | Ask the seller to curate one or more draft plans |
+| `refine_proposals` | Not repeated | Revise a proposal with structured fields, a semantic `ask`, or both; or finalize a draft without changing terms |
+| `get_products` | Depends on `buying_mode` | Compatibility facade for the same list, proposal, and refinement behaviors |
+
+For `buying_mode: "brief"`, `brief` is required.
+For `buying_mode: "wholesale"`, omit `brief`.
+For `buying_mode: "refine"`, omit `brief` and use the `refine` array instead.
+
+The `brand` field is optional for `get_products` unless the request includes `catalog`. When supplied, the seller may use it to apply general policy rules or limit discovery. A `create_media_buy` request always must include `brand`.
+
+Offer filters remain hard in every lifecycle. The task changes curation and
+state behavior, not whether filters apply. The split tasks name them
+`criteria.offer_filters`; legacy `get_products` names the equivalent field
+`filters`.
+
+## Decompose the buyer request
+
+| Input | Use it for | Example |
+|---|---|---|
+| `brief` | Goals, semantic audience descriptions, context, soft preferences, untyped hard requirements | “Build consideration among outdoor enthusiasts in trusted adventure contexts” |
+| `criteria.offer_filters` | Which offers may be returned: channel, format, commercial terms, dates, budget, reporting | `channels: ["ctv"]` |
+| `criteria.targeting_overlay` | Which inventory or impressions may deliver; values known now | `geo_countries: ["US"]` |
+| `criteria.required_overlay_support` | Targeting dimensions the buyer must select independently on packages later | Nielsen DMA support |
+| refinement `criteria` | Structured changes to a referenced proposal | Replace the country overlay |
+| refinement `ask` | Semantic changes without a structured field | Favor premium adventure contexts |
+
+Anything that has a structured AdCP field SHOULD use it. This costs fewer
+tokens, can be validated and applied by code, and avoids lossy prose extraction.
+
+### Structured-first example
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441001",
+  "brand": { "domain": "acmeoutdoor.example" },
+  "brief": "Launch a premium trail shoe to outdoor enthusiasts. Favor trusted adventure and fitness contexts and optimize for completed video views.",
+  "criteria": {
+    "offer_filters": {
+      "channels": ["ctv", "olv"],
+      "pricing_currencies": ["USD"],
+      "required_metrics": ["completed_views"],
+      "start_date": "2027-03-01",
+      "end_date": "2027-03-31",
+      "budget_range": { "max": 50000, "currency": "USD" }
+    },
+    "targeting_overlay": {
+      "geo_countries": ["US"],
+      "demographics": {
+        "age": { "min": 25, "max": 44, "include_unknown": false }
+      }
+    },
+    "required_overlay_support": {
+      "geo_metros": { "systems": ["nielsen_dma"] }
+    }
+  }
+}
+```
+
+The seller curates for the semantic audience and contexts, excludes offers that
+fail the product filters, scopes every returned forecast and price to the US
+age predicate, and returns only products that let packages select Nielsen DMA
+values later. The request does not ask for one product per DMA.
+
+## Hard requirements in prose
+
+An explicit hard requirement remains binding even when the buyer puts it only
+in the brief. A seller MUST NOT downgrade “US only” or “must exclude news” to a
+preference merely because it was written in prose.
+
+When hard targeting came from prose and the seller's structured interpretation
+materially affects product eligibility, pricing, or forecasting, the seller
+MUST confirm that interpretation in response-root
+`targeting_resolution.brief_targeting` for `request_proposals` and
+`get_products`, or in the affected `refine_proposals.results[]` entry when the
+interpretation came from the refinement `ask`. In other cases the
+seller SHOULD still confirm it as a best practice. Requirements without a typed
+AdCP representation remain visible in the natural-language response.
+
+`brief_targeting` is confirmation, not a counteroffer. If a product cannot
+honor the seller's literal interpretation of a hard prose constraint, the
+seller omits that product. Structured `modifications` apply only to a buyer's
+explicit `targeting_overlay` proposal flow.
+
+If prose contradicts a structured field, the seller MUST reject the request as
+`INVALID_REQUEST` rather than silently choose one interpretation. The buyer
+corrects the contradiction and retries.
+
+## How buyers evaluate targeting resolution
+
+| Response state | Buyer conclusion and action |
+|---|---|
+| Structured overlay; no `targeting_resolution` | Overlay accepted exactly |
+| `targeting_resolution.modifications` | Compare the ordered proposed changes; selecting the configured product accepts them |
+| Hard prose plus `brief_targeting` | Verify the seller’s structured interpretation before selection |
+| Hard prose without confirmation | Do not infer acceptance; inspect the seller’s prose or clarify before purchase |
+
+Unchanged structured overlays are not repeated. This prevents large values such
+as hundreds of postal codes from bouncing through discovery responses.
+
+## What belongs in the brief
+
+Useful brief content includes:
+
+- business objective and why the campaign exists;
+- semantic audience meaning such as “outdoor enthusiasts” or “IT decision
+  makers modernizing cloud infrastructure”;
+- creative and product context;
+- success priorities and tradeoffs not captured by typed metrics;
+- sensitive adjacency or competitive context without a typed control;
+- soft preferences, clearly distinguished from hard requirements.
+
+Do not duplicate exact dates, budget, currency, channels, formats, geography,
+demographic predicates, or other values already carried in structured fields.
+
+## Seller processing
+
+For `request_proposals`, sellers:
+
+1. Validate structured fields before natural-language interpretation.
+2. Reject contradictions between hard prose and structured fields.
+3. Apply filters, targeting, and required future-support matching.
+4. Interpret the remaining brief for curation and relevance.
+5. Scope product pricing and forecasts to effective targeting.
+6. Return draft proposals with `brief_relevance` where useful and disclose targeting resolution.
+
+Sellers may ask focused clarification questions when semantic intent is too
+ambiguous to curate responsibly. They do not need clarification for exact
+values already supplied structurally.
+
+```mermaid
+graph TD
+    A[Receive discovery task] --> B[Validate structured fields]
+    B --> C{Contradiction?}
+    C -->|Yes| D[INVALID_REQUEST]
+    C -->|No| E[Apply filters and targeting]
+    E --> F{Task}
+    F -->|list_products| G[Return matching feed products]
+    F -->|request_proposals| H[Interpret semantic brief and curate]
+    F -->|refine_proposals| I[Resolve proposal IDs and apply refinement]
+    H --> J[Return configured products and resolution]
+    I --> J
+```
+
+## Listing and refinement
+
+Listing is not “targeting later.” It is non-curated product-feed behavior.
+Buyers may still send `offer_filters`, `targeting_overlay`, and
+`required_overlay_support`; returned products must honor them exactly as in
+proposal mode. The legacy `get_products` wholesale mode has the same rule.
+
+For `action: "revise"`, refine requests are self-contained through opaque
+product/proposal IDs plus structured fields, a semantic `ask`, or both.
+`action: "finalize"` changes no commercial or targeting terms and cannot carry
+revision fields. See [Refining products and proposals](/dist/docs/3.2.0-beta.1/media-buy/product-discovery/refinement).
+
+## Implementation checklist
+
+### Buyers
+
+- Preserve business language and semantic intent in `brief`.
+- Extract machine-representable facts into structured fields.
+- Mark hard versus preferred requirements clearly.
+- Inspect every targeting resolution before selecting a product.
+- Treat configured product IDs as opaque and context-bound until `expires_at`.
+
+### Sellers
+
+- Apply hard requirements in every request surface.
+- Never infer a structured value when the buyer already supplied it.
+- Never silently resolve a contradiction or unsupported constraint.
+- Confirm brief-derived targeting when possible.
+- Bind effective targeting, price, forecast, and terms to the returned product.

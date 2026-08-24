@@ -156,6 +156,39 @@ The Media Buy Protocol is asynchronous by design. Operations MAY return immediat
 
 Orchestrators MUST handle all response types and MUST NOT assume synchronous completion.
 
+### Transaction boundaries across lifecycle surfaces
+
+`create_media_buy` and `update_media_buy` are compound 3.x compatibility
+facades. Each request is one atomic mutation. Sellers MUST validate every
+requested package, inline creative, creative assignment, catalog selection, and
+cross-field relationship before committing any part of the request. If one
+inline creative or assignment is invalid, the complete create or update fails;
+the seller MUST NOT leave behind a MediaBuy, package, library write, assignment,
+or partial update from that request.
+
+Request validation is not creative review. After valid creative input has been
+committed, a later content-policy, brand-safety, or accessibility rejection
+updates creative and assignment approval state but does not roll back the
+MediaBuy or a successful update. Before activation, a buy without sufficient
+approved coverage remains `pending_creatives` until the buyer supplies a
+correction or replacement. Rejection affecting an active buy follows the
+creative-impairment and serving rules instead of reversing commitment.
+
+The compact lifecycle separates commitment, operational control, and creative
+traffic. `buy_products` or `accept_proposal` commits before `sync_creatives` can
+assign against the returned package IDs. Each call is atomic, but the sequence
+is a saga: failure of a later sync leaves the purchase committed. Likewise, a
+legacy update split into proposal acceptance, `control_media_buy`, and
+`sync_creatives` has multiple independent failure boundaries and is not an
+atomic compatibility translation. Compensating cancellation, when allowed by
+the accepted terms, is a new state transition rather than rollback.
+
+Callers use the compatibility facade whenever one transaction must combine
+targeting with assignment replacement, or when an inline-only seller has no
+creative library. A targeting change that would orphan an assignment MUST be
+validated with its complete assignment replacement in the same facade update;
+`control_media_buy` followed by `sync_creatives` cannot provide that guarantee.
+
 ### Media Buy State Transitions
 
 Media buys progress through a defined set of states. Terminal states (`completed`, `rejected`, `canceled`) allow no further transitions.
@@ -186,6 +219,7 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 - `update_media_buy` with `paused: false` resumes a buy that is currently `paused` or clears a latent create-time hold while the visible state is still `pending_creatives` or `pending_start`. Clearing a latent hold does not bypass setup blockers; the visible status remains pending until creatives are supplied and the flight can start.
 - `active` or `paused` → `completed` when the flight ends, goal is met, or budget is exhausted (seller-initiated)
 - Buyer-initiated cancellation uses `update_media_buy` with `canceled: true` and optional `cancellation_reason`
+- On the `update_media_buy` compatibility facade, root `canceled: true` takes precedence over package cancellation and every other requested mutation. The seller cancels the whole MediaBuy, releases all of its package assignments, ignores every other field except `cancellation_reason`, and SHOULD return a structured warning identifying the ignored fields. A package-only cancellation is evaluated only when root `canceled` is absent. Compact `control_media_buy` instead makes root cancellation mutually exclusive with package and other controls, so a mixed compact request is invalid rather than precedence-resolved.
 - Seller-initiated cancellation (e.g., policy violation, inventory withdrawal) transitions the media buy to `canceled` with `cancellation.canceled_by: "seller"`; buyers recover the state through `get_media_buys`. A durable resource-scoped status webhook is reserved for the 4.0 notification model—operation-scoped `push_notification_config` is not a future lifecycle subscription.
 - Seller-initiated rejection (from `pending_creatives` or `pending_start`) is likewise observable through `get_media_buys`; implementations MUST NOT synthesize an operation-completion webhook after the originating operation has already completed.
 - Sales agents MUST include a `cancellation` object with `canceled_at` and `canceled_by` when transitioning a media buy or package to `canceled`
@@ -206,9 +240,29 @@ Any non-terminal ──── update(canceled: true) ──▶ canceled (termina
 
 Sellers MUST enforce the revision check atomically at the persistence boundary for every mutating update. A read-compare-write sequence in application memory can race with another writer and allow lost updates. The update and compare belong in one database transaction, conditional update, or equivalent atomic primitive. On mismatch, return `CONFLICT` and leave the media buy unchanged.
 
-Mutating updates increment `revision` and return the new value. This includes budget, flight date, targeting, status, package, creative-assignment, reporting-webhook, invoice-recipient, and committed-metric changes. Validation-only requests, exact idempotency replay of an already-applied operation, and reads via `get_media_buys` do not bump revision.
+Mutating updates increment `revision` and return the new value. This includes budget, flight date, targeting, status, package, creative-assignment, inline-creative, reporting-webhook, invoice-recipient, and committed-metric changes made through `update_media_buy`. Validation-only requests, exact idempotency replay of an already-applied operation, and reads via `get_media_buys` do not bump revision.
+
+`sync_creatives` has its own idempotency and atomicity boundary. Library uploads
+and assignment operations performed there do not increment the MediaBuy
+`revision`; there is no shared revision fence between creative sync and MediaBuy
+control. Consequently, the same logical assignment change increments revision
+when it is part of the `update_media_buy` compatibility mutation but does not
+when it is performed through `sync_creatives`. Buyers MUST NOT use an unchanged
+MediaBuy revision as proof that package-assignment state is unchanged.
 
 Buyers SHOULD pass the latest observed `revision` on every `update_media_buy` call intended to change state. The request field remains optional for backward compatibility. When `revision` is present, sellers MUST compare it atomically with the write and reject stale values with `CONFLICT`. On `CONFLICT`, reload the media buy with `get_media_buys`, reconcile against the current state, then retry with the new `revision` and a fresh `idempotency_key`.
+
+When a MediaBuy has `accepted_proposal` state and a successful
+`update_media_buy` compatibility request changes the commercial envelope, the
+seller MUST atomically materialize an accepted successor proposal snapshot and
+advance `accepted_proposal_id`, `accepted_proposal_terms_digest`, and
+`accepted_proposal` with the MediaBuy update. The successor records the prior
+accepted proposal as its parent and the pre-update MediaBuy revision as its
+base. This keeps a later compact amendment anchored to the terms that are
+actually in force. An in-envelope operational change or creative-only change
+does not create a commercial successor. A seller that cannot update the
+MediaBuy and accepted snapshot together MUST reject the compound facade update;
+it MUST NOT leave a stale accepted-proposal pointer.
 
 `confirmed_at` is the seller's commitment timestamp, not a delivery-status timestamp. Once populated, it remains stable through later pause, resume, cancellation, completion, and reporting transitions. Use the `submitted` response branch when no `media_buy_id` is being returned to the buyer. Sellers MAY instead return synchronous success with `media_buy_id`, `packages`, and `confirmed_at: null` for a provisional buy; such buys MUST be retrievable via `get_media_buys` and MUST transition by setting `confirmed_at` exactly once on commitment. A provisional buy with `confirmed_at: null` MUST NOT be `active` and MUST NOT include `packages[].committed_metrics`.
 
@@ -353,7 +407,7 @@ Modify an existing media buy's budget, targeting, or settings.
 - Orchestrators MAY cancel individual packages by setting `canceled: true` on a package update
 - Sales agents MUST reject creative changes to packages past their `creative_deadline` with error code `CREATIVE_DEADLINE_EXCEEDED`
 - Orchestrators MAY add new packages to an existing media buy via `new_packages`. Sales agents that support this MUST advertise `add_packages` in `valid_actions`. Sales agents that do not support adding packages MUST reject with `UNSUPPORTED_FEATURE`.
-- When `canceled: true` is present alongside other fields in an update request, sales agents MUST apply cancellation and MUST ignore all other fields except `cancellation_reason`. Cancellation takes precedence over concurrent mutations. Sales agents SHOULD include a structured success `warnings[]` entry when non-cancellation fields were ignored; warnings no longer belong in opaque `context`.
+- When root `canceled: true` is present alongside other fields in an update request, including `packages[].canceled`, sales agents MUST cancel the whole MediaBuy and MUST ignore all other fields except `cancellation_reason`. Root cancellation takes precedence over package cancellation and other concurrent mutations. Sales agents SHOULD include a structured success `warnings[]` entry naming ignored fields; warnings no longer belong in opaque `context`. Package cancellation is evaluated independently only when root `canceled` is absent. Within a package update, `canceled: true` likewise takes precedence over that package's sibling fields: apply only its cancellation and reason and warn about ignored siblings. Root fields and other package entries still apply atomically unless root cancellation is present.
 - Sales agents MUST return `affected_packages` containing the state of each directly modified package after the update is applied (or the proposed state if pending approval); an empty array is valid when only campaign-level fields (e.g., `paused`, `start_time`) are updated
 - When manual approval is required, sales agents MUST persist the pending update request, MUST return `implementation_date: null`, and MUST NOT return empty `affected_packages`
 - Sales agents SHOULD return the updated media buy state

@@ -1,0 +1,138 @@
+---
+title: Generative Creative
+description: "Generate canonical AdCP creative manifests from briefs, source assets, and selectable creative-agent capabilities."
+"og:title": "AdCP — Generative Creative"
+"og:image": /images/walkthrough/diagram-generative-tiers.png
+---
+
+Generative production is an operation, not a separate format category. The output still conforms to a canonical creative contract such as `image`, `video_hosted`, `native_in_feed`, or `sponsored_placement`.
+
+<img src="/images/walkthrough/diagram-generative-tiers.png" alt="Three tiers of generative creative: static output, optimized asset combinations, and context-generated variants" style={{ width: '100%', borderRadius: '12px', marginBottom: '1.5rem' }} />
+
+## Discover a generation capability
+
+Call the creative agent's `get_adcp_capabilities` and inspect `creative.supported_formats[]`. A usable entry has `build` in `operations` and a canonical declaration compatible with the target product.
+
+```json
+{
+  "capability_id": "native_launch_generator",
+  "operations": ["build", "preview"],
+  "format": {
+    "format_kind": "native_in_feed",
+    "params": {
+      "slots": [
+        { "asset_group_id": "title", "asset_type": "text", "required": true },
+        { "asset_group_id": "main_image", "asset_type": "image", "required": true },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true }
+      ]
+    }
+  }
+}
+```
+
+Because this entry includes `preview`, the enclosing capability response also lists `native_launch_generator` in `creative.preview.routes[]` and declares its informational `rendering_origin`. Generative output from a standalone creative agent normally uses `agent_approximation`; this self-description never grants authority.
+
+`list_creative_formats` is deprecated in 3.2. If you do not already know which creative agent to call, query the registry by canonical kind or exact publisher format option.
+
+## Generate from a brief
+
+```json
+{
+  "message": "Create a concise native launch ad for Acme Outdoor's Trail Pro boot. Use an adventurous tone and a direct call to action.",
+  "target_capability_id": "native_launch_generator",
+  "brand": { "domain": "acmeoutdoor.example" },
+  "quality": "draft",
+  "include_preview": true
+}
+```
+
+The agent returns a portable canonical manifest:
+
+```json
+{
+  "status": "completed",
+  "creative_manifest": {
+    "format_kind": "native_in_feed",
+    "assets": {
+      "title": { "asset_type": "text", "content": "Find your next summit" },
+      "main_image": {
+        "asset_type": "image",
+        "url": "https://cdn.acmeoutdoor.example/trail-pro-native.jpg",
+        "width": 1200,
+        "height": 628
+      },
+      "landing_page_url": {
+        "asset_type": "url",
+        "url": "https://acmeoutdoor.example/trail-pro"
+      }
+    }
+  }
+}
+```
+
+The manifest does not contain `capability_id`. Before trafficking to a product that requires exact option routing, add the appropriate publisher or product `format_option_ref`.
+
+## Transform existing creative
+
+Provide an existing canonical manifest plus a target capability:
+
+```json
+{
+  "message": "Adapt this landscape image into a vertical short-video concept",
+  "creative_manifest": {
+    "format_kind": "image",
+    "assets": {
+      "image_main": {
+        "asset_type": "image",
+        "url": "https://cdn.acmeoutdoor.example/trail-pro-landscape.jpg",
+        "width": 1200,
+        "height": 628
+      }
+    }
+  },
+  "target_capability_id": "vertical_video_generator",
+  "quality": "production"
+}
+```
+
+For priced or configurable generation services, discover a `transformer_id` through `list_transformers`. Its `output_capability_ids[]` declares the allowed targets; typed generation knobs go in `config`.
+
+## Multi-output generation
+
+```json
+{
+  "message": "Produce the approved launch concept for both display placements",
+  "target_capability_ids": ["display_300x250", "display_728x90"],
+  "brand": { "domain": "acmeoutdoor.example" },
+  "quality": "production"
+}
+```
+
+The response contains one canonical manifest per requested capability, in request order. Multi-output requests are atomic.
+
+## Seller-side and impression-time generation
+
+A seller may accept a brief, catalog, or other structured inputs and compose the final ad later. The product's canonical declaration expresses this through its slots and production parameters. The buyer submits a canonical manifest containing those inputs through `sync_creatives`; the seller/publisher runtime performs the impression-time composition.
+
+That runtime is not discovered as a creative-agent renderer. If the seller also exposes preview or pre-build operations, it advertises them explicitly in its own `creative.supported_formats[]`.
+
+## Quality and refinement
+
+- `quality` controls build fidelity (`draft` or `production`).
+- `preview_quality` controls visualization fidelity independently.
+- Use `refine_from_build_variant_id` to refine a previously returned build leaf when the agent advertises refinement support.
+- `max_variants` and `variant_axis` request alternatives; `keep_mode` is advisory and does not change billing for produced leaves.
+
+## Failure handling
+
+- `FORMAT_NOT_SUPPORTED`: refresh `get_adcp_capabilities` and choose an advertised capability.
+- Field-attributed `config.*` error: correct the selected transformer's typed configuration.
+- Target declaration mismatch: choose a capability whose full canonical envelope satisfies the product; matching only `format_kind` is insufficient.
+- Missing seller option: use the target product's `format_options[]`, not an agent-local capability ID, for package and manifest routing.
+
+## Related
+
+- [`build_creative`](/dist/docs/3.2.0-beta.3/creative/task-reference/build_creative)
+- [`list_transformers`](/dist/docs/3.2.0-beta.3/creative/task-reference/list_transformers)
+- [Canonical formats](/dist/docs/3.2.0-beta.3/creative/canonical-formats)
+- [Multi-agent orchestration](/dist/docs/3.2.0-beta.3/creative/multi-agent-orchestration)

@@ -169,6 +169,7 @@ Top-level peer of `request_signing`.
 - **`profile`** — signing profile name.
 - **`algorithms`** — supported signature algorithms.
 - **`legacy_hmac_fallback`** — whether HMAC fallback is supported for legacy receivers.
+- **`delivery_retry_horizon_seconds`** — maximum retry horizon from the first webhook delivery attempt; receivers retain delivery and publication proof for at least this long.
 
 [Propose an extension to `webhook_signing`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+webhook_signing+capability:+%3Cflag%3E&body=Schema+location:+%60.webhook_signing%60&labels=rfc,capabilities,security)
 

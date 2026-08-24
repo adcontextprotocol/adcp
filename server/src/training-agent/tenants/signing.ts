@@ -31,7 +31,7 @@ interface TenantMaterial {
 
 const materials: Map<string, TenantMaterial> = new Map();
 
-type AdcpKeyPurpose = 'webhook-signing';
+type AdcpKeyPurpose = 'request-signing';
 
 interface EphemeralEd25519 {
   kid: string;
@@ -62,7 +62,7 @@ function generateEphemeralEd25519(tenantId: string, purpose: AdcpKeyPurpose, kid
 }
 
 function generateEphemeralKey(tenantId: string): TenantMaterial {
-  const e = generateEphemeralEd25519(tenantId, 'webhook-signing', '');
+  const e = generateEphemeralEd25519(tenantId, 'request-signing', '');
   return {
     signingKey: {
       keyId: e.kid,

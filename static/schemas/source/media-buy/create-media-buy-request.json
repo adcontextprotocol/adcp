@@ -80,7 +80,7 @@
     "proposal_id": {
       "type": "string",
       "x-entity": "proposal",
-      "description": "ID of the exact committed proposal snapshot to execute. With total_budget, the publisher creates packages using the proposal's fixed percentages or seller-optimized constraints. Alternative to providing packages. AdCP 3.2 request_proposals and ordinary refine_proposals revisions issue drafts; refine_proposals action finalize creates the executable committed hold. Sellers reject draft, declined, or previously executed snapshots, while exact retries with the original idempotency key replay historical success. Changed commercial terms are issued under a new proposal_id, so no separate proposal version is required."
+      "description": "ID of the exact committed proposal snapshot to execute. With total_budget, the publisher creates packages using the proposal's fixed percentages or seller-optimized constraints. Mutually exclusive: provide packages or proposal_id, not both. AdCP 3.2 request_proposals and ordinary refine_proposals revisions issue drafts; refine_proposals action finalize creates the executable committed hold. Sellers reject draft, declined, or previously executed snapshots, while exact retries with the original idempotency key replay historical success. Changed commercial terms are issued under a new proposal_id, so no separate proposal version is required."
     },
     "opportunity": {
       "allOf": [
@@ -139,7 +139,7 @@
     },
     "packages": {
       "type": "array",
-      "description": "Array of package configurations. Required when not using proposal_id. Fixed allocation requires budget on every package. Seller-optimized allocation permits package budget to be omitted or to act as a hard cap. When executing a proposal, omit packages; the seller derives them from the committed proposal.",
+      "description": "Array of package configurations. Required when not using proposal_id. Mutually exclusive: provide packages or proposal_id, not both. Fixed allocation requires budget on every package. Seller-optimized allocation permits package budget to be omitted or to act as a hard cap. When executing a proposal, omit packages; the seller derives them from the committed proposal.",
       "items": {
         "$ref": "/schemas/media-buy/package-request.json"
       },

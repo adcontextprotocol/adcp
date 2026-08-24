@@ -1,0 +1,173 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/canonical-proposal.json",
+  "title": "Canonical Proposal",
+  "description": "Compact immutable proposal for the AdCP 3.2 lifecycle. commercial_terms is the sole authoritative commercial envelope; narrative fields do not duplicate legacy allocation or creative graphs.",
+  "type": "object",
+  "properties": {
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "proposal"
+    },
+    "proposal_kind": {
+      "type": "string",
+      "enum": [
+        "new_media_buy",
+        "media_buy_update",
+        "media_buy_cancellation"
+      ]
+    },
+    "parent_proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "proposal",
+      "description": "Immediate predecessor this snapshot was forked from. Every proposal produced by refine_proposals carries it, equal to the request's source proposal_id, so negotiation lineage is reconstructible from proposals alone."
+    },
+    "media_buy_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "media_buy"
+    },
+    "opportunity_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "opportunity",
+      "description": "Buyer planning cycle associated with this proposal. Revisions inherit it; it does not participate in proposal identity."
+    },
+    "base_media_buy_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "proposal_status": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/proposal-status.json",
+      "description": "draft is indicative and unreserved; committed has firm terms with inventory reserved until expires_at; accepted is the historical snapshot attached to a MediaBuy."
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "For a draft, the indicative-terms freshness deadline. For a committed proposal, the inventory-hold deadline."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "brief_alignment": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "commercial_terms": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/media-buy/commercial-terms.json"
+    },
+    "terms_digest": {
+      "type": "string",
+      "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
+      "description": "Base64url SHA-256 digest of the RFC 8785 JCS serialization of commercial_terms, prefixed with sha256:."
+    },
+    "insertion_order": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/insertion-order.json"
+    }
+  },
+  "required": [
+    "proposal_id",
+    "proposal_kind",
+    "proposal_status",
+    "name",
+    "commercial_terms",
+    "terms_digest"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "proposal_kind": {
+            "enum": [
+              "media_buy_update",
+              "media_buy_cancellation"
+            ]
+          }
+        },
+        "required": [
+          "proposal_kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "parent_proposal_id",
+          "media_buy_id",
+          "base_media_buy_revision"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "proposal_status": {
+            "const": "accepted"
+          }
+        },
+        "required": [
+          "proposal_status"
+        ]
+      },
+      "then": {
+        "required": [
+          "media_buy_id",
+          "accepted_at"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "proposal_status": {
+            "const": "committed"
+          }
+        },
+        "required": [
+          "proposal_status"
+        ]
+      },
+      "then": {
+        "required": [
+          "expires_at"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "proposal_kind": {
+            "const": "media_buy_cancellation"
+          }
+        },
+        "required": [
+          "proposal_kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "commercial_terms": {
+            "required": [
+              "cancellation_terms"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

@@ -100,8 +100,10 @@ describe('product discovery MCP schema parity', () => {
     }
   });
 
-  it('keeps the compact lifecycle within its tools/list context budget', () => {
-    const tools = productDiscoveryAliasToolDefinitions();
+  it('keeps compact discovery within its tools/list context budget', () => {
+    const tools = productDiscoveryAliasToolDefinitions().filter(tool => (
+      ['list_products', 'request_proposals', 'refine_proposals', 'decline_proposals'].includes(tool.name)
+    ));
     for (const tool of tools) {
       expect(tool.inputSchema).not.toHaveProperty('$id');
       expect(tool.inputSchema).not.toHaveProperty('title');

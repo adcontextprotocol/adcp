@@ -41,8 +41,8 @@ test('governance conditions require a later approved intent before mutation', ()
   assert.deepEqual(doc.requires, ['multi_agent']);
   assert.equal(doc.default_agent, 'sales');
   assert.deepEqual(doc.requires_capability, {
-    path: 'media_buy.governance_aware',
-    equals: true,
+    path: 'adcp.governance_enforcement.tasks',
+    contains: { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
   });
   for (const tool of ['check_governance', 'create_media_buy', 'get_media_buys', 'report_plan_outcome']) {
     assert.ok(doc.required_tools.includes(tool), `${tool} must be declared`);
@@ -144,38 +144,38 @@ test('governance conditions flow proves committed state and closes the outcome l
   assert.match(executionText, /`conditions`.*invalid/is);
 });
 
-test('governance approved flow grades intent, execution evidence, and durable state', () => {
+test('governance approved flow grades signed intent and durable state', () => {
   const doc = loadStoryboard(APPROVED_STORYBOARD_PATH);
   const orderedSteps = (doc.phases || []).flatMap((phase) => phase.steps || []);
   const ids = orderedSteps.map((step) => step.id);
   const steps = stepsById(doc);
   const intent = steps.get('check_governance_intent');
+  const tampered = steps.get('create_media_buy_tampered');
   const create = steps.get('create_media_buy');
   const readback = steps.get('get_media_buys_readback');
-  const audit = steps.get('get_plan_audit_logs_execution');
   const outcome = steps.get('report_plan_outcome');
 
   assert.deepEqual(doc.requires, ['multi_agent']);
   assert.equal(doc.default_agent, 'sales');
   assert.deepEqual(doc.requires_capability, {
-    path: 'media_buy.governance_aware',
-    equals: true,
+    path: 'adcp.governance_enforcement.tasks',
+    contains: { task: 'create_media_buy', modes: ['signed_context'] },
   });
   for (const tool of [
     'check_governance',
     'create_media_buy',
     'get_media_buys',
-    'get_plan_audit_logs',
     'report_plan_outcome',
   ]) {
     assert.ok(doc.required_tools.includes(tool), `${tool} must be declared`);
   }
 
-  assert.ok(intent && create && readback && audit && outcome);
+  assert.ok(intent && tampered && create && readback && outcome);
+  assert.ok(ids.indexOf(intent.id) < ids.indexOf(tampered.id));
+  assert.ok(ids.indexOf(tampered.id) < ids.indexOf(create.id));
   assert.ok(ids.indexOf(intent.id) < ids.indexOf(create.id));
   assert.ok(ids.indexOf(create.id) < ids.indexOf(readback.id));
-  assert.ok(ids.indexOf(readback.id) < ids.indexOf(audit.id));
-  assert.ok(ids.indexOf(audit.id) < ids.indexOf(outcome.id));
+  assert.ok(ids.indexOf(readback.id) < ids.indexOf(outcome.id));
 
   assert.equal(intent.agent, 'governance');
   assert.equal(intent.sample_request.tool, 'create_media_buy');
@@ -189,6 +189,10 @@ test('governance approved flow grades intent, execution evidence, and durable st
   assert.deepEqual(createPayload, intent.sample_request.payload);
   assert.equal(create.sample_request.governance_context, '$context.governance_context');
   assert.equal(
+    (tampered.validations || []).find(({ check }) => check === 'error_code')?.value,
+    'PERMISSION_DENIED',
+  );
+  assert.equal(
     (create.validations || []).some(({ path: validationPath }) =>
       validationPath === 'governance_context' || validationPath?.startsWith('conditions')),
     false,
@@ -198,15 +202,6 @@ test('governance approved flow grades intent, execution evidence, and durable st
   assert.equal(
     validation(readback, 'field_equals_context', 'media_buys[0].media_buy_id')?.context_key,
     'media_buy_id',
-  );
-  assert.equal(audit.sample_request.include_entries, true);
-  assert.equal(
-    validation(audit, 'field_value', 'plans[0].entries[1].check_type')?.value,
-    'execution',
-  );
-  assert.equal(
-    validation(audit, 'field_value', 'plans[0].entries[1].verdict')?.value,
-    'approved',
   );
   assert.equal(outcome.sample_request.check_id, '$context.approved_check_id');
   assert.equal(outcome.sample_request.seller_response.seller_reference, '$context.media_buy_id');

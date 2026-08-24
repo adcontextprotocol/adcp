@@ -9,6 +9,37 @@ const YAML = require('yaml');
 
 const { runStoryboard } = require('@adcp/sdk/testing');
 
+const mediaBuyScenariosPath = path.join(
+  __dirname,
+  '..',
+  'static',
+  'compliance',
+  'source',
+  'protocols',
+  'media-buy',
+  'scenarios'
+);
+const creativeScenariosPath = path.join(
+  __dirname,
+  '..',
+  'static',
+  'compliance',
+  'source',
+  'protocols',
+  'creative',
+  'scenarios'
+);
+
+function loadMediaBuyStoryboard(name) {
+  const candidates = [
+    path.join(mediaBuyScenariosPath, `${name}.yaml`),
+    path.join(creativeScenariosPath, `${name}.yaml`),
+  ];
+  const storyboardPath = candidates.find(candidate => fs.existsSync(candidate));
+  assert.ok(storyboardPath, `Missing storyboard source for ${name}`);
+  return YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
+}
+
 test('runStoryboard skips an equals-gated storyboard when the capability path is absent', async () => {
   const storyboard = {
     id: 'equals_absent_regression',
@@ -52,6 +83,128 @@ test('runStoryboard skips an equals-gated storyboard when the capability path is
   assert.equal(result.phases[0].phase_id, 'capability_unsupported');
   assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported');
   assert.match(result.phases[0].steps[0].error, /agent did not declare support/);
+});
+
+test('inventory-list storyboards skip sellers that declare property-list support false', async () => {
+  const scenariosPath = path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'protocols',
+    'media-buy',
+    'scenarios'
+  );
+
+  for (const name of ['inventory_list_targeting', 'inventory_list_no_match']) {
+    const storyboard = YAML.parse(
+      fs.readFileSync(path.join(scenariosPath, `${name}.yaml`), 'utf8')
+    );
+    assert.deepEqual(storyboard.requires_capability, {
+      path: 'media_buy.execution.targeting.property_list',
+      equals: true,
+    });
+
+    const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+    const result = await runStoryboard('https://agent.example/mcp', storyboard, {
+      _profile: {
+        tools,
+        raw_capabilities: {
+          media_buy: { execution: { targeting: { property_list: false } } },
+        },
+      },
+      agentTools: tools,
+    });
+
+    assert.equal(result.overall_passed, true);
+    assert.equal(result.skipped_count, 1);
+    assert.equal(result.phases[0].phase_id, 'capability_unsupported');
+    assert.equal(result.phases[0].steps[0].skip_reason, 'capability_unsupported');
+    assert.match(result.phases[0].steps[0].error, /execution\.targeting\.property_list/);
+  }
+});
+
+test('inventory-list no-match requires canonical rejection and fails accepted buys', async () => {
+  const storyboardPath = path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'protocols',
+    'media-buy',
+    'scenarios',
+    'inventory_list_no_match.yaml'
+  );
+  const source = YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
+  const keepChecks = new Set(['error_code']);
+  const storyboard = {
+    ...source,
+    prerequisites: undefined,
+    phases: source.phases.slice(1).map(phase => ({
+      ...phase,
+      steps: phase.steps.map(step => ({
+        ...step,
+        validations: step.validations.filter(validation => keepChecks.has(validation.check)),
+      })),
+    })),
+  };
+  const tools = ['get_adcp_capabilities', 'create_media_buy'];
+  const baseOptions = {
+    agentTools: tools,
+    context: {
+      product_id: 'property-list-product',
+      pricing_option_id: 'fixed-price',
+    },
+    skip_controller_seeding: true,
+    _profile: {
+      tools,
+      raw_capabilities: {
+        media_buy: { execution: { targeting: { property_list: true } } },
+      },
+    },
+  };
+
+  const rejection = await runStoryboard('https://agent.example/mcp', storyboard, {
+    ...baseOptions,
+    _client: {
+      resetContext() {},
+      async createMediaBuy(request) {
+        return {
+          success: false,
+          data: {
+            errors: [{
+              code: 'PRODUCT_UNAVAILABLE',
+              message: 'The property list matches no inventory',
+            }],
+            context: request.context,
+          },
+        };
+      },
+    },
+  });
+  assert.equal(rejection.overall_passed, true);
+  assert.equal(rejection.passed_count, 1);
+
+  const accepted = await runStoryboard('https://agent.example/mcp', storyboard, {
+    ...baseOptions,
+    _client: {
+      resetContext() {},
+      async createMediaBuy(request) {
+        return {
+          success: true,
+          data: {
+            media_buy_id: 'silent-buy',
+            packages: [{ targeting_overlay: request.packages[0].targeting_overlay }],
+            context: request.context,
+          },
+        };
+      },
+    },
+  });
+  assert.equal(accepted.overall_passed, false);
+  assert.equal(accepted.failed_count, 1);
 });
 
 test('runStoryboard skips a contains-gated phase when the array omits the required value', async () => {
@@ -182,6 +335,40 @@ test('runStoryboard structurally matches object-valued governance task gates', a
   assert.equal(result.phases[0].steps[0].skip_reason, 'no_phases');
 });
 
+test('online media-buy governance proofs do not apply to signed-context-only sellers', async () => {
+  const storyboardPath = path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source',
+    'protocols',
+    'media-buy',
+    'scenarios',
+    'governance_conditions.yaml'
+  );
+  const storyboard = YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
+  const baseProfile = {
+    tools: ['get_adcp_capabilities', ...storyboard.required_tools],
+    raw_capabilities: {
+      adcp: {
+        governance_enforcement: {
+          tasks: [{ task: 'create_media_buy', modes: ['signed_context'] }],
+        },
+      },
+    },
+  };
+  const nonExecutable = { ...storyboard, prerequisites: undefined, phases: [] };
+
+  const signedOnly = await runStoryboard('https://agent.example/mcp', nonExecutable, {
+    _profile: baseProfile,
+    agentTools: baseProfile.tools,
+  });
+  assert.equal(signedOnly.overall_passed, true);
+  assert.equal(signedOnly.phases[0].phase_id, 'capability_unsupported');
+  assert.equal(signedOnly.phases[0].steps[0].skip_reason, 'capability_unsupported');
+});
+
 test('billing gate skips per-agent phases when agent billing is not supported', () => {
   const storyboardPath = path.join(
     __dirname,
@@ -267,4 +454,394 @@ test('create_media_buy async storyboard requires its advertised controller scena
 
   assert.equal(advertisedResult.overall_passed, true);
   assert.equal(advertisedResult.phases[0].phase_id, 'no_phases');
+});
+
+test('creative-library storyboards fail closed before tool execution', async () => {
+  const cases = [
+    {
+      name: 'creative_fate_after_cancellation',
+      gate: {
+        path: 'creative.has_creative_library',
+        equals: true,
+      },
+      capabilities: { creative: { has_creative_library: true } },
+    },
+    {
+      name: 'list_creatives_filter_behavior',
+      gate: {
+        path: 'creative.has_creative_library',
+        equals: true,
+      },
+      capabilities: { creative: { has_creative_library: true } },
+    },
+    {
+      name: 'available_actions',
+      gates: [
+        { path: 'media_buy.creative_approval_mode', equals: 'auto_approve' },
+        { path: 'creative.has_creative_library', equals: true },
+      ],
+      capabilities: {
+        creative: { has_creative_library: true },
+        media_buy: { creative_approval_mode: 'auto_approve' },
+      },
+      otherGateFailure: {
+        creative: { has_creative_library: true },
+        media_buy: { creative_approval_mode: 'require_human' },
+      },
+    },
+    {
+      name: 'pending_creatives_to_start',
+      gates: [
+        { path: 'media_buy.creative_approval_mode', equals: 'auto_approve' },
+        { path: 'creative.has_creative_library', equals: true },
+      ],
+      capabilities: {
+        creative: { has_creative_library: true },
+        media_buy: { creative_approval_mode: 'auto_approve' },
+      },
+      otherGateFailure: {
+        creative: { has_creative_library: true },
+        media_buy: { creative_approval_mode: 'require_human' },
+      },
+    },
+    {
+      name: 'dependency_impairment',
+      gates: [
+        { path: 'media_buy.propagation_surfaces', contains: 'snapshot' },
+        { path: 'creative.has_creative_library', equals: true },
+      ],
+      capabilities: {
+        creative: { has_creative_library: true },
+        media_buy: { propagation_surfaces: ['snapshot'] },
+      },
+      otherGateFailure: {
+        creative: { has_creative_library: true },
+        media_buy: { propagation_surfaces: ['webhook'] },
+      },
+    },
+    {
+      name: 'dependency_impairment_cardinality',
+      gates: [
+        { path: 'media_buy.propagation_surfaces', contains: 'snapshot' },
+        { path: 'creative.has_creative_library', equals: true },
+      ],
+      capabilities: {
+        creative: { has_creative_library: true },
+        media_buy: { propagation_surfaces: ['snapshot'] },
+      },
+      otherGateFailure: {
+        creative: { has_creative_library: true },
+        media_buy: { propagation_surfaces: ['out_of_band'] },
+      },
+    },
+    {
+      name: 'per_creative_conversion_attribution',
+      gates: [
+        {
+          path: 'media_buy.conversion_tracking.per_creative_attribution',
+          equals: true,
+        },
+        { path: 'creative.has_creative_library', equals: true },
+      ],
+      capabilities: {
+        creative: { has_creative_library: true },
+        media_buy: { conversion_tracking: { per_creative_attribution: true } },
+      },
+      otherGateFailure: {
+        creative: { has_creative_library: true },
+        media_buy: { conversion_tracking: { per_creative_attribution: false } },
+      },
+    },
+  ];
+
+  for (const item of cases) {
+    const storyboard = loadMediaBuyStoryboard(item.name);
+    if (item.gate) {
+      assert.deepEqual(storyboard.requires_capability, item.gate);
+    } else {
+      assert.deepEqual(storyboard.requires_all_capabilities, item.gates);
+    }
+
+    const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+    const librarylessCapabilities = structuredClone(item.capabilities);
+    librarylessCapabilities.creative = { has_creative_library: false };
+    const libraryless = await runStoryboard('https://agent.example/mcp', storyboard, {
+      _profile: { tools, raw_capabilities: librarylessCapabilities },
+      agentTools: tools,
+    });
+
+    assert.equal(libraryless.overall_passed, true, item.name);
+    assert.equal(libraryless.skipped_count, 1, item.name);
+    assert.equal(libraryless.phases[0].phase_id, 'capability_unsupported', item.name);
+    assert.equal(
+      libraryless.phases[0].steps[0].skip_reason,
+      'capability_unsupported',
+      item.name
+    );
+    assert.match(libraryless.phases[0].steps[0].error, /creative\.has_creative_library/);
+
+    const applicable = await runStoryboard(
+      'https://agent.example/mcp',
+      { ...storyboard, prerequisites: undefined, fixtures: undefined, phases: [] },
+      {
+        _profile: { tools, raw_capabilities: item.capabilities },
+        agentTools: tools,
+      }
+    );
+    assert.equal(applicable.overall_passed, true, item.name);
+    assert.equal(applicable.phases[0].phase_id, 'no_phases', item.name);
+
+    if (item.otherGateFailure) {
+      const outsideOtherScope = await runStoryboard(
+        'https://agent.example/mcp',
+        storyboard,
+        {
+          _profile: { tools, raw_capabilities: item.otherGateFailure },
+          agentTools: tools,
+        }
+      );
+      assert.equal(outsideOtherScope.overall_passed, true, item.name);
+      assert.equal(outsideOtherScope.phases[0].phase_id, 'capability_unsupported', item.name);
+    }
+  }
+});
+
+test('every required seller scenario using library tools has a library capability gate', () => {
+  const index = YAML.parse(
+    fs.readFileSync(
+      path.join(mediaBuyScenariosPath, '..', 'index.yaml'),
+      'utf8'
+    )
+  );
+  const libraryTools = new Set(['sync_creatives', 'list_creatives']);
+
+  for (const id of index.requires_scenarios) {
+    const storyboard = loadMediaBuyStoryboard(id.split('/').at(-1));
+    if (!(storyboard.required_tools || []).some(tool => libraryTools.has(tool))) continue;
+
+    const gates = [
+      ...(storyboard.requires_capability ? [storyboard.requires_capability] : []),
+      ...(storyboard.requires_all_capabilities || []),
+    ];
+    assert.ok(
+      gates.some(
+        gate => gate.path === 'creative.has_creative_library' && gate.equals === true
+      ),
+      `${id} uses creative-library tools without a creative.has_creative_library gate`
+    );
+  }
+});
+
+test('direct creative-library phases are gated without blocking later lifecycle phases', () => {
+  const sourceRoot = path.join(
+    __dirname,
+    '..',
+    'static',
+    'compliance',
+    'source'
+  );
+  const indexPaths = [
+    path.join(sourceRoot, 'protocols', 'media-buy', 'index.yaml'),
+    ...['sales-guaranteed', 'sales-broadcast-tv', 'sales-proposal-mode'].map(name =>
+      path.join(sourceRoot, 'specialisms', name, 'index.yaml')
+    ),
+  ];
+  const libraryTools = new Set(['sync_creatives', 'list_creatives']);
+
+  for (const indexPath of indexPaths) {
+    const index = YAML.parse(fs.readFileSync(indexPath, 'utf8'));
+    for (const phase of index.phases || []) {
+      if (!(phase.steps || []).some(step => libraryTools.has(step.task))) continue;
+      assert.deepEqual(
+        phase.requires_capability,
+        { path: 'creative.has_creative_library', equals: true },
+        `${index.id}/${phase.id} uses creative-library tools without a phase gate`
+      );
+    }
+  }
+
+  const expectedDownstreamDependencies = new Map([
+    ['sales_guaranteed/delivery_monitoring', ['confirm_active']],
+    ['sales_broadcast_tv/delivery_monitoring', ['create_buy']],
+    ['sales_broadcast_tv/reconciliation', ['delivery_monitoring']],
+    ['sales_proposal_mode/delivery', ['accept_proposal']],
+  ]);
+  for (const indexPath of indexPaths.slice(1)) {
+    const index = YAML.parse(fs.readFileSync(indexPath, 'utf8'));
+    for (const phase of index.phases || []) {
+      const key = `${index.id}/${phase.id}`;
+      if (!expectedDownstreamDependencies.has(key)) continue;
+      assert.deepEqual(phase.depends_on, expectedDownstreamDependencies.get(key), key);
+      assert.ok(!phase.depends_on.includes('creative_sync'), key);
+    }
+  }
+});
+
+test('product refinement requires the advertised refine buying mode', async () => {
+  const storyboard = loadMediaBuyStoryboard('refine_products');
+  assert.deepEqual(storyboard.requires_capability, {
+    path: 'media_buy.buying_modes',
+    contains: 'refine',
+  });
+
+  const tools = ['get_adcp_capabilities', ...storyboard.required_tools];
+  const unsupported = await runStoryboard('https://agent.example/mcp', storyboard, {
+    _profile: {
+      tools,
+      raw_capabilities: { media_buy: { buying_modes: ['brief'] } },
+    },
+    agentTools: tools,
+  });
+  assert.equal(unsupported.overall_passed, true);
+  assert.equal(unsupported.phases[0].phase_id, 'capability_unsupported');
+  assert.match(unsupported.phases[0].steps[0].error, /media_buy\.buying_modes/);
+
+  const supported = await runStoryboard(
+    'https://agent.example/mcp',
+    { ...storyboard, prerequisites: undefined, phases: [] },
+    {
+      _profile: {
+        tools,
+        raw_capabilities: { media_buy: { buying_modes: ['brief', 'refine'] } },
+      },
+      agentTools: tools,
+    }
+  );
+  assert.equal(supported.overall_passed, true);
+  assert.equal(supported.phases[0].phase_id, 'no_phases');
+});
+
+test('measurement acceptance is split from the universal rejection scenario', async () => {
+  const rejected = loadMediaBuyStoryboard('measurement_terms_rejected');
+  const accepted = loadMediaBuyStoryboard('measurement_terms_accepted');
+  assert.deepEqual(rejected.phases.map(phase => phase.id), [
+    'discover_products',
+    'reject_terms',
+  ]);
+  assert.equal(rejected.requires_capability, undefined);
+  assert.deepEqual(accepted.requires_capability, {
+    path: 'media_buy.measurement_terms_acceptance',
+    equals: true,
+  });
+  const scenarioIndexes = [
+    path.join(mediaBuyScenariosPath, '..', 'index.yaml'),
+    ...['sales-guaranteed', 'sales-broadcast-tv', 'sales-proposal-mode'].map(name =>
+      path.join(
+        __dirname,
+        '..',
+        'static',
+        'compliance',
+        'source',
+        'specialisms',
+        name,
+        'index.yaml'
+      )
+    ),
+  ];
+  for (const indexPath of scenarioIndexes) {
+    const index = YAML.parse(fs.readFileSync(indexPath, 'utf8'));
+    assert.ok(index.requires_scenarios.includes('media_buy_seller/measurement_terms_rejected'));
+    assert.ok(index.requires_scenarios.includes('media_buy_seller/measurement_terms_accepted'));
+  }
+
+  const schema = JSON.parse(
+    fs.readFileSync(
+      path.join(
+        __dirname,
+        '..',
+        'static',
+        'schemas',
+        'source',
+        'protocol',
+        'get-adcp-capabilities-response.json'
+      ),
+      'utf8'
+    )
+  );
+  const capability = schema.properties.media_buy.properties.measurement_terms_acceptance;
+  assert.equal(capability.type, 'boolean');
+  assert.equal(capability.default, false);
+  assert.equal(capability['x-added-in'], '3.2.0');
+  assert.match(capability.description, /TERMS_REJECTED/);
+
+  const tools = ['get_adcp_capabilities', ...accepted.required_tools];
+  const unsupported = await runStoryboard('https://agent.example/mcp', accepted, {
+    _profile: {
+      tools,
+      raw_capabilities: { media_buy: { measurement_terms_acceptance: false } },
+    },
+    agentTools: tools,
+  });
+  assert.equal(unsupported.overall_passed, true);
+  assert.equal(unsupported.phases[0].phase_id, 'capability_unsupported');
+
+  const supported = await runStoryboard(
+    'https://agent.example/mcp',
+    { ...accepted, prerequisites: undefined, phases: [] },
+    {
+      _profile: {
+        tools,
+        raw_capabilities: { media_buy: { measurement_terms_acceptance: true } },
+      },
+      agentTools: tools,
+    }
+  );
+  assert.equal(supported.overall_passed, true);
+  assert.equal(supported.phases[0].phase_id, 'no_phases');
+
+  const expectedTerms = {
+    billing_measurement: {
+      vendor: { domain: 'summit-measurement.example' },
+      measurement_window: 'c7',
+      max_variance_percent: 10,
+    },
+    makegood_policy: { available_remedies: ['credit'] },
+  };
+  let submittedTerms;
+  const executable = {
+    ...accepted,
+    prerequisites: undefined,
+    phases: accepted.phases.map(phase => ({
+      ...phase,
+      steps: phase.steps.map(step => ({ ...step, validations: [] })),
+    })),
+  };
+  const workflow = await runStoryboard('https://agent.example/mcp', executable, {
+    _profile: {
+      tools,
+      raw_capabilities: { media_buy: { measurement_terms_acceptance: true } },
+    },
+    agentTools: tools,
+    _client: {
+      resetContext() {},
+      async getProducts() {
+        return {
+          success: true,
+          data: {
+            products: [{
+              product_id: 'measurement-product',
+              pricing_options: [{ pricing_option_id: 'measurement-price', fixed_price: 12 }],
+              measurement_terms: expectedTerms,
+            }],
+          },
+        };
+      },
+      async createMediaBuy(request) {
+        submittedTerms = request.packages[0].measurement_terms;
+        return {
+          success: true,
+          data: {
+            media_buy_id: 'measurement-buy',
+            packages: [{
+              package_id: 'measurement-package',
+              measurement_terms: submittedTerms,
+            }],
+            context: request.context,
+          },
+        };
+      },
+    },
+  });
+  assert.equal(workflow.overall_passed, true);
+  assert.deepEqual(submittedTerms, expectedTerms);
 });

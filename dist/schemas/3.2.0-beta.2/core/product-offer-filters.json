@@ -1,0 +1,247 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/product-offer-filters.json",
+  "title": "Product Offer Filters",
+  "description": "Offer, commercial-fit, availability, and reporting filters for product discovery. This compact schema is independent of the legacy delivery-targeting filter graph. Brand and issuer selectors are stable keys; callers do not send brand assets or content provenance.",
+  "type": "object",
+  "properties": {
+    "delivery_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/delivery-type.json"
+    },
+    "exclusivity": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/exclusivity.json"
+    },
+    "is_fixed_price": {
+      "type": "boolean",
+      "description": "Filter fixed-price versus auction offers. Contingent pricing matches neither value."
+    },
+    "pricing_structures": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/pricing-structure.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonicalization": "set"
+    },
+    "pricing_currencies": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{3}$"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonicalization": "set"
+    },
+    "format_kinds": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/canonical-format-kind.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonicalization": "set"
+    },
+    "format_option_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/format-option-ref.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonicalization": "set"
+    },
+    "standard_formats_only": {
+      "type": "boolean"
+    },
+    "min_exposures": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "budget_range": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/budget-range.json"
+    },
+    "countries": {
+      "type": "array",
+      "description": "Filter by country coverage using ISO 3166-1 alpha-2 codes (e.g., ['US', 'CA', 'GB']). Returns products whose geographic coverage includes at least one of the specified countries. This is a product attribute filter, not a delivery-targeting instruction.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "property_list": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/property-list-ref.json",
+      "description": "Reference to an externally managed property list. When provided, the seller filters products to only those available on properties in the list. This narrows which publisher inventory is returned; it is a product attribute filter, not a delivery-targeting instruction."
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/channels.json"
+      },
+      "minItems": 1
+    },
+    "video_placement_types": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/video-placement-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonicalization": "set"
+    },
+    "audio_distribution_types": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/audio-distribution-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonicalization": "set"
+    },
+    "sponsored_placement_types": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/sponsored-placement-type.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonicalization": "set"
+    },
+    "social_placement_surfaces": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/social-placement-surface.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonicalization": "set"
+    },
+    "trusted_match": {
+      "type": "object",
+      "properties": {
+        "providers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "agent_url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "context_match": {
+                "type": "boolean"
+              },
+              "identity_match": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "agent_url"
+            ],
+            "additionalProperties": true
+          },
+          "minItems": 1
+        },
+        "response_types": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/response-type.json"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "required_features": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/canonical-media-buy-features.json"
+        }
+      ],
+      "description": "Canonical protocol features the seller must support.",
+      "x-adcp-schema-uri": "/schemas/core/canonical-media-buy-features.json"
+    },
+    "required_performance_standards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/performance-standard-metric.json"
+          },
+          "threshold": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "standard": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/viewability-standard.json"
+          },
+          "vendor": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/brand-key.json"
+          }
+        },
+        "required": [
+          "metric",
+          "threshold",
+          "vendor"
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 1
+    },
+    "required_metrics": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/available-metric.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "required_vendor_metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "vendor": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/brand-key.json"
+          },
+          "metric_id": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/vendor-metric-id.json"
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "vendor"
+            ]
+          },
+          {
+            "required": [
+              "metric_id"
+            ]
+          }
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "audience_evidence_requirements": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/product-audience-evidence-requirements.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+    }
+  },
+  "additionalProperties": false
+}

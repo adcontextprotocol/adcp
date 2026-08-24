@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/media-buy/accept-proposal-async-response-submitted.json",
+  "title": "Accept Proposal - Submitted",
+  "description": "Bounded submitted task envelope for accept_proposal.",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/compact-task-submitted.json"
+    }
+  ]
+}

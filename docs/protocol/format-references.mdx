@@ -65,6 +65,8 @@ The value comes from the selected creative agent's `get_adcp_capabilities.creati
 
 ## Deprecated named references
 
-The compound `{agent_url, id}` `format_id` shape and `format_ids[]` arrays are deprecated in 3.2. Implementations may read or project them for older 3.x peers, but new examples and authored resources use canonical declarations. When canonical and legacy fields coexist, canonical fields are authoritative and both projections must describe the same underlying contract.
+The compound `{agent_url, id}` `format_id` shape and `format_ids[]` arrays are deprecated in 3.2. Implementations may read or project them for older 3.x peers, but new examples and authored resources use exactly one canonical selector route. New buyers MUST NOT dual-emit `format_ids[]`.
+
+Receivers remain compatible with older 3.x multi-route requests. They resolve every present route independently before applying precedence. An unresolved option reference or unprojectable legacy ID is rejected with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). Once all routes resolve, receivers derive the product options selected by each route and require those sets to match; legacy parameter compatibility follows the asymmetric [v2 narrows v1](/docs/creative/canonical-formats#narrows-formal-definition-normative) relation instead of raw object equality. Conflicts are rejected with [`CONFLICTING_SELECTORS`](/docs/building/verification/compliance-catalog#error-code-conflicting-selectors); they are never resolved by silently ignoring the legacy projection. Fixed-size image width and height are atomic and both dimensions participate in compatibility.
 
 See [Canonical formats](/docs/creative/canonical-formats) for matching, narrowing, publisher resolution, and migration details.

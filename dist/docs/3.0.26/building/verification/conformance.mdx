@@ -1,0 +1,284 @@
+---
+title: Conformance Specification
+sidebarTitle: Conformance Specification
+description: "What 'AdCP-conformant' means, defined by the storyboards that verify it. Conformance is what the spec requires; verified is what the suite attests."
+"og:title": "AdCP — Conformance Specification"
+---
+
+**Status**: Request for Comments
+**Last Updated**: April 19, 2026
+
+## Two words, not three
+
+AdCP conformance has two load-bearing terms. A third (one you'll hear in the wild) is a trap.
+
+- **Conformant** — the agent meets the normative rules. Defined by the storyboards this document indexes.
+- **Verified** — AAO has tested the agent recently and issued a signed attestation. Gated on active membership and a live heartbeat. The [AAO Verified badge](/dist/docs/3.0.26/building/verification/aao-verified) carries one of two qualifiers: **(Spec)** for storyboard-conformance against a test deployment or dev endpoint, **(Sandbox)** for storyboard-conformance against the seller's real production endpoint under `account.sandbox: true` flagging. An agent can earn either or both.
+- **"Compliant"** — self-attested, unverified, no external check. Don't claim it; don't design for it. This document uses *conformant* and *verified* exclusively.
+
+Put differently:
+
+- Conformance is a property of the agent's wire behavior.
+- Verification is a time-bounded third-party attestation. **(Spec)** attests wire-format conformance against any registered endpoint; **(Sandbox)** attests the same storyboard suite passes against the seller's real production endpoint under sandbox-flagged traffic. Same storyboards, different attestation surface.
+- The two axes are independent: a seller without a separate test deployment can earn **(Sandbox)** directly on production; a test agent that can never serve real impressions earns **(Spec)** as a complete claim.
+
+## Storyboard conformance vs. AAO Verified
+
+This page indexes **storyboard conformance** — the property an agent's wire behavior has when it matches the spec, verified by storyboards running against seeded test data. Storyboard passing earns the **AAO Verified (Spec)** or **AAO Verified (Sandbox)** qualifier (or both) on an agent's badge, depending on where the runner targeted.
+
+A second axis — **AAO Verified (Sandbox)** — verifies the seller's real production endpoint correctly handles the full storyboard suite under `account.sandbox: true` flagging. (Sandbox) is the stronger claim: a seller can pass (Spec) on a test deployment while their production stack has a broken sandbox gate (real-world side effects under flagged traffic, missing account-mode verification, etc.) — (Sandbox) closes that gap.
+
+The two qualifiers share one brand mark — **AAO Verified** — and an agent can earn either or both. **(Spec) and (Sandbox) are independent**: each independently demonstrates conformance through different evidence. (Spec) attests wire-format conformance against any registered endpoint; (Sandbox) attests the production code path correctly tolerates sandbox-flagged traffic. See [AAO Verified](/dist/docs/3.0.26/building/verification/aao-verified) for the qualifier model and the [Sandbox framing verdict](https://github.com/adcontextprotocol/adcp/issues/4379); the rest of this page indexes the storyboards that back both qualifiers.
+
+## Test surfaces and the storyboard loop
+
+Every seller exposes a *test surface* — the mechanism that lets a storyboard runner exercise the seller's tools deterministically without triggering real-world side effects. The test surface is what (Spec) is graded against. How a seller stands up that surface depends on where their state-of-record lives; the implementation differs, the goal does not:
+
+| Where state-of-record lives | How the test loop closes |
+|---|---|
+| Local DB only (typically SSPs, creative agents) | The storyboard runner writes fixtures via `comply_test_controller.seed_*`; the seller's read handlers consume the same store. The seed → read loop closes naturally. |
+| Upstream system the seller does not control (DSPs proxying to platforms, retail-media networks reading retailer catalogs, signals brokers) | Seeded writes are dead to the read handler. The TypeScript SDK ships a `TestControllerBridge` that runs the real adapter call first (so a broken upstream call still fails the gate), then merges seeded fixtures into the response. |
+| Platform catalog with seller-issued or derived identifiers | For storyboards that declare `fixture_resolution`, the runner discovers qualifying entities through the seller's normal AdCP read surface, pins the seller-issued IDs to run-scoped fixture handles, and exercises the normal booking path. Requirements the sandbox catalog cannot satisfy remain visible as `fixture_unsatisfied` coverage gaps. |
+| Mixed (some tools local, some upstream) | Both, per tool. |
+
+All three paths can earn `(Spec)` — each proves the seller's wire behavior against the storyboards, and the run report identifies which fixture strategy supplied the evidence. The bridge is **one implementation** of the test-surface pattern, not a separate seller category. Discovery is not a blanket opt-out from controlled setup: a seller still needs the `force_*` and `simulate_*` scenarios required to prove lifecycle behavior, and an unsatisfied catalog requirement reduces reported coverage rather than passing the test. Neither category is what `(Sandbox)` attests; `(Sandbox)` is the separate axis covering whether the seller's production stack honors `account.sandbox: true` without real-world side effects.
+
+### Fixture handles and catalog resolution
+
+In AdCP 3.2, fixture IDs are run-scoped handles. Existing storyboards and
+sellers retain literal `seed_*` injection by default. A storyboard opts a
+fixture into catalog resolution through explicit `fixture_resolution` match
+rules; the runner never guesses that an arbitrary fixture object is a generic
+subset predicate.
+
+For product discovery, the runner reads the fully paginated wholesale catalog
+for the resolved sandbox account, validates the response normally, selects a
+qualifying entity deterministically, and binds the authored handle to the
+seller's `product_id`. Product pricing options bind as the scoped pair
+`(product_id, pricing_option_id)`. The binding stays fixed for the run and is
+substituted only into request fields carrying the corresponding `x-entity`
+annotation.
+
+The grading boundary is important:
+
+- No qualifying entity after every declared strategy is
+  `fixture_unsatisfied`: an explicit, reported coverage gap.
+- A rejected, malformed, incomplete, or transport-failed discovery call is a
+  conformance failure.
+- Once a supported setup operation begins, its failure is a conformance
+  failure; the runner cannot fall back to another strategy to conceal it.
+
+The normative authoring and output contracts live in
+[`storyboard-schema.yaml`](https://adcontextprotocol.org/compliance/latest/universal/storyboard-schema)
+and
+[`runner-output-contract.yaml`](https://adcontextprotocol.org/compliance/latest/universal/runner-output-contract).
+
+### Distinguishing fixture-merged from upstream-derived responses
+
+When a response passes through the SDK's `TestControllerBridge`, the SDK stamps a `_bridge: { callback, tool, merged_count }` marker on the response. Marker presence on a step means the response content was merged from a seeded fixture after the seller's handler returned; marker absence means the response came from the seller's adapter end-to-end (or from a local DB the runner seeded directly). The marker is advisory metadata for runners and downstream leaderboards — it is **not** part of the wire contract. Sellers MUST NOT emit it, and conformance checks ignore it. The leading underscore marks the field as SDK/runner-stamped metadata reserved for testing tooling; future fields with the same prefix follow the same rule.
+
+Marker design: [`adcp-client#1775`](https://github.com/adcontextprotocol/adcp-client/issues/1775). Shipped: [`adcp-client#1786`](https://github.com/adcontextprotocol/adcp-client/pull/1786). Leaderboard policy that consumes the marker: [`adcp-client#1782`](https://github.com/adcontextprotocol/adcp-client/issues/1782).
+
+### Three signals — don't conflate them
+
+Adopters often read these three controls as the same thing. They answer different questions:
+
+| Signal | Question it answers |
+|---|---|
+| Test controller availability ([`comply_test_controller`](/dist/docs/3.0.26/building/by-layer/L3/comply-test-controller) in `tools/list`) | "Has the seller exposed deterministic-mode forces?" |
+| Sandbox flag (`account.sandbox` on requests) | "Is the targeted account a sandbox account, with no real-world side effects?" |
+| Bridge participation (`_bridge` marker on a response) | "Did this response come from the adapter's upstream call, or from a fixture the SDK merged in?" |
+
+These are **runtime controls** on individual storyboard steps — distinct from the `(Spec)` and `(Sandbox)` verification qualifiers, which describe what a storyboard pass *attests* over time. A storyboard pass can carry any combination of the three signals.
+
+## Storyboards are the truth
+
+Rather than restate every MUST in prose — which would inevitably drift from the executable suite — **the storyboards ARE the conformance specification.** This document is a navigational index to them, grouped by the declaration that obligates the storyboard to run.
+
+Every normative rule in the suite has exactly one home: the storyboard YAML at [`/compliance/latest/`](https://adcontextprotocol.org/compliance/latest/). Changes to what "conformant" means happen there, in a versioned release, tested against real agents. If a rule isn't in a storyboard, it's not part of conformance.
+
+This is deliberate. A separate prose spec that restates storyboard rules creates two sources of truth. Two sources of truth drift. We pick one: the suite.
+
+<Note>
+The `@adcp/sdk` package also ships TypeScript files under `testing/scenarios/` that pre-date storyboard-driven `comply()`. They are **not** the conformance spec — see [Storyboards vs. scenarios](/dist/docs/3.0.26/building/verification/storyboards-vs-scenarios) for which is which.
+</Note>
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in the referenced storyboards and prose sections below are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
+
+## Conformance is layered
+
+Every agent satisfies the universal layer. Each `supported_protocols` claim adds a protocol baseline. Each `specialisms` claim adds a specialism baseline.
+
+| Layer | Obligation | Path |
+|-------|------------|------|
+| **Universal** | Every AdCP agent | [`/compliance/latest/universal/`](https://adcontextprotocol.org/compliance/latest/universal/) |
+| **Protocol** | Agent claiming a `supported_protocols` value | [`/compliance/latest/protocols/{protocol}/`](https://adcontextprotocol.org/compliance/latest/protocols/) |
+| **Specialism** | Agent claiming a `specialisms` value | [`/compliance/latest/specialisms/{id}/`](https://adcontextprotocol.org/compliance/latest/specialisms/) |
+
+Agents MUST NOT declare a capability whose storyboards they do not pass. See the [Compliance Catalog](/dist/docs/3.0.26/building/verification/compliance-catalog) for the full taxonomy and [Validate Your Agent](/dist/docs/3.0.26/building/verification/validate-your-agent) for how to run the suite locally.
+
+The non-executable [cross-role governance index](/compliance/latest/universal/governance.yaml)
+maps the shared governance contract to capability-gated media-buy, signals,
+rights, and creative proofs. It is discoverability metadata, not an additional
+universal storyboard; only an agent's exact
+`adcp.governance_enforcement.tasks[]` claims select those role-specific tests.
+
+## Universal conformance
+
+Every agent MUST pass every storyboard below.
+
+{/* Lint: scripts/lint-universal-storyboard-doc-parity.cjs keeps this table in sync with static/compliance/source/universal/. Add a row (snake_case YAML id) when you add a graded storyboard; remove the row when one is deleted. The build fails on drift. */}
+
+| Storyboard | What it verifies |
+|------------|------------------|
+| [`capability_discovery`](/compliance/latest/universal/capability-discovery.yaml) | [`get_adcp_capabilities`](/dist/docs/3.0.26/protocol/get_adcp_capabilities) shape, protocol/specialism declarations, version advertising |
+| [`comply_controller_mode_gate`](/compliance/latest/universal/comply-controller-mode-gate.yaml) | Sandbox/live isolation for sellers that expose [`comply_test_controller`](/dist/docs/3.0.26/building/by-layer/L3/comply-test-controller) on a shared endpoint — live-mode principals must be refused before scenario dispatch |
+| [`schema_validation`](/compliance/latest/universal/schema-validation.yaml) | Request and response schema conformance, ISO 8601 timestamps, temporal invariants |
+| [`schema_validation_signals`](/compliance/latest/universal/schema-validation-signals.yaml) | Response schema compliance for signals — required fields on every signal; gated on [`get_signals`](/dist/docs/3.0.26/signals/tasks/get_signals) |
+| [`version_negotiation`](/compliance/latest/universal/version-negotiation.yaml) | Release-precision `adcp.supported_versions` advertisement and response-envelope `adcp_version` echo; advisory in 3.1, promoted in later cuts |
+| [`v3_envelope_integrity`](/compliance/latest/universal/v3-envelope-integrity.yaml) | v3 protocol envelopes MUST NOT carry the v2 legacy `task_status` or `response_status` fields — `status` is the single canonical lifecycle field in v3 |
+| [`error_compliance`](/compliance/latest/universal/error-compliance.yaml) | Structured error shape, published error codes, transport binding, no existence leaks across tenants |
+| [`error_compliance_signals`](/compliance/latest/universal/error-compliance-signals.yaml) | Error handling for signals protocol — nonexistent signal IDs, missing fields, VERSION_UNSUPPORTED, transport binding; discovery phases are gated on `get_signals`; activation phases run only for agents that claim activation support such as `signal-marketplace` |
+| [`stale_response_advisory`](/compliance/latest/universal/stale-response-advisory.yaml) | [`STALE_RESPONSE`](/dist/docs/3.0.26/building/verification/compliance-catalog#error-code-stale-response) wire placement — advisory rides in `errors[]` on a populated success response with transport success preserved; stale-cache forcing steps gated on `comply_test_controller` with `force_upstream_unavailable` |
+| [`idempotency`](/compliance/latest/universal/idempotency.yaml) | `idempotency_key` scoping, replay semantics, [`IDEMPOTENCY_CONFLICT`](/dist/docs/3.0.26/building/verification/compliance-catalog#error-code-idempotency-conflict), `replayed: true`, declared TTL |
+| [`read_tool_idempotency`](/compliance/latest/universal/read-tool-idempotency.yaml) | Read-only task wrappers and the 3.x [`get_products`](/dist/docs/3.0.26/media-buy/task-reference/get_products) compatibility facade accept an optional `idempotency_key`; verifies the keyless capabilities bootstrap |
+| [`canonical_format_validate_input`](/compliance/latest/universal/canonical-format-validate-input.yaml) | Canonical-format [`validate_input`](https://adcontextprotocol.org/schemas/3.0.26/creative/validate-input-request.json) result semantics: structural pass/fail across required slots and `unvalidatable_nondeterministic` for seeded product declarations. Gated on agents that advertise `validate_input`; the seeded-product branch also requires `comply_test_controller` seeding support. |
+| [`security_baseline`](/compliance/latest/universal/security.yaml) | Unauth rejection, static-credential enforcement (Bearer API key or HTTP Basic), OAuth discovery + RFC 9728 audience binding |
+| [`oauth_setup`](/compliance/latest/universal/oauth-setup.yaml) | Complete RFC 9728/RFC 8414 discovery graph, issuer/resource consistency, and passive endpoint reachability — skipped unless `oauth.supported: true` |
+| [`trusted_match_publisher_authentication`](/compliance/latest/universal/trusted-match-publisher-authentication.yaml) | TMP router deployment authentication — selected only for agents declaring `trusted_match.core` in `experimental_features`; a credential-profile-neutral runner sends schema-valid Context Match and Identity Match requests with absent and invalid credentials and requires HTTP `401` with `WWW-Authenticate`; a selected deployment with unavailable probe configuration produces `requirement_unmet` |
+| [`webhook_emission`](/compliance/latest/universal/webhook-emission.yaml) | Outbound webhook conformance — stable `idempotency_key` across retries, RFC 9421 webhook signing (or opt-in HMAC fallback) on every delivery. Runs for any agent accepting `push_notification_config`. |
+| [`webhook_receiver_envelope`](/compliance/latest/universal/webhook-receiver-envelope.yaml) | Buyer receiver replay conformance: accepts full MCP webhook envelopes, rejects bare delivery-result payloads, verifies signatures over raw body bytes, and dedupes retries by `idempotency_key`. |
+| [`agent_notification_configs`](/compliance/latest/universal/agent-notification-configs.yaml) | Agent-level `capabilities.changed` registration: revision-fenced capability declaration, NO_AUTH rejection, and dry-run clear semantics for [`sync_agent_notification_configs`](/dist/docs/3.0.26/protocol/sync_agent_notification_configs) |
+| [`notification_config_event_scope`](/compliance/latest/universal/notification-config-event-scope.yaml) | `sync_accounts.accounts[].notification_configs[]` semantic validation — account-level subscribers reject media-buy-anchored notification types even though those values are valid in the shared enum |
+| [`account_identity_reconciliation`](/compliance/latest/universal/account-identity-reconciliation.yaml) | Capability-gated account identity lifecycle: mandatory revision fences, stale-write atomicity, in-place operator-unit rekeying, collision rollback, preserved account IDs, and authorized former-key [`ACCOUNT_MOVED`](/dist/docs/3.0.26/building/verification/compliance-catalog#error-code-account-moved) recovery |
+| [`notification_config_lifecycle`](/compliance/latest/universal/notification-config-lifecycle.yaml) | Account-level `notification_configs[]` lifecycle on [`sync_accounts`](/dist/docs/3.0.26/accounts/tasks/sync_accounts): paused registration, durable [`list_accounts`](/dist/docs/3.0.26/accounts/tasks/list_accounts) echo, subscriber-keyed replacement, and clear-all semantics |
+| [`notification_config_rejections`](/compliance/latest/universal/notification-config-rejections.yaml) | Semantic `notification_configs[]` request rejection path for duplicate `subscriber_id` values |
+| [`wholesale_feed_products`](/compliance/latest/universal/wholesale-feed-products.yaml) | Product wholesale feed versioning: bootstrap responses carry `wholesale_feed_version`/`cache_scope`, and matching `if_wholesale_feed_version` probes return `unchanged` without product rows |
+| [`wholesale_feed_signals`](/compliance/latest/universal/wholesale-feed-signals.yaml) | Signals wholesale feed versioning: bootstrap responses carry `wholesale_feed_version`/`cache_scope`, and matching `if_wholesale_feed_version` probes return `unchanged` without signal rows |
+| [`wholesale_feed_products_scope_isolation`](/compliance/latest/universal/wholesale-feed-products-scope-isolation.yaml) | Product wholesale feed cache-scope isolation: a `wholesale_feed_version` minted under one `cache_scope` must not short-circuit (`unchanged: true`) a request the seller resolves to a different `cache_scope` |
+| [`wholesale_feed_signals_scope_isolation`](/compliance/latest/universal/wholesale-feed-signals-scope-isolation.yaml) | Signals wholesale feed cache-scope isolation: a `wholesale_feed_version` minted under one `cache_scope` must not short-circuit (`unchanged: true`) a request the agent resolves to a different `cache_scope` |
+| [`wholesale_feed_product_webhooks`](/compliance/latest/universal/wholesale-feed-product-webhooks.yaml) | Account-level `notification_configs[]` registration for agents that advertise product wholesale feed webhook events |
+| [`wholesale_feed_signal_webhooks`](/compliance/latest/universal/wholesale-feed-signal-webhooks.yaml) | Account-level `notification_configs[]` registration for agents that advertise signal wholesale feed webhook events |
+| [`wholesale_feed_bulk_webhooks`](/compliance/latest/universal/wholesale-feed-bulk-webhooks.yaml) | Account-level `notification_configs[]` registration for agents that advertise `wholesale_feed.bulk_change` |
+| [`pagination_integrity`](/compliance/latest/universal/pagination-integrity.yaml) | `cursor` ↔ `has_more` invariant on paginated [`list_creatives`](/dist/docs/3.0.26/creative/task-reference/list_creatives) responses, walked from a continuation page through to a terminal page |
+| [`get_products_pagination_integrity`](/compliance/latest/universal/get-products-pagination-integrity.yaml) | [`get_products`](/dist/docs/3.0.26/media-buy/task-reference/get_products) wholesale pagination semantics: walks a seeded product feed from continuation to terminal while preserving brief/refine as capped curated/refined answers, not feed enumeration |
+| [`get_signals_pagination_integrity`](/compliance/latest/universal/get-signals-pagination-integrity.yaml) | `cursor` ↔ `has_more` invariant on paginated `get_signals` responses under a broad query, with first-page non-terminal assertion against any non-trivial signal set |
+| [`pagination_integrity_list_accounts`](/compliance/latest/universal/pagination-integrity-list-accounts.yaml) | Continuation-side pagination integrity on `list_accounts` responses; storyboard bootstraps three sandbox accounts via `sync_accounts`, requires `has_more=true` with a usable cursor on the first page, and follows that cursor once |
+| [`pagination_integrity_creative_formats`](/compliance/latest/universal/pagination-integrity-creative-formats.yaml) | Deprecated named-format compatibility check: `cursor` ↔ `has_more` invariant when an agent still exposes [`list_creative_formats`](/dist/docs/3.0.26/creative/task-reference/list_creative_formats) |
+| [`get_media_buys_pagination_integrity`](/compliance/latest/universal/get-media-buys-pagination-integrity.yaml) | `cursor` ↔ `has_more` invariant on paginated [`get_media_buys`](/dist/docs/3.0.26/media-buy/task-reference/get_media_buys) responses; storyboard seeds three media buys via `seed_media_buy` and walks from a continuation page to a terminal page |
+| [`pagination_integrity_content_standards`](/compliance/latest/universal/content-standards-pagination-integrity.yaml) | `cursor` ↔ `has_more` invariant on paginated [`list_content_standards`](/dist/docs/3.0.26/governance/content-standards/tasks/list_content_standards) responses; storyboard bootstraps three content standards configurations via [`create_content_standards`](/dist/docs/3.0.26/governance/content-standards/tasks/create_content_standards) and walks from a continuation page to a terminal page |
+| [`pagination_integrity_collection_lists`](/compliance/latest/universal/collection-lists-pagination-integrity.yaml) | `cursor` ↔ `has_more` invariant on paginated [`list_collection_lists`](/dist/docs/3.0.26/governance/collection/tasks/collection_lists#list_collection_lists) responses; storyboard bootstraps three collection lists via [`create_collection_list`](/dist/docs/3.0.26/governance/collection/tasks/collection_lists#create_collection_list) and walks from a continuation page to a terminal page |
+| [`pagination_integrity_property_lists`](/compliance/latest/universal/property-lists-pagination-integrity.yaml) | `cursor` ↔ `has_more` invariant on paginated [`list_property_lists`](/dist/docs/3.0.26/governance/property/tasks/property_lists#list_property_lists) responses; storyboard bootstraps three property lists via [`create_property_list`](/dist/docs/3.0.26/governance/property/tasks/property_lists#create_property_list) and walks from a continuation page to a terminal page |
+| [`deterministic_testing`](/compliance/latest/universal/deterministic-testing.yaml) | `comply_test_controller` state machine — skipped if `capabilities.compliance_testing.supported: false` |
+| [`signed_requests`](/compliance/latest/universal/signed-requests.yaml) | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
+| [`billing_gate_dispatch`](/compliance/latest/universal/billing-gate-dispatch.yaml) | Two-gate dispatch on `sync_accounts.billing` rejection: seller-wide capability gate ([`BILLING_NOT_SUPPORTED`](/dist/docs/3.0.26/building/verification/compliance-catalog#error-code-billing-not-supported) with `error.details.scope`) vs per-buyer-agent commercial-relationship gate ([`BILLING_NOT_PERMITTED_FOR_AGENT`](/dist/docs/3.0.26/building/verification/compliance-catalog#error-code-billing-not-permitted-for-agent) with the clamped `rejected_billing` + optional `suggested_billing` shape). Capability phase skipped when the seller supports all three `billing` values; per-agent phases skipped when the test kit does not declare `commercial_relationship: passthrough_only`. |
+
+Agents that declare `capabilities.compliance_testing.supported: true` MUST implement the full [test controller](/dist/docs/3.0.26/building/by-layer/L3/comply-test-controller); a partial controller is non-conformant, so declare `false` rather than ship one.
+
+Agents that declare `request_signing.supported: true` MUST implement the full RFC 9421 verifier per the [request-signing profile](/dist/docs/3.0.26/building/by-layer/L1/security#signed-requests-transport-layer); a partial verifier is non-conformant, so declare `false` rather than ship one.
+
+Agents that declare `oauth.supported: true` MUST serve a consistent public OAuth discovery graph. The baseline grade is passive: it does not register a client, issue credentials, or perform an authorization flow.
+
+## Protocol conformance
+
+A `supported_protocols` claim obligates the protocol's baseline storyboard.
+
+| `supported_protocols` | Storyboard |
+|-----------------------|------------|
+| `media_buy` | [`media_buy_seller`](/compliance/latest/protocols/media-buy/index.yaml) + [`media_buy_state_machine`](/compliance/latest/protocols/media-buy/state-machine.yaml) |
+| `creative` | [`creative_lifecycle`](/compliance/latest/protocols/creative/index.yaml) |
+| `signals` | [`signals_baseline`](/compliance/latest/protocols/signals/index.yaml) |
+| `governance` | [`media_buy_governance_escalation`](/compliance/latest/protocols/governance/index.yaml) |
+| `brand` | [`brand_baseline`](/compliance/latest/protocols/brand/index.yaml) |
+| `sponsored_intelligence` | [`si_baseline`](/compliance/latest/protocols/sponsored-intelligence/index.yaml) |
+
+## Specialism conformance
+
+A `specialisms` claim obligates the specialism's storyboard in addition to its parent protocol baseline. The catalog lives at [`/compliance/latest/index.json`](https://adcontextprotocol.org/compliance/latest/index.json); the human-readable index is the [Compliance Catalog](/dist/docs/3.0.26/building/verification/compliance-catalog).
+
+Specialisms carry a `status` — `stable` (verified pass/fail), `preview` (storyboard not yet defined; runner emits `passed: null`), `deprecated` (scheduled for removal). Agents MAY claim preview specialisms, but preview claims do not yield a pass/fail verdict.
+
+## Outside the wire
+
+Some requirements can't be verified by a storyboard because they're operator-level, not wire-level. They remain part of running a conformant agent, but the suite can't attest to them. Operators MUST self-assess against these; third-party frameworks (SOC 2, ISO 27001) are the usual attestation path.
+
+- **Secret storage** — credentials SHOULD live in a KMS or equivalent. The wire shows only whether auth succeeds, not where the key was stored.
+- **Credential rotation and revocation** — the operator MUST have a documented path to revoke a compromised credential in under an hour. The wire can't observe the runbook.
+- **Personnel and physical security** — who can touch production, break-glass custody, employee offboarding. Entirely outside the protocol.
+- **Governance agent due diligence** — when the operator relies on a third-party governance agent, the buyer SHOULD treat it as a processor with multi-customer blast radius and assess its posture. The storyboards verify correct JWS handling by the seller but cannot vouch for the governance agent itself.
+- **LLM subprocessor posture** — if the agent uses an LLM provider, the DPA with that provider governs whether prompts, brand assets, or creative metadata may be retained. The protocol can't see upstream DPA terms.
+- **Incident response** — AdCP emits the signals worth watching ([`IDEMPOTENCY_CONFLICT`](/dist/docs/3.0.26/building/verification/compliance-catalog#error-code-idempotency-conflict) spikes, failed governance verifications, SSRF rejections); detection, alert routing, and response are operator concerns.
+- **Data residency configuration** — whether and how EU / UK data is kept in-region is typically declared in the agent's capabilities or contract; the wire records the declaration, not the underlying infrastructure.
+
+Full operator checklist: [Security Model § What to verify before going live](/dist/docs/3.0.26/building/concepts/security-model#what-to-verify-before-going-live).
+
+## Conformance vs external assurance
+
+Conformance is wire-level correctness. SOC 2, ISO 27001, and NIST CSF are operational assurance. They answer different questions and neither substitutes for the other.
+
+| External control area | Storyboard evidence | Gap to external assurance |
+|------------------------|---------------------|----------------------------|
+| Access control (SOC 2 CC6, ISO 27001 A.5.15) | [`security_baseline`](/compliance/latest/universal/security.yaml) (identity) + isolation checks in protocol storyboards | Personnel access reviews, least-privilege admin, offboarding |
+| Change management (SOC 2 CC8) | [`idempotency`](/compliance/latest/universal/idempotency.yaml) proves duplicate state changes are prevented on the wire | Deployment approvals, release gates, rollback procedures |
+| System monitoring (SOC 2 CC7, ISO 27001 A.8.16) | Error taxonomy produces a monitorable surface | Detection engineering, alert routing, on-call runbooks |
+| Cryptography (ISO 27001 A.8.24) | TLS, RFC 9421 signing, JWS governance tokens | KMS selection, rotation cadence, cert lifecycle |
+| Audit logging (SOC 2 CC7) | Governance storyboards verify signed-record issuance | Log retention, legal hold, integrity monitoring |
+| Data handling (SOC 2 Privacy, GDPR, ISO 27701) | TMP two-call separation, audience hashing, signal access control | Data subject rights, DPA management, cross-border transfer |
+| Vendor and subprocessor risk (SOC 2 CC9) | `adagents.json` / brand.json discovery, JWKS publication | Third-party risk assessment, LLM provider review |
+| Incident response (SOC 2 CC7, NIST CSF RS) | Signals observable; response not mandated | Runbooks, tabletop exercises, breach notification |
+| Business continuity (ISO 27001 A.5.30) | Cross-instance state storyboard checks | RPO/RTO targets, DR testing |
+
+Two practical consequences:
+
+1. Storyboard pass evidence MAY support specific external control objectives. It is not a substitute for an audit.
+2. External certification does not imply AdCP conformance. SOC 2 Type II says nothing about whether [`create_media_buy`](/dist/docs/3.0.26/media-buy/task-reference/create_media_buy) responses validate.
+
+## How to claim conformance
+
+1. Declare `supported_protocols` and `specialisms` in [`get_adcp_capabilities`](/dist/docs/3.0.26/protocol/get_adcp_capabilities).
+2. Pass every storyboard the declaration obligates — universal + protocol baselines + specialism baselines — at a specific AdCP major version.
+3. Keep declaration and behavior in sync. An undeclared capability the suite happens to test is separate from a declared capability that fails. Both are non-conformant.
+
+Conformance is per-version; the suite is per-version. A 3.0-conformant agent is not thereby 3.1-conformant.
+
+**For third-party attestation**, run the heartbeat against AAO and earn an [AAO Verified badge](/dist/docs/3.0.26/building/verification/compliance-catalog). The badge is a signed claim that AAO tested the agent recently and the pass still holds. Buyers filtering on *verified* get a smaller set than *conformant* — fewer agents, fresher attestation, a named party on the hook.
+
+## What this document does not do
+
+- **Define individual MUSTs.** The storyboards do. If a rule isn't in a storyboard, it isn't part of conformance.
+- **Grant or revoke certification.** The [AgenticAdvertising.org certification program](/dist/docs/3.0.26/learning/overview) runs on top of this; conformance is necessary but not sufficient.
+- **Publish reference test vectors beyond those already in the suite.** The [Reference Test Vectors index](/dist/docs/3.0.26/reference/test-vectors) catalogs the vector sets that ship today; broader task-level corpus lands incrementally between 3.0 GA and 3.1, scoped in [#2383](https://github.com/adcontextprotocol/adcp/issues/2383).
+
+## When a storyboard fails
+
+When a failure surfaces a disagreement between the spec, the mock, and an SDK, the section below gives the triage order. For symptom-to-cause lookup, see the links at the end of this section.
+
+### Mock-server authority and failure triage
+
+The `adcp mock-server` is the reference wire implementation for stable surfaces. Use this triage order when a storyboard failure implicates the mock or an SDK:
+
+**Triage order: spec → mock → SDK.** The storyboards (and the schemas they reference) are canonical. The mock interprets the storyboards. The SDK consumes the protocol via the mock.
+
+| Condition | Default verdict | Next step |
+|---|---|---|
+| SDK wire shape **differs** from the mock's | SDK is wrong | File a bug against the SDK |
+| SDK wire shape **matches** the mock's, but a storyboard still fails | Mock is wrong | File an issue against `adcontextprotocol/adcp` to fix the mock |
+| Storyboard assertion conflicts with an otherwise-passing wire shape | Storyboard is wrong | File an issue against `adcontextprotocol/adcp` to fix the storyboard |
+| Spec text (storyboard prose or schema) explicitly contradicts the mock | Spec wins; mock is the bug | File an issue against `adcontextprotocol/adcp` to fix the mock |
+
+**Scope.** This triage order applies to stable surfaces only. Experimental surfaces (see [Experimental Status](/dist/docs/3.0.26/reference/experimental-status)) are under active revision; mock behavior there is not yet authoritative.
+
+**Spec ambiguity vs. spec silence.** When spec text exists but is ambiguous, the mock's behavior pins the authoritative interpretation — that pinning is normative even if the prose has not yet been tightened. When the spec is entirely silent on a point and the mock has no behavior for it, the chain breaks; open a [known-ambiguities issue](/dist/docs/3.0.26/building/cross-cutting/known-ambiguities) instead of treating the mock as authoritative.
+
+- **[Storyboard troubleshooting](/dist/docs/3.0.26/building/operating/storyboard-troubleshooting)** — Error pattern → root cause → fix for the most common storyboard failures
+- **[Known spec ambiguities](/dist/docs/3.0.26/building/cross-cutting/known-ambiguities)** — Open spec gaps with workarounds and issue links; entries are removed as underlying issues close
+
+## Further reading
+
+- **[AAO Verified](/dist/docs/3.0.26/building/verification/aao-verified)** — Continuous-observability verification of the seller's live ad-server integration
+- **[Compliance Catalog](/dist/docs/3.0.26/building/verification/compliance-catalog)** — Full taxonomy of protocols and specialisms with storyboard IDs
+- **[Validate Your Agent](/dist/docs/3.0.26/building/verification/validate-your-agent)** — How to run the suite
+- **[Security Model](/dist/docs/3.0.26/building/concepts/security-model)** — Strategic framing for the five defense layers that the security storyboards enforce
+- **[Security (implementation reference)](/dist/docs/3.0.26/building/by-layer/L1/security)** — Normative rules cited by the storyboards
+- **[Versioning](/dist/docs/3.0.26/reference/versioning)** — Major-version support windows
+- **[Known Limitations](/dist/docs/3.0.26/reference/known-limitations)** — Visible edges of the specification

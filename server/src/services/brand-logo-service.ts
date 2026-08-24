@@ -272,6 +272,35 @@ export async function rebuildManifestLogos(
 const REHOST_FETCH_TIMEOUT_MS = 10_000;
 const REHOST_MAX_BYTES = 5 * 1024 * 1024;
 
+/** Read a fetch body without ever buffering more than maxBytes. */
+export async function readResponseBodyWithLimit(
+  response: Response,
+  maxBytes: number,
+): Promise<Buffer | null> {
+  if (!response.body) return Buffer.alloc(0);
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel('response body exceeds byte limit').catch(() => {});
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)), totalBytes);
+}
+
 function ourLogoHost(): string | null {
   const base = process.env.BASE_URL || 'https://agenticadvertising.org';
   try {
@@ -352,13 +381,13 @@ export async function rehostExternalLogo(
       return rawUrl;
     }
 
-    const arrayBuf = await response.arrayBuffer();
-    if (arrayBuf.byteLength > REHOST_MAX_BYTES) {
-      logger.warn({ brandDomain, url: rawUrl, bytes: arrayBuf.byteLength }, 'Logo rehost: body exceeds cap, keeping original URL');
+    const fetchedBody = await readResponseBodyWithLimit(response, REHOST_MAX_BYTES);
+    if (!fetchedBody) {
+      logger.warn({ brandDomain, url: rawUrl }, 'Logo rehost: streamed body exceeds cap, keeping original URL');
       return rawUrl;
     }
 
-    let buffer: Buffer = Buffer.from(new Uint8Array(arrayBuf));
+    let buffer = fetchedBody;
     const contentType = await detectContentType(buffer);
     if (!contentType) {
       logger.warn({ brandDomain, url: rawUrl }, 'Logo rehost: unsupported content type, keeping original URL');

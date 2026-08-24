@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/creative/creative-assignment-changed-webhook.json",
+  "title": "Creative Assignment Changed Webhook",
+  "description": "Optional account-anchored invalidation fired by a seller that can detect when a package–creative assignment is added, removed, or its aggregate/scoped approval outcome changes. Registered through sync_accounts notification_configs with event_types: [\"creative.assignment_changed\"]. Receivers verify signing, dedupe, and reread get_media_buys; a creative-library seller may also expose a bounded list_creatives reverse projection, but the webhook does not replace the authoritative relationship snapshot.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "description": "Stable identity for this logical assignment change across re-emissions."
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "creative.assignment_changed"
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "subscriber_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "account_id": {
+      "type": "string",
+      "x-entity": "account"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "x-entity": "media_buy"
+    },
+    "package_id": {
+      "type": "string",
+      "x-entity": "package"
+    },
+    "creative_id": {
+      "type": "string",
+      "x-entity": "creative"
+    },
+    "change_kind": {
+      "type": "string",
+      "enum": [
+        "assigned",
+        "unassigned",
+        "approval_changed"
+      ]
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_id",
+    "notification_type",
+    "fired_at",
+    "subscriber_id",
+    "account_id",
+    "media_buy_id",
+    "package_id",
+    "creative_id",
+    "change_kind",
+    "observed_at"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Assignment approval changed",
+      "data": {
+        "idempotency_key": "whk_01K2ASSIGNMENT4EXAMPLE9R6",
+        "notification_id": "assignchg_mb_a_pkg_social_cr_video_5",
+        "notification_type": "creative.assignment_changed",
+        "fired_at": "2026-08-04T12:01:00Z",
+        "subscriber_id": "buyer-primary",
+        "account_id": "acc_example",
+        "media_buy_id": "mb_a",
+        "package_id": "pkg_social",
+        "creative_id": "cr_summer_video",
+        "change_kind": "approval_changed",
+        "observed_at": "2026-08-04T12:00:00Z"
+      }
+    }
+  ]
+}

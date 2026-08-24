@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/catalog-item-availability-ref.json",
+  "title": "Catalog Item Availability Reference",
+  "description": "Unambiguous reference to an item availability overlay in one immutable incarnation of a buyer-managed catalog.",
+  "type": "object",
+  "properties": {
+    "catalog_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Buyer-assigned catalog ID.",
+      "x-entity": "catalog"
+    },
+    "catalog_generation": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Opaque seller-issued token for the referenced catalog incarnation. It remains stable across ordinary upserts and feed refreshes, changes when a deleted catalog_id is recreated, and MUST never be reused for that account and catalog_id.",
+      "x-entity": "catalog_generation"
+    },
+    "item_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Exact canonical item key used by Catalog.ids. For typed catalogs this is the type-specific identifier field; for product, inventory, and promotion catalogs it is the stable normalized source identifier retained during ingestion.",
+      "x-entity": "catalog_item"
+    }
+  },
+  "required": [
+    "catalog_id",
+    "catalog_generation",
+    "item_id"
+  ],
+  "additionalProperties": true
+}

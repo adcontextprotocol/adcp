@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/media-buy/list-creative-formats-request.json",
+  "title": "List Creative Formats Request",
+  "deprecated": true,
+  "x-deprecated-in": "3.2.0",
+  "description": "**DEPRECATED in 3.2.** Compatibility request for legacy named-format discovery. Sales agents expose purchasable canonical declarations on get_products `Product.format_options[]`; publisher acceptance comes from adagents.json `formats[]`; creative agents advertise build/validation/preview capabilities on get_adcp_capabilities `creative.supported_formats[]`.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "format_ids": {
+      "type": "array",
+      "deprecated": true,
+      "description": "Deprecated in AdCP 3.2; removed in AdCP 4.0. Return only these specific named-format IDs (for example, from a 3.x get_products response). Use canonical-format discovery in 4.0.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "asset_types": {
+      "type": "array",
+      "description": "Filter to formats that include these asset types. For third-party tags, search for 'html' or 'javascript'. For published-post reference formats, search for 'published_post'. E.g., ['image', 'text'] returns formats with images and text, ['javascript'] returns formats accepting JavaScript tags.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/asset-content-type.json"
+      },
+      "minItems": 1
+    },
+    "max_width": {
+      "type": "integer",
+      "description": "Maximum width in pixels (inclusive). Returns formats where ANY render has width <= this value. For multi-render formats, matches if at least one render fits."
+    },
+    "max_height": {
+      "type": "integer",
+      "description": "Maximum height in pixels (inclusive). Returns formats where ANY render has height <= this value. For multi-render formats, matches if at least one render fits."
+    },
+    "min_width": {
+      "type": "integer",
+      "description": "Minimum width in pixels (inclusive). Returns formats where ANY render has width >= this value."
+    },
+    "min_height": {
+      "type": "integer",
+      "description": "Minimum height in pixels (inclusive). Returns formats where ANY render has height >= this value."
+    },
+    "is_responsive": {
+      "type": "boolean",
+      "description": "Filter for responsive formats that adapt to container size. When true, returns formats without fixed dimensions."
+    },
+    "name_search": {
+      "type": "string",
+      "description": "Search for formats by name (case-insensitive partial match)"
+    },
+    "publisher_domain": {
+      "type": "string",
+      "deprecated": true,
+      "description": "Deprecated compatibility filter for older 3.x callers. A compatibility implementation MAY project publisher-origin or community-catalog declarations obtained through the registry publisher lookup, but MUST NOT synthesize a publisher catalog from seller products. New callers use `GET /api/registry/publisher?domain=...` for publisher acceptance and `get_products` for this seller's deliverability. The pattern below is a syntactic floor, not an SSRF guard.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "property_id": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/property-id.json",
+      "description": "Filter to formats supported on the named property within the publisher's catalog. Resolves to a property in the publisher's `adagents.json` `properties[]`; the agent returns only `formats[]` entries whose `applies_to_property_ids` includes this property (or entries with no scope, which apply to all properties). Typically used in combination with `publisher_domain`."
+    },
+    "wcag_level": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/wcag-level.json",
+      "description": "Filter to formats that meet at least this WCAG conformance level (A < AA < AAA)"
+    },
+    "disclosure_positions": {
+      "type": "array",
+      "description": "Filter to formats that support all of these disclosure positions. When a format has disclosure_capabilities, match against those positions. Otherwise fall back to supported_disclosure_positions. Use to find formats compatible with a brief's compliance requirements.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/disclosure-position.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "disclosure_persistence": {
+      "type": "array",
+      "description": "Filter to formats where each requested persistence mode is supported by at least one position in disclosure_capabilities. Different positions may satisfy different modes. Use to find formats compatible with jurisdiction-specific persistence requirements (e.g., continuous for EU AI Act).",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/enums/disclosure-persistence.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "output_format_ids": {
+      "type": "array",
+      "description": "Filter to formats whose output_format_ids includes any of these format IDs. Returns formats that can produce these outputs — inspect each result's input_format_ids to see what inputs they accept.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "input_format_ids": {
+      "type": "array",
+      "description": "Filter to formats whose input_format_ids includes any of these format IDs. Returns formats that accept these creatives as input — inspect each result's output_format_ids to see what they can produce.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "pagination": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/pagination-request.json"
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

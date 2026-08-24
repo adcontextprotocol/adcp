@@ -1,0 +1,200 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/media-buy/accept-proposal-request.json",
+  "title": "Accept Proposal Request",
+  "description": "Accept one committed immutable proposal. Depending on proposal_kind, acceptance creates a MediaBuy, applies an amendment, or applies a negotiated cancellation. The proposal already contains the commercial terms, so callers do not repeat packages, dates, targeting, or creatives.",
+  "x-tool-summary": "Accept a committed proposal to create or amend a media buy, or apply a negotiated cancellation.",
+  "type": "object",
+  "x-mutates-state": true,
+  "x-governed-commitment": {
+    "scope": "conditional",
+    "triggers": [
+      "creates_commitment",
+      "increases_obligation",
+      "extends_term",
+      "resumes_execution",
+      "reallocates_delivery"
+    ],
+    "exemptions": [
+      "negotiated_cancellation",
+      "decrease_only"
+    ],
+    "precedence": "trigger_overrides_exemption"
+  },
+  "x-operation-family": "accept_proposal",
+  "x-added-in": "3.2.0",
+  "x-legacy-fallback": {
+    "tool": "create_media_buy",
+    "mode": "orchestrated"
+  },
+  "properties": {
+    "adcp_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/version-envelope.json#/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/version-envelope.json#/properties/adcp_major_version"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "account": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/canonical-account-ref.json"
+    },
+    "proposal_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "proposal"
+    },
+    "proposal_terms_digest": {
+      "type": "string",
+      "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
+      "description": "terms_digest from the committed proposal. The seller MUST atomically verify both ID and digest before acceptance."
+    },
+    "total_budget": {
+      "type": "object",
+      "description": "Execution amount when the committed proposal defines scalable percentages or constraints rather than a fixed total.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "daily_budget_cap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Optional hard aggregate daily spend ceiling applied when the committed proposal is accepted. It constrains execution without changing the proposal's negotiated pricing."
+    },
+    "budget_cap_timezone": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional shared IANA cap-day timezone override. Requires buyer_timezone_override support. When omitted, budget_capping.timezone_basis selects Account.timezone or fixed_timezone."
+    },
+    "io_acceptance": {
+      "type": "object",
+      "properties": {
+        "io_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accepted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "signatory": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 250
+        },
+        "signature_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "io_id",
+        "accepted_at",
+        "signatory"
+      ],
+      "additionalProperties": false
+    },
+    "purchase_order_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "governance_context": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "push_notification_config": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/push-notification-config.json"
+    },
+    "reporting_webhook": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/reporting-webhook.json",
+      "description": "Optional reporting delivery configuration established atomically when the proposal is accepted. This is execution metadata and does not alter the accepted commercial terms digest."
+    },
+    "opportunity": {
+      "allOf": [
+        {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/opportunity-context.json"
+        },
+        {
+          "properties": {
+            "status": {
+              "const": "closed"
+            }
+          },
+          "if": {
+            "properties": {
+              "status": {
+                "const": "closed"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "close_reason": {
+                "const": "accepted_with_seller"
+              }
+            }
+          }
+        }
+      ],
+      "description": "Optional planning-cycle closure. Success infers closed with accepted_with_seller when status is omitted. If the proposal carries opportunity_id, a supplied ID MUST match; the accepted proposal preserves that association."
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "account",
+    "proposal_id",
+    "proposal_terms_digest"
+  ],
+  "additionalProperties": false,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "packages"
+        ]
+      },
+      {
+        "required": [
+          "purchases"
+        ]
+      },
+      {
+        "required": [
+          "creatives"
+        ]
+      },
+      {
+        "required": [
+          "creative_assignments"
+        ]
+      }
+    ]
+  }
+}

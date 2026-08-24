@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/update-media-buy-async-response-submitted.json",
   "title": "Update Media Buy - Submitted",
-  "description": "Async task envelope returned when update_media_buy cannot be confirmed before the response — for example, when operator re-approval is required for mid-flight changes. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the updated media buy state lands on the completion artifact, not this envelope.",
+  "description": "Async task envelope returned when update_media_buy cannot be confirmed before the response — for example, when operator re-approval is required for mid-flight changes. The buyer invokes get_task_status with task_id or receives a webhook when the task completes; the updated media buy state lands in the terminal result, not this envelope.",
   "type": "object",
   "properties": {
     "status": {
@@ -12,7 +12,7 @@
     },
     "task_id": {
       "type": "string",
-      "description": "Task handle the buyer uses with tasks/get, and that the seller references on push-notification callbacks. Per AdCP wire conventions this is snake_case; A2A adapters MAY surface it as taskId, but the payload field emitted by the agent is task_id.",
+      "description": "Task handle the buyer uses with get_task_status (or the legacy AdCP tasks/get alias), and that the seller references on push-notification callbacks. This AdCP application-layer handle remains the snake_case task_id in every transport payload and is distinct from any transport-native A2A Task id.",
       "x-entity": "task"
     },
     "message": {

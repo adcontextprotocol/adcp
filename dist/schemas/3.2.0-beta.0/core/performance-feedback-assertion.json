@@ -1,0 +1,159 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/performance-feedback-assertion.json",
+  "title": "Performance Feedback Assertion",
+  "description": "One optimizer-ready assertion about a media buy, package, or creative. This is a compact projection of buyer- or measurement-provider analysis, not a transport for raw exposure logs, attribution models, or complete study datasets.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "media_buy_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Receiver-scoped media buy identifier. On the provider-to-orchestrator hop this is the orchestrator's measurement-facing identifier; on the orchestrator-to-seller hop it is the seller-assigned media buy identifier.",
+      "x-entity": "media_buy"
+    },
+    "package_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Receiver-scoped package identifier when the assertion is package-specific. The orchestrator maps its measurement-facing identifier to seller-local identifiers during fan-out.",
+      "x-entity": "package"
+    },
+    "creative_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Receiver-scoped creative identifier when the assertion is creative-specific. The orchestrator maps its measurement-facing identifier to seller-local identifiers during fan-out.",
+      "x-entity": "creative"
+    },
+    "measurement_period": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/datetime-range.json",
+      "description": "Period whose performance is summarized by this assertion."
+    },
+    "performance_index": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Normalized decision signal where 1.0 equals the named baseline, values below 1.0 underperform it, and values above 1.0 outperform it. Compact-contract producers (baseline present) MUST use observed divided by baseline for higher-is-better ratio metrics and baseline divided by observed for lower-is-better ratio metrics such as cost per acquisition."
+    },
+    "baseline": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/performance-baseline.json",
+      "x-status": "experimental",
+      "description": "Expectation represented by performance_index = 1.0. Compact-contract producers MUST populate this field; it remains optional in the schema so existing 3.x request payloads remain valid."
+    },
+    "metric": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/performance-feedback-metric.json",
+      "x-status": "experimental",
+      "description": "Metric this assertion describes. Omit only for holistic feedback that is not attributable to one metric."
+    },
+    "metric_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/metric-type.json",
+      "deprecated": true,
+      "description": "Deprecated legacy metric classification retained for existing request payloads. New implementations SHOULD use metric; when both are present consumers MUST use metric for dispatch."
+    },
+    "producer": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/brand-ref.json",
+      "x-status": "experimental",
+      "description": "Brand that produced the analysis. The receiving orchestrator gateway verifies this reference against authenticated caller identity and preserves it during seller fan-out."
+    },
+    "vendor": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/core/brand-ref.json",
+      "deprecated": true,
+      "description": "Deprecated alias for producer retained for previously documented request payloads. When both are present consumers use producer."
+    },
+    "feedback_source": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.0/enums/feedback-source.json",
+      "description": "Legacy categorical source hint retained for existing request payloads."
+    },
+    "methodology": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "x-status": "experimental",
+      "description": "Producer-scoped methodology identifier such as geo_incrementality, media_mix_model, or deterministic_attribution."
+    },
+    "methodology_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "x-status": "experimental",
+      "description": "Producer-defined version of the methodology used for this assertion."
+    },
+    "study_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-status": "experimental",
+      "description": "Opaque producer-assigned study or model-run reference. Receivers use it for correlation only and MUST NOT interpret it as an experiment-execution instruction."
+    },
+    "evidence": {
+      "type": "object",
+      "x-status": "experimental",
+      "description": "Small inline evidence summary used to weight the assertion without transporting the full study.",
+      "properties": {
+        "sample_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "confidence_interval": {
+          "type": "object",
+          "description": "Confidence interval on the performance_index scale. sample_size may be omitted when the producer cannot disclose it.",
+          "properties": {
+            "lower": {
+              "type": "number"
+            },
+            "upper": {
+              "type": "number"
+            },
+            "level": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            }
+          },
+          "required": [
+            "lower",
+            "upper",
+            "level"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidence_ref": {
+      "type": "string",
+      "format": "uri",
+      "x-status": "experimental",
+      "description": "Provider-hosted evidence or result reference for parties authorized to inspect the full study."
+    },
+    "as_of": {
+      "type": "string",
+      "format": "date-time",
+      "x-status": "experimental",
+      "description": "When the producer computed this assertion."
+    },
+    "final": {
+      "type": "boolean",
+      "x-status": "experimental",
+      "description": "Whether the producer expects this assertion to be revised as data matures."
+    },
+    "supersedes_feedback_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-status": "experimental",
+      "description": "Receiver-issued feedback_id of the earlier assertion this one replaces at the same hop."
+    }
+  },
+  "dependencies": {
+    "methodology": [
+      "producer"
+    ],
+    "methodology_version": [
+      "producer"
+    ]
+  },
+  "required": [
+    "media_buy_id",
+    "measurement_period",
+    "performance_index"
+  ],
+  "additionalProperties": true
+}

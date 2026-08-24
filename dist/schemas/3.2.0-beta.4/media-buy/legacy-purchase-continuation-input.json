@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/media-buy/legacy-purchase-continuation-input.json",
+  "title": "Compatibility Purchase Coordinator Input",
+  "description": "SDK-local input for redeeming a deprecated products_available legacy_create continuation. This object is consumed by the compatibility coordinator and MUST NOT be sent as an AdCP tool payload. The coordinator validates it, then constructs and validates create_media_buy for the negotiated source version.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Replay identity for this logical coordinator operation. Exact retries resume the durable operation record instead of redeeming the continuation again."
+    },
+    "continuation_token": {
+      "type": "string",
+      "minLength": 16,
+      "description": "Opaque token returned by products_available.purchase_continuation."
+    },
+    "account": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.4/core/account-ref.json",
+      "description": "Account identity that must match the account bound into the continuation token."
+    },
+    "selected_product_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "x-entity": "product"
+      },
+      "description": "Non-empty subset of the product IDs bound into the continuation."
+    },
+    "accepted_losses": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "feed_version_not_atomic",
+          "pricing_version_not_atomic",
+          "mutation_idempotency_not_guaranteed"
+        ]
+      },
+      "allOf": [
+        {
+          "contains": {
+            "const": "feed_version_not_atomic"
+          }
+        },
+        {
+          "contains": {
+            "const": "pricing_version_not_atomic"
+          }
+        }
+      ],
+      "description": "Exact loss set returned with the continuation. Missing, extra, or stale consent fails before mutation."
+    },
+    "legacy_create_request": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Proposed create_media_buy payload. Before mutation the coordinator validates this object against create-media-buy-request.json from source_adcp_version, requires explicit-package mode, and requires its package product IDs to equal selected_product_ids."
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "continuation_token",
+    "account",
+    "selected_product_ids",
+    "accepted_losses",
+    "legacy_create_request"
+  ],
+  "additionalProperties": false,
+  "x-adcp-sdk-local": true,
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "token_binding": "Resolve continuation_token under the authenticated principal and require its account, expiry, complete observed product/pricing payload, and source version to match the durable record.",
+      "selection_binding": "selected_product_ids is a non-empty subset of the token-bound product IDs and equals the distinct legacy_create_request package product IDs.",
+      "request_account_binding": "For source versions whose create_media_buy request carries account, its normalized account identity equals both the top-level account and the token-bound account. For 2.5, which has no wire account field, the coordinator uses the same token-bound client/account session and MUST NOT retarget the seller connection.",
+      "loss_acceptance": "accepted_losses equals the complete loss set returned with the continuation; subset, superset, or stale acceptance fails before mutation.",
+      "single_use": "Atomically claim the token at the first mutation. Exact idempotency retries resume the same operation; a different operation cannot redeem a claimed token.",
+      "source_validation": "legacy_create_request validates against the exact create-media-buy-request schema for source_adcp_version and uses explicit-package mode only."
+    }
+  }
+}

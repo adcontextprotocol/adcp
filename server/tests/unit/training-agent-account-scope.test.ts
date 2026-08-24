@@ -30,7 +30,7 @@ describe('canonical AccountRef scope', () => {
     expect(accountScopeFromRef({
       brand: { domain: 'House.Example', brand_id: 'spark' },
       operator: 'Pinnacle.Example',
-    })).toBe('n:{"brand":{"domain":"house.example","brand_id":"spark"},"operator":"pinnacle.example","operator_unit_id":null,"currency":null,"sandbox":false}');
+    })).toBe('n:{"brand":{"domain":"house.example","brand_id":"spark"},"operator":"pinnacle.example","operator_unit_id":null,"currency":null,"timezone":null,"sandbox":false}');
   });
 
   it('partitions every natural-key discriminator', () => {
@@ -43,8 +43,9 @@ describe('canonical AccountRef scope', () => {
       accountScopeFromRef({ ...base, brand: { ...base.brand, countries: ['NL'] } }),
       accountScopeFromRef({ ...base, operator_unit: { id: '234284238', name: 'Nova EMEA' } }),
       accountScopeFromRef({ ...base, currency: 'EUR' }),
+      accountScopeFromRef({ ...base, timezone: 'Europe/Amsterdam' }),
     ]);
-    expect(scopes.size).toBe(7);
+    expect(scopes.size).toBe(8);
   });
 
   it('represents a country-scoped brand under an operator unit and fixed currency', () => {
@@ -53,6 +54,7 @@ describe('canonical AccountRef scope', () => {
       operator: 'Nova-Athletics.Example',
       operator_unit: { id: '234284238', name: 'Nova EMEA' },
       currency: 'EUR',
+      timezone: 'Europe/Amsterdam',
     };
     expect(canonicalizeAccountRef(account)).toEqual({
       kind: 'natural',
@@ -60,10 +62,11 @@ describe('canonical AccountRef scope', () => {
       operator: 'nova-athletics.example',
       operator_unit: { id: '234284238', name: 'Nova EMEA' },
       currency: 'EUR',
+      timezone: 'Europe/Amsterdam',
       sandbox: false,
     });
     expect(accountScopeFromRef(account))
-      .toBe('n:{"brand":{"domain":"nova-athletics.example","countries":["BE","NL"]},"operator":"nova-athletics.example","operator_unit_id":"234284238","currency":"EUR","sandbox":false}');
+      .toBe('n:{"brand":{"domain":"nova-athletics.example","countries":["BE","NL"]},"operator":"nova-athletics.example","operator_unit_id":"234284238","currency":"EUR","timezone":"Europe/Amsterdam","sandbox":false}');
     expect(accountScopeFromRef({
       ...account,
       brand: { ...account.brand, countries: ['BE', 'NL'] },
@@ -96,6 +99,7 @@ describe('canonical AccountRef scope', () => {
     [{ brand: { domain: 'house.example', countries: ['NL', 'NL'] }, operator: 'one.example' }, 'unique'],
     [{ brand: { domain: 'house.example' }, operator: 'one.example', operator_unit: { id: '' } }, 'stable operator-defined'],
     [{ brand: { domain: 'house.example' }, operator: 'one.example', currency: 'eur' }, 'ISO 4217'],
+    [{ brand: { domain: 'house.example' }, operator: 'one.example', timezone: '' }, 'IANA timezone'],
     [{ account_id: 'acct_123', unexpected: true }, "field 'unexpected'"],
   ])('rejects invalid closed-union shape %#', (value, message) => {
     expect(() => canonicalizeAccountRef(value)).toThrow(AccountRefValidationError);
@@ -184,9 +188,9 @@ describe('custom-tool account scoping', () => {
       sandbox: true,
     };
     expect(deriveAccountScope({ account }))
-      .toBe('n:{"brand":{"domain":"house.example","brand_id":"spark"},"operator":"pinnacle.example","operator_unit_id":null,"currency":null,"sandbox":true}');
+      .toBe('n:{"brand":{"domain":"house.example","brand_id":"spark"},"operator":"pinnacle.example","operator_unit_id":null,"currency":null,"timezone":null,"sandbox":true}');
     expect(deriveAccountScope({ usage: [{ account }] }))
-      .toBe('n:{"brand":{"domain":"house.example","brand_id":"spark"},"operator":"pinnacle.example","operator_unit_id":null,"currency":null,"sandbox":true}');
+      .toBe('n:{"brand":{"domain":"house.example","brand_id":"spark"},"operator":"pinnacle.example","operator_unit_id":null,"currency":null,"timezone":null,"sandbox":true}');
   });
 
   it('does not silently fall through an explicit invalid top-level account', () => {

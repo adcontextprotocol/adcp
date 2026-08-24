@@ -1,0 +1,39 @@
+---
+title: accept_proposal
+description: "Accept a committed proposal to create, amend, or cancel a MediaBuy."
+"og:title": "AdCP accept_proposal Task"
+testable: true
+---
+
+`accept_proposal` is the single terminal action for the compact proposal lifecycle. It accepts exactly one committed immutable proposal snapshot.
+
+`committed` retains the AdCP 3.1 reservation guarantee: the seller has locked the proposal's commercial terms and reserved its inventory until `expires_at`. Finalization creates that hold; acceptance consumes it and creates, amends, or cancels the MediaBuy.
+
+Depending on `proposal_kind`, acceptance:
+
+- creates a new MediaBuy;
+- applies an amendment to an existing MediaBuy; or
+- applies a negotiated cancellation.
+
+The proposal already carries the commercial terms, so the request does not repeat packages, dates, targeting, or creatives.
+
+**Request schema:** [`/schemas/3.2.0-beta.3/media-buy/accept-proposal-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.3/media-buy/accept-proposal-request.json)
+
+```json
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655441011",
+  "account": { "account_id": "account_123" },
+  "proposal_id": "proposal_committed_456",
+  "proposal_terms_digest": "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+}
+```
+
+For scalable proposals, include `total_budget`. Acceptance may also set a hard aggregate `daily_budget_cap` and optional shared `budget_cap_timezone`; these constrain execution without changing negotiated pricing. If the proposal carries a signature-required insertion order, include `io_acceptance`.
+
+If the proposal belongs to an `opportunity`, acceptance closes that planning cycle with `accepted_with_seller`; callers may repeat the matching opportunity ID explicitly, while the accepted proposal retains the association.
+
+Success returns the resulting MediaBuy identity, the proposal with `proposal_status: "accepted"`, and `purchase_bindings[]` mapping proposal purchase positions to package IDs for later creative assignment. Acceptance is idempotent. The seller atomically verifies `proposal_id`, `proposal_terms_digest`, expiry, and any `base_media_buy_revision`; stale or mismatched acceptance never applies different terms.
+
+A completed acceptance MAY include `warnings[]` for non-blocking observations at the commitment boundary. Each warning identifies its package through the returned `media_buy_id` and `purchase_bindings[].package_id`; a continuing condition is also readable as an indicator through [`get_media_buys`](/dist/docs/3.2.0-beta.3/media-buy/task-reference/get_media_buys). The seller may instead return `input-required` before consuming the proposal. Warnings never appear on failed or submitted arms.
+
+An unexpired committed proposal cannot be rejected merely because its reserved inventory was sold elsewhere. Once `expires_at` passes, the hold lapses and the seller returns [`PROPOSAL_EXPIRED`](/dist/docs/3.2.0-beta.3/building/verification/compliance-catalog#error-code-proposal-expired); the buyer must request and finalize a fresh proposal.

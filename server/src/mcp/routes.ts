@@ -28,6 +28,7 @@ import {
   anonymousAuthContext,
   type MCPAuthenticatedRequest,
 } from './auth.js';
+import { authorizeMCPPrincipal } from './principal-authorization.js';
 
 const logger = createLogger('mcp-routes');
 
@@ -147,19 +148,58 @@ export function configureMCPRoutes(router: Router): void {
       }
       next();
     });
+
+    // Apply the principal-aware limiter before mutable authorization checks so
+    // a valid token cannot turn WorkOS/DB lookups into an unbounded fan-out.
+    mcpMiddleware.push(mcpRateLimiter as (
+      req: MCPAuthenticatedRequest,
+      res: Response,
+      next: NextFunction,
+    ) => void);
+
+    // JWT signature and expiry establish identity, not mutable authority.
+    // Recheck platform bans and current organization membership before the
+    // MCP server can list or invoke any tools.
+    mcpMiddleware.push((req: MCPAuthenticatedRequest, res: Response, next: NextFunction) => {
+      void authorizeMCPPrincipal(req.mcpAuth)
+        .then((decision) => {
+          if (!decision.authorized) {
+            logger.info(
+              { principal: req.mcpAuth?.sub, orgId: req.mcpAuth?.orgId, reason: decision.reason },
+              'MCP: Principal authorization denied',
+            );
+            res.status(403).json({ error: 'MCP access denied' });
+            return;
+          }
+          next();
+        })
+        .catch((error) => {
+          // Authorization dependencies are fail-closed. A temporary outage is
+          // a 503 rather than an implicit grant or a misleading token failure.
+          logger.error(
+            { error, principal: req.mcpAuth?.sub, orgId: req.mcpAuth?.orgId },
+            'MCP: Principal authorization check failed',
+          );
+          res.status(503).json({ error: 'MCP authorization temporarily unavailable' });
+        });
+    });
   } else {
     // Dev mode: attach anonymous auth context
     mcpMiddleware.push((req: MCPAuthenticatedRequest, _res: Response, next: NextFunction) => {
       req.mcpAuth = anonymousAuthContext();
       next();
     });
+    mcpMiddleware.push(mcpRateLimiter as (
+      req: MCPAuthenticatedRequest,
+      res: Response,
+      next: NextFunction,
+    ) => void);
   }
 
   // MCP POST handler
   router.post(
     '/mcp',
     ...mcpMiddleware,
-    mcpRateLimiter,
     async (req: MCPAuthenticatedRequest, res: Response) => {
       let server: ReturnType<typeof createUnifiedMCPServer> | null = null;
       try {

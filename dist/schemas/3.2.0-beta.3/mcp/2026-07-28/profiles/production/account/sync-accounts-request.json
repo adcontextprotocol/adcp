@@ -1,0 +1,1125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.3/mcp/2026-07-28/profiles/production/account/sync-accounts-request.json",
+  "type": "object",
+  "x-mutates-state": true,
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values."
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "deprecated": true,
+      "minimum": 1,
+      "maximum": 99,
+      "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "accounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "$ref": "#/$defs/external:core~1account-ref.json"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "operator_identity": {
+            "$ref": "#/$defs/external:core~1operator-identity.json"
+          },
+          "destination_billing_entity": {
+            "$ref": "#/$defs/external:core~1business-entity.json"
+          },
+          "brand": {
+            "$ref": "#/$defs/external:core~1brand-ref.json"
+          },
+          "operator": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "operator_unit": {
+            "$ref": "#/$defs/external:core~1operator-unit.json"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "timezone": {
+            "type": "string",
+            "minLength": 1
+          },
+          "billing": {
+            "$ref": "#/$defs/external:enums~1billing-party.json"
+          },
+          "billing_entity": {
+            "$ref": "#/$defs/external:core~1business-entity.json"
+          },
+          "payment_terms": {
+            "$ref": "#/$defs/external:enums~1payment-terms.json"
+          },
+          "sandbox": {
+            "type": "boolean"
+          },
+          "preferred_reporting_protocol": {
+            "$ref": "#/$defs/external:enums~1cloud-storage-protocol.json"
+          },
+          "notification_configs": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/external:core~1notification-config.json"
+                },
+                {
+                  "if": {
+                    "required": [
+                      "authentication"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "authentication": {
+                        "required": [
+                          "credentials"
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "maxItems": 16
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "brand",
+              "operator",
+              "billing"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "account"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "revision"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "operator_identity"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "destination_billing_entity"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "required": [
+              "account"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "brand"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "operator"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "operator_unit"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "currency"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "timezone"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "billing"
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "additionalProperties": true,
+        "dependentRequired": {
+          "operator_identity": [
+            "revision"
+          ],
+          "destination_billing_entity": [
+            "operator_identity",
+            "revision"
+          ]
+        }
+      },
+      "maxItems": 1000
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false
+    },
+    "push_notification_config": {
+      "$ref": "#/$defs/external:core~1push-notification-config.json"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "accounts"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/account-ref.json": {
+      "type": "object",
+      "oneOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-ref.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:core/brand-ref.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "industries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data_subject_contestation": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "email"
+              ]
+            }
+          ],
+          "additionalProperties": false
+        },
+        "brand_kit_override": {
+          "type": "object",
+          "properties": {
+            "logo": {
+              "$ref": "#/$defs/external:core~1assets~1image-asset.json"
+            },
+            "colors": {
+              "type": "object",
+              "properties": {
+                "primary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "secondary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "accent": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                }
+              },
+              "additionalProperties": true
+            },
+            "voice": {
+              "type": "string"
+            },
+            "tagline": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand"
+    },
+    "external:core/assets/image-asset.json": {
+      "type": "object",
+      "properties": {
+        "asset_type": {
+          "type": "string",
+          "const": "image"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "file_size_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pixel_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "format": {
+          "type": "string"
+        },
+        "alt_text": {
+          "type": "string",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "#/$defs/external:core~1provenance.json"
+        }
+      },
+      "required": [
+        "asset_type",
+        "url",
+        "width",
+        "height"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/provenance.json": {
+      "type": "object",
+      "properties": {
+        "digital_source_type": {
+          "$ref": "#/$defs/external:enums~1digital-source-type.json"
+        },
+        "synthetic_depiction": {
+          "type": "boolean"
+        },
+        "ai_tool": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "human_oversight": {
+          "type": "string",
+          "enum": [
+            "none",
+            "prompt_only",
+            "selected",
+            "edited",
+            "directed"
+          ]
+        },
+        "declared_by": {
+          "type": "object",
+          "properties": {
+            "agent_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "creator",
+                "advertiser",
+                "agency",
+                "platform",
+                "tool"
+              ]
+            }
+          },
+          "required": [
+            "role"
+          ]
+        },
+        "declared_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "created_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "c2pa": {
+          "type": "object",
+          "properties": {
+            "manifest_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": [
+            "manifest_url"
+          ]
+        },
+        "embedded_provenance": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "$ref": "#/$defs/external:enums~1embedded-provenance-method.json"
+              },
+              "standard": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "verify_agent": {
+                "type": "object",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  "feature_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "method",
+              "provider"
+            ]
+          }
+        },
+        "watermarks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "media_type": {
+                "$ref": "#/$defs/external:enums~1watermark-media-type.json"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "verify_agent": {
+                "type": "object",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  "feature_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "c2pa_action": {
+                "$ref": "#/$defs/external:enums~1c2pa-watermark-action.json"
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "media_type",
+              "provider"
+            ]
+          }
+        },
+        "disclosure": {
+          "type": "object",
+          "properties": {
+            "required": {
+              "type": "boolean"
+            },
+            "jurisdictions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "country": {
+                    "type": "string"
+                  },
+                  "region": {
+                    "type": "string"
+                  },
+                  "regulation": {
+                    "type": "string"
+                  },
+                  "label_text": {
+                    "type": "string"
+                  },
+                  "render_guidance": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "properties": {
+                      "persistence": {
+                        "$ref": "#/$defs/external:enums~1disclosure-persistence.json"
+                      },
+                      "min_duration_ms": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "positions": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/external:enums~1disclosure-position.json"
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      },
+                      "ext": {
+                        "$ref": "#/$defs/external:core~1ext.json"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "country",
+                  "regulation"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "required"
+          ]
+        },
+        "verification": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "verified_by": {
+                "type": "string"
+              },
+              "verified_time": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "authentic",
+                  "ai_generated",
+                  "ai_modified",
+                  "inconclusive"
+                ]
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "details_url": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "required": [
+              "verified_by",
+              "result"
+            ]
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      }
+    },
+    "external:enums/digital-source-type.json": {
+      "type": "string",
+      "enum": [
+        "digital_capture",
+        "digital_creation",
+        "trained_algorithmic_media",
+        "composite_with_trained_algorithmic_media",
+        "algorithmic_media",
+        "composite_capture",
+        "composite_synthetic",
+        "human_edits",
+        "data_driven_media"
+      ]
+    },
+    "external:enums/embedded-provenance-method.json": {
+      "type": "string",
+      "enum": [
+        "manifest_wrapper",
+        "provenance_markers"
+      ]
+    },
+    "external:enums/watermark-media-type.json": {
+      "type": "string",
+      "enum": [
+        "audio",
+        "image",
+        "video",
+        "text"
+      ]
+    },
+    "external:enums/c2pa-watermark-action.json": {
+      "type": "string",
+      "enum": [
+        "c2pa.watermarked.bound",
+        "c2pa.watermarked.unbound"
+      ]
+    },
+    "external:enums/disclosure-persistence.json": {
+      "type": "string",
+      "enum": [
+        "continuous",
+        "initial",
+        "flexible"
+      ]
+    },
+    "external:enums/disclosure-position.json": {
+      "type": "string",
+      "enum": [
+        "prominent",
+        "footer",
+        "audio",
+        "subtitle",
+        "overlay",
+        "end_card",
+        "pre_roll",
+        "companion"
+      ]
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/operator-unit.json": {
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/operator-identity.json": {
+      "type": "object",
+      "properties": {
+        "operator": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "x-entity": "operator"
+        },
+        "operator_unit": {
+          "$ref": "#/$defs/external:core~1operator-unit.json"
+        }
+      },
+      "required": [
+        "operator"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/business-entity.json": {
+      "type": "object",
+      "properties": {
+        "legal_name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "vat_id": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}[A-Z0-9]{2,13}$"
+        },
+        "tax_id": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "registration_number": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "address": {
+          "type": "object",
+          "properties": {
+            "street": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "city": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "postal_code": {
+              "type": "string",
+              "maxLength": 20
+            },
+            "region": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "country": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            }
+          },
+          "required": [
+            "street",
+            "city",
+            "postal_code",
+            "country"
+          ],
+          "additionalProperties": false
+        },
+        "contacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "billing",
+                  "legal",
+                  "creative",
+                  "general"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "maxLength": 254
+              },
+              "phone": {
+                "type": "string",
+                "maxLength": 30
+              }
+            },
+            "required": [
+              "role"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 10
+        },
+        "bank": {
+          "type": "object",
+          "writeOnly": true,
+          "properties": {
+            "account_holder": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "iban": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}[0-9]{2}[A-Z0-9]{4,30}$"
+            },
+            "bic": {
+              "type": "string",
+              "pattern": "^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$"
+            },
+            "routing_number": {
+              "type": "string",
+              "maxLength": 30
+            },
+            "account_number": {
+              "type": "string",
+              "maxLength": 30
+            }
+          },
+          "required": [
+            "account_holder"
+          ],
+          "additionalProperties": false
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "legal_name"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/billing-party.json": {
+      "type": "string",
+      "enum": [
+        "operator",
+        "agent",
+        "advertiser"
+      ]
+    },
+    "external:enums/payment-terms.json": {
+      "type": "string",
+      "enum": [
+        "net_15",
+        "net_30",
+        "net_45",
+        "net_60",
+        "net_90",
+        "prepay"
+      ]
+    },
+    "external:enums/cloud-storage-protocol.json": {
+      "type": "string",
+      "enum": [
+        "s3",
+        "gcs",
+        "azure_blob"
+      ]
+    },
+    "external:core/notification-config.json": {
+      "type": "object",
+      "properties": {
+        "subscriber_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "event_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "creative.status_changed",
+              "creative.assignment_changed",
+              "indicators.changed",
+              "creative.purged",
+              "account.status_changed",
+              "product.created",
+              "product.updated",
+              "product.priced",
+              "product.removed",
+              "signal.created",
+              "signal.updated",
+              "signal.priced",
+              "signal.removed",
+              "wholesale_feed.bulk_change"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "product_payload_view": {
+          "type": "string",
+          "enum": [
+            "canonical",
+            "legacy"
+          ],
+          "default": "legacy"
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes"
+          ],
+          "additionalProperties": false
+        },
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "subscriber_id",
+        "url",
+        "event_types"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "product_payload_view"
+            ]
+          },
+          "then": {
+            "properties": {
+              "event_types": {
+                "contains": {
+                  "enum": [
+                    "product.created",
+                    "product.updated",
+                    "product.priced",
+                    "product.removed"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/auth-scheme.json": {
+      "deprecated": true,
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:core/push-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 4096
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares the advertiser identity, operator, optional operator-owned buying unit, optional fixed account currency, conditionally required buyer-selected account timezone, sandbox disposition, and billing model. The seller provisions or links the corresponding advertiser object via upsert. `brand.countries`, `operator_unit.id`, `currency`, buyer-selected `timezone`, and `sandbox` participate in the buyer-declared natural key when present; `operator_unit.name` is display metadata only. The seller MAY echo a seller-assigned account_id but MUST continue accepting the complete natural-key AccountRef.\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by seller/storefront `account_id` or buyer-declared natural key. The seller updates settable state without provisioning side effects. A complete `operator_identity` value reconciles the existing account to the buyer's desired operator domain and optional operator unit; omission leaves identity unchanged.\n\nExactly one key shape is allowed per entry. Sellers that do not implement one mode return `UNSUPPORTED_PROVISIONING` for that mode. Identity reconciliation is additionally gated by `get_adcp_capabilities.account.identity_updates`."
+}

@@ -152,12 +152,18 @@ Following a redirect never lets a domain adopt a house's identity. When a domain
 
 Pre-v3 documents are promoted to canonical v3 identity for the response, flagged with `promoted_from_schema` and `migration_warnings`. Promotion covers identity only; legacy relationship data is preserved opaquely and never becomes a trust claim. In particular, a warning with `field: "house"` means the legacy house object was moved to `legacy_metadata.legacy_house` and did **not** establish `house_domain`. The publisher must add `house_domain` to the leaf document and a reciprocal `brand_refs[]` entry to the house document.
 
+#### Trust fields in brand lists
+
+`/api/brands/registry` and `/api/brands/find` include `relationship_trust`, `relationship_verified_at`, and `claimed_house_domain` on each result row. These are cached from the last crawler resolution cycle and use the same semantics as the `relationship_trust` field on `/api/brands/resolve` responses. The cache staleness is bounded by the crawl interval.
+
+An absent `relationship_trust` in a list result means trust has not yet been computed for that brand — it MUST NOT be interpreted as `standalone`. For an authoritative, real-time verdict use `/api/brands/resolve`.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/brands/resolve` | Resolve a domain to its canonical brand |
 | POST | `/api/brands/resolve/bulk` | Resolve up to 25 domains at once |
 | GET | `/api/brands/brand-json` | Fetch raw brand.json for a domain |
-| GET | `/api/brands/registry` | List all brands (search, pagination) |
+| GET | `/api/brands/registry` | List all brands (search, pagination) with cached trust state |
 | GET | `/api/brands/enrich` | Enrich brand data via Brandfetch |
 | GET | `/api/brands/history` | Edit history for a brand |
 | POST | `/api/brands/save` | Save or update a community brand (auth required) |

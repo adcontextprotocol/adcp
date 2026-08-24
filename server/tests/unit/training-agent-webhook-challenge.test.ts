@@ -8,6 +8,8 @@ import {
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import {
   ACCOUNT_WEBHOOK_CHALLENGE_TTL_MS,
+  agentWebhookProofTuple,
+  proveAgentWebhookControl,
   proveAccountWebhookControl,
 } from '../../src/training-agent/webhook-challenge.js';
 import {
@@ -209,5 +211,88 @@ describe('training-agent account webhook challenge', () => {
       now: () => ISSUED_AT,
     })).resolves.toEqual({ ok: false });
     expect(canceled).toBe(true);
+  });
+});
+
+describe('training-agent agent-level webhook challenge', () => {
+  beforeEach(() => {
+    resetWebhookSigning();
+  });
+
+  it('signs a normalized challenge bound to the agent-level subscriber tuple', async () => {
+    let captured: CapturedChallenge | undefined;
+    const config = {
+      subscriberId: 'registry-cache',
+      url: 'https://registry.example:443/hooks/../webhooks/capabilities',
+      eventTypes: ['capabilities.changed', 'capabilities.changed'],
+      authentication: {
+        schemes: ['Bearer'],
+        credentials: 'write-only-bearer-credential-000000000000',
+      },
+    };
+    const fetchStub: typeof fetch = async (input, init) => {
+      const body = String(init?.body ?? '');
+      captured = {
+        method: String(init?.method ?? 'GET'),
+        url: input.toString(),
+        headers: Object.fromEntries(new Headers(init?.headers).entries()),
+        body,
+      };
+      const payload = JSON.parse(body) as { challenge: string };
+      return new Response(JSON.stringify({ challenge: payload.challenge }), { status: 200 });
+    };
+
+    const result = await proveAgentWebhookControl(config, {
+      fetch: fetchStub,
+      now: () => ISSUED_AT,
+      challenge: 'agent-challenge-token-00000000000000000000',
+    });
+    if (!captured) throw new Error('agent challenge was not sent');
+
+    expect(result).toEqual({
+      ok: true,
+      normalizedUrl: 'https://registry.example/webhooks/capabilities',
+    });
+    expect(JSON.parse(captured.body)).toMatchObject({
+      type: 'webhook.challenge',
+      scope: 'agent',
+      challenge: 'agent-challenge-token-00000000000000000000',
+      subscriber_id: 'registry-cache',
+      seller_agent_url: 'https://test-agent.adcontextprotocol.org',
+      delivery_auth: {
+        mode: 'Bearer',
+        credential_fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+      event_types: ['capabilities.changed'],
+    });
+    expect(JSON.parse(captured.body)).not.toHaveProperty('account_id');
+    expect(captured.body).not.toContain(config.authentication.credentials);
+    await expect(verifier(captured)).resolves.toMatchObject({ status: 'verified' });
+
+    expect(JSON.parse(agentWebhookProofTuple(config))).toEqual({
+      scope: 'agent',
+      subscriber_id: 'registry-cache',
+      webhook_url: 'https://registry.example/webhooks/capabilities',
+      delivery_auth: {
+        mode: 'Bearer',
+        credential_fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+      event_types: ['capabilities.changed'],
+    });
+  });
+
+  it.each([
+    ['a rejected response', async () => new Response('{}', { status: 403 })],
+    ['the wrong echo', async () => new Response(JSON.stringify({ challenge: 'wrong' }), { status: 200 })],
+  ])('fails closed on %s', async (_label, fetchStub) => {
+    await expect(proveAgentWebhookControl({
+      subscriberId: 'registry-cache',
+      url: 'https://registry.example/webhooks/capabilities',
+      eventTypes: ['capabilities.changed'],
+    }, {
+      fetch: fetchStub,
+      now: () => ISSUED_AT,
+      challenge: 'agent-challenge-token-00000000000000000000',
+    })).resolves.toEqual({ ok: false });
   });
 });

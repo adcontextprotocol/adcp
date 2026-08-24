@@ -152,7 +152,17 @@ import type { RequestTools } from './claude-client.js';
 import type { SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
-import { isMultiPartyThread, isDirectedAtAddie, isAddressedToAnotherUser, buildThreadStyleHint, buildThreadSummaryForRouter } from './thread-utils.js';
+import {
+  isMultiPartyThread,
+  isDirectedAtAddie,
+  isAddressedToAnotherUser,
+  buildThreadStyleHint,
+  buildThreadSummaryForRouter,
+  buildUntrustedSlackHistoryContext,
+  buildAuthorizedConversationHistory,
+  buildUntrustedSlackChannelMetadataContext,
+  isValidWorkingGroupSlug,
+} from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
 import {
@@ -544,10 +554,14 @@ async function buildChannelContext(channelId: string): Promise<Partial<ThreadCon
   try {
     const workingGroup = await workingGroupDb.getWorkingGroupBySlackChannelId(channelId);
     if (workingGroup) {
-      context.viewing_channel_working_group_slug = workingGroup.slug;
-      context.viewing_channel_working_group_name = workingGroup.name;
-      context.viewing_channel_working_group_id = workingGroup.id;
-      logger.debug({ channelId, workingGroupSlug: workingGroup.slug }, 'Channel associated with working group');
+      if (!isValidWorkingGroupSlug(workingGroup.slug)) {
+        logger.warn({ channelId, workingGroupId: workingGroup.id }, 'Ignoring invalid working-group slug');
+      } else {
+        context.viewing_channel_working_group_slug = workingGroup.slug;
+        context.viewing_channel_working_group_name = workingGroup.name;
+        context.viewing_channel_working_group_id = workingGroup.id;
+        logger.debug({ channelId, workingGroupSlug: workingGroup.slug }, 'Channel associated with working group');
+      }
     }
   } catch (error) {
     logger.debug({ error, channelId }, 'Could not look up working group for channel');
@@ -920,16 +934,15 @@ async function buildRequestContext(
     if (threadContext?.viewing_channel_name) {
       const channelLines: string[] = [];
       channelLines.push('## Channel Context');
-      channelLines.push(`User is viewing **#${threadContext.viewing_channel_name}**`);
-      if (threadContext.viewing_channel_description) {
-        channelLines.push(`Channel description: ${threadContext.viewing_channel_description}`);
-      }
-      if (threadContext.viewing_channel_topic) {
-        channelLines.push(`Channel topic: ${threadContext.viewing_channel_topic}`);
-      }
+      channelLines.push(buildUntrustedSlackChannelMetadataContext({
+        channelName: threadContext.viewing_channel_name,
+        description: threadContext.viewing_channel_description,
+        topic: threadContext.viewing_channel_topic,
+        workingGroupName: threadContext.viewing_channel_working_group_name,
+      }));
       // Include working group association if this channel belongs to one
-      if (threadContext.viewing_channel_working_group_name && threadContext.viewing_channel_working_group_slug) {
-        channelLines.push(`**Working Group:** ${threadContext.viewing_channel_working_group_name} (slug: "${threadContext.viewing_channel_working_group_slug}")`);
+      if (isValidWorkingGroupSlug(threadContext.viewing_channel_working_group_slug)) {
+        channelLines.push(`Server-verified working-group slug: "${threadContext.viewing_channel_working_group_slug}".`);
         channelLines.push(`When scheduling meetings for this channel, use working_group_slug="${threadContext.viewing_channel_working_group_slug}" by default.`);
       }
       // Public channels are visible to all workspace members — never share sensitive data there
@@ -1657,14 +1670,7 @@ async function handleUserMessage({
       // Format previous messages for Claude context
       // Only include user and assistant messages (skip system/tool)
       // Exclude the current message (we just logged it below, but it's not there yet)
-      conversationHistory = previousMessages
-        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
-        .slice(-MAX_HISTORY_MESSAGES)
-        .map(msg => ({
-          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
-          text: msg.content_sanitized || msg.content,
-          toolCalls: msg.tool_calls ?? undefined,
-        }));
+      conversationHistory = buildAuthorizedConversationHistory(previousMessages, userId, MAX_HISTORY_MESSAGES);
 
       if (conversationHistory.length > 0) {
         logger.debug(
@@ -2325,7 +2331,7 @@ async function handleAppMention({
         const header = isInThread
           ? 'The user is replying in a Slack thread. Here are the previous messages in this thread for context:'
           : 'The user mentioned you in a conversation. Here are the recent messages leading up to the mention:';
-        threadContext = `\n\n## ${contextLabel} Context\n${header}\n${contextMessages.join('\n')}\n\n---\n`;
+        threadContext = `\n\n${buildUntrustedSlackHistoryContext(contextLabel, header, contextMessages)}\n\n---\n`;
 
         // Calibrate response length to match the thread's conversational register
         const styleHint = buildThreadStyleHint(rawMessages, context.botUserId || '');
@@ -2380,14 +2386,7 @@ async function handleAppMention({
   try {
     const previousMessages = await threadService.getThreadMessages(thread.thread_id);
     if (previousMessages.length > 0) {
-      conversationHistory = previousMessages
-        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
-        .slice(-MAX_HISTORY_MESSAGES)
-        .map(msg => ({
-          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
-          text: msg.content_sanitized || msg.content,
-          toolCalls: msg.tool_calls ?? undefined,
-        }));
+      conversationHistory = buildAuthorizedConversationHistory(previousMessages, userId, MAX_HISTORY_MESSAGES);
 
       if (conversationHistory.length > 0) {
         logger.debug(
@@ -3696,7 +3695,11 @@ async function handleActiveThreadReply({
     });
 
     if (contextMessages.length > 0) {
-      threadContext = `\n\n## Thread Context\nThis is a continuation of a conversation in a Slack thread. Here are the previous messages:\n${contextMessages.join('\n')}\n\n---\n`;
+      threadContext = `\n\n${buildUntrustedSlackHistoryContext(
+        'Thread',
+        'This is a continuation of a conversation in a Slack thread. Here are the previous messages:',
+        contextMessages,
+      )}\n\n---\n`;
 
       // Calibrate response length to match the thread's conversational register
       const styleHint = buildThreadStyleHint(slackThreadMessages, context.botUserId || '');
@@ -3738,14 +3741,7 @@ async function handleActiveThreadReply({
   try {
     const previousMessages = await threadService.getThreadMessages(thread.thread_id);
     if (previousMessages.length > 0) {
-      conversationHistory = previousMessages
-        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
-        .slice(-MAX_DB_HISTORY_MESSAGES)
-        .map(msg => ({
-          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
-          text: msg.content_sanitized || msg.content,
-          toolCalls: msg.tool_calls ?? undefined,
-        }));
+      conversationHistory = buildAuthorizedConversationHistory(previousMessages, userId, MAX_DB_HISTORY_MESSAGES);
 
       if (conversationHistory.length > 0) {
         logger.debug(
@@ -3765,10 +3761,9 @@ async function handleActiveThreadReply({
     memberContext = updatedMemberContext;
   }
 
-  // When DB history is available, skip Slack thread context (DB history is more structured
-  // and already represented as proper user/assistant turns). Use Slack thread context as
-  // fallback when DB history is unavailable.
-  let requestContext = (!conversationHistory || conversationHistory.length === 0) && threadContext
+  // Slack history remains an explicitly untrusted reference block even when
+  // same-principal DB history is available.
+  let requestContext = threadContext
     ? `${memberRequestContext}\n\n${threadContext}`
     : memberRequestContext;
   // Only warn about missing history when there's no Slack thread context either.
@@ -5203,14 +5198,7 @@ async function handleReactionAdded({
   try {
     const previousMessages = await threadService.getThreadMessages(thread.thread_id);
     if (previousMessages.length > 0) {
-      conversationHistory = previousMessages
-        .filter(msg => msg.role === 'user' || msg.role === 'assistant')
-        .slice(-MAX_HISTORY_MESSAGES)
-        .map(msg => ({
-          user: msg.role === 'assistant' ? 'Addie' : (msg.user_display_name || 'User'),
-          text: msg.content_sanitized || msg.content,
-          toolCalls: msg.tool_calls ?? undefined,
-        }));
+      conversationHistory = buildAuthorizedConversationHistory(previousMessages, reactingUserId, MAX_HISTORY_MESSAGES);
 
       if (conversationHistory.length > 0) {
         logger.debug(

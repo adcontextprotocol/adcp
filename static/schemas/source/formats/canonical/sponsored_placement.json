@@ -3,7 +3,13 @@
   "$id": "/schemas/formats/canonical/sponsored_placement.json",
   "title": "Canonical Format: Sponsored Placement (retail-media catalog-driven)",
   "description": "Catalog-driven retail-media format. Slot: `source_catalog` (catalog asset — product/SKU/ASIN/GTIN catalog reference, REQUIRED), optional `hero_asset`, optional `landing_page_url`. Buyer supplies the catalog reference; surface composes per-item or multi-item rendering using its native placement template. **Composition is deterministic** — buyer can predict per-slot rendering from the catalog item structure. Tracking model: per-item impression + click + conversion (catalog-keyed via offering_id/sku/gtin macros). Covers Amazon Sponsored Products, Criteo Sponsored Products, CitrusAd Sponsored Products, Walmart Connect Sponsored Products, Pinterest Collection (catalog-driven mode).\n\n**Scope (normative — buyer-agent routing).** This canonical is the home for catalog-driven retail-media placements ONLY. The defining feature is the `source_catalog` slot — products under this canonical compose their creative *per catalog item* using the buyer-supplied catalog feed. Without a catalog feed there is nothing to render against. Buyer agents reading `format_kind: sponsored_placement` MUST attach a catalog reference; sellers MUST require `source_catalog` in the manifest.\n\n**Not this canonical (route elsewhere):**\n- IAB in-feed native ads, content-recommendation widgets (Taboola, Outbrain, Yahoo Native, AdMob Native, in-feed sponsored cards) — use `native_in_feed` (asset-bundle composition; no catalog).\n- Algorithmic surface that picks from a buyer-supplied asset pool (Google PMax, Meta Advantage+) — use `responsive_creative`.\n- Single-image or single-video creative — use `image` or `video_hosted`.\n\nThe earlier broader framing ('any sponsored placement') was too loose for buyer-agent routing — a buyer reading `sponsored_placement` couldn't disambiguate a catalog-driven Amazon SP from an in-feed Taboola widget. As of 3.1, the canonical is narrowed to catalog-keyed retail-media; native moves to `native_in_feed`. Distinct from `responsive_creative` (algorithmic combinator from buyer pool) and `agent_placement` (text/audio AI-surface composition).",
-  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "allOf": [
+    { "$ref": "/schemas/formats/canonical/_base.json" },
+    {
+      "if": { "required": ["ctv_ad_experience"] },
+      "then": { "properties": { "ctv_ad_experience": { "enum": ["menu", "squeezeback", "in_scene"] } } }
+    }
+  ],
   "properties": {
     "experimental": {
       "default": true,
@@ -60,7 +66,17 @@
       "enum": ["buyer_uploaded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
       "default": "buyer_uploaded",
       "description": "How each per-item creative is produced. Covers the same production-source axis as `asset_source` on `image` / `video_hosted` / `audio_hosted` but with a 4-value subset — drops `publisher_host_recorded` because it's audio-specific and doesn't apply to retail-media catalog placements. SDK codegen MAY share a base enum and narrow per-canonical, or emit two distinct enums; either way the wire values overlap exactly for the 4 retained values. `buyer_uploaded` (default, current Amazon/Criteo/CitrusAd pattern): the buyer's catalog already contains rendered assets per item; the seller composes the placement using those assets. (\"Uploaded\" reads slightly off for catalog-keyed items where the buyer didn't actively upload bytes — the catalog ingestion already supplied them — but the semantic is the same: rendered bytes are buyer-supplied, not seller-produced.) `seller_pre_rendered_from_brief`: the buyer ships a brief plus the catalog reference; the seller renders one creative per catalog item from the brief at sync_creatives time. `seller_human_designed`: seller's design team produces per-item renders manually. `agent_synthesized`: AI synthesis pipeline produces per-item renders; pair with `synthesis_nondeterministic: true` for Veo/Sora-class generative video applied per item. Captures the multi-output generative pattern (1 brief × N catalog items → N rendered creatives) under the existing canonical without requiring a separate canonical. Distinct from `fanout_mode`, which describes how items map to delivery slots after rendering."
+    },
+    "ctv_ad_experience": {
+      "$ref": "/schemas/enums/ctv-ad-experience.json",
+      "description": "CTV experience this option serves. On `sponsored_placement`: `menu` (sponsored app/content tiles and rows whose assets derive from a catalog listing — Fire-TV-tile pattern), `squeezeback`, and `in_scene` (seller-composited brand integrations produced from the catalog/brief rather than a buyer wire creative). Asset-bundle menu heroes route to `native_in_feed`."
     }
+  },
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "ctv_experience_matrix": "ctv_ad_experience on sponsored_placement must be menu, squeezeback, or in_scene"
+    },
+    "spec": "docs/creative/ctv-experiences.mdx"
   },
   "additionalProperties": true
 }

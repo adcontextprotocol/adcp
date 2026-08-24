@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/core/pricing-option.json",
+  "title": "Pricing Option",
+  "description": "A seller's commercial pricing offer, discriminated by pricing_model. pricing_option_id is the immutable identity of its binding commercial terms: changing fixed price, floor, currency, model, or priced applicability requires a new ID rather than reinterpreting the old one. fixed_price is an agreed seller price; floor_price is the seller minimum for an auction-priced option; price_guidance is non-binding discovery guidance. Buyer execution instructions belong in BiddingPolicy. revenue_share is contingent pricing: its payable spend is calculated from settled commissionable_value and does not use fixed_price or auction bidding fields. The legacy max_bid boolean and package bid_price are deprecated in 3.2 and removed in the next major.",
+  "discriminator": {
+    "propertyName": "pricing_model"
+  },
+  "oneOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/pricing-options/cpm-option.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/pricing-options/vcpm-option.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/pricing-options/cpc-option.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/pricing-options/cpcv-option.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/pricing-options/cpv-option.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/pricing-options/cpp-option.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/pricing-options/cpa-option.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/pricing-options/revenue-share-option.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/pricing-options/flat-rate-option.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.2/pricing-options/time-option.json"
+    }
+  ]
+}

@@ -41,7 +41,7 @@
     },
     "ids": {
       "type": "array",
-      "description": "Filter catalog to specific item IDs. For offering-type catalogs, these are offering_id values. For product-type catalogs, these are SKU identifiers.",
+      "description": "Filter catalog to exact canonical item keys. The key field is offering_id for offering, store_id for store, hotel_id for hotel, flight_id for flight, job_id for job, vehicle_id for vehicle, listing_id for real_estate, program_id for education, destination_id for destination, and app_id for app. Product, inventory, and promotion catalogs use the stable normalized source identifier retained during ingestion (for example a retailer SKU). The same canonical key is used by catalog availability item_id.",
       "items": {
         "type": "string"
       },

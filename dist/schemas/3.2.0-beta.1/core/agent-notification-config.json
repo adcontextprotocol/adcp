@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/agent-notification-config.json",
+  "title": "Agent Notification Config",
+  "description": "Caller-scoped agent-level webhook subscription for notifications whose lifecycle belongs to the seller agent itself rather than to one account, media buy, creative, or other account-scoped resource. The initial agent-level event type is `capabilities.changed`, registered through `sync_agent_notification_configs` when the seller declares `adcp.capability_changes.notifications.supported: true` in `get_adcp_capabilities`. This surface is intentionally separate from account-level `notification_configs[]`: a registry or buyer can subscribe before it has an account, and one fire invalidates the agent-wide `get_adcp_capabilities` cache. The persisted set is scoped to the authenticated caller or registry identity, so one caller's declarative replacement cannot clear another caller's subscribers. As with other AdCP webhooks, the default signing scheme is the RFC 9421 webhook profile against the seller's brand.json `agents[]` JWKS; the optional `authentication` block opts into the deprecated Bearer / HMAC-SHA256 fallback for compatibility. Credentials and shared secrets in `authentication.credentials` are write-only and MUST NOT be echoed on reads. Sellers MUST verify endpoint control before activating a new or changed active agent-level notification config; delivery-time SSRF validation still applies to every fire.",
+  "type": "object",
+  "properties": {
+    "subscriber_id": {
+      "type": "string",
+      "description": "Buyer- or registry-supplied identifier for this agent-level subscription endpoint. This is the stable logical key within the authenticated caller's agent-level notification config set: re-sending the same subscriber_id replaces that caller's subscriber URL, event_types, authentication selector, and active flag rather than creating a duplicate. Echoed on every webhook payload so multi-subscriber consumers can route by endpoint. MUST be unique within the submitted `notification_configs[]` array.",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Webhook endpoint URL. Same wire contract as `push-notification-config.url` and account-level `notification-config.url`: `format: \"uri\"`, no destination-port allowlist enforced by the protocol, SSRF protection via the IP-range check defined in docs/building/by-layer/L1/security.mdx#webhook-url-validation-ssrf. Sellers MUST validate URL syntax, HTTPS usage, hostname normalization, and reserved-range rejection when writing any config, including `active: false` configs. Sellers MUST complete an activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active."
+    },
+    "event_types": {
+      "type": "array",
+      "description": "Agent-level notification types this subscriber wishes to receive on the registered `url`. The initial and currently only agent-level event type is `capabilities.changed`. Sellers MUST NOT fire other event types against this endpoint, and MUST reject account-anchored or media-buy-anchored notification types on this surface rather than silently dropping them.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "capabilities.changed"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "authentication": {
+      "type": "object",
+      "deprecated": true,
+      "description": "Legacy authentication selector. Same precedence and semantics as `push-notification-config.authentication` and account-level `notification-config.authentication`: presence opts the seller into Bearer or HMAC-SHA256 signing; absence selects the default RFC 9421 webhook profile keyed off the seller's brand.json `agents[]` JWKS. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on reads.",
+      "properties": {
+        "schemes": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/enums/auth-scheme.json"
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "credentials": {
+          "type": "string",
+          "description": "Credentials for the legacy scheme. Bearer: token. HMAC-SHA256: shared secret. Minimum 32 characters. Exchanged out-of-band during onboarding. Write-only.",
+          "minLength": 32
+        }
+      },
+      "required": [
+        "schemes"
+      ],
+      "additionalProperties": false
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "When false, the seller persists the configuration but suppresses fires. Use to pause a subscriber without losing the registration. Paused configs may skip only the outbound proof challenge while inactive; sellers MUST still enforce URL parsing, HTTPS, hostname normalization, and reserved-range rejection at write time. Reactivation requires full SSRF validation with connect pinning plus proof-of-control for any tuple without current valid proof."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/ext.json"
+    }
+  },
+  "required": [
+    "subscriber_id",
+    "url",
+    "event_types"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Registry subscriber receiving capability-change invalidations",
+      "data": {
+        "subscriber_id": "registry-cache",
+        "url": "https://registry.example/webhooks/adcp/capabilities",
+        "event_types": [
+          "capabilities.changed"
+        ],
+        "active": true
+      }
+    }
+  ]
+}

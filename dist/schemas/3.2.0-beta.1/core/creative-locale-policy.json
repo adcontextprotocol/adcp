@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/creative-locale-policy.json",
+  "title": "Creative Locale Policy",
+  "description": "Seller-declared locale eligibility for one product or placement format declaration. Each accepted_language_ranges entry is a concrete canonical BCP 47 language range evaluated with RFC 4647 section 3.3.1 Basic Filtering: fr accepts fr, fr-CA, and fr-FR, while fr-CA accepts only fr-CA and its more-specific descendants. Ranges are ORed and wildcards are not supported. Presence is a hard assignment constraint, not a preference: at least one materialized creative locale variant must match. The seller filters the creative to eligible variants before applying buyer-declared strict Lookup, locale_fallbacks, or default behavior; buyer policy can never select a seller-ineligible variant.",
+  "type": "object",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "range_matching": "rfc4647_basic_filtering",
+      "wildcards": "not_supported",
+      "assignment_eligibility": "at_least_one_materialized_variant_must_match",
+      "selection_precedence": "filter_seller_eligible_variants_before_buyer_lookup_fallback_or_default",
+      "serve_default": "when_unmatched_locale_action_is_serve_default_default_locale_variant_id_must_reference_an_eligible_variant",
+      "placement_narrowing": "product_policy_absent_allows_any_placement_policy_else_every_placement_range_must_be_contained_by_a_product_range",
+      "legacy_projection": "no_product_or_placement_format_id_may_project_to_a_locale_constrained_option",
+      "capability_gate": "seller_must_advertise_creative.localization_and_creative.has_creative_library",
+      "assignment_policy_lifecycle": "snapshot_effective_policy_at_acceptance_catalog_changes_apply_only_to_new_or_changed_assignments"
+    },
+    "spec": "docs/creative/canonical-formats.mdx#creative-locale-policy"
+  },
+  "properties": {
+    "accepted_language_ranges": {
+      "type": "array",
+      "description": "Concrete canonical BCP 47 language ranges accepted by this format option. RFC 4647 Basic Filtering is directional: seller range fr accepts variant fr-CA, but seller range fr-CA does not accept variant fr or fr-FR. Use zxx explicitly for language-neutral creative; und means unknown and is not a wildcard.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/locale-tag.json"
+      },
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "accepted_language_ranges"
+  ],
+  "additionalProperties": true
+}

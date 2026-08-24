@@ -1,0 +1,144 @@
+---
+title: report_plan_adjustment
+description: "report_plan_adjustment records a seller adjustment and the plan owner's independent acceptance or dispute."
+"og:title": "AdCP — report_plan_adjustment"
+---
+
+# report_plan_adjustment
+
+<Note>
+**Experimental in AdCP 3.2.** This task uses the campaign-governance experimental contract. Sellers implementing it MUST declare `governance.campaign` in `experimental_features`. See [experimental status](/dist/docs/3.2.0-beta.0/reference/experimental-status).
+</Note>
+
+Record a commercial adjustment without rewriting the completed outcome or trusting either party unilaterally. The task has two authenticated actions:
+
+1. The seller uses `action: "report"` and supplies an integrity-bound source record. Governance stores it as `reported`; net cost and plan headroom do not change.
+2. The plan owner uses `action: "review"` to `accept` or `dispute` that exact `adjustment_id`. Only an accepted record becomes `verified` and may affect accounting.
+
+This is the same authority rule used for delivery evidence: governance preserves attributed claims, compares them, and derives ledger state. It does not turn the seller, buyer, or governance agent into the universal source of truth. See [Evidence authority and reconciliation](/dist/docs/3.2.0-beta.0/governance/campaign/specification#evidence-authority-and-reconciliation).
+
+## Seller report
+
+```json
+{
+  "tool": "report_plan_adjustment",
+  "arguments": {
+    "action": "report",
+    "plan_id": "plan_q3_launch",
+    "outcome_id": "out_7f23ac91",
+    "seller_reference": "buy_4821",
+    "seller_adjustment_id": "cancel_4821_01",
+    "adjustment_type": "decommitment",
+    "amount": { "amount": 40000, "currency": "USD" },
+    "reason": "Remaining inventory obligation cancelled by mutual agreement.",
+    "effective_at": "2026-08-09T09:30:00Z",
+    "evidence": {
+      "evidence_id": "agreement_4821_01",
+      "evidence_type": "decommitment_agreement",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "issued_at": "2026-08-09T09:25:00Z"
+    },
+    "idempotency_key": "adjustment-cancel-4821-01"
+  }
+}
+```
+
+The authenticated caller must be the seller audience on the original intent. `seller_reference` must equal the resource retained on the completed outcome. Governance returns the same not-found shape for an absent record and a record belonging to another seller.
+
+`evidence_type` must match the commercial claim:
+
+| `adjustment_type` | Required `evidence_type` |
+|---|---|
+| `decommitment` | `decommitment_agreement` |
+| `refund` | `refund_settlement` |
+| `credit` | `credit_note` |
+| `makegood` | `makegood_agreement` |
+
+The report response has `adjustment_state: "reported"` and `headroom_restored: 0`.
+
+## Plan-owner review
+
+```json
+{
+  "tool": "report_plan_adjustment",
+  "arguments": {
+    "action": "review",
+    "plan_id": "plan_q3_launch",
+    "adjustment_id": "adj_5d92a018",
+    "decision": "accept",
+    "idempotency_key": "adjustment-review-4821-01"
+  }
+}
+```
+
+Only the authenticated principal that owns the plan may review. A dispute requires `reason` and produces `adjustment_state: "disputed"` without accounting mutation. An acceptance is rejected while buyer and seller delivery evidence for the governed action is disputed in an open governance period; recorded `measurement_variance` never blocks acceptance — its difference is priced into the conservative decommitment ceiling instead. A historical `closed_unresolved` period does not block a later buyer-reviewed adjustment and does not become a billing determination. A dispute is terminal: it cannot be re-reviewed and never contributes to net cost, headroom, or the cumulative-adjustment cap; the seller corrects it only by submitting a new report with a new `seller_adjustment_id`.
+
+A decommitment also requires a canonical seller delivery statement. Its cumulative amount cannot exceed `authoritative commitment - max(latest seller-stated cumulative spend, latest buyer-observed cumulative spend)`. Using the conservative delivered figure prevents a nominal cancellation from releasing budget already reported as delivered by either side: a seller that understates its statement gains no extra decommitment room, and a buyer that inflates an observation only shrinks its own restorable headroom.
+
+For actions cancelled before any delivery occurs, the seller first submits a [`check_governance`](/dist/docs/3.2.0-beta.0/governance/campaign/tasks/check_governance) delivery phase with `cumulative_spend: 0` and the applicable `reporting_period`. This attests zero delivery and satisfies the statement prerequisite before a decommitment can be reviewed.
+
+## Verified accounting
+
+```json
+{
+  "adjustment_id": "adj_5d92a018",
+  "adjustment_state": "verified",
+  "adjustment_type": "decommitment",
+  "amount": { "amount": 40000, "currency": "USD" },
+  "headroom_restored": 40000,
+  "plan_summary": {
+    "accounting_mode": "gross_commitment",
+    "gross_committed": 150000,
+    "adjustments_reported": 40000,
+    "adjustments_verified": 40000,
+    "net_cost": 110000,
+    "headroom_restored": 40000,
+    "ledger_committed": 110000,
+    "net_committed": 110000,
+    "budget_remaining": 90000
+  }
+}
+```
+
+| Verified type | Economic `net_cost` | Headroom in `gross_commitment` | Headroom in `verified_net_cost` |
+|---|---:|---:|---:|
+| `decommitment` | Reduced | Restored | Restored |
+| `refund` | Reduced | Unchanged | Restored |
+| `credit` | Reduced | Unchanged | Restored |
+| `makegood` | Unchanged | Unchanged | Unchanged |
+
+The original gross commitment remains in trailing anti-fragmentation history even when current headroom is restored. Splitting spend into commit-adjust-commit cycles therefore cannot evade cumulative governance thresholds.
+
+## Fields
+
+| Field | Report | Review | Description |
+|---|---:|---:|---|
+| `action` | Yes | Yes | `report` or `review`. |
+| `plan_id` | Yes | Yes | Plan containing the source outcome or adjustment. |
+| `outcome_id` | Yes | — | Positive completed governance outcome being adjusted. |
+| `adjustment_id` | — | Yes | Exact seller report being reviewed. |
+| `decision` | — | Yes | `accept` or `dispute`. |
+| `seller_reference` | Yes | — | Exact seller resource retained on the outcome. |
+| `seller_adjustment_id` | Yes | — | Stable seller-side source identifier. |
+| `adjustment_type` | Yes | — | `decommitment`, `refund`, `credit`, or `makegood`. |
+| `amount` | Yes | — | Finite positive amount in plan currency. Cumulative reports cannot exceed the source commitment. |
+| `evidence` | Yes | — | Immutable seller source ID, type, SHA-256 digest, and issue time. Rebinding an ID to different content is a conflict. |
+| `reason` | Yes | On dispute | Seller report reason or buyer dispute reason. |
+| `effective_at` | Yes | — | When the seller says the adjustment became effective. |
+| `idempotency_key` | Yes | Yes | Exact replay returns the immutable prior response with `replayed: true`. |
+
+## Errors
+
+| Code | Meaning |
+|---|---|
+| [`REFERENCE_NOT_FOUND`](/dist/docs/3.2.0-beta.0/building/verification/compliance-catalog#error-code-reference-not-found) | The source is absent or not attributable to the authenticated seller or plan owner. |
+| [`VALIDATION_ERROR`](/dist/docs/3.2.0-beta.0/building/verification/compliance-catalog#error-code-validation-error) | A required field, evidence type, amount, currency, cap, or decommitment bound is invalid. |
+| [`IDEMPOTENCY_CONFLICT`](/dist/docs/3.2.0-beta.0/building/verification/compliance-catalog#error-code-idempotency-conflict) | A caller reused a retry key with another payload. |
+| [`CONFLICT`](/dist/docs/3.2.0-beta.0/building/verification/compliance-catalog#error-code-conflict) | A source ID was reused, the record was already reviewed, or delivery evidence is disputed. |
+| [`PERMISSION_DENIED`](/dist/docs/3.2.0-beta.0/building/verification/compliance-catalog#error-code-permission-denied) | The caller has no authenticated agent identity. |
+
+## Related tasks
+
+- [`check_governance`](/dist/docs/3.2.0-beta.0/governance/campaign/tasks/check_governance) — Records canonical seller delivery statements
+- [`report_plan_outcome`](/dist/docs/3.2.0-beta.0/governance/campaign/tasks/report_plan_outcome) — Records completed outcomes and buyer delivery observations
+- [`get_plan_audit_logs`](/dist/docs/3.2.0-beta.0/governance/campaign/tasks/get_plan_audit_logs) — Returns attributed evidence, reconciliation, and accounting state
