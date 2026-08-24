@@ -46,6 +46,7 @@ export function listAccountChangesTool(storyboardCompat?: TrainingContext['story
     handleListAccountChanges,
     {
       annotations: { readOnlyHint: true, idempotentHint: true },
+      payloadErrorsAsSuccess: true,
       ...(storyboardCompat && { trainingContext: { storyboardCompat } }),
     },
   );

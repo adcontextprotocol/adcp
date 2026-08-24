@@ -49,6 +49,11 @@ import {
   canonicalizeAccountRef,
 } from './account-scope.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
+import {
+  getSharedAccountCreative,
+  listSharedAccountCreatives,
+  upsertSharedAccountCreative,
+} from './shared-account-resources.js';
 import type {
   LegacyProduct as Product,
   Proposal,
@@ -2570,6 +2575,8 @@ import {
   ACCOUNT_TOOLS,
   SUPPORTED_BILLINGS,
   handleListAccounts,
+  emitAccountChangeRecordedWebhook,
+  recordAccountChange,
   sandboxAccountRefForId,
   resolveAccountIdForRef,
   resolveAccountCurrencyForRef,
@@ -13058,8 +13065,9 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const nativeError = nativeInFeedValidationError(creative as { format_id?: FormatID; assets?: Record<string, unknown> });
     if (nativeError) return { errors: [nativeError] as TaskError[] };
 
-    const existing = session.creatives.has(creativeId);
-    const existingCreative = session.creatives.get(creativeId);
+    const existingCreative = session.creatives.get(creativeId)
+      ?? getSharedAccountCreative(accountId, creativeId);
+    const existing = existingCreative !== undefined;
     const topLevelComponentAssetsSupplied = Object.hasOwn(creativeShape, 'component_assets');
     const nestedComponentAssetsSupplied = isRecord(creativeShape.manifest)
       && Object.hasOwn(creativeShape.manifest, 'component_assets');
@@ -13135,7 +13143,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
     if (!isDryRun) {
       const manifest = candidateManifest;
-      session.creatives.set(creativeId, {
+      const storedCreative: CreativeState = {
         creativeId,
         accountId: accountId ?? existingCreative?.accountId,
         accountRef: ctx.resolvedAccount ?? req.account ?? existingCreative?.accountRef,
@@ -13160,7 +13168,36 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         pricingOptionId: existingCreative?.pricingOptionId,
         purge: existingCreative?.purge,
         webhookActivity: existingCreative?.webhookActivity,
-      });
+      };
+      session.creatives.set(creativeId, storedCreative);
+      if (accountId) upsertSharedAccountCreative(accountId, storedCreative);
+      if (accountId) {
+        const changedPaths = existingCreative
+          ? [
+              ...(!isDeepStrictEqual(existingCreative.name, storedCreative.name) ? ['/name'] : []),
+              ...(!isDeepStrictEqual(storedCreativeFormatRecord(existingCreative), storedCreativeFormatRecord(storedCreative))
+                ? ['/format'] : []),
+              ...(!isDeepStrictEqual(existingCreative.manifest, storedCreative.manifest) ? ['/manifest'] : []),
+            ]
+          : undefined;
+        if (!existingCreative || changedPaths!.length > 0) {
+          const change = recordAccountChange(ctx.principal, {
+            resource: {
+              type: 'creative',
+              account_id: accountId,
+              resource_id: creativeId,
+            },
+            action: existingCreative ? 'updated' : 'created',
+            origin: { kind: 'adcp' },
+            changed_paths: changedPaths,
+            repair: { task: 'list_creatives' },
+            summary: existingCreative
+              ? 'Creative updated through sync_creatives.'
+              : 'Creative created through sync_creatives.',
+          });
+          await emitAccountChangeRecordedWebhook(ctx.principal, change);
+        }
+      }
       if (policyResult.auditObservations.length) {
         session.complyExtensions.provenanceAuditObservations.set(creativeId, policyResult.auditObservations);
       } else {
@@ -13338,6 +13375,13 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   const requestedAccountId = resolveAccountIdForRef(sessionKey, ctx.principal, req.account);
 
   let creatives = Array.from(session.creatives.values());
+  if (requestedAccountId) {
+    const merged = new Map(creatives.map(creative => [creative.creativeId, creative]));
+    for (const creative of listSharedAccountCreatives(requestedAccountId)) {
+      merged.set(creative.creativeId, creative);
+    }
+    creatives = [...merged.values()];
+  }
   if (creatives.length === 0 && !req.include_webhook_activity) {
     // Controller-seeded creative storyboards can write under the test-kit
     // brand session while the list request keys by account_id. Prefer that

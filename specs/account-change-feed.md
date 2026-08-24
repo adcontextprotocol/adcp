@@ -185,7 +185,12 @@ Every `account-change.json` record has:
   arguments locally from the authenticated account and resource identity and
   never dispatch feed data directly; and
 - optional revision, changed JSON Pointer paths, redaction-safe actor, reason,
-  summary, and bounded extension metadata.
+summary, and bounded extension metadata.
+
+Each encoded record is limited to 64 KiB, with at most 64 changed paths and 20
+extension namespaces. IDs, paths, summaries, reasons, actor labels, and
+extensions are untrusted seller input: buyers do not interpolate them into
+system prompts, execute them, or use them as authorization evidence.
 
 Unknown resource and action values remain processable as generic
 invalidations. Change records never carry credentials, setup tokens, bank
@@ -237,8 +242,10 @@ account access immediately suspends or removes that principal's subscriptions;
 a previously accepted endpoint is not a permanent grant.
 
 Actor metadata is server-derived and privacy-redactable. The feed is not a
-substitute for a security audit or user-activity log and does not include
-logins, failed actions, or webhook transport attempts.
+substitute for a security audit or user-activity log. `origin` and `actor` are
+seller assertions, not independent provenance, and MUST NOT grant access,
+establish nonrepudiation, or bypass buyer policy checks. The feed does not
+include logins, failed actions, or webhook transport attempts.
 
 ## Conformance requirements
 
@@ -264,8 +271,10 @@ skip.
 ## Training scenario
 
 The public training seller exposes an existing shared sandbox account. A
-generic connected-platform simulator changes a campaign budget, creative,
-assignment, and reporting window without a learner AdCP call. The learner:
+generic connected-platform simulator adds a creative without a learner AdCP
+call. The reference seller advertises only `creative` coverage until campaign,
+money, assignment, and reporting mutation paths pass the same completeness
+tests. The learner:
 
 1. registers the account change subscriber;
 2. obtains C0 and snapshots the shared account;

@@ -105,12 +105,12 @@ and page. A default active-only media-buy read is not a complete baseline.
 
 ### 3. Simulate activity outside your agent
 
-Create a sandbox creative, then call `comply_test_controller` with
-`scenario: "force_creative_status"`. This controller action represents the
-connected platform changing the creative; it is not an AdCP creative mutation
-from your buyer workflow.
+Call `comply_test_controller` with `scenario: "seed_creative"`, a new
+`creative_id`, and a complete image creative fixture. This represents the
+connected platform adding a creative while your buyer agent is idle; do not
+call `sync_creatives` first.
 
-The training seller first commits the new creative status and account change
+The training seller first commits the new creative and account change
 record, then emits `account.change_recorded` to your active endpoint. The
 webhook's `notification_id` equals its `change_id`.
 

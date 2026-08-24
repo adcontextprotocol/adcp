@@ -36,6 +36,8 @@
         "account_id": {
           "type": "string",
           "description": "Seller-assigned account containing the resource.",
+          "minLength": 1,
+          "maxLength": 255,
           "x-entity": "account"
         },
         "resource_id": {
@@ -156,7 +158,9 @@
       "maxLength": 500
     },
     "ext": {
-      "$ref": "/schemas/core/ext.json"
+      "allOf": [{"$ref": "/schemas/core/ext.json"}],
+      "maxProperties": 20,
+      "description": "Bounded vendor extensions. The entire encoded change record, including extensions, MUST NOT exceed 64 KiB and remains subject to the same secret/PII prohibitions."
     }
   },
   "required": ["change_id", "recorded_at", "resource", "action", "origin", "repair"],

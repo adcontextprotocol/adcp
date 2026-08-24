@@ -56,6 +56,11 @@ import {
 import { canonicalizeAccountRef, type CanonicalAccountRef } from './account-scope.js';
 import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
+import {
+  getSharedAccountCreative,
+  removeSharedAccountCreative,
+  upsertSharedAccountCreative,
+} from './shared-account-resources.js';
 import { buildCatalog } from './product-factory.js';
 import { getAllSignals } from './signal-providers.js';
 import {
@@ -762,7 +767,13 @@ function recordCreativeWebhookActivity(
   creative.webhookActivity = [record, ...(creative.webhookActivity ?? [])].slice(0, 50);
 }
 
-function createStore(session: SessionState, sessionKey: string, principal?: string): TestControllerStore {
+function createStore(
+  session: SessionState,
+  sessionKey: string,
+  principal?: string,
+  controllerAccountRef?: AccountRef,
+  controllerAccountId?: string,
+): TestControllerStore {
   return {
     async forceAudienceStatus(audienceId, status, reason) {
       const audience = findAudienceInSession(sessionKey, audienceId);
@@ -798,7 +809,8 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
     },
 
     async forceCreativeStatus(creativeId, status, rejectionReason) {
-      const creative = session.creatives.get(creativeId);
+      const creative = session.creatives.get(creativeId)
+        ?? getSharedAccountCreative(controllerAccountId, creativeId);
       if (!creative) {
         throw new TestControllerError('NOT_FOUND', `Creative ${creativeId} not found`, null);
       }
@@ -1104,7 +1116,8 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
     async seedCreative(creativeId, fixture) {
       const fx = (fixture ?? {}) as Record<string, unknown>;
       enforceMapCap(session.creatives, creativeId, 'creatives');
-      const existing = session.creatives.get(creativeId);
+      const existing = session.creatives.get(creativeId)
+        ?? getSharedAccountCreative(controllerAccountId, creativeId);
       const now = new Date().toISOString();
       const fixtureFormatId = fx.format_id as CreativeState['formatId'];
       const formatKind = (fx.format_kind as string | undefined)
@@ -1112,8 +1125,10 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
         ?? (fixtureFormatId || existing?.formatId ? undefined : 'image');
       const formatOptionRef = (fx.format_option_ref as Record<string, unknown> | undefined) ?? existing?.formatOptionRef;
       const formatId = fixtureFormatId ?? existing?.formatId;
-      session.creatives.set(creativeId, {
+      const storedCreative: CreativeState = {
         creativeId,
+        ...(controllerAccountId && { accountId: controllerAccountId }),
+        ...(controllerAccountRef && { accountRef: controllerAccountRef }),
         ...(formatId && { formatId }),
         formatKind,
         formatOptionRef,
@@ -1122,7 +1137,26 @@ function createStore(session: SessionState, sessionKey: string, principal?: stri
         syncedAt: existing?.syncedAt ?? now,
         manifest: (fx.manifest as CreativeState['manifest']) ?? existing?.manifest,
         pricingOptionId: (fx.pricing_option_id as string | undefined) ?? existing?.pricingOptionId,
-      });
+      };
+      session.creatives.set(creativeId, storedCreative);
+      if (controllerAccountId) {
+        upsertSharedAccountCreative(controllerAccountId, storedCreative);
+        const change = recordAccountChange(principal, {
+          resource: {
+            type: 'creative',
+            account_id: controllerAccountId,
+            resource_id: creativeId,
+          },
+          action: existing ? 'updated' : 'created',
+          origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+          changed_paths: existing ? ['/name', '/status', '/manifest'] : undefined,
+          repair: { task: 'list_creatives' },
+          summary: existing
+            ? 'Connected training platform updated a creative.'
+            : 'Connected training platform added a creative.',
+        });
+        await emitAccountChangeRecordedWebhook(principal, change);
+      }
     },
 
     async seedPlan(planId, fixture) {
@@ -1903,7 +1937,15 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     }
   }
 
-  const store = createStore(session, sessionKey, ctx.principal);
+  const controllerAccountId = resolveAccountIdForRef(sessionKey, ctx.principal, args.account)
+    ?? opaqueAccountId;
+  const store = createStore(
+    session,
+    sessionKey,
+    ctx.principal,
+    args.account,
+    controllerAccountId,
+  );
   const sdkResponse = await handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
 
   if (
@@ -2358,7 +2400,10 @@ async function handleForceCreativePurge(session: SessionState, sessionKey: strin
       error_detail: 'creative_id is required',
     };
   }
-  const creative = session.creatives.get(creativeId);
+  const accountRef = rawArgs.account as AccountRef | undefined;
+  const accountId = resolveAccountIdForRef(sessionKey, principal, accountRef);
+  const creative = session.creatives.get(creativeId)
+    ?? getSharedAccountCreative(accountId, creativeId);
   if (!creative) {
     return {
       success: false,
@@ -2393,6 +2438,7 @@ async function handleForceCreativePurge(session: SessionState, sessionKey: strin
 
   if (purgeKind === 'hard') {
     session.creatives.delete(creativeId);
+    removeSharedAccountCreative(accountId, creativeId);
     session.complyExtensions.provenanceAuditObservations.delete(creativeId);
   } else {
     creative.purge = {
@@ -2400,6 +2446,26 @@ async function handleForceCreativePurge(session: SessionState, sessionKey: strin
       at: purgedAt,
       reasonCode,
     };
+  }
+  if (accountId) {
+    const change = recordAccountChange(principal, {
+      resource: {
+        type: 'creative',
+        account_id: accountId,
+        resource_id: creativeId,
+      },
+      action: 'purged',
+      origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+      changed_paths: ['/purge'],
+      repair: {
+        task: 'list_creatives',
+        available: purgeKind !== 'hard',
+        ...(purgeKind === 'hard' && { unavailable_reason: 'purged' }),
+      },
+      reason: reasonCode,
+      summary: `Connected training platform ${purgeKind}-purged a creative.`,
+    });
+    await emitAccountChangeRecordedWebhook(principal, change);
   }
   await emitCreativePurged(sessionKey, principal, creative, purgeKind, reasonCode, purgedAt, reasonDetail);
 

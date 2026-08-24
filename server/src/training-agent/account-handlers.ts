@@ -25,6 +25,7 @@ import {
   proveAccountWebhookControl,
 } from './webhook-challenge.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
+import { clearSharedAccountResources } from './shared-account-resources.js';
 
 // One account may legitimately use the protocol's full 16-subscriber fan-out.
 // Larger multi-account activations must be split by account so a single call
@@ -386,6 +387,7 @@ function findComplianceAccountById(accountId: string, now: string): AccountState
 export function clearAccountStore(): void {
   accountStore.clear();
   accountChangeStore.clear();
+  clearSharedAccountResources();
 }
 
 interface AccountWireShape {
@@ -806,6 +808,7 @@ export function resolveAccountIdForRef(
   }
   return ref.account_id
     ? findAccountByIdAcrossSessions(ref.account_id, principal)?.accountId
+      ?? getComplianceAccounts().find(account => account.account_id === ref.account_id)?.account_id
     : undefined;
 }
 
@@ -1816,20 +1819,30 @@ function readAccountChangeCursor(token: string): AccountChangeCursor | undefined
   }
 }
 
+function accountChangeFailure(error: Record<string, unknown>): object {
+  return {
+    status: 'failed',
+    adcp_error: error,
+    errors: [error],
+  };
+}
+
 export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): object {
   const req = args as unknown as ListAccountChangesRequest;
   const identityError = durableAccountIdentityError(ctx);
-  if (identityError) return identityError;
+  if (identityError) {
+    return accountChangeFailure(identityError.errors[0] as unknown as Record<string, unknown>);
+  }
   if (!req.account) {
-    return { errors: [{ code: 'INVALID_REQUEST', message: 'account is required', field: 'account', recovery: 'correctable' }] };
+    return accountChangeFailure({ code: 'INVALID_REQUEST', message: 'account is required', field: 'account', recovery: 'correctable' });
   }
   if (req.cursor && req.starting_position) {
-    return { errors: [{ code: 'INVALID_REQUEST', message: 'cursor and starting_position are mutually exclusive', recovery: 'correctable' }] };
+    return accountChangeFailure({ code: 'INVALID_REQUEST', message: 'cursor and starting_position are mutually exclusive', recovery: 'correctable' });
   }
 
   const access = resolveAccountForChangeFeed(req.account, ctx.principal);
   if (!access) {
-    return { errors: [{ code: 'ACCOUNT_NOT_FOUND', message: 'Account is not visible to the authenticated principal', recovery: 'terminal' }] };
+    return accountChangeFailure({ code: 'ACCOUNT_NOT_FOUND', message: 'Account is not visible to the authenticated principal', recovery: 'terminal' });
   }
   const { account, scopeId: accountScopeId } = access;
   ensureExistingAccountChangeSeed(accountScopeId, ctx.principal, account);
@@ -1842,8 +1855,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
   if (req.cursor) {
     const cursor = readAccountChangeCursor(req.cursor);
     if (!cursor) {
-      return {
-        errors: [{
+      return accountChangeFailure({
           code: 'CURSOR_EXPIRED',
           message: 'The account change cursor is no longer available; rebuild authoritative snapshots from a new latest checkpoint',
           recovery: 'correctable',
@@ -1851,8 +1863,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
             available_since: changes[0]?.change.recorded_at ?? new Date().toISOString(),
             restart_with: { starting_position: 'latest' },
           },
-        }],
-      };
+      });
     }
     if (
       cursor.principal !== principalScope(ctx.principal)
@@ -1860,14 +1871,12 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
       || cursor.accountId !== account.account_id
       || !sameStringArray(cursor.resourceTypes, resourceTypes)
     ) {
-      return {
-        errors: [{
+      return accountChangeFailure({
           code: 'INVALID_REQUEST',
           message: 'cursor is scoped to a different principal, account, or resource_types filter',
           field: 'cursor',
           recovery: 'correctable',
-        }],
-      };
+      });
     }
     afterSequence = cursor.sequence;
   }
@@ -1904,7 +1913,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
         source_id: 'seller',
         kind: 'seller',
         status: 'current',
-        resource_types: ['account', 'media_buy', 'creative'],
+        resource_types: ['creative'],
       },
       ...(accountScopeId.startsWith('fixture:') ? [{
         source_id: 'conn_shared_training_platform',
@@ -1913,7 +1922,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
         coverage_start: changes[0]?.change.recorded_at ?? new Date().toISOString(),
         observed_through: new Date().toISOString(),
         last_successful_sync_at: new Date().toISOString(),
-        resource_types: ['account', 'media_buy', 'creative'],
+        resource_types: ['creative'],
       }] : []),
     ],
   };

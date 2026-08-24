@@ -8,6 +8,21 @@
     {"$ref": "/schemas/core/version-envelope.json"},
     {"$ref": "/schemas/core/protocol-envelope.json"}
   ],
+  "oneOf": [
+    {
+      "description": "Successful feed page.",
+      "required": ["changes", "cursor", "has_more", "available_since", "generated_at"],
+      "not": {"required": ["adcp_error"]}
+    },
+    {
+      "description": "Fatal feed failure, including CURSOR_EXPIRED. Both envelope and payload error layers are present.",
+      "required": ["adcp_error", "errors"],
+      "properties": {
+        "status": {"const": "failed"},
+        "errors": {"minItems": 1}
+      }
+    }
+  ],
   "properties": {
     "changes": {
       "type": "array",
@@ -38,6 +53,7 @@
     "source_coverage": {
       "type": "array",
       "description": "Account-specific feed and connector coverage. Buyers use this to distinguish feed catch-up from upstream freshness. Omission means no additional connected-source coverage is declared.",
+      "maxItems": 50,
       "items": {
         "type": "object",
         "properties": {
@@ -70,7 +86,8 @@
           },
           "resource_types": {
             "type": "array",
-            "items": {"type": "string"},
+            "items": {"type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[a-z][a-z0-9_.-]{0,99}$"},
+            "maxItems": 50,
             "uniqueItems": true
           }
         },
@@ -85,7 +102,6 @@
     "context": {"$ref": "/schemas/core/context.json"},
     "ext": {"$ref": "/schemas/core/ext.json"}
   },
-  "required": ["changes", "cursor", "has_more", "available_since", "generated_at"],
   "additionalProperties": true,
   "examples": [
     {

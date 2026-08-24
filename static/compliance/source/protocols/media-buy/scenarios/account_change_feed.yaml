@@ -14,7 +14,6 @@ requires_all_capabilities:
 
 required_tools:
   - sync_accounts
-  - sync_creatives
   - list_creatives
   - list_account_changes
   - comply_test_controller
@@ -63,11 +62,8 @@ phases:
         stateful: true
         sample_request:
           accounts:
-            - brand:
-                domain: "acmeoutdoor.example"
-              operator: "pinnacle-agency.example"
-              billing: "operator"
-              sandbox: true
+            - account:
+                account_id: "acc_luma_shared"
               notification_configs:
                 - subscriber_id: "account-change-runner"
                   url: "{{runner.webhook_url:account_change_feed}}"
@@ -98,16 +94,13 @@ phases:
         stateful: true
         sample_request:
           account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            sandbox: true
+            account_id: "acc_luma_shared"
           starting_position: "latest"
           max_results: 100
           context:
             correlation_id: "account_change_feed--checkpoint"
         context_outputs:
-          - name: pre_baseline_account_change_cursor
+          - name: account_change_cursor
             path: "cursor"
         validations:
           - check: response_schema
@@ -121,68 +114,10 @@ phases:
             description: "Latest checkpoint starts at the seller-ingestion tail"
 
   - id: external_creative_change
-    title: "Observe a connected-platform creative change"
+    title: "Observe a connected-platform creative addition"
     steps:
-      - id: sync_creative_baseline
-        title: "Create the authoritative creative baseline"
-        task: sync_creatives
-        schema_ref: "creative/sync-creatives-request.json"
-        response_schema_ref: "creative/sync-creatives-response.json"
-        doc_ref: "/creative/task-reference/sync_creatives"
-        stateful: true
-        sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            sandbox: true
-          creatives:
-            - creative_id: "shared_account_display_001"
-              name: "Shared account display baseline"
-              format_kind: "image"
-              assets:
-                image:
-                  asset_type: "image"
-                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-300x250.png"
-                  width: 300
-                  height: 250
-                  mime_type: "image/png"
-          idempotency_key: "$generate:uuid_v4#account_change_feed_sync_creative"
-        validations:
-          - check: response_schema
-            description: "Response matches sync-creatives-response.json"
-          - check: field_value
-            path: "creatives[0].creative_id"
-            value: "shared_account_display_001"
-            description: "Creative baseline exists"
-
-      - id: acquire_post_baseline_checkpoint
-        title: "Acquire C0 after creating the baseline"
-        task: list_account_changes
-        schema_ref: "account/list-account-changes-request.json"
-        response_schema_ref: "account/list-account-changes-response.json"
-        doc_ref: "/accounts/tasks/list_account_changes"
-        stateful: true
-        sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            sandbox: true
-          starting_position: "latest"
-          max_results: 100
-        context_outputs:
-          - name: account_change_cursor
-            path: "cursor"
-        validations:
-          - check: response_schema
-            description: "Response matches list-account-changes-response.json"
-          - check: field_present
-            path: "cursor"
-            description: "Checkpoint excludes the already-observed baseline creation"
-
-      - id: force_connected_creative_change
-        title: "Connected platform approves the creative"
+      - id: seed_connected_creative
+        title: "Connected platform adds a creative while the buyer is idle"
         task: comply_test_controller
         schema_ref: "compliance/comply-test-controller-request.json"
         response_schema_ref: "compliance/comply-test-controller-response.json"
@@ -190,28 +125,35 @@ phases:
         stateful: true
         sample_request:
           account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
+            account_id: "acc_luma_shared"
             sandbox: true
-          scenario: "force_creative_status"
+          scenario: "seed_creative"
           params:
             creative_id: "shared_account_display_001"
-            status: "approved"
-          context:
-            correlation_id: "account_change_feed--force_external"
+            fixture:
+              name: "Shared account display baseline"
+              status: "approved"
+              format_kind: "image"
+              manifest:
+                format_kind: "image"
+                assets:
+                  image:
+                    asset_type: "image"
+                    url: "https://test-assets.adcontextprotocol.org/acme-outdoor/trail-pro-300x250.png"
+                    width: 300
+                    height: 250
         validations:
           - check: response_schema
             description: "Response matches comply-test-controller-response.json"
           - check: field_value
             path: "success"
             value: true
-            description: "External creative transition committed"
+            description: "External creative addition committed"
 
       - id: expect_account_change_webhook
         title: "Observe account.change_recorded"
         task: expect_webhook
-        triggered_by: force_connected_creative_change
+        triggered_by: seed_connected_creative
         filter:
           notification_type: "account.change_recorded"
           subscriber_id: "account-change-runner"
@@ -238,10 +180,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            sandbox: true
+            account_id: "acc_luma_shared"
           cursor: "$context.account_change_cursor"
           max_results: 100
         context_outputs:
@@ -276,10 +215,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            sandbox: true
+            account_id: "acc_luma_shared"
           filters:
             creative_ids:
               - "shared_account_display_001"
@@ -304,10 +240,7 @@ phases:
         stateful: true
         sample_request:
           account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            sandbox: true
+            account_id: "acc_luma_shared"
           cursor: "$context.account_change_tail_cursor"
         validations:
           - check: response_schema

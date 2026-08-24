@@ -880,11 +880,10 @@ function projectTenantCapabilities(
             registration_task: 'sync_accounts',
             event_type: 'account.change_recorded',
             retention_days: 90,
-            resource_types: [
-              'account',
-              'media_buy',
-              'creative',
-            ],
+            // The reference seller claims only the family whose AdCP writes,
+            // controller-side creates/updates, status changes, purges, and
+            // shared-account reads are all instrumented end to end.
+            resource_types: ['creative'],
           },
         };
       }
