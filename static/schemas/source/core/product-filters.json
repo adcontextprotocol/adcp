@@ -254,7 +254,8 @@
     },
     "audience_activation_methods": {
       "type": "array",
-      "description": "Filter to products whose audience_activation.methods matches at least one requested entry (OR across entries). Within an entry every specified field must match (AND); omitted optional fields are wildcards; directions matches on non-empty intersection; vendor matches on domain, plus brand_id when specified. Sellers MUST exclude products with no audience_activation declaration when this filter is present, reported via filter_diagnostics.excluded_by.",
+      "x-status": "experimental",
+      "description": "Filter to products whose audience_activation.methods matches at least one requested entry (OR across entries). Within an entry every specified field must match (AND); omitted optional fields are wildcards; directions matches on non-empty intersection, and a method that omits directions matches any requested directions; vendor matches on domain, plus brand_id when specified. Fields inapplicable to the requested pattern (e.g. transport on a clean_room entry) make that entry unsatisfiable. Sellers MUST exclude products with no audience_activation declaration when this filter is present; exclusions MAY be reported via filter_diagnostics.excluded_by. Experimental: part of the media_buy.audience_activation surface — buyers SHOULD check the seller's experimental_features before filtering on it; sellers that do not list the feature ignore this filter.",
       "items": {
         "oneOf": [
           {
