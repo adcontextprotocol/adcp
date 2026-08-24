@@ -175,6 +175,20 @@ export const USER_STATE_REFERENCES = [
   { name: 'journey_stage_history', col: 'triggered_by' },
   { name: 'addie_thread_messages', col: 'rated_by' },
   { name: 'addie_messages', col: 'rated_by' },
+  { name: 'action_items', col: 'resolved_by' },
+  { name: 'addie_escalations', col: 'resolved_by' },
+  { name: 'addie_insight_sources', col: 'tagged_by' },
+  { name: 'addie_interactions', col: 'rating_by' },
+  { name: 'catalog_collection_disputes', col: 'reported_by' },
+  { name: 'catalog_collection_disputes', col: 'resolved_by' },
+  { name: 'catalog_disputes', col: 'reported_by' },
+  { name: 'catalog_disputes', col: 'resolved_by' },
+  { name: 'certification_expectations', col: 'invited_by' },
+  { name: 'email_templates', col: 'last_edited_by' },
+  { name: 'organizations', col: 'discount_granted_by' },
+  { name: 'organizations', col: 'interest_level_set_by' },
+  { name: 'seat_upgrade_requests', col: 'resolved_by' },
+  { name: 'secretariat_actions', col: 'decided_by' },
 ] as const;
 
 // Deliberate exceptions from the schema-level user-reference inventory.
@@ -190,6 +204,17 @@ export const USER_STATE_REFERENCE_EXCEPTIONS = [
   { name: 'agent_compliance_runs', col: 'triggered_by' },
   { name: 'agent_storyboard_status', col: 'triggered_by' },
   { name: 'agent_test_history', col: 'triggered_by' },
+  { name: 'admin_module_completions', col: 'completed_by' },
+  { name: 'committee_summaries', col: 'generated_by' },
+  // Entity-version links, not actor identifiers. Several are UUID/integer
+  // columns and therefore must never be queried with a WorkOS string id.
+  { name: 'catalog_collection_facts', col: 'superseded_by' },
+  { name: 'catalog_facts', col: 'superseded_by' },
+  { name: 'committee_summaries', col: 'superseded_by' },
+  { name: 'community_mirror_proposals', col: 'superseded_by' },
+  { name: 'community_mirrors', col: 'superseded_by' },
+  { name: 'member_insights', col: 'superseded_by' },
+  { name: 'org_knowledge', col: 'superseded_by' },
 ] as const;
 
 export class CredentialHasStateError extends Error {

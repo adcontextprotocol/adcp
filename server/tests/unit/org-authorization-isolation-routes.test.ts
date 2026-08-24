@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
+import { readFile } from 'node:fs/promises';
 
 const { resolveUserOrgMembership } = vi.hoisted(() => ({
   resolveUserOrgMembership: vi.fn(),
@@ -79,5 +80,23 @@ describe('organization authorization route isolation', () => {
       expect.objectContaining({ id: 'user_primary_b', authWorkosUserId: 'user_authenticated_a' }),
       'org_b_only',
     );
+  });
+
+  it('uses the authenticated credential for organization self-state and mutation actors', async () => {
+    const source = await readFile(new URL('../../src/routes/organizations.ts', import.meta.url), 'utf8');
+
+    expect(source).not.toContain('getUserPendingRequests(user.id)');
+    expect(source).not.toContain('inviterUserId: adminUser.id');
+    expect(source).not.toContain('workos_user_id: adminUser.id');
+    expect(source).toContain('getUserPendingRequests(authorizationUserId)');
+    expect(source).toContain('inviterUserId: actorCredentialId');
+  });
+
+  it('rechecks live organization authority at the remaining mutation boundaries', async () => {
+    const source = await readFile(new URL('../../src/routes/organizations.ts', import.meta.url), 'utf8');
+
+    expect(source).toMatch(/if \(!slackUser\.workos_user_id\)[\s\S]+?currentCallerMembership[\s\S]+?sendInvitation/);
+    expect(source).toMatch(/Directly add user to organization[\s\S]+?currentCallerMembership[\s\S]+?createOrganizationMembership/);
+    expect(source).toMatch(/Generate portal link for domain verification[\s\S]+?currentMembership[\s\S]+?adminPortal\.generateLink/);
   });
 });

@@ -259,10 +259,7 @@ describe('credential authorization isolation', () => {
           AND c.column_name NOT LIKE '%slack_user_id'
           AND (
             c.column_name ~ '(^|_)(workos_)?user_id$'
-            OR c.column_name IN (
-              'added_by', 'reviewed_by', 'created_by', 'updated_by',
-              'changed_by', 'approved_by', 'triggered_by', 'rated_by'
-            )
+            OR c.column_name ~ '_by$'
           )
         ORDER BY c.table_name, c.column_name`,
     );

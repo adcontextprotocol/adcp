@@ -5,6 +5,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } 
 // and calls new WorkOS() — without them workos is null and every workos!. call throws.
 const {
   TEST_ADMIN_USER_ID,
+  TEST_AUTH_USER_ID,
   TEST_REQUESTER_USER_ID,
   TEST_ORG_ID,
   mockCreateOrganizationMembership,
@@ -16,6 +17,7 @@ const {
   process.env.WORKOS_COOKIE_PASSWORD ||= 'test-cookie-password-32chars-min-len-1234';
   return {
     TEST_ADMIN_USER_ID: 'user_join_req_admin',
+    TEST_AUTH_USER_ID: 'user_join_req_authenticated_credential',
     TEST_REQUESTER_USER_ID: 'user_join_req_requester',
     TEST_ORG_ID: 'org_join_req_test',
     mockCreateOrganizationMembership: vi.fn().mockResolvedValue({ id: 'om_test_new' }),
@@ -71,6 +73,7 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
   requireAuth: (req: any, _res: any, next: any) => {
     req.user = {
       id: TEST_ADMIN_USER_ID,
+      authWorkosUserId: TEST_AUTH_USER_ID,
       email: 'admin@example.com',
       firstName: 'Admin',
       lastName: 'User',
@@ -129,9 +132,9 @@ describe('Join Request Approval', () => {
     // Re-establish after clearAllMocks: handler calls workos!.userManagement.listOrganizationMemberships
     // via the new WorkOS() instance; the mock must return admin membership for test user.
     listOrganizationMemberships.mockImplementation(({ userId, organizationId }: { userId: string; organizationId: string }) => {
-      if (userId === TEST_ADMIN_USER_ID && organizationId === TEST_ORG_ID) {
+      if (userId === TEST_AUTH_USER_ID && organizationId === TEST_ORG_ID) {
         return Promise.resolve({
-          data: [{ id: 'om_admin', userId: TEST_ADMIN_USER_ID, organizationId: TEST_ORG_ID, role: { slug: 'admin' }, status: 'active' }],
+          data: [{ id: 'om_admin', userId: TEST_AUTH_USER_ID, organizationId: TEST_ORG_ID, role: { slug: 'admin' }, status: 'active' }],
         });
       }
       return Promise.resolve({ data: [] });
@@ -161,7 +164,7 @@ describe('Join Request Approval', () => {
     listOrganizationMemberships.mockResolvedValueOnce({
       data: [{
         id: 'om_pending',
-        userId: TEST_ADMIN_USER_ID,
+        userId: TEST_AUTH_USER_ID,
         organizationId: TEST_ORG_ID,
         role: { slug: 'member' },
         status: 'pending',
@@ -199,9 +202,45 @@ describe('Join Request Approval', () => {
     const result = await pool.query(
       `SELECT id FROM organization_join_requests
        WHERE workos_organization_id = $1 AND workos_user_id = $2`,
-      [TEST_ORG_ID, TEST_ADMIN_USER_ID],
+      [TEST_ORG_ID, TEST_AUTH_USER_ID],
     );
     expect(result.rows).toHaveLength(0);
+  });
+
+  it('stores a join request against the credential that authenticated, not its canonical identity user', async () => {
+    listOrganizationMemberships
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({
+        data: [{
+          id: 'om_existing_owner',
+          userId: 'user_existing_owner',
+          organizationId: TEST_ORG_ID,
+          role: { slug: 'owner' },
+          status: 'active',
+        }],
+      });
+
+    await request(app)
+      .post('/api/join-requests')
+      .send({ organization_id: TEST_ORG_ID })
+      .expect(201);
+
+    const exactCredentialRequest = await pool.query(
+      `SELECT workos_user_id FROM organization_join_requests
+       WHERE workos_organization_id = $1 AND workos_user_id = $2`,
+      [TEST_ORG_ID, TEST_AUTH_USER_ID],
+    );
+    const canonicalUserRequest = await pool.query(
+      `SELECT workos_user_id FROM organization_join_requests
+       WHERE workos_organization_id = $1 AND workos_user_id = $2`,
+      [TEST_ORG_ID, TEST_ADMIN_USER_ID],
+    );
+
+    expect(exactCredentialRequest.rows).toHaveLength(1);
+    expect(canonicalUserRequest.rows).toHaveLength(0);
+    expect(listOrganizationMemberships).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      userId: TEST_AUTH_USER_ID,
+    }));
   });
 
   it('approves a join request by creating direct org membership, not sending an invitation', async () => {

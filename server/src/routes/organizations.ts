@@ -93,15 +93,16 @@ export function createOrganizationsRouter(
       }
 
       const joinRequestDb = new JoinRequestDatabase();
+      const authorizationUserId = getOrganizationAuthorizationUserId(user);
 
       // Get user's current org memberships to exclude
       const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
+        userId: authorizationUserId,
       });
       const userOrgIds = userMemberships.data.map(m => m.organizationId);
 
       // Get user's pending join requests
-      const pendingRequests = await joinRequestDb.getUserPendingRequests(user.id);
+      const pendingRequests = await joinRequestDb.getUserPendingRequests(authorizationUserId);
       const pendingOrgIds = new Set(pendingRequests.map(r => r.workos_organization_id));
 
       // Search organizations
@@ -740,6 +741,9 @@ export function createOrganizationsRouter(
         return res.status(403).json({ error: 'Access denied', message: 'You are not a member of this organization' });
       }
 
+      if (!await resolveUserOrgMembership(workos, user, orgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: getOrganizationAuthorizationUserId(user),
@@ -895,6 +899,7 @@ export function createOrganizationsRouter(
       const adminUser = req.user!;
       const { orgId } = req.params;
       const { email, role } = req.body;
+      const actorCredentialId = getOrganizationAuthorizationUserId(adminUser);
 
       if (!email || typeof email !== 'string') {
         return res.status(400).json({
@@ -990,14 +995,19 @@ export function createOrganizationsRouter(
 
       if (!slackUser.workos_user_id) {
         // User exists in Slack but hasn't signed up yet - send invitation instead
+        const currentCallerMembership = await resolveUserOrgMembership(workos, adminUser, orgId);
+        if (!currentCallerMembership
+          || (currentCallerMembership.role !== 'admin' && currentCallerMembership.role !== 'owner')) {
+          return res.status(403).json({ error: 'Organization authorization was revoked' });
+        }
         const invitation = await workos!.userManagement.sendInvitation({
           email,
           organizationId: orgId,
-          inviterUserId: adminUser.id,
+          inviterUserId: actorCredentialId,
           roleSlug: roleToAssign,
         });
 
-        logger.info({ orgId, email, inviterId: adminUser.id }, 'Domain user invited (no WorkOS account yet)');
+        logger.info({ orgId, email, inviterId: actorCredentialId }, 'Domain user invited (no WorkOS account yet)');
 
         return res.json({
           success: true,
@@ -1033,6 +1043,11 @@ export function createOrganizationsRouter(
       }
 
       // Directly add user to organization
+      const currentCallerMembership = await resolveUserOrgMembership(workos, adminUser, orgId);
+      if (!currentCallerMembership
+        || (currentCallerMembership.role !== 'admin' && currentCallerMembership.role !== 'owner')) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const membership = await workos!.userManagement.createOrganizationMembership({
         userId: slackUser.workos_user_id,
         organizationId: orgId,
@@ -1043,13 +1058,13 @@ export function createOrganizationsRouter(
         orgId,
         email,
         userId: slackUser.workos_user_id,
-        addedBy: adminUser.id,
+        addedBy: actorCredentialId,
       }, 'Domain user directly added to organization');
 
       // Record audit log
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: adminUser.id,
+        workos_user_id: actorCredentialId,
         action: 'member_added',
         resource_type: 'membership',
         resource_id: membership.id,
@@ -1063,7 +1078,7 @@ export function createOrganizationsRouter(
          WHERE workos_organization_id = $2
            AND LOWER(user_email) = LOWER($3)
            AND status = 'pending'`,
-        [adminUser.id, orgId, email]
+        [actorCredentialId, orgId, email]
       );
 
       // Notify via Slack (fire-and-forget)
@@ -1178,12 +1193,17 @@ export function createOrganizationsRouter(
       }
 
       // Generate portal link for domain verification
+      const currentMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentMembership
+        || (currentMembership.role !== 'owner' && currentMembership.role !== 'admin')) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const { link } = await workos!.adminPortal.generateLink({
         organization: orgId,
         intent: 'domain_verification' as any,
       });
 
-      logger.info({ organizationId: orgId, userId: user.id }, 'Generated domain verification portal link');
+      logger.info({ organizationId: orgId, userId: getOrganizationAuthorizationUserId(user) }, 'Generated domain verification portal link');
 
       res.json({ link });
     } catch (error) {

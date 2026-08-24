@@ -32,4 +32,13 @@ describe('member profile membership authorization', () => {
     expect(source).not.toContain('listOrganizationMemberships({\n          userId: user.id');
     expect(source).toContain('Only organization admins or owners can update brand identity');
   });
+
+  it('attributes organization-scoped profile mutations to the authenticated credential', async () => {
+    const source = await readFile(new URL('../../src/routes/member-profiles.ts', import.meta.url), 'utf8');
+
+    expect(source).not.toMatch(/set_by_user_id:\s*user\.id/);
+    expect(source).not.toMatch(/recordProfilePublishedIfNeeded\([\s\S]{0,180}?user\.id\s*\)/);
+    expect(source).toContain('workos_user_id: actorCredentialId');
+    expect(source).toContain('workos_user_id: getOrganizationAuthorizationUserId(user)');
+  });
 });

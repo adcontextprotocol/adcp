@@ -304,6 +304,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
   async function handleBootstrapMemberProfile(req: any, res: any, startTime: number) {
     try {
       const user = req.user!;
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
       const requestedOrgId = req.query.org as string | undefined;
       if (!requestedOrgId) {
         return res.status(400).json({ error: 'The org query parameter is required' });
@@ -548,7 +549,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (typeof marketing_opt_in === 'boolean') {
         try {
           await emailPrefsDb.setMarketingOptInIfNotSet({
-            workos_user_id: user.id,
+            workos_user_id: actorCredentialId,
             email: user.email,
             optIn: marketing_opt_in,
           });
@@ -572,7 +573,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         const userAgent = (req.headers['user-agent'] as string) || 'unknown';
         if (tosAgreement) {
           await orgDb.recordUserAgreementAcceptance({
-            workos_user_id: user.id,
+            workos_user_id: actorCredentialId,
             email: user.email,
             agreement_type: 'terms_of_service',
             agreement_version: tosAgreement.version,
@@ -583,7 +584,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
         if (privacyAgreement) {
           await orgDb.recordUserAgreementAcceptance({
-            workos_user_id: user.id,
+            workos_user_id: actorCredentialId,
             email: user.email,
             agreement_type: 'privacy_policy',
             agreement_version: privacyAgreement.version,
@@ -603,7 +604,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       try {
         await orgDb.recordAuditLog({
           workos_organization_id: targetOrgId,
-          workos_user_id: user.id,
+          workos_user_id: actorCredentialId,
           action: 'member_profile_bootstrapped',
           resource_type: 'member_profile',
           resource_id: profile.id,
@@ -779,6 +780,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     }
     try {
       const user = req.user!;
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
       const requestedOrgId = req.query.org as string | undefined;
       if (!requestedOrgId) {
         return res.status(400).json({ error: 'The org query parameter is required' });
@@ -1065,7 +1067,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       // Write user-reported org knowledge (fire-and-forget)
       const knowledgeWrites: Promise<unknown>[] = [];
-      const userId = user.id;
 
       if (tagline) {
         knowledgeWrites.push(orgKnowledgeDb.setKnowledge({
@@ -1074,7 +1075,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           value: tagline,
           source: 'user_reported',
           confidence: 'high',
-          set_by_user_id: userId,
+          set_by_user_id: actorCredentialId,
           set_by_description: 'Member profile creation',
         }));
       }
@@ -1086,7 +1087,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           value: description,
           source: 'user_reported',
           confidence: 'high',
-          set_by_user_id: userId,
+          set_by_user_id: actorCredentialId,
           set_by_description: 'Member profile creation',
         }));
       }
@@ -1098,7 +1099,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           value: offerings.join(', '),
           source: 'user_reported',
           confidence: 'high',
-          set_by_user_id: userId,
+          set_by_user_id: actorCredentialId,
           set_by_description: 'Member profile offerings',
         }));
       }
@@ -1110,7 +1111,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       // Record publish event if the profile was created already public
-      await recordProfilePublishedIfNeeded(targetOrgId, false, profile.is_public, user.id);
+      await recordProfilePublishedIfNeeded(targetOrgId, false, profile.is_public, actorCredentialId);
 
       // Invalidate Addie's member context cache - organization profile created
       invalidateMemberContextCache();
@@ -1135,6 +1136,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     logger.info({ userId: req.user?.id }, 'PUT /api/me/member-profile started');
     try {
       const user = req.user!;
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
       const requestedOrgId = req.query.org as string | undefined;
       if (!requestedOrgId) {
         return res.status(400).json({ error: 'The org query parameter is required' });
@@ -1400,7 +1402,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       // Write user-reported org knowledge (fire-and-forget)
       const knowledgeWrites: Promise<unknown>[] = [];
-      const userId = user.id;
 
       if (typeof updates.tagline === 'string' && updates.tagline) {
         knowledgeWrites.push(orgKnowledgeDb.setKnowledge({
@@ -1409,7 +1410,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           value: updates.tagline,
           source: 'user_reported',
           confidence: 'high',
-          set_by_user_id: userId,
+          set_by_user_id: actorCredentialId,
           set_by_description: 'Member profile update',
         }));
       }
@@ -1421,7 +1422,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           value: updates.description,
           source: 'user_reported',
           confidence: 'high',
-          set_by_user_id: userId,
+          set_by_user_id: actorCredentialId,
           set_by_description: 'Member profile update',
         }));
       }
@@ -1433,7 +1434,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           value: updates.offerings.join(', '),
           source: 'user_reported',
           confidence: 'high',
-          set_by_user_id: userId,
+          set_by_user_id: actorCredentialId,
           set_by_description: 'Member profile offerings',
         }));
       }
@@ -1449,7 +1450,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         targetOrgId,
         existingProfile.is_public,
         profile?.is_public,
-        user.id
+        actorCredentialId
       );
 
       // Invalidate Addie's member context cache - organization profile updated
@@ -2382,7 +2383,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             const incumbentOrg = await orgDb.getOrganization(currentOwnerOrgId).catch(() => null);
             const incumbentName = incumbentOrg?.name ?? currentOwnerOrgId;
             const escalation = await createEscalation({
-              workos_user_id: user.id,
+              workos_user_id: getOrganizationAuthorizationUserId(user),
               user_email: user.email,
               user_display_name: callerName,
               category: 'sensitive_topic',

@@ -57,7 +57,8 @@ vi.mock('../../src/middleware/auth.js', () => ({
   isDevModeEnabled: () => false,
   requireAuth: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     req.user = {
-      id: 'user_billing',
+      id: 'user_billing_canonical',
+      authWorkosUserId: 'user_billing_authenticated',
       email: 'billing@example.test',
       firstName: 'Billing',
       lastName: 'Tester',
@@ -132,7 +133,7 @@ function membership(
 ) {
   return {
     id: `om_${role}`,
-    userId: 'user_billing',
+    userId: 'user_billing_authenticated',
     organizationId: options.organizationId ?? ORG_ID,
     role: { slug: role },
     status: options.status ?? 'active',
@@ -266,6 +267,7 @@ describe('invoice request in-lock authorization', () => {
 
     expect(response.status).toBe(403);
     expect(mockListMemberships).toHaveBeenCalledTimes(2);
+    expect(mockUpdateOrganization).not.toHaveBeenCalled();
     expect(mockCreateInvoice).not.toHaveBeenCalled();
     expect(mockCreatePortal).not.toHaveBeenCalled();
   });
@@ -294,7 +296,12 @@ describe('invoice request in-lock authorization', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.invoiceId).toBe('in_test');
-    expect(mockCreateInvoice).toHaveBeenCalledTimes(1);
+    expect(mockUpdateOrganization).toHaveBeenCalledWith(ORG_ID, expect.objectContaining({
+      pending_agreement_user_id: 'user_billing_authenticated',
+    }));
+    expect(mockCreateInvoice).toHaveBeenCalledWith(expect.objectContaining({
+      workosUserId: 'user_billing_authenticated',
+    }));
     expect(mockCreatePortal).not.toHaveBeenCalled();
   });
 });
@@ -342,6 +349,11 @@ describe('checkout member intake', () => {
     expect(mockCreateCheckout).toHaveBeenCalledTimes(1);
     expect(mockCreateCheckout).toHaveBeenCalledWith(expect.objectContaining({
       idempotencyKey: 'attempt_key',
+      workosUserId: 'user_billing_authenticated',
+    }));
+    expect(mockClaimCheckoutAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: ORG_ID,
+      userId: 'user_billing_authenticated',
     }));
     expect(mockCompleteCheckoutAttempt).toHaveBeenCalledWith(expect.objectContaining({
       organizationId: ORG_ID,
