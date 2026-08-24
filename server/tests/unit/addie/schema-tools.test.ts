@@ -1,11 +1,54 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
+  createSchemaToolHandlers,
+  DOCS_SCHEMA_RELEASES,
   extractRegistryPaths,
   findClosestSchema,
   formatSchemaJson,
+  SCHEMA_TOOLS,
   SCHEMA_MAX_DISPLAY_CHARS,
+  SCHEMA_VERSION_OPTIONS,
   type SchemaRegistry,
 } from '../../../src/addie/mcp/schema-tools.js';
+
+describe('schema version selection', () => {
+  it('accepts every public docs release and defaults its guidance to stable', () => {
+    expect(DOCS_SCHEMA_RELEASES).toEqual({
+      '3.1': '3.1.19',
+      '3.2-beta': '3.2.0-beta.5',
+      '3.0': '3.0.26',
+      '2.5': '2.5.3',
+    });
+    expect(SCHEMA_VERSION_OPTIONS).toEqual(expect.arrayContaining([
+      '3.1',
+      'stable',
+      'current',
+      'latest',
+      'v3',
+      '3.1.19',
+      '3.2-beta',
+      '3.2 beta',
+      '3.2',
+      '3.2.0-beta.5',
+      '3.0',
+      '3.0.26',
+      '2.5',
+      '2.5 (archived)',
+      '2.5.3',
+      'v2',
+      '2.6',
+      '2.6.0',
+    ]));
+
+    for (const toolName of ['validate_json', 'get_schema', 'list_schemas']) {
+      const tool = SCHEMA_TOOLS.find((candidate) => candidate.name === toolName);
+      expect(tool?.input_schema.properties.version.enum).toEqual(SCHEMA_VERSION_OPTIONS);
+    }
+
+    const getSchema = SCHEMA_TOOLS.find((tool) => tool.name === 'get_schema');
+    expect(getSchema?.input_schema.properties.version.description).toContain('3.1 (stable default)');
+  });
+});
 
 // Minimal index.json fixture mirroring the shape served at
 // /schemas/v3/index.json. Covers every ref format we care about.
@@ -36,6 +79,129 @@ const indexFixture = {
     },
   },
 };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('schema handler version resolution', () => {
+  const publicSelectors: Array<{
+    selector?: string;
+    canonical: string;
+    artifact: string;
+  }> = [
+    { canonical: '3.1', artifact: '3.1.19' },
+    { selector: '3.1', canonical: '3.1', artifact: '3.1.19' },
+    { selector: 'stable', canonical: '3.1', artifact: '3.1.19' },
+    { selector: 'current', canonical: '3.1', artifact: '3.1.19' },
+    { selector: 'latest', canonical: '3.1', artifact: '3.1.19' },
+    { selector: 'v3', canonical: '3.1', artifact: '3.1.19' },
+    { selector: '3.1.19', canonical: '3.1', artifact: '3.1.19' },
+    { selector: '3.2-beta', canonical: '3.2-beta', artifact: '3.2.0-beta.5' },
+    { selector: '3.2 beta', canonical: '3.2-beta', artifact: '3.2.0-beta.5' },
+    { selector: '3.2', canonical: '3.2-beta', artifact: '3.2.0-beta.5' },
+    { selector: '3.2.0-beta.5', canonical: '3.2-beta', artifact: '3.2.0-beta.5' },
+    { selector: '3.0', canonical: '3.0', artifact: '3.0.26' },
+    { selector: '3.0.26', canonical: '3.0', artifact: '3.0.26' },
+    { selector: '2.5', canonical: '2.5', artifact: '2.5.3' },
+    { selector: '2.5 (archived)', canonical: '2.5', artifact: '2.5.3' },
+    { selector: '2.5.3', canonical: '2.5', artifact: '2.5.3' },
+  ];
+
+  it('fetches the exact frozen snapshot for the default and every public docs selector', async () => {
+    const fetchMock = vi.fn(async (input: unknown) => {
+      const url = String(input);
+      return {
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => url.endsWith('/index.json')
+          ? indexFixture
+          : { title: 'Mock schema', type: 'object', properties: {} },
+      } as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const getSchema = createSchemaToolHandlers().get('get_schema');
+    expect(getSchema).toBeDefined();
+
+    for (const [index, { selector, canonical, artifact }] of publicSelectors.entries()) {
+      const schemaPath = `core/version-selector-${index}.json`;
+      const result = await getSchema!({ schema_path: schemaPath, version: selector });
+      const expectedUrl = `https://adcontextprotocol.org/schemas/${artifact}/${schemaPath}`;
+
+      expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(expectedUrl);
+      expect(result).toContain(`**Schema URL:** ${expectedUrl}`);
+      expect(result).toContain(`**Version:** ${canonical}`);
+    }
+  });
+
+  it('preserves the legacy v2 and 2.6 selectors', async () => {
+    const fetchMock = vi.fn(async (input: unknown) => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => String(input).endsWith('/index.json')
+        ? indexFixture
+        : { title: 'Mock schema', type: 'object', properties: {} },
+    }) as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const getSchema = createSchemaToolHandlers().get('get_schema');
+    expect(getSchema).toBeDefined();
+    const selectors = [
+      ['v2', 'https://adcontextprotocol.org/schemas/v2'],
+      ['2.6', 'https://adcontextprotocol.org/schemas/v2.6'],
+      ['2.6.0', 'https://adcontextprotocol.org/schemas/2.6.0'],
+    ] as const;
+
+    for (const [index, [selector, baseUrl]] of selectors.entries()) {
+      const schemaPath = `core/legacy-version-selector-${index}.json`;
+      await getSchema!({ schema_path: schemaPath, version: selector });
+      expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(`${baseUrl}/${schemaPath}`);
+    }
+  });
+
+  it('canonicalizes a docs alias extracted from a $schema URL', async () => {
+    const fetchMock = vi.fn(async (input: unknown) => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => String(input).endsWith('/index.json')
+        ? indexFixture
+        : { type: 'object' },
+    }) as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const validateJson = createSchemaToolHandlers().get('validate_json');
+    const schemaPath = 'core/schema-url-alias.json';
+    const result = await validateJson!({
+      json: { $schema: `https://adcontextprotocol.org/schemas/latest/${schemaPath}` },
+    });
+    const expectedUrl = `https://adcontextprotocol.org/schemas/3.1.19/${schemaPath}`;
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(expectedUrl);
+    expect(result).toContain(`AdCP 3.1 ${schemaPath} schema`);
+  });
+
+  it('rejects unknown versions in every handler instead of falling back to stable', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const handlers = createSchemaToolHandlers();
+    const calls: Array<[string, Record<string, unknown>]> = [
+      ['validate_json', { json: {}, schema_path: 'core/product.json', version: '4.0' }],
+      ['get_schema', { schema_path: 'core/product.json', version: '4.0' }],
+      ['list_schemas', { version: '4.0' }],
+      ['compare_schema_versions', { schema_path: 'core/product.json', from_version: '4.0' }],
+      ['compare_schema_versions', { schema_path: 'core/product.json', to_version: '4.0' }],
+    ];
+
+    for (const [name, input] of calls) {
+      await expect(handlers.get(name)!(input)).rejects.toThrow('Unsupported schema version "4.0"');
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
 
 function registryFrom(index: unknown): SchemaRegistry {
   const paths = extractRegistryPaths(index);

@@ -26,7 +26,9 @@ import {
   getDocById,
   getDocCategories,
   getDocCount,
-  type IndexedDoc,
+  getSupportedDocsVersions,
+  resolveDocsVersion,
+  formatDocsVersion,
 } from './docs-indexer.js';
 import {
   initializeExternalRepos,
@@ -47,50 +49,66 @@ import { findChannelWithAccess, getAccessiblePrivateChannelIds } from '../../sla
 const addieDb = new AddieDatabase();
 
 let initialized = false;
+let initializationPromise: Promise<void> | null = null;
 
 /**
  * Initialize knowledge search
  * - Indexes docs from filesystem
  * - Clones/updates and indexes external repos
  */
-export async function initializeKnowledgeSearch(): Promise<void> {
-  logger.info('Addie: Initializing knowledge search');
+export function initializeKnowledgeSearch(): Promise<void> {
+  if (initialized) return Promise.resolve();
+  if (initializationPromise) return initializationPromise;
 
-  // Index docs from filesystem
-  try {
-    await initializeDocsIndex();
-    const docCount = getDocCount();
-    const categories = getDocCategories();
-    logger.info(
-      {
-        docCount,
-        categories: categories.map((c) => `${c.category}(${c.count})`).join(', '),
-      },
-      'Addie: Docs index ready'
-    );
-  } catch (error) {
-    logger.warn({ error }, 'Addie: Failed to index docs');
-  }
+  initializationPromise = (async () => {
+    logger.info('Addie: Initializing knowledge search');
 
-  // Clone/update and index external repos (sales-agent, client libraries, etc.)
-  try {
-    await initializeExternalRepos();
-    const repoStats = getExternalRepoStats();
-    const totalHeadings = getExternalHeadingCount();
-    if (repoStats.length > 0) {
+    // Index docs from filesystem
+    try {
+      await initializeDocsIndex();
+      const docCount = getDocCount();
+      const categories = getDocCategories();
       logger.info(
         {
-          repos: repoStats.map((r) => `${r.id}(${r.docCount} docs, ${r.headingCount} sections)`).join(', '),
-          totalHeadings,
+          docCount,
+          categories: categories.map((c) => `${c.category}(${c.count})`).join(', '),
         },
-        'Addie: External repos index ready'
+        'Addie: Docs index ready'
+      );
+    } catch (error) {
+      logger.warn({ error }, 'Addie: Failed to index docs');
+    }
+
+    // Clone/update and index external repos (sales-agent, client libraries, etc.)
+    try {
+      await initializeExternalRepos();
+      const repoStats = getExternalRepoStats();
+      const totalHeadings = getExternalHeadingCount();
+      if (repoStats.length > 0) {
+        logger.info(
+          {
+            repos: repoStats.map((r) => `${r.id}(${r.docCount} docs, ${r.headingCount} sections)`).join(', '),
+            totalHeadings,
+          },
+          'Addie: External repos index ready'
+        );
+      }
+    } catch (error) {
+      logger.warn({ error }, 'Addie: Failed to index external repos');
+    }
+
+    initialized = isDocsIndexReady() && isExternalReposReady();
+    if (!initialized) {
+      logger.warn(
+        { docsReady: isDocsIndexReady(), externalReposReady: isExternalReposReady() },
+        'Addie: Knowledge search initialization incomplete; a later caller will retry',
       );
     }
-  } catch (error) {
-    logger.warn({ error }, 'Addie: Failed to index external repos');
-  }
+  })().finally(() => {
+    initializationPromise = null;
+  });
 
-  initialized = true;
+  return initializationPromise;
 }
 
 /**
@@ -110,6 +128,8 @@ export interface DocsSearchResult {
   headline: string;
   sourceUrl: string;
   content: string;
+  version?: string;
+  artifactVersion?: string;
 }
 
 /**
@@ -118,14 +138,18 @@ export interface DocsSearchResult {
  */
 export function searchDocsContent(
   query: string,
-  options: { category?: string; limit?: number } = {}
+  options: { category?: string; limit?: number; version?: string } = {}
 ): DocsSearchResult[] {
-  if (!initialized || !isDocsIndexReady()) {
+  if (!isDocsIndexReady()) {
     return [];
   }
 
   const limit = options.limit ?? 5;
-  const results = searchDocs(query, { category: options.category, limit });
+  const results = searchDocs(query, {
+    category: options.category,
+    limit,
+    version: options.version,
+  });
 
   return results.map((doc) => {
     // Create a headline from first 200 chars (skip headings)
@@ -142,6 +166,8 @@ export function searchDocsContent(
       headline: headline + (headline.length >= 200 ? '...' : ''),
       sourceUrl: doc.sourceUrl,
       content: doc.content,
+      version: doc.version,
+      artifactVersion: doc.artifactVersion,
     };
   });
 }
@@ -162,7 +188,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
   {
     name: 'search_docs',
     description:
-      'Search the official AdCP documentation, extracted JSON schema facts, and working group documents. Includes protocol docs, website content, and documents published by working groups (brand guidelines, positioning, governance docs, etc.). Returns excerpts with source URLs. IMPORTANT: Use ONE well-crafted search with specific keywords rather than multiple searches. For complete request/response fields or enum values, verify with get_schema. To determine whether a schema or protocol feature exists, use list_schemas. For detailed prose or an extracted schema result, use get_doc with the doc ID from results.',
+      'Search official AdCP docs, extracted schema facts, and working group documents. Protocol results are isolated by release and always name their version. Pass version when the user names one; omission means stable, never beta. Website and working group results are version-independent. Use one specific query. Verify exact fields and enums with get_schema at the same version, use list_schemas for schema availability, and use get_doc for full content.',
     usage_hints: 'use for learning, understanding concepts, "how does X work?", "what is X?", "explain X", brand guidelines, working group documents',
     input_schema: {
       type: 'object',
@@ -175,8 +201,24 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'Optional category filter. Protocol docs: media-buy, signals, creative, intro, reference. Working group docs: "working group: <name>" (e.g., "working group: marketing").',
         },
+        version: {
+          type: 'string',
+          description: 'Protocol docs version: 3.1 (stable default), 3.2-beta, 3.0, or 2.5. Also accepts the exact snapshot version returned in results.',
+          enum: [
+            '3.1',
+            '3.1.19',
+            '3.2-beta',
+            '3.2.0-beta.5',
+            '3.0',
+            '3.0.26',
+            '2.5',
+            '2.5.3',
+          ],
+        },
         limit: {
-          type: 'number',
+          type: 'integer',
+          minimum: 1,
+          maximum: 5,
           description: 'Maximum results (default 3, max 5). Use fewer results for simple questions.',
         },
       },
@@ -186,7 +228,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
   {
     name: 'get_doc',
     description:
-      'Get the full content of a specific documentation page by ID. Use this after search_docs when you need complete details from a document.',
+      'Get the full content of a specific documentation page by ID. Canonical IDs returned by search_docs already include the version. For a legacy unversioned ID, pass version; omitted version means stable default.',
     usage_hints: 'use after search_docs to read complete doc details',
     input_schema: {
       type: 'object',
@@ -194,6 +236,10 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         doc_id: {
           type: 'string',
           description: 'The document ID from search_docs results',
+        },
+        version: {
+          type: 'string',
+          description: 'Optional protocol version for legacy unversioned IDs: 3.1, 3.2-beta, 3.0, or 2.5.',
         },
       },
       required: ['doc_id'],
@@ -531,9 +577,27 @@ export function createKnowledgeToolHandlers(
     const startTime = Date.now();
     const query = input.query as string;
     const category = input.category as string | undefined;
-    const limit = Math.min((input.limit as number) || 3, 5);
+    const requestedVersion = input.version as string | undefined;
+    const requestedLimit = input.limit;
+    const limit = typeof requestedLimit === 'number' && Number.isFinite(requestedLimit)
+      ? Math.min(5, Math.max(1, Math.trunc(requestedLimit)))
+      : 3;
 
-    const results = searchDocsContent(query, { category, limit });
+    if (!isDocsIndexReady()) {
+      return 'Documentation index not ready.';
+    }
+
+    const selectedVersion = resolveDocsVersion(requestedVersion);
+    if (!selectedVersion) {
+      const available = getSupportedDocsVersions().map((version) => version.version).join(', ');
+      return `Unknown documentation version: "${requestedVersion}". Available versions: ${available}.`;
+    }
+
+    const results = searchDocsContent(query, {
+      category,
+      limit,
+      version: selectedVersion.version,
+    });
     const latencyMs = Date.now() - startTime;
 
     // Log search for pattern analysis (async, don't block response)
@@ -553,7 +617,7 @@ export function createKnowledgeToolHandlers(
         { query, category, indexReady: isDocsIndexReady(), docCount: getDocCount() },
         'Addie search_docs: zero results'
       );
-      return `No documentation found for: "${query}"${category ? ` in category: ${category}` : ''}\n\nTry using web_search for external sources or search_slack for community discussions.`;
+      return `No documentation found in AdCP ${formatDocsVersion(selectedVersion)} for: "${query}"${category ? ` in category: ${category}` : ''}\n\nTry another supported protocol version, web_search for external sources, or search_slack for community discussions.`;
     }
 
     // Return smart excerpts that focus on content matching the query
@@ -561,9 +625,14 @@ export function createKnowledgeToolHandlers(
       .map((doc, i) => {
         const excerpt = extractSmartExcerpt(doc.content, query, 500);
 
+        const versionLabel = doc.version && doc.artifactVersion
+          ? `${doc.version} (snapshot ${doc.artifactVersion})`
+          : 'Version-independent';
+
         return `## ${i + 1}. ${doc.title}
 **ID:** ${doc.id}
 **Category:** ${doc.category}
+**Version:** ${versionLabel}
 **Source:** ${doc.sourceUrl}
 
 ${excerpt}
@@ -572,17 +641,23 @@ ${excerpt}
       })
       .join('\n\n---\n\n');
 
-    return `Found ${results.length} docs. Use get_doc with an ID for full content:\n\n${formatted}`;
+    return `Searching AdCP ${formatDocsVersion(selectedVersion)}. Found ${results.length} docs. Use get_doc with an ID for full content:\n\n${formatted}`;
   });
 
   handlers.set('get_doc', async (input) => {
     const docId = input.doc_id as string;
+    const requestedVersion = input.version as string | undefined;
 
-    if (!initialized || !isDocsIndexReady()) {
+    if (!isDocsIndexReady()) {
       return 'Documentation index not ready.';
     }
 
-    const doc = getDocById(docId);
+    if (requestedVersion && !resolveDocsVersion(requestedVersion)) {
+      const available = getSupportedDocsVersions().map((version) => version.version).join(', ');
+      return `Unknown documentation version: "${requestedVersion}". Available versions: ${available}.`;
+    }
+
+    const doc = getDocById(docId, { version: requestedVersion });
     if (!doc) {
       return `Document not found: "${docId}". Use search_docs to find available documents.`;
     }
@@ -594,10 +669,15 @@ ${excerpt}
       content = content.substring(0, maxLength) + '\n\n... [content truncated at 4000 chars]';
     }
 
+    const versionLabel = doc.version && doc.artifactVersion
+      ? `${doc.version} (snapshot ${doc.artifactVersion})`
+      : 'Version-independent';
+
     return `# ${doc.title}
 
 **Source:** ${doc.sourceUrl}
 **Category:** ${doc.category}
+**Version:** ${versionLabel}
 
 ${content}`;
   });

@@ -5,6 +5,18 @@ npm-debug.log*
 # Build outputs (rebuilt inside Docker)
 build
 dist
+!dist/docs
+dist/docs/*
+# Frozen documentation snapshots currently exposed by docs.json. The Addie
+# docs-version tests keep this allowlist synchronized with navigation.
+!dist/docs/2.5.3
+!dist/docs/2.5.3/**
+!dist/docs/3.0.26
+!dist/docs/3.0.26/**
+!dist/docs/3.1.19
+!dist/docs/3.1.19/**
+!dist/docs/3.2.0-beta.5
+!dist/docs/3.2.0-beta.5/**
 !dist/schemas
 dist/schemas/latest
 dist/schemas/v*

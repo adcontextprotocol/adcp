@@ -20,15 +20,15 @@ Search documentation, code repos, Slack history, curated resources, GitHub issue
 
 ### `search_docs`
 
-Search the AdCP documentation for relevant content. Use this to answer questions about AdCP, the protocol, tools, or how things work.
+Search official AdCP docs, extracted schema facts, and working group documents. Protocol results are isolated by release and always name their version. Pass version when the user names one; omission means stable, never beta. Website and working group results are version-independent. Use one specific query. Verify exact fields and enums with get_schema at the same version, use list_schemas for schema availability, and use get_doc for full content.
 
-*Source: `server/src/addie/mcp/docs-search.ts`*
+*Source: `server/src/addie/mcp/knowledge-search.ts`*
 
 ### `get_doc`
 
-Get the full content of a specific documentation page. Use this after search_docs to read a document in detail.
+Get the full content of a specific documentation page by ID. Canonical IDs returned by search_docs already include the version. For a legacy unversioned ID, pass version; omitted version means stable default.
 
-*Source: `server/src/addie/mcp/docs-search.ts`*
+*Source: `server/src/addie/mcp/knowledge-search.ts`*
 
 ### `search_slack`
 
@@ -300,7 +300,7 @@ Save a brand to the registry as a community brand. Use for manually adding brand
 
 ### `list_brands`
 
-List brands in the registry with optional filters. Can filter by source type and search by name or domain.
+List brands in the registry with optional filters and cached relationship trust state. Can filter by source type and search by name or domain.
 
 *Source: `server/src/addie/mcp/brand-tools.ts`*
 
@@ -1363,7 +1363,7 @@ Mark modules as tested out after a placement assessment confirms the learner alr
 
 ### `start_certification_exam`
 
-Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S6: Security). S5 Sponsored Intelligence is listed in the curriculum but is not assessable until its sandbox labs exist. The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.
+Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence, S6: Security). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.
 
 *Source: `server/src/addie/mcp/certification-tools.ts`*
 
@@ -1651,9 +1651,9 @@ on file (set via the dashboard or invite-acceptance flow).
 
 ### `get_billing_portal`
 
-Get a link to the Stripe Customer Portal where the member can view invoices, download receipts, update payment methods, and manage their subscription.
-Use this when a member asks about receipts, invoices, billing history, payment methods, or subscription management.
-The member must be signed in.
+Get a link to the Stripe Customer Portal where an organization owner or admin can view invoices, download receipts, update payment methods, and manage the subscription.
+Use this when an owner or admin asks about receipts, invoices, billing history, payment methods, or subscription management.
+The user must be signed in and have an active owner or admin role in the selected organization.
 
 *Source: `server/src/addie/mcp/billing-tools.ts`*
 
