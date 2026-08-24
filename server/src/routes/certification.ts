@@ -728,7 +728,6 @@ export function createCertificationRouters() {
   // GET /api/organizations/:orgId/certification-summary — team credential overview
   orgRouter.get('/:orgId/certification-summary', requireAuth, async (req, res) => {
     try {
-      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { orgId } = req.params;
 
       // Authorization is scoped to the exact credential that authenticated.
@@ -892,7 +891,6 @@ export function createCertificationRouters() {
   // POST /api/organizations/:orgId/certification-invites/:id/resend — re-send a stale invitation
   orgRouter.post('/:orgId/certification-invites/:id/resend', requireAuth, async (req, res) => {
     try {
-      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { orgId, id } = req.params;
 
       if (!isUuid(id)) {
@@ -942,7 +940,6 @@ export function createCertificationRouters() {
   // GET /api/organizations/:orgId/certification-goals — list goals with progress
   orgRouter.get('/:orgId/certification-goals', requireAuth, async (req, res) => {
     try {
-      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { orgId } = req.params;
 
       if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
@@ -1002,7 +999,6 @@ export function createCertificationRouters() {
   // DELETE /api/organizations/:orgId/certification-goals/:id — remove a goal (admin only)
   orgRouter.delete('/:orgId/certification-goals/:id', requireAuth, async (req, res) => {
     try {
-      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { orgId, id } = req.params;
 
       const membershipResult = await resolveUserOrgMembership(workos, req.user!, orgId);
@@ -1030,7 +1026,6 @@ export function createCertificationRouters() {
   // GET /api/organizations/:orgId/certification-stalled — count of stalled learners
   orgRouter.get('/:orgId/certification-stalled', requireAuth, async (req, res) => {
     try {
-      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { orgId } = req.params;
 
       if (!await resolveUserOrgMembership(workos, req.user!, orgId)) {
