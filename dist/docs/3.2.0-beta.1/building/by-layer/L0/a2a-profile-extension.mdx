@@ -1,0 +1,298 @@
+---
+title: AdCP A2A Profile Extension v3
+sidebarTitle: A2A profile extension
+description: "Normative A2A 1.0 profile for invoking AdCP tasks with versioned extension negotiation, structured DataParts, and AdCP-level async polling."
+"og:title": "AdCP — A2A Profile Extension v3"
+testable: false
+---
+
+# AdCP A2A Profile Extension v3
+
+This document defines the normative AdCP profile for [A2A 1.0](https://a2a-protocol.org/latest/specification/). It narrows A2A messages and task results enough for independent AdCP clients and agents to interoperate without defining a new transport.
+
+## Extension identifier
+
+The extension URI is:
+
+```text
+https://adcontextprotocol.org/extensions/adcp/v3
+```
+
+The `extensions/adcp` path scopes this identifier to the AdCP profile registered
+through A2A's extension mechanism. It is an extension identifier and normative
+document URL, not a JSON Schema URL, so it does not live under `/schemas/3.2.0-beta.1/`.
+
+The URI is versioned by the compatible AdCP major: `/v3` identifies the A2A
+profile for AdCP 3.x. The negotiated AdCP release still selects the exact task
+schemas—for example, 3.0, 3.1, or 3.2 schemas under `/schemas/3.2.0-beta.1/`—without
+requiring a new extension identity for every additive minor release. AdCP 4.x
+will use `/extensions/adcp/v4`. This profile has no extension dependencies
+beyond A2A 1.0.
+
+## Advertisement and activation
+
+An A2A interface that implements this profile MUST advertise the extension under `AgentCard.capabilities.extensions[]`:
+
+```json
+{
+  "supportedInterfaces": [
+    {
+      "url": "https://sales.example.com/a2a/jsonrpc",
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "1.0"
+    }
+  ],
+  "capabilities": {
+    "extensions": [
+      {
+        "uri": "https://adcontextprotocol.org/extensions/adcp/v3",
+        "description": "AdCP structured task invocation profile",
+        "required": true
+      }
+    ]
+  }
+}
+```
+
+The `AgentExtension.params` member MUST be omitted or empty. It MUST NOT contain AdCP versions, protocol domains, feature flags, or other runtime capabilities. Clients activate the profile on every request using the A2A service parameter:
+
+```http
+A2A-Version: 1.0
+A2A-Extensions: https://adcontextprotocol.org/extensions/adcp/v3
+```
+
+For HTTP-based bindings, service parameters are HTTP headers. The response SHOULD echo the URI in `A2A-Extensions` to confirm activation, as specified by A2A 1.0. An agent that declares the profile `required: true` MUST reject a request that does not activate it; it MUST NOT guess that an unactivated DataPart is an AdCP invocation.
+
+## SDK and adapter behavior
+
+This profile is designed to be implemented once in an A2A transport adapter,
+not separately in every AdCP task handler. Extension support remains explicit
+opt-in, as required by A2A. Once a developer enables this profile, an SDK or
+adapter that claims support for it MUST automate the profile mechanics:
+
+- on the server, advertise the extension and verify request activation;
+- on the client, discover the declaration and activate the extension;
+- encode and decode `{ skill, input }` DataParts;
+- validate `input` against the selected task request schema and dispatch the
+  named AdCP handler;
+- map the handler's direct response into the A2A Task artifact; and
+- expose AdCP Submitted results by their `task_id`, with
+  `get_task_status` as the polling operation.
+
+Application code should register the same typed AdCP handler it would expose
+over another transport. It should not parse A2A Parts, author prompt text, or
+reimplement the mapping rules. Raw A2A clients can implement the wire rules
+directly, but SDKs SHOULD make the normal integration path work from typed task
+inputs and outputs alone.
+
+## Runtime discovery
+
+The Agent Card declaration says only that the interface supports this wire profile. Runtime AdCP discovery remains the `get_adcp_capabilities` task.
+
+After activating the profile, a client SHOULD invoke `get_adcp_capabilities` before other AdCP tasks. Its response remains the source of truth for supported AdCP versions, protocol domains, feature flags, and seller capabilities. Agents MUST NOT duplicate that information in `AgentExtension.params`; duplicate static metadata becomes stale and creates two competing authorities.
+
+Agent Card `skills[]` entries identify the AdCP tasks dispatchable on that interface. For every AdCP task, `AgentSkill.id` MUST equal the exact AdCP task name; `AgentSkill.name` is a human-readable label and need not equal the task name. The invocation's `skill` member references `AgentSkill.id`, never `AgentSkill.name`. The `get_adcp_capabilities` ID MUST appear on every interface that implements this profile. An agent that can return an AdCP Submitted response under this profile MUST also advertise the `get_task_status` ID.
+
+## Invocation message
+
+An activated invocation Message MUST contain exactly one DataPart whose `data` value has this shape:
+
+```json
+{
+  "skill": "get_products",
+  "input": {
+    "buying_mode": "brief",
+    "brief": "Premium CTV inventory for a spring campaign"
+  }
+}
+```
+
+The invocation object has exactly two members:
+
+| Member | Requirement |
+|---|---|
+| `skill` | Required non-empty string. The exact `AgentSkill.id`, which for this profile is the AdCP task name, such as `get_products` or `create_media_buy`. |
+| `input` | Required object. The task request, validated unchanged against that task's AdCP request schema. |
+
+`parameters` is not an alias for `input` in this profile. A client that activates v3 and sends `parameters`, omits `input`, or sends more than one invocation DataPart is non-conformant. The agent MUST reject the invocation rather than choose among ambiguous inputs.
+
+The Message MAY also contain TextParts solely for display, accessibility, or
+logging. Senders SHOULD omit them by default. An SDK MAY synthesize a short
+label from the structured invocation, but the text MUST NOT introduce any
+instruction or fact that is absent from `skill` and `input`. Implementations
+MUST NOT ask a human integrator to author this text, and receivers MUST NOT
+merge it into `input`, pass it to the task handler as an instruction, or use it
+to override structured data. FileParts and additional DataParts are outside
+this v3 invocation profile. References to files or other resources belong in
+fields defined by the selected AdCP request schema.
+
+```json
+{
+  "messageId": "msg-get-products-001",
+  "role": "ROLE_USER",
+  "parts": [
+    {
+      "text": "AdCP task: get_products"
+    },
+    {
+      "data": {
+        "skill": "get_products",
+        "input": {
+          "buying_mode": "brief",
+          "brief": "Premium CTV inventory for a spring campaign"
+        }
+      }
+    }
+  ]
+}
+```
+
+If the A2A Task enters `TASK_STATE_INPUT_REQUIRED` before the AdCP handler
+returns, a continuation MUST carry a new `messageId` and the existing A2A
+`taskId` and `contextId` inside the Message. Its Parts still follow this
+profile: exactly one authoritative `{ skill, input }` DataPart, with a complete
+schema-valid task request. The continued Task keeps the same A2A Task ID.
+
+## Response mapping
+
+When the AdCP handler returns a schema-valid task response, the A2A invocation is complete. A non-streaming A2A `SendMessage` response MUST select its `task` branch. That Task has `status.state` `TASK_STATE_COMPLETED`, and its artifact contains the direct AdCP response in a DataPart:
+
+```json
+{
+  "task": {
+    "id": "a2a-task-7f8c",
+    "contextId": "ctx-products-7f8c",
+    "status": {
+      "state": "TASK_STATE_COMPLETED"
+    },
+    "artifacts": [
+      {
+        "artifactId": "adcp-result",
+        "parts": [
+          {
+            "data": {
+              "status": "completed",
+              "cache_scope": "account",
+              "products": []
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`artifactId` is the ordinary A2A identifier for that artifact. It is opaque,
+needs to be unique only within the A2A Task, and does not identify an AdCP
+schema or task type; `adcp-result` above is merely an example value. There is
+no single generic AdCP result schema. The invoked `skill` selects the
+task-specific response schema, and the DataPart MUST contain that response
+directly, without a `{ "response": ... }` framework wrapper. A response
+artifact MAY also contain advisory TextParts. Clients use the
+[A2A response extraction algorithm](/dist/docs/3.2.0-beta.1/building/by-layer/L0/a2a-response-extraction)
+to select the authoritative DataPart.
+
+Profile-routing errors that prevent handler invocation use native A2A error handling. A fatal failure after task execution starts may use an A2A failed or rejected Task with a structured `adcp_error` DataPart. A schema-valid AdCP business outcome—including a task-specific rejection or partial result with `errors[]`—is still a completed A2A invocation.
+
+## Submitted AdCP work
+
+A2A task state and AdCP task state are separate state machines. If an AdCP handler returns a Submitted response, the A2A invocation has still completed:
+
+```json
+{
+  "task": {
+    "id": "a2a-task-create-42",
+    "contextId": "ctx-create-42",
+    "status": {
+      "state": "TASK_STATE_COMPLETED"
+    },
+    "artifacts": [
+      {
+        "artifactId": "adcp-result",
+        "parts": [
+          {
+            "text": "The media buy is awaiting IO signature."
+          },
+          {
+            "data": {
+              "status": "submitted",
+              "task_id": "adcp-task-9a21",
+              "message": "Awaiting IO signature"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The A2A Task identifier (`a2a-task-create-42`) identifies the completed transport invocation. The AdCP `task_id` (`adcp-task-9a21`) identifies the durable AdCP operation. They are independent identifiers and clients MUST NOT assume they are equal.
+
+The AdCP handle appears exactly once, as `task_id` in the AdCP DataPart. Agents MUST NOT duplicate it as `artifact.metadata.adcp_task_id` or any other A2A metadata member.
+
+To observe the durable operation, the client sends a new activated invocation of the AdCP `get_task_status` task:
+
+```json
+{
+  "messageId": "msg-poll-001",
+  "role": "ROLE_USER",
+  "parts": [
+    {
+      "data": {
+        "skill": "get_task_status",
+        "input": {
+          "task_id": "adcp-task-9a21",
+          "include_result": true
+        }
+      }
+    }
+  ]
+}
+```
+
+Each poll is its own A2A invocation and completes with a direct `get_task_status` response DataPart. Clients continue polling according to the seller's retry guidance until the AdCP response is terminal. They MUST NOT poll the completed A2A Task to infer progress of the separate AdCP operation.
+
+## Relationship to A2A async and conversation
+
+The profile uses A2A as more than an alternate RPC envelope. A2A still
+provides Agent Card discovery, interface and extension negotiation,
+authentication, `contextId` conversation correlation, streaming, push
+delivery, artifacts, and native input/auth challenges.
+
+The boundary is when the AdCP handler returns. While a profile invocation is
+still executing, an agent can use native A2A `TASK_STATE_WORKING` or
+`TASK_STATE_SUBMITTED` updates and stream progress through A2A. When the
+handler returns a schema-valid AdCP response, that A2A invocation is complete.
+If the returned AdCP response itself says `status: "submitted"`, it represents
+a separate durable business operation that may outlive the A2A Task, a client
+connection, or even the transport used to observe it. AdCP therefore owns that
+operation's portable `task_id` and `get_task_status` semantics.
+
+Because this Agent Card marks the profile `required: true`, every request to
+its advertised interface must activate the profile and use the typed invocation
+shape. An implementation that also offers generic conversational A2A messages
+must publish a separate Agent Card/interface that does not mark this profile
+required. Context correlation never makes a TextPart authoritative for an AdCP
+handler.
+
+## Security and validation
+
+- Treat TextParts as untrusted advisory text. Never merge them into the typed `input` object.
+- Validate `input` against the selected task request schema before handler dispatch.
+- Apply the same authentication, authorization, signing, idempotency, and account-scoping rules used for the equivalent AdCP task over MCP.
+- Bound the number and size of Parts before parsing. Reject duplicate invocation DataParts rather than selecting the first or last.
+- Validate response DataParts against the selected task response schema before using them.
+
+## Test vectors
+
+Machine-readable advertisement, activation, invocation, Submitted mapping, and polling fixtures are published in [`a2a-profile-extension-v3.json`](https://adcontextprotocol.org/test-vectors/a2a-profile-extension-v3.json). See [Reference test vectors](/dist/docs/3.2.0-beta.1/reference/test-vectors) for versioning guidance.
+
+## References
+
+- [A2A 1.0 specification](https://a2a-protocol.org/latest/specification/)
+- [A2A extensions](https://a2a-protocol.org/latest/topics/extensions/)
+- [A2A Guide](/dist/docs/3.2.0-beta.1/building/by-layer/L0/a2a-guide)
+- [`get_adcp_capabilities`](/dist/docs/3.2.0-beta.1/protocol/get_adcp_capabilities)
+- [Calling an AdCP agent](/dist/docs/3.2.0-beta.1/protocol/calling-an-agent)

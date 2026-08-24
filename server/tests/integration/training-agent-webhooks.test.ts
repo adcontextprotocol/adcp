@@ -105,48 +105,47 @@ describe('Training Agent webhook emission', () => {
     const deliveries: CapturedDelivery[] = [];
     let srv: http.Server | undefined;
     try {
-      const done = new Promise<void>(resolve => {
-        startReceiver((d, res) => {
-          deliveries.push(d);
-          res.writeHead(200); res.end();
-          resolve();
-        }).then(s => {
-          srv = s;
-          const addr = s.address() as AddressInfo;
-          const webhookUrl = `http://127.0.0.1:${addr.port}/hook/create_media_buy`;
-          const catalog = buildCatalog();
-          const product = catalog[0].product as { product_id: string; pricing_options: Array<{ pricing_option_id: string }> };
-          return request(app)
-            .post('/api/training-agent/sales/mcp')
-            .set('Authorization', AUTH)
-            .set('Content-Type', 'application/json')
-            .set('Accept', 'application/json, text/event-stream')
-            .send({
-              jsonrpc: '2.0',
-              id: 1,
-              method: 'tools/call',
-              params: {
-                name: 'create_media_buy',
-                arguments: {
-                  idempotency_key: randomUUID(),
-                  adcp_major_version: 3,
-                  account: { brand: { domain: 'webhook-test.example' }, operator: 'webhook-test.example' },
-                  brand: { domain: 'webhook-test.example' },
-                  start_time: '2027-06-01T00:00:00Z',
-                  end_time: '2027-07-01T00:00:00Z',
-                  packages: [{
-                    product_id: product.product_id,
-                    pricing_option_id: product.pricing_options[0].pricing_option_id,
-                    budget: 50000,
-                    start_time: '2027-06-01T00:00:00Z',
-                    end_time: '2027-07-01T00:00:00Z',
-                  }],
-                  push_notification_config: { url: webhookUrl, operation_id: 'op_completion_webhook' },
-                },
-              },
-            });
-        });
+      let resolveDelivery!: () => void;
+      const done = new Promise<void>(resolve => { resolveDelivery = resolve; });
+      srv = await startReceiver((d, res) => {
+        deliveries.push(d);
+        res.writeHead(200); res.end();
+        resolveDelivery();
       });
+      const addr = srv.address() as AddressInfo;
+      const webhookUrl = `http://127.0.0.1:${addr.port}/hook/create_media_buy`;
+      const catalog = buildCatalog();
+      const product = catalog[0].product as { product_id: string; pricing_options: Array<{ pricing_option_id: string }> };
+      const toolResponse = await request(app)
+        .post('/api/training-agent/mcp')
+        .set('Authorization', AUTH)
+        .set('Content-Type', 'application/json')
+        .set('Accept', 'application/json, text/event-stream')
+        .send({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: {
+            name: 'create_media_buy',
+            arguments: {
+              idempotency_key: randomUUID(),
+              adcp_major_version: 3,
+              account: { brand: { domain: 'webhook-test.example' }, operator: 'webhook-test.example' },
+              brand: { domain: 'webhook-test.example' },
+              start_time: '2027-06-01T00:00:00Z',
+              end_time: '2027-07-01T00:00:00Z',
+              packages: [{
+                product_id: product.product_id,
+                pricing_option_id: product.pricing_options[0].pricing_option_id,
+                budget: 50000,
+                start_time: '2027-06-01T00:00:00Z',
+                end_time: '2027-07-01T00:00:00Z',
+              }],
+              push_notification_config: { url: webhookUrl, operation_id: 'op_completion_webhook' },
+            },
+          },
+        });
+      expect(structuredToolResult(toolResponse)).not.toHaveProperty('adcp_error');
 
       await Promise.race([
         done,
@@ -185,6 +184,220 @@ describe('Training Agent webhook emission', () => {
     }
   }, 20000);
 
+  it('preserves 3.0 /sales inline create_media_buy completion webhooks', async () => {
+    const compatApp = express();
+    compatApp.use(express.json());
+    compatApp.use('/api/training-agent', createTrainingAgentRouter({
+      storyboardCompat: { version: '3.0' },
+    }));
+    const deliveries: CapturedDelivery[] = [];
+    let srv: http.Server | undefined;
+    try {
+      let resolveDelivery!: () => void;
+      const delivered = new Promise<void>(resolve => { resolveDelivery = resolve; });
+      srv = await startReceiver((delivery, res) => {
+        deliveries.push(delivery);
+        res.writeHead(200);
+        res.end();
+        resolveDelivery();
+      });
+      const addr = srv.address() as AddressInfo;
+      const webhookUrl = `http://127.0.0.1:${addr.port}/hook/three-zero-create`;
+      const account = {
+        brand: { domain: 'three-zero-webhook.example' },
+        operator: 'pinnacle-agency.example',
+        sandbox: true,
+      };
+      const productId = 'three_zero_webhook_legacy_product';
+      const pricingOptionId = 'three_zero_webhook_legacy_cpm';
+      const legacyFormat = {
+        agent_url: 'https://creative.adcontextprotocol.org/',
+        id: 'display_300x250_image',
+        width: 300,
+        height: 250,
+      };
+      const callTool = (id: number, name: string, args: Record<string, unknown>) => request(compatApp)
+        .post('/api/training-agent/sales/mcp')
+        .set('Authorization', AUTH)
+        .set('Content-Type', 'application/json')
+        .set('Accept', 'application/json, text/event-stream')
+        .send({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } });
+      await callTool(28, 'comply_test_controller', {
+        adcp_version: '3.0',
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            name: 'Webhook legacy product',
+            description: 'Exercises callback wire projection',
+            delivery_type: 'guaranteed',
+            channels: ['display'],
+            format_ids: [legacyFormat],
+          },
+        },
+      });
+      await callTool(29, 'comply_test_controller', {
+        adcp_version: '3.0',
+        account,
+        brand: account.brand,
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 12 },
+        },
+      });
+      const idempotencyKey = `three-zero-webhook-${randomUUID()}`;
+      const response = await request(compatApp)
+        .post('/api/training-agent/sales/mcp')
+        .set('Authorization', AUTH)
+        .set('Content-Type', 'application/json')
+        .set('Accept', 'application/json, text/event-stream')
+        .send({
+          jsonrpc: '2.0',
+          id: 30,
+          method: 'tools/call',
+          params: {
+            name: 'create_media_buy',
+            arguments: {
+              adcp_version: '3.0',
+              idempotency_key: idempotencyKey,
+              account,
+              brand: account.brand,
+              start_time: '2027-06-01T00:00:00Z',
+              end_time: '2027-07-01T00:00:00Z',
+              packages: [{
+                product_id: productId,
+                pricing_option_id: pricingOptionId,
+                budget: 50_000,
+                format_ids: [legacyFormat],
+              }],
+              push_notification_config: {
+                url: webhookUrl,
+                operation_id: 'op_three_zero_create',
+              },
+            },
+          },
+        });
+
+      const result = structuredToolResult(response);
+      expect(response.status).toBe(200);
+      expect(result).not.toHaveProperty('adcp_error');
+      expect(result.media_buy_id).toEqual(expect.any(String));
+      expect((result.packages as Array<Record<string, unknown>>)[0].format_ids)
+        .toEqual([legacyFormat]);
+      await Promise.race([
+        delivered,
+        new Promise((_, reject) => setTimeout(
+          () => reject(new Error('3.0 inline completion webhook never arrived')),
+          10_000,
+        )),
+      ]);
+
+      expect(deliveries).toHaveLength(1);
+      const payload = JSON.parse(deliveries[0].body) as Record<string, unknown>;
+      expect(payload).toMatchObject({
+        operation_id: 'op_three_zero_create',
+        task_type: 'create_media_buy',
+        protocol: 'media-buy',
+        status: 'completed',
+      });
+      expect(payload.result).toEqual(result);
+      expect(payload.idempotency_key).toMatch(/^[A-Za-z0-9_.:-]{16,255}$/);
+      expect(deliveries[0].headers['signature-input']).toBeDefined();
+      expect(deliveries[0].headers.signature).toBeDefined();
+    } finally {
+      if (srv) {
+        srv.closeAllConnections?.();
+        await new Promise<void>(resolve => srv!.close(() => resolve()));
+      }
+    }
+  }, 20000);
+
+  it('partitions 3.0 delivery identity by authenticated caller on the same account and request key', async () => {
+    const compatApp = express();
+    compatApp.use(express.json());
+    compatApp.use('/api/training-agent', createTrainingAgentRouter({
+      storyboardCompat: { version: '3.0' },
+    }));
+    const deliveries: CapturedDelivery[] = [];
+    let srv: http.Server | undefined;
+    try {
+      let resolveDeliveries!: () => void;
+      const delivered = new Promise<void>(resolve => { resolveDeliveries = resolve; });
+      srv = await startReceiver((delivery, res) => {
+        deliveries.push(delivery);
+        res.writeHead(200);
+        res.end();
+        if (deliveries.length === 2) resolveDeliveries();
+      });
+      const addr = srv.address() as AddressInfo;
+      const webhookUrl = `http://127.0.0.1:${addr.port}/hook/three-zero-callers`;
+      const product = buildCatalog()[0].product as {
+        product_id: string;
+        pricing_options: Array<{ pricing_option_id: string }>;
+      };
+      const idempotencyKey = `shared-caller-key-${randomUUID()}`;
+      const toolArguments = {
+        adcp_version: '3.0',
+        idempotency_key: idempotencyKey,
+        account: {
+          brand: { domain: 'shared-account-webhook.example' },
+          operator: 'pinnacle-agency.example',
+        },
+        brand: { domain: 'shared-account-webhook.example' },
+        start_time: '2027-08-01T00:00:00Z',
+        end_time: '2027-09-01T00:00:00Z',
+        packages: [{
+          product_id: product.product_id,
+          pricing_option_id: product.pricing_options[0].pricing_option_id,
+          budget: 50_000,
+        }],
+        push_notification_config: {
+          url: webhookUrl,
+          operation_id: 'op_shared_account_key',
+        },
+      };
+      const callAs = (authorization: string, id: number) => request(compatApp)
+        .post('/api/training-agent/sales/mcp')
+        .set('Authorization', authorization)
+        .set('Content-Type', 'application/json')
+        .set('Accept', 'application/json, text/event-stream')
+        .send({
+          jsonrpc: '2.0',
+          id,
+          method: 'tools/call',
+          params: { name: 'create_media_buy', arguments: toolArguments },
+        });
+
+      const [first, second] = await Promise.all([
+        callAs(BILLABLE_AUTH, 31),
+        callAs(OTHER_BILLABLE_AUTH, 32),
+      ]);
+      expect(structuredToolResult(first)).not.toHaveProperty('adcp_error');
+      expect(structuredToolResult(second)).not.toHaveProperty('adcp_error');
+      await Promise.race([
+        delivered,
+        new Promise((_, reject) => setTimeout(
+          () => reject(new Error('caller-partitioned 3.0 webhooks never arrived')),
+          10_000,
+        )),
+      ]);
+
+      expect(deliveries).toHaveLength(2);
+      const payloads = deliveries.map(delivery => JSON.parse(delivery.body) as Record<string, unknown>);
+      expect(new Set(payloads.map(payload => payload.idempotency_key)).size).toBe(2);
+      expect(payloads.every(payload => payload.operation_id === 'op_shared_account_key')).toBe(true);
+    } finally {
+      if (srv) {
+        srv.closeAllConnections?.();
+        await new Promise<void>(resolve => srv!.close(() => resolve()));
+      }
+    }
+  }, 20000);
+
   it('emits token-correlated callbacks across the split proposal lifecycle', async () => {
     const deliveries: CapturedDelivery[] = [];
     let srv: http.Server | undefined;
@@ -200,7 +413,7 @@ describe('Training Agent webhook emission', () => {
       const addr = srv.address() as AddressInfo;
       const webhookUrl = `http://127.0.0.1:${addr.port}/hook/split-proposals`;
       const call = (name: string, args: Record<string, unknown>) => request(app)
-        .post('/api/training-agent/sales/mcp')
+        .post('/api/training-agent/mcp')
         .set('Authorization', AUTH)
         .set('Content-Type', 'application/json')
         .set('Accept', 'application/json, text/event-stream')
@@ -348,7 +561,7 @@ describe('Training Agent webhook emission', () => {
           const catalog = buildCatalog();
           const product = catalog[0].product as { product_id: string; pricing_options: Array<{ pricing_option_id: string }> };
           return request(app)
-            .post('/api/training-agent/sales/mcp')
+            .post('/api/training-agent/mcp')
             .set('Authorization', BILLABLE_AUTH)
             .set('Content-Type', 'application/json')
             .set('Accept', 'application/json, text/event-stream')
@@ -412,7 +625,7 @@ describe('Training Agent webhook emission', () => {
 
       await emitFrameworkTaskWebhook({
         url: `http://127.0.0.1:${addr.port}/hook/framework-fallback`,
-        operation_id: unsafeScope,
+        delivery_id: unsafeScope,
         payload: {
           task_id: 'tsk_framework_fallback',
           task_type: 'create_media_buy',

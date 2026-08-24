@@ -1,0 +1,65 @@
+---
+title: Migrating Template Format IDs
+description: "Replace parameterized template format IDs with canonical declarations and creative capability IDs in AdCP 3.2."
+"og:title": "AdCP — Migrating template format IDs"
+---
+
+Template and parameterized `format_id` patterns are deprecated in AdCP 3.2. They combined structural constraints, namespace ownership, and operation routing in one compound identifier. Canonical declarations separate those concerns.
+
+## Replacement model
+
+| Legacy use | Canonical replacement |
+|---|---|
+| A template ID plus width/height fields | `format_kind` with explicit canonical `params` |
+| A seller's supported template list | Each product's `format_options[]` |
+| A creative agent's template catalog | `creative.supported_formats[]` |
+| Selecting a build template | `target_capability_id` and, when applicable, `transformer_id` |
+| A manifest's template reference | `format_kind` plus optional `format_option_ref` |
+
+## Product declaration
+
+```json
+{
+  "format_option_id": "display_image_300x250",
+  "format_kind": "image",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "slots": [
+      { "asset_group_id": "image_main", "asset_type": "image", "required": true }
+    ]
+  }
+}
+```
+
+Flexible size support uses `sizes[]` or a responsive bounds envelope in `params`; it does not mint one partially parameterized identifier.
+
+## Creative capability
+
+```json
+{
+  "capability_id": "display_image_builder",
+  "operations": ["build", "validate", "preview"],
+  "format": {
+    "format_kind": "image",
+    "params": {
+      "sizes": [{ "w": 300, "h": 250 }, { "w": 728, "h": 90 }]
+    }
+  }
+}
+```
+
+```json
+{
+  "target_capability_id": "display_image_builder",
+  "message": "Adapt the launch concept to a 300x250 placement"
+}
+```
+
+If the creative service offers separately priced or configured templates, expose them through `list_transformers`. Each transformer declares `output_capability_ids[]`; build requests select one with `transformer_id`.
+
+## Compatibility
+
+Implementations may still parse legacy template IDs for older 3.x peers. Normalize them to canonical declarations immediately and do all matching on the canonical shape. Do not author new template IDs or treat a deprecated `list_creative_formats` response as a source of truth.
+
+See [Canonical formats](/dist/docs/3.2.0-beta.5/creative/canonical-formats) and [`list_transformers`](/dist/docs/3.2.0-beta.5/creative/task-reference/list_transformers).

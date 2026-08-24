@@ -1,0 +1,60 @@
+{
+  "$comment": "Test keypairs for AdCP request-signing conformance. These keys are public and MUST NOT be used in production. See README.md.",
+  "keys": [
+    {
+      "kid": "test-ed25519-2026",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "alg": "EdDSA",
+      "use": "sig",
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "request-signing",
+      "x": "gWUqzATUcUco5Q8fZZXn8aWwb7DQbYGBiqUzLiSDDJo",
+      "_private_d_for_test_only": "A_rC9vrZ2D1xJWLBXGdRW7CYLAh_f83Gqv8nhly7N2M"
+    },
+    {
+      "kid": "test-es256-2026",
+      "kty": "EC",
+      "crv": "P-256",
+      "alg": "ES256",
+      "use": "sig",
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "request-signing",
+      "x": "vGSQmjzPN1txgDY-oBb108gMsRETA9J5IPxqlBczQOY",
+      "y": "JGIbsHoOnHLL_LFqGYUW43BYDAqGYrNRZUylkE7rqSU",
+      "_private_d_for_test_only": "6QL-bTWRsEbiR2NeE19KnjYUw7CiGxLqLQyBr5MMhKw"
+    },
+    {
+      "$comment": "Governance-signing key, adcp_use='governance-signing'. Included so negative vector 009 can demonstrate cross-purpose rejection: the vector presents this key when verifying a request signature, and the verifier MUST reject at step 8 because adcp_use is not 'request-signing'.",
+      "kid": "test-gov-2026",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "alg": "EdDSA",
+      "use": "sig",
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "governance-signing",
+      "x": "rkUcKP5oMd7YjV4yy5mVS5S8fA3LDXcf5jk1P1_52EA",
+      "_private_d_for_test_only": "bag_KLehHhOb-giX2u8kEfm9Djo6Fldl6_dFoRiC_eE"
+    },
+    {
+      "$comment": "Revoked request-signing key. Dedicated keypair for negative vector 017-key-revoked under the signed-requests-runner test-kit contract. adcp_use is 'request-signing' so that the verifier's purpose check (step 8) passes and the revocation check (step 9) fires. Agents pre-configure their revocation list to include this keyid before the negative phase runs; see test-kits/signed-requests-runner.yaml.",
+      "kid": "test-revoked-2026",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "alg": "EdDSA",
+      "use": "sig",
+      "key_ops": [
+        "verify"
+      ],
+      "adcp_use": "request-signing",
+      "x": "r8wqMpVCLKzLSRNBtNmI1g71pPzQcwkATJHcyHK1lXg",
+      "_private_d_for_test_only": "PHd2372_ljsWBOUrEyhipyplIkv7feOfpeoU9bb0T_U"
+    }
+  ]
+}

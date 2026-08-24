@@ -1,0 +1,187 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/attestation-evaluation.json",
+  "title": "Attestation Evaluation",
+  "description": "Evaluator-of-record result for one portable attestation presentation. The result binds to the exact presentation through reference_digest and may also pin the credential bytes. It records evaluation, not issuer evidence: domain consumers attach this object to the governance context, evidence snapshot, rights decision, or other action that relied on it.",
+  "type": "object",
+  "properties": {
+    "reference_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 of the RFC 8785 JSON Canonicalization Scheme encoding of the complete AttestationReference, including embedded_credential when present. This prevents a result for one presentation from being replayed for another."
+    },
+    "credential_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 of the exact resolved or embedded credential bytes according to proof_format. REQUIRED by the normative contract when outcome is verified, expired, revoked, invalid, subject_mismatch, or digest_mismatch; omitted when no credential bytes were obtained. For dual delivery, this is the resolved credential digest; reference_digest independently binds the embedded bytes."
+    },
+    "proof_format": {
+      "type": "string",
+      "format": "uri",
+      "description": "Absolute URI identifying the credential/proof format used to interpret and hash obtained credential bytes. REQUIRED whenever credential_digest is present."
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "verified",
+        "not_found",
+        "expired",
+        "revoked",
+        "invalid",
+        "unsupported",
+        "unverifiable",
+        "untrusted_issuer",
+        "untrusted_resolver",
+        "subject_mismatch",
+        "digest_mismatch",
+        "resolution_failed"
+      ],
+      "description": "Stable evaluation outcome. verified means all required issuer, signature, claim type, subject, consuming-action scope, validity, revocation, and digest checks passed under evaluator policy. subject_mismatch covers either a credential/presentation subject mismatch or a presentation/consuming-action subject mismatch. Other values are non-authoritative failures and MUST NOT be treated as verified."
+    },
+    "evaluated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "evaluated_by": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+      "description": "Canonical agent URL of the evaluator-of-record that produced this result, even when it delegated proof checking to an accepted verifier."
+    },
+    "verifier_agent_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://[^/?#@]+(?:/[^?#]*)?(?:\\?[^#]*)?$",
+      "description": "Accepted verifier agent actually used, when verification was delegated. Omit for local verification or when no verifier was called."
+    },
+    "reason_codes": {
+      "type": "array",
+      "description": "Open, machine-readable reason identifiers supplied by the evaluator. Consumers MUST branch on outcome, not on free-form or evaluator-specific reason codes.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9._:-]+$"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Optional evaluator-produced confidence in the normalized outcome on the AdCP 0–1 scale. This is evaluation output, never copied from an authoritative presenter field. Omit when the proof or evaluator does not support a meaningful confidence score."
+    },
+    "revocation_checked_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the evaluator last checked authoritative revocation state. Its freshness is governed by proof format and evaluator policy."
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Upper bound on reuse of this evaluation, considering credential expiry, revocation-cache TTL, and evaluator policy. Consumers MUST re-evaluate after this time."
+    },
+    "action_binding": {
+      "type": "object",
+      "description": "Optional binding to the consuming action or readback. Domain consumers that rely on an evaluation MUST carry either an action id or an action digest so the result cannot be transplanted to an unrelated decision.",
+      "properties": {
+        "action_type": {
+          "type": "string",
+          "format": "uri",
+          "description": "Absolute URI naming the action vocabulary, such as an AdCP governance-check or audience-evidence snapshot type."
+        },
+        "action_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "Stable identifier of the consuming action within the domain consumer's namespace.",
+          "$comment": "x-entity deliberately omitted because action_type determines which domain entity this identifier names."
+        },
+        "action_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "SHA-256 digest of the domain-defined canonical action preimage."
+        }
+      },
+      "required": [
+        "action_type"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "action_id"
+          ]
+        },
+        {
+          "required": [
+            "action_digest"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/ext.json"
+    }
+  },
+  "required": [
+    "reference_digest",
+    "outcome",
+    "evaluated_at",
+    "evaluated_by"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "verified",
+              "expired",
+              "revoked",
+              "invalid",
+              "subject_mismatch",
+              "digest_mismatch"
+            ]
+          }
+        },
+        "required": [
+          "outcome"
+        ]
+      },
+      "then": {
+        "required": [
+          "credential_digest",
+          "proof_format"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "credential_digest"
+        ]
+      },
+      "then": {
+        "required": [
+          "proof_format"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "reference_digest": "sha256:6a09e667bb67ae853c6ef372a54ff53a510e527fade682d1b05688c2b3e6c1f0",
+      "credential_digest": "sha256:bb67ae8584caa73b3c6ef372fe94f82beef372a54ff53a5f1d36f1c87c62a9bc",
+      "proof_format": "https://www.w3.org/TR/vc-jose-cose/",
+      "outcome": "verified",
+      "evaluated_at": "2026-08-04T12:00:00Z",
+      "evaluated_by": "https://governance.example/adcp",
+      "valid_until": "2026-08-04T13:00:00Z",
+      "action_binding": {
+        "action_type": "https://adcontextprotocol.org/actions/governance-check",
+        "action_id": "check_01JATT8F"
+      }
+    }
+  ]
+}

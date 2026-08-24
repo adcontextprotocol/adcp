@@ -70,6 +70,33 @@
           "$ref": "/schemas/core/vendor-metric-id.json",
           "description": "Identifier for the metric within the vendor's vocabulary."
         },
+        "qualifier": {
+          "type": "object",
+          "description": "Optional qualifier disambiguating commitments to the same vendor metric measured under different methodologies or windows. Same closed key set as standard-scope entries; new keys ship explicitly.",
+          "properties": {
+            "viewability_standard": {
+              "$ref": "/schemas/enums/viewability-standard.json",
+              "description": "Viewability standard for this vendor metric, as a closed enum."
+            },
+            "completion_source": {
+              "$ref": "/schemas/enums/completion-source.json",
+              "description": "Completion attestation source for this vendor metric."
+            },
+            "attribution_methodology": {
+              "$ref": "/schemas/enums/attribution-methodology.json",
+              "description": "Attribution methodology for this vendor outcome metric."
+            },
+            "attribution_window": {
+              "$ref": "/schemas/core/duration.json",
+              "description": "Attribution window for this vendor outcome metric, as a structured duration."
+            },
+            "lift_dimension": {
+              "$ref": "/schemas/enums/lift-dimension.json",
+              "description": "Brand-lift dimension for this vendor metric."
+            }
+          },
+          "additionalProperties": false
+        },
         "committed_at": {
           "type": "string",
           "format": "date-time",

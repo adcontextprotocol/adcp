@@ -52,6 +52,38 @@ describe('hash-aware training-agent idempotency store', () => {
     await store.close();
   });
 
+  it('renews an owned claim without changing its request hash', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
+    const backend = memoryBackend({ sweepIntervalMs: 0 });
+    const store = createHashAwareIdempotencyStore({ backend });
+    const payload = { operation: 'long-running' };
+
+    const claim = await store.check({ principal: PRINCIPAL, key: KEY, payload });
+    if (claim.kind !== 'miss') throw new Error('expected initial claim');
+    await vi.advanceTimersByTimeAsync(100_000);
+    await store.renew({
+      principal: PRINCIPAL,
+      key: KEY,
+      claimToken: claim.claimToken,
+    });
+
+    expect(await backend.get(SCOPED_KEY)).toMatchObject({
+      payloadHash: hashPayload(payload),
+      expiresAt: Math.floor(Date.now() / 1e3) + 120,
+      retainUntil: Math.floor(Date.now() / 1e3) + 180,
+    });
+    expect(await store.check({ principal: PRINCIPAL, key: KEY, payload })).toMatchObject({
+      kind: 'in-flight',
+    });
+    expect(await store.check({ principal: PRINCIPAL, key: KEY, payload: { operation: 'other' } })).toEqual({
+      kind: 'conflict',
+    });
+
+    await store.release({ principal: PRINCIPAL, key: KEY, claimToken: claim.claimToken });
+    await store.close();
+  });
+
   it('preserves expiry skew and the save, release, and transient-error lifecycle', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
@@ -87,6 +119,11 @@ describe('hash-aware training-agent idempotency store', () => {
     expect(releasable.kind).toBe('miss');
     if (releasable.kind !== 'miss') throw new Error('expected releasable claim');
     await store.release({ principal: PRINCIPAL, key: releaseKey, claimToken: releasable.claimToken });
+    expect(await store.check({
+      principal: PRINCIPAL,
+      key: releaseKey,
+      payload: { operation: 'changed-after-release' },
+    })).toEqual({ kind: 'conflict' });
     const reclaimed = await store.check({ principal: PRINCIPAL, key: releaseKey, payload });
     expect(reclaimed.kind).toBe('miss');
     if (reclaimed.kind !== 'miss') throw new Error('expected release to make the key claimable');
@@ -157,7 +194,11 @@ describe('hash-aware training-agent idempotency store', () => {
       response: { resource_id: 'stale' },
       claimToken: first.claimToken,
     })).rejects.toThrow('claim ownership was lost');
-    await store.release({ principal: PRINCIPAL, key: KEY, claimToken: first.claimToken });
+    await expect(store.release({
+      principal: PRINCIPAL,
+      key: KEY,
+      claimToken: first.claimToken,
+    })).rejects.toThrow('claim ownership was lost');
 
     await store.save({
       principal: PRINCIPAL,
@@ -174,7 +215,7 @@ describe('hash-aware training-agent idempotency store', () => {
     await store.close();
   });
 
-  it('serializes fallback release with an expired takeover', async () => {
+  it('fences fallback release when an expired claim is taken over concurrently', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-09T12:00:00Z'));
     const memory = memoryBackend({ sweepIntervalMs: 0 });
@@ -217,7 +258,7 @@ describe('hash-aware training-agent idempotency store', () => {
     expect(takeoverFinished).toBe(false);
 
     resumeRead();
-    await releasing;
+    await expect(releasing).rejects.toThrow('claim ownership was lost');
     const successor = await takeover;
     expect(successor.kind).toBe('miss');
     if (successor.kind !== 'miss') throw new Error('expected successor claim');
@@ -228,7 +269,7 @@ describe('hash-aware training-agent idempotency store', () => {
     await store.close();
   });
 
-  it('lets the SDK adapter release the claim owned by its async request context', async () => {
+  it('passes the SDK beta.7 claim token through the adapter', async () => {
     const backend = memoryBackend({ sweepIntervalMs: 0 });
     const owned = createHashAwareIdempotencyStore({ backend });
     const adapter = adaptOwnedIdempotencyStoreForSdk(owned);
@@ -236,7 +277,8 @@ describe('hash-aware training-agent idempotency store', () => {
 
     const first = await adapter.check({ principal: PRINCIPAL, key: KEY, payload });
     expect(first.kind).toBe('miss');
-    await adapter.release({ principal: PRINCIPAL, key: KEY });
+    if (first.kind !== 'miss') throw new Error('expected adapter claim');
+    await adapter.release({ principal: PRINCIPAL, key: KEY, claimToken: first.claimToken });
 
     const reclaimed = await owned.check({ principal: PRINCIPAL, key: KEY, payload });
     expect(reclaimed.kind).toBe('miss');

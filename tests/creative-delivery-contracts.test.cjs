@@ -630,6 +630,13 @@ test('creative representation resolution vectors retain the complete revision an
   assert.match(revisionRules.representation_set_projection.source_revision_binding, /complete representation-set fingerprint/);
   assert.match(revisionRules.representation_set_projection.source_revision_binding, /MUST NOT fingerprint only the selected manifest/);
   assert.match(revisionRules.representation_set_projection.execution_change, /ordinary re-review/);
+  assert.match(revisionRules.representation_set_projection.explicit_reselection, /buyer-submitted sync_creatives/);
+  assert.match(revisionRules.representation_set_projection.explicit_reselection, /build_creative resolution alone does not mutate/);
+  assert.match(revisionRules.representation_set_projection.capability_drift, /MUST NOT implicitly re-resolve/);
+  assert.match(revisionRules.representation_set_projection.seller_inability, /MUST NOT silently substitute/);
+  const selectionRules = validateSelection.schema['x-adcp-validation'].verifier_constraints.derived_output;
+  assert.match(selectionRules.selection_stability, /only an explicit buyer-submitted selected output/);
+  assert.match(selectionRules.seller_inability, /media-buy impairment/);
 
   const validateBuild = ajv.getSchema('/schemas/media-buy/build-creative-request.json');
   const resolutionRequest = {

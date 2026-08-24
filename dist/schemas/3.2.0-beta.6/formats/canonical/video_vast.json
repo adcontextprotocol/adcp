@@ -1,0 +1,188 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/formats/canonical/video_vast.json",
+  "title": "Canonical Format: VAST Video",
+  "description": "VAST-tag-delivered video creative. Slot: `vast_tag` (vast asset, URL or inline XML, VAST 2.x-4.x). Tracking model: VAST events inherent to the spec — `impression`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `start`, `pause`, `resume`, `mute`, `unmute`, `expand`, `collapse`, `fullscreen`, `creativeView`, `clickTracking`, `error`. VPAID interactivity via `vpaid_enabled: true` flag. SIMID is carried by the first-class VAST 4.1+ `<InteractiveCreativeFile apiFramework=\"SIMID\">` element on Linear creatives. Orientation is a parameter (vertical / horizontal / square). Distinct from `video_hosted` (direct file with external tracking).",
+  "properties": {
+    "slots": {
+      "default": [
+        {
+          "asset_group_id": "vast_tag",
+          "asset_type": "vast",
+          "required": true
+        },
+        {
+          "asset_group_id": "landing_page_url",
+          "asset_type": "url",
+          "required": false
+        }
+      ],
+      "description": "Default slots for video_vast canonical. Buyer ships a VAST tag (URL or inline XML, VAST 2.x-4.x) plus an optional clickthrough URL (which falls back to the VAST `ClickThrough` element when omitted). Tracking events are inherent to VAST and don't require explicit slots."
+    },
+    "orientation": {
+      "type": "string",
+      "enum": [
+        "vertical",
+        "horizontal",
+        "square"
+      ]
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$"
+    },
+    "vast_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/vast-version.json",
+      "description": "Required VAST version."
+    },
+    "vpaid_enabled": {
+      "type": "boolean",
+      "description": "Whether VPAID interactivity is supported. When true, the VAST tag may carry VPAID JS/Flash payloads."
+    },
+    "vpaid_version": {
+      "type": "string",
+      "enum": [
+        "1.0",
+        "2.0"
+      ]
+    },
+    "simid_supported": {
+      "type": "boolean",
+      "description": "Whether the seller accepts IAB SIMID through `<InteractiveCreativeFile apiFramework=\"SIMID\">` on a Linear VAST creative. SIMID is not a generic VAST extension and cannot be serialized under NonLinearAds; every `ctv_ad_experience` profile therefore forbids `true`."
+    },
+    "duration_ms_range": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "[min, max] duration in milliseconds. **Precedence**: `duration_ms_exact` takes precedence when both ship. SDKs SHOULD lint a warning when both fields ship."
+    },
+    "duration_ms_exact": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "When set, duration must equal exactly this value. Takes precedence over `duration_ms_range` when both ship."
+    },
+    "min_width": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_width": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "min_height": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_height": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "creative_type": {
+      "type": "string",
+      "enum": [
+        "linear",
+        "nonlinear",
+        "either"
+      ],
+      "description": "Required VAST creative class: `linear` (in-stream Linear), `nonlinear` (NonLinearAds overlay-class), or `either`. Supersedes `linear_required`; when both are present `creative_type` wins, and validators treat `linear_required: true` with no `creative_type` as `linear`."
+    },
+    "ctv_ad_experience": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/ctv-ad-experience.json",
+      "description": "CTV experience this option is eligible to serve. On video_vast only `pause`, `screensaver`, `overlay`, `squeezeback`, and `in_scene` are valid (`menu` routes to native_in_feed or sponsored_placement), and `creative_type` MUST be `nonlinear`. Because VAST places `<InteractiveCreativeFile>` only under Linear `<MediaFiles>`, `simid_supported` MUST NOT be true on any of these NonLinear profiles. Per-experience floors: `overlay` and `squeezeback` require a 10s minimum duration; `in_scene` requires a 3s minimum brand-exposure duration and forbids interactivity (`vpaid_enabled` MUST NOT be true); `pause` has no duration floor and ends on viewer or device action."
+    },
+    "motion_level": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/motion-level.json",
+      "description": "Accepted motion class for the rendered creative (AdCOM attrs 21-23)."
+    },
+    "activation_methods": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/enums/activation-method.json"
+      },
+      "description": "Viewer activation mechanisms this option offers. Activations are engagement events, not impressions."
+    },
+    "linear_required": {
+      "type": "boolean",
+      "description": "Whether the VAST creative must be linear (non-skippable in-stream). Superseded by `creative_type`; retained for pre-3.2 declarations."
+    },
+    "skippable_after_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "When skippable, the buyer-side skip threshold in milliseconds (e.g., 5000 for 5-second skippable pre-roll)."
+    },
+    "max_wrapper_depth": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum VAST wrapper redirect depth permitted."
+    },
+    "ssl_required": {
+      "type": "boolean"
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/formats/canonical/_base.json"
+    },
+    {
+      "if": {
+        "required": [
+          "ctv_ad_experience"
+        ]
+      },
+      "then": {
+        "properties": {
+          "ctv_ad_experience": {
+            "not": {
+              "const": "menu"
+            }
+          },
+          "creative_type": {
+            "const": "nonlinear"
+          },
+          "simid_supported": {
+            "const": false
+          }
+        },
+        "required": [
+          "creative_type"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ctv_ad_experience": {
+            "const": "in_scene"
+          }
+        },
+        "required": [
+          "ctv_ad_experience"
+        ]
+      },
+      "then": {
+        "properties": {
+          "vpaid_enabled": {
+            "const": false
+          }
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "ctv_experience_matrix": "ctv_ad_experience on video_vast must be one of pause, screensaver, overlay, squeezeback, in_scene, with creative_type nonlinear",
+      "ctv_nonlinear_no_simid": "Every video_vast CTV experience is nonlinear and forbids simid_supported true because VAST serializes InteractiveCreativeFile only under Linear MediaFiles",
+      "ctv_duration_floors": "overlay and squeezeback require duration_ms_exact or duration_ms_range minimum of at least 10000; in_scene at least 3000; pause has no floor",
+      "ctv_in_scene_no_interactivity": "in_scene additionally forbids vpaid_enabled",
+      "ctv_activation_copy_slots": "push_notification activation_methods SHOULD declare an activation_message slot; text_message SHOULD declare an activation_text_message slot; email SHOULD declare activation_email_subject and activation_email_body slots. Missing copy slots emit a non-blocking validate_input warnings[] entry.",
+      "creative_type_precedence": "creative_type wins over linear_required when both are declared; linear_required true with creative_type nonlinear or either is a contradiction and is rejected"
+    },
+    "spec": "docs/creative/ctv-experiences.mdx"
+  },
+  "additionalProperties": true
+}

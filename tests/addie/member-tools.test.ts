@@ -68,6 +68,7 @@ import { MEMBER_TOOLS, createMemberToolHandlers } from '../../server/src/addie/m
 import { getGitHubAccessToken } from '../../server/src/services/pipes.js';
 import { AgentContextDatabase } from '../../server/src/db/agent-context-db.js';
 import { ComplianceDatabase } from '../../server/src/db/compliance-db.js';
+import { HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS } from '../../server/src/services/hosted-compliance-version.js';
 import { AgentSnapshotDatabase } from '../../server/src/db/agent-snapshot-db.js';
 import * as wgService from '../../server/src/services/working-group-membership-service.js';
 
@@ -924,6 +925,142 @@ describe('createMemberToolHandlers', () => {
     });
   });
 
+  describe('GitHub read handlers', () => {
+    let fetchMock: ReturnType<typeof vi.fn>;
+
+    const issueSearchResult = {
+      items: [{
+        number: 42,
+        title: 'Broadcast support',
+        state: 'open',
+        html_url: 'https://github.com/adcontextprotocol/adcp/issues/42',
+        labels: [{ name: 'bug' }],
+        user: { login: 'reporter' },
+        updated_at: '2026-08-20T12:00:00Z',
+      }],
+    };
+
+    beforeEach(() => {
+      fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    });
+
+    it('searches open issues with an explicit state qualifier and pinned API headers', async () => {
+      fetchMock.mockResolvedValue(new Response(JSON.stringify(issueSearchResult), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+
+      const handler = createMemberToolHandlers(null).get('list_github_issues')!;
+      const result = await handler({ query: 'broadcast', state: 'open', limit: 30 });
+
+      expect(result).toContain('Broadcast support');
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const parsed = new URL(url);
+      expect(parsed.pathname).toBe('/search/issues');
+      expect(parsed.searchParams.get('q')).toBe(
+        'broadcast repo:adcontextprotocol/adcp state:open',
+      );
+      expect(parsed.searchParams.get('per_page')).toBe('30');
+      expect(parsed.searchParams.get('advanced_search')).toBe('true');
+      expect(init.headers).toMatchObject({
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'adcp-addie/1.0',
+        'X-GitHub-Api-Version': '2022-11-28',
+      });
+    });
+
+    it('omits the state qualifier when a keyword search requests all states', async () => {
+      fetchMock.mockResolvedValue(new Response(JSON.stringify(issueSearchResult), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+
+      const handler = createMemberToolHandlers(null).get('list_github_issues')!;
+      await handler({ query: 'broadcast', state: 'all' });
+
+      const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const parsed = new URL(url);
+      expect(parsed.searchParams.get('q')).toBe('broadcast repo:adcontextprotocol/adcp');
+      expect(parsed.searchParams.get('q')).not.toContain('state:all');
+      expect(parsed.searchParams.get('advanced_search')).toBe('true');
+    });
+
+    it('successfully searches with the default open state', async () => {
+      fetchMock.mockResolvedValue(new Response(JSON.stringify(issueSearchResult), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+
+      const handler = createMemberToolHandlers(null).get('list_github_issues')!;
+      const result = await handler({ query: 'broadcast' });
+
+      expect(result).toContain('Broadcast support');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const parsed = new URL(url);
+      expect(parsed.searchParams.get('q')).toBe(
+        'broadcast repo:adcontextprotocol/adcp state:open',
+      );
+      expect(parsed.searchParams.get('advanced_search')).toBe('true');
+    });
+
+    it('does not send the server token to caller-selected repositories', async () => {
+      vi.stubEnv('GITHUB_TOKEN', 'server-secret');
+      fetchMock.mockResolvedValue(new Response(JSON.stringify(issueSearchResult), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+
+      const handler = createMemberToolHandlers(null).get('list_github_issues')!;
+      await handler({ repo: 'microsoft/TypeScript', query: 'broadcast' });
+
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(init.headers).not.toHaveProperty('Authorization');
+    });
+
+    it('keeps state=all on the repository listing endpoint when no query is supplied', async () => {
+      fetchMock.mockResolvedValue(new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+
+      const handler = createMemberToolHandlers(null).get('list_github_issues')!;
+      await handler({ state: 'all' });
+
+      const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const parsed = new URL(url);
+      expect(parsed.pathname).toBe('/repos/adcontextprotocol/adcp/issues');
+      expect(parsed.searchParams.get('state')).toBe('all');
+    });
+
+    it('returns a GitHub request ID for 422 diagnostics without echoing upstream text', async () => {
+      fetchMock.mockResolvedValue(new Response(JSON.stringify({
+        message: 'Validation failed for private query text',
+        errors: [{ resource: 'Search', field: 'q', code: 'invalid' }],
+      }), {
+        status: 422,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-GitHub-Request-Id': 'REQ:1234:ABCD',
+        },
+      }));
+
+      const handler = createMemberToolHandlers(null).get('list_github_issues')!;
+      const result = await handler({ query: 'broadcast' });
+
+      expect(result).toContain('GitHub rejected the request');
+      expect(result).toContain('422');
+      expect(result).toContain('REQ:1234:ABCD');
+      expect(result).not.toContain('private query text');
+    });
+  });
+
   describe('evaluate_agent_quality handler', () => {
     const ownerContext = {
       is_mapped: true,
@@ -1028,6 +1165,13 @@ describe('createMemberToolHandlers', () => {
 
       expect(result).toContain('Quality Evaluation: Seller Agent');
       expect(result).not.toContain('diagnostic only');
+      expect(memberToolMocks.comply).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          timeout_ms: HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS,
+        }),
+        expect.objectContaining({ requested: '3.0' }),
+      );
       expect(ComplianceDatabase.prototype.recordComplianceRun).toHaveBeenCalledTimes(1);
       expect(ComplianceDatabase.prototype.recordComplianceRun).toHaveBeenCalledWith(
         expect.objectContaining({

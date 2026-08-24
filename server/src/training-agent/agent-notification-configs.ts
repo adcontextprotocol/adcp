@@ -191,7 +191,7 @@ export async function syncAgentNotificationConfigs(
   };
 }
 
-/** Adapter for the decisioning platform's custom-tool seam. SDK 14.0.0-beta.4
+/** Adapter for the decisioning platform's custom-tool seam. SDK 14.0.0-beta.7
  * projects platform capabilities over low-level protocol capabilities, so the
  * built-in protocol handler cannot currently be mounted through
  * createAdcpServerFromPlatform. Keep the domain implementation identical and

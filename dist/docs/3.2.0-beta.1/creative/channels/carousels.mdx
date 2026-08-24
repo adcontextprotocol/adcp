@@ -1,0 +1,54 @@
+---
+title: Carousel Ads
+description: "Canonical image-carousel creative contracts for multi-card advertising."
+"og:title": "AdCP — Carousel Ads"
+---
+
+Use `image_carousel` when one creative contains an ordered set of cards. Card count, fields, image constraints, and optional hero assets live in canonical parameters and slots.
+
+```json
+{
+  "format_option_id": "product_carousel",
+  "format_kind": "image_carousel",
+  "params": {
+    "min_cards": 3,
+    "max_cards": 10,
+    "slots": [
+      { "asset_group_id": "cards", "asset_type": "card", "required": true, "min": 3, "max": 10 },
+      { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+    ]
+  }
+}
+```
+
+```json
+{
+  "format_kind": "image_carousel",
+  "assets": {
+    "cards": [
+      {
+        "asset_type": "card",
+        "headline": "Trail Pro",
+        "media": { "asset_type": "image", "url": "https://cdn.acmeoutdoor.example/trail-pro.jpg" },
+        "landing_page_url": { "asset_type": "url", "url": "https://acmeoutdoor.example/trail-pro" }
+      },
+      {
+        "asset_type": "card",
+        "headline": "Summit Pack",
+        "media": { "asset_type": "image", "url": "https://cdn.acmeoutdoor.example/summit-pack.jpg" },
+        "landing_page_url": { "asset_type": "url", "url": "https://acmeoutdoor.example/summit-pack" }
+      },
+      {
+        "asset_type": "card",
+        "headline": "Alpine Shell",
+        "media": { "asset_type": "image", "url": "https://cdn.acmeoutdoor.example/alpine-shell.jpg" },
+        "landing_page_url": { "asset_type": "url", "url": "https://acmeoutdoor.example/alpine-shell" }
+      }
+    ]
+  }
+}
+```
+
+For catalog-composed collections where the seller reads product rows and renders tiles, use `sponsored_placement` rather than a buyer-authored carousel bundle.
+
+See [Catalogs](/dist/docs/3.2.0-beta.1/creative/catalogs) and [Canonical formats](/dist/docs/3.2.0-beta.1/creative/canonical-formats).

@@ -99,6 +99,9 @@
                     "selected_output_verification": "recompute representation_selection.selected_output_digest with the shared manifest projection: remove exactly top-level $schema, representation_selection, creative_id, revision_id, name, tags, status, weight, placement_refs, placement_ids, and inputs; include every other field, including unknown delivery fields",
                     "execution_review_binding": "track selected_representation_id plus selected_output_digest separately from the source revision fingerprint",
                     "execution_change": "a different selected_representation_id or selected_output_digest is an updated execution and follows ordinary re-review without minting a new buyer revision_id",
+                    "explicit_reselection": "only a buyer-submitted sync_creatives item carrying a newly resolved selected output may replace accepted representation_selection lineage and trigger re-review; build_creative resolution alone does not mutate the creative library",
+                    "capability_drift": "later product, placement, VAST, macro, or seller-capability changes affect future resolution and assignment validation but MUST NOT implicitly re-resolve, replace lineage, or start buyer re-review for an accepted execution",
+                    "seller_inability": "when a pinned execution can no longer serve, preserve its selection lineage and use ordinary seller/system creative-status and media-buy impairment surfaces; MUST NOT silently substitute another representation",
                     "resolver_obligation": "the actor that emitted representation_selection MUST have verified the digest against the complete CreativeRepresentationSet",
                     "downstream_obligation": "retain and compare the complete-set digest for revision reuse; receiving only a selected manifest does not independently prove hidden source-set bytes"
                   },

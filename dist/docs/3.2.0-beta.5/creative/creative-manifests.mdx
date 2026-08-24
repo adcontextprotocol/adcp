@@ -1,0 +1,137 @@
+---
+title: Creative Manifests
+description: "Portable canonical creative manifests in AdCP 3.2: format kinds, option routing, assets, validation, and trafficking."
+"og:title": "AdCP — Creative Manifests"
+"og:image": /images/walkthrough/diagram-format-manifest-render.png
+---
+
+A creative manifest supplies concrete assets that satisfy a canonical format declaration. It does not identify the creative agent that produced those assets.
+
+<img src="/images/walkthrough/diagram-format-manifest-render.png" alt="A canonical declaration defines required slots, a manifest fills them with concrete assets, and the seller renders the result" style={{ width: '100%', borderRadius: '12px', marginBottom: '1.5rem' }} />
+
+## Basic structure
+
+```json
+{
+  "format_kind": "image",
+  "assets": {
+    "image_main": {
+      "asset_type": "image",
+      "url": "https://cdn.acmeoutdoor.example/trail-pro-300x250.png",
+      "width": 300,
+      "height": 250,
+      "alt_text": "Trail Pro hiking boot on a mountain path"
+    },
+    "landing_page_url": {
+      "asset_type": "url",
+      "url": "https://acmeoutdoor.example/trail-pro"
+    }
+  }
+}
+```
+
+- `format_kind` names the canonical creative shape.
+- `assets` is keyed by `asset_group_id` from the matched declaration's `params.slots[]`.
+- Every asset carries its `asset_type` discriminator.
+- Brand, provenance, rights, and industry identifiers may be included when applicable.
+
+Compound `format_id` references are deprecated in 3.2. New manifests use the canonical branch.
+
+## Exact option routing
+
+When a product accepts multiple declarations of the same kind, or when the creative must target an exact publisher format, add `format_option_ref`.
+
+Publisher option:
+
+```json
+{
+  "format_kind": "video_hosted",
+  "format_option_ref": {
+    "scope": "publisher",
+    "publisher_domain": "shorts.streamhaus.example",
+    "format_option_id": "vertical_video"
+  },
+  "assets": {
+    "video_main": {
+      "asset_type": "video",
+      "url": "https://cdn.acmeoutdoor.example/vertical-launch.mp4",
+      "width": 1080,
+      "height": 1920,
+      "duration_ms": 30000
+    }
+  }
+}
+```
+
+Product-local option:
+
+```json
+{
+  "format_kind": "image",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "homepage_image_300x250"
+  },
+  "assets": {
+    "image_main": {
+      "asset_type": "image",
+      "url": "https://cdn.acmeoutdoor.example/homepage.png",
+      "width": 300,
+      "height": 250
+    }
+  }
+}
+```
+
+A product-scoped reference resolves only with the enclosing product/package context.
+
+## Capability identity does not travel
+
+`build_creative.target_capability_id` selects a route on one creative agent. The resulting manifest carries the output contract, not that local route ID:
+
+```json
+{
+  "target_capability_id": "streamhaus_vertical_video_builder",
+  "message": "Create a 30-second vertical launch video"
+}
+```
+
+```json
+{
+  "creative_manifest": {
+    "format_kind": "video_hosted",
+    "assets": { "video_main": { "asset_type": "video", "url": "https://cdn.acmeoutdoor.example/launch.mp4" } }
+  }
+}
+```
+
+This keeps manifests portable across compatible sellers and prevents a production vendor's namespace from becoming part of the delivery contract.
+
+## Validation
+
+Validate a manifest against the selected product or publisher declaration:
+
+1. Resolve `format_option_ref` when present; otherwise select the unambiguous compatible `format_kind` declaration.
+2. Confirm all required slots are present.
+3. Validate each asset against its declared type and technical constraints.
+4. Check fixed dimensions, durations, codecs, file-size limits, and required disclosures.
+5. Reject unknown or uncovered selections; do not silently relax the target contract.
+
+Creative agents can advertise `validate` in `creative.supported_formats[].operations`. Sellers perform final acceptance during `sync_creatives` because product-, account-, and placement-specific constraints remain seller-authoritative.
+
+## Libraries and trafficking
+
+Store reusable manifests with `sync_creatives` on agents that advertise `creative.has_creative_library: true`. A buyer may reuse its `creative_id` and `concept_id` across sellers, but each destination validates the manifest against its own selected product and may require a different `format_option_ref`.
+
+Approval state is seller-specific. A valid manifest can still enter review, be rejected for policy, or require replacement independently at each destination.
+
+## Deprecated compatibility branch
+
+Older 3.x peers may still send a manifest with a compound named `format_id`. A 3.2 implementation may read it, normalize it to a canonical declaration, and project it back when negotiating with that peer. It must not author new manifests from the legacy shape or mix `format_id` and `format_kind` in one manifest.
+
+## Related
+
+- [Canonical formats](/dist/docs/3.2.0-beta.5/creative/canonical-formats)
+- [Asset types](/dist/docs/3.2.0-beta.5/creative/asset-types)
+- [`build_creative`](/dist/docs/3.2.0-beta.5/creative/task-reference/build_creative)
+- [`sync_creatives`](/dist/docs/3.2.0-beta.5/creative/task-reference/sync_creatives)

@@ -18,7 +18,9 @@
         "shared_projection": "apply the same exclusion list to the returned CreativeManifest and to its later CreativeAsset sync wrapper so library metadata never changes the digest",
         "selected_output_digest": "must equal lowercase-hex SHA-256 of derived-output canonical content before receiving-seller normalization",
         "review_identity": "the receiving seller tracks (selected_representation_id, selected_output_digest, execution_vast_version-or-null, execution_daast_version-or-null) separately from the source revision; changing any member is an updated execution that follows ordinary re-review without minting a buyer revision",
-        "execution_version": "each execution version MUST equal the verified representation destination and later immutable package snapshot; a package mismatch requires re-resolution and ordinary re-review rather than silent rebinding"
+        "execution_version": "each execution version MUST equal the verified representation destination and later immutable package snapshot; a package mismatch requires re-resolution and ordinary re-review rather than silent rebinding",
+        "selection_stability": "after sync_creatives accepts this lineage, later product, placement, VAST, macro, or seller-capability changes MUST NOT cause implicit re-resolution, lineage replacement, or buyer re-review; only an explicit buyer-submitted selected output may replace it",
+        "seller_inability": "if the seller can no longer serve the pinned execution, it MUST preserve this lineage and use ordinary seller/system creative-status and media-buy impairment surfaces rather than silently substituting another representation"
       }
     },
     "spec": "docs/creative/representation-sets.mdx#deterministic-resolution"

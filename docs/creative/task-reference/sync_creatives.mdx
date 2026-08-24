@@ -246,6 +246,16 @@ fingerprint. A changed selection or changed derived output is an
 `revision_id` and digest remain unchanged. [`list_creatives`](/docs/creative/task-reference/list_creatives) returns the exact
 current selection lineage while that execution remains current.
 
+The seller never performs that replacement implicitly. Once accepted, the
+selection is pinned even if later product or seller capabilities would choose
+a different representation. Capability drift affects future resolution and
+assignment checks; it does not mutate the library creative or start re-review.
+The buyer must explicitly resolve again with `build_creative` and submit the
+new selected output here. This sync response acknowledges the update and starts
+ordinary re-review. If the seller can no longer serve the pinned execution, it
+uses the ordinary seller/system status-change and media-buy impairment
+surfaces without substituting another representation.
+
 A sync item carrying `representation_selection` MUST omit `localization`,
 including `null`, in this version, and the stored creative must not already
 have localization that ordinary omission would preserve. Remove an existing
@@ -261,6 +271,22 @@ lifecycle, and prior approval does not transfer to changed content. The
 buyer-initiated transition is acknowledged on this response rather than a
 `creative.status_changed` webhook; subsequent seller/system review transitions
 use the ordinary webhook. The prior revision is not kept serving during review.
+
+A revised creative under re-review is ineligible for delivery like any other
+`pending_review` creative until it re-reaches `approved`. Other creatives
+assigned to the same package are unaffected and continue under the seller's
+ordinary selection behavior. A package that relies only on the revised creative
+therefore has a serving gap by default; buyers that need zero-gap replacement
+can sync the candidate under a new `creative_id` and change assignments after
+approval. Staged activation of a replacement under the same identity is outside
+this revision contract.
+
+Creatives produced through [`build_creative`](/docs/creative/task-reference/build_creative)
+become buyer-authored revision state when the buyer accepts and syncs the
+returned manifest, choosing the `creative_id` and minting (or omitting) the
+`revision_id`. Seller-side drafts before that sync boundary are outside AdCP's
+revision history; seller transformation and transcoding after the boundary do
+not mint buyer revision IDs.
 
 ### Native localization
 

@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/preview-provider.json",
+  "title": "Publisher-Designated Preview Provider",
+  "description": "A publisher's explicit delegation of placement preview authority to a remote AdCP creative agent. The delegation is authoritative only for the declaring placement and listed format routes. It does not make the provider authoritative for the shared canonical format, another placement, or another publisher. Consumers MUST discover the provider's current get_adcp_capabilities response, verify each capability_id advertises preview for the resolved canonical format, and use provider-specific authorization without forwarding seller or publisher credentials. Discovery and invocation MUST use the format_schema fetch security contract: HTTPS, public IPs only, DNS resolution pinned through connection, no redirects, short timeout, bounded response body, and credentials selected only after exact normalized-origin binding.",
+  "type": "object",
+  "required": [
+    "agent_url",
+    "authority",
+    "routes"
+  ],
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "HTTPS URL of the delegated creative-agent endpoint. Buyers call get_adcp_capabilities and preview_creative on this endpoint. They MUST allow only public IPs, pin DNS resolution through connection, refuse redirects, cap time and response size, and attach provider credentials only after exact normalized-origin binding."
+    },
+    "authority": {
+      "type": "string",
+      "const": "publisher_designated",
+      "description": "Explicitly states that authority comes from the publisher-hosted placement declaration. The provider's rendering_origin metadata is informational and remains non-authoritative elsewhere."
+    },
+    "routes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "format_option_id",
+          "capability_id"
+        ],
+        "properties": {
+          "format_option_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Format option in this adagents.json placement for which the delegation applies. It MUST resolve through the same-file top-level formats[] catalog or an inline placement format declaration."
+          },
+          "capability_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "description": "Agent-local preview capability advertised by the delegated provider. The provider's canonical format declaration MUST satisfy the resolved placement format option."
+          },
+          "covers_placement_presentation": {
+            "type": "boolean",
+            "default": false,
+            "description": "True only when the publisher delegates both creative rendering and the complete placement-specific frame to this route. When false or omitted, consumers compose any presentation_ref around the provider's creative render."
+          }
+        },
+        "additionalProperties": false
+      },
+      "x-adcp-validation": {
+        "unique_item_properties": [
+          "format_option_id"
+        ]
+      }
+    }
+  },
+  "additionalProperties": false,
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "format_option_id": "resolves_within_declaring_adagents_json_and_is_listed_on_placement",
+      "capability_id": "provider_capability_advertises_preview_and_satisfies_resolved_format_option"
+    },
+    "spec": "docs/creative/canonical-formats.mdx#rendering-authority-and-fallback-order"
+  }
+}

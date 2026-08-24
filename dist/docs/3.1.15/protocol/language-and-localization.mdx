@@ -1,0 +1,115 @@
+---
+title: Language and localization
+sidebarTitle: Language and localization
+description: "The shared language-tag contract and the distinct patterns AdCP uses for agent input, agent responses, published multilingual content, and executable creative."
+"og:title": "AdCP — Language and localization"
+---
+
+# Language and localization
+
+AdCP uses one shared language-identity primitive, but it does not use one
+universal localization topology. An agent declaring what language it can parse,
+a caller requesting response text, a publisher releasing multilingual content,
+and a seller trafficking executable creative have different lifecycle and
+failure requirements.
+
+This page defines the reusable architecture for those surfaces. It does not add
+the pending negotiation or published-content fields tracked in
+[#3658](https://github.com/adcontextprotocol/adcp/issues/3658) and
+[#3668](https://github.com/adcontextprotocol/adcp/issues/3668). The materialized
+creative contract is the first implementation of these shared rules, not a
+template that every other localization concern must copy.
+
+## One language-tag primitive
+
+`/schemas/core/locale-tag.json` is the shared AdCP schema for BCP 47 language
+identity. The historical file name is retained for wire compatibility, but the
+concept is a **language tag**, not a general locale-settings object. It does not
+determine currency, time zone, number or date formatting, market, or legal
+jurisdiction.
+
+Every new AdCP field that carries a BCP 47 language identity or concrete
+language range MUST reference this schema. A surface MUST NOT redeclare a plain
+string with its own BCP 47 wording, pattern, or casing behavior. This prevents a
+tag such as `FR-ca` from being accepted by one task and rejected by another.
+
+The shared schema applies the AdCP canonical wire profile: lower-case language
+and variants, title-case script, and upper-case region. This is intentionally
+stricter than RFC 5646, where comparison is case-insensitive and case
+regularization is optional. Receivers reject a non-profile spelling instead of
+silently rewriting it.
+
+Existing fields that describe language with unconstrained strings are legacy
+compatibility boundaries. This rule does not retroactively make their old
+payloads invalid. When a new contract consumes one of those values, it must
+either migrate the field through a versioned change or apply the shared schema
+contextually, as localized creative does for text and markdown assets.
+
+## Name the matching operation
+
+"Language matching" is not a complete interoperability rule. Every surface
+MUST name the RFC 4647 operation and the direction in which it is applied.
+
+| Purpose | Operation | Direction | Example |
+| --- | --- | --- | --- |
+| Declare which tagged values are eligible | RFC 4647 §3.3.1 Basic Filtering | Declared range filters a candidate tag | Seller range `fr` accepts `fr-CA`; seller range `fr-CA` does not accept `fr` |
+| Select one representation from available tags | RFC 4647 §3.4 Lookup | Requested range is progressively truncated and compared by equality | Request `fr-CA` can select available `fr`; it does not select sibling `fr-FR` |
+
+Eligibility is a set-membership question; selection chooses one value. A
+surface must not call an eligibility set "Lookup" merely because a simple test
+case happens to produce the same result.
+
+## Four distinct localization patterns
+
+| Concern | Contract pattern |
+| --- | --- |
+| Agent input comprehension | An adjacent authoritative `*_language` declaration plus a supported-input capability. Treat capability entries as eligibility ranges using Basic Filtering and fail closed when the declared input language is not eligible. Language detection may validate content, but it must not silently replace the sender's declaration or determine a different eligibility result. |
+| Agent response language | Requested language preference plus an echo of the language actually used. Select from supported response languages with Lookup so any fallback is deterministic and observable. |
+| Published multilingual content | Whole-value language maps plus an explicit default. Localize ordered collections as complete values rather than independently translating elements and producing a mixed-language array. This is content selection, not an unsupported-input error flow. |
+| Executable creative | Materialized source and target variants, exact readback, seller eligibility, buyer selection, explicit fallback, and `do_not_serve`. Translation or generation remains a separate production operation. |
+
+The first three patterns do not inherit creative's variant IDs, atomic
+replacement, review state, or delivery attribution. Those exist because an
+executable asset must be trafficked and later identified exactly. A brief,
+response description, or brand guidance value needs a language declaration and
+the matching rule appropriate to its surface—not a creative variant graph.
+
+## Current protocol boundaries
+
+Native creative localization implements the executable-creative pattern and
+uses the shared tag schema throughout. Its product and placement eligibility
+uses Basic Filtering; delivery selection uses Lookup.
+
+Future agent-input and response-language work should reuse the same tag schema,
+use Basic Filtering for declared comprehension eligibility, make the adjacent
+input-language declaration authoritative, and echo the actual response
+language. Published-content work should reuse the tag profile while defining
+whole-value maps and explicit defaults rather than agent capability or error
+semantics.
+
+**`targeting.language` is a known vocabulary divergence.** The language filter
+in [`get_products`](/dist/docs/3.1.15/media-buy/task-reference/get_products) and related tasks uses ISO 639-1 two-letter codes only
+(`^[a-z]{2}$`), not the shared BCP 47 tag profile. It is the one legacy field
+that can appear in the same request as creative locale eligibility: a buyer
+targeting `language: ["fr"]` against a creative with
+`accepted_language_ranges: ["fr-CA"]` carries two distinct vocabularies in one
+request — `fr` is valid for targeting and is a valid Basic Filtering range, but
+the creative policy is constrained to `fr-CA` and its more-specific descendants.
+This is a documented divergence; neither side is wrong. The `^[a-z]{2}$`
+pattern also cannot express ISO 639-3-only languages, which is an additional
+pre-existing limitation on that field.
+
+**`locale_policy` absence, populated array, and `und` have distinct semantics.**
+Omitting `locale_policy` entirely means unconstrained — no locale restriction,
+and any creative variant is eligible for assignment. A populated
+`accepted_language_ranges` array means a closed set — at least one materialized
+creative variant must match a seller range via Basic Filtering. Including `und`
+in that array means unknown language: `und` is not a wildcard and matches only
+creative variants explicitly tagged `und`, not untagged or generic creatives.
+Use `zxx` explicitly when a creative has no linguistic content (for example, an
+animation with no text or speech); `zxx` must appear in `accepted_language_ranges`
+for the policy to cover it.
+
+Legacy underscore keys such as `en_US` in `brand.json` are not shared language
+tags. A bridge replaces `_` with `-`, applies the AdCP wire profile, and
+validates the result; it does not pass the legacy key through unchanged.

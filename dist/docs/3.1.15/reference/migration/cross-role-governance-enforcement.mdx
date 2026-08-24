@@ -1,0 +1,63 @@
+---
+title: Cross-role governance enforcement
+description: "Prepare governance providers, services, and SDKs for AdCP 3.2 cross-role authorization and outcome reconciliation."
+"og:title": "AdCP — Cross-role governance enforcement migration"
+---
+
+# Cross-role governance enforcement
+
+<Note>
+**Experimental-surface notice.** The implementation may merge during 3.2 development. The beta-to-GA period provides the six-week notice window before production availability. These changes are part of the existing `governance.campaign` experimental feature, including the new `adcp.governance_enforcement` capability.
+</Note>
+
+AdCP 3.2 makes buyer governance enforceable across service roles without disclosing `plan_id` to those services.
+
+## Provider changes
+
+- Resolve transport credentials to an authenticated agent URL on every governance check. Require `caller` to match and never grant plan access or authorization from the request assertion alone.
+- Persist the authenticated `sync_plans` caller as the immutable plan owner. Treat absent delegations as owner-only; delegations add scoped non-owner authority and never displace the owner.
+- Emit the modern `check_type` response shape. The absent-`check_type` legacy response arm remains accepted during 3.x migration.
+- Return `governance_context` only for `approved`; return non-authorizing `consultation_context` only for intent `conditions`.
+- Require task-neutral `proposed_commitment` for `update_media_buy` and on intent checks whose task payload carries pricing indirectly; amount `0` explicitly represents a verified no-cost or non-increasing action.
+- Allow purchase execution checks before a durable `media_buy_id` exists; require the ID for modification and delivery.
+- Bind intent approval to the target service. Require execution checks to authenticate as that preserved audience, keep the intent currency, and narrow rather than widen its authorized amount.
+- Send the exact downstream service URL as top-level `target_agent` on every intent check. Keep routing metadata outside `payload`, which must remain the same JSON task-arguments value sent downstream. The JCS hash is serialization-independent; the service adds `governance_context` and may add `context`, then removes those two metadata fields before recomputing it.
+- For `update_media_buy`, have the buyer propose a positive-delta ceiling without exposing seller state to governance. The seller computes the actual positive delta from authoritative current state atomically with its revision check and write, enforces the signed ceiling, and sends `execution_commitment` on an online execution check.
+- Settle each opaque action binding once, even though intent and execution checks have distinct IDs. Require the outcome reporter to authenticate as the original buyer caller and preserve `purchase_type`. Derive the ledger amount from governance-owned intent or purchase-execution state, validate every reported monetary value, and treat caller amounts as reconciliation evidence only.
+- Cache identical `report_plan_outcome` retries by `idempotency_key`; reject key reuse with another payload.
+
+## Service changes
+
+- Advertise task-scoped enforcement only through `adcp.governance_enforcement` and only for behavior actually implemented.
+- Resolve the account before deciding whether governance applies; return `ACCOUNT_REQUIRED` when applicability cannot be determined.
+- Verify inbound intent tokens. Media services claiming `online_execution_check` additionally perform prepare → check → commit.
+- Require critical `authorized_task` and `authorized_payload_hash` claims, and recompute the RFC 8785 JCS/SHA-256 payload binding before every governed side effect.
+- Keep cancellations, pauses, deactivations, and pure decreases available; any commitment-increasing part of a mixed update wins over an exemption.
+
+## SDK changes
+
+Implementation trackers:
+
+- [TypeScript SDK #2442](https://github.com/adcontextprotocol/adcp-client/issues/2442)
+- [Python SDK #1013](https://github.com/adcontextprotocol/adcp-client-python/issues/1013)
+- [Go SDK #432](https://github.com/adcontextprotocol/adcp-go/issues/432)
+
+Regenerate request/response types and update helpers for:
+
+- typed `governance_context` on governed tasks;
+- `adcp.governance_enforcement.tasks[]`;
+- SDK-normalized discriminated result types or type guards for modern responses, plus the legacy compatibility arm (the wire schema uses conditional validation and does not itself guarantee a generated union);
+- `proposed_commitment`;
+- top-level intent `target_agent` and whole-request-rooted condition paths;
+- `execution_commitment` for seller-side `update_media_buy` execution checks;
+- opaque JWS `sub` continuity rather than `sub == plan_id`;
+- signed `authorized_commitment` verification against the service-computed price;
+- critical protected-header recognition for `authorized_commitment`, `authorized_task`, and `authorized_payload_hash`;
+- phase-conditional `planned_delivery.media_buy_id`;
+- exact outcome tuple and one-settlement semantics.
+
+Validate generated SDK signers and verifiers against the published [`governance-authorization.json` vectors](https://github.com/adcontextprotocol/adcp/blob/main/static/compliance/source/test-vectors/governance-authorization.json). They cover bit-exact payload hashing and 27 deterministic compact-JWS cases for task, payload, audience, authenticated caller, monetary ceiling, currency, time, replay, signature, and critical-marker behavior. The bundled private component is public test material and MUST NOT be installed as a production trust anchor.
+
+Until an SDK release contains this schema bundle, its generated `check_governance` validators are stale. The training agent deliberately uses passthrough MCP tool schemas with framework request/response validation disabled for this experimental tenant, then validates in the source-aligned handler. Production integrations MUST regenerate or pin a compatible SDK rather than copying that compatibility overlay.
+
+Pin experimental integrations to the matching 3.2 schema bundle until the surface graduates.

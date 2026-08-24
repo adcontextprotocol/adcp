@@ -1,0 +1,68 @@
+---
+title: search_brands
+description: "Discover brands on a brand agent's roster before retrieving identity or rights details."
+"og:title": "AdCP — search_brands"
+---
+
+`search_brands` is an experimental, read-only discovery task. It returns ranked public brand stubs from a brand agent's roster. Use the returned `brand_id` with [`get_brand_identity`](/dist/docs/3.2.0-beta.1/brand-protocol/tasks/get_brand_identity) for full identity data or [`get_rights`](/dist/docs/3.2.0-beta.1/brand-protocol/tasks/get_rights) for licensing terms.
+
+## Schema
+
+- **Request**: [`search-brands-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.1/brand/search-brands-request.json)
+- **Response**: [`search-brands-response.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.1/brand/search-brands-response.json)
+
+## Request
+
+```json
+{
+  "query": "automotive brands with electric vehicles",
+  "countries": ["US"],
+  "pagination": { "max_results": 20 },
+  "context": { "correlation_id": "brand-search-001" }
+}
+```
+
+`query` is required. Callers can additionally constrain results with `industries`, `countries`, or `buyer_brand`. When `buyer_brand` is supplied, the agent should omit brands whose licensing restrictions make them incompatible.
+
+## Response
+
+```json
+{
+  "brands": [
+    {
+      "brand_id": "nova_motors",
+      "house": {
+        "domain": "novamotors.example",
+        "name": "Nova Motors"
+      },
+      "relationship_trust": "mutual",
+      "relationship_verified_at": "2026-08-15T12:00:00Z",
+      "names": [{ "en-US": "Nova Motors" }],
+      "description": "Electric mobility and vehicle technology",
+      "industries": ["automotive"],
+      "keller_type": "master",
+      "rights": {
+        "available_uses": ["commercial"],
+        "countries": ["US"]
+      }
+    }
+  ],
+  "context": { "correlation_id": "brand-search-001" }
+}
+```
+
+An empty `brands` array is a successful response when no roster entry matches. Results are lightweight public stubs; authorized assets, detailed identity fields, and pricing remain on the follow-up tasks.
+
+## Fields
+
+| Field | Required | Description |
+|---|---|---|
+| `query` | Yes | Natural-language search, up to 2,000 characters |
+| `industries` | No | Advertiser-industry filters |
+| `countries` | No | ISO 3166-1 alpha-2 market filters |
+| `buyer_brand` | No | Buyer brand used for compatibility filtering |
+| `pagination` | No | Page size and continuation cursor |
+
+Each result includes `brand_id` and localized `names`; `house` is present when a house affiliation is on record. `relationship_trust` reports whether that affiliation is reciprocated: only `mutual` and `inline` extend trust to `house.domain`. `leaf_only`, `house_only`, and `unverifiable` are one-sided or unverified states, while `standalone` means the brand declares no house. A missing `relationship_trust` means the agent has not computed a verdict and MUST NOT be interpreted as `standalone`. `claimed_house_domain` preserves a leaf's unverified parent claim, and `relationship_verified_at` records the last bilateral confirmation for `mutual` results.
+
+Other public discovery fields such as description, industries, logos, architecture type, and rights availability are optional.

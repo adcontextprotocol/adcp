@@ -6,7 +6,7 @@ description: "Keep equivalent trafficking representations in one immutable creat
 
 A logical creative can arrive before its destination is known. It may carry several equivalent trafficking representations—for example, inline display markup plus an Internal Redirect pair, or VAST 2.0, 3.0, and 4.0 URLs. Preserve those alternatives in one `CreativeRepresentationSet` revision, then resolve exactly one into an ordinary seller-bound creative manifest.
 
-This is not creative rotation or A/B testing. Every entry represents the same creative content through a different delivery contract.
+This is not creative rotation or A/B testing. Every entry represents the same creative content through a different delivery contract. A representation set is scoped to one canonical format kind: every representation must share the same `format_kind`. Interchangeable packagings for different media types belong in separate sets or separate `sync_creatives` items—seller selection is choosing between delivery contracts for one format, not between media types.
 
 | Identity | Meaning |
 |---|---|
@@ -184,6 +184,27 @@ On `sync_creatives`, the seller enforces two different invariants:
 
 Changing the source set requires a new buyer `revision_id`. Changing only the selected execution does not mint a buyer revision, but it is an `updated` creative and follows the ordinary re-review lifecycle; approval never transfers silently to different execution bytes. `list_creatives` returns the exact current `representation_selection` while that selected execution remains current. A downstream seller that receives only the selected manifest can verify its output digest and retain the asserted source-set digest, but cannot claim it independently inspected hidden source representations.
 
+Resolution is an explicit buyer-initiated operation, not a continuously
+reevaluated seller policy. After a selected output is accepted by
+`sync_creatives`, later product, placement, VAST, macro, or seller-capability
+changes MUST NOT cause the seller to rerun the strategy, replace
+`representation_selection`, or move the creative into re-review on behalf of
+the buyer. Those changes apply to future resolution requests and assignment
+validation. To replace the current execution, the buyer explicitly calls the
+destination seller's `build_creative` route with the current destination
+contract and then submits the returned manifest through `sync_creatives`.
+`build_creative` alone does not mutate the creative library; the subsequent
+sync is the buyer-visible update that starts ordinary re-review.
+
+If a seller can no longer serve an already accepted execution, it MUST NOT
+silently substitute another representation. It uses the ordinary
+seller/system-initiated creative lifecycle and media-buy impairment surfaces,
+while preserving the exact selection lineage for audit. Buyers reconcile the
+status through `creative.status_changed`, `list_creatives`, and
+`get_media_buys`, then explicitly resolve and sync a replacement when needed.
+An independent seller-initiated re-review may evaluate the same pinned
+execution, but it does not authorize representation re-selection.
+
 This version does not combine `representation_selection` with the sync-only
 `localization` mutation. A selected sync item MUST omit `localization`, including
 `null`, and the stored creative MUST NOT already have localization that omission
@@ -193,6 +214,10 @@ only after that removal is accepted may the selected output be synced. Locale
 topology and materialized locale assets need their own explicit
 pre-binding projection; treating them as library metadata would allow served
 bytes to change without changing either review fingerprint.
+
+<Warning>
+**Migrating an existing localized creative to representation selection is destructive and non-atomic.** First, submit a `sync_creatives` item with `localization: null` to clear all locale assets — existing localized delivery stops while that sync is under review. Only after the null-sync is accepted may the selected output be synced. There is no atomic path: a re-review window exists between the two steps, and a buyer currently serving localized creatives will experience a delivery gap during migration.
+</Warning>
 
 ## Resolution failure
 
