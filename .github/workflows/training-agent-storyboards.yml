@@ -494,7 +494,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Download /sales orchestrator artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: storyboards-current-sales-orchestrator-*
           path: /tmp/storyboards-sales-orchestrators
