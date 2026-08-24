@@ -761,7 +761,11 @@ function projectTenantCapabilities(
         : [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
     };
     const tenantProtocols = TENANT_PROTOCOLS[tenantId];
-    if (tenantProtocols) {
+    // Frozen 3.0 capability projection predates the route-specific protocol
+    // claims and still carries the shared media_buy targeting block used by
+    // legacy signals clients. Keep that released surface intact; the exact
+    // per-route protocol contract applies to current capability discovery.
+    if (tenantProtocols && storyboardCompat?.version !== '3.0') {
       structured.supported_protocols = [...tenantProtocols];
       if (!tenantProtocols.includes('media_buy')) {
         delete structured.media_buy;
