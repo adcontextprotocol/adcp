@@ -246,6 +246,16 @@ fingerprint. A changed selection or changed derived output is an
 `revision_id` and digest remain unchanged. [`list_creatives`](/docs/creative/task-reference/list_creatives) returns the exact
 current selection lineage while that execution remains current.
 
+The seller never performs that replacement implicitly. Once accepted, the
+selection is pinned even if later product or seller capabilities would choose
+a different representation. Capability drift affects future resolution and
+assignment checks; it does not mutate the library creative or start re-review.
+The buyer must explicitly resolve again with `build_creative` and submit the
+new selected output here. This sync response acknowledges the update and starts
+ordinary re-review. If the seller can no longer serve the pinned execution, it
+uses the ordinary seller/system status-change and media-buy impairment
+surfaces without substituting another representation.
+
 A sync item carrying `representation_selection` MUST omit `localization`,
 including `null`, in this version, and the stored creative must not already
 have localization that ordinary omission would preserve. Remove an existing
