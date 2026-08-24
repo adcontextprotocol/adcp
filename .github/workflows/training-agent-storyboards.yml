@@ -89,7 +89,7 @@ jobs:
           # below observed counts for flake tolerance.
           - surface: current
             tenant: signals
-            min_clean_storyboards: 74
+            min_clean_storyboards: 163
             # Observed after the beta.6 signing-profile migration: 84 passing.
             min_passing_steps: 83
           - surface: current
