@@ -1,7 +1,7 @@
 /**
  * Red-team regression scenarios for Addie.
  *
- * 25 hostile questions from the AdCP 3.0 pre-ship defensibility review.
+ * Hostile questions seeded from the AdCP 3.0 pre-ship defensibility review.
  * Each scenario names the concept section in knowledge.md that should drive
  * the answer, plus deterministic markers that prove (or fail to prove) Addie
  * reasoned from the concept vs reciting marketing boilerplate.
@@ -71,14 +71,14 @@ export const RED_TEAM_SCENARIOS: RedTeamScenario[] = [
     noSignInDeflect: true,
   },
 
-  // AAMP — concept: "AAO and IAB Tech Lab" + "Layering"
+  // AAMP — concept: "AAO and IAB Tech Lab" + architectural overlap
   {
     id: 'aamp-1',
     category: 'aamp',
     question: "How is AdCP different from IAB's AAMP?",
     concept: 'AAO and IAB Tech Lab',
-    requiredMarkers: ['bidding', 'buying', 'impression', 'campaign', 'layer'],
-    bannedMarkers: ['aamp is inferior', 'aamp fails'],
+    requiredMarkers: ['overlap', 'framework', 'opendirect', 'adapter'],
+    bannedMarkers: ['aamp is inferior', 'aamp fails', 'do not overlap', "don't overlap"],
     noSignInDeflect: true,
   },
   {
@@ -86,8 +86,20 @@ export const RED_TEAM_SCENARIOS: RedTeamScenario[] = [
     category: 'aamp',
     question: "Why doesn't AAO just contribute this work to IAB Tech Lab?",
     concept: 'AAO and IAB Tech Lab',
-    requiredMarkers: ['apache 2.0', 'different layer', 'layer'],
+    requiredMarkers: ['apache 2.0', 'separate governance', 'independent organizations'],
     bannedMarkers: ['iab is slow', 'bureaucratic'],
+    noSignInDeflect: true,
+  },
+  {
+    // Banned markers are a coarse tone guard only. The paired sensitive-topic
+    // scenario redteam-aamp-4 classifies the inbound question, not the answer,
+    // so no automated judge grades answer tone for this question.
+    id: 'aamp-3',
+    category: 'aamp',
+    question: 'Is AAMP as production-ready as AdCP?',
+    concept: 'AAO and IAB Tech Lab',
+    requiredMarkers: ['conformance', 'security', 'schema'],
+    bannedMarkers: ['aamp is inferior', 'aamp fails', 'vaporware'],
     noSignInDeflect: true,
   },
 

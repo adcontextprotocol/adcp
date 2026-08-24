@@ -129,9 +129,13 @@ describe('Training Agent documented public token', () => {
   });
 
   it.each([
-    '/api/training-agent/sales/mcp-strict-required',
-    '/api/training-agent/sales/mcp-strict-forbidden',
-  ])('rejects unsigned required protocol methods on %s', async (path) => {
+    ['tasks/cancel', '/api/training-agent/sales/mcp-strict-required'],
+    ['tasks/pushNotificationConfig/set', '/api/training-agent/sales/mcp-strict-required'],
+    ['CreateTaskPushNotificationConfig', '/api/training-agent/sales/mcp-strict-required'],
+    ['tasks/cancel', '/api/training-agent/sales/mcp-strict-forbidden'],
+    ['tasks/pushNotificationConfig/set', '/api/training-agent/sales/mcp-strict-forbidden'],
+    ['CreateTaskPushNotificationConfig', '/api/training-agent/sales/mcp-strict-forbidden'],
+  ])('rejects unsigned required protocol method %s on %s', async (method, path) => {
     const app = createApp();
 
     const res = await request(app)
@@ -141,7 +145,7 @@ describe('Training Agent documented public token', () => {
       .send({
         jsonrpc: '2.0',
         id: 1,
-        method: 'tasks/cancel',
+        method,
         params: { id: 'task_123' },
       });
 

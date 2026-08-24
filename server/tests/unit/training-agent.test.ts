@@ -41,6 +41,7 @@ import {
   REPLAY_TTL_SECONDS,
 } from '../../src/training-agent/idempotency.js';
 import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { canonicalize } from '@adcp/sdk';
 
 function resignTermsDigest(proposal: Record<string, unknown>): void {
@@ -99,9 +100,17 @@ const VALID_PRICING_MODELS = [
 ] as const;
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
-const CURRENT_ADCP_VERSION = '3.2-beta.4';
+const CURRENT_ADCP_VERSION = '3.2-beta.5';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open', authenticatedAgentUrl: 'https://buyer.example' };
+
+const protocolMethodFixture = JSON.parse(readFileSync(new URL(
+  '../../../static/compliance/source/test-vectors/request-signing/protocol-method-names.json',
+  import.meta.url,
+), 'utf8')) as {
+  valid_declarations: Array<{ family: string; methods: string[] }>;
+  invalid_declarations: string[];
+};
 
 describe('canonical package readiness parameter matching', () => {
   const manifest = (width: number, height: number) => ({
@@ -12934,6 +12943,7 @@ describe('get_products refine mode', () => {
       refine: [{ scope: 'product', action: 'include', product_id: source.product_id }],
     });
 
+    expect(refined).toMatchObject({ refinement_applied: expect.any(Array) });
     const applied = refined.refinement_applied as Array<Record<string, unknown>>;
     expect(applied[0]).toMatchObject({
       scope: 'product',
@@ -15579,15 +15589,23 @@ describe('get_adcp_capabilities handler', () => {
     expect(requiredFor).toContain('create_media_buy');
     expect(requiredFor).toContain('update_media_buy');
     expect(requiredFor).toContain('sync_creatives');
-    // Wire shape — namespace is enforced by absence of `/`.
-    expect(requiredFor.every(op => !op.includes('/'))).toBe(true);
+    const { isProtocolMethodName } = await import('../../src/training-agent/request-signing.js');
+    expect(requiredFor.every(op => !isProtocolMethodName(op))).toBe(true);
 
-    expect(rs.protocol_methods_required_for).toEqual(['tasks/cancel']);
-    expect(rs.protocol_methods_supported_for).toEqual(['tasks/cancel']);
+    expect(rs.protocol_methods_required_for).toEqual([
+      'tasks/cancel',
+      'tasks/pushNotificationConfig/set',
+      'CreateTaskPushNotificationConfig',
+    ]);
+    expect(rs.protocol_methods_supported_for).toEqual([
+      'tasks/cancel',
+      'tasks/pushNotificationConfig/set',
+      'CreateTaskPushNotificationConfig',
+    ]);
 
     // Cross-namespace leak guard.
     const supportedFor = rs.supported_for as string[];
-    expect(supportedFor.every(op => !op.includes('/'))).toBe(true);
+    expect(supportedFor.every(op => !isProtocolMethodName(op))).toBe(true);
   });
 });
 
@@ -15627,6 +15645,53 @@ describe('mcpOperationResolver', () => {
       id: 1,
     });
     expect(mcpOperationResolver({ rawBody })).toBe('tasks/get');
+  });
+
+  it('returns a nested A2A 0.3 push-notification-config method name', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'tasks/pushNotificationConfig/set',
+      params: {},
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBe('tasks/pushNotificationConfig/set');
+  });
+
+  it('returns an A2A 1.0 PascalCase method name', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'SendMessage',
+      params: {},
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBe('SendMessage');
+  });
+
+  it('matches the decoded method string regardless of its JSON escape spelling', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = '{"jsonrpc":"2.0","method":"\\u0043ancelTask","params":{},"id":1}';
+    expect(mcpOperationResolver({ rawBody })).toBe('CancelTask');
+  });
+
+  it('does not classify the reserved tools/call envelope as a protocol method', async () => {
+    const { isProtocolMethodName } = await import('../../src/training-agent/request-signing.js');
+    expect(isProtocolMethodName('tools/call')).toBe(false);
+  });
+
+  it('classifies the published conformance corpus with the runtime grammar', async () => {
+    const { isProtocolMethodName } = await import('../../src/training-agent/request-signing.js');
+    for (const declaration of protocolMethodFixture.valid_declarations) {
+      for (const method of declaration.methods) {
+        expect(isProtocolMethodName(method), `${declaration.family}: ${method}`).toBe(true);
+      }
+    }
+    for (const method of protocolMethodFixture.invalid_declarations) {
+      expect(isProtocolMethodName(method), method).toBe(false);
+    }
+    expect(isProtocolMethodName('A'.repeat(256))).toBe(true);
+    expect(isProtocolMethodName('A'.repeat(257))).toBe(false);
   });
 
   it('returns undefined for missing rawBody', async () => {
@@ -15671,7 +15736,18 @@ describe('mcpOperationResolver', () => {
     expect(mcpOperationResolver({ rawBody })).toBeUndefined();
   });
 
-  it('refuses non-tools/call method that does not contain slash (defense in depth)', async () => {
+  it('refuses tools/call with a PascalCase protocol method in params.name', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'tools/call',
+      params: { name: 'SendMessage', arguments: {} },
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBeUndefined();
+  });
+
+  it('refuses a lower_snake_case non-tools/call method (defense in depth)', async () => {
     const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
     const rawBody = JSON.stringify({
       jsonrpc: '2.0',
@@ -16526,32 +16602,620 @@ describe('proposal lifecycle', () => {
     });
   });
 
-  it('fails closed on split targeting until the 3.2 training runtime ships', async () => {
+  it('executes targeting-aware discovery and filters future overlay support', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    const listed = await simulateCallTool(server, 'list_products', {
+    const targetedProductId = 'targeting_aware_training_product';
+    const proximityAllowlistProductId = 'targeting_proximity_allowlist_product';
+    const seeded = await simulateCallTool(server, 'comply_test_controller', {
+      account,
       brand: account.brand,
-      criteria: { targeting_overlay: { geo_countries: ['US'] } },
+      scenario: 'seed_product',
+      params: {
+        product_id: targetedProductId,
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'non_guaranteed',
+          overlay_support: {
+            geo_countries: { max_values_per_package: 2 },
+            geo_countries_exclude: { max_values_per_package: 3 },
+            geo_metros: { systems: ['nielsen_dma'] },
+            geo_regions: { countries: { FR: { all_values: true } } },
+            geo_proximity: {
+              radius: true,
+              travel_time: true,
+              max_values_per_package: 1,
+            },
+            frequency_cap: true,
+            placement_selection: { max_values_per_package: 1, max_packages: 1 },
+          },
+        },
+      },
     });
-    expect(listed).toMatchObject({
-      isError: true,
-      result: { code: 'UNSUPPORTED_FEATURE', field: 'criteria.targeting_overlay' },
+    expect(seeded.result.success).toBe(true);
+    const seededPricing = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: targetedProductId,
+        pricing_option_id: 'targeting_fixed_cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 8 },
+      },
+    });
+    expect(seededPricing.result.success).toBe(true);
+    const allowlistSeeded = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: proximityAllowlistProductId,
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'non_guaranteed',
+          overlay_support: {
+            geo_proximity: { travel_time: true, transport_modes: ['walking'] },
+          },
+        },
+      },
+    });
+    expect(allowlistSeeded.result.success).toBe(true);
+    const allowlistPricing = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: proximityAllowlistProductId,
+        pricing_option_id: 'proximity_allowlist_cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 8 },
+      },
+    });
+    expect(allowlistPricing.result.success).toBe(true);
+
+    const baseline = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: { product_ids: [targetedProductId] },
+    });
+    expect(baseline.isError, JSON.stringify(baseline.result)).toBeFalsy();
+    expect(baseline.result).toMatchObject({
+      outcome: 'listed',
+      products: [{ product_id: targetedProductId, overlay_support: expect.any(Object) }],
+    });
+    const listed = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: [targetedProductId],
+        targeting_overlay: { geo_countries: ['US'] },
+        required_overlay_support: {
+          geo_metros: { systems: ['nielsen_dma'] },
+        },
+      },
+      fields: ['description', 'pricing_options'],
+    });
+    expect(listed.isError, JSON.stringify(listed.result)).toBeFalsy();
+    expect(listed.result).toMatchObject({
+      outcome: 'listed',
+      products: [{
+        product_id: expect.stringMatching(/^configured_[a-f0-9]{24}$/),
+        is_custom: true,
+        expires_at: expect.any(String),
+        overlay_support: {
+          geo_countries: { max_values_per_package: 2 },
+          geo_metros: { systems: ['nielsen_dma'] },
+        },
+      }],
+    });
+    const configuredProduct = (listed.result.products as Array<Record<string, unknown>>)[0]!;
+    const configuredPricing = (configuredProduct.pricing_options as Array<Record<string, unknown>>)
+      .find(option => option.pricing_option_id === 'targeting_fixed_cpm')!;
+    const purchased = await executeTrainingAgentTool('buy_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: `targeted-buy-${randomUUID()}`,
+      account,
+      feed_version: listed.result.feed_version,
+      pricing_version: listed.result.pricing_version,
+      purchases: [{
+        product_id: configuredProduct.product_id,
+        pricing_option_id: configuredPricing.pricing_option_id,
+        budget: 1_000,
+      }],
+      start_time: '2027-01-01T00:00:00Z',
+      end_time: '2027-01-31T00:00:00Z',
+    }, DEFAULT_CTX);
+    expect(purchased.success, purchased.error).toBe(true);
+    expect(purchased.data).toMatchObject({ status: 'completed', media_buy_id: expect.any(String) });
+    const readback = await executeTrainingAgentTool('get_media_buys', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      account,
+      media_buy_ids: [purchased.data!.media_buy_id],
+    }, DEFAULT_CTX);
+    expect(readback.success, readback.error).toBe(true);
+    expect(readback.data).toMatchObject({
+      media_buys: [{
+        packages: [{ targeting_overlay: { geo_countries: ['US'] } }],
+      }],
+    });
+
+    const conflictingPurchase = await executeTrainingAgentTool('buy_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: `targeted-buy-conflict-${randomUUID()}`,
+      account,
+      feed_version: listed.result.feed_version,
+      pricing_version: listed.result.pricing_version,
+      purchases: [{
+        product_id: configuredProduct.product_id,
+        pricing_option_id: configuredPricing.pricing_option_id,
+        budget: 1_000,
+        targeting_overlay: { geo_countries: ['CA'] },
+      }],
+      start_time: '2027-01-01T00:00:00Z',
+      end_time: '2027-01-31T00:00:00Z',
+    }, DEFAULT_CTX);
+    expect(conflictingPurchase.success, conflictingPurchase.error).toBe(true);
+    expect(conflictingPurchase.data).toMatchObject({
+      errors: [{
+        code: 'UNSUPPORTED_FEATURE',
+        field: 'purchases[0].targeting_overlay.geo_countries',
+      }],
+    });
+
+    const unsupportedPurchaseTargeting = await executeTrainingAgentTool('buy_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: `targeted-buy-unsupported-${randomUUID()}`,
+      account,
+      feed_version: listed.result.feed_version,
+      pricing_version: listed.result.pricing_version,
+      purchases: [{
+        product_id: configuredProduct.product_id,
+        pricing_option_id: configuredPricing.pricing_option_id,
+        budget: 1_000,
+        targeting_overlay: { browser: ['safari'] },
+      }],
+      start_time: '2027-01-01T00:00:00Z',
+      end_time: '2027-01-31T00:00:00Z',
+    }, DEFAULT_CTX);
+    expect(unsupportedPurchaseTargeting.success, unsupportedPurchaseTargeting.error).toBe(true);
+    expect(unsupportedPurchaseTargeting.data).toMatchObject({
+      errors: [{
+        code: 'UNSUPPORTED_FEATURE',
+        field: 'purchases[0].targeting_overlay.browser',
+      }],
+    });
+
+    const broadListed = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: [targetedProductId],
+        targeting_overlay: { geo_countries: ['US', 'CA'] },
+      },
+      fields: ['pricing_options'],
+    });
+    const broadProduct = (broadListed.result.products as Array<Record<string, unknown>>)[0]!;
+    const narrowedPurchase = await executeTrainingAgentTool('buy_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: `targeted-buy-narrowed-${randomUUID()}`,
+      account,
+      feed_version: broadListed.result.feed_version,
+      pricing_version: broadListed.result.pricing_version,
+      purchases: [{
+        product_id: broadProduct.product_id,
+        pricing_option_id: 'targeting_fixed_cpm',
+        budget: 1_000,
+        targeting_overlay: { geo_countries: ['US'] },
+      }],
+      start_time: '2027-02-01T00:00:00Z',
+      end_time: '2027-02-28T00:00:00Z',
+    }, DEFAULT_CTX);
+    expect(narrowedPurchase.success, narrowedPurchase.error).toBe(true);
+    expect(narrowedPurchase.data).toMatchObject({ status: 'completed' });
+
+    const exclusionListed = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: [targetedProductId],
+        targeting_overlay: { geo_countries_exclude: ['CA'] },
+      },
+      fields: ['pricing_options'],
+    });
+    const exclusionProduct = (exclusionListed.result.products as Array<Record<string, unknown>>)[0]!;
+    const narrowedExclusionPurchase = await executeTrainingAgentTool('buy_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: `targeted-buy-exclusion-${randomUUID()}`,
+      account,
+      feed_version: exclusionListed.result.feed_version,
+      pricing_version: exclusionListed.result.pricing_version,
+      purchases: [{
+        product_id: exclusionProduct.product_id,
+        pricing_option_id: 'targeting_fixed_cpm',
+        budget: 1_000,
+        targeting_overlay: { geo_countries_exclude: ['CA', 'MX'] },
+      }],
+      start_time: '2027-03-01T00:00:00Z',
+      end_time: '2027-03-31T00:00:00Z',
+    }, DEFAULT_CTX);
+    expect(narrowedExclusionPurchase.success, narrowedExclusionPurchase.error).toBe(true);
+    expect(narrowedExclusionPurchase.data).toMatchObject({ status: 'completed' });
+
+    const frequencyListed = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: [targetedProductId],
+        targeting_overlay: {
+          frequency_cap: {
+            max_impressions: 10,
+            per: 'devices',
+            window: { interval: 7, unit: 'days' },
+          },
+        },
+      },
+      fields: ['pricing_options'],
+    });
+    expect(frequencyListed.isError, JSON.stringify(frequencyListed.result)).toBeFalsy();
+    const frequencyProduct = (frequencyListed.result.products as Array<Record<string, unknown>>)[0]!;
+    const narrowedFrequencyPurchase = await executeTrainingAgentTool('buy_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: `targeted-buy-frequency-${randomUUID()}`,
+      account,
+      feed_version: frequencyListed.result.feed_version,
+      pricing_version: frequencyListed.result.pricing_version,
+      purchases: [{
+        product_id: frequencyProduct.product_id,
+        pricing_option_id: 'targeting_fixed_cpm',
+        budget: 1_000,
+        targeting_overlay: {
+          frequency_cap: {
+            max_impressions: 5,
+            per: 'devices',
+            window: { interval: 7, unit: 'days' },
+          },
+        },
+      }],
+      start_time: '2027-04-01T00:00:00Z',
+      end_time: '2027-04-30T00:00:00Z',
+    }, DEFAULT_CTX);
+    expect(narrowedFrequencyPurchase.success, narrowedFrequencyPurchase.error).toBe(true);
+    expect(narrowedFrequencyPurchase.data).toMatchObject({ status: 'completed' });
+
+    const broadenedFrequencyPurchase = await executeTrainingAgentTool('buy_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: `targeted-buy-frequency-broadened-${randomUUID()}`,
+      account,
+      feed_version: frequencyListed.result.feed_version,
+      pricing_version: frequencyListed.result.pricing_version,
+      purchases: [{
+        product_id: frequencyProduct.product_id,
+        pricing_option_id: 'targeting_fixed_cpm',
+        budget: 1_000,
+        targeting_overlay: {
+          frequency_cap: {
+            max_impressions: 5,
+            per: 'devices',
+            window: { interval: 1, unit: 'days' },
+          },
+        },
+      }],
+      start_time: '2027-04-01T00:00:00Z',
+      end_time: '2027-04-30T00:00:00Z',
+    }, DEFAULT_CTX);
+    expect(broadenedFrequencyPurchase.success, broadenedFrequencyPurchase.error).toBe(true);
+    expect(broadenedFrequencyPurchase.data).toMatchObject({
+      errors: [{ code: 'UNSUPPORTED_FEATURE', field: expect.stringContaining('frequency_cap') }],
+    });
+
+    const unsupportedStructuredTargeting = await executeTrainingAgentTool('buy_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: `targeted-buy-unsupported-metro-${randomUUID()}`,
+      account,
+      feed_version: listed.result.feed_version,
+      pricing_version: listed.result.pricing_version,
+      purchases: [{
+        product_id: configuredProduct.product_id,
+        pricing_option_id: configuredPricing.pricing_option_id,
+        budget: 1_000,
+        targeting_overlay: { geo_metros: [{ system: 'uk_itl2', values: ['UKI'] }] },
+      }],
+      start_time: '2027-05-01T00:00:00Z',
+      end_time: '2027-05-31T00:00:00Z',
+    }, DEFAULT_CTX);
+    expect(unsupportedStructuredTargeting.success, unsupportedStructuredTargeting.error).toBe(true);
+    expect(unsupportedStructuredTargeting.data).toMatchObject({
+      errors: [{
+        code: 'UNSUPPORTED_FEATURE',
+        field: 'purchases[0].targeting_overlay.geo_metros',
+      }],
+    });
+
+    const supportedProximityWithoutModeAllowlist = await executeTrainingAgentTool('buy_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: `targeted-buy-unsupported-proximity-${randomUUID()}`,
+      account,
+      feed_version: listed.result.feed_version,
+      pricing_version: listed.result.pricing_version,
+      purchases: [{
+        product_id: configuredProduct.product_id,
+        pricing_option_id: configuredPricing.pricing_option_id,
+        budget: 1_000,
+        targeting_overlay: {
+          geo_proximity: [{
+            lat: 51.5,
+            lng: -0.1,
+            travel_time: { value: 20, unit: 'min' },
+            transport_mode: 'driving',
+          }],
+        },
+      }],
+      start_time: '2027-05-01T00:00:00Z',
+      end_time: '2027-05-31T00:00:00Z',
+    }, DEFAULT_CTX);
+    expect(supportedProximityWithoutModeAllowlist.success, supportedProximityWithoutModeAllowlist.error).toBe(true);
+    expect(supportedProximityWithoutModeAllowlist.data).toMatchObject({ status: 'completed' });
+
+    const allowlistCatalog = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: { product_ids: [proximityAllowlistProductId] },
+      fields: ['pricing_options'],
+    });
+    const unsupportedProximityMode = await executeTrainingAgentTool('buy_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: `targeted-buy-unsupported-proximity-mode-${randomUUID()}`,
+      account,
+      feed_version: allowlistCatalog.result.feed_version,
+      pricing_version: allowlistCatalog.result.pricing_version,
+      purchases: [{
+        product_id: proximityAllowlistProductId,
+        pricing_option_id: 'proximity_allowlist_cpm',
+        budget: 1_000,
+        targeting_overlay: {
+          geo_proximity: [{
+            lat: 51.5,
+            lng: -0.1,
+            travel_time: { value: 20, unit: 'min' },
+            transport_mode: 'driving',
+          }],
+        },
+      }],
+      start_time: '2027-05-01T00:00:00Z',
+      end_time: '2027-05-31T00:00:00Z',
+    }, DEFAULT_CTX);
+    expect(unsupportedProximityMode.success, unsupportedProximityMode.error).toBe(true);
+    expect(unsupportedProximityMode.data).toMatchObject({
+      errors: [{ code: 'UNSUPPORTED_FEATURE', field: 'purchases[0].targeting_overlay.geo_proximity' }],
+    });
+
+    const overLimitPlacementSelection = await executeTrainingAgentTool('buy_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: `targeted-buy-placement-limit-${randomUUID()}`,
+      account,
+      feed_version: listed.result.feed_version,
+      pricing_version: listed.result.pricing_version,
+      purchases: [{
+        product_id: configuredProduct.product_id,
+        pricing_option_id: configuredPricing.pricing_option_id,
+        budget: 1_000,
+        targeting_overlay: {
+          placement_selection: {
+            mode: 'selected',
+            placement_refs: [
+              { publisher_domain: 'publisher.example', placement_id: 'placement-1' },
+              { publisher_domain: 'publisher.example', placement_id: 'placement-2' },
+            ],
+          },
+        },
+      }],
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-06-30T00:00:00Z',
+    }, DEFAULT_CTX);
+    expect(overLimitPlacementSelection.success, overLimitPlacementSelection.error).toBe(true);
+    expect(overLimitPlacementSelection.data).toMatchObject({
+      errors: [{ code: 'UNSUPPORTED_FEATURE', field: 'purchases[0].targeting_overlay.placement_selection' }],
+    });
+
+    const overLimitPlacementPackages = await executeTrainingAgentTool('buy_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: `targeted-buy-placement-package-limit-${randomUUID()}`,
+      account,
+      feed_version: listed.result.feed_version,
+      pricing_version: listed.result.pricing_version,
+      purchases: ['placement-1', 'placement-2'].map(placementId => ({
+        product_id: configuredProduct.product_id,
+        pricing_option_id: configuredPricing.pricing_option_id,
+        budget: 500,
+        targeting_overlay: {
+          placement_selection: {
+            mode: 'selected',
+            placement_refs: [{ publisher_domain: 'publisher.example', placement_id: placementId }],
+          },
+        },
+      })),
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-06-30T00:00:00Z',
+    }, DEFAULT_CTX);
+    expect(overLimitPlacementPackages.success, overLimitPlacementPackages.error).toBe(true);
+    expect(overLimitPlacementPackages.data).toMatchObject({
+      errors: [{ code: 'UNSUPPORTED_FEATURE', field: 'purchases[1].targeting_overlay.placement_selection' }],
     });
 
     const targetedRequest = await simulateCallTool(server, 'request_proposals', {
       idempotency_key: `test-${randomUUID()}`,
-      brand: account.brand,
-      brief: 'social engagement display',
+      account,
+      brief: 'Use the selected targeting-aware display offer.',
       criteria: {
+        product_ids: [targetedProductId],
+        targeting_overlay: { geo_countries: ['US'] },
         required_overlay_support: {
           geo_metros: { systems: ['nielsen_dma'] },
         },
       },
     });
-    expect(targetedRequest).toMatchObject({
-      isError: true,
-      result: { code: 'UNSUPPORTED_FEATURE', field: 'criteria.required_overlay_support' },
+    expect(targetedRequest.isError, JSON.stringify(targetedRequest.result)).toBeFalsy();
+    expect(targetedRequest.result).toMatchObject({
+      outcome: 'proposed',
+      proposals: [{
+        commercial_terms: {
+          purchases: [{
+            product_id: expect.stringMatching(/^configured_[a-f0-9]{24}$/),
+            targeting_overlay: { geo_countries: ['US'] },
+          }],
+        },
+      }],
+    });
+    const targetedProposal = (targetedRequest.result.proposals as Array<Record<string, unknown>>)[0]!;
+    const committedTargetedProposal = await finalizeCompactProposal(server, targetedProposal);
+    const acceptedTargetedProposal = await runWithSessionContext(() => handleAcceptProposal({
+      idempotency_key: `targeted-accept-${randomUUID()}`,
+      account,
+      proposal_id: committedTargetedProposal.proposal_id,
+      proposal_terms_digest: committedTargetedProposal.terms_digest,
+      total_budget: { amount: 1_000, currency: 'USD' },
+    }, DEFAULT_CTX));
+    expect(acceptedTargetedProposal).toMatchObject({
+      status: 'completed',
+      media_buy_id: expect.any(String),
+    });
+    const acceptedReadback = await executeTrainingAgentTool('get_media_buys', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      account,
+      media_buy_ids: [acceptedTargetedProposal.media_buy_id],
+    }, DEFAULT_CTX);
+    expect(acceptedReadback.success, acceptedReadback.error).toBe(true);
+    expect(acceptedReadback.data).toMatchObject({
+      media_buys: [{ packages: [{ targeting_overlay: { geo_countries: ['US'] } }] }],
     });
 
+    const allRegions = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: [targetedProductId],
+        required_overlay_support: {
+          geo_regions: { countries: { FR: { values: ['FR-49'] } } },
+        },
+      },
+    });
+    expect(allRegions.isError, JSON.stringify(allRegions.result)).toBeFalsy();
+    expect(allRegions.result).toMatchObject({
+      outcome: 'listed',
+      products: [{ product_id: targetedProductId }],
+    });
+
+    const unsupported = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: [targetedProductId],
+        required_overlay_support: { browser: { families: ['safari'] } },
+      },
+    });
+    expect(unsupported.isError).toBeFalsy();
+    expect(unsupported.result).toMatchObject({ outcome: 'listed', products: [] });
+
+    const concurrentListings = await Promise.all(['US', 'CA'].map(country => simulateCallTool(
+      server,
+      'list_products',
+      {
+        account,
+        criteria: {
+          product_ids: [targetedProductId],
+          targeting_overlay: { geo_countries: [country] },
+        },
+        fields: ['pricing_options'],
+        context: { correlation_id: `concurrent-targeting-${country}` },
+      },
+    )));
+    expect(concurrentListings.every(result => !result.isError)).toBe(true);
+    const concurrentProducts = concurrentListings.map(result => (
+      (result.result.products as Array<Record<string, unknown>>)[0]!
+    ));
+    expect(new Set(concurrentProducts.map(product => product.product_id)).size).toBe(2);
+    for (const [index, product] of concurrentProducts.entries()) {
+      const concurrentPurchase = await executeTrainingAgentTool('buy_products', {
+        adcp_version: CURRENT_ADCP_VERSION,
+        idempotency_key: `concurrent-targeted-buy-${index}-${randomUUID()}`,
+        account,
+        feed_version: concurrentListings[index]!.result.feed_version,
+        pricing_version: concurrentListings[index]!.result.pricing_version,
+        purchases: [{
+          product_id: product.product_id,
+          pricing_option_id: 'targeting_fixed_cpm',
+          budget: 1_000,
+        }],
+        start_time: `2027-0${index + 3}-01T00:00:00Z`,
+        end_time: `2027-0${index + 3}-28T00:00:00Z`,
+      }, DEFAULT_CTX);
+      expect(concurrentPurchase.success, concurrentPurchase.error).toBe(true);
+      expect(concurrentPurchase.data).toMatchObject({ status: 'completed' });
+    }
+  });
+
+  it('returns a correctable error when configured-product capacity would truncate discovery', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const productIds = [
+      'targeting_capacity_training_product_a',
+      'targeting_capacity_training_product_b',
+    ];
+    for (const productId of productIds) {
+      const seeded = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            channels: ['display'],
+            delivery_type: 'non_guaranteed',
+            overlay_support: { geo_countries: { max_values_per_package: 2 } },
+          },
+        },
+      });
+      expect(seeded.result.success).toBe(true);
+    }
+
+    const first = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: [productIds[0]],
+        targeting_overlay: { geo_countries: ['US'] },
+      },
+    });
+    expect(first.isError, JSON.stringify(first.result)).toBeFalsy();
+    expect(first.result.products).toHaveLength(1);
+
+    let configuredIdsBeforeOverflow: string[] = [];
+    await runWithSessionContext(async () => {
+      const session = await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode));
+      const template = [...session.configuredProducts.values()][0]!;
+      expect(template).toBeDefined();
+      for (let index = session.configuredProducts.size; index < 127; index += 1) {
+        const configuredId = `configured_capacity_fixture_${index}`;
+        session.configuredProducts.set(configuredId, {
+          ...structuredClone(template),
+          product_id: configuredId,
+        });
+        session.configuredProductTargeting.set(configuredId, { geo_countries: ['US'] });
+      }
+      configuredIdsBeforeOverflow = [...session.configuredProducts.keys()].sort();
+      await flushDirtySessions();
+    });
+
+    const capped = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: productIds,
+        targeting_overlay: { geo_countries: ['CA'] },
+      },
+    });
+    expect(capped.isError).toBe(true);
+    expect(capped.result).toMatchObject({
+      code: 'LIMIT_EXCEEDED',
+      field: 'targeting_overlay',
+      recovery: 'correctable',
+      details: { limit: 128, dropped_products: 1 },
+    });
+    await runWithSessionContext(async () => {
+      const session = await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode));
+      expect([...session.configuredProducts.keys()].sort()).toEqual(configuredIdsBeforeOverflow);
+    });
+  });
+
+  it('keeps criteria refinements gated to typed negotiation profiles', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result: requested, isError: requestError } = await simulateCallTool(server, 'request_proposals', {
       idempotency_key: `test-${randomUUID()}`,
       brand: account.brand,
@@ -18031,6 +18695,88 @@ describe('proposal lifecycle', () => {
 
     expect(isError).toBeFalsy();
     expect(result.media_buy_id).toBeDefined();
+  });
+
+  it('hands a committed legacy proposal to the same principal without crossing account or principal boundaries', async () => {
+    const ownerCtx: TrainingContext = {
+      mode: 'open',
+      principal: 'static:proposal-owner',
+      authenticatedAgentUrl: 'https://proposal-owner.example',
+    };
+    const otherPrincipalCtx: TrainingContext = {
+      mode: 'open',
+      principal: 'static:proposal-other',
+      authenticatedAgentUrl: 'https://proposal-other.example',
+    };
+    const ownerAccount = {
+      brand: { domain: 'proposal-handoff.example' },
+      operator: 'buyer-one.example',
+    };
+
+    const { result: initial } = await simulateCallTool(
+      createTrainingAgentServer(ownerCtx),
+      'get_products',
+      { buying_mode: 'brief', brief: 'premium video news', account: ownerAccount },
+    );
+    const draft = (initial.proposals as Array<Record<string, unknown>>).find(
+      proposal => proposal.proposal_status === 'draft',
+    );
+    expect(draft).toBeDefined();
+
+    const { result: refined } = await simulateCallTool(
+      createTrainingAgentServer(ownerCtx),
+      'get_products',
+      {
+        buying_mode: 'refine',
+        account: ownerAccount,
+        refine: [{ scope: 'proposal', action: 'finalize', proposal_id: draft!.proposal_id }],
+      },
+    );
+    const committed = (refined.proposals as Array<Record<string, unknown>>).find(
+      proposal => proposal.proposal_id === draft!.proposal_id,
+    );
+    expect(committed).toMatchObject({ proposal_status: 'committed' });
+    const io = committed!.insertion_order as Record<string, unknown>;
+    const execution = {
+      account: { ...ownerAccount, sandbox: true },
+      brand: ownerAccount.brand,
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      proposal_id: committed!.proposal_id,
+      total_budget: { amount: 75000, currency: 'USD' },
+      io_acceptance: {
+        io_id: io.io_id,
+        accepted_at: new Date().toISOString(),
+        signatory: 'proposal-owner',
+      },
+    };
+
+    const wrongPrincipal = await simulateCallTool(
+      createTrainingAgentServer(otherPrincipalCtx),
+      'create_media_buy',
+      { ...execution, account: ownerAccount },
+    );
+    expect(wrongPrincipal.isError).toBe(true);
+    expect(wrongPrincipal.result).toMatchObject({ code: 'PROPOSAL_NOT_COMMITTED' });
+
+    const wrongAccount = await simulateCallTool(
+      createTrainingAgentServer(ownerCtx),
+      'create_media_buy',
+      {
+        ...execution,
+        account: { ...execution.account, operator: 'buyer-two.example' },
+      },
+    );
+    expect(wrongAccount.isError).toBe(true);
+    expect(wrongAccount.result).toMatchObject({ code: 'PROPOSAL_NOT_COMMITTED' });
+
+    const accepted = await simulateCallTool(
+      createTrainingAgentServer(ownerCtx),
+      'create_media_buy',
+      execution,
+    );
+    expect(accepted.isError, JSON.stringify(accepted.result)).toBeFalsy();
+    expect(accepted.result.media_buy_id).toEqual(expect.any(String));
   });
 
   it('rejects create_media_buy with mismatched io_id', async () => {

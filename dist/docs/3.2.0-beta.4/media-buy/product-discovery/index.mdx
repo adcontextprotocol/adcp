@@ -1,0 +1,176 @@
+---
+title: Product discovery and planning
+sidebarTitle: Discovery and planning
+description: "Choose the AdCP 3.2 path for published product offers, wholesale feed synchronization, or seller-planned proposals."
+"og:title": "AdCP — Product discovery and planning"
+---
+
+AdCP 3.2 separates reading published offers from asking a seller to build a
+plan. Start by reading `get_adcp_capabilities.media_buy.lifecycle_tools`, then
+choose the path the seller advertises.
+
+| Buyer intent | Start with | Commit with |
+|---|---|---|
+| Browse or filter published offers | [`list_products`](/dist/docs/3.2.0-beta.4/media-buy/task-reference/list_products) | [`buy_products`](/dist/docs/3.2.0-beta.4/media-buy/task-reference/buy_products) |
+| Maintain a wholesale product mirror | `list_products`, feed versions, and account-level product webhooks | `buy_products`, or pass selected IDs into `request_proposals` |
+| Ask the seller to build or negotiate a plan | [`request_proposals`](/dist/docs/3.2.0-beta.4/media-buy/task-reference/request_proposals) | Finalize with `refine_proposals`, then [`accept_proposal`](/dist/docs/3.2.0-beta.4/media-buy/task-reference/accept_proposal) |
+
+<Note>
+Wholesale is a product-feed topology, not a proposal mode. A mirror tracks the
+seller's published offers and pricing. Proposal tasks create immutable,
+seller-authored commercial snapshots for a specific planning conversation.
+</Note>
+
+## 1. Discover the available lifecycle
+
+Do not infer compact-tool support from the protocol version alone. Use the
+seller's advertised lifecycle tools:
+
+```javascript
+const capabilities = await seller.getCapabilities();
+const lifecycleTools = new Set(capabilities.mediaBuyLifecycleTools ?? []);
+
+const canBuyPublishedOffers =
+  lifecycleTools.has('list_products') && lifecycleTools.has('buy_products');
+const canNegotiate =
+  lifecycleTools.has('request_proposals') &&
+  lifecycleTools.has('refine_proposals') &&
+  lifecycleTools.has('accept_proposal');
+```
+
+The field names above use the TypeScript SDK's normalized capability view.
+On the wire, inspect `media_buy.lifecycle_tools`.
+
+## 2. Express criteria once
+
+Both `list_products` and `request_proposals` accept
+`ProductDiscoveryCriteria`. Keep three concerns separate:
+
+- `offer_filters` select commercial and product characteristics such as
+  channel, delivery type, currency, and reporting support.
+- `targeting_overlay` contains concrete delivery constraints that must affect
+  the returned product, price, and forecast.
+- `required_overlay_support` asks for targeting dimensions that the buyer will
+  select later; it is a capability requirement, not a current target value.
+
+```json
+{
+  "offer_filters": {
+    "channels": ["olv"],
+    "pricing_currencies": ["USD"]
+  },
+  "targeting_overlay": {
+    "geo_countries": ["US", "CA"]
+  },
+  "required_overlay_support": {
+    "demographics": { "age": true }
+  }
+}
+```
+
+Products return canonical `format_options[]` as their closed accepted creative
+set. Resolve publisher-backed definitions from `adagents.json.formats[]`; use a
+creative agent's capability IDs to choose production operations.
+
+## Published offers and wholesale mirrors
+
+Use `list_products` when the buyer wants to inspect seller-published offers
+without asking the seller to author a media plan:
+
+```javascript
+const result = await seller.listProducts({
+  adcp_version: '3.2-beta.3',
+  account: { account_id: 'account_123' },
+  criteria: {
+    offer_filters: {
+      channels: ['olv'],
+      pricing_currencies: ['USD'],
+    },
+    targeting_overlay: { geo_countries: ['US', 'CA'] },
+  },
+  max_results: 25,
+});
+```
+
+The response contains products only—never proposals—and carries an opaque
+`feed_version`. A direct buyer passes that version and selected product terms
+to `buy_products` so the seller can reject stale offers instead of silently
+applying changed terms.
+
+A catalog mirror uses the same read as its bootstrap and repair surface. Store
+`feed_version`, `pricing_version`, and `cache_scope`; subscribe to `product.*`
+and `wholesale_feed.bulk_change` through account notification configuration;
+then use conditional `list_products` reads to repair gaps. Do not poll the full
+feed when the webhook stream is healthy.
+
+See [`list_products` wholesale feed webhooks](/dist/docs/3.2.0-beta.4/media-buy/task-reference/list_products#wholesale-feed-webhooks)
+for the complete mirror contract.
+
+## Seller-planned proposals
+
+Use `request_proposals` when the seller should translate a campaign brief into
+one or more priced plans. Sam Adeyemi at Pinnacle Agency can send the same
+structured criteria to StreamHaus while keeping strategy in prose:
+
+```javascript
+const response = await seller.requestProposals({
+  adcp_version: '3.2-beta.3',
+  idempotency_key: 'acme-q2-proposals-001',
+  account: { account_id: 'account_123' },
+  brand: { domain: 'acme-outdoor.example' },
+  brief:
+    'Premium video on trusted sports and outdoor lifestyle properties for the Acme Outdoor Q2 launch. Prioritize reach within a USD 50,000 ceiling.',
+  criteria: {
+    offer_filters: {
+      channels: ['olv'],
+      pricing_currencies: ['USD'],
+    },
+    targeting_overlay: { geo_countries: ['US', 'CA'] },
+  },
+});
+```
+
+The seller returns immutable draft proposals. Each revision creates a new
+`proposal_id` and preserves its parent:
+
+1. Use `refine_proposals` with `action: "revise"` for typed budget, CPM,
+   flight, product, alternative, or targeting changes.
+2. Verify every returned typed constraint; a `partial` outcome identifies the
+   exact unsatisfied fields.
+3. Use `refine_proposals` with `action: "finalize"` to create a committed,
+   expiring inventory hold.
+4. Call `accept_proposal` with both the committed `proposal_id` and
+   `terms_digest` before `expires_at`.
+
+Commercial changes after acceptance use the same proposal lineage to create an
+amendment or negotiated cancellation. Operational changes inside the accepted
+envelope use [`control_media_buy`](/dist/docs/3.2.0-beta.4/media-buy/task-reference/control_media_buy).
+
+See [Proposal negotiation](/dist/docs/3.2.0-beta.4/media-buy/product-discovery/proposal-negotiation)
+for request shapes, failure planes, finalization, and recovery.
+
+## Catalog-driven campaigns
+
+Retail media, travel, job, and other catalog-driven campaigns pass a compact
+catalog selection in `criteria.catalog`. The seller matches the buyer-managed
+catalog to eligible offers; ingest or update the underlying feed separately
+through [`sync_catalogs`](/dist/docs/3.2.0-beta.4/media-buy/task-reference/sync_catalogs).
+
+## Compatibility path
+
+If `media_buy.lifecycle_tools` is absent, use the established `get_products`,
+`create_media_buy`, and `update_media_buy` facade documented in the
+[3.1 → 3.2 migration guide](/dist/docs/3.2.0-beta.4/reference/migration/3-1-to-3-2). Keep this
+branch at the version-adaptation boundary so new planning code works in terms
+of published offers, proposal snapshots, and revision-checked controls.
+
+## Next steps
+
+- [Media buy lifecycle](/dist/docs/3.2.0-beta.4/media-buy/media-buys/lifecycle) — commitment,
+  creative supply, control, and delivery
+- [Media products](/dist/docs/3.2.0-beta.4/media-buy/product-discovery/media-products) — product,
+  pricing, targeting, and format semantics
+- [Brief expectations](/dist/docs/3.2.0-beta.4/media-buy/product-discovery/brief-expectations) —
+  what belongs in prose versus structured criteria
+- [Task reference](/dist/docs/3.2.0-beta.4/media-buy/task-reference/) — compact lifecycle request
+  and response contracts

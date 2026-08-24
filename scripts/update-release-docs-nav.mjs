@@ -12,6 +12,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const DIST_DOCS_PREFIX_RE = /^dist\/docs\/[^/]+\//;
+const PRERELEASE_DOCS_LABEL_RE = /^(\d+)\.(\d+)-([0-9A-Za-z]+)$/;
+const PRERELEASE_BANNER_VERSION_RE = /AdCP (\d+)\.(\d+) ([0-9A-Za-z]+)\.\d+/g;
 
 function clone(value) {
   // docs.json navigation is JSON-pure, so JSON clone is sufficient here.
@@ -42,6 +44,38 @@ function snapshotPath(releaseVersion, value) {
     return `dist/docs/${releaseVersion}/${value.slice('docs/'.length)}`;
   }
   return retargetExistingPath(releaseVersion, value);
+}
+
+function updatePrereleaseBanner(config, releaseVersion, majorMinor) {
+  const match = PRERELEASE_DOCS_LABEL_RE.exec(majorMinor);
+  const content = config?.banner?.content;
+  if (!match || typeof content !== 'string') return false;
+
+  const [, major, minor, prerelease] = match;
+  const slug = `${major}-${minor}-${prerelease}`;
+  const sourcePath = `/docs/reference/${slug}`;
+  const snapshotPathPattern = new RegExp(
+    `/dist/docs/[^/]+/reference/${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`
+  );
+
+  if (!content.includes(sourcePath) && !snapshotPathPattern.test(content)) {
+    return false;
+  }
+
+  const destination = `/dist/docs/${releaseVersion}/reference/${slug}`;
+  config.banner.content = content
+    .replace(sourcePath, destination)
+    .replace(snapshotPathPattern, destination)
+    .replace(
+      PRERELEASE_BANNER_VERSION_RE,
+      (version, bannerMajor, bannerMinor, bannerPrerelease) =>
+        bannerMajor === major &&
+        bannerMinor === minor &&
+        bannerPrerelease === prerelease
+          ? `AdCP ${major}.${minor} ${prerelease}`
+          : version
+    );
+  return true;
 }
 
 function looseGroupName(pages, fallback) {
@@ -123,6 +157,7 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
       entry.groups = flattenVersionGroups(entry.groups);
     }
     versions[existingIndex] = entry;
+    updatePrereleaseBanner(config, releaseVersion, majorMinor);
     return {
       config,
       action: 'updated',
@@ -145,6 +180,7 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
   );
 
   versions.splice(sourceIndex + 1, 0, newEntry);
+  updatePrereleaseBanner(config, releaseVersion, majorMinor);
   return {
     config,
     action: 'added',

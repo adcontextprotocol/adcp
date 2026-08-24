@@ -1,0 +1,489 @@
+---
+title: Proposal negotiation
+description: "Implement AdCP 3.2 proposal negotiation from capability discovery through revision, finalization, acceptance, amendment, and cancellation."
+"og:title": "AdCP — Proposal negotiation implementation guide"
+---
+
+AdCP 3.2 proposal negotiation is an immutable-snapshot workflow. Buyers express mechanically verifiable requirements as typed fields and reserve `ask` for commercial nuance. Sellers validate the complete request before mutation, then return one independently classified result for each source proposal.
+
+This guide uses one scenario throughout: Sam, a buyer agent acting for Pinnacle Agency, is negotiating an Acme Outdoor campaign with the StreamHaus sales agent.
+
+## Lifecycle
+
+```mermaid
+flowchart LR
+  D0[Initial draft] -->|refine_proposals: revise| D1[Successor draft]
+  D1 -->|refine_proposals: finalize| H[Committed inventory hold]
+  H -->|accept_proposal before expires_at| A[Accepted proposal and MediaBuy]
+  A -->|revise: amendment| AD[Amendment draft]
+  A -->|revise: cancellation| CD[Cancellation draft]
+  AD -->|finalize then accept| A2[Updated MediaBuy]
+  CD -->|finalize then accept| C[Canceled MediaBuy]
+```
+
+Every transition creates a new `proposal_id`; the source snapshot remains unchanged. Every successor returned by [`refine_proposals`](/dist/docs/3.1.15/media-buy/task-reference/refine_proposals) carries `parent_proposal_id` equal to the source ID. A buyer can therefore reconstruct negotiation and amendment history by walking the parent chain.
+
+`draft` terms are indicative and do not reserve inventory. `finalize` copies an unchanged draft into a `committed` snapshot and creates a hold until `expires_at`. [`accept_proposal`](/dist/docs/3.1.15/media-buy/task-reference/accept_proposal) consumes that hold and creates, updates, or cancels the MediaBuy according to `proposal_kind`.
+
+## Discover what the seller supports
+
+Read `get_adcp_capabilities.media_buy.lifecycle_tools` before selecting the compact lifecycle. A negotiating seller includes `refine_proposals`; it may also publish `media_buy.proposal_refinement`:
+
+| Dimension | Request field | Mechanical promise |
+|---|---|---|
+| `total_budget` | `constraints.total_budget` | Validate a present total, matching currency, and inclusive bounds. |
+| `cpm` | `constraints.cpm` | Validate every purchase as fixed CPM/vCPM in the requested currency at or below the ceiling; auction and non-CPM pricing are unsatisfied. |
+| `impressions` | `constraints.impressions` | Validate that every purchase has a concrete impression volume and their sum meets the inclusive floor. |
+| `flight` | `constraints.flight` | Validate concrete timestamps against `start_no_later_than` and `end_no_earlier_than`; an `asap` start cannot satisfy a start bound. |
+| `product_changes` | `product_changes` | Validate keyed `include` and `omit` actions against returned purchases. |
+| `alternatives` | `alternatives.count` | Return distinct commercial terms up to the advertised `max_alternatives`. |
+| `criteria` | `criteria` | Parse and replace structured discovery criteria. |
+
+An explicit `supported_dimensions: []` means ask-only refinement. An omitted `proposal_refinement` block means typed support is unknown, so the buyer must tolerate per-result `partial` or `unable` outcomes.
+
+When an explicit list omits a dimension, the buyer SHOULD remove or translate that field before sending. If it sends the field anyway, the seller MUST reject the entire task with `UNSUPPORTED_FEATURE` before creating any successor. Free-text interpretation is competence, not a capability dimension; `ask` remains available even when the list is empty.
+
+When the seller interprets hard targeting found only in `ask` and that interpretation materially affects eligibility, pricing, or forecasting, inspect the result's `targeting_resolution.brief_targeting`. Structured `criteria.targeting_overlay` is not echoed when accepted exactly; any product-specific departure remains a sparse `Product.targeting_resolution.modifications` proposal that the buyer must review.
+
+## Two failure planes
+
+Do not flatten task errors and negotiation outcomes into one exception type.
+
+| Plane | Examples | Mutation rule | Buyer action |
+|---|---|---|---|
+| Task-level error | Malformed payload, more than 25 refinements, duplicate source IDs, count above 10 or `max_alternatives`, explicitly unsupported dimension, unauthorized source | No sibling may mutate | Correct the whole request and retry with a new key. |
+| Per-proposal outcome | `revised`, `partial`, `unable`, `finalized` | One ordered result per source; revision outcomes are independent | Verify the typed result, then select, revise, finalize, or decline. |
+| Atomic finalize outcome | `finalized`, `hold_unavailable`, `batch_aborted` | Every hold is created or none are | Retry the exact batch only for an exact replay; otherwise form a new request. |
+
+`constraint_unsatisfiable` means the seller accepted the dimension but did not satisfy it. `unsupported_dimension` is used per proposal only when capabilities were unknown; an explicitly omitted dimension is a task-level `UNSUPPORTED_FEATURE`. `commercially_declined` applies only to `ask`, never to a typed constraint.
+
+For example, if StreamHaus explicitly omits `criteria`, the task fails before any proposal is created:
+
+```json
+{
+  "$schema": "/schemas/3.1.15/core/protocol-envelope.json",
+  "status": "failed",
+  "adcp_error": {
+    "code": "UNSUPPORTED_FEATURE",
+    "message": "This seller does not support criteria refinement.",
+    "field": "refinements[0].criteria",
+    "recovery": "correctable",
+    "details": {
+      "unsupported_dimension": "criteria",
+      "supported_dimensions": ["total_budget", "cpm", "alternatives"]
+    }
+  }
+}
+```
+
+## Buyer implementation
+
+### 1. Build typed-first requests
+
+Sam requests a USD 50,000 ceiling, a CPM ceiling, US/Canada criteria, a product change, and three distinct alternatives. The prose asks for subjective reach optimization only:
+
+```json
+{
+  "$schema": "/schemas/3.1.15/media-buy/refine-proposals-request.json",
+  "idempotency_key": "typed-negotiation-sam-0001",
+  "refinements": [
+    {
+      "proposal_id": "proposal_streamhaus_001",
+      "action": "revise",
+      "constraints": {
+        "total_budget": { "max": 50000, "currency": "USD" },
+        "cpm": { "max": 18, "currency": "USD" },
+        "flight": { "end_no_earlier_than": "2026-10-31T23:59:59Z" }
+      },
+      "product_changes": {
+        "premium_video_q4": "include",
+        "display_standard_q4": "omit"
+      },
+      "criteria": {
+        "targeting_overlay": { "geo_countries": ["US", "CA"] }
+      },
+      "alternatives": { "count": 3 },
+      "ask": "Use materially different mixes and prioritize reach."
+    }
+  ]
+}
+```
+
+Typed fields are hard requirements. Do not copy the legacy `get_products.refine[].budget_range` shape without changing its meaning: legacy `budget_range` is a soft discovery preference, while `constraints.total_budget` forces `partial` or `unable` when missed. Legacy `more_like_this` has no typed compact equivalent and maps only lossily to `ask`.
+
+A fully satisfied revision returns new immutable drafts and no failure prose:
+
+```json
+{
+  "$schema": "/schemas/3.1.15/media-buy/refine-proposals-response.json",
+  "status": "completed",
+  "results": [
+    {
+      "source_proposal_id": "proposal_streamhaus_001",
+      "outcome": "revised",
+      "proposals": [
+        {
+          "proposal_id": "proposal_streamhaus_002a",
+          "parent_proposal_id": "proposal_streamhaus_001",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Acme Outdoor — premium video",
+          "commercial_terms": {
+            "brand": { "domain": "acmeoutdoor.example" },
+            "purchases": [
+              {
+                "product_id": "premium_video_q4",
+                "pricing_option_id": "cpm_guaranteed",
+                "pricing": {
+                  "pricing_option_id": "cpm_guaranteed",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 18
+                },
+                "start_time": "2026-10-01T00:00:00Z",
+                "end_time": "2026-11-01T00:00:00Z"
+              }
+            ],
+            "start_time": "2026-10-01T00:00:00Z",
+            "end_time": "2026-11-01T00:00:00Z",
+            "total_budget": { "amount": 50000, "currency": "USD" }
+          },
+          "terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
+        }
+      ]
+    }
+  ],
+  "products": []
+}
+```
+
+### 2. Branch on the discriminated result
+
+Handle `outcome` before reading proposal fields:
+
+| Outcome | Read | Required verification |
+|---|---|---|
+| `revised` | `proposals[]` | Every requested typed constraint and product action is satisfied. The array has one item unless alternatives were requested, in which case it has the exact requested count. |
+| `partial` | `proposals[]`, `reason_code`, `unsatisfied_constraints`, `unsatisfied_product_changes` | Every returned draft satisfies every constraint and product action *not* listed as unsatisfied. |
+| `unable` | `reason_code`, machine-readable unsatisfied fields | No proposal was produced; never access `proposal` or `proposals`. |
+| `finalized` | singular `proposal` | Status is `committed`, parent is the source draft, and `expires_at` leaves enough time to accept. |
+
+A valid counteroffer with only two of the three requested alternatives is `partial`:
+
+```json
+{
+  "$schema": "/schemas/3.1.15/media-buy/refine-proposals-response.json",
+  "status": "completed",
+  "results": [
+    {
+      "source_proposal_id": "proposal_streamhaus_001",
+      "outcome": "partial",
+      "reason_code": "alternatives_unavailable",
+      "reason": "Two commercially distinct mixes are available at these terms.",
+      "proposals": [
+        {
+          "proposal_id": "proposal_streamhaus_002a",
+          "parent_proposal_id": "proposal_streamhaus_001",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Acme Outdoor — premium video",
+          "commercial_terms": {
+            "brand": { "domain": "acmeoutdoor.example" },
+            "purchases": [
+              {
+                "product_id": "premium_video_q4",
+                "pricing_option_id": "cpm_guaranteed",
+                "pricing": {
+                  "pricing_option_id": "cpm_guaranteed",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 18
+                },
+                "start_time": "2026-10-01T00:00:00Z",
+                "end_time": "2026-11-01T00:00:00Z"
+              }
+            ],
+            "start_time": "2026-10-01T00:00:00Z",
+            "end_time": "2026-11-01T00:00:00Z",
+            "total_budget": { "amount": 50000, "currency": "USD" }
+          },
+          "terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
+        },
+        {
+          "proposal_id": "proposal_streamhaus_002b",
+          "parent_proposal_id": "proposal_streamhaus_001",
+          "proposal_kind": "new_media_buy",
+          "proposal_status": "draft",
+          "name": "Acme Outdoor — video and native",
+          "commercial_terms": {
+            "brand": { "domain": "acmeoutdoor.example" },
+            "purchases": [
+              {
+                "product_id": "premium_video_q4",
+                "pricing_option_id": "cpm_guaranteed",
+                "pricing": {
+                  "pricing_option_id": "cpm_guaranteed",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 17.5
+                },
+                "start_time": "2026-10-01T00:00:00Z",
+                "end_time": "2026-11-01T00:00:00Z"
+              },
+              {
+                "product_id": "native_feed_q4",
+                "pricing_option_id": "cpm_native",
+                "pricing": {
+                  "pricing_option_id": "cpm_native",
+                  "pricing_model": "cpm",
+                  "currency": "USD",
+                  "fixed_price": 16
+                },
+                "start_time": "2026-10-01T00:00:00Z",
+                "end_time": "2026-11-01T00:00:00Z"
+              }
+            ],
+            "start_time": "2026-10-01T00:00:00Z",
+            "end_time": "2026-11-01T00:00:00Z",
+            "total_budget": { "amount": 50000, "currency": "USD" }
+          },
+          "terms_digest": "sha256:ed58dHH_xw98Gxkt8-dCQi9HZKdkIjuJ4NVLoP3txjs"
+        }
+      ]
+    }
+  ],
+  "products": []
+}
+```
+
+An honest refusal that produces no draft uses the same response envelope but no proposal field:
+
+```json
+{
+  "$schema": "/schemas/3.1.15/media-buy/refine-proposals-response.json",
+  "status": "completed",
+  "results": [
+    {
+      "source_proposal_id": "proposal_streamhaus_001",
+      "outcome": "unable",
+      "reason_code": "constraint_unsatisfiable",
+      "reason": "No eligible inventory can meet the requested fixed CPM ceiling.",
+      "unsatisfied_constraints": ["cpm"]
+    }
+  ],
+  "products": []
+}
+```
+
+### 3. Verify terms independently
+
+For every returned proposal:
+
+1. Recompute `sha256:base64url(SHA-256(JCS(commercial_terms)))` using RFC 8785 JSON Canonicalization Scheme bytes.
+2. Compare the recomputed digest byte-for-byte with `terms_digest`.
+3. Verify `parent_proposal_id` equals `source_proposal_id`.
+4. Re-evaluate budgets, fixed rates, impression totals, flight bounds, product membership, and structured criteria from `commercial_terms`.
+5. Verify any `targeting_resolution.brief_targeting` against the hard targeting in `ask`, and review every sparse product `targeting_resolution.modifications` departure before selecting that configured product.
+6. On `partial`, enforce the partial invariant: every requirement absent from the unsatisfied sets still passes.
+7. Treat `reason`, `description`, `suggestions`, and `ask` as non-contractual prose.
+
+Digest uniqueness alone is not enough for alternatives. Verify that `commercial_terms` are distinct after canonicalization; a seller cannot create fake diversity by changing only IDs, names, descriptions, or digest strings.
+
+### 4. Retry safely
+
+An exact retry uses the same tool name, payload, and `idempotency_key`; the seller returns the original response with `replayed: true`. Any payload change requires a new key. Never use a new key merely to extend a committed hold: finalizing the same draft while its hold is active is `INVALID_STATE`, not a second reservation.
+
+A seller may return `status: "submitted"` with a `task_id` when a complex multi-publisher revision or inventory hold needs upstream pricing or manual re-underwriting. Poll [`get_task_status`](https://adcontextprotocol.org/schemas/3.1.15/protocol/get-task-status-request.json) or consume the requested completion notification; do not treat submission as a proposal outcome or retry it under a new key while the task is pending.
+
+### 5. Finalize, then accept before expiry
+
+Finalization changes no terms:
+
+```json
+{
+  "$schema": "/schemas/3.1.15/media-buy/refine-proposals-request.json",
+  "idempotency_key": "typed-negotiation-sam-finalize-0001",
+  "refinements": [
+    {
+      "proposal_id": "proposal_streamhaus_002a",
+      "action": "finalize"
+    }
+  ]
+}
+```
+
+A finalize batch contains only finalize entries. The seller preflights every source and creates every hold or none. `hold_unavailable` identifies the source that could not be reserved; otherwise eligible siblings use `batch_aborted`.
+
+The successful result is singular and committed; its commercial terms and digest are unchanged:
+
+```json
+{
+  "$schema": "/schemas/3.1.15/media-buy/refine-proposals-response.json",
+  "status": "completed",
+  "results": [
+    {
+      "source_proposal_id": "proposal_streamhaus_002a",
+      "outcome": "finalized",
+      "proposal": {
+        "proposal_id": "proposal_streamhaus_committed_003",
+        "parent_proposal_id": "proposal_streamhaus_002a",
+        "proposal_kind": "new_media_buy",
+        "proposal_status": "committed",
+        "expires_at": "2026-09-15T10:15:00Z",
+        "name": "Acme Outdoor — premium video",
+        "commercial_terms": {
+          "brand": { "domain": "acmeoutdoor.example" },
+          "purchases": [
+            {
+              "product_id": "premium_video_q4",
+              "pricing_option_id": "cpm_guaranteed",
+              "pricing": {
+                "pricing_option_id": "cpm_guaranteed",
+                "pricing_model": "cpm",
+                "currency": "USD",
+                "fixed_price": 18
+              },
+              "start_time": "2026-10-01T00:00:00Z",
+              "end_time": "2026-11-01T00:00:00Z"
+            }
+          ],
+          "start_time": "2026-10-01T00:00:00Z",
+          "end_time": "2026-11-01T00:00:00Z",
+          "total_budget": { "amount": 50000, "currency": "USD" }
+        },
+        "terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
+      }
+    }
+  ],
+  "products": []
+}
+```
+
+Accept the returned committed proposal and its exact digest before `expires_at`:
+
+```json
+{
+  "$schema": "/schemas/3.1.15/media-buy/accept-proposal-request.json",
+  "idempotency_key": "typed-negotiation-sam-accept-0001",
+  "account": { "account_id": "account_pinnacle_acme" },
+  "proposal_id": "proposal_streamhaus_committed_003",
+  "proposal_terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
+}
+```
+
+The seller atomically verifies the proposal ID, digest, hold expiry, authorization, and any base MediaBuy revision. Expired holds return `PROPOSAL_EXPIRED`; the buyer requests and finalizes fresh terms rather than retrying acceptance against a lapsed hold.
+
+### 6. Amend, cancel, or decline
+
+Fork an accepted snapshot with `change_kind: "amendment"`:
+
+```json
+{
+  "$schema": "/schemas/3.1.15/media-buy/refine-proposals-request.json",
+  "idempotency_key": "typed-negotiation-sam-amend-0001",
+  "refinements": [
+    {
+      "proposal_id": "proposal_streamhaus_accepted_004",
+      "action": "revise",
+      "change_kind": "amendment",
+      "ask": "Extend the flight by two weeks and preserve the total budget."
+    }
+  ]
+}
+```
+
+When cancellation requires agreement, fork the accepted snapshot with `change_kind: "cancellation"`:
+
+```json
+{
+  "$schema": "/schemas/3.1.15/media-buy/refine-proposals-request.json",
+  "idempotency_key": "typed-negotiation-sam-cancel-0001",
+  "refinements": [
+    {
+      "proposal_id": "proposal_streamhaus_accepted_004",
+      "action": "revise",
+      "change_kind": "cancellation",
+      "ask": "Campaign objectives were met early; request an agreed wind-down."
+    }
+  ]
+}
+```
+
+Both successors must be finalized and accepted. Direct [`control_media_buy`](/dist/docs/3.1.15/media-buy/task-reference/control_media_buy) cancellation is reserved for rights already granted by the accepted terms. When Sam stops pursuing a draft instead, [`decline_proposals`](/dist/docs/3.1.15/media-buy/task-reference/decline_proposals) records terminal feedback; it does not mutate the proposal into another state.
+
+## Seller implementation
+
+### Preflight the whole request
+
+Before loading an LLM, pricing inventory, or writing state:
+
+1. Validate the request schema, the maximum of 25 refinements, unique source IDs, and finalize exclusivity.
+2. Authenticate and authorize every source without disclosing cross-account existence.
+3. Compare every typed field with the explicit capability declaration.
+4. Enforce the protocol alternatives ceiling of 10 and any lower advertised `max_alternatives`.
+5. Look up the idempotency key and reject reuse with a changed payload.
+6. If any task-level check fails, create no successor and no hold.
+
+Capability support promises parse-and-validate competence, not commercial concession. A supported but unacceptable budget is a per-proposal `constraint_unsatisfiable` result, not `UNSUPPORTED_FEATURE`.
+
+### Keep protocol validation separate from policy
+
+The protocol layer owns schema validation, capability gates, result cardinality, lineage, digest computation, response validation, and transaction boundaries. Application policy owns pricing floors, available product mixes, targeting feasibility, alternative generation, underwriting, and hold duration.
+
+Fence `ask` from pricing and authorization authority. It is attacker-controlled free text and may influence candidate generation only through bounded application policy. Only the typed `commercial_terms` object becomes contractual.
+
+### Stage immutable successors
+
+For revision batches:
+
+1. Load each immutable source snapshot.
+2. Build candidate `commercial_terms` without mutating the source.
+3. Evaluate every typed constraint and product action against every candidate.
+4. Classify the ordered result as `revised`, `partial`, or `unable`.
+5. Generate new proposal IDs, set `parent_proposal_id`, compute JCS digests, and validate the full response.
+6. Commit staged successors only after response validation succeeds.
+
+For `partial`, include every failed constraint key and failed product action. Every unlisted requirement must pass for every returned draft. `constraint_unsatisfiable` takes precedence when it coexists with an alternatives shortfall or uninterpreted prose.
+
+For finalize batches, acquire holds inside one transaction or equivalent staged operation. If any hold fails, roll back every sibling. A seller may decline a hold, apply its normal credit and relationship checks, and cap concurrent unexpired holds per buyer to resist inventory squatting. Choose `expires_at` long enough for acceptance but short enough to prevent free inventory options. Return `submitted` when those checks require asynchronous upstream pricing or manual re-underwriting, preserving the original idempotency scope through terminal completion.
+
+### Log for audit without leaking terms
+
+Record the authenticated buyer, source IDs, successor IDs, idempotency fingerprint, capability decision, outcome, unsatisfied keys, hold transaction, and digest. Do not place raw `ask`, full commercial terms, credentials, or cross-buyer pricing in broadly accessible logs. Rate-limit repeated unheld constraint probes: deterministic failures can otherwise become a price oracle.
+
+## Conformance and SDK status
+
+The canonical compliance scenario is `media_buy_seller/typed_proposal_negotiation`. It exercises capability gating, satisfied and unsatisfied constraints, alternatives, immutable lineage, finalize atomicity, exact replay, acceptance, amendment, cancellation, double-finalize rejection, and multi-source ordering.
+
+The public deterministic training profiles are tracked in [#6558](https://github.com/adcontextprotocol/adcp/issues/6558). They intentionally depend on the TypeScript SDK negotiation primitives; the training seller must not grow a separate validator. Official SDK orchestration helpers are tracked from [#6556](https://github.com/adcontextprotocol/adcp/issues/6556).
+
+Until a language SDK publishes those helpers, implement against the wire schemas and keep the following boundaries in your adapter:
+
+- capability preflight is separate from mutation;
+- exact replay is separate from changed-request retry;
+- task errors are separate from per-proposal outcomes;
+- commercial policy is separate from protocol verification;
+- finalization is separate from acceptance;
+- immutable terms are separate from explanatory prose.
+
+## Implementation checklist
+
+- [ ] Discover `lifecycle_tools`, `supported_dimensions`, and `max_alternatives`.
+- [ ] Enforce 25 refinements, 10 alternatives, seller limits, unique sources, and finalize-only batches before mutation.
+- [ ] Preserve task errors separately from `revised` / `partial` / `unable` / `finalized`.
+- [ ] Verify typed constraints, product actions, partial unsatisfied subsets, parent lineage, and JCS digests.
+- [ ] Reuse a key only for the exact same request; use a new key for changed payloads.
+- [ ] Stage successors and validate responses before commit.
+- [ ] Create finalize holds atomically and enforce expiry during acceptance.
+- [ ] Fork accepted snapshots for amendments and negotiated cancellation.
+- [ ] Fence `ask`, authorize every source, rate-limit probing, and avoid sensitive logs.
+- [ ] Run the typed proposal negotiation storyboard against the implementation.
+
+## Related reference
+
+- [`request_proposals`](/dist/docs/3.1.15/media-buy/task-reference/request_proposals)
+- [`refine_proposals`](/dist/docs/3.1.15/media-buy/task-reference/refine_proposals)
+- [`accept_proposal`](/dist/docs/3.1.15/media-buy/task-reference/accept_proposal)
+- [`decline_proposals`](/dist/docs/3.1.15/media-buy/task-reference/decline_proposals)
+- [Capability discovery](/dist/docs/3.1.15/protocol/get_adcp_capabilities#proposal_refinement)
+- [Legacy refinement compatibility](/dist/docs/3.1.15/media-buy/product-discovery/refinement)

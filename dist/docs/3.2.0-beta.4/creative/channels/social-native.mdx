@@ -1,0 +1,32 @@
+---
+title: Social and Native Ads
+description: "Canonical native-in-feed and published-post contracts for social advertising."
+"og:title": "AdCP — Social and Native Ads"
+---
+
+Use `native_in_feed` for structured title, body, image/video, advertiser, CTA, and tracking assets assembled by a feed renderer. Use a `published_post` asset when the product accepts an already-published platform post reference.
+
+```json
+{
+  "publisher_domain": "social.streamhaus.example",
+  "format_option_id": "promoted_post",
+  "format_kind": "native_in_feed",
+  "params": {
+    "title_max_chars": 100,
+    "body_text_max_chars": 500,
+    "slots": [
+      { "asset_group_id": "title", "asset_type": "text", "required": true },
+      { "asset_group_id": "body_text", "asset_type": "text", "required": false },
+      { "asset_group_id": "main_image", "asset_type": "image", "required": true },
+      { "asset_group_id": "advertiser_name", "asset_type": "text", "required": true },
+      { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true }
+    ]
+  }
+}
+```
+
+The publisher's `adagents.json.formats[]` is authoritative for platform-owned contracts. Creative agents claim exact support by repeating `{publisher_domain, format_option_id}` in their capability declaration; the registry can reverse-index those claims. This is not a publisher endorsement.
+
+Seller/publisher preview is valuable because feed chrome, community context, labels, and engagement controls are rendered by that runtime and may not be reproducible elsewhere.
+
+See [Canonical formats](/dist/docs/3.2.0-beta.4/creative/canonical-formats), [Publisher catalogs](/dist/docs/3.2.0-beta.4/governance/property/adagents), and [Preview creative](/dist/docs/3.2.0-beta.4/creative/task-reference/preview_creative).

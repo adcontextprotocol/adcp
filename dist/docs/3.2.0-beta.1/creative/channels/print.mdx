@@ -1,0 +1,70 @@
+---
+title: Print Creative
+description: "Current AdCP limits and seller-defined contracts for production-ready print artwork."
+"og:title": "AdCP — Print Creative"
+---
+
+AdCP does not currently publish a shared print artwork contract. A PDF or other document file must not be labeled `asset_type: "image"`. A TIFF can use `asset_type: "image"` under a seller-defined custom contract, but TIFF is outside the shared web-oriented `image` canonical and the asset type alone does not express trim, bleed, color profile, or effective DPI.
+
+A seller can declare a print contract with `format_kind: "custom"` only after it publishes a real, fetchable JSON Schema and references that schema with its actual HTTPS URI and SHA-256 digest. The custom schema is load-bearing: placeholder URIs and illustrative digests do not produce a usable format declaration.
+
+For a full-page format, the seller-hosted schema needs to define at least:
+
+- the unit used by every dimension;
+- trim width and height;
+- bleed and safe-area insets for each edge;
+- accepted color profiles and minimum effective DPI; and
+- a typed delivery slot supported by the receiving workflow.
+
+The last requirement is currently seller-specific. A seller could define a `zip` slot and document the permitted archive contents, but the core `zip` asset describes a general creative archive and does not standardize PDF/TIFF print delivery. Until AdCP publishes a shared print schema or adds an appropriate typed asset, this page cannot provide a copyable portable or shared print manifest.
+
+See [Canonical formats](/dist/docs/3.2.0-beta.1/creative/canonical-formats), [Creative manifests](/dist/docs/3.2.0-beta.1/creative/creative-manifests), and [Media products](/dist/docs/3.2.0-beta.1/media-buy/product-discovery/media-products).
+
+## Double-page spreads and gatefolds
+
+A double-page spread (DPS) requires more than a wider full-page canvas. Its custom schema must specify whether artwork is supplied as one spread or separate pages, the gutter width, trim and bleed for each page, safe areas around the gutter, and the reading order.
+
+A gatefold needs a separate contract that specifies panel count, panel widths, fold or score lines, panel order, and safe areas around every fold. Those values cannot be inferred from `width` and `height`, and AdCP does not currently host a shared DPS or gatefold schema. A conformant wire example therefore depends on a seller-hosted schema plus a supported typed delivery model; this page intentionally does not invent either one.
+
+## Print and display discovery
+
+A product can advertise that it operates across both channels:
+
+```json
+{
+  "channels": ["print", "display"]
+}
+```
+
+This is a product excerpt, not a complete product. It declares channel scope only. It does not mean that the buyer receives one print placement and one display placement, or that the buyer must submit one creative for each channel. A fixed cross-channel bundle also needs explicit product placements and channel-specific format contracts. Because the current shared schemas do not provide a deployable print artwork contract, this page does not present that fixed bundle as a runnable example.
+
+## Cancellation window
+
+For recurring print inventory, a collection-level `deadline_policy` expresses the cancellation rule once. This fictional weekly publication uses business days for every lead time:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.1/core/collection.json",
+  "collection_id": "northstar_weekly",
+  "name": "Northstar Weekly",
+  "kind": "publication",
+  "cadence": "weekly",
+  "status": "active",
+  "deadline_policy": {
+    "booking_lead_days": 10,
+    "cancellation_lead_days": 5,
+    "material_stages": [
+      {
+        "stage": "final",
+        "lead_days": 3,
+        "label": "Production-ready PDF"
+      }
+    ],
+    "business_days_only": true
+  }
+}
+```
+
+For an installment scheduled at **09:00 UTC on Monday, October 12, 2026**, the booking deadline is September 28, the penalty-free cancellation deadline is October 5, and final artwork is due October 7, all at 09:00 UTC. An explicit `deadlines` object on that installment overrides this policy, which lets a special issue publish a different cancellation window without changing the collection default.
+
+> Magazine/newspaper/trade-publication comparisons, advertorial/native placements, and position-taxonomy examples remain deferred until [#5686](https://github.com/adcontextprotocol/adcp/issues/5686) defines the relevant placement terminology. Copyable DPS, gatefold, and fixed print-plus-display examples additionally require a fetchable print format schema and a supported typed delivery model; [#5688](https://github.com/adcontextprotocol/adcp/issues/5688) remains open for that follow-up.

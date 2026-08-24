@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/canonical-account-ref.json",
+  "title": "Canonical Account Reference",
+  "description": "Compact advertiser-account identity for canonical 3.2 tools. Uses either the seller/storefront account_id returned by list_accounts or the buyer-declared natural key without BrandRef inline overrides. The natural key is brand + operator + optional operator_unit.id + optional fixed currency + optional buyer-selected account timezone + sandbox. brand.countries qualifies the commercial advertiser identity without targeting delivery; operator_unit identifies the operator-owned buying context. operator_unit.name is display metadata and is excluded from identity.",
+  "type": "object",
+  "anyOf": [
+    {
+      "properties": {
+        "account_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "account"
+        }
+      },
+      "required": [
+        "account_id"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "properties": {
+        "brand": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/brand-key.json"
+        },
+        "operator": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "x-entity": "operator"
+        },
+        "operator_unit": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/operator-unit.json",
+          "description": "Optional operator-owned business unit, agency seat, or platform account. Only id participates in identity; name is mutable display metadata."
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "description": "Immutable ISO 4217 transaction currency when the advertiser object is currency-bound. When present, this is part of the natural key and all media buys on the account use it. Omit for per-media-buy currency selection."
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Immutable account timezone. Include it in the natural key only for buyer-selected account_fixed provisioning."
+        },
+        "sandbox": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": [
+        "brand",
+        "operator"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "examples": [
+    {
+      "account_id": "acc_nova_nl"
+    },
+    {
+      "brand": {
+        "domain": "nova-athletics.example",
+        "countries": [
+          "NL"
+        ]
+      },
+      "operator": "nova-athletics.example",
+      "operator_unit": {
+        "id": "234284238",
+        "name": "Nova EMEA"
+      },
+      "currency": "EUR",
+      "timezone": "Europe/Amsterdam"
+    }
+  ]
+}
