@@ -82,6 +82,58 @@ function resolveSchemaVersion(requested?: unknown, fallback = DEFAULT_VERSION): 
   return canonical;
 }
 
+const INFERRED_PRERELEASE_RANGES: Readonly<
+  Record<string, Partial<Record<'beta' | 'rc', readonly [number, number]>>>
+> = Object.freeze({
+  '3.0': Object.freeze({ beta: [1, 3] as const, rc: [1, 3] as const }),
+  '3.1': Object.freeze({ beta: [0, 7] as const, rc: [1, 15] as const }),
+  '3.2-beta': Object.freeze({ beta: [0, 5] as const }),
+});
+
+/**
+ * Resolve a version inferred from a document's `$schema` URL.
+ *
+ * Published documents may remain pinned to an older patch snapshot after the
+ * docs move to a newer frozen snapshot. Preserve their release-line meaning
+ * while keeping explicit tool `version` inputs fail-closed.
+ */
+function resolveInferredSchemaVersion(requested: string): string {
+  const selector = requested.trim().toLowerCase();
+  const direct = SCHEMA_VERSION_ALIASES[selector];
+  if (direct) return direct;
+
+  const prereleaseMatch = selector.match(/^(\d+\.\d+)\.0-(beta|rc)\.(\d+)$/);
+  if (prereleaseMatch) {
+    const [, releaseLine, prereleaseKind, prereleaseNumberText] = prereleaseMatch;
+    const canonical = releaseLine === '3.2' ? '3.2-beta' : releaseLine;
+    const range = INFERRED_PRERELEASE_RANGES[canonical]?.[
+      prereleaseKind as 'beta' | 'rc'
+    ];
+    const prereleaseNumber = Number(prereleaseNumberText);
+    if (range && prereleaseNumber >= range[0] && prereleaseNumber <= range[1]) {
+      return canonical;
+    }
+  }
+
+  const patchMatch = selector.match(/^(\d+\.\d+)\.(\d+)$/);
+  if (patchMatch) {
+    const [, releaseLine, patchNumberText] = patchMatch;
+    const frozenVersion = DOCS_SCHEMA_RELEASES[
+      releaseLine as keyof typeof DOCS_SCHEMA_RELEASES
+    ];
+    const frozenMatch = frozenVersion?.match(/^(\d+\.\d+)\.(\d+)$/);
+    if (
+      frozenMatch
+      && frozenMatch[1] === releaseLine
+      && Number(patchNumberText) <= Number(frozenMatch[2])
+    ) {
+      return releaseLine;
+    }
+  }
+
+  return resolveSchemaVersion(requested);
+}
+
 // Cache for fetched schemas (5 minute TTL, max 50 entries)
 const schemaCache = new Map<string, { schema: unknown; fetchedAt: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -559,7 +611,9 @@ export function createSchemaToolHandlers(): Map<
       const schemaUrl = jsonObj.$schema;
       const urlMatch = schemaUrl.match(/(?:\/schemas\/|schemas\.adcontextprotocol\.org\/)([^/]+)\/(.+)$/);
       if (urlMatch) {
-        if (requestedVersion === undefined) requestedVersion = urlMatch[1];
+        if (requestedVersion === undefined) {
+          requestedVersion = resolveInferredSchemaVersion(urlMatch[1]);
+        }
         schemaPath = schemaPath || urlMatch[2];
       }
     }

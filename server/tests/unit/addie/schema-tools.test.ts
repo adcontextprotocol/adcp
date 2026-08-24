@@ -184,6 +184,61 @@ describe('schema handler version resolution', () => {
     expect(result).toContain(`AdCP 3.1 ${schemaPath} schema`);
   });
 
+  it('maps older pinned $schema snapshots to their frozen release line', async () => {
+    const fetchMock = vi.fn(async (input: unknown) => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => String(input).endsWith('/index.json')
+        ? indexFixture
+        : { type: 'object' },
+    }) as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const validateJson = createSchemaToolHandlers().get('validate_json');
+    const cases = [
+      ['3.1.4', '3.1.19'],
+      ['3.1.0-rc.15', '3.1.19'],
+      ['3.2.0-beta.1', '3.2.0-beta.5'],
+      ['3.0.18', '3.0.26'],
+      ['3.0.0-rc.2', '3.0.26'],
+      ['2.5.1', '2.5.3'],
+    ] as const;
+
+    for (const [index, [pinnedVersion, frozenVersion]] of cases.entries()) {
+      const schemaPath = `core/older-pinned-snapshot-${index}.json`;
+      await validateJson!({
+        json: {
+          $schema: `https://adcontextprotocol.org/schemas/${pinnedVersion}/${schemaPath}`,
+        },
+      });
+
+      expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(
+        `https://adcontextprotocol.org/schemas/${frozenVersion}/${schemaPath}`,
+      );
+    }
+  });
+
+  it('still rejects unknown and future versions inferred from a $schema URL', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const validateJson = createSchemaToolHandlers().get('validate_json');
+
+    for (const version of [
+      '4.0.1',
+      '3.1.20',
+      '3.2.0-beta.6',
+      '3.2.1-beta.1',
+    ]) {
+      await expect(validateJson!({
+        json: {
+          $schema: `https://adcontextprotocol.org/schemas/${version}/core/product.json`,
+        },
+      })).rejects.toThrow(`Unsupported schema version "${version}"`);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('rejects unknown versions in every handler instead of falling back to stable', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
