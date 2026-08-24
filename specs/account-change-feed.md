@@ -271,15 +271,15 @@ skip.
 ## Training scenario
 
 The public training seller exposes an existing shared sandbox account. A
-generic connected-platform simulator adds a creative without a learner AdCP
-call. The reference seller advertises only `creative` coverage until campaign,
-money, assignment, and reporting mutation paths pass the same completeness
-tests. The learner:
+generic connected-platform simulator adds and later modifies a creative
+without a learner AdCP creative call. The reference seller advertises only
+`creative` coverage until campaign, money, assignment, and reporting mutation
+paths pass the same completeness tests. The learner:
 
 1. registers the account change subscriber;
 2. obtains C0 and snapshots the shared account;
-3. observes a signed external-change notification;
-4. drains the feed from C0; and
+3. observes signed external-create and external-modification notifications;
+4. drains the feed after each wake-up; and
 5. repairs the named authoritative reads.
 
 The exercise teaches that the account is not exclusively managed by the buyer

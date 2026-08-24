@@ -162,7 +162,10 @@ interface GovernanceAgentInput {
 // This avoids modifying the shared SessionState interface.
 const accountStore = new Map<string, Map<string, AccountState>>();
 const accountChangeStore = new Map<string, StoredAccountChange[]>();
+const accountChangeNextSequence = new Map<string, number>();
+const accountChangeAvailableFrom = new Map<string, number>();
 const ACCOUNT_CHANGE_CURSOR_SECRET = randomUUID();
+const ACCOUNT_CHANGE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 function principalAccountChangeScope(principal: string | undefined, accountId: string): string {
   return `principal:${principalScope(principal)}:${accountId}`;
@@ -174,8 +177,27 @@ function accountChanges(accountScopeId: string): StoredAccountChange[] {
   if (!changes) {
     changes = [];
     accountChangeStore.set(key, changes);
+    accountChangeNextSequence.set(key, 0);
+    accountChangeAvailableFrom.set(key, Date.now());
   }
   return changes;
+}
+
+function pruneExpiredAccountChanges(accountScopeId: string, nowMs: number): void {
+  const changes = accountChanges(accountScopeId);
+  const cutoff = nowMs - ACCOUNT_CHANGE_RETENTION_MS;
+  let expiredCount = 0;
+  while (expiredCount < changes.length) {
+    const recordedAt = Date.parse(changes[expiredCount].change.recorded_at);
+    if (!Number.isFinite(recordedAt) || recordedAt >= cutoff) break;
+    expiredCount += 1;
+  }
+  if (expiredCount > 0) changes.splice(0, expiredCount);
+}
+
+function accountChangeAvailableSince(accountScopeId: string, nowMs: number): string {
+  const adoptedAt = accountChangeAvailableFrom.get(accountScopeId) ?? nowMs;
+  return new Date(Math.max(adoptedAt, nowMs - ACCOUNT_CHANGE_RETENTION_MS)).toISOString();
 }
 
 export function recordAccountChange(
@@ -209,13 +231,17 @@ export function recordAccountChange(
       ? `fixture:${change.resource.account_id}`
       : principalAccountChangeScope(principal, change.resource.account_id));
   const changes = accountChanges(accountScopeId);
-  changes.push({ sequence: (changes.at(-1)?.sequence ?? 0) + 1, change });
+  const sequence = (accountChangeNextSequence.get(accountScopeId) ?? 0) + 1;
+  accountChangeNextSequence.set(accountScopeId, sequence);
+  changes.push({ sequence, change });
   return change;
 }
 
 function ensureExistingAccountChangeSeed(accountScopeId: string, principal: string | undefined, account: AccountWireShape): void {
-  const changes = accountChanges(accountScopeId);
-  if (changes.length > 0) return;
+  accountChanges(accountScopeId);
+  // Seed only when the feed is first adopted for this fixture. An empty
+  // retained array after pruning is not permission to fabricate new history.
+  if ((accountChangeNextSequence.get(accountScopeId) ?? 0) > 0) return;
   recordAccountChange(principal, {
     resource: {
       type: 'account',
@@ -387,6 +413,8 @@ function findComplianceAccountById(accountId: string, now: string): AccountState
 export function clearAccountStore(): void {
   accountStore.clear();
   accountChangeStore.clear();
+  accountChangeNextSequence.clear();
+  accountChangeAvailableFrom.clear();
   clearSharedAccountResources();
 }
 
@@ -1849,7 +1877,12 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
 
   const resourceTypes = normalizeResourceTypes(req.resource_types);
   const changes = accountChanges(accountScopeId);
-  const currentHighWater = changes.at(-1)?.sequence ?? 0;
+  const nowMs = Date.now();
+  pruneExpiredAccountChanges(accountScopeId, nowMs);
+  const currentHighWater = accountChangeNextSequence.get(accountScopeId) ?? 0;
+  const retainedFloor = changes[0]?.sequence !== undefined
+    ? changes[0].sequence - 1
+    : currentHighWater;
   let afterSequence = req.starting_position === 'latest' ? currentHighWater : 0;
 
   if (req.cursor) {
@@ -1860,7 +1893,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
           message: 'The account change cursor is no longer available; rebuild authoritative snapshots from a new latest checkpoint',
           recovery: 'correctable',
           details: {
-            available_since: changes[0]?.change.recorded_at ?? new Date().toISOString(),
+            available_since: accountChangeAvailableSince(accountScopeId, nowMs),
             restart_with: { starting_position: 'latest' },
           },
       });
@@ -1876,6 +1909,25 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
           message: 'cursor is scoped to a different principal, account, or resource_types filter',
           field: 'cursor',
           recovery: 'correctable',
+      });
+    }
+    if (cursor.sequence < retainedFloor) {
+      return accountChangeFailure({
+        code: 'CURSOR_EXPIRED',
+        message: 'The account change cursor predates the retained change window; rebuild authoritative snapshots from a new latest checkpoint',
+        recovery: 'correctable',
+        details: {
+          available_since: accountChangeAvailableSince(accountScopeId, nowMs),
+          restart_with: { starting_position: 'latest' },
+        },
+      });
+    }
+    if (cursor.sequence > currentHighWater) {
+      return accountChangeFailure({
+        code: 'INVALID_REQUEST',
+        message: 'cursor checkpoint is ahead of the current account change high-water',
+        field: 'cursor',
+        recovery: 'correctable',
       });
     }
     afterSequence = cursor.sequence;
@@ -1894,6 +1946,10 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
   }
   if (page.length < maxResults) scannedSequence = currentHighWater;
   const hasMore = changes.some(entry => entry.sequence > scannedSequence && matches(entry));
+  // A terminal filtered page is caught up to seller ingestion, even when the
+  // final records were nonmatching. Persist the true account high-water so a
+  // later poll never rescans changes this page already classified.
+  if (!hasMore) scannedSequence = currentHighWater;
   const cursor = issueAccountChangeCursor({
     principal: principalScope(ctx.principal),
     accountScopeId,
@@ -1903,11 +1959,12 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
   });
 
   return {
+    status: 'completed',
     changes: page.map(entry => entry.change),
     cursor,
     has_more: hasMore,
-    available_since: changes[0]?.change.recorded_at ?? new Date().toISOString(),
-    generated_at: new Date().toISOString(),
+    available_since: accountChangeAvailableSince(accountScopeId, nowMs),
+    generated_at: new Date(nowMs).toISOString(),
     source_coverage: [
       {
         source_id: 'seller',
@@ -1919,9 +1976,9 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
         source_id: 'conn_shared_training_platform',
         kind: 'connected_platform',
         status: 'current',
-        coverage_start: changes[0]?.change.recorded_at ?? new Date().toISOString(),
-        observed_through: new Date().toISOString(),
-        last_successful_sync_at: new Date().toISOString(),
+        coverage_start: accountChangeAvailableSince(accountScopeId, nowMs),
+        observed_through: new Date(nowMs).toISOString(),
+        last_successful_sync_at: new Date(nowMs).toISOString(),
         resource_types: ['creative'],
       }] : []),
     ],

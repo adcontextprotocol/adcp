@@ -100,7 +100,7 @@
     },
     "repair": {
       "type": "object",
-      "description": "Authoritative AdCP read and safe keys the receiver uses to reconcile current state. A deleted or legally purged resource may instead declare unavailable with a categorical reason.",
+      "description": "Authoritative AdCP read the receiver uses to reconcile current state. The buyer constructs safe request arguments from the structured resource identity. A deleted or legally purged resource may instead declare unavailable with a categorical reason.",
       "properties": {
         "task": {
           "type": "string",

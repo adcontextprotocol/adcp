@@ -16,7 +16,7 @@ This lab teaches the buyer convergence loop:
 1. subscribe to `account.change_recorded`;
 2. acquire a latest checkpoint before snapshotting;
 3. enumerate authoritative state;
-4. let the training seller simulate an external change;
+4. let the training seller simulate external creation and modification;
 5. drain `list_account_changes`; and
 6. locally allowlist `repair.task`, construct a validated request from the
    authenticated account and resource identity, and reread the resource.
@@ -33,7 +33,7 @@ By the end, you can:
 - distinguish current snapshots, durable business changes, notification
   wake-ups, and `webhook_activity[]` transport diagnostics;
 - close the multi-read bootstrap race with a `latest` checkpoint;
-- process a change your agent did not initiate; and
+- process creation and modification your agent did not initiate; and
 - recover from a missed webhook or `CURSOR_EXPIRED` without accepting stale
   state.
 
@@ -105,10 +105,11 @@ and page. A default active-only media-buy read is not a complete baseline.
 
 ### 3. Simulate activity outside your agent
 
-Call `comply_test_controller` with `scenario: "seed_creative"`, a new
-`creative_id`, and a complete image creative fixture. This represents the
-connected platform adding a creative while your buyer agent is idle; do not
-call `sync_creatives` first.
+Call `comply_test_controller` with `scenario: "seed_creative"`, a new,
+run-unique `creative_id`, and a complete image creative fixture. This
+represents the connected platform adding a creative while your buyer agent is
+idle; do not call `sync_creatives` first. A run-unique ID keeps repeated lab
+runs independent while preserving the controller's seed idempotency contract.
 
 The training seller first commits the new creative and account change
 record, then emits `account.change_recorded` to your active endpoint. The
@@ -129,7 +130,20 @@ current truth. Do not reconstruct the creative from webhook or change-record
 metadata, and never execute a feed-supplied task name or arguments directly.
 An unknown repair hint requires a safe full account rescan.
 
-### 5. Prove tail and recovery behavior
+### 5. Observe an external modification
+
+Using the same creative ID, call `comply_test_controller` with
+`scenario: "force_creative_status"`, `status: "rejected"`, and a categorical
+rejection reason. This represents connected-platform policy review after the
+creative was added.
+
+Verify that a second `account.change_recorded` wake-up arrives even though the
+buyer called no creative mutation task. Drain from the cursor returned in step
+4 and require a `status_changed` record with
+`origin.kind: "connected_platform"`. Reread `list_creatives` and confirm that
+the authoritative status is now `rejected`.
+
+### 6. Prove tail and recovery behavior
 
 Call `list_account_changes` again with the new cursor. A caught-up response has
 `changes: []`, `has_more: false`, and still returns a cursor. Persist it.
@@ -144,8 +158,8 @@ Then explain both recovery cases:
 
 ## Assessment
 
-You pass when you can demonstrate one externally initiated change end to end
-and correctly answer:
+You pass when you can demonstrate externally initiated creation and
+modification end to end and correctly answer:
 
 1. Which surface is authoritative current state?
 2. Why is `webhook_activity[]` not the account change feed?

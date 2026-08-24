@@ -8,17 +8,23 @@
     {"$ref": "/schemas/core/version-envelope.json"},
     {"$ref": "/schemas/core/protocol-envelope.json"}
   ],
+  "discriminator": {
+    "propertyName": "status"
+  },
   "oneOf": [
     {
       "description": "Successful feed page.",
-      "required": ["changes", "cursor", "has_more", "available_since", "generated_at"],
+      "required": ["status", "changes", "cursor", "has_more", "available_since", "generated_at"],
+      "properties": {
+        "status": {"type": "string", "const": "completed"}
+      },
       "not": {"required": ["adcp_error"]}
     },
     {
       "description": "Fatal feed failure, including CURSOR_EXPIRED. Both envelope and payload error layers are present.",
-      "required": ["adcp_error", "errors"],
+      "required": ["status", "adcp_error", "errors"],
       "properties": {
-        "status": {"const": "failed"},
+        "status": {"type": "string", "const": "failed"},
         "errors": {"minItems": 1}
       }
     }

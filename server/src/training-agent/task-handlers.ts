@@ -567,17 +567,23 @@ function collectInlineCreativeIds(
   return { creativeIds, validatedCreatives, errors };
 }
 
+interface InlineCreativeMutation {
+  previous?: CreativeState;
+  current: CreativeState;
+}
+
 function persistInlineCreatives(
   session: SessionState,
   validatedCreatives: ValidatedInlineCreative[],
   accountRef: AccountRef | undefined,
   accountId: string | undefined,
   syncedAt: string,
-) {
+): InlineCreativeMutation[] {
+  const mutations: InlineCreativeMutation[] = [];
   for (const { creative, creativeId, identity } of validatedCreatives) {
     const existing = session.creatives.get(creativeId);
     const manifest = normalizedCreativeManifest(creative, existing, identity);
-    session.creatives.set(creativeId, {
+    const storedCreative: CreativeState = {
       creativeId,
       accountId: accountId ?? existing?.accountId,
       accountRef: accountRef ?? existing?.accountRef,
@@ -599,7 +605,48 @@ function persistInlineCreatives(
       pricingOptionId: existing?.pricingOptionId,
       purge: existing?.purge,
       webhookActivity: existing?.webhookActivity,
+    };
+    session.creatives.set(creativeId, storedCreative);
+    mutations.push({
+      ...(existing && { previous: existing }),
+      current: storedCreative,
     });
+  }
+  return mutations;
+}
+
+async function publishInlineCreativeChanges(
+  mutations: InlineCreativeMutation[],
+  accountId: string | undefined,
+  principal: string | undefined,
+): Promise<void> {
+  if (!accountId) return;
+  for (const { previous, current } of mutations) {
+    upsertSharedAccountCreative(accountId, current);
+    const changedPaths = previous
+      ? [
+          ...(!isDeepStrictEqual(previous.name, current.name) ? ['/name'] : []),
+          ...(!isDeepStrictEqual(storedCreativeFormatRecord(previous), storedCreativeFormatRecord(current))
+            ? ['/format'] : []),
+          ...(!isDeepStrictEqual(previous.manifest, current.manifest) ? ['/manifest'] : []),
+        ]
+      : undefined;
+    if (previous && changedPaths!.length === 0) continue;
+    const change = recordAccountChange(principal, {
+      resource: {
+        type: 'creative',
+        account_id: accountId,
+        resource_id: current.creativeId,
+      },
+      action: previous ? 'updated' : 'created',
+      origin: { kind: 'adcp' },
+      changed_paths: changedPaths,
+      repair: { task: 'list_creatives' },
+      summary: previous
+        ? 'Inline creative updated through a media-buy task.'
+        : 'Inline creative created through a media-buy task.',
+    });
+    await emitAccountChangeRecordedWebhook(principal, change);
   }
 }
 
@@ -12127,13 +12174,19 @@ async function handleCreateMediaBuyUnlocked(
   const now = confirmedAt;
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
   const persistedAccountRef = ctx.resolvedAccount ?? req.account;
-  persistInlineCreatives(
+  const persistedAccountId = resolveAccountIdForRef(
+    sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    ctx.principal,
+    req.account,
+  );
+  const inlineCreativeMutations = persistInlineCreatives(
     session,
     inlineCreativesToPersist,
     persistedAccountRef as AccountRef | undefined,
-    resolveAccountIdForRef(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId), ctx.principal, req.account),
+    persistedAccountId,
     now,
   );
+  await publishInlineCreativeChanges(inlineCreativeMutations, persistedAccountId, ctx.principal);
 
   // Persist governance_context if provided (spec: sellers MUST persist and return on get_media_buys)
   const governanceContext = govCtx && govCtx.length <= 4096 ? govCtx : undefined;
@@ -13385,8 +13438,13 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   if (creatives.length === 0 && !req.include_webhook_activity) {
     // Controller-seeded creative storyboards can write under the test-kit
     // brand session while the list request keys by account_id. Prefer that
-    // freshly seeded library over falling back to static compliance fixtures.
-    const seededSession = await findSessionMatching(s => s.creatives.size > 0);
+    // freshly seeded library over falling back to static compliance fixtures,
+    // but never borrow a creative from an unrelated account/session.
+    const seededSession = await findSessionMatching(s => [...s.creatives.values()].some(creative => {
+      if (!req.account) return true;
+      if (requestedAccountId && creative.accountId) return creative.accountId === requestedAccountId;
+      return Boolean(creative.accountRef && accountRefsOverlap(creative.accountRef, req.account));
+    }));
     if (seededSession) creatives = Array.from(seededSession.creatives.values());
   }
   if (filterIds?.length) {
@@ -14555,13 +14613,19 @@ async function handleUpdateMediaBuyUnlocked(
   // Inline creative bodies share the legacy update transaction. Persist them
   // only after every package/new-package check has succeeded.
   if (stagedInlineCreatives.length > 0) {
-    persistInlineCreatives(
+    const persistedAccountId = resolveAccountIdForRef(
+      sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+      ctx.principal,
+      req.account,
+    );
+    const inlineCreativeMutations = persistInlineCreatives(
       session,
       stagedInlineCreatives,
       req.account as AccountRef | undefined,
-      resolveAccountIdForRef(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId), ctx.principal, req.account),
+      persistedAccountId,
       now,
     );
+    await publishInlineCreativeChanges(inlineCreativeMutations, persistedAccountId, ctx.principal);
   }
 
   const status = deriveStatus(mb, session);

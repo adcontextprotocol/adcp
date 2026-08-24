@@ -129,7 +129,7 @@ phases:
             sandbox: true
           scenario: "seed_creative"
           params:
-            creative_id: "shared_account_display_001"
+            creative_id: "$generate:uuid_v4#account_change_feed_external_creative"
             fixture:
               name: "Shared account display baseline"
               status: "approved"
@@ -195,7 +195,7 @@ phases:
             description: "Feed identifies the changed resource family"
           - check: field_value
             path: "changes[0].resource.resource_id"
-            value: "shared_account_display_001"
+            value: "$generate:uuid_v4#account_change_feed_external_creative"
             description: "Feed identifies the externally changed creative"
           - check: field_value
             path: "changes[0].origin.kind"
@@ -218,18 +218,118 @@ phases:
             account_id: "acc_luma_shared"
           filters:
             creative_ids:
-              - "shared_account_display_001"
+              - "$generate:uuid_v4#account_change_feed_external_creative"
         validations:
           - check: response_schema
             description: "Response matches list-creatives-response.json"
           - check: field_value
             path: "creatives[0].creative_id"
-            value: "shared_account_display_001"
+            value: "$generate:uuid_v4#account_change_feed_external_creative"
             description: "Authoritative read returns the changed creative"
           - check: field_value
             path: "creatives[0].status"
             value: "approved"
             description: "Authoritative state already reflects the external change"
+
+  - id: external_creative_update
+    title: "Observe a connected-platform creative modification"
+    steps:
+      - id: force_connected_creative_rejection
+        title: "Connected platform changes creative status"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+            sandbox: true
+          scenario: "force_creative_status"
+          params:
+            creative_id: "$generate:uuid_v4#account_change_feed_external_creative"
+            status: "rejected"
+            rejection_reason: "Connected-platform policy review rejected the creative."
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "External creative modification committed"
+          - check: field_value
+            path: "current_state"
+            value: "rejected"
+            description: "Controller reports the committed external state"
+
+      - id: expect_creative_update_webhook
+        title: "Observe the modification wake-up"
+        task: expect_webhook
+        triggered_by: force_connected_creative_rejection
+        filter:
+          notification_type: "account.change_recorded"
+          subscriber_id: "account-change-runner"
+          change_id: "*"
+        timeout_seconds: 30
+        expect_idempotency_key: true
+        webhook_payload_schema_ref: "core/account-change-recorded-webhook.json"
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          A second logical account.change_recorded fire arrives for the status
+          modification, even though the buyer initiated no AdCP creative task.
+
+      - id: drain_creative_update
+        title: "Drain the external modification"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          cursor: "$context.account_change_tail_cursor"
+          max_results: 100
+        context_outputs:
+          - name: account_change_status_cursor
+            path: "cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches list-account-changes-response.json"
+          - check: field_value
+            path: "changes[0].resource.resource_id"
+            value: "$generate:uuid_v4#account_change_feed_external_creative"
+            description: "Feed correlates the modification to the creative"
+          - check: field_value
+            path: "changes[0].action"
+            value: "status_changed"
+            description: "Feed distinguishes the lifecycle modification"
+          - check: field_value
+            path: "changes[0].origin.kind"
+            value: "connected_platform"
+            description: "Modification retains its external origin"
+
+      - id: repair_modified_creative_snapshot
+        title: "Re-read modified authoritative creative state"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          filters:
+            creative_ids:
+              - "$generate:uuid_v4#account_change_feed_external_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "rejected"
+            description: "Authoritative read already reflects the external modification"
 
       - id: empty_tail_checkpoint
         title: "Persist a cursor from an empty tail page"
@@ -241,7 +341,7 @@ phases:
         sample_request:
           account:
             account_id: "acc_luma_shared"
-          cursor: "$context.account_change_tail_cursor"
+          cursor: "$context.account_change_status_cursor"
         validations:
           - check: response_schema
             description: "Response matches list-account-changes-response.json"
