@@ -2629,9 +2629,9 @@ import {
 } from './source-schema.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.5'] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.6'] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
-const CURRENT_ADCP_VERSION = '3.2-beta.5';
+const CURRENT_ADCP_VERSION = '3.2-beta.6';
 const MAX_PACKAGES_PER_BUY = 50;
 const MAX_CONFIGURED_PRODUCTS_PER_SESSION = 128;
 
@@ -15058,9 +15058,10 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     unchanged?: boolean;
     wholesale_feed_version?: string;
     pricing_version?: string;
-    cache_scope?: 'public' | 'account';
+    cache_scope: 'public' | 'account';
   } = {
     signals,
+    cache_scope: wholesaleMeta?.cache_scope ?? cacheScopeForWholesaleRequest(req as WholesaleFeedRequest),
     pagination: {
       has_more: hasMore,
       total_count: totalMatching,
@@ -15072,7 +15073,6 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     ...(wholesaleMeta && {
       wholesale_feed_version: wholesaleMeta.wholesale_feed_version,
       pricing_version: wholesaleMeta.pricing_version,
-      cache_scope: wholesaleMeta.cache_scope,
     }),
   };
   if (hasIdentityTerm) {

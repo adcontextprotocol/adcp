@@ -100,7 +100,7 @@ const VALID_PRICING_MODELS = [
 ] as const;
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
-const CURRENT_ADCP_VERSION = '3.2-beta.5';
+const CURRENT_ADCP_VERSION = '3.2-beta.6';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open', authenticatedAgentUrl: 'https://buyer.example' };
 
@@ -14404,6 +14404,20 @@ describe('get_signals handler', () => {
     const { result } = await simulateCallTool(server, 'get_signals', { account });
     expect(Array.isArray(result.signals)).toBe(true);
     expect((result.signals as unknown[]).length).toBeGreaterThan(0);
+    expect(result.cache_scope).toBe('public');
+  });
+
+  it('marks an account-overlay signal catalog as account-scoped', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account: {
+        brand: { domain: 'account-overlay.example' },
+        operator: 'account-overlay.example',
+      },
+    });
+
+    expect((result.signals as unknown[]).length).toBeGreaterThan(0);
+    expect(result.cache_scope).toBe('account');
   });
 
   it('returns wholesale signal feed metadata and honors unchanged probes', async () => {
