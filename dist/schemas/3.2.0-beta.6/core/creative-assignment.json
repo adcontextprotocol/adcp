@@ -1,0 +1,120 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/creative-assignment.json",
+  "title": "Creative Assignment",
+  "description": "Assignment of a creative asset to a package with optional rotation and placement routing. Used in create_media_buy and update_media_buy requests. Buyers identify the stored creative with `creative_id` only. A generic `id` alias, if present due to adapter-internal payload reuse, is not an AdCP identifier and sellers MUST ignore it on input. Note: sync_creatives does not support package rotation, placement_refs, or placement_ids - use create/update_media_buy for package-level trafficking controls.",
+  "type": "object",
+  "properties": {
+    "creative_id": {
+      "type": "string",
+      "description": "Unique identifier for the creative",
+      "x-entity": "creative"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Relative delivery weight for this creative (0–100). Valid when the package's effective rotation_mode is weighted, including the backward-compatible default when rotation_mode is omitted. Weights determine impression distribution proportionally — a creative with weight 2 gets twice the delivery of weight 1. When omitted, the creative receives equal weight with other unweighted creatives. A weight of 0 means the creative is assigned but paused (receives no delivery).",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "rotation_mode": {
+      "type": "string",
+      "enum": [
+        "weighted",
+        "even",
+        "sequential",
+        "random"
+      ],
+      "description": "Package-scoped rotation policy repeated on assignment rows for wire compatibility. Omission means weighted, preserving existing weight behavior. Every assignment in a package MUST resolve to the same effective mode: weighted uses relative weights; even balances delivery across eligible assignments; sequential cycles through sequence_position in ascending order within each group; random makes an independent uniform selection from eligible assignments. Sellers MUST reject conflicting effective modes rather than choose one by array order."
+    },
+    "group_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Package-local creative pool identifier. The identifier has no meaning outside this package. Assignments that omit group_id belong to the package's default group; one eligible creative is selected from each applicable group per serving opportunity."
+    },
+    "sequence_position": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "One-based order within the assignment's package-local group. Required only for sequential rotation and unique within that group."
+    },
+    "placement_refs": {
+      "type": "array",
+      "description": "Optional structured refs routing this creative within already-purchased package inventory. This field never narrows purchased inventory; use targeting_overlay.placement_selection for that. Every ref MUST fall within the package's committed placement selection. When omitted, the creative runs across the purchased placements compatible with its format. New senders SHOULD include publisher_domain because placement IDs are publisher-scoped. If both placement_refs and legacy placement_ids are present, placement_refs wins.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.6/core/placement-ref.json"
+      },
+      "minItems": 1
+    },
+    "placement_ids": {
+      "type": "array",
+      "deprecated": true,
+      "description": "Legacy shorthand routing IDs within already-purchased inventory. This field never narrows purchased inventory; use targeting_overlay.placement_selection. New senders SHOULD use placement_refs because IDs are publisher-scoped. If placement_refs is also present, receivers MUST ignore this field.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "creative_id"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "rotation_mode": {
+            "const": "sequential"
+          }
+        },
+        "required": [
+          "rotation_mode"
+        ]
+      },
+      "then": {
+        "required": [
+          "sequence_position"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "sequence_position"
+        ]
+      },
+      "then": {
+        "properties": {
+          "rotation_mode": {
+            "const": "sequential"
+          }
+        },
+        "required": [
+          "rotation_mode"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "rotation_mode": {
+            "enum": [
+              "even",
+              "sequential",
+              "random"
+            ]
+          }
+        },
+        "required": [
+          "rotation_mode"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "weight"
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}

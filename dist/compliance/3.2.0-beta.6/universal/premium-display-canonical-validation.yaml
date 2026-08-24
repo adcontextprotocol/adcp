@@ -1,0 +1,1253 @@
+id: premium_display_canonical_validation
+version: "2.0.0"
+title: "Premium display canonical validation"
+category: schema_validation
+summary: "Validates AdCP 3.2 seller_rendered_stateful_display supply-mode contracts (components, rendered_canvases, layered_source), single-state reveal shape, policy floors, and coordinated_placements sequence/serving_policy, alongside transition/canvas coverage and shared-slot resolution."
+track: creative
+introduced_in: "3.2"
+required_tools:
+  - validate_input
+  - comply_test_controller
+
+requires:
+  - controller
+
+narrative: |
+  AdCP 3.2 reshapes `seller_rendered_stateful_display` around a template-contract
+  model: the seller's format declaration (slots, breakpoints, state/transition
+  graph) is the shared truth, and `supply_mode` declares which end of the
+  contract the buyer feeds. Sellers validate that a manifest matches its
+  product's declared supply mode, that single-state reveal units carry no
+  transitions, that dismissibility and anti-strobe floors hold, that a
+  declaration's slots never widen into executable asset types, that fluid
+  breakpoints are never paired with buyer-rendered canvases, and that
+  `clickthrough` policy and `coordinated_placements` `sequence` values are
+  internally consistent. Every check below cites the `x-adcp-validation.
+  verifier_constraints` key it exercises in the corresponding canonical
+  schema.
+
+agent:
+  interaction_model: creative
+  capabilities:
+    - validates_canonical_formats
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: "The runner seeds premium-display products before exercising product-target validation."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "premium_seller_rendered_stateful_display"
+      name: "Premium seller-rendered stateful display"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "seller_rendered_stateful_display"
+          format_option_id: "expandable_leaderboard"
+          canonical_formats_only: true
+          params:
+            supply_mode: "rendered_canvases"
+            initial_state_id: "expanded"
+            states:
+              - state_id: "expanded"
+                anchoring: "inline"
+                close_affordance: true
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 640
+                    height: 210
+                  - breakpoint_id: "mobile"
+                    width: 320
+                    height: 210
+              - state_id: "collapsed"
+                anchoring: "sticky_top"
+                close_affordance: true
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 640
+                    height: 70
+                  - breakpoint_id: "mobile"
+                    width: 320
+                    height: 70
+            transitions:
+              - transition_id: "auto_collapse"
+                from_state_id: "expanded"
+                to_state_id: "collapsed"
+                trigger: "timer"
+                transition_mode: "animated"
+                delay_ms: 5000
+                duration_ms: 300
+              - transition_id: "user_expand"
+                from_state_id: "collapsed"
+                to_state_id: "expanded"
+                trigger: "user_action"
+                input: "expand_control"
+                transition_mode: "animated"
+                duration_ms: 300
+            user_controls:
+              dismissible: true
+              user_collapsible: true
+
+    - product_id: "premium_components_mode_display"
+      name: "Premium components-mode display"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "seller_rendered_stateful_display"
+          format_option_id: "components_mode_leaderboard"
+          canonical_formats_only: true
+          params:
+            supply_mode: "components"
+            initial_state_id: "expanded"
+            states:
+              - state_id: "expanded"
+                anchoring: "inline"
+                close_affordance: true
+                slot_bindings: ["logo", "headline", "cta", "imagery", "landing_page_url"]
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 640
+                    height: 210
+              - state_id: "collapsed"
+                anchoring: "sticky_top"
+                close_affordance: true
+                slot_bindings: ["logo", "cta", "landing_page_url"]
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 640
+                    height: 70
+            transitions:
+              - transition_id: "auto_collapse"
+                from_state_id: "expanded"
+                to_state_id: "collapsed"
+                trigger: "in_view_timer"
+                transition_mode: "animated"
+                delay_ms: 15000
+                duration_ms: 300
+              - transition_id: "user_expand"
+                from_state_id: "collapsed"
+                to_state_id: "expanded"
+                trigger: "user_action"
+                input: "expand_control"
+                transition_mode: "animated"
+                duration_ms: 300
+            user_controls:
+              dismissible: true
+              user_collapsible: true
+
+    - product_id: "premium_layered_source_display"
+      name: "Premium layered-source display"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "seller_rendered_stateful_display"
+          format_option_id: "layered_source_leaderboard"
+          canonical_formats_only: true
+          params:
+            supply_mode: "layered_source"
+            production_window_business_days: 10
+            initial_state_id: "expanded"
+            states:
+              - state_id: "expanded"
+                anchoring: "inline"
+                close_affordance: true
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 640
+                    height: 210
+            user_controls:
+              dismissible: true
+              user_collapsible: false
+
+    - product_id: "premium_single_state_reveal"
+      name: "Premium single-state reveal (topscroll)"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "seller_rendered_stateful_display"
+          format_option_id: "topscroll_reveal"
+          canonical_formats_only: true
+          params:
+            supply_mode: "components"
+            reveal: "clip_window"
+            initial_state_id: "reveal"
+            states:
+              - state_id: "reveal"
+                anchoring: "underlay"
+                close_affordance: false
+                slot_bindings: ["video_main", "landing_page_url"]
+                breakpoints:
+                  - breakpoint_id: "mobile"
+                    width_mode: "full_bleed"
+                    viewport_height_percent: 80
+            user_controls:
+              dismissible: true
+              user_collapsible: false
+
+    - product_id: "premium_bad_single_state_with_transitions"
+      name: "Premium single state carrying a transitions array"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "seller_rendered_stateful_display"
+          format_option_id: "bad_single_state_transitions"
+          canonical_formats_only: true
+          params:
+            supply_mode: "components"
+            initial_state_id: "only_state"
+            states:
+              - state_id: "only_state"
+                anchoring: "inline"
+                close_affordance: true
+                slot_bindings: ["imagery", "landing_page_url"]
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 640
+                    height: 210
+            transitions:
+              - transition_id: "phantom_transition"
+                from_state_id: "only_state"
+                to_state_id: "only_state"
+                trigger: "user_action"
+                input: "tap"
+                transition_mode: "instant"
+            user_controls:
+              dismissible: true
+              user_collapsible: false
+
+    - product_id: "premium_bad_timer_cycle"
+      name: "Premium timer cycle below the anti-strobe floor"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "seller_rendered_stateful_display"
+          format_option_id: "bad_timer_cycle"
+          canonical_formats_only: true
+          params:
+            supply_mode: "components"
+            initial_state_id: "expanded"
+            states:
+              - state_id: "expanded"
+                anchoring: "inline"
+                close_affordance: true
+                slot_bindings: ["imagery", "landing_page_url"]
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 640
+                    height: 210
+              - state_id: "collapsed"
+                anchoring: "sticky_top"
+                close_affordance: true
+                slot_bindings: ["logo", "landing_page_url"]
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 640
+                    height: 70
+            transitions:
+              - transition_id: "strobe_collapse"
+                from_state_id: "expanded"
+                to_state_id: "collapsed"
+                trigger: "timer"
+                transition_mode: "instant"
+                delay_ms: 0
+              - transition_id: "strobe_reopen"
+                from_state_id: "collapsed"
+                to_state_id: "expanded"
+                trigger: "timer"
+                transition_mode: "instant"
+                delay_ms: 0
+            user_controls:
+              dismissible: true
+              user_collapsible: true
+
+    - product_id: "premium_bad_undismissable_overlay"
+      name: "Premium undismissable fullscreen overlay"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "seller_rendered_stateful_display"
+          format_option_id: "bad_undismissable_overlay"
+          canonical_formats_only: true
+          params:
+            supply_mode: "components"
+            initial_state_id: "overlay_state"
+            states:
+              - state_id: "overlay_state"
+                anchoring: "fullscreen_overlay"
+                close_affordance: false
+                slot_bindings: ["imagery", "landing_page_url"]
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 640
+                    height: 480
+            user_controls:
+              dismissible: false
+              user_collapsible: false
+
+    - product_id: "premium_lean_policy_warning"
+      name: "Premium non-user-action entry into overlay anchoring"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "seller_rendered_stateful_display"
+          format_option_id: "lean_policy_warning_unit"
+          canonical_formats_only: true
+          params:
+            supply_mode: "components"
+            initial_state_id: "base"
+            states:
+              - state_id: "base"
+                anchoring: "inline"
+                close_affordance: true
+                slot_bindings: ["imagery", "landing_page_url"]
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 300
+                    height: 250
+              - state_id: "promo"
+                anchoring: "overlay"
+                close_affordance: true
+                slot_bindings: ["imagery", "landing_page_url"]
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 300
+                    height: 250
+            transitions:
+              - transition_id: "auto_promo"
+                from_state_id: "base"
+                to_state_id: "promo"
+                trigger: "timer"
+                transition_mode: "animated"
+                delay_ms: 3000
+                duration_ms: 300
+            user_controls:
+              dismissible: true
+              user_collapsible: false
+
+    - product_id: "premium_bad_javascript_slot_override"
+      name: "Premium slot override widening into javascript"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "seller_rendered_stateful_display"
+          format_option_id: "bad_javascript_slot"
+          canonical_formats_only: true
+          params:
+            supply_mode: "components"
+            initial_state_id: "only_state"
+            slots:
+              - asset_group_id: "landing_page_url"
+                asset_type: "url"
+                required: true
+              - asset_group_id: "custom_script"
+                asset_type: "javascript"
+                required: false
+            states:
+              - state_id: "only_state"
+                anchoring: "inline"
+                close_affordance: true
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 640
+                    height: 210
+            user_controls:
+              dismissible: true
+              user_collapsible: false
+
+    - product_id: "premium_bad_fluid_rendered_canvases"
+      name: "Premium fluid breakpoint paired with rendered_canvases"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "seller_rendered_stateful_display"
+          format_option_id: "bad_fluid_rendered_canvases"
+          canonical_formats_only: true
+          params:
+            supply_mode: "rendered_canvases"
+            initial_state_id: "only_state"
+            states:
+              - state_id: "only_state"
+                anchoring: "underlay"
+                close_affordance: false
+                breakpoints:
+                  - breakpoint_id: "mobile"
+                    width_mode: "full_bleed"
+                    viewport_height_percent: 80
+            user_controls:
+              dismissible: true
+              user_collapsible: false
+
+    - product_id: "premium_clickthrough_none"
+      name: "Premium non-clickable unit"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      format_options:
+        - format_kind: "seller_rendered_stateful_display"
+          format_option_id: "clickthrough_none_unit"
+          canonical_formats_only: true
+          params:
+            supply_mode: "components"
+            clickthrough: "none"
+            initial_state_id: "only_state"
+            states:
+              - state_id: "only_state"
+                anchoring: "inline"
+                close_affordance: true
+                slot_bindings: ["imagery"]
+                breakpoints:
+                  - breakpoint_id: "desktop"
+                    width: 300
+                    height: 250
+            user_controls:
+              dismissible: true
+              user_collapsible: false
+
+    - product_id: "premium_coordinated_placements"
+      name: "Premium coordinated placements"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      exclusivity: "exclusive"
+      placements:
+        - { kind: "seller_inline", placement_id: "masthead", publisher_domain: "streamhaus.example", name: "Masthead", mode: "included" }
+        - { kind: "seller_inline", placement_id: "skin", publisher_domain: "streamhaus.example", name: "Skin", mode: "included" }
+      format_options:
+        - format_kind: "image"
+          format_option_id: "masthead_image"
+          canonical_formats_only: true
+          params:
+            width: 970
+            height: 250
+        - format_kind: "coordinated_placements"
+          format_option_id: "coordinated_placements"
+          canonical_formats_only: true
+          params:
+            components:
+              - component_id: "masthead"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "masthead" }
+                required: true
+                format_option_ref:
+                  scope: "product"
+                  format_option_id: "masthead_image"
+              - component_id: "skin"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "skin" }
+                required: true
+                format_kind: "image"
+                params:
+                  width: 2560
+                  height: 1440
+            shared_slots:
+              - asset_group_id: "cta"
+                asset_type: "text"
+                required: true
+                consumed_by: ["masthead", "skin"]
+
+    - product_id: "premium_coordinated_placements_bad_ref"
+      name: "Premium coordinated placements with unresolved component"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      placements:
+        - { kind: "seller_inline", placement_id: "masthead", publisher_domain: "streamhaus.example", name: "Masthead", mode: "included" }
+        - { kind: "seller_inline", placement_id: "rail", publisher_domain: "streamhaus.example", name: "Rail", mode: "included" }
+      format_options:
+        - format_kind: "coordinated_placements"
+          format_option_id: "bad_ref_takeover"
+          canonical_formats_only: true
+          params:
+            components:
+              - component_id: "masthead"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "masthead" }
+                required: true
+                format_option_ref:
+                  scope: "product"
+                  format_option_id: "missing_format"
+              - component_id: "rail"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "rail" }
+                required: false
+                format_kind: "image"
+                params: { width: 300, height: 600 }
+
+    - product_id: "premium_coordinated_placements_bad_consumer"
+      name: "Premium coordinated placements with unknown shared consumer"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      placements:
+        - { kind: "seller_inline", placement_id: "skin", publisher_domain: "streamhaus.example", name: "Skin", mode: "included" }
+        - { kind: "seller_inline", placement_id: "rail", publisher_domain: "streamhaus.example", name: "Rail", mode: "included" }
+      format_options:
+        - format_kind: "coordinated_placements"
+          format_option_id: "bad_consumer_takeover"
+          canonical_formats_only: true
+          params:
+            components:
+              - component_id: "skin"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "skin" }
+                required: true
+                format_kind: "image"
+                params:
+                  width: 2560
+                  height: 1440
+              - component_id: "rail"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "rail" }
+                required: false
+                format_kind: "image"
+                params: { width: 300, height: 600 }
+            shared_slots:
+              - asset_group_id: "cta"
+                asset_type: "text"
+                required: false
+                consumed_by: ["missing_component"]
+
+    - product_id: "premium_coordinated_placements_bad_shared_type"
+      name: "Premium coordinated placements with incompatible shared slot"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      placements:
+        - { kind: "seller_inline", placement_id: "skin", publisher_domain: "streamhaus.example", name: "Skin", mode: "included" }
+        - { kind: "seller_inline", placement_id: "rail", publisher_domain: "streamhaus.example", name: "Rail", mode: "included" }
+      format_options:
+        - format_kind: "coordinated_placements"
+          format_option_id: "bad_shared_type_takeover"
+          canonical_formats_only: true
+          params:
+            components:
+              - component_id: "skin"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "skin" }
+                required: true
+                format_kind: "image"
+                params: { width: 2560, height: 1440 }
+              - component_id: "rail"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "rail" }
+                required: false
+                format_kind: "image"
+                params: { width: 300, height: 600 }
+            shared_slots:
+              - asset_group_id: "video_main"
+                asset_type: "video"
+                required: false
+                consumed_by: ["skin"]
+
+    - product_id: "premium_coordinated_placements_bad_canvas"
+      name: "Premium coordinated placements with overflowing canvas constraint"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      placements:
+        - { kind: "seller_inline", placement_id: "skin", publisher_domain: "streamhaus.example", name: "Skin", mode: "included" }
+        - { kind: "seller_inline", placement_id: "rail", publisher_domain: "streamhaus.example", name: "Rail", mode: "included" }
+      format_options:
+        - format_kind: "coordinated_placements"
+          format_option_id: "bad_canvas_takeover"
+          canonical_formats_only: true
+          params:
+            components:
+              - component_id: "skin"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "skin" }
+                required: true
+                format_kind: "image"
+                params:
+                  sizes: [{ width: 2560, height: 1440 }]
+                canvas_constraints:
+                  - constraint: "safe_area"
+                    region: { unit: "px", x: 2500, y: 0, width: 100, height: 100 }
+              - component_id: "rail"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "rail" }
+                required: false
+                format_kind: "image"
+                params: { width: 300, height: 600 }
+
+    - product_id: "premium_coordinated_sequenced_takeover"
+      name: "Premium coordinated takeover with sequenced messaging"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      exclusivity: "exclusive"
+      placements:
+        - { kind: "seller_inline", placement_id: "seq_skin", publisher_domain: "streamhaus.example", name: "Skin", mode: "included" }
+        - { kind: "seller_inline", placement_id: "seq_leaderboard", publisher_domain: "streamhaus.example", name: "Leaderboard", mode: "included" }
+        - { kind: "seller_inline", placement_id: "seq_message_a", publisher_domain: "streamhaus.example", name: "Message A", mode: "included" }
+        - { kind: "seller_inline", placement_id: "seq_message_b", publisher_domain: "streamhaus.example", name: "Message B", mode: "included" }
+      format_options:
+        - format_kind: "image"
+          format_option_id: "seq_leaderboard_image"
+          canonical_formats_only: true
+          params:
+            width: 970
+            height: 250
+        - format_kind: "image"
+          format_option_id: "seq_message_image"
+          canonical_formats_only: true
+          params:
+            width: 300
+            height: 250
+        - format_kind: "coordinated_placements"
+          format_option_id: "sequenced_takeover"
+          canonical_formats_only: true
+          params:
+            components:
+              - component_id: "skin"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "seq_skin" }
+                required: true
+                serving_policy: "seller_served_only"
+                format_kind: "image"
+                params: { width: 1280, height: 1440 }
+              - component_id: "leaderboard"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "seq_leaderboard" }
+                required: true
+                serving_policy: "third_party_allowed"
+                format_option_ref:
+                  scope: "product"
+                  format_option_id: "seq_leaderboard_image"
+              - component_id: "message_a"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "seq_message_a" }
+                required: false
+                sequence: 1
+                format_option_ref:
+                  scope: "product"
+                  format_option_id: "seq_message_image"
+              - component_id: "message_b"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "seq_message_b" }
+                required: false
+                sequence: 2
+                format_option_ref:
+                  scope: "product"
+                  format_option_id: "seq_message_image"
+            shared_slots:
+              - asset_group_id: "cta"
+                asset_type: "text"
+                required: false
+                consumed_by: ["skin", "leaderboard", "message_a", "message_b"]
+
+    - product_id: "premium_coordinated_sequence_gap"
+      name: "Premium coordinated takeover with a sequence gap"
+      channels: ["display"]
+      delivery_type: "guaranteed"
+      placements:
+        - { kind: "seller_inline", placement_id: "gap_skin", publisher_domain: "streamhaus.example", name: "Skin", mode: "included" }
+        - { kind: "seller_inline", placement_id: "gap_leaderboard", publisher_domain: "streamhaus.example", name: "Leaderboard", mode: "included" }
+      format_options:
+        - format_kind: "coordinated_placements"
+          format_option_id: "sequence_gap_takeover"
+          canonical_formats_only: true
+          params:
+            components:
+              - component_id: "skin"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "gap_skin" }
+                required: true
+                sequence: 1
+                format_kind: "image"
+                params: { width: 1280, height: 1440 }
+              - component_id: "leaderboard"
+                placement_ref: { publisher_domain: "streamhaus.example", placement_id: "gap_leaderboard" }
+                required: false
+                sequence: 3
+                format_kind: "image"
+                params: { width: 970, height: 250 }
+
+phases:
+  - id: seller_rendered_stateful_canvas_matrix
+    title: "Seller-rendered stateful canvas matrix (rendered_canvases supply mode)"
+    steps:
+      - id: validate_complete_canvas_matrix
+        title: "Accept complete state and breakpoint canvas coverage"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "seller_rendered_stateful_display"
+            assets:
+              state_canvases:
+                - { asset_type: "image", url: "https://cdn.acme.example/expanded-desktop.png", state_id: "expanded", breakpoint_id: "desktop", width: 640, height: 210 }
+                - { asset_type: "image", url: "https://cdn.acme.example/expanded-mobile.png", state_id: "expanded", breakpoint_id: "mobile", width: 320, height: 210 }
+                - { asset_type: "image", url: "https://cdn.acme.example/collapsed-desktop.png", state_id: "collapsed", breakpoint_id: "desktop", width: 640, height: 70 }
+                - { asset_type: "image", url: "https://cdn.acme.example/collapsed-mobile.png", state_id: "collapsed", breakpoint_id: "mobile", width: 320, height: 70 }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+          targets:
+            - { kind: "product", id: "premium_seller_rendered_stateful_display" }
+        validations:
+          - check: response_schema
+          - { check: field_value, path: "results[0].result_kind", value: "validated_pass" }
+            # supply_mode_manifest: rendered_canvases mode requires full canvas coverage — a complete matrix passes.
+
+      - id: reject_incomplete_canvas_matrix
+        title: "Reject wrong dimensions and missing state canvas"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "seller_rendered_stateful_display"
+            assets:
+              state_canvases:
+                - { asset_type: "image", url: "https://cdn.acme.example/expanded-desktop.png", state_id: "expanded", breakpoint_id: "desktop", width: 641, height: 210 }
+                - { asset_type: "image", url: "https://cdn.acme.example/expanded-mobile.png", state_id: "expanded", breakpoint_id: "mobile", width: 320, height: 210 }
+                - { asset_type: "image", url: "https://cdn.acme.example/collapsed-desktop.png", state_id: "collapsed", breakpoint_id: "desktop", width: 640, height: 70 }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+          targets:
+            - { kind: "product", id: "premium_seller_rendered_stateful_display" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "state_canvas_dimensions" }
+
+  - id: supply_mode_manifests
+    title: "supply_mode-consistent manifests across components, rendered_canvases, and layered_source"
+    narrative: |
+      `supply_mode` declares which end of the template contract the buyer
+      feeds. A manifest MUST match its product's declared mode
+      (`supply_mode_manifest`), and a fluid breakpoint MUST NOT be paired
+      with `rendered_canvases` supply (`fluid_breakpoint_supply`).
+    steps:
+      - id: validate_components_mode_manifest
+        title: "Accept a components-mode manifest with no state_canvases"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "seller_rendered_stateful_display"
+            assets:
+              logo: { asset_type: "image", url: "https://cdn.acme.example/logo.png", width: 200, height: 200 }
+              headline: { asset_type: "text", content: "Gear up for the trail" }
+              cta: { asset_type: "text", content: "Shop now" }
+              imagery: { asset_type: "image", url: "https://cdn.acme.example/hero.png", width: 640, height: 210 }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+          targets:
+            - { kind: "product", id: "premium_components_mode_display" }
+        validations:
+          - check: response_schema
+          - { check: field_value, path: "results[0].result_kind", value: "validated_pass" }
+            # supply_mode_manifest: components mode is satisfied by component slots alone.
+
+      - id: reject_components_mode_manifest_with_state_canvases
+        title: "Reject a components-mode manifest that also ships state_canvases"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "seller_rendered_stateful_display"
+            assets:
+              logo: { asset_type: "image", url: "https://cdn.acme.example/logo.png", width: 200, height: 200 }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+              state_canvases:
+                - { asset_type: "image", url: "https://cdn.acme.example/expanded-desktop.png", state_id: "expanded", breakpoint_id: "desktop", width: 640, height: 210 }
+          targets:
+            - { kind: "product", id: "premium_components_mode_display" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "supply_mode_manifest" }
+            # supply_mode_manifest: "components mode forbids state_canvases ... assets" — MUST reject.
+
+      - id: validate_layered_source_manifest
+        title: "Accept a layered_source manifest with layered design source and fonts"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "seller_rendered_stateful_display"
+            assets:
+              layered_source: { asset_type: "zip", url: "https://cdn.acme.example/leaderboard-source.zip" }
+              font_files: { asset_type: "zip", url: "https://cdn.acme.example/licensed-fonts.zip" }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+          targets:
+            - { kind: "product", id: "premium_layered_source_display" }
+        validations:
+          - check: response_schema
+          - { check: field_value, path: "results[0].result_kind", value: "validated_pass" }
+            # supply_mode_manifest: layered_source mode requires a layered_source asset and forbids state_canvases.
+
+      - id: reject_fluid_breakpoint_targeted_by_rendered_canvases
+        title: "Reject a fluid breakpoint targeted by rendered_canvases supply"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "seller_rendered_stateful_display"
+            assets:
+              state_canvases:
+                - { asset_type: "image", url: "https://cdn.acme.example/reveal-mobile.png", state_id: "only_state", breakpoint_id: "mobile", width: 375, height: 600 }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+          targets:
+            - { kind: "product", id: "premium_bad_fluid_rendered_canvases" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "fluid_breakpoint_supply" }
+            # fluid_breakpoint_supply: "breakpoints using width_mode or viewport_height_percent cannot be targeted by rendered_canvases supply" — MUST reject.
+
+  - id: single_state_and_policy_floors
+    title: "Single-state reveal shape and hard policy floors"
+    narrative: |
+      Reveal-class units declare exactly one state with no transitions
+      (`single_state_shape`). Dismissibility and anti-strobe are hard
+      failures (`dismissibility_floor`, `timer_cycle_floor`) — every other
+      LEAN-prohibited combination validates with a non-blocking warning
+      instead (`lean_policy_warnings`).
+    steps:
+      - id: validate_single_state_reveal
+        title: "Accept a single-state reveal unit with no transitions"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "seller_rendered_stateful_display"
+            assets:
+              video_main: { asset_type: "video", url: "https://cdn.acme.example/topscroll.mp4", width: 1080, height: 1920, duration_ms: 6000 }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+          targets:
+            - { kind: "product", id: "premium_single_state_reveal" }
+        validations:
+          - check: response_schema
+          - { check: field_value, path: "results[0].result_kind", value: "validated_pass" }
+            # single_state_shape: a single declared state with no transitions and matching initial_state_id is a valid reveal unit.
+
+      - id: reject_single_state_with_transitions
+        title: "Reject a single-state declaration carrying a transitions array"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "seller_rendered_stateful_display"
+            assets:
+              imagery: { asset_type: "image", url: "https://cdn.acme.example/only-state.png", width: 640, height: 210 }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+          targets:
+            - { kind: "product", id: "premium_bad_single_state_with_transitions" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "single_state_shape" }
+            # single_state_shape: "when states has one entry, transitions must be absent or empty" — MUST reject.
+
+      - id: reject_timer_strobe_cycle
+        title: "Reject a 0ms timer strobe cycle between two states"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "seller_rendered_stateful_display"
+            assets:
+              imagery: { asset_type: "image", url: "https://cdn.acme.example/expanded.png", width: 640, height: 210 }
+              logo: { asset_type: "image", url: "https://cdn.acme.example/logo.png", width: 200, height: 200 }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+          targets:
+            - { kind: "product", id: "premium_bad_timer_cycle" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "timer_cycle_floor" }
+            # timer_cycle_floor: "timer and in_view_timer transitions participating in a state cycle must declare delay_ms >= 1000" — MUST reject a 0ms cycle.
+
+      - id: reject_undismissable_fullscreen_overlay
+        title: "Reject an undismissable fullscreen overlay with no close affordance"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "seller_rendered_stateful_display"
+            assets:
+              imagery: { asset_type: "image", url: "https://cdn.acme.example/overlay.png", width: 640, height: 480 }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+          targets:
+            - { kind: "product", id: "premium_bad_undismissable_overlay" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "dismissibility_floor" }
+            # dismissibility_floor: overlay/fullscreen_overlay anchoring requires dismissible:true OR close_affordance:true — MUST reject when both are false.
+
+      - id: warn_non_user_action_overlay_entry
+        title: "Pass with a non-blocking warning for non-user-action entry into overlay anchoring"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "seller_rendered_stateful_display"
+            assets:
+              imagery: { asset_type: "image", url: "https://cdn.acme.example/base.png", width: 300, height: 250 }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+          targets:
+            - { kind: "product", id: "premium_lean_policy_warning" }
+        validations:
+          - check: response_schema
+          - { check: field_value, path: "results[0].result_kind", value: "validated_pass" }
+            # lean_policy_warnings is non-blocking: a timer-triggered (non-user-action) entry into overlay anchoring still validates.
+          - { check: field_value, path: "results[0].warnings[0].rule", value: "lean_policy_warnings" }
+            # lean_policy_warnings: "non-user-action transitions into overlay/fullscreen_overlay anchoring ... emit policy warnings (non-blocking)" — schema is descriptive, policy stays visible via warnings[].
+
+  - id: slot_widening_and_clickthrough
+    title: "Slot asset-type widening and clickthrough policy"
+    steps:
+      - id: reject_javascript_slot_override
+        title: "Reject a manifest exercising a javascript slot override"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "seller_rendered_stateful_display"
+            assets:
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+              custom_script: { asset_type: "javascript", content: "document.write('unbounded');" }
+          targets:
+            - { kind: "product", id: "premium_bad_javascript_slot_override" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "allowed_slot_asset_types" }
+            # allowed_slot_asset_types: "declaration slots ... must not widen the canonical's allowed asset types; executable types are rejected" — MUST reject javascript.
+
+      - id: reject_landing_page_url_with_clickthrough_none
+        title: "Reject landing_page_url on a clickthrough:none manifest"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "seller_rendered_stateful_display"
+            assets:
+              imagery: { asset_type: "image", url: "https://cdn.acme.example/non-clickable.png", width: 300, height: 250 }
+              landing_page_url: { asset_type: "url", url: "https://acmeoutdoor.example/launch" }
+          targets:
+            - { kind: "product", id: "premium_clickthrough_none" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "clickthrough_policy" }
+            # clickthrough_policy: "landing_page_url and state_click_urls forbidden when clickthrough is none" — MUST reject.
+
+  - id: coordinated_placements_components
+    title: "Coordinated-placement component validation"
+    steps:
+      - id: validate_namespaced_component_assets
+        title: "Accept namespaced assets for required components"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "coordinated_placements"
+            assets:
+              cta: { asset_type: "text", content: "Explore" }
+            component_assets:
+              masthead:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/masthead.png", width: 970, height: 250 }
+              skin:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/skin.png", width: 2560, height: 1440 }
+          targets:
+            - { kind: "product", id: "premium_coordinated_placements" }
+        validations:
+          - check: response_schema
+          - { check: field_value, path: "results[0].result_kind", value: "validated_pass" }
+
+      - id: reject_missing_component_assets
+        title: "Reject missing assets for a required component"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "coordinated_placements"
+            assets:
+              cta: { asset_type: "text", content: "Explore" }
+            component_assets:
+              masthead:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/masthead.png", width: 970, height: 250 }
+          targets:
+            - { kind: "product", id: "premium_coordinated_placements" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "coordinated_component_assets_required" }
+
+      - id: reject_unresolved_component
+        title: "Reject unresolved sibling component reference"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest: { format_kind: "coordinated_placements", assets: {}, component_assets: {} }
+          targets:
+            - { kind: "product", id: "premium_coordinated_placements_bad_ref" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "coordinated_component_format_option_ref" }
+
+      - id: reject_unknown_shared_consumer
+        title: "Reject unknown shared-slot consumer"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "coordinated_placements"
+            assets: {}
+            component_assets:
+              skin:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/skin.png", width: 2560, height: 1440 }
+          targets:
+            - { kind: "product", id: "premium_coordinated_placements_bad_consumer" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "coordinated_shared_slot_consumer" }
+
+      - id: reject_incompatible_shared_slot
+        title: "Reject a shared slot incompatible with its consumer"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "coordinated_placements"
+            assets: {}
+            component_assets:
+              skin:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/skin.png", width: 2560, height: 1440 }
+          targets:
+            - { kind: "product", id: "premium_coordinated_placements_bad_shared_type" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "coordinated_shared_slot_compatibility" }
+
+      - id: reject_overflowing_canvas_constraint
+        title: "Reject a pixel constraint outside a sized component canvas"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "coordinated_placements"
+            assets: {}
+            component_assets:
+              skin:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/skin.png", width: 2560, height: 1440 }
+          targets:
+            - { kind: "product", id: "premium_coordinated_placements_bad_canvas" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "canvas_constraint_region_bounds" }
+
+  - id: coordinated_placements_sequence_and_serving_policy
+    title: "coordinated_placements sequence and per-component serving_policy"
+    narrative: |
+      `sequence` orders components that present one after another instead
+      of simultaneously; declared values must start at 1 and be contiguous
+      across the declared set (`sequence_values`). `serving_policy` sets
+      per-component first-party/third-party serving policy independent of
+      `sequence`.
+    steps:
+      - id: validate_sequenced_takeover
+        title: "Accept a takeover with contiguous sequence values and mixed serving_policy"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "coordinated_placements"
+            assets:
+              cta: { asset_type: "text", content: "Explore" }
+            component_assets:
+              skin:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/skin.png", width: 1280, height: 1440 }
+              leaderboard:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/leaderboard.png", width: 970, height: 250 }
+              message_a:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/message-a.png", width: 300, height: 250 }
+              message_b:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/message-b.png", width: 300, height: 250 }
+          targets:
+            - { kind: "product", id: "premium_coordinated_sequenced_takeover" }
+        validations:
+          - check: response_schema
+          - { check: field_value, path: "results[0].result_kind", value: "validated_pass" }
+            # sequence_values: message_a=1, message_b=2 is contiguous starting at 1; serving_policy differs per component without affecting sequence validity.
+
+      - id: reject_sequence_gap
+        title: "Reject a coordinated declaration with a gap in sequence values"
+        task: validate_input
+        schema_ref: "creative/validate-input-request.json"
+        response_schema_ref: "creative/validate-input-response.json"
+        doc_ref: "/creative/canonical-formats#premium-display-in-32"
+        comply_scenario: canonical_format_validation
+        stateful: true
+        sample_request:
+          adcp_version: "3.2-beta.4"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          manifest:
+            format_kind: "coordinated_placements"
+            assets: {}
+            component_assets:
+              skin:
+                image_main: { asset_type: "image", url: "https://cdn.acme.example/skin.png", width: 1280, height: 1440 }
+          targets:
+            - { kind: "product", id: "premium_coordinated_sequence_gap" }
+        validations:
+          - { check: field_value, path: "results[0].result_kind", value: "validated_fail" }
+          - { check: field_value, path: "results[0].violations[0].rule", value: "sequence_values" }
+            # sequence_values: "sequence values must start at 1 and be contiguous" — 1 then 3 (missing 2) MUST reject.
