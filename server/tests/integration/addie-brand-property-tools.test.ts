@@ -31,6 +31,11 @@ process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
 
 const mocks = vi.hoisted(() => ({
   anthropicCreate: vi.fn(),
+  resolveUserOrgMembership: vi.fn(),
+}));
+
+vi.mock('../../src/utils/resolve-user-org-membership.js', () => ({
+  resolveUserOrgMembership: (...args: unknown[]) => mocks.resolveUserOrgMembership(...args),
 }));
 
 vi.mock('@anthropic-ai/sdk', () => {
@@ -58,11 +63,13 @@ const OWNER_USER = `user_addie_owner_${SUFFIX}`;
 const OUTSIDER_USER = `user_addie_outsider_${SUFFIX}`;
 
 function memberCtx(userId: string): MemberContext {
+  const organizationId = userId === OWNER_USER ? OWNER_ORG : OUTSIDER_ORG;
   return {
     is_mapped: true,
     is_member: true,
     slack_linked: false,
     workos_user: { workos_user_id: userId, email: `${userId}@test.example` },
+    organization: { workos_organization_id: organizationId, name: 'Test Org' },
   } as unknown as MemberContext;
 }
 
@@ -142,6 +149,7 @@ describe('Addie brand-property tools — integration', () => {
     );
 
     mocks.anthropicCreate.mockReset();
+    mocks.resolveUserOrgMembership.mockResolvedValue({ role: 'admin', source: 'workos' });
     mocks.anthropicCreate.mockRejectedValue(
       new Error('anthropic.messages.create was not stubbed for this test'),
     );
@@ -154,6 +162,7 @@ describe('Addie brand-property tools — integration', () => {
     const result = JSON.parse(
       await handlers.get('parse_brand_properties')!({
         domain: TEST_DOMAIN,
+        organization_id: OUTSIDER_ORG,
         input: 'cnn.com\nbbc.co.uk',
         input_type: 'text',
       }),
@@ -168,6 +177,7 @@ describe('Addie brand-property tools — integration', () => {
     const result = JSON.parse(
       await handlers.get('import_brand_properties')!({
         domain: TEST_DOMAIN,
+        organization_id: OUTSIDER_ORG,
         properties: [{ identifier: 'cnn.com', type: 'website' }],
       }),
     );
@@ -191,6 +201,7 @@ describe('Addie brand-property tools — integration', () => {
     const result = JSON.parse(
       await handlers.get('parse_brand_properties')!({
         domain: TEST_DOMAIN.toUpperCase(),
+        organization_id: OWNER_ORG,
         input: 'cnn.com',
         input_type: 'text',
       }),
@@ -220,6 +231,7 @@ describe('Addie brand-property tools — integration', () => {
     const preview = JSON.parse(
       await handlers.get('parse_brand_properties')!({
         domain: TEST_DOMAIN,
+        organization_id: OWNER_ORG,
         input: 'CNN.com\ncom.example.app',
         input_type: 'text',
       }),
@@ -231,6 +243,7 @@ describe('Addie brand-property tools — integration', () => {
     const commit = JSON.parse(
       await handlers.get('import_brand_properties')!({
         domain: TEST_DOMAIN,
+        organization_id: OWNER_ORG,
         properties: preview.properties,
       }),
     );
@@ -258,6 +271,7 @@ describe('Addie brand-property tools — integration', () => {
     const result = JSON.parse(
       await handlers.get('import_brand_properties')!({
         domain: TEST_DOMAIN,
+        organization_id: OWNER_ORG,
         properties: [
           { identifier: 'direct.example', type: 'website', relationship: 'owned' },
         ],
@@ -282,6 +296,7 @@ describe('Addie brand-property tools — integration', () => {
     const result = JSON.parse(
       await handlers.get('import_brand_properties')!({
         domain: TEST_DOMAIN,
+        organization_id: OWNER_ORG,
         properties: [
           { identifier: 'cnn.com', type: 'website', relationship: 'owned' },   // update
           { identifier: 'bbc.co.uk', type: 'website', relationship: 'owned' }, // update
