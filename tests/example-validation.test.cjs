@@ -125,7 +125,15 @@ const exampleData = {
     "publisher_properties": [{ "publisher_domain": "sportsnetwork.com", "selection_type": "all" }],
     "format_ids": [{ "agent_url": "https://creative.example.com", "id": "video_16x9_30s" }],
     "delivery_type": "guaranteed",
-    "pricing_options": [{ "pricing_option_id": "cpm_fixed", "pricing_model": "cpm", "price": 45.00, "currency": "USD" }]
+    "pricing_options": [{ "pricing_option_id": "cpm_fixed", "pricing_model": "cpm", "price": 45.00, "currency": "USD" }],
+    "reporting_capabilities": {
+      "available_reporting_frequencies": ["daily"],
+      "expected_delay_minutes": 60,
+      "timezone": "America/New_York",
+      "supports_webhooks": false,
+      "available_metrics": ["impressions", "spend", "clicks"],
+      "date_range_support": "date_range"
+    }
   },
   
   mediaBuy: {
@@ -208,6 +216,8 @@ const exampleData = {
   },
   
   getProductsResponse: {
+    "status": "completed",
+    "cache_scope": "public",
     "products": [
       {
         "product_id": "ctv_sports_premium",
@@ -216,12 +226,21 @@ const exampleData = {
         "publisher_properties": [{ "publisher_domain": "sportsnetwork.com", "selection_type": "all" }],
         "format_ids": [{ "agent_url": "https://creative.example.com", "id": "video_16x9_30s" }],
         "delivery_type": "guaranteed",
-        "pricing_options": [{ "pricing_option_id": "cpm_fixed", "pricing_model": "cpm", "price": 45.00, "currency": "USD" }]
+        "pricing_options": [{ "pricing_option_id": "cpm_fixed", "pricing_model": "cpm", "price": 45.00, "currency": "USD" }],
+        "reporting_capabilities": {
+          "available_reporting_frequencies": ["daily"],
+          "expected_delay_minutes": 60,
+          "timezone": "America/New_York",
+          "supports_webhooks": false,
+          "available_metrics": ["impressions", "spend", "clicks"],
+          "date_range_support": "date_range"
+        }
       }
     ]
   },
   
   createMediaBuyRequest: {
+    "idempotency_key": "create-media-buy-001",
     "account": { "account_id": "acc_nike_001" },
     "brand": { "domain": "nike.com" },
     "packages": [
@@ -250,6 +269,7 @@ const exampleData = {
   },
 
   createMediaBuyRequestNoAccountId: {
+    "idempotency_key": "create-media-buy-no-account-001",
     "account": { "brand": { "domain": "acmecorp.com" }, "operator": "acmecorp.com" },
     "brand": { "domain": "acmecorp.com" },
     "packages": [
@@ -264,6 +284,7 @@ const exampleData = {
   },
 
   createMediaBuyRequestAsap: {
+    "idempotency_key": "create-media-buy-asap-001",
     "account": { "account_id": "acc_acme_001" },
     "brand": { "domain": "acmecorp.com" },
     "packages": [
@@ -321,6 +342,7 @@ const exampleData = {
   },
   
   activateSignalRequest: {
+    "idempotency_key": "activate-signal-001",
     "signal_agent_segment_id": "luxury_auto_intenders",
     "destinations": [
       { "type": "platform", "platform": "the-trade-desk" }
@@ -329,6 +351,7 @@ const exampleData = {
   },
   
   activateSignalResponse: {
+    "status": "completed",
     "deployments": [
       {
         "type": "platform",
