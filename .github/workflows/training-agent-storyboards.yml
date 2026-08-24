@@ -79,8 +79,9 @@ jobs:
           # authenticator carries STRICT_REQUIRED_FOR + mcpToolNameResolver
           # and is wrapped by enforceSigningWhenWebhookAuthPresent so vectors
           # 001 (request_signature_required) and 027 (webhook auth unsigned)
-          # both fire correctly. Floors capture the +31 step lift per tenant
-          # from the storyboard's positive + negative conformance vectors.
+          # both fire correctly. On the current beta.6 surface, the storyboard
+          # runs the 21 vectors compatible with required content-digest
+          # coverage; the frozen 3.0 matrix retains the legacy profiles.
           # Re-baseline after fixing missing v6 SalesPlatform handlers
           # (syncEventSources/logEvent), missing expect_error markers on
           # phantom-rejection vectors (audience_buy_flow / performance_buy_flow),
@@ -89,7 +90,8 @@ jobs:
           - surface: current
             tenant: signals
             min_clean_storyboards: 74
-            min_passing_steps: 111
+            # Observed after the beta.6 signing-profile migration: 84 passing.
+            min_passing_steps: 83
           - surface: current
             tenant: governance
             min_clean_storyboards: 73
