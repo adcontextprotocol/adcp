@@ -7,8 +7,14 @@
  */
 
 import { Router, Request, Response } from 'express';
+import { getOrganizationAuthorizationUserId } from '../../auth/organization-principal.js';
 import { createLogger } from '../../logger.js';
 import { requireGlobalAdmin } from '../../middleware/auth.js';
+import {
+  invalidateOrganizationAuthorizationRuntimeSettingCache,
+  isOrganizationAuthorizationBoundaryAllowedByEnvironment,
+  ORGANIZATION_AUTHORIZATION_BOUNDARIES,
+} from '../../middleware/organization-authorization-canary.js';
 import {
   getAllSettings,
   getBillingChannel,
@@ -30,6 +36,8 @@ import {
   getS2CanonicalFormatsDeltaRelease,
   setS2CanonicalFormatsDeltaRelease,
   getSettingAuditHistory,
+  getOrganizationAuthorizationEnforcement,
+  setOrganizationAuthorizationEnforcement,
 } from '../../db/system-settings-db.js';
 import {
   getSlackChannels,
@@ -108,6 +116,10 @@ export function createAdminSettingsRouter(): Router {
       const editorialChannel = await getEditorialChannel();
       const announcementChannel = await getAnnouncementChannel();
       const s2CanonicalFormatsDeltaRelease = await getS2CanonicalFormatsDeltaRelease();
+      const organizationAuthorizationEnforcement = await getOrganizationAuthorizationEnforcement();
+      const organizationAuthorizationEnvironmentBoundaries = Object.values(
+        ORGANIZATION_AUTHORIZATION_BOUNDARIES,
+      ).filter(isOrganizationAuthorizationBoundaryAllowedByEnvironment);
 
       res.json({
         settings,
@@ -120,6 +132,10 @@ export function createAdminSettingsRouter(): Router {
         editorial_channel: editorialChannel,
         announcement_channel: announcementChannel,
         s2_canonical_formats_delta_release: s2CanonicalFormatsDeltaRelease,
+        organization_authorization_enforcement: organizationAuthorizationEnforcement,
+        organization_authorization_environment_ceiling: {
+          boundaries: organizationAuthorizationEnvironmentBoundaries,
+        },
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to get system settings');
@@ -529,6 +545,69 @@ export function createAdminSettingsRouter(): Router {
       res.status(500).json({
         error: 'Failed to update release gates',
       });
+    }
+  });
+
+  // PUT /api/admin/settings/organization-authorization-enforcement
+  // Audited runtime gate beneath the deployment-time environment ceiling.
+  // This makes rollback effective across web processes within the five-second
+  // cache window, without another rolling restart.
+  router.put('/organization-authorization-enforcement', ...requireGlobalAdmin, async (req: Request, res: Response) => {
+    try {
+      const enabled = req.body?.enabled;
+      const boundaries = req.body?.boundaries;
+      const allowedBoundaries = new Set<string>(Object.values(ORGANIZATION_AUTHORIZATION_BOUNDARIES));
+
+      if (
+        typeof enabled !== 'boolean' ||
+        !Array.isArray(boundaries) ||
+        !boundaries.every((value) => typeof value === 'string' && allowedBoundaries.has(value)) ||
+        (enabled && boundaries.length === 0)
+      ) {
+        res.status(400).json({
+          error: 'Invalid organization authorization enforcement setting',
+          message: 'enabled must be boolean and boundaries must contain only supported boundary names',
+        });
+        return;
+      }
+
+      const normalizedBoundaries = [...new Set(boundaries)];
+      if (
+        enabled &&
+        normalizedBoundaries.some(
+          (boundary) => !isOrganizationAuthorizationBoundaryAllowedByEnvironment(
+            boundary as (typeof ORGANIZATION_AUTHORIZATION_BOUNDARIES)[keyof typeof ORGANIZATION_AUTHORIZATION_BOUNDARIES],
+          ),
+        )
+      ) {
+        res.status(409).json({
+          error: 'Organization authorization environment ceiling is not staged',
+          message: 'Stage the fixed environment boundary before enabling runtime enforcement',
+        });
+        return;
+      }
+
+      const actorCredentialId = getOrganizationAuthorizationUserId(req.user!);
+      await setOrganizationAuthorizationEnforcement({
+        enabled,
+        boundaries: normalizedBoundaries,
+      }, actorCredentialId);
+      invalidateOrganizationAuthorizationRuntimeSettingCache();
+
+      logger.info(
+        { enabled, boundaries: normalizedBoundaries, actorCredentialId },
+        'Organization authorization runtime enforcement setting updated',
+      );
+      res.json({
+        success: true,
+        organization_authorization_enforcement: {
+          enabled,
+          boundaries: normalizedBoundaries,
+        },
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to update organization authorization runtime enforcement setting');
+      res.status(500).json({ error: 'Failed to update setting' });
     }
   });
 
