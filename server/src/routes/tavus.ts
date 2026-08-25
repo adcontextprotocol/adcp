@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLogger } from "../logger.js";
-import { AddieClaudeClient, type RequestTools } from "../addie/claude-client.js";
+import { AddieClaudeClient, type AddieResponse, type RequestTools } from "../addie/claude-client.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
 import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
 import {
@@ -731,6 +731,7 @@ export function createTavusRouter() {
     }
 
     let streamError = false;
+    let terminalResponse: AddieResponse | undefined;
     try {
       // Cost cap (#2790 / #2945 f/u): voice sessions carry a
       // thread.user_id resolved from session-init auth. When that
@@ -773,6 +774,8 @@ export function createTavusRouter() {
           logger.error({ error: event.error }, "Tavus: Addie stream error");
           streamError = true;
           break;
+        } else if (event.type === "done") {
+          terminalResponse = event.response;
         }
       }
     } catch (err) {
@@ -781,13 +784,14 @@ export function createTavusRouter() {
     }
 
     // Log the assistant response
-    if (threadId && fullResponse) {
+    if (threadId && terminalResponse && !streamError) {
       const threadService = getThreadService();
       threadService.addMessage({
         thread_id: threadId,
         role: "assistant",
-        content: fullResponse,
+        content: terminalResponse.text,
         model: AddieModelConfig.voice,
+        model_execution: terminalResponse.model_execution,
         latency_ms: Date.now() - startTime,
       }).catch((err) => logger.error({ err }, "Tavus: Failed to log assistant message"));
     }

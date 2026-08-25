@@ -35,8 +35,8 @@ describe('Addie Learning System Integration Tests', () => {
           id, event_type, channel_id, user_id,
           input_text, input_sanitized, output_text,
           tools_used, model, latency_ms, flagged,
-          active_rules_snapshot
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+          active_rules_snapshot, model_execution_source, local_response_reason
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
           testInteractionId,
           'mention',
@@ -50,6 +50,8 @@ describe('Addie Learning System Integration Tests', () => {
           100,
           false,
           JSON.stringify({ rule_ids: [] }),
+          'local',
+          'canned_response',
         ]
       );
     });
