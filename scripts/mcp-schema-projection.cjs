@@ -801,6 +801,20 @@ function stripModelContextAnnotations(schema) {
     for (const keyword of Object.keys(node)) {
       if (keyword.startsWith('x-')) delete node[keyword];
     }
+    // A homogeneous enum already communicates both the allowed values and
+    // their primitive type. Keep the enum in the prompt view and omit the
+    // redundant type keyword; the parent discovery profile remains the
+    // validation authority. Mixed enums retain type because it still narrows
+    // the otherwise-listed values.
+    if (typeof node.type === 'string' && Array.isArray(node.enum) && node.enum.length > 0) {
+      const matchesType = node.enum.every(value => {
+        if (node.type === 'integer') return Number.isInteger(value);
+        if (node.type === 'number') return typeof value === 'number' && Number.isFinite(value);
+        if (node.type === 'null') return value === null;
+        return typeof value === node.type;
+      });
+      if (matchesType) delete node.type;
+    }
   });
   return stripped;
 }
