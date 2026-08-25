@@ -252,8 +252,10 @@ describe('migrations 552, 554, and 555: shadow replay traces', () => {
         [externalId],
       );
       const message = await pool.query<{ message_id: string }>(
-        `INSERT INTO addie_thread_messages (thread_id, role, content, config_version_id)
-         VALUES ($1, 'user', 'synthetic quota question', $2)
+        `INSERT INTO addie_thread_messages (
+           thread_id, role, content, config_version_id, sequence_number
+         )
+         VALUES ($1, 'user', 'synthetic quota question', $2, 1)
          RETURNING message_id`,
         [thread.rows[0].thread_id, config.rows[0].version_id],
       );
