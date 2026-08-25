@@ -278,9 +278,10 @@ export async function executeShadowReplay(
     configVersionId,
     traceId: input.threadId,
     evidence: {
-      complete_fidelity: blocked.length === 0
-        && traceVerified
-        && executions.every((execution) => execution.disposition === 'live_read'),
+      // Restricted trace verification is not implemented in this foundation
+      // slice, so live replays must remain diagnostic-only regardless of the
+      // observed tool dispositions. Make that fail-closed contract explicit.
+      complete_fidelity: false,
       hash_key_version: hashKeyVersion,
       trace_verified: traceVerified,
       system_block_hashes: prepared?.system_blocks.map((block) => block.sha256) ?? [],
