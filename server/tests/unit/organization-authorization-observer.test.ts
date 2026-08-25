@@ -9,7 +9,7 @@ const {
 }));
 
 vi.mock('../../src/auth/workos-client.js', () => ({
-  getWorkos: () => ({ userManagement: { listOrganizationMemberships } }),
+  getAuthorizationObserverWorkos: () => ({ userManagement: { listOrganizationMemberships } }),
 }));
 vi.mock('../../src/utils/posthog.js', () => ({ captureEvent }));
 

@@ -1,10 +1,12 @@
 import type { Request } from 'express';
-import { getWorkos } from '../auth/workos-client.js';
+import { getAuthorizationObserverWorkos } from '../auth/workos-client.js';
 import { createLogger } from '../logger.js';
 import { resolveUserRole } from '../utils/resolve-user-role.js';
 import { captureEvent } from '../utils/posthog.js';
 
 const logger = createLogger('organization-authorization-observer');
+const MAX_CONCURRENT_COMPARISONS = 5;
+let inFlightComparisons = 0;
 
 export type OrganizationSelectorSource =
   | 'header'
@@ -141,33 +143,51 @@ export async function observeLinkedCredentialOrganizationAuthorization(
       return;
     }
 
-    const workos = getWorkos();
-    const [legacyMemberships, exactMemberships] = await Promise.all([
-      workos.userManagement.listOrganizationMemberships({
-        userId: canonicalUserId,
-        organizationId: selector.organizationId,
-      }),
-      workos.userManagement.listOrganizationMemberships({
-        userId: authenticatedUserId,
-        organizationId: selector.organizationId,
-      }),
-    ]);
-    const legacy = summarizeMemberships(legacyMemberships.data, selector.organizationId);
-    const exact = summarizeMemberships(exactMemberships.data, selector.organizationId);
+    if (inFlightComparisons >= MAX_CONCURRENT_COMPARISONS) {
+      captureEvent('server-metrics', 'org_authorization_shadow', {
+        route,
+        method: req.method,
+        response_status: responseStatus,
+        linked_credential: true,
+        selector_source: selector.source,
+        explicit_organization: true,
+        decision: 'observer_saturated',
+      });
+      return;
+    }
 
-    captureEvent('server-metrics', 'org_authorization_shadow', {
-      route,
-      method: req.method,
-      response_status: responseStatus,
-      linked_credential: true,
-      selector_source: selector.source,
-      explicit_organization: selector.explicit,
-      decision: classifyAuthorizationObservation(legacy, exact),
-      legacy_allowed: legacy.allowed,
-      exact_allowed: exact.allowed,
-      legacy_role: legacy.role,
-      exact_role: exact.role,
-    });
+    inFlightComparisons += 1;
+    try {
+      const workos = getAuthorizationObserverWorkos();
+      const [legacyMemberships, exactMemberships] = await Promise.all([
+        workos.userManagement.listOrganizationMemberships({
+          userId: canonicalUserId,
+          organizationId: selector.organizationId,
+        }),
+        workos.userManagement.listOrganizationMemberships({
+          userId: authenticatedUserId,
+          organizationId: selector.organizationId,
+        }),
+      ]);
+      const legacy = summarizeMemberships(legacyMemberships.data, selector.organizationId);
+      const exact = summarizeMemberships(exactMemberships.data, selector.organizationId);
+
+      captureEvent('server-metrics', 'org_authorization_shadow', {
+        route,
+        method: req.method,
+        response_status: responseStatus,
+        linked_credential: true,
+        selector_source: selector.source,
+        explicit_organization: selector.explicit,
+        decision: classifyAuthorizationObservation(legacy, exact),
+        legacy_allowed: legacy.allowed,
+        exact_allowed: exact.allowed,
+        legacy_role: legacy.role,
+        exact_role: exact.role,
+      });
+    } finally {
+      inFlightComparisons -= 1;
+    }
   } catch (err) {
     logger.warn(
       { err, route, selectorSource: selector.source },
