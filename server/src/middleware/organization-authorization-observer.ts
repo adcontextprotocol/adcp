@@ -124,9 +124,11 @@ export async function observeLinkedCredentialOrganizationAuthorization(
   const authenticatedUserId = req.user?.authWorkosUserId;
   if (!canonicalUserId || !authenticatedUserId || canonicalUserId === authenticatedUserId) return;
 
-  let selector = organizationSelectorFromRequest(req);
+  const selector = organizationSelectorFromRequest(req);
   try {
-    if (!selector.organizationId) {
+    // This branch controls only which observe-only telemetry event is emitted;
+    // it is not an authorization guard and never changes the response.
+    if (!selector.organizationId) { // lgtm[js/user-controlled-bypass]
       captureEvent('server-metrics', 'org_authorization_shadow', {
         route,
         method: req.method,
