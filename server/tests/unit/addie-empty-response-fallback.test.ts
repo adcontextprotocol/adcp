@@ -72,6 +72,40 @@ const recoveredEndTurn = {
   usage: { input_tokens: 12, output_tokens: 6 },
 };
 
+const thinkingOnlyEndTurn = {
+  model: 'claude-sonnet-5-20260801',
+  stop_reason: 'end_turn',
+  content: [{
+    type: 'thinking',
+    thinking: 'PRIVATE_REASONING_SENTINEL',
+    signature: 'private-signature',
+  }],
+  usage: {
+    input_tokens: 10,
+    output_tokens: 9,
+    output_tokens_details: { thinking_tokens: 9 },
+  },
+};
+
+const blankTextEndTurn = {
+  model: 'claude-sonnet-5-20260801',
+  stop_reason: 'end_turn',
+  content: [{ type: 'text', text: '  \n\t' }],
+  usage: { input_tokens: 10, output_tokens: 1 },
+};
+
+const redactedThinkingOnlyEndTurn = {
+  model: 'claude-sonnet-5-20260801',
+  stop_reason: 'end_turn',
+  content: [{ type: 'redacted_thinking', data: 'PRIVATE_REDACTED_SENTINEL' }],
+  usage: { input_tokens: 10, output_tokens: 4 },
+};
+
+const toolBlockEndTurn = {
+  ...toolUseTurn,
+  stop_reason: 'end_turn',
+};
+
 const personaOnlyEndTurn = {
   model: 'claude-sonnet-5-20260801',
   stop_reason: 'end_turn',
@@ -127,6 +161,18 @@ function makeTextDeltaStreamWithEmptyFinal(text: string) {
   };
 }
 
+function makeThinkingDeltaStream() {
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield {
+        type: 'content_block_delta',
+        delta: { type: 'thinking_delta', thinking: 'PRIVATE_REASONING_SENTINEL' },
+      };
+    },
+    finalMessage: vi.fn().mockResolvedValue(thinkingOnlyEndTurn),
+  };
+}
+
 function makeThrowingStream(error: Error) {
   return {
     async *[Symbol.asyncIterator]() {
@@ -136,7 +182,7 @@ function makeThrowingStream(error: Error) {
   };
 }
 
-function makeStream(message: typeof toolUseTurn | typeof emptyEndTurn | typeof recoveredEndTurn | typeof personaOnlyEndTurn | typeof mixedRecoveryToolUseTurn | typeof emptyRefusal) {
+function makeStream(message: typeof toolUseTurn | typeof emptyEndTurn | typeof recoveredEndTurn | typeof personaOnlyEndTurn | typeof mixedRecoveryToolUseTurn | typeof emptyRefusal | typeof thinkingOnlyEndTurn | typeof redactedThinkingOnlyEndTurn | typeof blankTextEndTurn) {
   return {
     async *[Symbol.asyncIterator]() {
       for (const block of message.content) {
@@ -400,6 +446,72 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(mocks.notifySystemError).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['thinking-only', thinkingOnlyEndTurn],
+    ['redacted-thinking-only', redactedThinkingOnlyEndTurn],
+    ['blank text', blankTextEndTurn],
+  ])('recovers once from a side-effect-free %s initial non-streaming response', async (_label, initial) => {
+    mocks.createMessage
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(recoveredEndTurn);
+
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+    const response = await client.processMessage(
+      'hello',
+      undefined,
+      undefined,
+      undefined,
+      { uncapped: true },
+    );
+
+    expect(response.text).toBe('Issue 42 is open.');
+    expect(mocks.createMessage).toHaveBeenCalledTimes(2);
+    expect(mocks.createMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.notifySystemError).not.toHaveBeenCalled();
+  });
+
+  it('recovers once when a streaming end_turn contains only thinking deltas', async () => {
+    mocks.streamMessage
+      .mockReturnValueOnce(makeThinkingDeltaStream())
+      .mockReturnValueOnce(makeStream(recoveredEndTurn));
+
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+    const events: StreamEvent[] = [];
+    for await (const event of client.processMessageStream(
+      'hello',
+      undefined,
+      undefined,
+      { uncapped: true },
+    )) events.push(event);
+
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+    expect(done?.response.text).toBe('Issue 42 is open.');
+    expect(done?.response.usage).toMatchObject({ input_tokens: 22, output_tokens: 15 });
+    expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
+    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.notifySystemError).not.toHaveBeenCalled();
+  });
+
+  it('recovers once when a streaming end_turn contains only whitespace text', async () => {
+    mocks.streamMessage
+      .mockReturnValueOnce(makeStream(blankTextEndTurn))
+      .mockReturnValueOnce(makeStream(recoveredEndTurn));
+
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+    const events: StreamEvent[] = [];
+    for await (const event of client.processMessageStream(
+      'hello',
+      undefined,
+      undefined,
+      { uncapped: true },
+    )) events.push(event);
+
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+    expect(done?.response.text).toBe('Issue 42 is open.');
+    expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
+    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+  });
+
   it('does not resample a wholly empty evaluation response', async () => {
     mocks.createMessage.mockResolvedValueOnce(emptyEndTurn);
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
@@ -415,6 +527,40 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
     expect(mocks.createMessage).toHaveBeenCalledOnce();
     expect(mocks.notifySystemError).not.toHaveBeenCalled();
+  });
+
+  it('does not resample a thinking-only evaluation response', async () => {
+    mocks.createMessage.mockResolvedValueOnce(thinkingOnlyEndTurn);
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+
+    const response = await client.processMessage(
+      'hello',
+      undefined,
+      undefined,
+      undefined,
+      { uncapped: true, executionMode: 'evaluation' },
+    );
+
+    expect(response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(mocks.createMessage).toHaveBeenCalledOnce();
+    expect(mocks.notifySystemError).not.toHaveBeenCalled();
+  });
+
+  it('does not resample an end_turn containing a tool block', async () => {
+    mocks.createMessage.mockResolvedValueOnce(toolBlockEndTurn);
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+
+    const response = await client.processMessage(
+      'hello',
+      undefined,
+      githubIssueTools,
+      undefined,
+      { uncapped: true },
+    );
+
+    expect(response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(mocks.createMessage).toHaveBeenCalledOnce();
+    expect(getGithubIssue).not.toHaveBeenCalled();
   });
 
   it('never resamples an empty refusal', async () => {
