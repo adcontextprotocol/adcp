@@ -14,7 +14,7 @@ import { initializeDatabase, query } from '../../db/client.js';
 import { getThreadReplies } from '../../slack/client.js';
 import { getThreadService } from '../thread-service.js';
 import { getDatabaseConfig } from '../../config.js';
-import { compareResponses } from './shadow-evaluator.js';
+import { compareResponses, getComparisonDisposition } from './shadow-evaluator.js';
 import {
   buildShadowEvalProvenance,
   resolveShadowJudgeModel,
@@ -139,8 +139,8 @@ async function backfill() {
         const addieResponse = thread.source_answer_content || extracted.addieResponse;
 
         // Compare Addie's ACTUAL response with human response
-        const humanText = humanResponses.join('\n---\n').substring(0, 1500);
-        const addieText = addieResponse.substring(0, 1500);
+        const humanText = humanResponses.join('\n---\n');
+        const addieText = addieResponse;
 
         const judgeModel = resolveShadowJudgeModel(
           thread.source_answer_model ? [thread.source_answer_model] : [],
@@ -153,10 +153,11 @@ async function backfill() {
           judgeModel,
           'historical_corrected_answer',
         );
+        const comparisonDisposition = getComparisonDisposition(result, judgeModel);
 
         // Store results
         await threadService.patchThreadContext(thread.thread_id, {
-          shadow_eval_status: 'complete',
+          shadow_eval_status: comparisonDisposition.status,
           shadow_eval_type: 'historical_corrected_answer',
           shadow_eval_completed_at: new Date().toISOString(),
           shadow_eval_result: result,
@@ -166,7 +167,7 @@ async function backfill() {
             sourceKind: 'production',
             sourceModel: thread.source_answer_model,
             sourceConfigVersionId: thread.source_config_version_id,
-            judgeModel,
+            judgeModel: comparisonDisposition.executedJudgeModel,
             toolMode: thread.source_message_id ? 'production_trace' : 'none',
             traceOrFixtureId: thread.source_message_id,
           }),
@@ -176,7 +177,9 @@ async function backfill() {
           shadow_eval_question: question.substring(0, 500),
         });
 
-        if (!result.evaluation_valid) {
+        if (comparisonDisposition.skipped) {
+          totalSkipped++;
+        } else if (!result.evaluation_valid) {
           totalErrors++;
         } else if (result.knowledge_gap) {
           await threadService.flagThread(
@@ -187,8 +190,8 @@ async function backfill() {
           console.log(`  GAP [${result.gap_severity}]: ${result.gap_details.substring(0, 80)}`);
         }
 
-        totalProcessed++;
-        if (totalProcessed % 10 === 0) {
+        if (!comparisonDisposition.skipped) totalProcessed++;
+        if (!comparisonDisposition.skipped && totalProcessed % 10 === 0) {
           console.log(`  Processed: ${totalProcessed}, Gaps: ${totalGaps}, Skipped: ${totalSkipped}`);
         }
 

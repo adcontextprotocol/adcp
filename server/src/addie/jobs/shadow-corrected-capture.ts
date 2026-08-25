@@ -36,6 +36,7 @@ import { getThreadService } from '../thread-service.js';
 import { gradeShape } from '../testing/shape-grader.js';
 import {
   compareResponses,
+  getComparisonDisposition,
   hasDeterministicShapeFailure,
   summarizeShapeReports,
 } from './shadow-evaluator.js';
@@ -292,9 +293,10 @@ async function processCandidate(
     judgeModel,
     'corrected_answer',
   );
+  const comparisonDisposition = getComparisonDisposition(comparison, judgeModel);
 
   await threadService.patchThreadContext(thread.thread_id, {
-    shadow_eval_status: 'complete',
+    shadow_eval_status: comparisonDisposition.status,
     shadow_eval_type: 'corrected_answer',
     shadow_eval_source: 'addie_corrected_capture',
     shadow_eval_completed_at: new Date().toISOString(),
@@ -303,7 +305,7 @@ async function processCandidate(
       sourceKind: 'production',
       sourceModel: thread.source_answer_model,
       sourceConfigVersionId: thread.source_config_version_id,
-      judgeModel,
+      judgeModel: comparisonDisposition.executedJudgeModel,
       toolMode: thread.source_message_id ? 'production_trace' : 'none',
       traceOrFixtureId: thread.source_message_id,
     }),
@@ -316,7 +318,9 @@ async function processCandidate(
   });
 
   const flagParts: string[] = [];
-  if (!comparison.evaluation_valid) {
+  if (comparisonDisposition.skipped) {
+    result.skipped++;
+  } else if (!comparison.evaluation_valid) {
     flagParts.push(`Corrected-capture evaluation invalid: ${comparison.evaluation_error}`);
     result.errors++;
   } else if (comparison.knowledge_gap) {
@@ -333,7 +337,7 @@ async function processCandidate(
     await threadService.flagThread(thread.thread_id, flagParts.join(' | '));
   }
 
-  result.evaluated++;
+  if (!comparisonDisposition.skipped) result.evaluated++;
   logger.info(
     {
       threadId: thread.thread_id,

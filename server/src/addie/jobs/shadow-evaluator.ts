@@ -48,10 +48,12 @@ export interface ShadowComparisonResult {
   gap_details: string;
   shadow_quality: 'better' | 'equivalent' | 'worse' | 'different_focus';
   evaluation_valid: boolean;
+  /** True when no judge call was attempted because the evidence exceeded safe bounds. */
+  evaluation_skipped: boolean;
   evaluation_error?:
     | 'comparison_parse_error'
     | 'comparison_schema_error'
-    | 'comparison_input_truncated'
+    | 'comparison_input_too_long'
     | 'comparison_output_truncated'
     | 'generation_empty'
     | 'generation_truncated';
@@ -174,7 +176,7 @@ export async function compareResponses(
 ): Promise<ShadowComparisonResult> {
   const humanText = humanResponses.join('\n---\n');
   if (question.length > 500 || humanText.length > 1500 || shadowResponse.length > 1500) {
-    return invalidComparisonResult('comparison_input_truncated');
+    return skippedComparisonResult('comparison_input_too_long');
   }
   const fencedQuestion = fenceShadowEvalInput('question', question);
   const fencedHuman = fenceShadowEvalInput('human_response', humanText);
@@ -251,7 +253,7 @@ function parseComparisonResult(text: string): ShadowComparisonResult {
       );
       return invalidComparisonResult('comparison_schema_error');
     }
-    return { ...parsed, evaluation_valid: true };
+    return { ...parsed, evaluation_valid: true, evaluation_skipped: false };
   } catch {
     logger.warn({ response_length: text.length }, 'Shadow evaluator: Could not parse comparison result');
     return invalidComparisonResult('comparison_parse_error');
@@ -267,7 +269,38 @@ export function invalidComparisonResult(
     gap_details: '',
     shadow_quality: 'different_focus',
     evaluation_valid: false,
+    evaluation_skipped: false,
     evaluation_error: error,
+  };
+}
+
+function skippedComparisonResult(
+  error: 'comparison_input_too_long',
+): ShadowComparisonResult {
+  return {
+    knowledge_gap: false,
+    gap_severity: 'none',
+    gap_details: '',
+    shadow_quality: 'different_focus',
+    evaluation_valid: false,
+    evaluation_skipped: true,
+    evaluation_error: error,
+  };
+}
+
+export function getComparisonDisposition(
+  result: ShadowComparisonResult,
+  configuredJudgeModel: string | null,
+): {
+  skipped: boolean;
+  status: 'complete' | 'skipped';
+  executedJudgeModel: string | null;
+} {
+  const skipped = result.evaluation_skipped === true;
+  return {
+    skipped,
+    status: skipped ? 'skipped' : 'complete',
+    executedJudgeModel: skipped ? null : configuredJudgeModel,
   };
 }
 
@@ -470,10 +503,11 @@ export async function runShadowEvaluatorJob(
           judgeModel!,
           'suppressed_opportunity',
         );
+      const comparisonDisposition = getComparisonDisposition(comparison, judgeModel);
 
       // Store results
       await threadService.patchThreadContext(thread.thread_id, {
-        shadow_eval_status: 'complete',
+        shadow_eval_status: comparisonDisposition.status,
         shadow_eval_type: 'suppressed_opportunity',
         shadow_eval_source: 'suppressed',
         shadow_eval_completed_at: new Date().toISOString(),
@@ -482,7 +516,7 @@ export async function runShadowEvaluatorJob(
           sourceKind: 'generated',
           sourceModel: shadowModel,
           generatorModel: shadowModel,
-          judgeModel,
+          judgeModel: comparisonDisposition.executedJudgeModel,
           promptHash: shadowPromptHash(systemPrompt),
           toolMode: 'descriptions_only',
           requestedToolSets: ctx.shadow_eval_tool_sets,
@@ -497,7 +531,10 @@ export async function runShadowEvaluatorJob(
       // Update flag reason — combines knowledge-gap and shape-regression
       // signals so the admin dashboard surfaces the most actionable label.
       const flagParts: string[] = [];
-      if (!comparison.evaluation_valid) {
+      if (comparisonDisposition.skipped) {
+        flagParts.push('Shadow evaluation skipped — comparison input exceeds safe bounds');
+        result.skipped++;
+      } else if (!comparison.evaluation_valid) {
         flagParts.push(`Shadow evaluation invalid: ${comparison.evaluation_error}`);
         result.errors++;
       } else if (comparison.knowledge_gap) {
@@ -513,7 +550,7 @@ export async function runShadowEvaluatorJob(
       }
       await threadService.flagThread(thread.thread_id, flagParts.join(' | '));
 
-      result.evaluated++;
+      if (!comparisonDisposition.skipped) result.evaluated++;
       logger.info({
         threadId: thread.thread_id,
         knowledge_gap: comparison.knowledge_gap,

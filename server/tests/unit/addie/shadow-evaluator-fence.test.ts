@@ -16,6 +16,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   __test_escapeFenceTags as escapeFenceTags,
   __test_parseComparisonResult as parseComparisonResult,
+  getComparisonDisposition,
   hasDeterministicShapeFailure,
   compareResponses,
 } from '../../../src/addie/jobs/shadow-evaluator.js';
@@ -77,6 +78,7 @@ describe('shadow comparison result parsing', () => {
     expect(parseComparisonResult(JSON.stringify(validResult))).toEqual({
       ...validResult,
       evaluation_valid: true,
+      evaluation_skipped: false,
     });
   });
 
@@ -126,7 +128,7 @@ describe('deterministic shape failures', () => {
 });
 
 describe('shadow comparison completeness', () => {
-  it('rejects evidence that would otherwise be silently truncated', async () => {
+  it('skips evidence that exceeds safe comparison bounds without calling the judge', async () => {
     const create = vi.fn();
     const result = await compareResponses(
       { messages: { create } } as never,
@@ -138,7 +140,13 @@ describe('shadow comparison completeness', () => {
 
     expect(result).toMatchObject({
       evaluation_valid: false,
-      evaluation_error: 'comparison_input_truncated',
+      evaluation_skipped: true,
+      evaluation_error: 'comparison_input_too_long',
+    });
+    expect(getComparisonDisposition(result, 'claude-judge')).toEqual({
+      skipped: true,
+      status: 'skipped',
+      executedJudgeModel: null,
     });
     expect(create).not.toHaveBeenCalled();
   });
@@ -167,6 +175,11 @@ describe('shadow comparison completeness', () => {
     expect(result).toMatchObject({
       evaluation_valid: false,
       evaluation_error: 'comparison_output_truncated',
+    });
+    expect(getComparisonDisposition(result, 'claude-judge')).toEqual({
+      skipped: false,
+      status: 'complete',
+      executedJudgeModel: 'claude-judge',
     });
   });
 });

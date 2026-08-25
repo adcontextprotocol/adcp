@@ -34,6 +34,7 @@ export interface ThreadSummary {
       gap_details?: string;
       shadow_quality?: string;
       evaluation_valid?: boolean;
+      evaluation_skipped?: boolean;
       evaluation_error?: string;
     };
     shadow_eval_shape?: {
@@ -115,6 +116,7 @@ export interface Aggregate {
   eligible_by_type: Record<string, number>;
   knowledge_gaps_by_type: Record<string, number>;
   invalid_evaluations_by_type: Record<string, number>;
+  skipped_evaluations_by_type: Record<string, number>;
   provenance_excluded_by_type: Record<string, number>;
   gap_severities: Record<string, number>;
   shape_violation_counts: Record<string, number>;
@@ -133,6 +135,7 @@ export function aggregate(threads: ThreadSummary[]): Aggregate {
     eligible_by_type: {},
     knowledge_gaps_by_type: {},
     invalid_evaluations_by_type: {},
+    skipped_evaluations_by_type: {},
     provenance_excluded_by_type: {},
     gap_severities: {},
     shape_violation_counts: {},
@@ -142,7 +145,7 @@ export function aggregate(threads: ThreadSummary[]): Aggregate {
   };
   for (const t of threads) {
     const ctx = t.context;
-    if (!ctx || !['complete', 'error'].includes(ctx.shadow_eval_status || '')) continue;
+    if (!ctx || !['complete', 'error', 'skipped'].includes(ctx.shadow_eval_status || '')) continue;
     out.total++;
     const source = ctx.shadow_eval_source || 'suppressed';
     out.by_source[source] = (out.by_source[source] || 0) + 1;
@@ -153,6 +156,11 @@ export function aggregate(threads: ThreadSummary[]): Aggregate {
           ? 'historical_corrected_answer (legacy inferred)'
           : 'suppressed_opportunity (legacy inferred)');
     out.by_type[evaluationType] = (out.by_type[evaluationType] || 0) + 1;
+    if (ctx.shadow_eval_status === 'skipped' || ctx.shadow_eval_result?.evaluation_skipped === true) {
+      out.skipped_evaluations_by_type[evaluationType] =
+        (out.skipped_evaluations_by_type[evaluationType] || 0) + 1;
+      continue;
+    }
     if (ctx.shadow_eval_status === 'error' || ctx.shadow_eval_result?.evaluation_valid !== true) {
       out.invalid_evaluations_by_type[evaluationType] =
         (out.invalid_evaluations_by_type[evaluationType] || 0) + 1;
@@ -302,7 +310,7 @@ async function main() {
 
   const agg = aggregate(detailed);
   console.log('');
-  console.log(`Shadow-eval attempts (complete + error): ${agg.total}`);
+  console.log(`Shadow-eval attempts (complete + error + skipped): ${agg.total}`);
   if (agg.total === 0) {
     console.log('No recent shadow-eval attempts. Nothing to summarize.');
     return;
@@ -322,10 +330,12 @@ async function main() {
     const gaps = agg.knowledge_gaps_by_type[evaluationType] || 0;
     const eligible = agg.eligible_by_type[evaluationType] || 0;
     const invalid = agg.invalid_evaluations_by_type[evaluationType] || 0;
+    const skipped = agg.skipped_evaluations_by_type[evaluationType] || 0;
     const excluded = agg.provenance_excluded_by_type[evaluationType] || 0;
     console.log(
       `  ${evaluationType.padEnd(46)} ${n} attempts; ${eligible} eligible; ` +
-      `${gaps} gaps (${pct(gaps, eligible)}); ${invalid} invalid; ${excluded} provenance-excluded`,
+      `${gaps} gaps (${pct(gaps, eligible)}); ${invalid} invalid; ${skipped} skipped; ` +
+      `${excluded} provenance-excluded`,
     );
   }
 

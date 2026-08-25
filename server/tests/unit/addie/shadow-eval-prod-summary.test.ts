@@ -30,6 +30,25 @@ describe('shadow evaluation production summary', () => {
     });
   });
 
+  it('reports over-bound evidence as skipped rather than invalid', () => {
+    const result = aggregate([
+      row({
+        shadow_eval_status: 'skipped',
+        shadow_eval_type: 'corrected_answer',
+        shadow_eval_result: {
+          evaluation_valid: false,
+          evaluation_skipped: true,
+          evaluation_error: 'comparison_input_too_long',
+        },
+      }),
+    ]);
+
+    expect(result.total).toBe(1);
+    expect(result.completed).toBe(0);
+    expect(result.skipped_evaluations_by_type).toEqual({ corrected_answer: 1 });
+    expect(result.invalid_evaluations_by_type).toEqual({});
+  });
+
   it('keeps descriptions-only and self-judged rows out of headline metrics', () => {
     const result = aggregate([
       row({
