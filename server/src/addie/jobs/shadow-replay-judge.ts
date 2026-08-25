@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import type Anthropic from '@anthropic-ai/sdk';
 import { disableAdaptiveThinking } from '../../config/models.js';
 import { getThreadReplies, type SlackThreadMessage } from '../../slack/client.js';
@@ -106,12 +106,6 @@ function judgeHmac(
     .update(`${JUDGE_HASH_DOMAIN}\0${SHADOW_REPLAY_JUDGE_PROMPT_VERSION}\0${purpose}\0`, 'utf8')
     .update(canonicalJson(value), 'utf8')
     .digest('hex');
-}
-
-function equalHmac(left: string, right: string): boolean {
-  return HMAC.test(left)
-    && HMAC.test(right)
-    && timingSafeEqual(Buffer.from(left, 'hex'), Buffer.from(right, 'hex'));
 }
 
 function byteLength(value: string): number {
