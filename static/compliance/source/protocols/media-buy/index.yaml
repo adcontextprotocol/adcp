@@ -545,6 +545,7 @@ phases:
               bid_price: 10
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
+            operation_id: "op_media_buy_seller_create"
             authentication:
               schemes:
                 - "HMAC-SHA256"
@@ -834,6 +835,7 @@ phases:
               bid_price: 10
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
+            operation_id: "op_media_buy_seller_timezone"
             authentication:
               schemes:
                 - "HMAC-SHA256"

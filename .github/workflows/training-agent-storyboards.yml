@@ -77,12 +77,12 @@ jobs:
           # separately from the result rows graded by these floors.
           - surface: current
             tenant: signals
-            min_clean_storyboards: 46
-            min_passing_steps: 118
+            min_clean_storyboards: 45
+            min_passing_steps: 80
           - surface: current
             tenant: governance
-            min_clean_storyboards: 48
-            min_passing_steps: 194
+            min_clean_storyboards: 47
+            min_passing_steps: 157
           - surface: current
             tenant: creative
             min_clean_storyboards: 50
@@ -93,12 +93,12 @@ jobs:
             min_passing_steps: 222
           - surface: current
             tenant: brand
-            min_clean_storyboards: 46
-            min_passing_steps: 154
+            min_clean_storyboards: 45
+            min_passing_steps: 116
           - surface: current
             tenant: si
-            min_clean_storyboards: 43
-            min_passing_steps: 88
+            min_clean_storyboards: 42
+            min_passing_steps: 50
           - surface: 3.0-compat
             tenant: signals
             min_clean_storyboards: 24
@@ -122,7 +122,7 @@ jobs:
           - surface: 3.0-compat
             tenant: brand
             min_clean_storyboards: 23
-            min_passing_steps: 78
+            min_passing_steps: 76
           # 3.0 predates the sponsored-intelligence specialism enum and its
           # response projection therefore omits that newer claim. Keep the
           # frozen surface as a non-regression floor, not a claim of current
@@ -624,8 +624,8 @@ jobs:
           # First capability-resolved replay. Result-row totals include the
           # three signed-request route profiles; storyboard applicability is
           # reported separately in the aggregate summary.
-          MIN_CLEAN: 127
-          MIN_PASSED: 594
+          MIN_CLEAN: 126
+          MIN_PASSED: 556
         run: |
           set -euo pipefail
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"

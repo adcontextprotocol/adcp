@@ -261,19 +261,21 @@ export function buildSignalsComplyConfig(
       // lifecycle controls wired so the signals tenant can truthfully expose
       // a non-empty compliance_testing.scenarios block in 3.0 mode.
       session_status: cast(forceAdapter('force_session_status', storyboardCompat)),
-      get_signals_arm: cast(forceAdapter('force_get_signals_arm', storyboardCompat)),
-      task_completion: cast(forceAdapter(
-        'force_task_completion',
-        storyboardCompat,
-        async params => {
-          if (!taskRegistry) return;
-          const taskId = params.task_id;
-          const result = params.result;
-          if (typeof taskId === 'string' && result && typeof result === 'object' && !Array.isArray(result)) {
-            await taskRegistry.complete(taskId, result);
-          }
-        },
-      )),
+      ...(storyboardCompat?.version === '3.0' ? {} : {
+        get_signals_arm: cast(forceAdapter('force_get_signals_arm', storyboardCompat)),
+        task_completion: cast(forceAdapter(
+          'force_task_completion',
+          storyboardCompat,
+          async params => {
+            if (!taskRegistry) return;
+            const taskId = params.task_id;
+            const result = params.result;
+            if (typeof taskId === 'string' && result && typeof result === 'object' && !Array.isArray(result)) {
+              await taskRegistry.complete(taskId, result);
+            }
+          },
+        )),
+      }),
     },
   };
 }

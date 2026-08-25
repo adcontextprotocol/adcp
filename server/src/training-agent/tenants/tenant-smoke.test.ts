@@ -468,12 +468,25 @@ describe('tenant routing smoke', () => {
           result?: { structuredContent?: {
             supported_protocols?: string[];
             media_buy?: unknown;
+            creative?: {
+              supported_formats?: Array<{ capability_id?: string; operations?: string[] }>;
+              preview?: { routes?: Array<{ capability_id?: string }> };
+            };
           } };
         };
         const capabilities = response.result?.structuredContent;
         expect(capabilities?.supported_protocols).toEqual(protocols);
         if (!protocols.includes('media_buy')) {
           expect(capabilities?.media_buy).toBeUndefined();
+        }
+        if (protocols.includes('creative')) {
+          const previewCapabilityIds = capabilities?.creative?.supported_formats
+            ?.filter(format => format.operations?.includes('preview'))
+            .map(format => format.capability_id) ?? [];
+          expect(previewCapabilityIds.length).toBeGreaterThan(0);
+          expect(capabilities?.creative?.preview?.routes?.map(route => route.capability_id)).toEqual(
+            previewCapabilityIds,
+          );
         }
       }
     } finally {
@@ -2804,15 +2817,15 @@ describe('tenant routing smoke', () => {
       const capabilitiesBody = await callTenantTool(url, 2, 'get_adcp_capabilities', {}) as {
         result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
       };
-      expect(capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios).toContain(
+      expect(capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios).toEqual([
         'force_session_status',
-      );
+      ]);
 
       const listedBody = await callTenantTool(url, 3, 'comply_test_controller', {
         account: { sandbox: true },
         scenario: 'list_scenarios',
       }) as { result?: { structuredContent?: { scenarios?: string[] } } };
-      expect(listedBody.result?.structuredContent?.scenarios).toContain('force_session_status');
+      expect(listedBody.result?.structuredContent?.scenarios).toEqual(['force_session_status']);
     } finally {
       await close();
     }

@@ -359,6 +359,7 @@ phases:
             ext:
               governance_policy_acknowledgements:
                 - "ctv_weekly_reporting"
+                - "ugc_brand_safety"
           context:
             correlation_id: "governance_spend_authority--check_governance_adjusted"
         context_outputs:
@@ -431,6 +432,7 @@ phases:
           ext:
             governance_policy_acknowledgements:
               - "ctv_weekly_reporting"
+              - "ugc_brand_safety"
           context:
             correlation_id: "governance_spend_authority--create_media_buy"
         validations:

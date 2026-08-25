@@ -825,6 +825,7 @@ function projectTenantCapabilities(
       const creative = structured.creative && typeof structured.creative === 'object'
         ? structured.creative
         : {};
+      const supportedFormats = supportedCanonicalFormatsCapability();
       structured.creative = {
         ...creative,
         ...(tenantId === 'creative' ? { bills_through_adcp: false } : {}),
@@ -832,7 +833,8 @@ function projectTenantCapabilities(
           has_creative_library: true,
           localization: { locale_matching: 'rfc4647_lookup' },
         }),
-        supported_formats: supportedCanonicalFormatsCapability(),
+        supported_formats: supportedFormats,
+        preview: creativePreviewCapability(supportedFormats),
         canonical_catalog_version: '3.1',
         supports_transformers: true,
         supports_refinement: true,

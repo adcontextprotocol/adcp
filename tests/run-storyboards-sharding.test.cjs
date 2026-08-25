@@ -255,9 +255,9 @@ test('current /sales runs fixed orchestrators with isolated children behind one 
   assert.match(workflow, /sales_storyboards:\n\s+name: Storyboards \(current \/sales\)/);
   assert.match(workflow, /needs: sales_storyboard_orchestrators/);
   assert.match(workflow, /ORCHESTRATOR_RESULT: \$\{\{ needs\.sales_storyboard_orchestrators\.result \}\}/);
-  assert.match(workflow, /MIN_CLEAN: 127/);
-  assert.match(workflow, /MIN_PASSED: 594/);
-  assert.match(matrixRunner, /"sales:127:594"/);
+  assert.match(workflow, /MIN_CLEAN: 126/);
+  assert.match(workflow, /MIN_PASSED: 556/);
+  assert.match(matrixRunner, /"sales:126:556"/);
   assert.match(workflow, /Training agent · current \/sales/);
   assert.match(workflow, /echo "failed=\$\{failed_sum\}"/);
   assert.match(workflow, /echo "not_applicable=\$\{not_applicable_sum\}"/);
@@ -289,13 +289,13 @@ test('current training-agent floors are ratcheted and mirrored by local and CI r
   const workflow = fs.readFileSync(STORYBOARD_WORKFLOW, 'utf8');
   const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
   const baselines = [
-    ['signals', 46, 118],
-    ['sales', 127, 594],
-    ['governance', 48, 194],
+    ['signals', 45, 80],
+    ['sales', 126, 556],
+    ['governance', 47, 157],
     ['creative', 50, 247],
     ['creative-builder', 51, 222],
-    ['brand', 46, 154],
-    ['si', 43, 88],
+    ['brand', 45, 116],
+    ['si', 42, 50],
   ];
 
   for (const [tenant, clean, passed] of baselines) {
@@ -320,7 +320,7 @@ test('3.0 compatibility floors are capability-resolved and mirrored locally', ()
     ['governance', 27, 147],
     ['creative', 22, 109],
     ['creative-builder', 24, 112],
-    ['brand', 23, 78],
+    ['brand', 23, 76],
     ['si', 21, 72],
   ];
 

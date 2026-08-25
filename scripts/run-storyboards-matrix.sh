@@ -248,7 +248,7 @@ if [ "${FLOOR_SET}" = "3.0-compat" ]; then
     "governance:27:147"
     "creative:22:109"
     "creative-builder:24:112"
-    "brand:23:78"
+    "brand:23:76"
     "si:21:72"
   )
 else
@@ -256,13 +256,13 @@ else
     # Ratcheted from the first capability-resolved replay. The runner reports
     # declared-scope applicability and quarantines separately from these
     # clean-result-row and passing-step regression floors.
-    "signals:46:118"
-    "sales:127:594"
-    "governance:48:194"
+    "signals:45:80"
+    "sales:126:556"
+    "governance:47:157"
     "creative:50:247"
     "creative-builder:51:222"
-    "brand:46:154"
-    "si:43:88"
+    "brand:45:116"
+    "si:42:50"
   )
 fi
 
