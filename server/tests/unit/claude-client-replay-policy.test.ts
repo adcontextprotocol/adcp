@@ -394,6 +394,48 @@ describe('AddieClaudeClient replay execution policy', () => {
     expect(sdkState.calls).toHaveLength(1);
   });
 
+  it('enforces an exact request-local tool boundary in both preparation and provider calls', async () => {
+    const client = new AddieClaudeClient('unused', 'test-model');
+    client.registerTool(tool('global_mutation', 'mutation'), vi.fn().mockResolvedValue('bad'));
+    client.registerTool(tool('search_docs', 'pure_local'), vi.fn().mockResolvedValue('search'));
+    client.registerTool(tool('get_doc', 'pure_local'), vi.fn().mockResolvedValue('doc'));
+    const scopedTools = requestTools(
+      [tool('scoped_mutation', 'mutation')],
+      [
+        ['scoped_mutation', vi.fn().mockResolvedValue('bad')],
+      ],
+    );
+    const options = {
+      uncapped: true as const,
+      disableServerTools: true,
+      allowedToolNames: ['search_docs', 'get_doc'] as const,
+      invocationHashKey: 'exact-provider-boundary-key',
+      invocationHashDomain: 'official-docs-test:v1',
+    };
+
+    const prepared = client.prepareMessageInvocation(
+      'current question', undefined, scopedTools, { systemPrompt: 'system' }, options,
+    );
+    expect(client.hasRegisteredTools(options.allowedToolNames)).toBe(true);
+    expect(prepared.tool_schemas.map(({ name }) => name)).toEqual(['search_docs', 'get_doc']);
+
+    sdkState.nonStreamingResponses.push(textResponse());
+    const actual: InvocationPreparedSnapshot[] = [];
+    await client.processMessage(
+      'current question', undefined, scopedTools, { systemPrompt: 'system' },
+      { ...options, onInvocationPrepared: (snapshot) => actual.push(snapshot) },
+    );
+    expect(actual).toEqual([prepared]);
+    expect((sdkState.calls[0].tools as Array<{ name: string }>).map(({ name }) => name))
+      .toEqual(['search_docs', 'get_doc']);
+    expect(prepared.message_payloads).toHaveLength(1);
+    expect(prepared.provider_request_sha256).toBe(invocationHmac(
+      options.invocationHashKey,
+      options.invocationHashDomain,
+      JSON.stringify(sdkState.calls[0]),
+    ));
+  });
+
   it('captures provider web-search state with request-local parity', async () => {
     const client = new AddieClaudeClient('unused');
     const hashOptions = {

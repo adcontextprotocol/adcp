@@ -13,7 +13,7 @@ const MIGRATION_SQL = readFileSync(
   'utf8',
 );
 
-describe('migration 552: shadow replay traces', () => {
+describe('migrations 552 and 554: shadow replay traces', () => {
   let pool: Pool;
 
   beforeAll(async () => {
@@ -102,5 +102,82 @@ describe('migration 552: shadow replay traces', () => {
       context: correctedContext,
       flag_reason: 'Corrected answer',
     });
+  });
+
+  it('requires complete version-2 request provenance without retaining one trace per thread', async () => {
+    const columns = await pool.query<{
+      column_name: string;
+      column_default: string | null;
+    }>(
+      `SELECT column_name, column_default
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'addie_shadow_replay_traces'
+         AND column_name = ANY($1)`,
+      [[
+        'capture_version',
+        'capture_status',
+        'capture_reason',
+        'capture_completed_at',
+        'capability_profile',
+        'capability_policy_version',
+        'approved_tool_names',
+        'message_payload_hmacs',
+        'provider_request_hmac',
+      ]],
+    );
+    expect(columns.rows.map(({ column_name }) => column_name).sort()).toEqual([
+      'approved_tool_names',
+      'capability_policy_version',
+      'capability_profile',
+      'capture_completed_at',
+      'capture_reason',
+      'capture_status',
+      'capture_version',
+      'message_payload_hmacs',
+      'provider_request_hmac',
+    ]);
+    expect(columns.rows.find(({ column_name }) => column_name === 'capture_version')?.column_default)
+      .toContain('2');
+    expect(columns.rows.find(({ column_name }) => column_name === 'capture_status')?.column_default)
+      .toContain('pending');
+
+    const constraints = await pool.query<{
+      conname: string;
+      contype: string;
+      definition: string;
+    }>(
+      `SELECT conname, contype, pg_get_constraintdef(oid) AS definition
+       FROM pg_constraint
+       WHERE conrelid = 'addie_shadow_replay_traces'::regclass`,
+    );
+    expect(constraints.rows.some(({ conname, definition }) =>
+      conname === 'addie_shadow_replay_traces_v2_request_boundary_check'
+      && definition.includes('provider_request_hmac IS NOT NULL'))).toBe(true);
+    expect(constraints.rows.some(({ conname }) =>
+      conname === 'addie_shadow_replay_traces_thread_id_key')).toBe(false);
+    expect(constraints.rows.some(({ contype, definition }) =>
+      contype === 'u' && definition.includes('(source_question_message_id)'))).toBe(true);
+
+    const attemptColumns = await pool.query<{ column_name: string }>(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'addie_shadow_replay_capture_attempts'`,
+    );
+    expect(attemptColumns.rows.map(({ column_name }) => column_name)).toEqual(
+      expect.arrayContaining([
+        'attempt_id',
+        'thread_id',
+        'source_question_message_id',
+        'capability_profile',
+        'status',
+        'reason',
+        'trace_id',
+        'created_at',
+        'completed_at',
+        'retained_until',
+      ]),
+    );
   });
 });
