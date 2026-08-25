@@ -55,6 +55,7 @@ export interface ShadowReplayDependencies {
   buildInvocation?: typeof buildChannelResponseInvocation;
   client?: NonNullable<ReturnType<typeof getChannelClaudeClient>>;
   getConfigVersionId?: typeof getCurrentConfigVersionId;
+  verifyTrace?: (input: ShadowReplayInput) => boolean | Promise<boolean>;
 }
 
 function canonicalJson(value: unknown): string {
@@ -148,7 +149,9 @@ export async function executeShadowReplay(
   } else if (client.isWebSearchEnabled()) {
     blockedCapabilities.add('disabled_server_tool:web_search');
   }
-  const traceVerified = false;
+  const traceVerified = dependencies.verifyTrace
+    ? await dependencies.verifyTrace(input)
+    : false;
   if (!traceVerified) blockedCapabilities.add('unverified_replay_trace');
   if (input.modelOverride && input.modelOverride !== invocation.effectiveModel) {
     blockedCapabilities.add(`model_override:${input.modelOverride}`);
@@ -163,6 +166,34 @@ export async function executeShadowReplay(
     ...invocation.requestTools.tools,
   ]);
   const hash = (value: unknown): string => key ? hashReplayValue(value, key) : 'unavailable';
+
+  // Do not spend production-model tokens on output that cannot enter an eval.
+  // Every preflight capability, including a restricted trace verifier, is
+  // deliberately required before generation. Incomplete replays record the
+  // missing capability and exit without calling the model.
+  if (blockedCapabilities.size > 0) {
+    blockedCapabilities.add('generation_skipped_incomplete_replay');
+    return {
+      response: {
+        text: '',
+        tools_used: [],
+        tool_executions: [],
+        flagged: false,
+      },
+      model,
+      configVersionId,
+      traceId: input.threadId,
+      evidence: {
+        complete_fidelity: false,
+        hash_key_version: hashKeyVersion,
+        trace_verified: traceVerified,
+        system_block_hashes: [],
+        schemas: [],
+        executions: [],
+        blocked_capabilities: [...blockedCapabilities].sort(),
+      },
+    };
+  }
 
   const requestTools = withReplayKnowledgeHandlers(
     invocation.requestTools,
@@ -278,10 +309,8 @@ export async function executeShadowReplay(
     configVersionId,
     traceId: input.threadId,
     evidence: {
-      // Restricted trace verification is not implemented in this foundation
-      // slice, so live replays must remain diagnostic-only regardless of the
-      // observed tool dispositions. Make that fail-closed contract explicit.
-      complete_fidelity: false,
+      complete_fidelity: blocked.length === 0
+        && executions.every((execution) => execution.disposition === 'live_read'),
       hash_key_version: hashKeyVersion,
       trace_verified: traceVerified,
       system_block_hashes: prepared?.system_blocks.map((block) => block.sha256) ?? [],

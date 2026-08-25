@@ -66,6 +66,25 @@ describe('shadow replay', () => {
     expect(hashReplayValue({ a: 1 }, 'key')).not.toBe(hashReplayValue({ a: 2 }, 'key'));
   });
 
+  it('does not call the production model until an attributable trace is verified', async () => {
+    const invocation = invocationWithMutation(vi.fn(async () => 'not called'));
+    const processMessage = vi.fn(async () => response([]));
+
+    const replay = await executeShadowReplay(replayInput(), {
+      client: { isWebSearchEnabled: () => false, processMessage } as never,
+      buildInvocation: vi.fn(async () => invocation),
+      getConfigVersionId: vi.fn(async () => 42),
+    });
+
+    expect(processMessage).not.toHaveBeenCalled();
+    expect(replay.response.text).toBe('');
+    expect(replay.evidence.complete_fidelity).toBe(false);
+    expect(replay.evidence.blocked_capabilities).toEqual([
+      'generation_skipped_incomplete_replay',
+      'unverified_replay_trace',
+    ]);
+  });
+
   it('blocks prompt-injected mutations before dispatch and records hash-only evidence', async () => {
     const mutationHandler = vi.fn(async () => 'must never execute');
     const invocation = invocationWithMutation(mutationHandler);
@@ -109,6 +128,7 @@ describe('shadow replay', () => {
       client: fakeClient as never,
       buildInvocation: vi.fn(async () => invocation),
       getConfigVersionId: vi.fn(async () => 42),
+      verifyTrace: vi.fn(async () => true),
     });
 
     expect(mutationHandler).not.toHaveBeenCalled();
@@ -120,7 +140,6 @@ describe('shadow replay', () => {
     }]);
     expect(replay.evidence.blocked_capabilities).toEqual([
       'mutation:publish_private_text',
-      'unverified_replay_trace',
     ]);
     expect(JSON.stringify(replay.evidence)).not.toContain('private-person@example.test');
   });
@@ -164,11 +183,12 @@ describe('shadow replay', () => {
       client: fakeClient as never,
       buildInvocation: vi.fn(async () => invocation),
       getConfigVersionId: vi.fn(async () => 42),
+      verifyTrace: vi.fn(async () => true),
     });
 
-    expect(replay.evidence.complete_fidelity).toBe(false);
-    expect(replay.evidence.trace_verified).toBe(false);
-    expect(replay.evidence.blocked_capabilities).toEqual(['unverified_replay_trace']);
+    expect(replay.evidence.complete_fidelity).toBe(true);
+    expect(replay.evidence.trace_verified).toBe(true);
+    expect(replay.evidence.blocked_capabilities).toEqual([]);
     expect(replay.evidence.executions).toMatchObject([{
       name: 'search_docs',
       disposition: 'live_read',
@@ -205,10 +225,13 @@ describe('shadow replay', () => {
       client: fakeClient as never,
       buildInvocation: vi.fn(async () => invocation),
       getConfigVersionId: vi.fn(async () => 42),
+      verifyTrace: vi.fn(async () => true),
     });
 
     expect(replay.evidence.complete_fidelity).toBe(false);
+    expect(fakeClient.processMessage).not.toHaveBeenCalled();
     expect(replay.evidence.blocked_capabilities).toContain('disabled_server_tool:web_search');
+    expect(replay.evidence.blocked_capabilities).toContain('generation_skipped_incomplete_replay');
   });
 
   it('records the replay config separately and fails closed on deployment drift', async () => {
@@ -222,10 +245,12 @@ describe('shadow replay', () => {
       client: fakeClient as never,
       buildInvocation: vi.fn(async () => invocation),
       getConfigVersionId: vi.fn(async () => 43),
+      verifyTrace: vi.fn(async () => true),
     });
 
     expect(replay.configVersionId).toBe(43);
     expect(replay.evidence.complete_fidelity).toBe(false);
+    expect(fakeClient.processMessage).not.toHaveBeenCalled();
     expect(replay.evidence.blocked_capabilities).toContain('config_version_drift:42->43');
   });
 });
