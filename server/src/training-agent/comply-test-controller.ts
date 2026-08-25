@@ -1221,6 +1221,7 @@ function createStore(
         creativeId,
         ...(controllerAccountId && { accountId: controllerAccountId }),
         ...(controllerAccountRef && { accountRef: controllerAccountRef }),
+        controllerSeeded: true,
         ...(formatId && { formatId }),
         formatKind,
         formatOptionRef,

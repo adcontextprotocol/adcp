@@ -755,6 +755,42 @@ describe('comply_test_controller', () => {
       ]);
     });
 
+    it('bridges exact controller fixture IDs across runner-generated accounts without exposing the library', async () => {
+      const publicServer = createTrainingAgentServer({ mode: 'open', principal: 'static:public' });
+      const fixtureAccount = {
+        brand: { domain: 'fixture-seed.example' },
+        operator: 'fixture-seed.example',
+        sandbox: true,
+      };
+
+      await simulateCallTool(publicServer, 'comply_test_controller', {
+        scenario: 'seed_creative',
+        account: fixtureAccount,
+        params: {
+          creative_id: 'controller_fixture_exact_id',
+          fixture: { status: 'approved', format_kind: 'image' },
+        },
+      });
+
+      const { result: exactMatch } = await simulateCallTool(publicServer, 'list_creatives', {
+        account: { account_id: 'acct_runner_generated' },
+        filters: { creative_ids: ['controller_fixture_exact_id'] },
+      });
+      expect((exactMatch as any).creatives.map((creative: any) => creative.creative_id)).toEqual([
+        'controller_fixture_exact_id',
+      ]);
+
+      const { result: unrelatedLibrary } = await simulateCallTool(publicServer, 'list_creatives', {
+        account: {
+          brand: { domain: 'unrelated-library.example' },
+          operator: 'unrelated-library.example',
+          sandbox: true,
+        },
+      });
+      expect((unrelatedLibrary as any).creatives.map((creative: any) => creative.creative_id))
+        .not.toContain('controller_fixture_exact_id');
+    });
+
     it('seed_media_buy preserves available_actions and enforces non-self-serve mode mismatch', async () => {
       const { result, isError } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'seed_media_buy',

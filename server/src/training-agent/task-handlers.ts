@@ -12560,14 +12560,14 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
   if (buys.length === 0 && req.account) {
     const ownerSession = await findSessionMatching(candidate => (
       Array.from(candidate.mediaBuys.values()).some(mediaBuy => (
-        mediaBuyAccountVisibleToRequest(mediaBuy.accountRef, req.account!, ctx)
+        accountRefVisibleToRequest(mediaBuy.accountRef, req.account!, ctx)
         && (!filterIds?.length || filterIds.includes(mediaBuy.mediaBuyId))
       ))
     ));
     if (ownerSession) {
       session = ownerSession;
       buys = Array.from(ownerSession.mediaBuys.values()).filter(mediaBuy => (
-        mediaBuyAccountVisibleToRequest(mediaBuy.accountRef, req.account!, ctx)
+        accountRefVisibleToRequest(mediaBuy.accountRef, req.account!, ctx)
       ));
     }
   }
@@ -12759,7 +12759,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     const ownerSession = await findSessionMatching(candidate => {
       const candidateBuy = candidate.mediaBuys.get(mediaBuyId);
       return candidateBuy !== undefined
-        && mediaBuyAccountVisibleToRequest(candidateBuy.accountRef, req.account!, ctx);
+        && accountRefVisibleToRequest(candidateBuy.accountRef, req.account!, ctx);
     });
     if (ownerSession) {
       session = ownerSession;
@@ -13686,7 +13686,7 @@ function accountRefsOverlap(stored: AccountRef | undefined, requested: AccountRe
   return Boolean(requested.brand?.domain && stored.brand?.domain && requested.brand.domain === stored.brand.domain);
 }
 
-function mediaBuyAccountVisibleToRequest(
+function accountRefVisibleToRequest(
   stored: AccountRef | undefined,
   requested: AccountRef,
   ctx: TrainingContext,
@@ -13825,17 +13825,35 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     }
     creatives = [...merged.values()];
   }
-  if (creatives.length === 0 && !req.include_webhook_activity) {
+  const needsSeededFallback = creatives.length === 0
+    || Boolean(filterIds?.some(creativeId => !creatives.some(creative => creative.creativeId === creativeId)));
+  if (needsSeededFallback && !req.include_webhook_activity) {
     // Controller-seeded creative storyboards can write under the test-kit
-    // brand session while the list request keys by account_id. Prefer that
-    // freshly seeded library over falling back to static compliance fixtures,
-    // but never borrow a creative from an unrelated account/session.
-    const seededSession = await findSessionMatching(s => [...s.creatives.values()].some(creative => {
+    // brand session while the list request keys by a runner-generated account.
+    // Exact fixture IDs may cross that sandbox-only seam, but ordinary account
+    // libraries still require an explicit matching account identity.
+    const requestedIds = new Set(filterIds ?? []);
+    const seededCreativeVisible = (creative: CreativeState): boolean => {
       if (!req.account) return true;
-      if (requestedAccountId && creative.accountId) return creative.accountId === requestedAccountId;
-      return Boolean(creative.accountRef && accountRefsOverlap(creative.accountRef, req.account));
-    }));
-    if (seededSession) creatives = Array.from(seededSession.creatives.values());
+      if (requestedAccountId && creative.accountId === requestedAccountId) return true;
+      if (creative.accountRef && accountRefVisibleToRequest(creative.accountRef, req.account, ctx)) return true;
+      return Boolean(
+        creative.controllerSeeded
+        && ctx.principal?.startsWith('static:')
+        && requestedIds.has(creative.creativeId)
+      );
+    };
+    const seededSession = await findSessionMatching(s => [...s.creatives.values()].some(creative => (
+      seededCreativeVisible(creative)
+      && (requestedIds.size === 0 || requestedIds.has(creative.creativeId))
+    )));
+    if (seededSession) {
+      const merged = new Map(creatives.map(creative => [creative.creativeId, creative]));
+      for (const creative of seededSession.creatives.values()) {
+        if (seededCreativeVisible(creative)) merged.set(creative.creativeId, creative);
+      }
+      creatives = [...merged.values()];
+    }
   }
   if (filterIds?.length) {
     creatives = creatives.filter(c => filterIds.includes(c.creativeId));
@@ -13853,7 +13871,12 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   } else if (req.account) {
     creatives = creatives.filter(c => {
       if (requestedAccountId && c.accountId) return c.accountId === requestedAccountId;
-      if (c.accountRef) return accountRefsOverlap(c.accountRef, req.account!);
+      if (c.accountRef && accountRefVisibleToRequest(c.accountRef, req.account!, ctx)) return true;
+      if (
+        c.controllerSeeded
+        && ctx.principal?.startsWith('static:')
+        && filterIds?.includes(c.creativeId)
+      ) return true;
       return !req.include_webhook_activity;
     });
   }
@@ -14090,7 +14113,7 @@ async function handleUpdateMediaBuyUnlocked(
     const ownerSession = await findSessionMatching(candidate => {
       const candidateBuy = candidate.mediaBuys.get(mediaBuyId);
       return candidateBuy !== undefined
-        && mediaBuyAccountVisibleToRequest(candidateBuy.accountRef, req.account!, ctx);
+        && accountRefVisibleToRequest(candidateBuy.accountRef, req.account!, ctx);
     });
     if (ownerSession) {
       session = ownerSession;

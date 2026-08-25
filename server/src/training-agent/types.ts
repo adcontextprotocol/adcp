@@ -740,6 +740,8 @@ export interface CreativeState {
   creativeId: string;
   accountId?: string;
   accountRef?: AccountRef;
+  /** Internal marker for sandbox fixtures injected by comply_test_controller. */
+  controllerSeeded?: boolean;
   /** @deprecated Present only for creatives received through the AdCP 3.x compatibility facade. */
   formatId?: FormatID;
   formatKind?: string;
