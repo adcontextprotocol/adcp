@@ -79,6 +79,20 @@ export interface ThreadSummary {
   last_message_at?: string;
 }
 
+interface CaptureSummary {
+  days: number;
+  total: number;
+  outcomes: Array<{ status: string; reason: string; count: number }>;
+}
+
+async function fetchCaptureSummary(baseUrl: string, apiKey: string): Promise<CaptureSummary> {
+  const res = await fetch(`${baseUrl}/api/admin/addie/threads/shadow-replay-captures?days=7`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} from shadow replay capture summary`);
+  return res.json() as Promise<CaptureSummary>;
+}
+
 async function fetchThreads(
   baseUrl: string,
   apiKey: string,
@@ -273,6 +287,23 @@ async function main() {
     }
   }
   console.log(`Got ${all.length} thread summaries (flagged_only=${flaggedOnly}).`);
+
+  try {
+    const captureSummary = await fetchCaptureSummary(baseUrl, apiKey);
+    console.log(
+      `Signed capture-parity opportunities (${captureSummary.days}d): ${captureSummary.total}`,
+    );
+    for (const outcome of captureSummary.outcomes) {
+      console.log(
+        `  ${`${outcome.status}:${outcome.reason}`.padEnd(52)} ${outcome.count}`,
+      );
+    }
+  } catch (error) {
+    console.warn(
+      'Signed capture-parity summary unavailable:',
+      error instanceof Error ? error.message : 'unknown error',
+    );
+  }
 
   // The list endpoint returns a summary VIEW that doesn't include the
   // context JSONB. Fan out to /threads/:id for each thread to read

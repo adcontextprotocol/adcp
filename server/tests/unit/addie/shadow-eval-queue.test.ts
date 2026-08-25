@@ -8,6 +8,7 @@ describe('shadow evaluation queue provenance', () => {
   it('queues only an immutable trace reference, never copied replay inputs', () => {
     const context = buildShadowEvalQueueContext(
       '00000000-0000-4000-8000-000000000001',
+      '00000000-0000-4000-8000-000000000002',
       new Date('2026-08-25T08:00:00.000Z'),
     );
 
@@ -17,6 +18,7 @@ describe('shadow evaluation queue provenance', () => {
       shadow_eval_type: 'suppressed_opportunity',
       shadow_eval_source: 'suppressed',
       shadow_eval_trace_id: '00000000-0000-4000-8000-000000000001',
+      shadow_eval_capture_attempt_id: '00000000-0000-4000-8000-000000000002',
     });
     expect(Object.keys(context).some((key) => /question|user|channel|router|retrieval/.test(key)))
       .toBe(false);

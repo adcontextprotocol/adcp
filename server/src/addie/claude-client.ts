@@ -67,7 +67,19 @@ export interface InvocationPreparedSnapshot {
   attempt: number;
   system_blocks: Array<{ index: number; sha256: string }>;
   tool_schemas: Array<{ index: number; name: string; sha256: string }>;
+  message_payloads: Array<{ index: number; sha256: string }>;
   message_count: number;
+  /** HMAC/SHA-256 of the exact object handed to the Anthropic SDK. */
+  provider_request_sha256: string;
+}
+
+interface PreparedProviderRequest {
+  model: string;
+  max_tokens: number;
+  system: Anthropic.TextBlockParam[];
+  tools: Array<Record<string, unknown>>;
+  messages: Anthropic.MessageParam[];
+  betas?: readonly string[];
 }
 
 const BLOCKED_TOOL_RESULT = 'Error: Tool execution blocked by policy';
@@ -548,6 +560,12 @@ export interface ProcessMessageOptions {
   executionMode?: AddieExecutionMode;
   /** Exclude provider-managed tools such as web search for this request only. */
   disableServerTools?: boolean;
+  /**
+   * Exact request-local custom-tool allowlist. When present, global and
+   * request-scoped tools outside this list are omitted before prompt sizing,
+   * schema construction, and handler dispatch.
+   */
+  allowedToolNames?: readonly string[];
   /** Dedicated key for HMACing private invocation payloads in evaluation provenance. */
   invocationHashKey?: string;
   /** Caller-owned HMAC domain separator. Must be supplied with invocationHashKey. */
@@ -847,58 +865,50 @@ export class AddieClaudeClient {
 
   private buildInvocationPreparedSnapshot(
     options: ProcessMessageOptions | undefined,
-    effectiveModel: string,
-    systemBlocks: Anthropic.TextBlockParam[],
-    tools: Array<Record<string, unknown>>,
-    messageCount: number,
+    providerRequest: PreparedProviderRequest,
     iteration: number,
     attempt: number,
   ): InvocationPreparedSnapshot {
     const executionMode = options?.executionMode ?? 'production';
+    const hash = (value: unknown) => hashPreparedPayload(
+      JSON.stringify(value),
+      executionMode,
+      options?.invocationHashKey,
+      options?.invocationHashDomain,
+    );
     return {
       execution_mode: executionMode,
-      model: effectiveModel,
+      model: providerRequest.model,
       iteration,
       attempt,
-      system_blocks: systemBlocks.map((block, index) => ({
+      system_blocks: providerRequest.system.map((block, index) => ({
         index,
-        sha256: hashPreparedPayload(
-          JSON.stringify(block),
-          executionMode,
-          options?.invocationHashKey,
-          options?.invocationHashDomain,
-        ),
+        sha256: hash(block),
       })),
-      tool_schemas: tools.map((tool, index) => ({
+      tool_schemas: providerRequest.tools.map((tool, index) => ({
         index,
         name: typeof tool.name === 'string' ? tool.name : `tool_${index}`,
-        sha256: hashPreparedPayload(
-          JSON.stringify(tool),
-          executionMode,
-          options?.invocationHashKey,
-          options?.invocationHashDomain,
-        ),
+        sha256: hash(tool),
       })),
-      message_count: messageCount,
+      message_payloads: providerRequest.messages.map((message, index) => ({
+        index,
+        sha256: hash(message),
+      })),
+      message_count: providerRequest.messages.length,
+      provider_request_sha256: hash(providerRequest),
     };
   }
 
   private async notifyInvocationPrepared(
     options: ProcessMessageOptions | undefined,
-    effectiveModel: string,
-    systemBlocks: Anthropic.TextBlockParam[],
-    tools: Array<Record<string, unknown>>,
-    messageCount: number,
+    providerRequest: PreparedProviderRequest,
     iteration: number,
     attempt: number,
   ): Promise<void> {
     if (!options?.onInvocationPrepared) return;
     await options.onInvocationPrepared(this.buildInvocationPreparedSnapshot(
       options,
-      effectiveModel,
-      systemBlocks,
-      tools,
-      messageCount,
+      providerRequest,
       iteration,
       attempt,
     ));
@@ -961,6 +971,12 @@ export class AddieClaudeClient {
     this.toolHandlers.set(tool.name, handler);
   }
 
+  /** Confirm a production client has every definition and handler in a bounded profile. */
+  hasRegisteredTools(toolNames: readonly string[]): boolean {
+    const definitions = new Set(this.tools.map((tool) => tool.name));
+    return toolNames.every((name) => definitions.has(name) && this.toolHandlers.has(name));
+  }
+
   private prepareFirstNonStreamingInvocation(
     userMessage: string,
     threadContext?: Array<{ user: string; text: string }>,
@@ -986,9 +1002,16 @@ export class AddieClaudeClient {
       systemBlocks.push({ type: 'text', text: options.requestContext });
     }
 
+    const allowedToolNames = options?.allowedToolNames
+      ? new Set(options.allowedToolNames)
+      : null;
     const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
-    const allTools = [...new Map(allToolsRaw.map((tool) => [tool.name, tool])).values()];
-    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
+    const allTools = [...new Map(allToolsRaw.map((tool) => [tool.name, tool])).values()]
+      .filter((tool) => !allowedToolNames || allowedToolNames.has(tool.name));
+    const allHandlers = new Map(
+      [...this.toolHandlers, ...(requestTools?.handlers || [])]
+        .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
+    );
     const toolCount = allTools.length + (requestWebSearchEnabled ? 1 : 0);
     const toolsByName = new Map(allTools.map((tool) => [tool.name, tool]));
     const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
@@ -1047,6 +1070,24 @@ export class AddieClaudeClient {
     };
   }
 
+  private buildProviderRequest(
+    effectiveModel: string,
+    systemBlocks: Anthropic.TextBlockParam[],
+    tools: Array<Record<string, unknown>>,
+    messages: Anthropic.MessageParam[],
+  ) {
+    return {
+      model: effectiveModel,
+      // Sonnet 5 uses adaptive thinking by default; leave room for its
+      // thinking summary plus the user-visible answer/tool calls.
+      max_tokens: 8192,
+      system: systemBlocks,
+      tools,
+      messages,
+      betas: ['web-search-2025-03-05'] as const,
+    };
+  }
+
   /**
    * Prepare provenance for the exact first non-streaming model invocation.
    * This performs prompt/tool/message assembly only: it does not call the
@@ -1066,12 +1107,15 @@ export class AddieClaudeClient {
       rulesOverride,
       options,
     );
-    return this.buildInvocationPreparedSnapshot(
-      options,
+    const providerRequest = this.buildProviderRequest(
       prepared.effectiveModel,
       prepared.systemBlocks,
       prepared.firstInvocationTools as unknown as Array<Record<string, unknown>>,
-      prepared.messages.length,
+      prepared.messages,
+    );
+    return this.buildInvocationPreparedSnapshot(
+      options,
+      providerRequest,
       1,
       1,
     );
@@ -1222,25 +1266,21 @@ export class AddieClaudeClient {
         response = await withRetry(
           async () => {
             invocationAttempt++;
-            await this.notifyInvocationPrepared(
-              options,
+            const providerRequest = this.buildProviderRequest(
               effectiveModel,
               systemBlocks,
               invocationTools as unknown as Array<Record<string, unknown>>,
-              messages.length,
+              messages,
+            );
+            await this.notifyInvocationPrepared(
+              options,
+              providerRequest,
               iteration,
               invocationAttempt,
             );
-            return this.client.beta.messages.create({
-              model: effectiveModel,
-              // Sonnet 5 uses adaptive thinking by default; leave room for its
-              // thinking summary plus the user-visible answer/tool calls.
-              max_tokens: 8192,
-              system: systemBlocks,
-              tools: invocationTools,
-              messages,
-              betas: ['web-search-2025-03-05'],
-            });
+            return this.client.beta.messages.create(
+              providerRequest as unknown as Anthropic.Beta.MessageCreateParamsNonStreaming,
+            );
           },
           { maxRetries: 3, initialDelayMs: 1000 },
           'processMessage'
@@ -1938,9 +1978,16 @@ export class AddieClaudeClient {
 
     // Combine global tools with per-request tools, deduplicating by name (last wins)
     // Calculate tool count first to inform token budget for conversation history
+    const allowedToolNames = options?.allowedToolNames
+      ? new Set(options.allowedToolNames)
+      : null;
     const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
-    const allTools = [...new Map(allToolsRaw.map(t => [t.name, t])).values()];
-    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
+    const allTools = [...new Map(allToolsRaw.map(t => [t.name, t])).values()]
+      .filter((tool) => !allowedToolNames || allowedToolNames.has(tool.name));
+    const allHandlers = new Map(
+      [...this.toolHandlers, ...(requestTools?.handlers || [])]
+        .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
+    );
     const toolsByName = new Map(allTools.map((tool) => [tool.name, tool]));
     const toolCount = allTools.length; // Note: streaming doesn't use web search
 
@@ -2020,24 +2067,24 @@ export class AddieClaudeClient {
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
           try {
             const invocationTools = retriedEmptyPostToolResponse ? [] : customTools;
+            const providerRequest: PreparedProviderRequest = {
+              model: effectiveModel,
+              max_tokens: 8192,
+              system: systemBlocks,
+              tools: invocationTools as unknown as Array<Record<string, unknown>>,
+              messages,
+            };
             await this.notifyInvocationPrepared(
               options,
-              effectiveModel,
-              systemBlocks,
-              invocationTools as unknown as Array<Record<string, unknown>>,
-              messages.length,
+              providerRequest,
               iteration,
               streamRetryCount + 1,
             );
-            const stream = this.client.beta.messages.stream({
-              model: effectiveModel,
-              // Sonnet 5 uses adaptive thinking by default; leave room for its
-              // thinking summary plus the user-visible answer/tool calls.
-              max_tokens: 8192,
-              system: systemBlocks,
-              tools: invocationTools,
-              messages,
-            });
+            const stream = this.client.beta.messages.stream(
+              providerRequest as unknown as Parameters<
+                typeof this.client.beta.messages.stream
+              >[0],
+            );
 
             // Process stream events
             for await (const event of stream) {

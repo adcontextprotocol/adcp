@@ -215,10 +215,24 @@ import {
   handleAnnouncementSkip,
 } from './jobs/announcement-handlers.js';
 import {
+  beginShadowReplayCaptureAttempt,
+  completeShadowReplayCaptureAttempt,
   createShadowReplayCaptureIdentity,
   queueShadowReplayTrace,
   suppressedOpportunityFlagReason,
 } from './jobs/shadow-replay-trace.js';
+import {
+  OFFICIAL_DOCS_ALLOWED_TOOLS,
+  OFFICIAL_DOCS_POLICY_VERSION,
+  applyOfficialDocsProfile,
+  canonicalOfficialDocsPlan,
+  hasOfficialDocsToolBoundary,
+  isOfficialDocsProfile,
+  normalizeReplayableSiResult,
+  selectOfficialDocsCohort,
+  type OfficialDocsCohortReason,
+  type ProfiledChannelRespondPlan,
+} from './jobs/shadow-replay-cohort.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -3214,7 +3228,7 @@ function buildConfidenceCalibration(confidence: ConfidenceTier): string {
   return '';
 }
 
-function buildRouterDecision(plan: ExecutionPlan): {
+function buildRouterDecision(plan: ExecutionPlan, cohortReason?: OfficialDocsCohortReason): {
   action: string;
   reason: string;
   decision_method: 'quick_match' | 'llm';
@@ -3226,6 +3240,8 @@ function buildRouterDecision(plan: ExecutionPlan): {
   model?: string;
   requires_precision?: boolean;
   requires_depth?: boolean;
+  capability_profile?: string;
+  capability_profile_reason?: OfficialDocsCohortReason;
 } {
   const base = {
     action: plan.action,
@@ -3240,13 +3256,28 @@ function buildRouterDecision(plan: ExecutionPlan): {
   };
 
   if (plan.action === 'respond') {
-    return { ...base, tool_sets: plan.tool_sets, confidence: plan.confidence };
+    const profiled = plan as ProfiledChannelRespondPlan;
+    if (isOfficialDocsProfile(profiled)) return canonicalOfficialDocsPlan(profiled);
+    return {
+      ...base,
+      tool_sets: plan.tool_sets,
+      confidence: plan.confidence,
+      ...(profiled.capability_profile
+        ? { capability_profile: profiled.capability_profile }
+        : {}),
+      ...(cohortReason || profiled.capability_profile_reason
+        ? {
+            capability_profile_reason:
+              cohortReason ?? profiled.capability_profile_reason,
+          }
+        : {}),
+    };
   }
 
   return base;
 }
 
-export type ChannelRespondPlan = Extract<ExecutionPlan, { action: 'respond' }>;
+export type ChannelRespondPlan = ProfiledChannelRespondPlan;
 
 export interface ChannelResponseInvocation {
   requestTools: RequestTools;
@@ -3309,12 +3340,29 @@ export async function buildChannelResponseInvocation(input: {
     userIsAdmin,
     channelContext?.viewing_channel_is_private === false,
   );
+  const officialDocsProfile = isOfficialDocsProfile(plan);
+  const profileTools = officialDocsProfile
+    ? {
+        // The two canonical docs tools are registered globally on the shared
+        // production client. Keep request-scoped tools empty so they cannot
+        // replace those trusted definitions/handlers by name.
+        tools: [],
+        handlers: new Map(),
+      }
+    : filteredTools;
   const siContext = siRetrievalResult?.agents.length
     ? siRetriever.formatContext(siRetrievalResult.agents)
     : '';
   const requestContext = [
     memberRequestContext,
-    unavailableHint,
+    officialDocsProfile
+      ? [
+          '## Official documentation capability profile',
+          `Policy: ${OFFICIAL_DOCS_POLICY_VERSION}`,
+          'Only search_docs and get_doc are available. Base the answer on official AdCP documentation.',
+          'Do not claim to have checked live web, Slack, GitHub, account, or administrative data.',
+        ].join('\n')
+      : unavailableHint,
     siContext,
     buildConfidenceCalibration(plan.confidence),
   ].filter(Boolean).join('\n\n');
@@ -3327,8 +3375,23 @@ export async function buildChannelResponseInvocation(input: {
       : undefined;
   const effectiveModel = modelOverride ?? AddieModelConfig.chat;
 
+  if (officialDocsProfile) {
+    const exactKnowledgeRoute = plan.tool_sets.length === 1
+      && plan.tool_sets[0] === 'knowledge';
+    const exactToolBoundary = hasOfficialDocsToolBoundary(claudeClient);
+    if (
+      userIsAdmin
+      || !exactKnowledgeRoute
+      || normalizeReplayableSiResult(siRetrievalResult)
+      || modelOverride
+      || !exactToolBoundary
+    ) {
+      throw new Error('official_docs_profile_invariant_failed');
+    }
+  }
+
   return {
-    requestTools: filteredTools,
+    requestTools: profileTools,
     processOptions: {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(modelOverride ? { modelOverride } : {}),
@@ -3336,6 +3399,13 @@ export async function buildChannelResponseInvocation(input: {
       slackUserId: userId,
       threadId,
       currentSpeakerName: resolveSpeakerDisplayName(memberContext),
+      ...(officialDocsProfile
+        ? {
+            disableServerTools: true,
+            allowedToolNames: OFFICIAL_DOCS_ALLOWED_TOOLS,
+            maxIterations: 4,
+          }
+        : {}),
     },
     effectiveModel,
     selectedToolSets,
@@ -3350,6 +3420,10 @@ function shadowTraceUnavailableContext(reason: string): Record<string, unknown> 
     shadow_eval_source: 'suppressed',
     shadow_eval_completed_at: new Date().toISOString(),
     shadow_eval_replay_error: reason,
+    shadow_eval_trace_id: null,
+    shadow_eval_capture_attempt_id: null,
+    shadow_eval_capture_parity_verified: false,
+    shadow_eval_replay_drift_reasons: [],
   };
 }
 
@@ -3373,43 +3447,49 @@ async function queueSuppressedShadowEvaluation(input: {
   siRetrievalResult: SIRetrievalResult | null;
 }): Promise<void> {
   const threadService = getThreadService();
-  if (process.env.SHADOW_EVAL_TRACE_CAPTURE_ENABLED !== 'true') {
+  if (!isOfficialDocsProfile(input.plan)) {
     await threadService.patchThreadContext(
       input.threadId,
-      shadowTraceUnavailableContext('trace_capture_disabled'),
+      shadowTraceUnavailableContext('outside_official_docs_cohort'),
     );
     return;
   }
-  if (!input.sourceQuestionMessageId || input.sourceConfigVersionId == null) {
-    await threadService.patchThreadContext(
+  const attemptId = await beginShadowReplayCaptureAttempt({
+    threadId: input.threadId,
+    sourceQuestionMessageId: input.sourceQuestionMessageId,
+  });
+  const failAttempt = async (
+    reason: string,
+    status: 'skipped' | 'error' = 'skipped',
+  ) => {
+    await completeShadowReplayCaptureAttempt(
+      attemptId,
       input.threadId,
-      shadowTraceUnavailableContext('missing_attributable_source'),
+      { status, reason },
     );
+  };
+  if (process.env.SHADOW_EVAL_TRACE_CAPTURE_ENABLED !== 'true') {
+    await failAttempt('trace_capture_disabled');
+    return;
+  }
+  if (!input.sourceQuestionMessageId || input.sourceConfigVersionId == null) {
+    await failAttempt('missing_attributable_source');
     return;
   }
   // SI retrieval is intentionally not duplicated into the replay store. A
   // future encrypted fixture may support it; current captures are narrow and
   // fail closed before generation.
   if (input.siRetrievalResult !== null) {
-    await threadService.patchThreadContext(
-      input.threadId,
-      shadowTraceUnavailableContext('si_context_not_replayable'),
-    );
+    await failAttempt('si_context_not_replayable');
     return;
   }
   if (!claudeClient) {
-    await threadService.patchThreadContext(
-      input.threadId,
-      shadowTraceUnavailableContext('channel_client_not_initialized'),
-    );
+    await failAttempt('channel_client_not_initialized');
     return;
   }
   const docsCorpusFingerprint = getDocsCorpusFingerprint();
   if (!docsCorpusFingerprint) {
-    await threadService.patchThreadContext(
-      input.threadId,
-      shadowTraceUnavailableContext('docs_corpus_not_initialized'),
-    );
+    await failAttempt('docs_corpus_not_initialized');
     return;
   }
 
@@ -3436,6 +3516,7 @@ async function queueSuppressedShadowEvaluation(input: {
       traceProcessOptions,
     );
     await queueShadowReplayTrace({
+      attemptId,
       identity,
       threadId: input.threadId,
       sourceQuestionMessageId: input.sourceQuestionMessageId,
@@ -3460,10 +3541,7 @@ async function queueSuppressedShadowEvaluation(input: {
       { threadId: input.threadId },
       'Addie Bolt: Signed shadow trace capture failed closed',
     );
-    await threadService.patchThreadContext(
-      input.threadId,
-      shadowTraceUnavailableContext('trace_capture_failed'),
-    );
+    await failAttempt('trace_capture_failed', 'error').catch(() => undefined);
   }
 }
 
@@ -4474,6 +4552,7 @@ async function handleChannelMessage({
     // Quick match first (no API call for obvious cases)
     let plan = addieRouter.quickMatch(routingCtx);
     let siRetrievalResult: SIRetrievalResult | null = null;
+    let officialDocsCohortReason: OfficialDocsCohortReason | undefined;
 
     // If no quick match, use the full router AND retrieve SI agents in parallel
     if (!plan) {
@@ -4482,7 +4561,28 @@ async function handleChannelMessage({
         siRetriever.retrieve(messageText),
       ]);
       plan = routerPlan;
-      siRetrievalResult = siResult;
+      siRetrievalResult = normalizeReplayableSiResult(siResult);
+    }
+
+    if (plan.action === 'respond') {
+      const cohort = selectOfficialDocsCohort({
+        channelId,
+        channelIsPublic: channelContext?.viewing_channel_is_private === false,
+        isAdmin: isAdminForRouting,
+        channelUsesDepthModel: isDepthChannel(channelContext?.viewing_channel_name),
+        plan,
+        siRetrievalResult,
+      });
+      officialDocsCohortReason = cohort.reason;
+      if (cohort.eligible) {
+        plan = applyOfficialDocsProfile(plan);
+        logger.info(
+          {
+            profile: cohort.profile,
+          },
+          'Addie Bolt: Assigned official docs capability profile',
+        );
+      }
     }
 
     logger.debug({
@@ -4522,7 +4622,7 @@ async function handleChannelMessage({
         content_sanitized: inputValidation.sanitized,
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason || undefined,
-        router_decision: buildRouterDecision(plan),
+        router_decision: buildRouterDecision(plan, officialDocsCohortReason),
         user_id: userId,
         user_display_name: resolveSpeakerDisplayName(memberContext),
         message_source: 'typed',

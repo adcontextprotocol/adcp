@@ -17,15 +17,25 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../../logger.js';
-import { query } from '../../db/client.js';
-import { getThreadService } from '../thread-service.js';
+import { getMemberContext } from '../member-context.js';
 import { disableAdaptiveThinking, ModelConfig, AddieModelConfig } from '../../config/models.js';
 import { gradeShape, type ShapeReport } from '../testing/shape-grader.js';
-import type { ChannelRespondPlan } from '../bolt-app.js';
 import {
+  buildChannelContext,
+  buildChannelResponseInvocation,
+  getChannelClaudeClient,
+  type ChannelRespondPlan,
+} from '../bolt-app.js';
+import {
+  completeShadowReplayCapture,
+  listPendingShadowReplayCaptures,
   purgeRetainedShadowReplayTraces,
   resolveShadowReplayTrace,
+  verifyShadowReplayTraceContext,
 } from './shadow-replay-trace.js';
+import { isOfficialDocsProfile } from './shadow-replay-cohort.js';
+import { getDocsCorpusFingerprint } from '../mcp/docs-indexer.js';
+import { getCurrentConfigVersionId } from '../config-version.js';
 import { guardBareJsonEnvelope, validateOutput } from '../security.js';
 import {
   resolveShadowJudgeModel,
@@ -112,31 +122,6 @@ export function fenceShadowEvalInput(label: string, body: string): string {
     escapeFenceTags(body),
     `</${label}>`,
   ].join('\n');
-}
-
-interface PendingThread {
-  thread_id: string;
-  user_id: string | null;
-  context: {
-    shadow_eval_status: string;
-    shadow_eval_trace_id?: string | null;
-  };
-}
-
-/**
- * Find threads pending shadow evaluation that have settled (10+ min old).
- */
-async function findPendingThreads(limit: number): Promise<PendingThread[]> {
-  const result = await query<PendingThread>(
-    `SELECT thread_id, user_id, context
-     FROM addie_threads
-     WHERE context->>'shadow_eval_status' = 'pending'
-       AND updated_at < NOW() - INTERVAL '10 minutes'
-     ORDER BY updated_at ASC
-     LIMIT $1`,
-    [limit]
-  );
-  return result.rows;
 }
 
 /**
@@ -383,6 +368,7 @@ function parseQueuedRespondPlan(value: unknown): ChannelRespondPlan | null {
     || !['high', 'suggest', 'low'].includes(String(candidate.confidence))
     || !['quick_match', 'llm'].includes(String(candidate.decision_method))
     || typeof candidate.reason !== 'string'
+    || !isOfficialDocsProfile(candidate)
   ) {
     return null;
   }
@@ -394,7 +380,20 @@ function parseQueuedRespondPlan(value: unknown): ChannelRespondPlan | null {
  * compares with human answers, and stores results.
  */
 export async function runShadowEvaluatorJob(
-  options: { limit: number } = { limit: 5 }
+  options: { limit: number } = { limit: 5 },
+  dependencies: {
+    purgeTraces?: typeof purgeRetainedShadowReplayTraces;
+    listPending?: typeof listPendingShadowReplayCaptures;
+    resolveTrace?: typeof resolveShadowReplayTrace;
+    verifyTraceContext?: typeof verifyShadowReplayTraceContext;
+    completeCapture?: typeof completeShadowReplayCapture;
+    getClient?: typeof getChannelClaudeClient;
+    getDocsFingerprint?: typeof getDocsCorpusFingerprint;
+    getConfigVersionId?: typeof getCurrentConfigVersionId;
+    getMember?: typeof getMemberContext;
+    getChannel?: typeof buildChannelContext;
+    buildInvocation?: typeof buildChannelResponseInvocation;
+  } = {},
 ): Promise<ShadowEvalResult> {
   const result: ShadowEvalResult = {
     evaluated: 0,
@@ -406,77 +405,135 @@ export async function runShadowEvaluatorJob(
 
   // Retention cleanup contains no transcript data and is independent of the
   // evaluation queue. Failure is non-fatal; a later run will retry.
-  await purgeRetainedShadowReplayTraces().catch(() => {
+  await (dependencies.purgeTraces ?? purgeRetainedShadowReplayTraces)().catch(() => {
     logger.warn('Shadow evaluator: Replay trace retention cleanup failed');
   });
 
-  let pendingThreads: PendingThread[];
+  let pendingCaptures: Awaited<ReturnType<typeof listPendingShadowReplayCaptures>>;
   try {
-    pendingThreads = await findPendingThreads(options.limit);
+    pendingCaptures = await (dependencies.listPending ?? listPendingShadowReplayCaptures)(
+      options.limit,
+    );
   } catch (error) {
-    logger.error({ error }, 'Shadow evaluator: Failed to find pending threads');
+    logger.error(
+      { errorType: error instanceof Error ? error.name : typeof error },
+      'Shadow evaluator: Failed to find pending captures',
+    );
     return result;
   }
 
-  if (pendingThreads.length === 0) return result;
+  if (pendingCaptures.length === 0) return result;
 
-  const threadService = getThreadService();
+  const finishCapture = async (
+    capture: (typeof pendingCaptures)[number],
+    status: 'verified' | 'skipped' | 'error',
+    reason: string,
+    details: { driftReasons?: string[]; parityVerified?: boolean } = {},
+  ) => (dependencies.completeCapture ?? completeShadowReplayCapture)(
+    capture.trace_id,
+    capture.thread_id,
+    {
+      status,
+      reason,
+      ...details,
+    },
+  );
 
-  for (const thread of pendingThreads) {
+  for (const capture of pendingCaptures) {
     try {
-      const ctx = thread.context;
-      const traceId = ctx.shadow_eval_trace_id;
-      if (!traceId) {
-        await threadService.patchThreadContext(thread.thread_id, {
-          shadow_eval_status: 'skipped',
-          shadow_eval_type: 'suppressed_opportunity',
-          shadow_eval_source: 'suppressed',
-          shadow_eval_completed_at: new Date().toISOString(),
-          shadow_eval_replay_error: 'missing_signed_trace',
-        });
-        result.skipped++;
-        continue;
-      }
-
       // Authorization is resolved before Slack, member/channel hydration,
       // invocation construction, or either model. Mutable thread JSON is only
       // a queue pointer and can never promote itself into eligible evidence.
-      const authorization = await resolveShadowReplayTrace(traceId, {
-        expectedThreadId: thread.thread_id,
+      const authorization = await (dependencies.resolveTrace ?? resolveShadowReplayTrace)(capture.trace_id, {
+        expectedThreadId: capture.thread_id,
       });
       if (!authorization.authorized) {
-        await threadService.patchThreadContext(thread.thread_id, {
-          shadow_eval_status: 'skipped',
-          shadow_eval_type: 'suppressed_opportunity',
-          shadow_eval_source: 'suppressed',
-          shadow_eval_completed_at: new Date().toISOString(),
-          shadow_eval_replay_error: authorization.reason,
+        await finishCapture(capture, 'skipped', authorization.reason);
+        result.skipped++;
+        continue;
+      }
+
+      const plan = parseQueuedRespondPlan(authorization.trace.routerDecision);
+      const client = (dependencies.getClient ?? getChannelClaudeClient)();
+      const docsCorpusFingerprint = (dependencies.getDocsFingerprint ?? getDocsCorpusFingerprint)();
+      const currentConfigVersionId = await (
+        dependencies.getConfigVersionId ?? getCurrentConfigVersionId
+      )();
+      if (!plan || !client || !docsCorpusFingerprint) {
+        const reason = !plan
+          ? 'invalid_official_docs_plan'
+          : !client
+            ? 'channel_client_not_initialized'
+            : 'docs_corpus_not_initialized';
+        await finishCapture(capture, 'skipped', reason);
+        result.skipped++;
+        continue;
+      }
+      if (currentConfigVersionId !== authorization.trace.sourceConfigVersionId) {
+        await finishCapture(capture, 'skipped', 'config_version_drift');
+        result.skipped++;
+        continue;
+      }
+
+      const [memberContext, channelContext] = await Promise.all([
+        (dependencies.getMember ?? getMemberContext)(authorization.trace.sourceUserId),
+        (dependencies.getChannel ?? buildChannelContext)(authorization.trace.channelId),
+      ]);
+      const invocation = await (dependencies.buildInvocation ?? buildChannelResponseInvocation)({
+        userId: authorization.trace.sourceUserId,
+        threadId: authorization.trace.threadId,
+        memberContext,
+        channelContext,
+        plan,
+        siRetrievalResult: null,
+      });
+      const snapshot = client.prepareMessageInvocation(
+        authorization.trace.question,
+        undefined,
+        invocation.requestTools,
+        undefined,
+        {
+          ...invocation.processOptions,
+          invocationHashKey: authorization.trace.identity.hashKey,
+          invocationHashDomain: authorization.trace.identity.hashDomain,
+        },
+      );
+      const providerWebSearchEnabled = client.isWebSearchEnabled()
+        && invocation.processOptions.disableServerTools !== true;
+      const parity = (dependencies.verifyTraceContext ?? verifyShadowReplayTraceContext)(authorization.trace, {
+        memberContext,
+        channelContext,
+        plan,
+        siRetrievalResult: null,
+        invocation,
+        snapshot,
+        docsCorpusFingerprint,
+        providerWebSearchEnabled,
+      });
+      if (!parity.verified) {
+        await finishCapture(capture, 'skipped', 'capture_parity_drift', {
+          driftReasons: parity.reasons,
         });
         result.skipped++;
         continue;
       }
 
-      // The signed-capture and exact preparation foundations intentionally do
-      // not activate generation yet. Current production opportunities expose
-      // provider web search, which the replay safety boundary disables; until
-      // a production docs-only cohort records matching provider-tool state,
-      // spending model tokens would produce evidence guaranteed ineligible.
-      await threadService.patchThreadContext(thread.thread_id, {
-        shadow_eval_status: 'skipped',
-        shadow_eval_type: 'suppressed_opportunity',
-        shadow_eval_source: 'suppressed',
-        shadow_eval_completed_at: new Date().toISOString(),
-        shadow_eval_replay_error: 'signed_trace_activation_pending',
-        shadow_eval_trace_id: authorization.trace.traceId,
+      // Capture-only rollout gate: prove the complete first provider request
+      // can be reconstructed before enabling any model or judge call.
+      await finishCapture(capture, 'verified', 'replay_generation_disabled', {
+        parityVerified: true,
       });
       result.skipped++;
     } catch (error) {
       logger.error(
-        { error, threadId: thread.thread_id },
+        {
+          errorType: error instanceof Error ? error.name : typeof error,
+          threadId: capture.thread_id,
+        },
         'Shadow evaluator: Signed trace processing failed',
       );
       try {
-        await threadService.patchThreadContext(thread.thread_id, { shadow_eval_status: 'error' });
+        await finishCapture(capture, 'error', 'capture_verification_failed');
       } catch { /* ignore */ }
       result.errors++;
     }

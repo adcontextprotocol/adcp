@@ -8,9 +8,16 @@ import type { SIRetrievalResult } from '../services/si-retriever.js';
 import type { ThreadContext } from '../thread-service.js';
 import type { ChannelRespondPlan, ChannelResponseInvocation } from '../bolt-app.js';
 import { SHADOW_REPLAY_POLICY_VERSION } from './shadow-eval-metadata.js';
+import {
+  OFFICIAL_DOCS_ALLOWED_TOOLS,
+  OFFICIAL_DOCS_POLICY_VERSION,
+  OFFICIAL_DOCS_PROFILE,
+  canonicalOfficialDocsPlan,
+  isOfficialDocsProfile,
+} from './shadow-replay-cohort.js';
 
-export const SHADOW_REPLAY_TRACE_CAPTURE_VERSION = 1 as const;
-export const SHADOW_REPLAY_TRACE_HASH_DOMAIN = 'addie-shadow-replay-trace:v1' as const;
+export const SHADOW_REPLAY_TRACE_CAPTURE_VERSION = 2 as const;
+export const SHADOW_REPLAY_TRACE_HASH_DOMAIN = 'addie-shadow-replay-trace:v2' as const;
 const TRACE_EXPIRY_MS = 60 * 60 * 1000;
 const TRACE_RETENTION_MS = 8 * 24 * 60 * 60 * 1000;
 
@@ -28,6 +35,7 @@ export interface ShadowReplayCaptureIdentity {
 }
 
 export interface QueueShadowReplayTraceInput {
+  attemptId: string;
   identity: ShadowReplayCaptureIdentity;
   threadId: string;
   sourceQuestionMessageId: string;
@@ -61,6 +69,9 @@ interface TraceRow extends QueryResultRow {
   effective_model: string;
   si_retrieval_present: boolean;
   provider_web_search_enabled: boolean;
+  capability_profile: string | null;
+  capability_policy_version: string | null;
+  approved_tool_names: string[];
   message_count: number;
   question_hmac: string;
   source_binding_hmac: string;
@@ -72,6 +83,8 @@ interface TraceRow extends QueryResultRow {
   docs_corpus_hmac: string;
   system_block_hmacs: Array<{ index: number; sha256: string }>;
   tool_schema_hmacs: Array<{ index: number; name: string; sha256: string }>;
+  message_payload_hmacs: Array<{ index: number; sha256: string }>;
+  provider_request_hmac: string | null;
   authorization_hmac: string;
   created_at: Date | string;
   expires_at: Date | string;
@@ -85,6 +98,19 @@ interface TraceSourceRow extends QueryResultRow {
   router_decision: unknown;
   thread_external_id: string;
   thread_channel: string;
+}
+
+export interface PendingShadowReplayCapture extends QueryResultRow {
+  trace_id: string;
+  thread_id: string;
+}
+
+export type ShadowReplayCaptureStatus = 'verified' | 'skipped' | 'error';
+
+export interface ShadowReplayCaptureSummaryRow extends QueryResultRow {
+  status: string;
+  reason: string;
+  count: number;
 }
 
 type QueryFn = <T extends QueryResultRow = QueryResultRow>(
@@ -104,6 +130,7 @@ export type ShadowReplayTraceDenialReason =
   | 'trace_authorization_invalid'
   | 'trace_thread_mismatch'
   | 'trace_source_invalid'
+  | 'trace_capability_profile_unsupported'
   | 'trace_provider_tools_unsupported'
   | 'trace_si_context_unsupported';
 
@@ -128,6 +155,7 @@ export type ResolveShadowReplayTraceResult =
 
 export function buildShadowEvalQueueContext(
   traceId: string,
+  attemptId: string,
   requestedAt: Date = new Date(),
 ): Record<string, unknown> {
   return {
@@ -136,7 +164,111 @@ export function buildShadowEvalQueueContext(
     shadow_eval_type: 'suppressed_opportunity',
     shadow_eval_source: 'suppressed',
     shadow_eval_trace_id: traceId,
+    shadow_eval_capture_attempt_id: attemptId,
   };
+}
+
+export async function beginShadowReplayCaptureAttempt(
+  input: {
+    threadId: string;
+    sourceQuestionMessageId: string | null;
+    now?: Date;
+  },
+  dependencies: { query?: QueryFn } = {},
+): Promise<string> {
+  const runQuery = dependencies.query ?? query as QueryFn;
+  const attemptId = randomUUID();
+  const now = input.now ?? new Date();
+  const retainedUntil = new Date(now.getTime() + TRACE_RETENTION_MS);
+  const context = {
+    shadow_eval_status: 'pending',
+    shadow_eval_type: 'suppressed_opportunity',
+    shadow_eval_source: 'suppressed',
+    shadow_eval_requested_at: now.toISOString(),
+    shadow_eval_capture_attempt_id: attemptId,
+  };
+  const result = await runQuery<{ attempt_id: string }>(
+    `WITH inserted AS (
+       INSERT INTO addie_shadow_replay_capture_attempts (
+         attempt_id, thread_id, source_question_message_id,
+         capability_profile, created_at, retained_until
+       ) VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING attempt_id, thread_id
+     )
+     UPDATE addie_threads thread
+     SET context = (
+       COALESCE(thread.context, '{}'::jsonb) - ARRAY[
+         'shadow_eval_trace_id', 'shadow_eval_capture_parity_verified',
+         'shadow_eval_replay_drift_reasons', 'shadow_eval_completed_at',
+         'shadow_eval_replay_error'
+       ]::text[]
+     ) || $7::jsonb,
+         updated_at = NOW()
+     FROM inserted
+     WHERE thread.thread_id = inserted.thread_id
+     RETURNING inserted.attempt_id`,
+    [
+      attemptId,
+      input.threadId,
+      input.sourceQuestionMessageId,
+      OFFICIAL_DOCS_PROFILE,
+      now,
+      retainedUntil,
+      JSON.stringify(context),
+    ],
+  );
+  if (result.rows[0]?.attempt_id !== attemptId) {
+    throw new Error('shadow_replay_capture_attempt_thread_not_found');
+  }
+  return attemptId;
+}
+
+export async function completeShadowReplayCaptureAttempt(
+  attemptId: string,
+  threadId: string,
+  outcome: { status: 'skipped' | 'error'; reason: string },
+  dependencies: { query?: QueryFn; now?: Date } = {},
+): Promise<boolean> {
+  if (!isUuid(attemptId) || !isUuid(threadId)) return false;
+  if (!/^[a-z0-9_]{1,96}$/.test(outcome.reason)) {
+    throw new Error('shadow_replay_capture_reason_invalid');
+  }
+  const runQuery = dependencies.query ?? query as QueryFn;
+  const completedAt = dependencies.now ?? new Date();
+  const context = {
+    shadow_eval_status: outcome.status,
+    shadow_eval_type: 'suppressed_opportunity',
+    shadow_eval_source: 'suppressed',
+    shadow_eval_completed_at: completedAt.toISOString(),
+    shadow_eval_replay_error: outcome.reason,
+    shadow_eval_capture_attempt_id: attemptId,
+  };
+  const result = await runQuery<{ completed: boolean }>(
+    `WITH completed AS (
+       UPDATE addie_shadow_replay_capture_attempts
+       SET status = $3, reason = $4, completed_at = $5
+       WHERE attempt_id = $1
+         AND thread_id = $2
+         AND status = 'pending'
+       RETURNING attempt_id, thread_id
+     ), patched AS (
+       UPDATE addie_threads thread
+       SET context = (
+         COALESCE(thread.context, '{}'::jsonb) - ARRAY[
+           'shadow_eval_trace_id', 'shadow_eval_capture_parity_verified',
+           'shadow_eval_replay_drift_reasons'
+         ]::text[]
+       ) || $6::jsonb,
+           updated_at = NOW()
+       FROM completed
+       WHERE thread.thread_id = completed.thread_id
+         AND thread.context->>'shadow_eval_capture_attempt_id' = completed.attempt_id::text
+       RETURNING thread.thread_id
+     )
+     SELECT EXISTS (SELECT 1 FROM completed) AS completed`,
+    [attemptId, threadId, outcome.status, outcome.reason, completedAt, JSON.stringify(context)],
+  );
+  return result.rows[0]?.completed === true;
 }
 
 export function suppressedOpportunityFlagReason(
@@ -230,6 +362,9 @@ function authorizationPayload(row: {
   effective_model: string;
   si_retrieval_present: boolean;
   provider_web_search_enabled: boolean;
+  capability_profile: string | null;
+  capability_policy_version: string | null;
+  approved_tool_names: string[];
   message_count: number;
   question_hmac: string;
   source_binding_hmac: string;
@@ -241,6 +376,8 @@ function authorizationPayload(row: {
   docs_corpus_hmac: string;
   system_block_hmacs: Array<{ index: number; sha256: string }>;
   tool_schema_hmacs: Array<{ index: number; name: string; sha256: string }>;
+  message_payload_hmacs: Array<{ index: number; sha256: string }>;
+  provider_request_hmac: string | null;
   created_at: Date | string;
   expires_at: Date | string;
   retained_until: Date | string;
@@ -258,6 +395,9 @@ function authorizationPayload(row: {
     effective_model: row.effective_model,
     si_retrieval_present: row.si_retrieval_present,
     provider_web_search_enabled: row.provider_web_search_enabled,
+    capability_profile: row.capability_profile,
+    capability_policy_version: row.capability_policy_version,
+    approved_tool_names: row.approved_tool_names,
     message_count: row.message_count,
     question_hmac: row.question_hmac,
     source_binding_hmac: row.source_binding_hmac,
@@ -269,6 +409,8 @@ function authorizationPayload(row: {
     docs_corpus_hmac: row.docs_corpus_hmac,
     system_block_hmacs: row.system_block_hmacs,
     tool_schema_hmacs: row.tool_schema_hmacs,
+    message_payload_hmacs: row.message_payload_hmacs,
+    provider_request_hmac: row.provider_request_hmac,
     created_at: timestamp(row.created_at),
     expires_at: timestamp(row.expires_at),
     retained_until: timestamp(row.retained_until),
@@ -298,6 +440,17 @@ export async function queueShadowReplayTrace(
   const expiresAt = new Date(now.getTime() + TRACE_EXPIRY_MS);
   const retainedUntil = new Date(now.getTime() + TRACE_RETENTION_MS);
   const source = sourceBinding(input);
+  if (!isOfficialDocsProfile(input.plan)) {
+    throw new Error('shadow_replay_trace_capability_profile_unsupported');
+  }
+  const signedPlan = canonicalOfficialDocsPlan(input.plan);
+  const capturedToolNames = input.snapshot.tool_schemas.map(({ name }) => name);
+  if (
+    capturedToolNames.length !== OFFICIAL_DOCS_ALLOWED_TOOLS.length
+    || !OFFICIAL_DOCS_ALLOWED_TOOLS.every((name, index) => capturedToolNames[index] === name)
+  ) {
+    throw new Error('shadow_replay_trace_tool_boundary_mismatch');
+  }
   const unsigned = {
     trace_id: input.identity.traceId,
     capture_version: SHADOW_REPLAY_TRACE_CAPTURE_VERSION,
@@ -311,12 +464,15 @@ export async function queueShadowReplayTrace(
     effective_model: input.invocation.effectiveModel,
     si_retrieval_present: input.siRetrievalResult !== null,
     provider_web_search_enabled: input.providerWebSearchEnabled,
+    capability_profile: OFFICIAL_DOCS_PROFILE,
+    capability_policy_version: OFFICIAL_DOCS_POLICY_VERSION,
+    approved_tool_names: [...OFFICIAL_DOCS_ALLOWED_TOOLS],
     message_count: input.snapshot.message_count,
     question_hmac: digest(input.identity, 'question', input.question),
     source_binding_hmac: digest(input.identity, 'source-binding', source),
     member_context_hmac: digest(input.identity, 'member-context', input.memberContext),
     channel_context_hmac: digest(input.identity, 'channel-context', input.channelContext ?? null),
-    plan_hmac: digest(input.identity, 'router-plan', input.plan),
+    plan_hmac: digest(input.identity, 'router-plan', signedPlan),
     si_retrieval_hmac: digest(input.identity, 'si-retrieval', input.siRetrievalResult),
     request_context_hmac: digest(
       input.identity,
@@ -326,6 +482,8 @@ export async function queueShadowReplayTrace(
     docs_corpus_hmac: digest(input.identity, 'docs-corpus', input.docsCorpusFingerprint),
     system_block_hmacs: input.snapshot.system_blocks,
     tool_schema_hmacs: input.snapshot.tool_schemas,
+    message_payload_hmacs: input.snapshot.message_payloads,
+    provider_request_hmac: input.snapshot.provider_request_sha256,
     created_at: now,
     expires_at: expiresAt,
     retained_until: retainedUntil,
@@ -347,15 +505,17 @@ export async function queueShadowReplayTrace(
          trace_id, capture_version, thread_id, source_question_message_id,
          source_slack_message_ts, source_config_version_id, hash_key_version,
          policy_version, capture_salt, effective_model, si_retrieval_present,
-         provider_web_search_enabled, message_count, question_hmac,
+         provider_web_search_enabled, capability_profile,
+         capability_policy_version, approved_tool_names, message_count, question_hmac,
          source_binding_hmac, member_context_hmac, channel_context_hmac,
          plan_hmac, si_retrieval_hmac, request_context_hmac, docs_corpus_hmac,
-         system_block_hmacs, tool_schema_hmacs, authorization_hmac,
+         system_block_hmacs, tool_schema_hmacs, message_payload_hmacs,
+         provider_request_hmac, authorization_hmac,
          created_at, expires_at, retained_until
        ) SELECT
          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-         $15, $16, $17, $18, $19, $20, $21, $22::jsonb, $23::jsonb, $24,
-         $25, $26, $27
+         $15::jsonb, $16, $17, $18, $19, $20, $21, $22, $23, $24,
+         $25::jsonb, $26::jsonb, $27::jsonb, $28, $29, $30, $31, $32
        WHERE EXISTS (
          SELECT 1
          FROM addie_thread_messages source
@@ -377,6 +537,9 @@ export async function queueShadowReplayTrace(
         unsigned.effective_model,
         unsigned.si_retrieval_present,
         unsigned.provider_web_search_enabled,
+        unsigned.capability_profile,
+        unsigned.capability_policy_version,
+        JSON.stringify(unsigned.approved_tool_names),
         unsigned.message_count,
         unsigned.question_hmac,
         unsigned.source_binding_hmac,
@@ -388,6 +551,8 @@ export async function queueShadowReplayTrace(
         unsigned.docs_corpus_hmac,
         JSON.stringify(unsigned.system_block_hmacs),
         JSON.stringify(unsigned.tool_schema_hmacs),
+        JSON.stringify(unsigned.message_payload_hmacs),
+        unsigned.provider_request_hmac,
         authorizationHmac,
         now,
         expiresAt,
@@ -395,6 +560,24 @@ export async function queueShadowReplayTrace(
       ],
     );
     if (inserted.rowCount !== 1) throw new Error('shadow_replay_trace_source_not_found');
+    const linkedAttempt = await client.query(
+      `UPDATE addie_shadow_replay_capture_attempts
+       SET status = 'captured', reason = 'trace_queued', trace_id = $2, completed_at = $3
+       WHERE attempt_id = $1
+         AND thread_id = $4
+         AND source_question_message_id = $5
+         AND status = 'pending'`,
+      [
+        input.attemptId,
+        input.identity.traceId,
+        now,
+        input.threadId,
+        input.sourceQuestionMessageId,
+      ],
+    );
+    if (linkedAttempt.rowCount !== 1) {
+      throw new Error('shadow_replay_capture_attempt_invalid');
+    }
     const queued = await client.query(
       `UPDATE addie_threads
        SET context = (
@@ -407,8 +590,17 @@ export async function queueShadowReplayTrace(
          ]::text[]
        ) || $2::jsonb,
        updated_at = NOW()
-       WHERE thread_id = $1`,
-      [input.threadId, JSON.stringify(buildShadowEvalQueueContext(input.identity.traceId, now))],
+       WHERE thread_id = $1
+         AND context->>'shadow_eval_capture_attempt_id' = $3`,
+      [
+        input.threadId,
+        JSON.stringify(buildShadowEvalQueueContext(
+          input.identity.traceId,
+          input.attemptId,
+          now,
+        )),
+        input.attemptId,
+      ],
     );
     if (queued.rowCount !== 1) throw new Error('shadow_replay_trace_thread_not_found');
     await client.query('COMMIT');
@@ -477,6 +669,21 @@ export async function resolveShadowReplayTrace(
   }
   if (dependencies.expectedThreadId && row.thread_id !== dependencies.expectedThreadId) {
     return { authorized: false, reason: 'trace_thread_mismatch' };
+  }
+  if (
+    row.capability_profile !== OFFICIAL_DOCS_PROFILE
+    || row.capability_policy_version !== OFFICIAL_DOCS_POLICY_VERSION
+    || row.approved_tool_names.length !== OFFICIAL_DOCS_ALLOWED_TOOLS.length
+    || !OFFICIAL_DOCS_ALLOWED_TOOLS.every(
+      (name, index) => row.approved_tool_names[index] === name,
+    )
+    || row.tool_schema_hmacs.length !== OFFICIAL_DOCS_ALLOWED_TOOLS.length
+    || !OFFICIAL_DOCS_ALLOWED_TOOLS.every(
+      (name, index) => row.tool_schema_hmacs[index]?.name === name,
+    )
+    || !row.provider_request_hmac
+  ) {
+    return { authorized: false, reason: 'trace_capability_profile_unsupported' };
   }
   if (row.provider_web_search_enabled) {
     return { authorized: false, reason: 'trace_provider_tools_unsupported' };
@@ -580,7 +787,12 @@ export function verifyShadowReplayTraceContext(
   };
   check('member-context', input.memberContext, expected.member_context_hmac, 'member_context_drift');
   check('channel-context', input.channelContext ?? null, expected.channel_context_hmac, 'channel_context_drift');
-  check('router-plan', input.plan, expected.plan_hmac, 'router_plan_drift');
+  check(
+    'router-plan',
+    canonicalOfficialDocsPlan(input.plan),
+    expected.plan_hmac,
+    'router_plan_drift',
+  );
   check('si-retrieval', input.siRetrievalResult, expected.si_retrieval_hmac, 'si_retrieval_drift');
   check(
     'request-context',
@@ -595,11 +807,30 @@ export function verifyShadowReplayTraceContext(
     reasons.push('provider_tool_state_drift');
   }
   if (input.snapshot.message_count !== expected.message_count) reasons.push('message_count_drift');
+  const allowedToolNames = input.invocation.processOptions.allowedToolNames ?? [];
+  const actualToolNames = input.snapshot.tool_schemas.map(({ name }) => name);
+  if (
+    allowedToolNames.length !== expected.approved_tool_names.length
+    || !expected.approved_tool_names.every((name, index) => allowedToolNames[index] === name)
+    || actualToolNames.length !== expected.approved_tool_names.length
+    || !expected.approved_tool_names.every((name, index) => actualToolNames[index] === name)
+  ) {
+    reasons.push('capability_policy_drift');
+  }
   if (!compareSnapshotList(expected.system_block_hmacs, input.snapshot.system_blocks)) {
     reasons.push('system_blocks_drift');
   }
   if (!compareSnapshotList(expected.tool_schema_hmacs, input.snapshot.tool_schemas)) {
     reasons.push('tool_schemas_drift');
+  }
+  if (!compareSnapshotList(expected.message_payload_hmacs, input.snapshot.message_payloads)) {
+    reasons.push('message_payloads_drift');
+  }
+  if (
+    !expected.provider_request_hmac
+    || !equalDigest(expected.provider_request_hmac, input.snapshot.provider_request_sha256)
+  ) {
+    reasons.push('provider_request_drift');
   }
   return { verified: reasons.length === 0, reasons };
 }
@@ -608,8 +839,121 @@ export async function purgeRetainedShadowReplayTraces(
   dependencies: { query?: QueryFn } = {},
 ): Promise<number> {
   const runQuery = dependencies.query ?? query as QueryFn;
-  const result = await runQuery(
+  const attempts = await runQuery(
+    'DELETE FROM addie_shadow_replay_capture_attempts WHERE retained_until <= NOW()',
+  );
+  const traces = await runQuery(
     'DELETE FROM addie_shadow_replay_traces WHERE retained_until <= NOW()',
   );
-  return result.rowCount ?? 0;
+  return (attempts.rowCount ?? 0) + (traces.rowCount ?? 0);
+}
+
+export async function listPendingShadowReplayCaptures(
+  limit: number,
+  dependencies: { query?: QueryFn } = {},
+): Promise<PendingShadowReplayCapture[]> {
+  const runQuery = dependencies.query ?? query as QueryFn;
+  const result = await runQuery<PendingShadowReplayCapture>(
+    `SELECT trace_id, thread_id
+     FROM addie_shadow_replay_traces
+     WHERE capture_version = $1
+       AND capture_status = 'pending'
+       AND created_at < NOW() - INTERVAL '10 minutes'
+     ORDER BY created_at ASC, trace_id ASC
+     LIMIT $2`,
+    [SHADOW_REPLAY_TRACE_CAPTURE_VERSION, Math.max(1, Math.min(100, Math.trunc(limit)))],
+  );
+  return result.rows;
+}
+
+/** Persist one categorical outcome per signed opportunity and update only its current thread pointer. */
+export async function completeShadowReplayCapture(
+  traceId: string,
+  threadId: string,
+  outcome: {
+    status: ShadowReplayCaptureStatus;
+    reason: string;
+    driftReasons?: string[];
+    parityVerified?: boolean;
+  },
+  dependencies: { query?: QueryFn; now?: Date } = {},
+): Promise<boolean> {
+  if (!isUuid(traceId) || !isUuid(threadId)) return false;
+  if (!/^[a-z0-9_]{1,96}$/.test(outcome.reason)) {
+    throw new Error('shadow_replay_capture_reason_invalid');
+  }
+  const runQuery = dependencies.query ?? query as QueryFn;
+  const completedAt = dependencies.now ?? new Date();
+  const driftReasons = outcome.driftReasons ?? [];
+  if (driftReasons.some((reason) => !/^[a-z0-9_]{1,96}$/.test(reason))) {
+    throw new Error('shadow_replay_capture_drift_reason_invalid');
+  }
+  const context = {
+    shadow_eval_status: outcome.status === 'verified' ? 'skipped' : outcome.status,
+    shadow_eval_type: 'suppressed_opportunity',
+    shadow_eval_source: 'suppressed',
+    shadow_eval_completed_at: completedAt.toISOString(),
+    shadow_eval_replay_error: outcome.reason,
+    shadow_eval_trace_id: traceId,
+    ...(driftReasons.length > 0
+      ? { shadow_eval_replay_drift_reasons: driftReasons }
+      : {}),
+    ...(outcome.parityVerified
+      ? { shadow_eval_capture_parity_verified: true }
+      : {}),
+  };
+  const result = await runQuery<{ completed: boolean }>(
+    `WITH completed AS (
+       UPDATE addie_shadow_replay_traces
+       SET capture_status = $3,
+           capture_reason = $4,
+           capture_completed_at = $5
+       WHERE trace_id = $1
+         AND thread_id = $2
+         AND capture_status = 'pending'
+       RETURNING trace_id, thread_id
+     ), patched AS (
+       UPDATE addie_threads thread
+       SET context = COALESCE(thread.context, '{}'::jsonb) || $6::jsonb,
+           updated_at = NOW()
+       FROM completed
+       WHERE thread.thread_id = completed.thread_id
+         AND thread.context->>'shadow_eval_trace_id' = completed.trace_id::text
+       RETURNING thread.thread_id
+     )
+     SELECT EXISTS (SELECT 1 FROM completed) AS completed`,
+    [
+      traceId,
+      threadId,
+      outcome.status,
+      outcome.reason,
+      completedAt,
+      JSON.stringify(context),
+    ],
+  );
+  return result.rows[0]?.completed === true;
+}
+
+export async function getShadowReplayCaptureSummary(
+  days: number,
+  dependencies: { query?: QueryFn } = {},
+): Promise<ShadowReplayCaptureSummaryRow[]> {
+  const runQuery = dependencies.query ?? query as QueryFn;
+  const boundedDays = Math.max(1, Math.min(7, Math.trunc(days)));
+  const result = await runQuery<ShadowReplayCaptureSummaryRow>(
+    `SELECT
+            CASE WHEN attempt.trace_id IS NOT NULL
+              THEN trace.capture_status ELSE attempt.status END AS status,
+            CASE WHEN attempt.trace_id IS NOT NULL
+              THEN COALESCE(trace.capture_reason, 'pending') ELSE attempt.reason END AS reason,
+            COUNT(*)::integer AS count
+     FROM addie_shadow_replay_capture_attempts attempt
+     LEFT JOIN addie_shadow_replay_traces trace ON trace.trace_id = attempt.trace_id
+     WHERE attempt.created_at >= NOW() - ($2::integer * INTERVAL '1 day')
+       AND (trace.trace_id IS NULL OR trace.capture_version = $1)
+     GROUP BY 1, 2
+     ORDER BY 1, 2`,
+    [SHADOW_REPLAY_TRACE_CAPTURE_VERSION, boundedDays],
+  );
+  return result.rows;
 }
