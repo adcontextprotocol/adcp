@@ -9,6 +9,7 @@ import type { ChannelResponseInvocation } from '../../../src/addie/bolt-app.js';
 import {
   MAX_OFFICIAL_DOCS_REPLAY_TOOL_CALLS,
   OfficialDocsReplayExecutionError,
+  OfficialDocsReplayOutputConsumerError,
   executeShadowReplay,
   executeVerifiedOfficialDocsReplay,
   hashReplayValue,
@@ -357,6 +358,81 @@ function officialDocsTool(name: 'search_docs' | 'get_doc') {
 }
 
 describe('verified official docs replay generation', () => {
+  it('hands guarded output to a trusted consumer exactly once and returns only safe evidence', async () => {
+    const outputConsumer = vi.fn(async () => ({
+      status: 'skipped',
+      reason: 'comparison_target_unattributable',
+      evaluationValid: false,
+      evaluationSkipped: true,
+      knowledgeGap: null,
+      gapSeverity: null,
+      shadowQuality: null,
+      deterministicFailureLabels: [],
+      judgeProvider: null,
+      judgeModel: null,
+      selfJudged: null,
+      judgePromptVersion: null,
+      judgePromptHmac: null,
+      judgeRequestHmac: null,
+      judgeResponseHmac: null,
+      sourceOutputHmac: 'a'.repeat(64),
+      humanEvidenceContentHmac: null,
+      shapeWordCount: 5,
+      shapeExpectedMaxWords: 120,
+      shapeRatioToExpected: 0.04,
+      deterministicShape: {
+        wordCount: 5,
+        expectedMaxWords: 120,
+        ratioToExpected: 0.04,
+        violationLabels: [],
+      },
+      inputTokens: 0,
+      outputTokens: 0,
+      startedAt: new Date('2026-08-25T00:00:00Z'),
+      completedAt: new Date('2026-08-25T00:00:01Z'),
+    }));
+    const fakeClient = {
+      processMessage: vi.fn(async (
+        _question: string,
+        _history: unknown,
+        _requestTools: RequestTools,
+        _rules: unknown,
+        options: ProcessMessageOptions,
+      ) => {
+        await options.onInvocationPrepared?.(officialDocsSnapshot());
+        return generatedResponse();
+      }),
+    };
+
+    const result = await executeVerifiedOfficialDocsReplay({
+      trace: officialDocsTrace(),
+      invocation: officialDocsInvocation(),
+      docsCorpusFingerprint: 'docs-fingerprint',
+    }, {
+      client: fakeClient as never,
+      getDocsFingerprint: () => 'docs-fingerprint',
+      renewLease: async () => true,
+      outputConsumer,
+      createKnowledgeHandlers: () => new Map([
+        ['search_docs', vi.fn()],
+        ['get_doc', vi.fn()],
+      ]),
+    });
+
+    expect(outputConsumer).toHaveBeenCalledTimes(1);
+    expect(outputConsumer.mock.calls[0][0]).toMatchObject({
+      text: `Synthetic generated answer ${PRIVATE_SENTINEL}`,
+      outputHmac: result.outputHmac,
+      outputBytes: result.outputBytes,
+      generatorModel: 'claude-example-chat',
+    });
+    expect(result.judgment).toMatchObject({
+      status: 'skipped',
+      reason: 'comparison_target_unattributable',
+    });
+    expect(JSON.stringify(result)).not.toContain(PRIVATE_SENTINEL);
+  });
+
   it('uses telemetry-free handler overrides without changing signed schemas', async () => {
     const search = vi.fn(async () => `private tool result ${PRIVATE_SENTINEL}`);
     const createHandlers = vi.fn(() => new Map([
@@ -449,6 +525,7 @@ describe('verified official docs replay generation', () => {
         return generatedResponse({ text: `leaked ${secret}` });
       }),
     };
+    const outputConsumer = vi.fn();
     const result = await executeVerifiedOfficialDocsReplay({
       trace: officialDocsTrace(),
       invocation: officialDocsInvocation(),
@@ -457,6 +534,7 @@ describe('verified official docs replay generation', () => {
       client: fakeClient as never,
       getDocsFingerprint: () => 'docs-fingerprint',
       renewLease: async () => true,
+      outputConsumer,
       createKnowledgeHandlers: () => new Map([
         ['search_docs', vi.fn()],
         ['get_doc', vi.fn()],
@@ -467,7 +545,44 @@ describe('verified official docs replay generation', () => {
       reason: 'output_rejected',
       blockedCapabilities: ['output_rejected'],
     });
+    expect(outputConsumer).not.toHaveBeenCalled();
     expect(JSON.stringify(result)).not.toContain(secret);
+  });
+
+  it('contains consumer failures behind a safe post-generation completion', async () => {
+    const fakeClient = {
+      processMessage: vi.fn(async (
+        _question: string,
+        _history: unknown,
+        _requestTools: RequestTools,
+        _rules: unknown,
+        options: ProcessMessageOptions,
+      ) => {
+        await options.onInvocationPrepared?.(officialDocsSnapshot());
+        return generatedResponse();
+      }),
+    };
+
+    const error = await executeVerifiedOfficialDocsReplay({
+      trace: officialDocsTrace(),
+      invocation: officialDocsInvocation(),
+      docsCorpusFingerprint: 'docs-fingerprint',
+    }, {
+      client: fakeClient as never,
+      getDocsFingerprint: () => 'docs-fingerprint',
+      renewLease: async () => true,
+      outputConsumer: async () => { throw new Error(PRIVATE_SENTINEL); },
+      createKnowledgeHandlers: () => new Map([
+        ['search_docs', vi.fn()],
+        ['get_doc', vi.fn()],
+      ]),
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(OfficialDocsReplayOutputConsumerError);
+    expect(error).toMatchObject({
+      completion: { status: 'succeeded', completeFidelity: true },
+    });
+    expect(JSON.stringify(error)).not.toContain(PRIVATE_SENTINEL);
   });
 
   it('hashes the production-guarded bytes for a bare JSON response', async () => {

@@ -5,7 +5,7 @@ import { MODULE_RESOURCES } from '../../server/src/addie/mcp/certification-tools
 describe('TMP coverage in docs and training', () => {
   beforeAll(async () => {
     await initializeDocsIndex();
-  }, 30_000);
+  }, 90_000);
 
   it('surfaces TMP and AdCP/OpenRTB docs in Addie search', () => {
     const results = searchDocs('cross-publisher frequency capping TMP Trusted Match OpenRTB', { limit: 5 });

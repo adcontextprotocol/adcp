@@ -377,6 +377,34 @@
           </div>
         </div>
 
+        <!-- Exact-credential organization authorization runtime gate -->
+        <div class="setting-section">
+          <h3>Exact-credential organization authorization</h3>
+          <p>
+            Runtime gate for the staged organization-authorization rollout. The Fly environment
+            ceiling must also allow the boundary. Turning this off takes effect across web
+            processes within five seconds and does not require a deploy.
+          </p>
+
+          <div class="current-value not-set" id="currentOrganizationAuthorizationStatus">
+            <span>Loading...</span>
+          </div>
+
+          <div class="setting-row">
+            <div class="field">
+              <label for="organizationAuthorizationEnabled">Roles-read boundary</label>
+              <select id="organizationAuthorizationEnabled">
+                <option value="false">Legacy authorization (off)</option>
+                <option value="true">Exact-credential authorization (on)</option>
+              </select>
+              <small>Currently limited to <code>organization_roles_read</code>. Disable here for rollback within five seconds.</small>
+            </div>
+            <button class="btn btn-primary" id="saveOrganizationAuthorizationBtn" onclick="saveOrganizationAuthorizationEnforcement()" disabled>
+              Save
+            </button>
+          </div>
+        </div>
+
       <!-- Recent changes audit log -->
       <div class="card" id="auditCard">
         <h2>Recent changes</h2>
@@ -425,6 +453,7 @@
         updateCurrentEditorialChannelDisplay();
         updateCurrentAnnouncementChannelDisplay();
         updateTriageDisplay();
+        updateOrganizationAuthorizationDisplay();
 
         document.getElementById('loading').style.display = 'none';
         document.getElementById('content').style.display = 'block';
@@ -1082,6 +1111,77 @@ loadAuditHistory();
         }, 2000);
       } catch (error) {
         console.error('Error saving triage setting:', error);
+        showStatusMessage('Failed to save: ' + error.message, 'error');
+        saveBtn.textContent = 'Save';
+        saveBtn.disabled = false;
+      }
+    }
+
+    function updateOrganizationAuthorizationDisplay() {
+      const setting = currentSettings?.organization_authorization_enforcement ?? {
+        enabled: false,
+        boundaries: [],
+      };
+      const boundaryEnabled = setting.enabled === true &&
+        Array.isArray(setting.boundaries) &&
+        setting.boundaries.includes('organization_roles_read');
+      const environmentStaged = currentSettings?.organization_authorization_environment_ceiling?.boundaries
+        ?.includes('organization_roles_read') === true;
+      const el = document.getElementById('currentOrganizationAuthorizationStatus');
+      const select = document.getElementById('organizationAuthorizationEnabled');
+
+      el.className = boundaryEnabled && environmentStaged ? 'current-value' : 'current-value not-set';
+      if (boundaryEnabled && environmentStaged) {
+        el.innerHTML = '<strong>Status:</strong> Exact-credential roles read active';
+      } else if (boundaryEnabled) {
+        el.innerHTML = '<strong>Status:</strong> Runtime gate armed, but environment ceiling is off';
+      } else {
+        el.innerHTML = `<strong>Status:</strong> Legacy roles read (runtime gate off; environment ceiling ${environmentStaged ? 'staged' : 'off'})`;
+      }
+      select.value = String(boundaryEnabled);
+      document.getElementById('saveOrganizationAuthorizationBtn').disabled = false;
+    }
+
+    async function saveOrganizationAuthorizationEnforcement() {
+      const select = document.getElementById('organizationAuthorizationEnabled');
+      const saveBtn = document.getElementById('saveOrganizationAuthorizationBtn');
+      const enabled = select.value === 'true';
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+      try {
+        const response = await fetch('/api/admin/settings/organization-authorization-enforcement', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            enabled,
+            boundaries: ['organization_roles_read'],
+          }),
+        });
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || 'Failed to save');
+        }
+
+        const data = await response.json();
+        currentSettings.organization_authorization_enforcement =
+          data.organization_authorization_enforcement;
+        updateOrganizationAuthorizationDisplay();
+        loadAuditHistory();
+
+        saveBtn.textContent = 'Saved!';
+        saveBtn.classList.add('btn-success');
+        showStatusMessage(
+          `Exact-credential organization authorization ${enabled ? 'enabled' : 'disabled'} at runtime`,
+          'success',
+        );
+        setTimeout(() => {
+          saveBtn.textContent = 'Save';
+          saveBtn.classList.remove('btn-success');
+          saveBtn.disabled = false;
+        }, 2000);
+      } catch (error) {
+        console.error('Error saving organization authorization setting:', error);
         showStatusMessage('Failed to save: ' + error.message, 'error');
         saveBtn.textContent = 'Save';
         saveBtn.disabled = false;

@@ -39,13 +39,21 @@ import {
 } from './shadow-replay-trace.js';
 import {
   isOfficialDocsProfile,
+  selectOfficialDocsJudgeActivation,
   selectOfficialDocsReplayActivation,
 } from './shadow-replay-cohort.js';
 import {
   executeVerifiedOfficialDocsReplay,
   OfficialDocsReplayBoundaryError,
   OfficialDocsReplayExecutionError,
+  OfficialDocsReplayOutputConsumerError,
 } from './shadow-replay.js';
+import {
+  createShadowReplayInternalErrorEvidence,
+  createShadowReplayOutputConsumer,
+  hydrateVerifiedShadowReplayHumanEvidence,
+  ShadowReplayJudgeBoundaryError,
+} from './shadow-replay-judge.js';
 import { getDocsCorpusFingerprint } from '../mcp/docs-indexer.js';
 import { getCurrentConfigVersionId } from '../config-version.js';
 import { guardBareJsonEnvelope, validateOutput } from '../security.js';
@@ -55,6 +63,11 @@ import {
 } from './shadow-eval-metadata.js';
 
 const logger = createLogger('shadow-evaluator');
+
+function createShadowJudgeClient(): Anthropic | null {
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  return apiKey ? new Anthropic({ apiKey }) : null;
+}
 
 export interface ShadowEvalResult {
   evaluated: number;
@@ -407,10 +420,15 @@ export async function runShadowEvaluatorJob(
     getChannel?: typeof buildChannelContext;
     buildInvocation?: typeof buildChannelResponseInvocation;
     selectReplayActivation?: typeof selectOfficialDocsReplayActivation;
+    selectJudgeActivation?: typeof selectOfficialDocsJudgeActivation;
     claimGeneration?: typeof claimShadowReplayGeneration;
     executeReplay?: typeof executeVerifiedOfficialDocsReplay;
     completeGeneration?: typeof completeShadowReplayGeneration;
     renewGenerationLease?: typeof renewShadowReplayGenerationLease;
+    hydrateHumanEvidence?: typeof hydrateVerifiedShadowReplayHumanEvidence;
+    getJudgeClient?: typeof createShadowJudgeClient;
+    resolveJudgeModel?: typeof resolveShadowJudgeModel;
+    createOutputConsumer?: typeof createShadowReplayOutputConsumer;
   } = {},
 ): Promise<ShadowEvalResult> {
   const result: ShadowEvalResult = {
@@ -554,6 +572,59 @@ export async function runShadowEvaluatorJob(
         continue;
       }
 
+      const judgeActivation = (
+        dependencies.selectJudgeActivation ?? selectOfficialDocsJudgeActivation
+      )({
+        channelId: authorization.trace.channelId,
+        plan,
+      });
+      let humanEvidence: Awaited<ReturnType<typeof hydrateVerifiedShadowReplayHumanEvidence>>
+        | null = null;
+      let judgeClient: Anthropic | null = null;
+      let judgeModel = '';
+      if (judgeActivation.enabled) {
+        if (authorization.trace.humanEvidence) {
+          try {
+            humanEvidence = await (
+              dependencies.hydrateHumanEvidence ?? hydrateVerifiedShadowReplayHumanEvidence
+            )(authorization.trace);
+          } catch (error) {
+            const reason = error instanceof ShadowReplayJudgeBoundaryError
+              ? error.reason
+              : 'human_evidence_hydration_failed';
+            await finishCapture(capture, 'skipped', reason, { parityVerified: true });
+            result.skipped++;
+            continue;
+          }
+          try {
+            judgeModel = (
+              dependencies.resolveJudgeModel ?? resolveShadowJudgeModel
+            )([invocation.effectiveModel]);
+          } catch {
+            await finishCapture(capture, 'skipped', 'judge_model_unavailable', {
+              parityVerified: true,
+            });
+            result.skipped++;
+            continue;
+          }
+          if (judgeModel === invocation.effectiveModel) {
+            await finishCapture(capture, 'skipped', 'judge_model_not_independent', {
+              parityVerified: true,
+            });
+            result.skipped++;
+            continue;
+          }
+          judgeClient = (dependencies.getJudgeClient ?? createShadowJudgeClient)();
+          if (!judgeClient) {
+            await finishCapture(capture, 'skipped', 'judge_client_unavailable', {
+              parityVerified: true,
+            });
+            result.skipped++;
+            continue;
+          }
+        }
+      }
+
       const claim = await (
         dependencies.claimGeneration ?? claimShadowReplayGeneration
       )(authorization.trace, activation.dailyLimit);
@@ -577,6 +648,20 @@ export async function runShadowEvaluatorJob(
       }
 
       try {
+        const renewLease = () => (
+          dependencies.renewGenerationLease ?? renewShadowReplayGenerationLease
+        )(authorization.trace);
+        const outputConsumer = (
+          dependencies.createOutputConsumer ?? createShadowReplayOutputConsumer
+        )({
+          trace: authorization.trace,
+          humanEvidence,
+          judgeEnabled: judgeActivation.enabled,
+          judgeModel,
+        }, {
+          client: judgeClient ?? undefined,
+          renewLease,
+        });
         const generation = await (
           dependencies.executeReplay ?? executeVerifiedOfficialDocsReplay
         )({
@@ -584,26 +669,46 @@ export async function runShadowEvaluatorJob(
           invocation,
           docsCorpusFingerprint,
         }, {
-          renewLease: () => (
-            dependencies.renewGenerationLease ?? renewShadowReplayGenerationLease
-          )(authorization.trace),
+          renewLease,
+          outputConsumer,
         });
-        const completed = await (
-          dependencies.completeGeneration ?? completeShadowReplayGeneration
-        )(authorization.trace, generation);
+        const completeGeneration = dependencies.completeGeneration
+          ?? completeShadowReplayGeneration;
+        const judgment = generation.status === 'succeeded'
+          ? generation.judgment ?? createShadowReplayInternalErrorEvidence(
+            authorization.trace,
+            generation.outputHmac!,
+          )
+          : generation.judgment;
+        const completed = judgment
+          ? await completeGeneration(
+            authorization.trace,
+            generation,
+            { judgment },
+          )
+          : await completeGeneration(authorization.trace, generation);
         if (!completed) {
           logger.warn('Shadow evaluator: Claimed replay generation was not completed');
           result.errors++;
           continue;
         }
-        // Generation-only rollout: the output was digested and discarded.
-        // No human evidence or judge is consulted in this phase.
-        result.skipped++;
+        if (!judgment || judgment.status === 'skipped') {
+          result.skipped++;
+        } else if (judgment.status === 'error') {
+          result.errors++;
+        } else {
+          result.evaluated++;
+          if (judgment.status === 'deterministic_failure') result.shape_regressions++;
+          if (judgment.knowledgeGap === true) result.knowledge_gaps++;
+        }
       } catch (error) {
+        const safeGeneration = error instanceof OfficialDocsReplayOutputConsumerError
+          ? error.completion
+          : null;
         const boundaryReason = error instanceof OfficialDocsReplayBoundaryError
           ? error.reason
           : null;
-        const terminal = error instanceof OfficialDocsReplayExecutionError
+        const terminal = safeGeneration ?? (error instanceof OfficialDocsReplayExecutionError
           ? error.completion
           : {
           status: boundaryReason ? 'blocked' as const : 'error' as const,
@@ -615,12 +720,21 @@ export async function runShadowEvaluatorJob(
           blockedCapabilities: boundaryReason ? [boundaryReason] : [],
           inputTokens: 0,
           outputTokens: 0,
-          };
+          });
         let completed = false;
         try {
-          completed = await (
-            dependencies.completeGeneration ?? completeShadowReplayGeneration
-          )(authorization.trace, terminal);
+          const completeGeneration = dependencies.completeGeneration
+            ?? completeShadowReplayGeneration;
+          const judgment = safeGeneration?.status === 'succeeded'
+            && safeGeneration.outputHmac
+            ? createShadowReplayInternalErrorEvidence(
+              authorization.trace,
+              safeGeneration.outputHmac,
+            )
+            : null;
+          completed = judgment
+            ? await completeGeneration(authorization.trace, terminal, { judgment })
+            : await completeGeneration(authorization.trace, terminal);
         } catch {
           // Keep the one-attempt row running. Stale recovery will close it;
           // never fall through to mutable capture completion after a claim.

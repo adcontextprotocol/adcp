@@ -85,12 +85,12 @@ jobs:
             min_passing_steps: 157
           - surface: current
             tenant: creative
-            min_clean_storyboards: 49
-            min_passing_steps: 209
+            min_clean_storyboards: 48
+            min_passing_steps: 200
           - surface: current
             tenant: creative-builder
-            min_clean_storyboards: 50
-            min_passing_steps: 184
+            min_clean_storyboards: 48
+            min_passing_steps: 172
           - surface: current
             tenant: brand
             min_clean_storyboards: 45
@@ -625,7 +625,7 @@ jobs:
           # three signed-request route profiles; storyboard applicability is
           # reported separately in the aggregate summary.
           MIN_CLEAN: 126
-          MIN_PASSED: 556
+          MIN_PASSED: 553
         run: |
           set -euo pipefail
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"

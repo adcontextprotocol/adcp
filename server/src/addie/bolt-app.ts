@@ -507,33 +507,148 @@ async function checkAddieThreadParticipation(
  *  Gives humans time to reply first. After the delay, re-checks the thread
  *  and skips if a human has already responded. */
 const THREAD_RESPONSE_DELAY_MS = 45_000; // 45 seconds
+const SUBSTANTIVE_HUMAN_REPLY_MIN_BYTES = 20;
+const MAX_SHADOW_HUMAN_EVIDENCE_BYTES = 1500;
+const MAX_SHADOW_HUMAN_EVIDENCE_ID_CHARS = 64;
+export const HUMAN_EVIDENCE_UNATTRIBUTABLE_REASON = 'human_evidence_unattributable' as const;
+
+interface DelayedHumanReplyMessage {
+  user?: string;
+  text?: string;
+  ts: string;
+  bot_id?: string;
+  subtype?: string;
+}
+
+export interface AttributableHumanReply {
+  slackMessageTs: string;
+  userId: string;
+  content: string;
+}
+
+export interface DelayedResponseDecision {
+  shouldRespond: boolean;
+  humanEvidence: AttributableHumanReply | null;
+  humanEvidenceUnavailableReason:
+    | 'human_evidence_invalid'
+    | 'human_evidence_not_substantive'
+    | 'human_evidence_too_large'
+    | null;
+}
+
+/** Select exactly the first substantive human turn after the signed question. */
+export function findEarliestSubstantiveHumanReplyAfter(
+  messages: DelayedHumanReplyMessage[],
+  questionTs: string,
+  botUserId: string,
+): AttributableHumanReply | null {
+  const reply = [...messages]
+    // Slack timestamps are fixed-width epoch.sequence values whose lexical
+    // order is chronological; avoid locale-dependent collation here.
+    .sort((left, right) => left.ts < right.ts ? -1 : left.ts > right.ts ? 1 : 0)
+    .find((message) => Boolean(
+      message.ts > questionTs
+      && message.user
+      && message.user !== botUserId
+      && !message.bot_id
+      && !message.subtype
+      && message.text
+      && Buffer.byteLength(message.text.trim(), 'utf8') >= SUBSTANTIVE_HUMAN_REPLY_MIN_BYTES
+    ));
+  if (!reply?.user || !reply.text) return null;
+  return {
+    slackMessageTs: reply.ts,
+    userId: reply.user,
+    content: reply.text,
+  };
+}
+
+export function selectDelayedResponseDecision(
+  messages: DelayedHumanReplyMessage[],
+  questionTs: string,
+  botUserId: string,
+): DelayedResponseDecision {
+  const hasNewerHumanReply = messages.some((message) => Boolean(
+    message.ts > questionTs
+    && message.user
+    && message.user !== botUserId
+    && !message.bot_id
+    && (!message.subtype || message.subtype === 'thread_broadcast')
+  ));
+  if (!hasNewerHumanReply) {
+    return {
+      shouldRespond: true,
+      humanEvidence: null,
+      humanEvidenceUnavailableReason: null,
+    };
+  }
+  const humanEvidence = findEarliestSubstantiveHumanReplyAfter(
+    messages,
+    questionTs,
+    botUserId,
+  );
+  if (!humanEvidence) {
+    return {
+      shouldRespond: false,
+      humanEvidence: null,
+      humanEvidenceUnavailableReason: 'human_evidence_not_substantive',
+    };
+  }
+  if (
+    humanEvidence.slackMessageTs.length > MAX_SHADOW_HUMAN_EVIDENCE_ID_CHARS
+    || /\s/.test(humanEvidence.slackMessageTs)
+    || humanEvidence.userId.length > MAX_SHADOW_HUMAN_EVIDENCE_ID_CHARS
+    || /\s/.test(humanEvidence.userId)
+  ) {
+    return {
+      shouldRespond: false,
+      humanEvidence: null,
+      humanEvidenceUnavailableReason: 'human_evidence_invalid',
+    };
+  }
+  if (Buffer.byteLength(humanEvidence.content.trim(), 'utf8') > MAX_SHADOW_HUMAN_EVIDENCE_BYTES) {
+    return {
+      shouldRespond: false,
+      humanEvidence: null,
+      humanEvidenceUnavailableReason: 'human_evidence_too_large',
+    };
+  }
+  return {
+    shouldRespond: false,
+    humanEvidence,
+    humanEvidenceUnavailableReason: null,
+  };
+}
 
 /**
  * Wait before responding in a thread, then re-check if a human has already replied.
- * Returns true if Addie should still respond, false if a human got there first.
+ * Returns the exact earliest attributable human reply when a human got there
+ * first. Oversized evidence is rejected, never truncated or replaced by a
+ * later reply.
  */
 async function shouldRespondAfterDelay(
   channelId: string,
   threadTs: string,
   triggerMessageTs: string,
   botUserId: string,
-): Promise<boolean> {
+): Promise<DelayedResponseDecision> {
   await new Promise(resolve => setTimeout(resolve, THREAD_RESPONSE_DELAY_MS));
 
   try {
     const freshMessages = await getThreadReplies(channelId, threadTs);
-    // Check if any human message arrived AFTER the triggering message.
-    // Slack timestamps are "epoch.sequence" strings — string comparison is chronologically correct.
-    const hasNewerHumanReply = freshMessages.some(
-      msg => msg.user
-        && msg.user !== botUserId
-        && msg.ts > triggerMessageTs
+    return selectDelayedResponseDecision(
+      freshMessages,
+      triggerMessageTs,
+      botUserId,
     );
-    return !hasNewerHumanReply;
   } catch (error) {
     logger.warn({ error, channelId, threadTs }, 'Addie Bolt: Failed to re-check thread after delay');
     // On error, respond anyway to avoid silently dropping messages
-    return true;
+    return {
+      shouldRespond: true,
+      humanEvidence: null,
+      humanEvidenceUnavailableReason: null,
+    };
   }
 }
 
@@ -3445,6 +3560,12 @@ async function queueSuppressedShadowEvaluation(input: {
   channelContext?: ThreadContext;
   plan: ChannelRespondPlan;
   siRetrievalResult: SIRetrievalResult | null;
+  humanEvidence?: AttributableHumanReply;
+  humanEvidenceUnavailableReason?:
+    | typeof HUMAN_EVIDENCE_UNATTRIBUTABLE_REASON
+    | 'human_evidence_invalid'
+    | 'human_evidence_not_substantive'
+    | 'human_evidence_too_large';
 }): Promise<void> {
   const threadService = getThreadService();
   if (!isOfficialDocsProfile(input.plan)) {
@@ -3470,6 +3591,10 @@ async function queueSuppressedShadowEvaluation(input: {
   };
   if (process.env.SHADOW_EVAL_TRACE_CAPTURE_ENABLED !== 'true') {
     await failAttempt('trace_capture_disabled');
+    return;
+  }
+  if (input.humanEvidenceUnavailableReason) {
+    await failAttempt(input.humanEvidenceUnavailableReason);
     return;
   }
   if (!input.sourceQuestionMessageId || input.sourceConfigVersionId == null) {
@@ -3535,6 +3660,7 @@ async function queueSuppressedShadowEvaluation(input: {
       docsCorpusFingerprint,
       providerWebSearchEnabled: claudeClient.isWebSearchEnabled()
         && traceProcessOptions.disableServerTools !== true,
+      humanEvidence: input.humanEvidence,
     });
   } catch {
     logger.warn(
@@ -4481,10 +4607,10 @@ async function handleChannelMessage({
       // Skip delay if user explicitly named Addie (they want her input).
       const explicitlyNamedAddie = /\baddie\b/i.test(messageText);
       if (!explicitlyNamedAddie && multiParty) {
-        const shouldRespond = await shouldRespondAfterDelay(
+        const delayed = await shouldRespondAfterDelay(
           channelId, threadTsForCheck, event.ts, context.botUserId
         );
-        if (!shouldRespond) {
+        if (!delayed.shouldRespond) {
           logger.info(
             { channelId, userId, threadTs: threadTsForCheck },
             'Addie Bolt: Skipping active thread reply — human replied during delay'
@@ -4683,9 +4809,9 @@ async function handleChannelMessage({
             { channelId, userId, threadTs, humanReplies: humanRepliesBeforeTrigger.length, confidence },
             'Addie Bolt: Skipping channel thread — humans already answering'
           );
-          // Flag high-confidence suppressions and queue shadow evaluation —
-          // Addie had a good answer but stayed silent. The shadow evaluator will
-          // generate what she would have said and compare with the human's answer.
+          // Flag high-confidence suppressions. Because the human reply predates
+          // this signed question, record an unattributable capture attempt and
+          // never reuse that reply as judgment evidence.
           if (confidence === 'high') {
             try {
               await threadService.flagThread(
@@ -4705,6 +4831,7 @@ async function handleChannelMessage({
                 memberContext,
                 channelContext,
                 siRetrievalResult,
+                humanEvidenceUnavailableReason: HUMAN_EVIDENCE_UNATTRIBUTABLE_REASON,
               });
             } catch {
               await threadService.patchThreadContext(
@@ -4724,10 +4851,10 @@ async function handleChannelMessage({
       }
 
       // Also delay and re-check for new human replies after the trigger
-      const shouldRespond = await shouldRespondAfterDelay(
+      const delayed = await shouldRespondAfterDelay(
         channelId, threadTs, event.ts, context.botUserId
       );
-      if (!shouldRespond) {
+      if (!delayed.shouldRespond) {
         const confidence = plan.action === 'respond' ? plan.confidence : undefined;
         logger.info(
           { channelId, userId, threadTs, confidence },
@@ -4752,6 +4879,9 @@ async function handleChannelMessage({
               memberContext,
               channelContext,
               siRetrievalResult,
+              humanEvidence: delayed.humanEvidence ?? undefined,
+              humanEvidenceUnavailableReason:
+                delayed.humanEvidenceUnavailableReason ?? undefined,
             });
           } catch {
             await threadService.patchThreadContext(

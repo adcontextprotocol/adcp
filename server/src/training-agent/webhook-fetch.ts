@@ -223,7 +223,7 @@ export async function validateWebhookUrl(
  *
  * The returned function uses userland `undici.fetch` so its dispatcher and
  * request-handler contract stay aligned with the imported undici version. */
-export function createWebhookFetch(options: { allowPrivateIp: boolean }): typeof fetch {
+export function createWebhookFetch(options: { allowPrivateIp: boolean; dnsLookup?: DnsLookup }): typeof fetch {
   if (options.allowPrivateIp && !isWebhookTestOrDevelopment(process.env.NODE_ENV)) {
     throw new Error('Private webhook targets can only be enabled in test or development');
   }
@@ -241,7 +241,7 @@ export function createWebhookFetch(options: { allowPrivateIp: boolean }): typeof
       // Step 2: pre-flight hostname + DNS check. Catches literal private
       // IPs and numeric-encoded bypasses (`http://2852039166/`) before
       // we even open a socket.
-      await assertPublicTarget(url);
+      await assertPublicTarget(url, { dnsLookup: options.dnsLookup });
     }
     // Step 4 (no redirect-follow) and step 3 (connect-time IP recheck via
     // the dispatcher) both apply on the fetch call itself. Manual redirect
