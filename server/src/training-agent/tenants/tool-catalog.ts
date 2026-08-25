@@ -137,7 +137,6 @@ export function toolsForTenant(
     .map(([tool]) => tool)
     .filter(tool => {
       const negotiatedVersion = options.storyboardCompat?.version ?? options.adcpVersion;
-      const isPre32 = negotiatedVersion?.startsWith('3.0') || negotiatedVersion?.startsWith('3.1');
       if (
         tool === 'list_account_changes'
         && !supportsAccountChangeFeed(negotiatedVersion ?? '3.2-beta.5')

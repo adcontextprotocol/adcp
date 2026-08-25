@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { TOOL_REQUEST_SCHEMAS } from '@adcp/sdk/schemas';
 import { customToolFor } from './custom-tool-helper.js';
 import { handleListAccountChanges, handleListAccounts, handleSyncGovernance } from '../account-handlers.js';
-import type { TrainingContext } from '../types.js';
+import { resolveServedAdcpVersion } from '../task-handlers.js';
+import { supportsAccountChangeFeed, type TrainingContext, type ToolArgs } from '../types.js';
 
 const SYNC_GOVERNANCE_SCHEMA = TOOL_REQUEST_SCHEMAS.sync_governance.shape;
 
@@ -45,7 +46,42 @@ export function listAccountChangesTool(storyboardCompat?: TrainingContext['story
       context: z.unknown().optional(),
       ext: z.unknown().optional(),
     },
-    handleListAccountChanges,
+    (args: ToolArgs, ctx: TrainingContext) => {
+      const version = resolveServedAdcpVersion(args as unknown as Record<string, unknown>);
+      if (!version.ok) {
+        const error = {
+          code: 'VERSION_UNSUPPORTED',
+          message: version.message,
+          field: version.field,
+          details: version.details,
+          recovery: 'correctable',
+        };
+        return {
+          status: 'failed',
+          adcp_error: error,
+          errors: [error],
+        };
+      }
+      if (!supportsAccountChangeFeed(version.servedVersion)) {
+        const error = {
+          code: 'UNSUPPORTED_FEATURE',
+          message: 'list_account_changes requires AdCP 3.2 or later',
+          field: 'adcp_version',
+          details: { served_adcp_version: version.servedVersion },
+          recovery: 'correctable',
+        };
+        return {
+          status: 'failed',
+          adcp_version: version.servedVersion,
+          adcp_error: error,
+          errors: [error],
+        };
+      }
+      return {
+        ...handleListAccountChanges(args, { ...ctx, servedAdcpVersion: version.servedVersion }) as Record<string, unknown>,
+        adcp_version: version.servedVersion,
+      };
+    },
     {
       annotations: { readOnlyHint: true, idempotentHint: true },
       payloadErrorsAsSuccess: true,

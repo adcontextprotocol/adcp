@@ -266,6 +266,8 @@ describe('training account change feed', () => {
 
   it('rotates the authorization epoch and completes snapshot rebootstrap', async () => {
     const beforeScopeChange = call({ account, starting_position: 'latest' });
+    const otherPrincipal = { mode: 'open', principal: 'test:other-account-change-buyer' } as const;
+    const otherCheckpoint = call({ account, starting_position: 'latest' }, otherPrincipal);
     const rotated = await handleComplyTestController({
       account: { ...account, sandbox: true },
       scenario: 'expire_account_change_cursor',
@@ -286,6 +288,12 @@ describe('training account change feed', () => {
         reason: 'authorization_scope_changed',
         restart_with: { starting_position: 'latest' },
       },
+    });
+
+    expect(call({ account, cursor: otherCheckpoint.cursor }, otherPrincipal)).toMatchObject({
+      status: 'completed',
+      changes: [],
+      has_more: false,
     });
 
     const replacement = call({ account, starting_position: 'latest' });

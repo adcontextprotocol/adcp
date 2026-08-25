@@ -78,22 +78,43 @@ describe('v6 /sales/mcp account change cursor recovery', () => {
   it('returns CURSOR_EXPIRED over MCP and resumes after snapshot rebootstrap', async () => {
     const bearer = 'account-change-transport-token';
     const account = { account_id: 'acc_luma_shared' };
-    const first = (await callTool(server.baseUrl, bearer, 1, 'list_account_changes', {
-      adcp_version: '3.2',
+    const unavailable = (await callTool(server.baseUrl, bearer, 1, 'list_account_changes', {
+      adcp_version: '3.1-rc.15',
+      account,
+      starting_position: 'latest',
+    })).result?.structuredContent;
+    expect(unavailable).toMatchObject({
+      status: 'failed',
+      adcp_version: '3.1-rc.15',
+      errors: [{ code: 'UNSUPPORTED_FEATURE', field: 'adcp_version' }],
+    });
+
+    const first = (await callTool(server.baseUrl, bearer, 2, 'list_account_changes', {
+      adcp_version: '3.2-beta.6',
       account,
       starting_position: 'latest',
     })).result?.structuredContent;
     expect(first).toMatchObject({ status: 'completed', changes: [], has_more: false });
     expect(first?.cursor).toEqual(expect.stringMatching(/^accchg_/));
 
-    // Exercise the real custom-tool adapter and response envelope. The
-    // handler-level suite separately proves authorization-epoch rotation;
-    // this probe ensures an unavailable retained checkpoint survives MCP
-    // transport as a canonical payload error and can be recovered from.
-    const expired = (await callTool(server.baseUrl, bearer, 2, 'list_account_changes', {
-      adcp_version: '3.2',
+    const rotation = (await callTool(server.baseUrl, bearer, 3, 'comply_test_controller', {
+      adcp_version: '3.2-beta.6',
+      account: { ...account, sandbox: true },
+      scenario: 'expire_account_change_cursor',
+    })).result?.structuredContent;
+    expect(rotation).toMatchObject({
+      status: 'completed',
+      success: true,
+      current_state: 'authorization_scope_changed',
+      account_id: account.account_id,
+    });
+
+    // Exercise the real controller bridge, custom-tool adapter, and response
+    // envelope so the conformance storyboard's exact expiry flow cannot drift.
+    const expired = (await callTool(server.baseUrl, bearer, 4, 'list_account_changes', {
+      adcp_version: '3.2-beta.6',
       account,
-      cursor: 'accchg_expired_checkpoint',
+      cursor: first?.cursor,
     })).result?.structuredContent;
     expect(expired).toMatchObject({
       status: 'failed',
@@ -106,22 +127,22 @@ describe('v6 /sales/mcp account change cursor recovery', () => {
       }],
     });
 
-    const replacement = (await callTool(server.baseUrl, bearer, 3, 'list_account_changes', {
-      adcp_version: '3.2',
+    const replacement = (await callTool(server.baseUrl, bearer, 5, 'list_account_changes', {
+      adcp_version: '3.2-beta.6',
       account,
       starting_position: 'latest',
     })).result?.structuredContent;
     expect(replacement?.cursor).toEqual(expect.stringMatching(/^accchg_/));
 
-    const snapshot = (await callTool(server.baseUrl, bearer, 4, 'list_creatives', {
-      adcp_version: '3.2',
+    const snapshot = (await callTool(server.baseUrl, bearer, 6, 'list_creatives', {
+      adcp_version: '3.2-beta.6',
       account,
       filters: {},
     })).result?.structuredContent;
     expect(snapshot?.creatives).toEqual(expect.any(Array));
 
-    const resumed = (await callTool(server.baseUrl, bearer, 5, 'list_account_changes', {
-      adcp_version: '3.2',
+    const resumed = (await callTool(server.baseUrl, bearer, 7, 'list_account_changes', {
+      adcp_version: '3.2-beta.6',
       account,
       cursor: replacement?.cursor,
     })).result?.structuredContent;

@@ -35,7 +35,7 @@ import type {
   ComplyBudgetSimulation,
   SeededProductAvailability,
 } from './types.js';
-import { supportsGetProductsRejected } from './types.js';
+import { supportsAccountChangeFeed, supportsGetProductsRejected } from './types.js';
 import {
   findSessionsMatching,
   findSessionMatching,
@@ -1524,9 +1524,12 @@ async function handleCompactLifecycleProbe(
 }
 
 function localScenariosFor(ctx: TrainingContext): string[] {
-  return ctx.storyboardCompat?.version === '3.0'
+  const scenarios = ctx.storyboardCompat?.version === '3.0'
     ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations')
     : [...LOCAL_SCENARIOS];
+  return supportsAccountChangeFeed(ctx.servedAdcpVersion ?? '3.2-beta.6')
+    ? scenarios
+    : scenarios.filter(s => s !== 'expire_account_change_cursor');
 }
 
 /**
@@ -1844,6 +1847,13 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     return handleForceTaskCompletion(sessionKey, rawArgs);
   }
   if (scenario === 'expire_account_change_cursor') {
+    if (!supportsAccountChangeFeed(ctx.servedAdcpVersion ?? '3.2-beta.6')) {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: 'expire_account_change_cursor requires AdCP 3.2 or later',
+      };
+    }
     if (!args.account) {
       return {
         success: false,

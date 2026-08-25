@@ -110,7 +110,7 @@ interface StoredAccountChange {
 interface AccountChangeCursor {
   principal: string;
   accountScopeId: string;
-  authorizationEpoch: string;
+  visibilityEpoch: string;
   accountId: string;
   resourceTypes: string[];
   sequence: number;
@@ -166,7 +166,7 @@ const accountStore = new Map<string, Map<string, AccountState>>();
 const accountChangeStore = new Map<string, StoredAccountChange[]>();
 const accountChangeNextSequence = new Map<string, number>();
 const accountChangeAvailableFrom = new Map<string, number>();
-const accountChangeAuthorizationEpochs = new Map<string, number>();
+const accountChangeVisibilityEpochs = new Map<string, number>();
 const ACCOUNT_CHANGE_CURSOR_SECRET = randomUUID();
 const ACCOUNT_CHANGE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -419,7 +419,7 @@ export function clearAccountStore(): void {
   accountChangeStore.clear();
   accountChangeNextSequence.clear();
   accountChangeAvailableFrom.clear();
-  accountChangeAuthorizationEpochs.clear();
+  accountChangeVisibilityEpochs.clear();
   clearSharedAccountResources();
 }
 
@@ -1817,11 +1817,16 @@ function sameStringArray(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function accountChangeAuthorizationEpoch(accountScopeId: string): string {
+function accountChangeVisibilityEpochKey(principal: string | undefined, accountScopeId: string): string {
+  return `${principalScope(principal)}\u001F${accountScopeId}`;
+}
+
+function accountChangeVisibilityEpoch(principal: string | undefined, accountScopeId: string): string {
   // This reference seller grants immutable full-account visibility for the
   // lifetime of one internal access scope. Sellers with mutable partial
   // visibility must rotate this value whenever that visible set changes.
-  return `full-account:${accountScopeId}:${accountChangeAuthorizationEpochs.get(accountScopeId) ?? 0}`;
+  const epochKey = accountChangeVisibilityEpochKey(principal, accountScopeId);
+  return `full-account:${accountScopeId}:${accountChangeVisibilityEpochs.get(epochKey) ?? 0}`;
 }
 
 /** Sandbox conformance hook: rotate the caller's authorization-scope epoch so
@@ -1832,14 +1837,15 @@ function accountChangeAuthorizationEpoch(accountScopeId: string): string {
 export function expireAccountChangeCursors(
   principal: string | undefined,
   accountRef: AccountRef,
-): { accountId: string; authorizationEpoch: string } | undefined {
+): { accountId: string; visibilityEpoch: string } | undefined {
   const access = resolveAccountForChangeFeed(accountRef, principal);
   if (!access) return undefined;
-  const next = (accountChangeAuthorizationEpochs.get(access.scopeId) ?? 0) + 1;
-  accountChangeAuthorizationEpochs.set(access.scopeId, next);
+  const epochKey = accountChangeVisibilityEpochKey(principal, access.scopeId);
+  const next = (accountChangeVisibilityEpochs.get(epochKey) ?? 0) + 1;
+  accountChangeVisibilityEpochs.set(epochKey, next);
   return {
     accountId: access.account.account_id,
-    authorizationEpoch: accountChangeAuthorizationEpoch(access.scopeId),
+    visibilityEpoch: accountChangeVisibilityEpoch(principal, access.scopeId),
   };
 }
 
@@ -1866,7 +1872,7 @@ function readAccountChangeCursor(token: string): AccountChangeCursor | undefined
     if (
       typeof value.principal !== 'string'
       || typeof value.accountScopeId !== 'string'
-      || typeof value.authorizationEpoch !== 'string'
+      || typeof value.visibilityEpoch !== 'string'
       || typeof value.accountId !== 'string'
       || !Array.isArray(value.resourceTypes)
       || !value.resourceTypes.every(item => typeof item === 'string')
@@ -1908,7 +1914,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
   ensureExistingAccountChangeSeed(accountScopeId, ctx.principal, account);
 
   const resourceTypes = normalizeResourceTypes(req.resource_types);
-  const authorizationEpoch = accountChangeAuthorizationEpoch(accountScopeId);
+  const visibilityEpoch = accountChangeVisibilityEpoch(ctx.principal, accountScopeId);
   const changes = accountChanges(accountScopeId);
   const nowMs = Date.now();
   pruneExpiredAccountChanges(accountScopeId, nowMs);
@@ -1944,7 +1950,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
           recovery: 'correctable',
       });
     }
-    if (cursor.authorizationEpoch !== authorizationEpoch) {
+    if (cursor.visibilityEpoch !== visibilityEpoch) {
       return accountChangeFailure({
         code: 'CURSOR_EXPIRED',
         message: 'The authorization scope for this account changed; rebuild authoritative snapshots from a new latest checkpoint',
@@ -1999,7 +2005,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
   const cursor = issueAccountChangeCursor({
     principal: principalScope(ctx.principal),
     accountScopeId,
-    authorizationEpoch,
+    visibilityEpoch,
     accountId: account.account_id,
     resourceTypes,
     sequence: scannedSequence,

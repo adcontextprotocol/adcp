@@ -202,7 +202,6 @@ describe('comply_test_controller', () => {
         'seed_media_buy',
         // Local scenarios — see LOCAL_SCENARIOS in
         // server/src/training-agent/comply-test-controller.ts.
-        'expire_account_change_cursor',
         'force_create_media_buy_arm',
         'force_get_products_arm',
         'force_get_signals_arm',
@@ -221,7 +220,7 @@ describe('comply_test_controller', () => {
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(28);
+      expect(scenarios.length).toBe(27);
       // Dedup invariant — see the list_scenarios response merge in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
@@ -236,6 +235,7 @@ describe('comply_test_controller', () => {
       });
       expect(result.success).toBe(true);
       expect(result.scenarios).toContain('force_get_products_arm');
+      expect(result.scenarios).toContain('expire_account_change_cursor');
     });
   });
 
