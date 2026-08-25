@@ -5,10 +5,12 @@ import { createLogger } from '../logger.js';
 const logger = createLogger('workos-client');
 const OWNERLESS_PROMOTION_WORKOS_TIMEOUT_MS = 10_000;
 const PIPES_WORKOS_TIMEOUT_MS = 10_000;
+const AUTHORIZATION_OBSERVER_WORKOS_TIMEOUT_MS = 3_000;
 
 let _workos: WorkOS | null = null;
 let _ownerlessPromotionWorkos: WorkOS | null = null;
 let _pipesWorkos: WorkOS | null = null;
+let _authorizationObserverWorkos: WorkOS | null = null;
 let _clientId = '';
 
 /** Returns the shared WorkOS client. Constructed on first call; WORKOS_API_KEY and WORKOS_CLIENT_ID must be set by then. */
@@ -53,6 +55,25 @@ export function getPipesWorkos(): WorkOS {
     });
   }
   return _pipesWorkos;
+}
+
+/**
+ * Returns a fail-fast WorkOS client used only by post-response authorization
+ * observation. It must not accumulate retries or long-lived requests when
+ * WorkOS is slow because observer work is deliberately fire-and-forget.
+ */
+export function getAuthorizationObserverWorkos(): WorkOS {
+  if (!_authorizationObserverWorkos) {
+    if (!process.env.WORKOS_API_KEY) throw new Error('WORKOS_API_KEY environment variable is required');
+    if (!process.env.WORKOS_CLIENT_ID) throw new Error('WORKOS_CLIENT_ID environment variable is required');
+    _clientId = process.env.WORKOS_CLIENT_ID;
+    _authorizationObserverWorkos = new WorkOS(process.env.WORKOS_API_KEY, {
+      clientId: _clientId,
+      timeout: AUTHORIZATION_OBSERVER_WORKOS_TIMEOUT_MS,
+      maxRetries: 0,
+    });
+  }
+  return _authorizationObserverWorkos;
 }
 
 /**
