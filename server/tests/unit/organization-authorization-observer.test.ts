@@ -19,6 +19,7 @@ vi.mock('../../src/logger.js', () => ({
 }));
 
 import {
+  authorizationRouteFamily,
   classifyAuthorizationObservation,
   observeLinkedCredentialOrganizationAuthorization,
   organizationSelectorFromRequest,
@@ -57,6 +58,13 @@ describe('organization authorization rollout observer', () => {
     )).toBe('both_allow_role_mismatch');
   });
 
+  it('reduces routes to a fixed non-identifying family', () => {
+    expect(authorizationRouteFamily('PATCH /api/organizations/org_secret')).toBe('organizations');
+    expect(authorizationRouteFamily('GET /api/org_secret/private')).toBe('other');
+    expect(authorizationRouteFamily('GET /api/toString/private')).toBe('other');
+    expect(authorizationRouteFamily('GET /api/__proto__/private')).toBe('other');
+  });
+
   it('compares the canonical and authenticated credentials without exposing IDs', async () => {
     listOrganizationMemberships
       .mockResolvedValueOnce({
@@ -93,6 +101,7 @@ describe('organization authorization rollout observer', () => {
     expect(loggerInfo).toHaveBeenCalledWith(
       expect.objectContaining({
         decision: 'legacy_allow_exact_deny',
+        route_family: 'other',
         selector_source: 'query_org',
         legacy_allowed: true,
         exact_allowed: false,
@@ -125,6 +134,13 @@ describe('organization authorization rollout observer', () => {
         selector_source: 'none',
         explicit_organization: false,
       }),
+    );
+    expect(loggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        decision: 'no_explicit_organization',
+        route_family: 'other',
+      }),
+      'org authorization shadow observation',
     );
   });
 
