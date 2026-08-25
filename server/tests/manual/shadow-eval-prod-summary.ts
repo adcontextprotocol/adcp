@@ -304,28 +304,6 @@ async function main() {
     console.log(`  ${s.padEnd(16)} ${n}`);
   }
 
-  // Dump the raw shadow_eval_* context fields for any non-unset thread so
-  // we can see what the actual shape of the data is — useful when the
-  // count is low and we want to confirm the new code path actually wrote
-  // the shape field.
-  const withStatus = detailed.filter((t) => t.context?.shadow_eval_status);
-  if (withStatus.length > 0 && withStatus.length <= 10) {
-    console.log('\nRaw shadow_eval_* fields on completed/pending threads:');
-    for (const t of withStatus) {
-      const ctx = t.context!;
-      const shadowEvalKeys = Object.keys(ctx).filter((k) => k.startsWith('shadow_eval_'));
-      console.log(`  thread ${t.thread_id.slice(0, 8)}…`);
-      for (const k of shadowEvalKeys) {
-        const v = (ctx as Record<string, unknown>)[k];
-        const display =
-          typeof v === 'string' && v.length > 80
-            ? v.slice(0, 80) + '…'
-            : JSON.stringify(v);
-        console.log(`    ${k.padEnd(32)} ${display}`);
-      }
-    }
-  }
-
   const agg = aggregate(detailed);
   console.log('');
   console.log(`Shadow-eval attempts (complete + error + skipped): ${agg.total}`);

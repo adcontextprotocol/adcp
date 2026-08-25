@@ -74,20 +74,28 @@ async function findUnresolvedGaps(limit: number): Promise<GapThread[]> {
        AND (context->'shadow_eval_result'->>'evaluation_valid')::boolean = TRUE
        AND (context->'shadow_eval_provenance'->>'self_judged')::boolean = FALSE
        AND context->'shadow_eval_provenance'->'source_answer'->>'model' IS NOT NULL
+       AND context->'shadow_eval_provenance'->'source_answer'->>'config_version_id' IS NOT NULL
+       AND context->'shadow_eval_provenance'->'source_opportunity'->>'config_version_id' IS NOT NULL
+       AND context->'shadow_eval_provenance'->'source_answer'->>'config_version_id'
+         = context->'shadow_eval_provenance'->'source_opportunity'->>'config_version_id'
        AND context->'shadow_eval_provenance'->'tools'->>'trace_or_fixture_id' IS NOT NULL
-       AND (
-         context->'shadow_eval_provenance'->'tools'->>'mode'
-           IN ('production_trace', 'replay_fixture')
-         OR (
-           context->'shadow_eval_provenance'->'tools'->>'mode' = 'read_only_replay'
-           AND context->'shadow_eval_provenance'->'tools'->>'policy_version' = $2
-           AND (context->'shadow_eval_provenance'->'tools'->>'complete_fidelity')::boolean = TRUE
-           AND jsonb_array_length(COALESCE(
-             context->'shadow_eval_provenance'->'tools'->'blocked_capabilities',
-             '[]'::jsonb
-           )) = 0
-         )
-       )
+       AND context->'shadow_eval_provenance'->'tools'->>'mode' = 'read_only_replay'
+       AND context->'shadow_eval_provenance'->'tools'->>'policy_version' = $2
+       AND context->'shadow_eval_provenance'->'tools'->>'hash_key_version' IS NOT NULL
+       AND (context->'shadow_eval_provenance'->'tools'->>'trace_verified')::boolean = TRUE
+       AND (context->'shadow_eval_provenance'->'tools'->>'complete_fidelity')::boolean = TRUE
+       AND jsonb_array_length(COALESCE(
+         context->'shadow_eval_provenance'->'tools'->'system_block_hashes',
+         '[]'::jsonb
+       )) > 0
+       AND jsonb_array_length(COALESCE(
+         context->'shadow_eval_provenance'->'tools'->'schemas',
+         '[]'::jsonb
+       )) > 0
+       AND jsonb_array_length(COALESCE(
+         context->'shadow_eval_provenance'->'tools'->'blocked_capabilities',
+         '[]'::jsonb
+       )) = 0
        AND context->'shadow_eval_result'->>'gap_severity' IN ('significant', 'critical')
        AND context->>'shadow_eval_type' IN ('corrected_answer', 'historical_corrected_answer')
        AND (context->>'shadow_eval_gap_issue_created') IS NULL
@@ -221,11 +229,6 @@ export function buildPublicGapIssuePayload(input: {
   const severity = ['significant', 'critical'].includes(input.severity)
     ? input.severity
     : 'significant';
-  const threadId = (
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-  ).test(input.threadId)
-    ? input.threadId
-    : null;
   const title = `docs: review Addie knowledge-gap candidate (${severity})`;
   const body = `## Candidate Knowledge Gap
 
@@ -236,11 +239,7 @@ An attributable, independently judged production-answer evaluation identified a 
 
 ### Review
 
-Authorized maintainers should inspect the source conversation in the Addie admin, verify the claim against current documentation/schemas, and write any public documentation from verified sources rather than copying conversation text.
-
-${threadId
-    ? `[Open internal Addie thread](https://agenticadvertising.org/admin/addie?thread=${threadId})`
-    : 'Internal thread link unavailable; locate the candidate in the Addie admin queue.'}
+Authorized maintainers should locate the candidate in the restricted Addie admin queue, verify the claim against current documentation/schemas, and write any public documentation from verified sources rather than copying conversation text.
 
 ---
 *Auto-generated candidate from Addie's shadow evaluation system. No transcript content is included.*`;

@@ -15,7 +15,10 @@ import {
   KNOWLEDGE_TOOLS,
   createKnowledgeToolHandlers,
 } from '../mcp/knowledge-search.js';
-import type { ShadowReplayEvidence } from './shadow-eval-metadata.js';
+import {
+  SHADOW_REPLAY_POLICY_VERSION,
+  type ShadowReplayEvidence,
+} from './shadow-eval-metadata.js';
 
 type ReplayDisposition = ShadowReplayEvidence['executions'][number]['disposition'];
 
@@ -227,6 +230,7 @@ export async function executeShadowReplay(
       executionMode: 'replay',
       disableServerTools: true,
       invocationHashKey: key ?? undefined,
+      invocationHashDomain: `addie-shadow-replay-evidence:${SHADOW_REPLAY_POLICY_VERSION}`,
       uncapped: true,
       modelOverride: model,
       onInvocationPrepared: (snapshot) => {

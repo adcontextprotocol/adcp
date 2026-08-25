@@ -86,6 +86,17 @@ function requestTools(
   return { tools: definitions, handlers: new Map(handlers) };
 }
 
+function invocationHmac(key: string, domain: string, value: string): string {
+  return createHmac('sha256', key)
+    .update('addie-invocation\0', 'utf8')
+    .update(String(Buffer.byteLength(domain, 'utf8')), 'utf8')
+    .update('\0', 'utf8')
+    .update(domain, 'utf8')
+    .update('\0', 'utf8')
+    .update(value, 'utf8')
+    .digest('hex');
+}
+
 beforeEach(() => {
   sdkState.nonStreamingResponses.length = 0;
   sdkState.streamingResponses.length = 0;
@@ -309,6 +320,7 @@ describe('AddieClaudeClient replay execution policy', () => {
         requestContext: 'context secret',
         disableServerTools: true,
         invocationHashKey: 'test-invocation-key',
+        invocationHashDomain: 'shadow-replay:v1',
         onInvocationPrepared: (snapshot) => snapshots.push(snapshot),
       },
     );
@@ -321,10 +333,142 @@ describe('AddieClaudeClient replay execution policy', () => {
     expect(JSON.stringify(snapshots[0])).not.toMatch(/transcript secret|system secret|context secret/);
 
     const captured = sdkState.calls[0];
-    const expectedFirstToolHash = createHmac('sha256', 'test-invocation-key')
-      .update(JSON.stringify((captured.tools as Array<Record<string, unknown>>)[0]), 'utf8')
-      .digest('hex');
+    const expectedFirstToolHash = invocationHmac(
+      'test-invocation-key',
+      'shadow-replay:v1',
+      JSON.stringify((captured.tools as Array<Record<string, unknown>>)[0]),
+    );
     expect(snapshots[0].tool_schemas[0].sha256).toBe(expectedFirstToolHash);
+  });
+
+  it('prepares the exact first non-streaming snapshot without calling the SDK', async () => {
+    const client = new AddieClaudeClient('unused', 'test-model');
+    client.registerTool(tool('first_tool', 'pure_local'), vi.fn().mockResolvedValue('first'));
+    const scopedTools = requestTools(
+      [tool('second_tool', 'pure_local')],
+      [['second_tool', vi.fn().mockResolvedValue('second')]],
+    );
+    const dryRunCallback = vi.fn();
+    const options = {
+      executionMode: 'replay' as const,
+      disableServerTools: true,
+      requestContext: 'request context',
+      invocationHashKey: 'preparation-key',
+      invocationHashDomain: 'shadow-replay:v1',
+      onInvocationPrepared: dryRunCallback,
+    };
+    const history = [
+      { user: 'user', text: 'earlier question' },
+      { user: 'assistant', text: 'earlier answer' },
+    ];
+
+    const prepared = client.prepareMessageInvocation(
+      'current question',
+      history,
+      scopedTools,
+      { systemPrompt: 'fixed system prompt' },
+      options,
+    );
+
+    expect(sdkState.calls).toHaveLength(0);
+    expect(dryRunCallback).not.toHaveBeenCalled();
+    expect(prepared).toMatchObject({
+      execution_mode: 'replay',
+      model: 'test-model',
+      iteration: 1,
+      attempt: 1,
+      message_count: 1,
+    });
+
+    sdkState.nonStreamingResponses.push(textResponse());
+    const actual: InvocationPreparedSnapshot[] = [];
+    await client.processMessage(
+      'current question',
+      history,
+      scopedTools,
+      { systemPrompt: 'fixed system prompt' },
+      { ...options, onInvocationPrepared: (snapshot) => actual.push(snapshot) },
+    );
+
+    expect(actual).toEqual([prepared]);
+    expect(sdkState.calls).toHaveLength(1);
+  });
+
+  it('captures provider web-search state with request-local parity', async () => {
+    const client = new AddieClaudeClient('unused');
+    const hashOptions = {
+      uncapped: true as const,
+      invocationHashKey: 'provider-state-key',
+      invocationHashDomain: 'trace-capture:v1',
+    };
+
+    const enabled = client.prepareMessageInvocation(
+      'web enabled', undefined, undefined, { systemPrompt: 'system' }, hashOptions,
+    );
+    const disabled = client.prepareMessageInvocation(
+      'web disabled', undefined, undefined, { systemPrompt: 'system' },
+      { ...hashOptions, disableServerTools: true },
+    );
+
+    expect(sdkState.calls).toHaveLength(0);
+    expect(enabled.tool_schemas.map((entry) => entry.name)).toContain('web_search');
+    expect(disabled.tool_schemas.map((entry) => entry.name)).not.toContain('web_search');
+    expect(enabled.tool_schemas.find((entry) => entry.name === 'web_search')?.sha256)
+      .toMatch(/^[a-f0-9]{64}$/);
+    expect(client.isWebSearchEnabled()).toBe(true);
+
+    sdkState.nonStreamingResponses.push(textResponse('enabled'));
+    const actual: InvocationPreparedSnapshot[] = [];
+    await client.processMessage(
+      'web enabled', undefined, undefined, { systemPrompt: 'system' },
+      { ...hashOptions, onInvocationPrepared: (snapshot) => actual.push(snapshot) },
+    );
+    expect(actual).toEqual([enabled]);
+    expect((sdkState.calls[0].tools as Array<{ name?: string }>).some(({ name }) => name === 'web_search'))
+      .toBe(true);
+  });
+
+  it('fails closed for partial HMAC configuration and separates caller domains from mode', () => {
+    const client = new AddieClaudeClient('unused');
+    client.registerTool(tool('read_docs', 'pure_local'), vi.fn().mockResolvedValue('docs'));
+    const prepare = (options: Parameters<AddieClaudeClient['prepareMessageInvocation']>[4]) =>
+      client.prepareMessageInvocation(
+        'private transcript',
+        undefined,
+        undefined,
+        { systemPrompt: 'private system prompt' },
+        { disableServerTools: true, ...options },
+      );
+
+    const missing = prepare({ executionMode: 'replay' });
+    const keyOnly = prepare({ executionMode: 'replay', invocationHashKey: 'key-a' });
+    const domainOnly = prepare({ executionMode: 'replay', invocationHashDomain: 'domain-a' });
+    for (const snapshot of [missing, keyOnly, domainOnly]) {
+      expect(snapshot.system_blocks.every(({ sha256 }) => sha256 === 'unavailable')).toBe(true);
+      expect(snapshot.tool_schemas.every(({ sha256 }) => sha256 === 'unavailable')).toBe(true);
+    }
+
+    const replayA = prepare({
+      executionMode: 'replay',
+      invocationHashKey: 'key-a',
+      invocationHashDomain: 'domain-a',
+    });
+    const replayB = prepare({
+      executionMode: 'replay',
+      invocationHashKey: 'key-a',
+      invocationHashDomain: 'domain-b',
+    });
+    const productionA = prepare({
+      executionMode: 'production',
+      invocationHashKey: 'key-a',
+      invocationHashDomain: 'domain-a',
+    });
+    expect(replayA.system_blocks[0].sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(replayA.system_blocks[0].sha256).not.toBe(replayB.system_blocks[0].sha256);
+    expect(replayA.system_blocks[0].sha256).toBe(productionA.system_blocks[0].sha256);
+    expect(prepare({ invocationHashKey: 'key-a' }).system_blocks[0].sha256).toBe('unavailable');
+    expect(prepare({}).system_blocks[0].sha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(sdkState.calls).toHaveLength(0);
   });
 
   it('preserves production custom schemas while intrinsically omitting provider tools', async () => {

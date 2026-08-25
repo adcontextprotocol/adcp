@@ -186,6 +186,7 @@ import { PORTRAIT_TOOLS, createPortraitToolHandlers } from './mcp/portrait-tools
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
 import { PROPERTY_TOOLS, createPropertyToolHandlers } from './mcp/property-tools.js';
 import { SCHEMA_TOOLS, createSchemaToolHandlers } from './mcp/schema-tools.js';
+import { getDocsCorpusFingerprint } from './mcp/docs-indexer.js';
 import { CERTIFICATION_TOOLS, createCertificationToolHandlers, buildCertificationContext } from './mcp/certification-tools.js';
 import * as certDb from '../db/certification-db.js';
 import { siRetriever, type SIRetrievalResult } from './services/si-retriever.js';
@@ -213,6 +214,11 @@ import {
   handleAnnouncementMarkLinkedIn,
   handleAnnouncementSkip,
 } from './jobs/announcement-handlers.js';
+import {
+  createShadowReplayCaptureIdentity,
+  queueShadowReplayTrace,
+  suppressedOpportunityFlagReason,
+} from './jobs/shadow-replay-trace.js';
 
 /**
  * Slack's built-in system bot user ID.
@@ -3240,33 +3246,6 @@ function buildRouterDecision(plan: ExecutionPlan): {
   return base;
 }
 
-export function buildShadowEvalQueueContext(input: {
-  plan: ChannelRespondPlan;
-  channelId: string;
-  threadTs: string;
-  questionTs: string;
-  question: string;
-  sourceQuestionMessageId: string | null;
-  sourceUserId: string;
-  sourceConfigVersionId: number | null;
-  siRetrievalResult?: SIRetrievalResult | null;
-}): Record<string, unknown> {
-  return {
-    shadow_eval_status: 'pending',
-    shadow_eval_requested_at: new Date().toISOString(),
-    shadow_eval_channel_id: input.channelId,
-    shadow_eval_thread_ts: input.threadTs,
-    shadow_eval_question_ts: input.questionTs,
-    shadow_eval_tool_sets: input.plan.tool_sets,
-    shadow_eval_question: input.question,
-    shadow_eval_source_question_message_id: input.sourceQuestionMessageId,
-    shadow_eval_source_user_id: input.sourceUserId,
-    shadow_eval_source_config_version_id: input.sourceConfigVersionId,
-    shadow_eval_router_decision: buildRouterDecision(input.plan),
-    shadow_eval_si_retrieval: input.siRetrievalResult ?? null,
-  };
-}
-
 export type ChannelRespondPlan = Extract<ExecutionPlan, { action: 'respond' }>;
 
 export interface ChannelResponseInvocation {
@@ -3362,6 +3341,130 @@ export async function buildChannelResponseInvocation(input: {
     selectedToolSets,
     isAdmin: userIsAdmin,
   };
+}
+
+function shadowTraceUnavailableContext(reason: string): Record<string, unknown> {
+  return {
+    shadow_eval_status: 'skipped',
+    shadow_eval_type: 'suppressed_opportunity',
+    shadow_eval_source: 'suppressed',
+    shadow_eval_completed_at: new Date().toISOString(),
+    shadow_eval_replay_error: reason,
+  };
+}
+
+/**
+ * Capture the exact suppressed opportunity without copying private payloads
+ * into mutable thread context. Queueing and the immutable authorization row
+ * commit atomically; failures leave replay disabled and never call a model.
+ */
+async function queueSuppressedShadowEvaluation(input: {
+  threadId: string;
+  sourceQuestionMessageId: string | null;
+  sourceUserId: string;
+  channelId: string;
+  threadTs: string;
+  questionTs: string;
+  question: string;
+  sourceConfigVersionId: number | null;
+  memberContext: MemberContext | null;
+  channelContext?: ThreadContext;
+  plan: ChannelRespondPlan;
+  siRetrievalResult: SIRetrievalResult | null;
+}): Promise<void> {
+  const threadService = getThreadService();
+  if (process.env.SHADOW_EVAL_TRACE_CAPTURE_ENABLED !== 'true') {
+    await threadService.patchThreadContext(
+      input.threadId,
+      shadowTraceUnavailableContext('trace_capture_disabled'),
+    );
+    return;
+  }
+  if (!input.sourceQuestionMessageId || input.sourceConfigVersionId == null) {
+    await threadService.patchThreadContext(
+      input.threadId,
+      shadowTraceUnavailableContext('missing_attributable_source'),
+    );
+    return;
+  }
+  // SI retrieval is intentionally not duplicated into the replay store. A
+  // future encrypted fixture may support it; current captures are narrow and
+  // fail closed before generation.
+  if (input.siRetrievalResult !== null) {
+    await threadService.patchThreadContext(
+      input.threadId,
+      shadowTraceUnavailableContext('si_context_not_replayable'),
+    );
+    return;
+  }
+  if (!claudeClient) {
+    await threadService.patchThreadContext(
+      input.threadId,
+      shadowTraceUnavailableContext('channel_client_not_initialized'),
+    );
+    return;
+  }
+  const docsCorpusFingerprint = getDocsCorpusFingerprint();
+  if (!docsCorpusFingerprint) {
+    await threadService.patchThreadContext(
+      input.threadId,
+      shadowTraceUnavailableContext('docs_corpus_not_initialized'),
+    );
+    return;
+  }
+
+  try {
+    const identity = createShadowReplayCaptureIdentity();
+    const invocation = await buildChannelResponseInvocation({
+      userId: input.sourceUserId,
+      threadId: input.threadId,
+      memberContext: input.memberContext,
+      channelContext: input.channelContext,
+      plan: input.plan,
+      siRetrievalResult: input.siRetrievalResult,
+    });
+    const traceProcessOptions = {
+      ...invocation.processOptions,
+      invocationHashKey: identity.hashKey,
+      invocationHashDomain: identity.hashDomain,
+    };
+    const snapshot = claudeClient.prepareMessageInvocation(
+      input.question,
+      undefined,
+      invocation.requestTools,
+      undefined,
+      traceProcessOptions,
+    );
+    await queueShadowReplayTrace({
+      identity,
+      threadId: input.threadId,
+      sourceQuestionMessageId: input.sourceQuestionMessageId,
+      sourceUserId: input.sourceUserId,
+      channelId: input.channelId,
+      threadTs: input.threadTs,
+      questionTs: input.questionTs,
+      question: input.question,
+      sourceConfigVersionId: input.sourceConfigVersionId,
+      memberContext: input.memberContext,
+      channelContext: input.channelContext,
+      plan: input.plan,
+      siRetrievalResult: input.siRetrievalResult,
+      invocation,
+      snapshot,
+      docsCorpusFingerprint,
+      providerWebSearchEnabled: claudeClient.isWebSearchEnabled()
+        && traceProcessOptions.disableServerTools !== true,
+    });
+  } catch {
+    logger.warn(
+      { threadId: input.threadId },
+      'Addie Bolt: Signed shadow trace capture failed closed',
+    );
+    await threadService.patchThreadContext(
+      input.threadId,
+      shadowTraceUnavailableContext('trace_capture_failed'),
+    );
+  }
 }
 
 /**
@@ -4487,24 +4590,31 @@ async function handleChannelMessage({
             try {
               await threadService.flagThread(
                 thread.thread_id,
-                `Suppressed high-confidence response (humans answering): ${plan.reason}`
+                suppressedOpportunityFlagReason('humans_already_answering'),
               );
+              await queueSuppressedShadowEvaluation({
+                threadId: thread.thread_id,
+                plan,
+                channelId,
+                threadTs,
+                questionTs: event.ts,
+                question: messageText,
+                sourceQuestionMessageId: sourceMessageId,
+                sourceUserId: userId,
+                sourceConfigVersionId: await getCurrentConfigVersionId(),
+                memberContext,
+                channelContext,
+                siRetrievalResult,
+              });
+            } catch {
               await threadService.patchThreadContext(
                 thread.thread_id,
-                buildShadowEvalQueueContext({
-                  plan,
-                  channelId,
-                  threadTs,
-                  questionTs: event.ts,
-                  question: messageText,
-                  sourceQuestionMessageId: sourceMessageId,
-                  sourceUserId: userId,
-                  sourceConfigVersionId: await getCurrentConfigVersionId(),
-                  siRetrievalResult,
-                }),
+                shadowTraceUnavailableContext('trace_capture_failed'),
+              ).catch(() => undefined);
+              logger.warn(
+                { threadId: thread.thread_id },
+                'Addie Bolt: Could not flag/queue signed shadow trace',
               );
-            } catch (flagError) {
-              logger.debug({ error: flagError }, 'Addie Bolt: Could not flag/queue shadow eval');
             }
           }
           return;
@@ -4527,24 +4637,31 @@ async function handleChannelMessage({
           try {
             await threadService.flagThread(
               thread.thread_id,
-              `Suppressed high-confidence response (human replied during delay): ${plan.reason}`
+              suppressedOpportunityFlagReason('human_replied_during_delay'),
             );
+            await queueSuppressedShadowEvaluation({
+              threadId: thread.thread_id,
+              plan,
+              channelId,
+              threadTs,
+              questionTs: event.ts,
+              question: messageText,
+              sourceQuestionMessageId: sourceMessageId,
+              sourceUserId: userId,
+              sourceConfigVersionId: await getCurrentConfigVersionId(),
+              memberContext,
+              channelContext,
+              siRetrievalResult,
+            });
+          } catch {
             await threadService.patchThreadContext(
               thread.thread_id,
-              buildShadowEvalQueueContext({
-                plan,
-                channelId,
-                threadTs,
-                questionTs: event.ts,
-                question: messageText,
-                sourceQuestionMessageId: sourceMessageId,
-                sourceUserId: userId,
-                sourceConfigVersionId: await getCurrentConfigVersionId(),
-                siRetrievalResult,
-              }),
+              shadowTraceUnavailableContext('trace_capture_failed'),
+            ).catch(() => undefined);
+            logger.warn(
+              { threadId: thread.thread_id },
+              'Addie Bolt: Could not flag/queue signed shadow trace',
             );
-          } catch (flagError) {
-            logger.debug({ error: flagError }, 'Addie Bolt: Could not flag/queue shadow eval');
           }
         }
         return;

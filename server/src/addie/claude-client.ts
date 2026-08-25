@@ -80,11 +80,25 @@ function hashPreparedPayload(
   value: string,
   executionMode: AddieExecutionMode,
   key?: string,
+  domain?: string,
 ): string {
-  if (executionMode === 'evaluation' || executionMode === 'replay') {
-    return key
-      ? createHmac('sha256', key).update(value, 'utf8').digest('hex')
-      : 'unavailable';
+  const hasKey = typeof key === 'string' && key.length > 0;
+  const hasDomain = typeof domain === 'string' && domain.length > 0;
+
+  // Evaluation provenance is only attributable when both caller-owned HMAC
+  // inputs are present. A partial configuration must never silently fall back
+  // to an unkeyed digest. Production callers that do not request HMAC hashing
+  // retain the historical SHA-256 behavior.
+  if (hasKey || hasDomain || executionMode === 'evaluation' || executionMode === 'replay') {
+    if (!hasKey || !hasDomain) return 'unavailable';
+    return createHmac('sha256', key)
+      .update('addie-invocation\0', 'utf8')
+      .update(String(Buffer.byteLength(domain, 'utf8')), 'utf8')
+      .update('\0', 'utf8')
+      .update(domain, 'utf8')
+      .update('\0', 'utf8')
+      .update(value, 'utf8')
+      .digest('hex');
   }
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
@@ -536,6 +550,8 @@ export interface ProcessMessageOptions {
   disableServerTools?: boolean;
   /** Dedicated key for HMACing private invocation payloads in evaluation provenance. */
   invocationHashKey?: string;
+  /** Caller-owned HMAC domain separator. Must be supplied with invocationHashKey. */
+  invocationHashDomain?: string;
   /** Fail-closed hook evaluated immediately before each custom handler dispatch. */
   toolExecutionPolicy?: ToolExecutionPolicy;
   /**
@@ -829,6 +845,44 @@ export class AddieClaudeClient {
     );
   }
 
+  private buildInvocationPreparedSnapshot(
+    options: ProcessMessageOptions | undefined,
+    effectiveModel: string,
+    systemBlocks: Anthropic.TextBlockParam[],
+    tools: Array<Record<string, unknown>>,
+    messageCount: number,
+    iteration: number,
+    attempt: number,
+  ): InvocationPreparedSnapshot {
+    const executionMode = options?.executionMode ?? 'production';
+    return {
+      execution_mode: executionMode,
+      model: effectiveModel,
+      iteration,
+      attempt,
+      system_blocks: systemBlocks.map((block, index) => ({
+        index,
+        sha256: hashPreparedPayload(
+          JSON.stringify(block),
+          executionMode,
+          options?.invocationHashKey,
+          options?.invocationHashDomain,
+        ),
+      })),
+      tool_schemas: tools.map((tool, index) => ({
+        index,
+        name: typeof tool.name === 'string' ? tool.name : `tool_${index}`,
+        sha256: hashPreparedPayload(
+          JSON.stringify(tool),
+          executionMode,
+          options?.invocationHashKey,
+          options?.invocationHashDomain,
+        ),
+      })),
+      message_count: messageCount,
+    };
+  }
+
   private async notifyInvocationPrepared(
     options: ProcessMessageOptions | undefined,
     effectiveModel: string,
@@ -839,24 +893,15 @@ export class AddieClaudeClient {
     attempt: number,
   ): Promise<void> {
     if (!options?.onInvocationPrepared) return;
-
-    const executionMode = options.executionMode ?? 'production';
-    await options.onInvocationPrepared({
-      execution_mode: executionMode,
-      model: effectiveModel,
+    await options.onInvocationPrepared(this.buildInvocationPreparedSnapshot(
+      options,
+      effectiveModel,
+      systemBlocks,
+      tools,
+      messageCount,
       iteration,
       attempt,
-      system_blocks: systemBlocks.map((block, index) => ({
-        index,
-        sha256: hashPreparedPayload(JSON.stringify(block), executionMode, options.invocationHashKey),
-      })),
-      tool_schemas: tools.map((tool, index) => ({
-        index,
-        name: typeof tool.name === 'string' ? tool.name : `tool_${index}`,
-        sha256: hashPreparedPayload(JSON.stringify(tool), executionMode, options.invocationHashKey),
-      })),
-      message_count: messageCount,
-    });
+    ));
   }
 
   private async isToolExecutionAllowed(
@@ -916,6 +961,122 @@ export class AddieClaudeClient {
     this.toolHandlers.set(tool.name, handler);
   }
 
+  private prepareFirstNonStreamingInvocation(
+    userMessage: string,
+    threadContext?: Array<{ user: string; text: string }>,
+    requestTools?: RequestTools,
+    rulesOverride?: RulesOverride,
+    options?: ProcessMessageOptions,
+  ) {
+    const requestWebSearchEnabled = this.webSearchEnabled
+      && !isEvaluationExecution(options)
+      && options?.disableServerTools !== true;
+    const effectiveModel = options?.modelOverride ?? this.model;
+
+    const promptStart = Date.now();
+    const systemPrompt = rulesOverride
+      ? rulesOverride.systemPrompt
+      : this.getSystemPrompt().prompt;
+    const systemPromptMs = Date.now() - promptStart;
+
+    const systemBlocks: Anthropic.TextBlockParam[] = [
+      { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
+    ];
+    if (options?.requestContext?.trim()) {
+      systemBlocks.push({ type: 'text', text: options.requestContext });
+    }
+
+    const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
+    const allTools = [...new Map(allToolsRaw.map((tool) => [tool.name, tool])).values()];
+    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
+    const toolCount = allTools.length + (requestWebSearchEnabled ? 1 : 0);
+    const toolsByName = new Map(allTools.map((tool) => [tool.name, tool]));
+    const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
+      model: effectiveModel,
+      toolCount,
+      maxMessages: options?.maxMessages,
+      compactToolResults: true,
+      currentSpeakerName: options?.currentSpeakerName,
+    });
+
+    if (messageTurnsResult.wasTrimmed && messageTurnsResult.messagesRemoved > 10) {
+      const summary = messageTurnsResult.droppedMessages
+        ? buildDroppedMessagesSummary(messageTurnsResult.droppedMessages)
+        : null;
+      const contextWarning = summary
+        || `\n\n## Context Warning\n${messageTurnsResult.messagesRemoved} earlier messages were dropped from this conversation to fit the context window. If the user references something you don't recall, let them know and suggest starting a new thread for better accuracy.`;
+      systemBlocks.push({ type: 'text', text: contextWarning });
+    }
+
+    const messages: Anthropic.MessageParam[] = appendInputAttachments(
+      toAnthropicMessages(messageTurnsResult.messages),
+      options?.inputAttachments,
+    );
+    const customTools: Anthropic.Tool[] = allTools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.input_schema as Anthropic.Tool['input_schema'],
+    }));
+    if (customTools.length > 0) {
+      customTools[customTools.length - 1] = {
+        ...customTools[customTools.length - 1],
+        cache_control: { type: 'ephemeral' },
+      };
+    }
+
+    const firstInvocationTools = [
+      ...customTools,
+      ...(requestWebSearchEnabled ? [{
+        type: 'web_search_20250305' as const,
+        name: 'web_search' as const,
+      }] : []),
+    ];
+
+    return {
+      effectiveModel,
+      systemBlocks,
+      allHandlers,
+      toolsByName,
+      toolCount,
+      messageTurnsResult,
+      messages,
+      customTools,
+      firstInvocationTools,
+      requestWebSearchEnabled,
+      systemPromptMs,
+    };
+  }
+
+  /**
+   * Prepare provenance for the exact first non-streaming model invocation.
+   * This performs prompt/tool/message assembly only: it does not call the
+   * provider, invoke tools, run cost/config tracking, or fire the callback.
+   */
+  prepareMessageInvocation(
+    userMessage: string,
+    threadContext?: Array<{ user: string; text: string }>,
+    requestTools?: RequestTools,
+    rulesOverride?: RulesOverride,
+    options?: ProcessMessageOptions,
+  ): InvocationPreparedSnapshot {
+    const prepared = this.prepareFirstNonStreamingInvocation(
+      userMessage,
+      threadContext,
+      requestTools,
+      rulesOverride,
+      options,
+    );
+    return this.buildInvocationPreparedSnapshot(
+      options,
+      prepared.effectiveModel,
+      prepared.systemBlocks,
+      prepared.firstInvocationTools as unknown as Array<Record<string, unknown>>,
+      prepared.messages.length,
+      1,
+      1,
+    );
+  }
+
   /**
    * Process a message and return a response
    * Uses database-backed rules for the system prompt when available
@@ -934,9 +1095,6 @@ export class AddieClaudeClient {
     options?: ProcessMessageOptions
   ): Promise<AddieResponse> {
     const operationalExecution = !isEvaluationExecution(options);
-    const requestWebSearchEnabled = this.webSearchEnabled
-      && !isEvaluationExecution(options)
-      && options?.disableServerTools !== true;
 
     // #2950: warn when a caller has neither `costScope` nor explicit
     // `uncapped: true`. Silent default meant a future user-facing
@@ -1000,27 +1158,29 @@ export class AddieClaudeClient {
     let totalCacheCreationTokens = 0;
     let totalCacheReadTokens = 0;
 
-    // Get system prompt - use override if provided, otherwise from rule files
-    const promptStart = Date.now();
-    let systemPrompt: string;
+    const prepared = this.prepareFirstNonStreamingInvocation(
+      userMessage,
+      threadContext,
+      requestTools,
+      rulesOverride,
+      options,
+    );
+    const {
+      effectiveModel,
+      systemBlocks,
+      allHandlers,
+      toolsByName,
+      toolCount,
+      messageTurnsResult,
+      messages,
+      customTools,
+      firstInvocationTools,
+      requestWebSearchEnabled,
+    } = prepared;
+    systemPromptMs = prepared.systemPromptMs;
 
     if (rulesOverride) {
-      systemPrompt = rulesOverride.systemPrompt;
       logger.debug('Addie: Using rules override');
-    } else {
-      const promptResult = this.getSystemPrompt();
-      systemPrompt = promptResult.prompt;
-    }
-    systemPromptMs = Date.now() - promptStart;
-
-    // Build system content as array: base prompt is cached, requestContext is not.
-    // Separating them lets Anthropic cache the stable base while the dynamic
-    // per-user context (member profile, channel, goals) is sent fresh each call.
-    const systemBlocks: Anthropic.TextBlockParam[] = [
-      { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
-    ];
-    if (options?.requestContext?.trim()) {
-      systemBlocks.push({ type: 'text', text: options.requestContext });
     }
 
     // Get config version ID for this interaction (skip for eval mode)
@@ -1029,32 +1189,11 @@ export class AddieClaudeClient {
       : await getCurrentConfigVersionId();
 
     const maxIterations = options?.maxIterations ?? 10;
-    const effectiveModel = options?.modelOverride ?? this.model;
 
     // Log if using precision model
     if (options?.modelOverride && options.modelOverride !== this.model) {
       logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie: Using precision model for billing/financial query');
     }
-
-    // Combine global tools with per-request tools, deduplicating by name (last wins)
-    // Calculate tool count first to inform token budget for conversation history
-    const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
-    const allTools = [...new Map(allToolsRaw.map(t => [t.name, t])).values()];
-    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
-    const toolCount = allTools.length + (requestWebSearchEnabled ? 1 : 0);
-    const toolsByName = new Map(allTools.map((tool) => [tool.name, tool]));
-
-    // Build proper message turns from thread context
-    // This sends conversation history as actual user/assistant turns, not flattened text
-    // Token-aware: automatically trims older messages if conversation exceeds limits
-    // Compact old tool results in all conversations to reclaim context
-    const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
-      model: effectiveModel,
-      toolCount,
-      maxMessages: options?.maxMessages,
-      compactToolResults: true,
-      currentSpeakerName: options?.currentSpeakerName,
-    });
 
     if (messageTurnsResult.wasTrimmed) {
       logger.info(
@@ -1066,34 +1205,6 @@ export class AddieClaudeClient {
         },
         'Addie: Trimmed conversation history to fit context limit'
       );
-      // Inject dropped conversation summary so Addie has context from earlier turns
-      if (messageTurnsResult.messagesRemoved > 10) {
-        const summary = messageTurnsResult.droppedMessages
-          ? buildDroppedMessagesSummary(messageTurnsResult.droppedMessages)
-          : null;
-        const contextWarning = summary
-          || `\n\n## Context Warning\n${messageTurnsResult.messagesRemoved} earlier messages were dropped from this conversation to fit the context window. If the user references something you don't recall, let them know and suggest starting a new thread for better accuracy.`;
-        systemBlocks.push({ type: 'text', text: contextWarning });
-      }
-    }
-
-    const messages: Anthropic.MessageParam[] = appendInputAttachments(
-      toAnthropicMessages(messageTurnsResult.messages),
-      options?.inputAttachments,
-    );
-
-    // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
-    // Mark the last custom tool with cache_control so Anthropic caches all tool definitions.
-    const customTools: Anthropic.Tool[] = allTools.map(t => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.input_schema as Anthropic.Tool['input_schema'],
-    }));
-    if (customTools.length > 0) {
-      customTools[customTools.length - 1] = {
-        ...customTools[customTools.length - 1],
-        cache_control: { type: 'ephemeral' },
-      };
     }
     let iteration = 0;
     let retriedEmptyPostToolResponse = false;
@@ -1105,13 +1216,7 @@ export class AddieClaudeClient {
       // Use beta API to access web search
       const llmStart = Date.now();
       let response;
-      const invocationTools = retriedEmptyPostToolResponse ? [] : [
-        ...customTools,
-        ...(requestWebSearchEnabled ? [{
-          type: 'web_search_20250305' as const,
-          name: 'web_search' as const,
-        }] : []),
-      ];
+      const invocationTools = retriedEmptyPostToolResponse ? [] : firstInvocationTools;
       let invocationAttempt = 0;
       try {
         response = await withRetry(

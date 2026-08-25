@@ -153,7 +153,6 @@ export function buildShadowEvalProvenance(input: {
 }): ShadowEvalProvenance {
   const sourceModel = input.sourceModel || null;
   const generatorModel = input.generatorModel || null;
-  const completeByMode = input.toolMode === 'production_trace' || input.toolMode === 'replay_fixture';
   return {
     schema_version: SHADOW_EVAL_METADATA_VERSION,
     evaluation_type: input.evaluationType,
@@ -185,8 +184,8 @@ export function buildShadowEvalProvenance(input: {
         ? SHADOW_REPLAY_POLICY_VERSION
         : null,
       hash_key_version: input.replayEvidence?.hash_key_version ?? null,
-      trace_verified: input.replayEvidence?.trace_verified ?? completeByMode,
-      complete_fidelity: input.replayEvidence?.complete_fidelity ?? completeByMode,
+      trace_verified: input.replayEvidence?.trace_verified ?? false,
+      complete_fidelity: input.replayEvidence?.complete_fidelity ?? false,
       system_block_hashes: input.replayEvidence?.system_block_hashes ?? [],
       schemas: input.replayEvidence?.schemas ?? [],
       executions: input.replayEvidence?.executions ?? [],
@@ -216,13 +215,15 @@ export function hasHeadlineEligibleProvenance(
       trace_verified?: boolean;
     };
   } | null | undefined,
+  options: { authorizationVerified?: boolean } = {},
 ): boolean {
+  // Provenance is persisted in mutable thread JSON. Structural fields are
+  // necessary but cannot authorize metrics or automation by themselves; a
+  // caller must first revalidate the immutable signed trace/fixture source.
+  if (options.authorizationVerified !== true) return false;
   if (!provenance || provenance.self_judged !== false) return false;
   const tools = provenance.tools;
   if (!provenance.source_answer?.model || !tools?.trace_or_fixture_id) return false;
-  if (tools.mode === 'production_trace' || tools.mode === 'replay_fixture') {
-    return tools.complete_fidelity !== false;
-  }
   return tools.mode === 'read_only_replay'
     && typeof provenance.source_answer?.config_version_id === 'number'
     && typeof provenance.source_opportunity?.config_version_id === 'number'

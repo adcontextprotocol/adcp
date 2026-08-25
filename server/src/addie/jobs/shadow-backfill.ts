@@ -188,7 +188,7 @@ async function backfill() {
             `Backfill knowledge gap (${result.gap_severity}): ${result.gap_details}`
           );
           totalGaps++;
-          console.log(`  GAP [${result.gap_severity}]: ${result.gap_details.substring(0, 80)}`);
+          console.log(`  GAP [${result.gap_severity}]`);
         }
 
         if (!comparisonDisposition.skipped) totalProcessed++;

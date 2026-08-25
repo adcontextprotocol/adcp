@@ -21,6 +21,7 @@ import {
   getDocCount,
   getHeadingCount,
   getDocById,
+  getDocsCorpusFingerprint,
   getSupportedDocsVersions,
   resolveDocsVersion,
 } from '../../src/addie/mcp/docs-indexer.js';
@@ -52,6 +53,7 @@ describe('docs-indexer', () => {
   it('initializes successfully with docs from the real docs directory', () => {
     expect(isDocsIndexReady()).toBe(true);
     expect(getDocCount()).toBeGreaterThan(0);
+    expect(getDocsCorpusFingerprint()).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('indexes heading-level content', () => {
