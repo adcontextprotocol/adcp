@@ -11,6 +11,7 @@ import {
   type ThreadListFilters,
 } from '../../src/addie/thread-service.js';
 import { AddieDatabase } from '../../src/db/addie-db.js';
+import { getModelExecutionReadiness } from '../../src/addie/model-execution-readiness.js';
 
 // These tests require a running PostgreSQL instance. Lives in integration/
 // so the build-check.yml server-integration job picks them up; the skipIf
@@ -44,14 +45,14 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
 
   afterAll(async () => {
     // Clean up test data
-    await pool.query("DELETE FROM addie_interactions WHERE id LIKE 'provider-provenance-%'");
+    await pool.query("DELETE FROM addie_interactions WHERE id LIKE 'provider-provenance-%' OR id LIKE 'readiness-interaction-%'");
     await pool.query(`DELETE FROM addie_threads WHERE external_id LIKE 'test-%'`);
     await closeDatabase();
   });
 
   beforeEach(async () => {
     // Clean up threads before each test
-    await pool.query("DELETE FROM addie_interactions WHERE id LIKE 'provider-provenance-%'");
+    await pool.query("DELETE FROM addie_interactions WHERE id LIKE 'provider-provenance-%' OR id LIKE 'readiness-interaction-%'");
     await pool.query(`DELETE FROM addie_threads WHERE external_id LIKE 'test-%'`);
   });
 
@@ -421,6 +422,64 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
       expect(messageSources.rows.every((row) => row.model_execution_source === 'legacy')).toBe(true);
       expect(interactionSources.rows).toHaveLength(2);
       expect(interactionSources.rows.every((row) => row.model_execution_source === 'legacy')).toBe(true);
+    });
+
+    it('reports a privacy-safe readiness denominator from persisted provenance', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_THREAD_EXTERNAL_ID}-readiness`,
+        user_type: 'anonymous',
+      });
+      const createdAt = new Date('2100-01-01T11:30:00.000Z');
+      await pool.query(
+        `INSERT INTO addie_thread_messages (
+           thread_id, role, content, sequence_number, created_at,
+           model_execution_source, requested_model_provider, requested_model,
+           model_provider, provider_model, provider_model_resolution,
+           provider_fallback_reason, local_response_reason
+         ) VALUES
+           ($1, 'assistant', 'PRIVATE_PROVIDER_SENTINEL', 1, $2, 'provider', 'anthropic', 'requested', 'anthropic', 'requested', 'exact', NULL, NULL),
+           ($1, 'assistant', 'PRIVATE_LOCAL_SENTINEL', 2, $2, 'local', NULL, NULL, NULL, NULL, NULL, NULL, 'canned_response'),
+           ($1, 'assistant', 'rolling', 3, $2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+           ($1, 'assistant', 'legacy', 4, $2, 'legacy', NULL, NULL, NULL, NULL, NULL, NULL, NULL)`,
+        [thread.thread_id, createdAt],
+      );
+      await pool.query(
+        `INSERT INTO addie_interactions (
+           id, event_type, channel_id, user_id, input_text, input_sanitized,
+           output_text, model, latency_ms, created_at, model_execution_source,
+           requested_model_provider, requested_model, model_provider,
+           provider_model, provider_model_resolution
+         ) VALUES
+           ('readiness-interaction-provider', 'dm', 'D_READY', 'ready-user', 'PRIVATE_INPUT_SENTINEL', 'private', 'PRIVATE_AUDIT_OUTPUT_SENTINEL', 'requested', 1, $1, 'provider', 'anthropic', 'requested', 'anthropic', 'requested', 'exact'),
+           ('readiness-interaction-unclassified', 'dm', 'D_READY', 'ready-user', 'private', 'private', 'private', 'legacy', 1, $1, NULL, NULL, NULL, NULL, NULL, NULL)`,
+        [createdAt],
+      );
+
+      const summary = await getModelExecutionReadiness({
+        hours: 1,
+        minimumSamples: 4,
+        now: new Date('2100-01-01T12:00:00.000Z'),
+      });
+
+      expect(summary.surfaces.thread_messages).toMatchObject({
+        total: 4, provider: 1, local: 1, unclassified: 1, legacy: 1,
+        invalid: 0, classification_rate: 0.5, persisted_data_ready: false,
+      });
+      expect(summary.surfaces.interactions).toMatchObject({
+        total: 2, provider: 1, local: 0, unclassified: 1, legacy: 0,
+        invalid: 0, classification_rate: 0.5, persisted_data_ready: false,
+      });
+      expect(summary.persisted_data_ready).toBe(false);
+      expect(summary.blockers).toEqual([
+        { surface: 'thread_messages', reason: 'unclassified_executions' },
+        { surface: 'thread_messages', reason: 'legacy_executions' },
+        { surface: 'interactions', reason: 'unclassified_executions' },
+      ]);
+      expect(JSON.stringify(summary)).not.toContain('PRIVATE_PROVIDER_SENTINEL');
+      expect(JSON.stringify(summary)).not.toContain('PRIVATE_LOCAL_SENTINEL');
+      expect(JSON.stringify(summary)).not.toContain('PRIVATE_INPUT_SENTINEL');
+      expect(JSON.stringify(summary)).not.toContain('PRIVATE_AUDIT_OUTPUT_SENTINEL');
     });
 
     it('round-trips provider and local provenance through the legacy interaction audit', async () => {
