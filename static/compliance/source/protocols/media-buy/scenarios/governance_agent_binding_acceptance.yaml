@@ -148,6 +148,7 @@ phases:
               account_id: "$context.governance_binding_account_id"
           account:
             account_id: "$context.governance_binding_account_id"
+            sandbox: true
         validations:
           - check: response_schema
             description: "Controller response matches comply-test-controller-response.json"
