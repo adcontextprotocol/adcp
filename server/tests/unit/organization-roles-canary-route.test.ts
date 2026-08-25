@@ -4,6 +4,7 @@ import request from "supertest";
 
 const {
   evaluateCanaryMock,
+  recordCanaryDecisionMock,
   getEnforcementWorkosMock,
   legacyMembershipMock,
   listOrganizationRolesMock,
@@ -14,6 +15,7 @@ const {
     "test-cookie-password-32chars-min-len-1234";
   return {
     evaluateCanaryMock: vi.fn(),
+    recordCanaryDecisionMock: vi.fn(),
     getEnforcementWorkosMock: vi.fn(() => ({ bounded: true })),
     legacyMembershipMock: vi.fn(),
     listOrganizationRolesMock: vi.fn(),
@@ -59,6 +61,7 @@ vi.mock("../../src/middleware/organization-authorization-canary.js", () => ({
     ORGANIZATION_ROLES_READ: "organization_roles_read",
   },
   evaluateOrganizationAuthorizationCanary: evaluateCanaryMock,
+  recordOrganizationAuthorizationCanaryDecision: recordCanaryDecisionMock,
 }));
 
 import { createOrganizationsRouter } from "../../src/routes/organizations.js";
@@ -73,6 +76,7 @@ function createApp() {
 describe("GET organization roles authorization canary", () => {
   beforeEach(() => {
     evaluateCanaryMock.mockReset().mockResolvedValue({ enforced: false });
+    recordCanaryDecisionMock.mockReset();
     legacyMembershipMock.mockReset().mockResolvedValue({ role: "member" });
     listOrganizationRolesMock.mockReset().mockResolvedValue({
       data: [
@@ -109,6 +113,7 @@ describe("GET organization roles authorization canary", () => {
         getWorkos: getEnforcementWorkosMock,
       })
     );
+    expect(recordCanaryDecisionMock).not.toHaveBeenCalled();
   });
 
   it("uses the exact canary decision without consulting legacy authority", async () => {
@@ -127,6 +132,10 @@ describe("GET organization roles authorization canary", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(recordCanaryDecisionMock).toHaveBeenCalledWith(
+      "organization_roles_read",
+      expect.objectContaining({ enforced: true, status: "authorized" })
+    );
     expect(legacyMembershipMock).not.toHaveBeenCalled();
     expect(listOrganizationRolesMock).toHaveBeenCalledWith("org_test");
   });
