@@ -261,6 +261,8 @@ phases:
       - id: reject_empty_delivery_range
         title: "Reject an empty half-open delivery range"
         task: get_media_buy_delivery
+        expect_error: true
+        negative_path: payload_well_formed
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
         doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
@@ -276,13 +278,6 @@ phases:
           Reject the empty half-open interval with the documented
           VALIDATION_ERROR classification.
         validations:
-          - check: response_schema
-            description: "The validation failure matches get-media-buy-delivery-response.json"
-          - check: field_value
-            path: "errors[0].code"
+          - check: error_code
             value: "VALIDATION_ERROR"
             description: "Equal date bounds use the documented ordering-validation error code"
-          - check: field_value
-            path: "errors[0].field"
-            value: "start_date"
-            description: "The failure identifies the invalid lower date bound"

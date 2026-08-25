@@ -71,3 +71,18 @@ test('released storyboard runs forward schemaRoot with adcpVersion', () => {
     );
   }
 });
+
+test('3.0 compatibility keeps exact schema selection and overrides only the wire version', () => {
+  const source = fs.readFileSync(RUNNER_FILE, 'utf8');
+  assert.match(source, /const wireAdcpVersion = isThreeZeroCompatRun \? '3\.0' : undefined/);
+  assert.equal(
+    (source.match(/\.\.\.\(wireAdcpVersion && \{ wireAdcpVersion \}\)/g) ?? []).length,
+    3,
+    'expected discovery and both storyboard execution paths to forward wireAdcpVersion',
+  );
+
+  for (const block of runStoryboardOptionBlocks(source)) {
+    if (!block.includes('adcpVersion: releasedComplianceVersion')) continue;
+    assert.match(block, /wireAdcpVersion/);
+  }
+});

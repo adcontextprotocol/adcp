@@ -283,6 +283,8 @@ function createSession(): SessionState {
     complyExtensions: {
       accountStatuses: new Map(),
       siSessions: new Map(),
+      forcedCreativeTerminalStates: new Map(),
+      forcedMediaBuyTerminalStates: new Map(),
       deliverySimulations: new Map(),
       budgetSimulations: new Map(),
       seededProducts: new Map(),
@@ -529,6 +531,8 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     complyExtensions: {
       accountStatuses: asMap(hydratedComply.accountStatuses, fresh.complyExtensions.accountStatuses),
       siSessions: asMap(hydratedComply.siSessions, fresh.complyExtensions.siSessions),
+      forcedCreativeTerminalStates: asMap(hydratedComply.forcedCreativeTerminalStates, fresh.complyExtensions.forcedCreativeTerminalStates),
+      forcedMediaBuyTerminalStates: asMap(hydratedComply.forcedMediaBuyTerminalStates, fresh.complyExtensions.forcedMediaBuyTerminalStates),
       deliverySimulations: asMap(hydratedComply.deliverySimulations, fresh.complyExtensions.deliverySimulations),
       budgetSimulations: asMap(hydratedComply.budgetSimulations, fresh.complyExtensions.budgetSimulations),
       seededProducts: asMap(hydratedComply.seededProducts, fresh.complyExtensions.seededProducts),
@@ -538,6 +542,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
       seededMeasurementCatalogs: asMap(hydratedComply.seededMeasurementCatalogs, fresh.complyExtensions.seededMeasurementCatalogs),
       provenanceAuditObservations: asMap(hydratedComply.provenanceAuditObservations, fresh.complyExtensions.provenanceAuditObservations),
       forcedCreateMediaBuyArm: hydratedComply.forcedCreateMediaBuyArm,
+      forcedGetSignalsArm: hydratedComply.forcedGetSignalsArm,
       forcedGetProductsRejections: asMap(hydratedComply.forcedGetProductsRejections, fresh.complyExtensions.forcedGetProductsRejections),
       forcedUpstreamUnavailable: hydratedComply.forcedUpstreamUnavailable,
     },
@@ -894,6 +899,57 @@ export async function findSessionMatching(predicate: (s: SessionState) => boolea
     logger.warn({ err }, 'findSessionMatching: keyed session scan failed');
   }
   return null;
+}
+
+/** Search every persisted session and return all matches. Unlike
+ * `findSessionMatching`, this is intended for fan-out mutations such as
+ * propagating an impairment to every authorized dependent media buy. Results
+ * are attached to the current request context so later dirty-session flushing
+ * persists each mutation under its real store key. A scan/load failure is
+ * propagated: callers must not mutate a partial result set and report success. */
+export async function findSessionsMatching(
+  predicate: (s: SessionState) => boolean,
+): Promise<SessionState[]> {
+  const ctx = requestCtx.getStore();
+  const matches = new Map<string, SessionState>();
+  if (ctx) {
+    for (const [key, session] of ctx.sessions) {
+      if (predicate(session)) matches.set(key, session);
+    }
+  }
+  try {
+    if (isDatabaseInitialized()) {
+      let afterId = '';
+      for (;;) {
+        const { rows } = await getPool().query<{ id: string; data: Record<string, unknown> }>(
+          `SELECT id, data
+             FROM adcp_state
+            WHERE collection = $1 AND id > $2
+            ORDER BY id
+            LIMIT 100`,
+          [SESSIONS_COLLECTION, afterId],
+        );
+        for (const row of rows) {
+          if (matches.has(row.id)) continue;
+          if (predicate(deserializeSession(row.data))) {
+            matches.set(row.id, await getSession(row.id));
+          }
+        }
+        if (rows.length < 100) break;
+        afterId = rows[rows.length - 1].id;
+      }
+    } else {
+      for (const key of [...knownSessionKeys]) {
+        if (matches.has(key)) continue;
+        const session = await getSession(key);
+        if (predicate(session)) matches.set(key, session);
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, 'findSessionsMatching: keyed session scan failed');
+    throw err;
+  }
+  return [...matches.values()];
 }
 
 export function findMediaBuyAcrossSessions(mediaBuyId: string): Promise<SessionState | null> {

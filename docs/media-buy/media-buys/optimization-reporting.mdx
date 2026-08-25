@@ -275,7 +275,7 @@ Publishers declare supported reporting frequencies in the product's `reporting_c
 - **`quarterly`**: Receive notifications once per quarter — matches quarterly measurement-currency publication cycles
 - **`post_campaign`**: A single report after the flight ends — for channels where delivery is only knowable in arrears
 
-A product's declared frequencies are an optimization-eligibility signal: buyers should not mid-flight-optimize against a channel whose data arrives quarterly or post-campaign.
+**Cadence gates optimization eligibility (normative, introduced in 3.2).** Buy-side agents MUST treat a product's declared `available_reporting_frequencies` as an optimization-eligibility gate: a buyer MUST NOT make mid-flight optimization decisions against metrics whose declared cadence is `quarterly` or `post_campaign`. Weekly-cadence channels (OOH and radio audience currencies) support at most week-grain adjustment. This is not advice about statistical power — data on those cadences describes a period that has already closed, so an agent optimizing on it is acting on a model of the channel that is false at decision time. Sellers are not obligated to police buyer behavior; the buyer-side obligation is graded through buyer-artifact testing.
 
 **Cost Consideration:** Hourly webhooks generate 24x more traffic than daily. Large buyer-seller pairs may prefer offline reporting mechanisms (see below) for cost efficiency.
 
