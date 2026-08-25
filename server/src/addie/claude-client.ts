@@ -164,6 +164,53 @@ function classifyStopReason(reason: Anthropic.Beta.BetaStopReason | null): StopA
 }
 
 /**
+ * A successful first turn is safe to resample only when it has no visible
+ * answer and every provider block is side-effect-free. Sonnet 5 may return
+ * private thinking (or a blank text block) before an otherwise empty
+ * `end_turn`; those bytes must neither block recovery nor reach logs. Unknown,
+ * tool, server-tool, and result blocks remain fail-closed.
+ */
+function isSideEffectFreeEmptyEndTurn(
+  response: Pick<Anthropic.Beta.BetaMessage, 'stop_reason' | 'content'>,
+  visibleText: string,
+): boolean {
+  if (response.stop_reason !== 'end_turn' || visibleText.trim().length > 0) {
+    return false;
+  }
+
+  return response.content.every((block) => {
+    switch (block.type) {
+      case 'text':
+        return block.text.trim().length === 0;
+      case 'thinking':
+      case 'redacted_thinking':
+        return true;
+      default:
+        return false;
+    }
+  });
+}
+
+function boundedContentTypes(
+  content: Anthropic.Beta.BetaMessage['content'],
+): string[] {
+  const categories = content.map((block) => {
+    switch (block.type) {
+      case 'text':
+      case 'thinking':
+      case 'redacted_thinking':
+      case 'tool_use':
+      case 'server_tool_use':
+      case 'web_search_tool_result':
+        return block.type;
+      default:
+        return 'other';
+    }
+  });
+  return [...new Set(categories)].sort();
+}
+
+/**
  * Convert MessageTurn[] into Anthropic.MessageParam[] with proper tool_use/tool_result
  * content blocks. When an assistant message has toolCalls, we:
  * 1. Build the assistant content as [text, tool_use, tool_use, ...]
@@ -1511,6 +1558,9 @@ export class AddieClaudeClient {
             iteration,
             originalLength: rawText.length,
             deliveredLength: text.length,
+            contentTypes: boundedContentTypes(response.content),
+            outputTokens: response.usage?.output_tokens,
+            thinkingTokens: response.usage?.output_tokens_details?.thinking_tokens,
           },
           'Addie: Anthropic stopped before response completion',
         );
@@ -1560,7 +1610,7 @@ export class AddieClaudeClient {
           && !retriedEmptyInitialResponse
           && !hasExecutedCustomTool
           && toolExecutions.length === 0
-          && response.content.length === 0
+          && isSideEffectFreeEmptyEndTurn(response, rawText)
           && iteration < maxIterations
         ) {
           retriedEmptyInitialResponse = true;
@@ -2418,6 +2468,9 @@ export class AddieClaudeClient {
               originalLength: logicalText.length,
               deliveredLength: finalized.text.length,
               localCapExceeded: finalized.lengthExceeded,
+              contentTypes: boundedContentTypes(currentResponse.content),
+              outputTokens: currentResponse.usage?.output_tokens,
+              thinkingTokens: currentResponse.usage?.output_tokens_details?.thinking_tokens,
             },
             'Addie Stream: Response stopped before completion',
           );
@@ -2458,9 +2511,7 @@ export class AddieClaudeClient {
             && !retriedEmptyInitialResponse
             && toolExecutions.length === 0
             && logicalText.length === 0
-            && iterationText.trim().length === 0
-            && receivedDeltaCount === 0
-            && currentResponse.content.length === 0
+            && isSideEffectFreeEmptyEndTurn(currentResponse, iterationText)
             && iteration < maxIterations
           ) {
             retriedEmptyInitialResponse = true;
