@@ -53,6 +53,10 @@
           "$ref": "/schemas/core/canonical-format-option.json",
           "description": "Compact canonical format declaration without legacy named-format links"
         },
+        "creative-operation-format-declaration": {
+          "$ref": "/schemas/core/creative-operation-format-declaration.json",
+          "description": "Authority-free canonical declaration for creative-agent build, validation, and preview capabilities"
+        },
         "canonical-placement": {
           "$ref": "/schemas/core/canonical-placement.json",
           "description": "Compact canonical product placement"
@@ -112,6 +116,10 @@
         "package": {
           "$ref": "/schemas/core/package.json",
           "description": "A specific product within a media buy (line item)"
+        },
+        "package-format-snapshot": {
+          "$ref": "/schemas/core/package-format-snapshot.json",
+          "description": "Immutable package-time selected product format, placement, execution-version, and tracker-contract binding"
         },
         "committed-metric": {
           "$ref": "/schemas/core/committed-metric.json",
@@ -390,6 +398,50 @@
           "$ref": "/schemas/core/creative-manifest.json",
           "description": "Complete specification of a creative with all assets needed for rendering"
         },
+        "creative-representation-set": {
+          "$ref": "/schemas/core/creative-representation-set.json",
+          "description": "Complete immutable creative revision containing equivalent pre-binding trafficking representations"
+        },
+        "creative-representation": {
+          "$ref": "/schemas/core/creative-representation.json",
+          "description": "One canonical pre-binding trafficking representation within a representation set"
+        },
+        "representation-destination": {
+          "$ref": "/schemas/core/representation-destination.json",
+          "description": "Seller-owned product and format context for deterministic representation resolution"
+        },
+        "representation-selection": {
+          "$ref": "/schemas/core/representation-selection.json",
+          "description": "Source-revision, selected-representation, strategy, and derived-output lineage"
+        },
+        "representation-rejection": {
+          "$ref": "/schemas/core/representation-rejection.json",
+          "description": "Structured incompatibility reason for one rejected representation"
+        },
+        "macro-bearing-url": {
+          "$ref": "/schemas/core/macro-bearing-url.json",
+          "description": "HTTP(S) URL or legacy URI template that may contain declared or opaque macro tokens"
+        },
+        "macro-declaration": {
+          "$ref": "/schemas/core/macro-declaration.json",
+          "description": "Occurrence-level source token, semantic, actor, context, and encoding contract"
+        },
+        "macro-encoding": {
+          "$ref": "/schemas/core/macro-encoding.json",
+          "description": "Exact macro value encoding kind and pass depth"
+        },
+        "macro-resolution-capability": {
+          "$ref": "/schemas/core/macro-resolution-capability.json",
+          "description": "Exact dialect-semantic macro processing capability tuple"
+        },
+        "macro-resolution-result": {
+          "$ref": "/schemas/core/macro-resolution-result.json",
+          "description": "Path-addressable macro compatibility result for one declaration"
+        },
+        "macro-translation-target": {
+          "$ref": "/schemas/core/macro-translation-target.json",
+          "description": "Native token contract emitted by a macro translation operation"
+        },
         "performance-feedback": {
           "$ref": "/schemas/core/performance-feedback.json",
           "description": "Stored processing record for performance feedback"
@@ -401,6 +453,10 @@
         "creative-variant": {
           "$ref": "/schemas/core/creative-variant.json",
           "description": "A specific execution variant of a creative with performance metrics"
+        },
+        "creative-revision-id": {
+          "$ref": "/schemas/core/creative-revision-id.json",
+          "description": "Buyer-assigned immutable input-content revision identity scoped to a creative"
         },
         "property": {
           "$ref": "/schemas/core/property.json",
@@ -573,6 +629,22 @@
         "product-format-declaration": {
           "$ref": "/schemas/core/product-format-declaration.json",
           "description": "v2 inline format declaration on products. Keyed by canonical format name; product narrows exactly one canonical with platform-specific parameters."
+        },
+        "tracker-execution-contract": {
+          "$ref": "/schemas/core/tracker-execution-contract.json",
+          "description": "Seller production commitment for accepted first-class manifest tracker execution"
+        },
+        "tracker-execution-selector": {
+          "$ref": "/schemas/core/tracker-execution-selector.json",
+          "description": "Exact pixel, VAST, or DAAST tracker selector in a production execution contract"
+        },
+        "vast-tracker-constraints": {
+          "$ref": "/schemas/core/vast-tracker-constraints.json",
+          "description": "Shared version-aware VAST tracker event and target constraints"
+        },
+        "daast-tracker-constraints": {
+          "$ref": "/schemas/core/daast-tracker-constraints.json",
+          "description": "Shared DAAST tracker event and target constraints"
         },
         "downstream-connection-requirement": {
           "$ref": "/schemas/core/downstream-connection-requirement.json",
@@ -1149,9 +1221,25 @@
           "$ref": "/schemas/enums/vast-version.json",
           "description": "Supported VAST specification versions (2.0, 3.0, 4.0, 4.1, 4.2, 4.3)"
         },
+        "representation-selection-strategy": {
+          "$ref": "/schemas/enums/representation-selection-strategy.json",
+          "description": "Deterministic strategy for selecting one compatible creative representation"
+        },
         "vast-tracking-event": {
           "$ref": "/schemas/enums/vast-tracking-event.json",
           "description": "Standard VAST tracking events for video playback and interaction"
+        },
+        "pixel-tracking-event": {
+          "$ref": "/schemas/enums/pixel-tracking-event.json",
+          "description": "Canonical first-class pixel tracker event vocabulary"
+        },
+        "tracker-execution-actor": {
+          "$ref": "/schemas/enums/tracker-execution-actor.json",
+          "description": "Actor responsible for initiating an accepted tracker"
+        },
+        "tracker-firing-path": {
+          "$ref": "/schemas/enums/tracker-firing-path.json",
+          "description": "Permitted client or server tracker initiation path"
         },
         "property-type": {
           "$ref": "/schemas/enums/property-type.json",

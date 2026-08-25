@@ -56,7 +56,7 @@ import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
-import { sessionKeyFromArgs } from './state.js';
+import { registerSharedPublicBrandPartition, sessionKeyFromArgs } from './state.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
 import { maybeEmitCompletionWebhook } from './webhooks.js';
@@ -342,7 +342,7 @@ function withCurrentAccountScope(
   const rawFields = rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
     ? rawInput as Record<string, unknown>
     : {};
-  let accountRef = accountRefFromCtx(account);
+  const accountRef = accountRefFromCtx(account);
   const brandDomain = brandDomainFromCtx(account);
   const principal = (account as { authInfo?: { principal?: unknown } } | undefined)?.authInfo?.principal;
   const rawAccount = rawInput && typeof rawInput === 'object' && !Array.isArray(rawInput)
@@ -352,29 +352,7 @@ function withCurrentAccountScope(
     && typeof rawAccount === 'object'
     && !Array.isArray(rawAccount)
     && (rawAccount as Record<string, unknown>).sandbox === true;
-  // Public training credentials address one brand-owned task partition. The
-  // storyboard runner legitimately alternates between the buyer operator and
-  // the brand domain while preserving the same brand identity, and current
-  // runners also retain their controller-only `sandbox: true` assertion on
-  // ordinary task calls. Normalize both details before deriving session state
-  // so controller-seeded entities and task write/read chains do not fork. The
-  // trusted resolved Account in ctx remains sandboxed for authority checks;
-  // this internal false value only selects the ordinary task-state partition.
-  // Authenticated tenant principals retain full operator isolation, and opaque
-  // account IDs are never rewritten.
-  if (
-    explicitlySandboxed
-    && typeof principal === 'string'
-    && principal.startsWith('static:')
-    && accountRef?.brand?.domain
-  ) {
-    accountRef = {
-      ...accountRef,
-      operator: accountRef.brand.domain,
-      sandbox: false,
-    };
-  }
-  return {
+  const scopedArgs = {
     // `mcpToolProfile: 'all'` exposes compatibility schemas as shallow key
     // hints. Restore the raw wire values before the local source-schema
     // validator runs. Explicit wire values win over framework defaults, while
@@ -384,6 +362,15 @@ function withCurrentAccountScope(
     ...(accountRef && { account: accountRef }),
     ...(brandDomain && { brand: { domain: brandDomain } }),
   } as ToolArgs;
+  // Public training credentials share the controller's brand-owned task
+  // partition, but the truthful sandbox/operator AccountRef remains intact for
+  // persistence and authorization comparisons.
+  return explicitlySandboxed
+    && typeof principal === 'string'
+    && principal.startsWith('static:')
+    && accountRef?.brand?.domain
+    ? registerSharedPublicBrandPartition(scopedArgs, accountRef.brand.domain)
+    : scopedArgs;
 }
 
 /**

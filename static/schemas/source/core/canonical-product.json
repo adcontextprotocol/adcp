@@ -75,11 +75,7 @@
       "uniqueItems": true
     },
     "acceptance_policy_profile_ids": {
-      "type": "array",
-      "items": { "type": "string", "minLength": 1, "x-entity": "acceptance_policy_profile" },
-      "minItems": 1,
-      "uniqueItems": true,
-      "description": "Acceptance-policy profiles from the seller catalog that apply to this product in addition to seller defaults. Profiles compose restrictively."
+      "$ref": "/schemas/core/acceptance-policy-profile-ids.json"
     },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },

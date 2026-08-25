@@ -4,7 +4,13 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
-const { checkEntry, checkPolicyCategory, digest, policyContentDigest } = require('../scripts/check-registry-completeness.cjs');
+const {
+  checkEntry,
+  checkPolicyCategory,
+  checkStoryboardPolicyFacets,
+  digest,
+  policyContentDigest,
+} = require('../scripts/check-registry-completeness.cjs');
 
 const SHA256_ZERO = `sha256:${'0'.repeat(64)}`;
 
@@ -98,6 +104,25 @@ test('acceptance context uses registry category facets instead of a political bo
   assert.equal(validate({ political: true }), false);
 });
 
+test('storyboard fixtures cannot invent acceptance-policy facets', () => {
+  const fixtureRoot = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'adcp-policy-facets-'));
+  try {
+    fs.writeFileSync(path.join(fixtureRoot, 'invalid.yaml'), [
+      'request:',
+      '  acceptance_context:',
+      '    subjects:',
+      '      - subject_category: political_advertising',
+      '        subject_facets: [invented_facet]',
+      '',
+    ].join('\n'));
+    const failures = checkStoryboardPolicyFacets(fixtureRoot);
+    assert.equal(failures.length, 1);
+    assert.ok(failures[0].errors.some(error => error.includes('unknown political_advertising facet')));
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
 test('registry platform profiles pin source versions and reject ambiguous regional rules', async () => {
   const validatePolicy = await validator('/schemas/governance/policy-entry.json');
   const policyDir = path.join(__dirname, '../static/registry/policies');
@@ -124,8 +149,8 @@ test('registry platform profiles pin source versions and reject ambiguous region
   assert.ok(checkEntry(google, 'google_political_advertising_acceptance.json')
     .some(error => error.includes('undeclared jurisdiction group')));
 
-  const storageMigration = fs.readFileSync(path.join(__dirname, '../server/src/db/migrations/552_policy_acceptance_profiles.sql'), 'utf8');
-  const publicationMigration = fs.readFileSync(path.join(__dirname, '../server/src/db/migrations/553_publish_political_acceptance_policies.sql'), 'utf8');
+  const storageMigration = fs.readFileSync(path.join(__dirname, '../server/src/db/migrations/557_policy_acceptance_profiles.sql'), 'utf8');
+  const publicationMigration = fs.readFileSync(path.join(__dirname, '../server/src/db/migrations/558_publish_political_acceptance_policies.sql'), 'utf8');
   assert.match(storageMigration, /acceptance_profile JSONB/);
   assert.match(storageMigration, /issuer JSONB/);
   assert.match(storageMigration, /CREATE TABLE policy_publications/);
@@ -239,11 +264,12 @@ test('3.2 action projections use change_term_id while retaining the 3.1 terms_re
     terms_ref: 'terms://legacy/budget-change',
   }), true, 'released 3.1 terms_ref values remain schema-compatible');
 
-  const actionSchema = readSchema('/schemas/core/media-buy-available-action.json');
-  assert.equal(actionSchema.properties.terms_ref.deprecated, true);
-  assert.equal(actionSchema.properties.terms_ref['x-deprecated-in'], '3.2.0');
-  assert.equal(actionSchema.properties.terms_ref['x-removed-in'], '4.0.0');
-  assert.equal(actionSchema.properties.change_term_id['x-entity'], 'media_buy_change_term');
+  const legacyTermsRef = readSchema('/schemas/core/media-buy-legacy-terms-ref.json');
+  assert.equal(legacyTermsRef.deprecated, true);
+  assert.equal(legacyTermsRef['x-deprecated-in'], '3.2.0');
+  assert.equal(legacyTermsRef['x-removed-in'], '4.0.0');
+  const changeTermId = readSchema('/schemas/core/media-buy-change-term-id.json');
+  assert.equal(changeTermId['x-entity'], 'media_buy_change_term');
 
   const validateCanonicalAction = await validator('/schemas/core/canonical-media-buy-action.json');
   assert.equal(validateCanonicalAction({
@@ -380,7 +406,16 @@ test('governance-agent acceptance is an any-of matcher with a typed rejection', 
   const productFields = readSchema('/schemas/media-buy/product-fields.json');
   assert.ok(productFields.items.enum.includes('acceptance_policy_profile_ids'));
   const legacyProductRequest = readSchema('/schemas/media-buy/get-products-request.json');
-  assert.ok(legacyProductRequest.properties.fields.items.enum.includes('acceptance_policy_profile_ids'));
+  assert.equal(
+    legacyProductRequest.properties.fields.items.anyOf[0].$ref,
+    '/schemas/media-buy/product-fields.json#/items',
+  );
+  const validateLegacyProductRequest = await validator('/schemas/media-buy/get-products-request.json');
+  assert.equal(validateLegacyProductRequest({
+    buying_mode: 'brief',
+    brief: 'political advertising inventory',
+    fields: ['acceptance_policy_profile_ids'],
+  }), true, JSON.stringify(validateLegacyProductRequest.errors));
 
   const errors = readSchema('/schemas/enums/error-code.json');
   assert.ok(errors.enum.includes('GOVERNANCE_AGENT_NOT_ACCEPTED'));

@@ -69,6 +69,11 @@ const recoveredEndTurn = {
   usage: { input_tokens: 12, output_tokens: 6 },
 };
 
+const emptyRefusal = {
+  ...emptyEndTurn,
+  stop_reason: 'refusal',
+};
+
 const mixedRecoveryToolUseTurn = {
   ...toolUseTurn,
   content: [
@@ -95,7 +100,25 @@ function makeEmptyStream() {
   };
 }
 
-function makeStream(message: typeof toolUseTurn | typeof emptyEndTurn | typeof recoveredEndTurn | typeof mixedRecoveryToolUseTurn) {
+function makeTextDeltaStreamWithEmptyFinal(text: string) {
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield { type: 'content_block_delta', delta: { type: 'text_delta', text } };
+    },
+    finalMessage: vi.fn().mockResolvedValue(emptyEndTurn),
+  };
+}
+
+function makeThrowingStream(error: Error) {
+  return {
+    async *[Symbol.asyncIterator]() {
+      throw error;
+    },
+    finalMessage: vi.fn(),
+  };
+}
+
+function makeStream(message: typeof toolUseTurn | typeof emptyEndTurn | typeof recoveredEndTurn | typeof mixedRecoveryToolUseTurn | typeof emptyRefusal) {
   return {
     async *[Symbol.asyncIterator]() {
       for (const block of message.content) {
@@ -128,7 +151,9 @@ describe('Addie empty-response fallback (#4430)', () => {
   });
 
   it('returns fallback text and sends monitoring for non-streaming empty responses', async () => {
-    mocks.createMessage.mockResolvedValueOnce(emptyEndTurn);
+    mocks.createMessage
+      .mockResolvedValueOnce(emptyEndTurn)
+      .mockResolvedValueOnce(emptyEndTurn);
 
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
     const response = await client.processMessage(
@@ -142,6 +167,9 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
     expect(response.flagged).toBe(true);
     expect(response.flag_reason).toContain('Empty turn');
+    expect(mocks.createMessage).toHaveBeenCalledTimes(2);
+    expect(mocks.createMessage.mock.calls[0][0]).toMatchObject({ max_tokens: 8_192 });
+    expect(mocks.createMessage.mock.calls[0][0]).not.toHaveProperty('output_config');
     expect(mocks.notifySystemError).toHaveBeenCalledWith(expect.objectContaining({
       source: 'addie-empty-response',
       errorMessage: expect.stringContaining('thread-empty'),
@@ -149,7 +177,9 @@ describe('Addie empty-response fallback (#4430)', () => {
   });
 
   it('yields fallback text before done for streaming empty responses', async () => {
-    mocks.streamMessage.mockReturnValueOnce(makeEmptyStream());
+    mocks.streamMessage
+      .mockReturnValueOnce(makeEmptyStream())
+      .mockReturnValueOnce(makeEmptyStream());
 
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
     const events: StreamEvent[] = [];
@@ -168,10 +198,265 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(done?.response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
     expect(done?.response.flagged).toBe(true);
     expect(done?.response.flag_reason).toContain('Empty turn');
+    expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
     expect(mocks.notifySystemError).toHaveBeenCalledWith(expect.objectContaining({
       source: 'addie-empty-response',
       errorMessage: expect.stringContaining('processMessageStream'),
     }));
+  });
+
+  it('recovers once from a wholly empty initial non-streaming response', async () => {
+    mocks.createMessage
+      .mockResolvedValueOnce(emptyEndTurn)
+      .mockResolvedValueOnce(recoveredEndTurn);
+
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+    const response = await client.processMessage(
+      'hello',
+      undefined,
+      undefined,
+      undefined,
+      { uncapped: true, threadId: 'thread-initial-recovered' },
+    );
+
+    expect(response.text).toBe('Issue 42 is open.');
+    expect(response.timing?.iterations).toBe(2);
+    expect(response.usage).toMatchObject({ input_tokens: 22, output_tokens: 6 });
+    expect(mocks.createMessage).toHaveBeenCalledTimes(2);
+    expect(mocks.createMessage.mock.calls[0][0]).toMatchObject({
+      max_tokens: 16_384,
+      output_config: { effort: 'medium' },
+    });
+    expect(mocks.createMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.notifySystemError).not.toHaveBeenCalled();
+  });
+
+  it('recovers once from a wholly empty initial streaming response', async () => {
+    mocks.streamMessage
+      .mockReturnValueOnce(makeEmptyStream())
+      .mockReturnValueOnce(makeStream(recoveredEndTurn));
+
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+    const events: StreamEvent[] = [];
+    for await (const event of client.processMessageStream(
+      'hello',
+      undefined,
+      undefined,
+      { uncapped: true, threadId: 'thread-stream-initial-recovered' },
+    )) events.push(event);
+
+    const text = events
+      .filter((event): event is Extract<StreamEvent, { type: 'text' }> => event.type === 'text')
+      .map((event) => event.text)
+      .join('');
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+    expect(text).toBe('Issue 42 is open.');
+    expect(done?.response.timing?.iterations).toBe(2);
+    expect(done?.response.usage).toMatchObject({ input_tokens: 22, output_tokens: 6 });
+    expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
+    expect(mocks.streamMessage.mock.calls[0][0]).toMatchObject({
+      max_tokens: 16_384,
+      output_config: { effort: 'medium' },
+    });
+    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.notifySystemError).not.toHaveBeenCalled();
+  });
+
+  it('does not resample a wholly empty evaluation response', async () => {
+    mocks.createMessage.mockResolvedValueOnce(emptyEndTurn);
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+
+    const response = await client.processMessage(
+      'hello',
+      undefined,
+      undefined,
+      undefined,
+      { uncapped: true, executionMode: 'evaluation' },
+    );
+
+    expect(response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(mocks.createMessage).toHaveBeenCalledOnce();
+    expect(mocks.notifySystemError).not.toHaveBeenCalled();
+  });
+
+  it('never resamples an empty refusal', async () => {
+    mocks.createMessage.mockResolvedValueOnce(emptyRefusal);
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+
+    const response = await client.processMessage(
+      'hello',
+      undefined,
+      undefined,
+      undefined,
+      { uncapped: true },
+    );
+
+    expect(response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(mocks.createMessage).toHaveBeenCalledOnce();
+  });
+
+  it('never resamples an empty streaming refusal', async () => {
+    mocks.streamMessage.mockReturnValueOnce(makeStream(emptyRefusal));
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+    const events: StreamEvent[] = [];
+
+    for await (const event of client.processMessageStream(
+      'hello',
+      undefined,
+      undefined,
+      { uncapped: true },
+    )) events.push(event);
+
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+    expect(done?.response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(mocks.streamMessage).toHaveBeenCalledOnce();
+  });
+
+  it('never resamples an empty refusal after a non-streaming tool call', async () => {
+    mocks.createMessage
+      .mockResolvedValueOnce(toolUseTurn)
+      .mockResolvedValueOnce(emptyRefusal);
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+
+    const response = await client.processMessage(
+      'check issue 42',
+      undefined,
+      githubIssueTools,
+      undefined,
+      { uncapped: true },
+    );
+
+    expect(response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(getGithubIssue).toHaveBeenCalledOnce();
+    expect(mocks.createMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('never resamples an empty streaming refusal after a tool call', async () => {
+    mocks.streamMessage
+      .mockReturnValueOnce(makeStream(toolUseTurn))
+      .mockReturnValueOnce(makeStream(emptyRefusal));
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+    const events: StreamEvent[] = [];
+
+    for await (const event of client.processMessageStream(
+      'check issue 42',
+      undefined,
+      githubIssueTools,
+      { uncapped: true },
+    )) events.push(event);
+
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+    expect(done?.response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(getGithubIssue).toHaveBeenCalledOnce();
+    expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to the first empty terminal when non-streaming recovery fails', async () => {
+    mocks.createMessage
+      .mockResolvedValueOnce(emptyEndTurn)
+      .mockRejectedValueOnce(Object.assign(new Error('recovery transport failed'), { status: 529 }));
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+
+    const response = await client.processMessage(
+      'hello',
+      undefined,
+      undefined,
+      undefined,
+      { uncapped: true },
+    );
+
+    expect(response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(response.usage).toMatchObject({ input_tokens: 10, output_tokens: 0 });
+    expect(mocks.createMessage).toHaveBeenCalledTimes(2);
+    expect(mocks.createMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.notifySystemError).toHaveBeenCalledOnce();
+  });
+
+  it('falls back to the first empty terminal when streaming recovery fails', async () => {
+    mocks.streamMessage
+      .mockReturnValueOnce(makeEmptyStream())
+      .mockReturnValueOnce(makeThrowingStream(new Error('recovery stream failed')));
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+    const events: StreamEvent[] = [];
+
+    for await (const event of client.processMessageStream(
+      'hello',
+      undefined,
+      undefined,
+      { uncapped: true },
+    )) events.push(event);
+
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+    expect(done?.response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(done?.response.usage).toMatchObject({ input_tokens: 10, output_tokens: 0 });
+    expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
+    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.notifySystemError).toHaveBeenCalledOnce();
+  });
+
+  it('does not resample when streaming deltas contain text but the final content is empty', async () => {
+    mocks.streamMessage.mockReturnValueOnce(makeTextDeltaStreamWithEmptyFinal('A complete answer.'));
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+    const events: StreamEvent[] = [];
+
+    for await (const event of client.processMessageStream(
+      'hello',
+      undefined,
+      undefined,
+      { uncapped: true },
+    )) events.push(event);
+
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+    expect(done?.response.text).toBe('A complete answer.');
+    expect(mocks.streamMessage).toHaveBeenCalledOnce();
+    expect(mocks.notifySystemError).not.toHaveBeenCalled();
+  });
+
+  it('allows one tool call after recovering from a wholly empty initial response', async () => {
+    mocks.createMessage
+      .mockResolvedValueOnce(emptyEndTurn)
+      .mockResolvedValueOnce(toolUseTurn)
+      .mockResolvedValueOnce(recoveredEndTurn);
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+
+    const response = await client.processMessage(
+      'check issue 42',
+      undefined,
+      githubIssueTools,
+      undefined,
+      { uncapped: true },
+    );
+
+    expect(response.text).toBe('Issue 42 is open.');
+    expect(response.timing?.iterations).toBe(3);
+    expect(getGithubIssue).toHaveBeenCalledOnce();
+    expect(mocks.createMessage).toHaveBeenCalledTimes(3);
+    expect(mocks.createMessage.mock.calls[1][0].tools).not.toEqual([]);
+    expect(mocks.createMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.createMessage.mock.calls[2][1]).toBeUndefined();
+  });
+
+  it('restores normal streaming dispatch after initial recovery emits a tool call', async () => {
+    mocks.streamMessage
+      .mockReturnValueOnce(makeEmptyStream())
+      .mockReturnValueOnce(makeStream(toolUseTurn))
+      .mockReturnValueOnce(makeStream(recoveredEndTurn));
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+    const events: StreamEvent[] = [];
+
+    for await (const event of client.processMessageStream(
+      'check issue 42',
+      undefined,
+      githubIssueTools,
+      { uncapped: true },
+    )) events.push(event);
+
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+    expect(done?.response.text).toBe('Issue 42 is open.');
+    expect(getGithubIssue).toHaveBeenCalledOnce();
+    expect(mocks.streamMessage).toHaveBeenCalledTimes(3);
+    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.streamMessage.mock.calls[2][1]).toBeUndefined();
   });
 
   it('resamples once after a tool returns an empty non-streaming completion', async () => {
@@ -193,6 +478,7 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(response.timing?.iterations).toBe(3);
     expect(getGithubIssue).toHaveBeenCalledOnce();
     expect(mocks.notifySystemError).not.toHaveBeenCalled();
+    expect(mocks.createMessage.mock.calls[2][1]).toEqual({ maxRetries: 0 });
   });
 
   it('does not discard server-managed search results by entering custom-tool recovery', async () => {
@@ -240,6 +526,29 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(done?.response.timing?.iterations).toBe(3);
     expect(getGithubIssue).toHaveBeenCalledOnce();
     expect(mocks.notifySystemError).not.toHaveBeenCalled();
+    expect(mocks.streamMessage.mock.calls[2][1]).toEqual({ maxRetries: 0 });
+  });
+
+  it('falls back without retrying when post-tool recovery transport fails', async () => {
+    mocks.createMessage
+      .mockResolvedValueOnce(toolUseTurn)
+      .mockResolvedValueOnce(emptyEndTurn)
+      .mockRejectedValueOnce(Object.assign(new Error('recovery overloaded'), { status: 529 }));
+
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+    const response = await client.processMessage(
+      'check issue 42',
+      undefined,
+      githubIssueTools,
+      undefined,
+      { uncapped: true },
+    );
+
+    expect(response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(response.usage).toMatchObject({ input_tokens: 20, output_tokens: 5 });
+    expect(getGithubIssue).toHaveBeenCalledOnce();
+    expect(mocks.createMessage).toHaveBeenCalledTimes(3);
+    expect(mocks.createMessage.mock.calls[2][1]).toEqual({ maxRetries: 0 });
   });
 
   it('falls back after the one non-streaming post-tool resample is also empty', async () => {

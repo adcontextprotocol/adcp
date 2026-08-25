@@ -91,7 +91,7 @@ Plus a long tail of error-code clarity, auth tightening, idempotency rules, TMP 
 
 When using SDK helpers such as `definePlatform`, keep unsupported capability slots absent from `get_adcp_capabilities`. A missing slot is an honest scope boundary: storyboards and local test vectors targeting that slot should grade `not_applicable`, not failed.
 
-Current workaround: prerelease/custom runners should add explicit skip gates for vectors outside the declared slot scope. The runner-side follow-up is tracked in `adcp-client#2244`.
+Current runners grade a path targeting an undeclared slot as `not_applicable`. A runner that dispatches that path and reports an implementation failure is not applying the capability declaration correctly.
 
 ## Headline features
 

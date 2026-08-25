@@ -510,11 +510,7 @@
       }
     },
     "acceptance_policy_profile_ids": {
-      "type": "array",
-      "description": "Acceptance-policy profiles from the seller catalog that apply to this product in addition to seller defaults. Profiles compose restrictively; the most restrictive matching disposition wins.",
-      "items": { "type": "string", "minLength": 1, "x-entity": "acceptance_policy_profile" },
-      "minItems": 1,
-      "uniqueItems": true
+      "$ref": "/schemas/core/acceptance-policy-profile-ids.json"
     },
     "trusted_match": {
       "type": "object",

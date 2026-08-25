@@ -3,6 +3,7 @@
  * Manages key-value configuration for application-wide settings
  */
 
+import { ORGANIZATION_AUTHORIZATION_BOUNDARY_VALUES } from '../auth/organization-authorization-boundaries.js';
 import { query } from './client.js';
 
 // ============== Types ==============
@@ -64,6 +65,11 @@ export interface S2CanonicalFormatsDeltaReleaseSetting {
   criteria_deployed_at: string | null;
 }
 
+export interface OrganizationAuthorizationEnforcementSetting {
+  enabled: boolean;
+  boundaries: string[];
+}
+
 // ============== Setting Keys ==============
 
 export const SETTING_KEYS = {
@@ -76,6 +82,7 @@ export const SETTING_KEYS = {
   EDITORIAL_SLACK_CHANNEL: 'editorial_slack_channel',
   ANNOUNCEMENT_SLACK_CHANNEL: 'announcement_slack_channel',
   CERTIFICATION_S2_CANONICAL_FORMATS_DELTA_RELEASE: 'certification_s2_canonical_formats_delta_release',
+  ORGANIZATION_AUTHORIZATION_ENFORCEMENT: 'organization_authorization_enforcement',
 } as const;
 
 // ============== Generic Operations ==============
@@ -143,6 +150,70 @@ export async function getSettingAuditHistory(limit = 50): Promise<SystemSettingA
     [safeLimit]
   );
   return result.rows;
+}
+
+const DEFAULT_ORGANIZATION_AUTHORIZATION_ENFORCEMENT: OrganizationAuthorizationEnforcementSetting = {
+  enabled: false,
+  boundaries: [],
+};
+
+/**
+ * Read the audited runtime gate for exact-credential organization
+ * authorization. Absence is intentionally disabled. Malformed persisted
+ * values throw so an environment-staged enforcement process can fail closed
+ * instead of silently falling back to legacy authorization.
+ */
+export async function getOrganizationAuthorizationEnforcement(): Promise<OrganizationAuthorizationEnforcementSetting> {
+  const setting = await getSetting<unknown>(SETTING_KEYS.ORGANIZATION_AUTHORIZATION_ENFORCEMENT);
+  if (setting === null) {
+    return {
+      ...DEFAULT_ORGANIZATION_AUTHORIZATION_ENFORCEMENT,
+      boundaries: [],
+    };
+  }
+  if (
+    typeof setting !== 'object' ||
+    Array.isArray(setting) ||
+    typeof (setting as { enabled?: unknown }).enabled !== 'boolean' ||
+    !Array.isArray((setting as { boundaries?: unknown }).boundaries) ||
+    !(setting as { boundaries: unknown[] }).boundaries.every((value) => typeof value === 'string')
+  ) {
+    throw new Error('Invalid organization authorization enforcement setting');
+  }
+  const enabled = (setting as { enabled: boolean }).enabled;
+  const boundaries = [...new Set(
+    (setting as { boundaries: string[] }).boundaries.map((value) => value.trim()).filter(Boolean),
+  )];
+  const supportedBoundaries = new Set<string>(ORGANIZATION_AUTHORIZATION_BOUNDARY_VALUES);
+  if (
+    boundaries.some((boundary) => !supportedBoundaries.has(boundary)) ||
+    (enabled && boundaries.length === 0)
+  ) {
+    throw new Error('Invalid organization authorization enforcement setting');
+  }
+  return { enabled, boundaries };
+}
+
+export async function setOrganizationAuthorizationEnforcement(
+  setting: OrganizationAuthorizationEnforcementSetting,
+  updatedBy?: string,
+): Promise<void> {
+  const boundaries = [...new Set(setting.boundaries.map((value) => value.trim()).filter(Boolean))];
+  const supportedBoundaries = new Set<string>(ORGANIZATION_AUTHORIZATION_BOUNDARY_VALUES);
+  if (
+    boundaries.some((boundary) => !supportedBoundaries.has(boundary)) ||
+    (setting.enabled && boundaries.length === 0)
+  ) {
+    throw new Error('Invalid organization authorization enforcement setting');
+  }
+  await setSetting(
+    SETTING_KEYS.ORGANIZATION_AUTHORIZATION_ENFORCEMENT,
+    {
+      enabled: setting.enabled,
+      boundaries,
+    },
+    updatedBy,
+  );
 }
 
 // ============== Billing Channel Operations ==============

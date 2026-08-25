@@ -18,35 +18,19 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { canonicalize } = require('@adcp/sdk');
+const yaml = require('js-yaml');
 
 const REGISTRY_DIR = path.join(__dirname, '..', 'static', 'registry', 'policies');
 const POLICY_VERSION_DIR = path.join(__dirname, '..', 'static', 'registry', 'policy-versions');
 const CATEGORY_DIR = path.join(__dirname, '..', 'static', 'registry', 'policy-categories');
+const COMPLIANCE_SOURCE_DIR = path.join(__dirname, '..', 'static', 'compliance', 'source');
 
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const ISO_ALPHA2 = /^[A-Z]{2}$/;
 const VALID_CATEGORIES = new Set(['regulation', 'standard']);
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
-
-function canonicalize(value) {
-  if (typeof value === 'number' && !Number.isFinite(value)) throw new Error('RFC 8785 forbids non-finite numbers');
-  if (typeof value === 'string') {
-    for (let index = 0; index < value.length; index += 1) {
-      const code = value.charCodeAt(index);
-      if (code >= 0xd800 && code <= 0xdbff) {
-        const next = value.charCodeAt(index + 1);
-        if (!(next >= 0xdc00 && next <= 0xdfff)) throw new Error('RFC 8785 forbids lone surrogates');
-        index += 1;
-      } else if (code >= 0xdc00 && code <= 0xdfff) {
-        throw new Error('RFC 8785 forbids lone surrogates');
-      }
-    }
-  }
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
-  return `{${Object.keys(value).sort().map((key) => `${canonicalize(key)}:${canonicalize(value[key])}`).join(',')}}`;
-}
 
 function digest(value) {
   return `sha256:${crypto.createHash('sha256').update(canonicalize(value)).digest('hex')}`;
@@ -309,6 +293,53 @@ function checkEntry(entry, filename) {
   return errors;
 }
 
+function checkStoryboardPolicyFacets(sourceDirectory = COMPLIANCE_SOURCE_DIR) {
+  const failures = [];
+  const walkValue = (value, location, errors) => {
+    if (Array.isArray(value)) {
+      value.forEach((entry, index) => walkValue(entry, `${location}[${index}]`, errors));
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    if (typeof value.subject_category === 'string' && Array.isArray(value.subject_facets)) {
+      const category = POLICY_CATEGORIES.get(value.subject_category);
+      if (!category) {
+        errors.push(`${location}.subject_category references unknown category ${JSON.stringify(value.subject_category)}`);
+      } else {
+        const knownFacets = new Set((category.facets || []).map((facet) => facet.facet_id));
+        for (const facet of value.subject_facets) {
+          if (!knownFacets.has(facet)) {
+            errors.push(`${location}.subject_facets references unknown ${value.subject_category} facet ${JSON.stringify(facet)}`);
+          }
+        }
+      }
+    }
+    for (const [key, entry] of Object.entries(value)) walkValue(entry, `${location}.${key}`, errors);
+  };
+  const walkFiles = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        walkFiles(fullPath);
+        continue;
+      }
+      if (!/\.ya?ml$/.test(entry.name)) continue;
+      const errors = [];
+      try {
+        walkValue(yaml.load(fs.readFileSync(fullPath, 'utf8')), '$', errors);
+      } catch (error) {
+        errors.push(`invalid YAML: ${error.message}`);
+      }
+      if (errors.length > 0) failures.push({
+        file: path.relative(COMPLIANCE_SOURCE_DIR, fullPath),
+        errors,
+      });
+    }
+  };
+  walkFiles(sourceDirectory);
+  return failures;
+}
+
 function main() {
   if (!fs.existsSync(REGISTRY_DIR)) {
     console.error(`Registry directory not found: ${REGISTRY_DIR}`);
@@ -344,6 +375,8 @@ function main() {
       failures.push({ file, errors });
     }
   }
+
+  failures.push(...checkStoryboardPolicyFacets());
 
   if (fs.existsSync(POLICY_VERSION_DIR)) {
     for (const policyId of fs.readdirSync(POLICY_VERSION_DIR).sort()) {
@@ -402,4 +435,12 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { canonicalize, digest, policyContentDigest, profileContentDigest, checkPolicyCategory, checkEntry };
+module.exports = {
+  canonicalize,
+  digest,
+  policyContentDigest,
+  profileContentDigest,
+  checkPolicyCategory,
+  checkEntry,
+  checkStoryboardPolicyFacets,
+};

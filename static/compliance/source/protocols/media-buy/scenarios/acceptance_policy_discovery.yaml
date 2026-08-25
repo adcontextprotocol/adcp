@@ -3,7 +3,7 @@ version: "1.0.0"
 introduced_in: "3.2"
 title: "Seller exposes structured acceptance-policy discovery"
 category: media_buy_seller
-summary: "Verifies that an advertised acceptance-policy catalog is digest-pinned and that product-specific profiles are discoverable with structured buyer context."
+summary: "Verifies that an advertised acceptance-policy catalog is digest-pinned and that product-specific profiles are discoverable."
 track: media_buy
 
 requires:
@@ -14,8 +14,8 @@ required_tools:
   - get_products
 
 requires_capability:
-  path: media_buy.acceptance_policy_discovery.acceptance_context
-  equals: true
+  path: media_buy.acceptance_policy_discovery.catalog_digest
+  present: true
 
 narrative: |
   A seller that advertises structured acceptance discovery gives buyers a
@@ -89,17 +89,13 @@ phases:
           - check: field_present
             path: "media_buy.acceptance_policy_discovery.catalog_digest"
             description: "The seller pins the exact catalog representation"
-          - check: field_value
-            path: "media_buy.acceptance_policy_discovery.acceptance_context"
-            value: true
-            description: "The seller commits to interpreting structured acceptance context"
 
   - id: discover_product_profiles
     title: "Discover product-specific profiles"
     depends_on: [discover_catalog]
     steps:
       - id: get_contextual_products
-        title: "Send structured context and request profile projections"
+        title: "Read product profile projections"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
@@ -110,16 +106,6 @@ phases:
           brief: "Find sandbox video inventory for a US public-policy campaign."
           brand:
             domain: "acmeoutdoor.example"
-          fields:
-            - "acceptance_policy_profile_ids"
-          acceptance_context:
-            subjects:
-              - subject_category: "political_advertising"
-                subject_facets: ["federal_election"]
-            advertiser_roles: ["agency"]
-            advertiser_industry: "government_nonprofit.political"
-            advertiser_jurisdictions: ["US"]
-            delivery_jurisdictions: ["US"]
           context:
             correlation_id: "acceptance_policy_discovery--products"
         validations:

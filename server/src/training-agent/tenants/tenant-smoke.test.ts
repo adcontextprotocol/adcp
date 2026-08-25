@@ -10,8 +10,8 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import Ajv from 'ajv';
 import type { TrainingContext } from '../types.js';
+import { validateSourceSchema } from '../source-schema.js';
 import { clearAccountStore } from '../account-handlers.js';
 import {
   clearSessions,
@@ -371,7 +371,7 @@ describe('tenant routing smoke', () => {
   it('validates and idempotently applies the sync_governance write boundary', async () => {
     const { baseUrl, close } = await bootServer();
     try {
-      const url = `${baseUrl}/signals/mcp`;
+      const url = `${baseUrl}/sales/mcp`;
       await initializeTenant(url);
       const account = {
         brand: {
@@ -460,6 +460,7 @@ describe('tenant routing smoke', () => {
       expect(rejected.result?.structuredContent?.accounts?.[0]).not.toHaveProperty('governance_agents');
 
       const legacyBinding = await callTenantTool(url, 12, 'sync_governance', {
+        adcp_version: '3.1',
         accounts: [{
           account,
           governance_agents: [{
@@ -537,12 +538,56 @@ describe('tenant routing smoke', () => {
         expect(capabilities?.adcp?.governance_enforcement?.tasks).toEqual(
           tasks.map(task => ({ task, modes: ['signed_context'] })),
         );
-        // The standardized acceptance declaration was added after the
-        // immutable beta.6 checkpoint and must not leak into this response.
-        expect(capabilities?.adcp?.governance_enforcement?.accepted_governance_agents).toBeUndefined();
+        expect(capabilities?.adcp?.governance_enforcement?.accepted_governance_agents?.any_of)
+          .toContainEqual({ kind: 'agent_url', agent_url: 'https://governance.example/mcp' });
         expect(capabilities?.experimental_features).toContain('governance.campaign');
         if (tenant === 'creative-builder') {
           expect(capabilities?.specialisms).toContain('creative-transformers');
+        }
+      }
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('advertises only the protocols implemented by each tenant route', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const expected: Record<string, string[]> = {
+        sales: ['media_buy', 'creative'],
+        signals: ['signals'],
+        governance: ['governance'],
+        creative: ['creative'],
+        'creative-builder': ['creative'],
+        brand: ['brand'],
+        si: ['sponsored_intelligence'],
+      };
+      for (const [index, [tenant, protocols]] of Object.entries(expected).entries()) {
+        const url = `${baseUrl}/${tenant}/mcp`;
+        await initializeTenant(url);
+        const response = await callTenantTool(url, 40 + index, 'get_adcp_capabilities', {}) as {
+          result?: { structuredContent?: {
+            supported_protocols?: string[];
+            media_buy?: unknown;
+            creative?: {
+              supported_formats?: Array<{ capability_id?: string; operations?: string[] }>;
+              preview?: { routes?: Array<{ capability_id?: string }> };
+            };
+          } };
+        };
+        const capabilities = response.result?.structuredContent;
+        expect(capabilities?.supported_protocols).toEqual(protocols);
+        if (!protocols.includes('media_buy')) {
+          expect(capabilities?.media_buy).toBeUndefined();
+        }
+        if (protocols.includes('creative')) {
+          const previewCapabilityIds = capabilities?.creative?.supported_formats
+            ?.filter(format => format.operations?.includes('preview'))
+            .map(format => format.capability_id) ?? [];
+          expect(previewCapabilityIds.length).toBeGreaterThan(0);
+          expect(capabilities?.creative?.preview?.routes?.map(route => route.capability_id)).toEqual(
+            previewCapabilityIds,
+          );
         }
       }
     } finally {
@@ -578,7 +623,6 @@ describe('tenant routing smoke', () => {
               catalog_url?: string;
               catalog_digest?: string;
               default_profile_ids?: string[];
-              acceptance_context?: boolean;
             };
           };
         } };
@@ -608,7 +652,11 @@ describe('tenant routing smoke', () => {
         ],
         max_alternatives: 3,
       });
-      expect(mediaBuy?.acceptance_policy_discovery).toBeUndefined();
+      expect(mediaBuy?.acceptance_policy_discovery).toEqual({
+        catalog_url: 'https://test-agent.adcontextprotocol.org/registry/acceptance-policy-catalog.json',
+        catalog_digest: 'sha256:3afb3865dbd69025b4f925c5c018c7659fa0a744efcb0b12b87e1b3a119b3d2a',
+        default_profile_ids: ['meta_political_advertising_acceptance'],
+      });
 
       for (const [id, adcpVersion] of [[31, '3.2'], [32, '3.0']] as const) {
         const nonBetaCapabilities = await callTenantTool(url, id, 'get_adcp_capabilities', {
@@ -1869,15 +1917,11 @@ describe('tenant routing smoke', () => {
       expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(
         expect.arrayContaining(SALES_CURRENT_SCENARIOS),
       );
-      const schema = JSON.parse(fs.readFileSync(path.resolve(
-        'dist/schemas/3.2.0-beta.6/bundled/protocol/get-adcp-capabilities-response.json',
-      ), 'utf8'));
-      const validate = new Ajv({ allErrors: true, strict: false, discriminator: true, validateFormats: false })
-        .compile(schema);
-      expect(
-        validate(body.result?.structuredContent),
-        JSON.stringify(validate.errors),
-      ).toBe(true);
+      const validation = validateSourceSchema(
+        'protocol/get-adcp-capabilities-response.json',
+        body.result?.structuredContent,
+      );
+      expect(validation.valid, JSON.stringify(validation.errors)).toBe(true);
     } finally {
       await close();
     }
@@ -2871,6 +2915,29 @@ describe('tenant routing smoke', () => {
     }
   }, 15000);
 
+  it('advertises a schema-valid legacy compliance scenario on the 3.0 signals tenant', async () => {
+    stageLatestThreeZeroSchemaBundle();
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      const url = `${baseUrl}/signals/mcp`;
+      await initializeTenant(url);
+      const capabilitiesBody = await callTenantTool(url, 2, 'get_adcp_capabilities', {}) as {
+        result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
+      };
+      expect(capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios).toEqual([
+        'force_session_status',
+      ]);
+
+      const listedBody = await callTenantTool(url, 3, 'comply_test_controller', {
+        account: { sandbox: true },
+        scenario: 'list_scenarios',
+      }) as { result?: { structuredContent?: { scenarios?: string[] } } };
+      expect(listedBody.result?.structuredContent?.scenarios).toEqual(['force_session_status']);
+    } finally {
+      await close();
+    }
+  }, 15000);
+
   it('projects post-3.0 creative format parameters out of 3.0 tenant responses', async () => {
     const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
     try {
@@ -3423,7 +3490,7 @@ describe('tenant routing smoke', () => {
       const directive = await callTenantTool(url, 2, 'comply_test_controller', {
         account: controllerAccount,
         scenario: 'force_upstream_unavailable',
-        params: { tool: 'get_products', upstream_name: 'catalog-test' },
+        params: { tool: 'get_products', upstream_name: 'catalog-test', cache_age_seconds: 73 },
       }) as { result?: { structuredContent?: { success?: boolean } } };
       expect(directive.result?.structuredContent?.success).toBe(true);
 
@@ -3435,7 +3502,7 @@ describe('tenant routing smoke', () => {
         account,
         context: { correlation_id: 'tenant-advisory-first' },
       }) as {
-        result?: { structuredContent?: { products?: Array<Record<string, unknown>>; errors?: Array<{ code?: string }>; context?: { correlation_id?: string } } };
+        result?: { structuredContent?: { products?: Array<Record<string, unknown>>; errors?: Array<{ code?: string; details?: { served_from_cache?: boolean; cache_age_seconds?: number } }>; context?: { correlation_id?: string } } };
       };
       const replay = await callTenantTool(url, 4, 'get_products', {
         idempotency_key: key,
@@ -3470,6 +3537,10 @@ describe('tenant routing smoke', () => {
         )
       ))).toBe(true);
       expect(first.result?.structuredContent?.errors?.map(error => error.code)).toEqual(['STALE_RESPONSE']);
+      expect(first.result?.structuredContent?.errors?.[0]?.details).toMatchObject({
+        served_from_cache: true,
+        cache_age_seconds: 73,
+      });
       expect(first.result?.structuredContent?.context?.correlation_id).toBe('tenant-advisory-first');
       expect(replay.result?.structuredContent?.replayed).toBe(true);
       expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);

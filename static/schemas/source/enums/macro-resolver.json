@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/macro-resolver.json",
+  "title": "Macro Processing Actor",
+  "description": "Protocol role authorized to translate the token or bind its concrete value.",
+  "type": "string",
+  "enum": ["buyer", "creative_agent", "seller", "request_executor", "source_ad_server"],
+  "enumDescriptions": {
+    "buyer": "The buyer agent acts before submission.",
+    "creative_agent": "The creative agent executing build_creative, preview_creative, or validate_input performs the declared build-time operation.",
+    "seller": "The AdCP seller or its execution adapter acts during trafficking or serving.",
+    "request_executor": "The component executing the governed request acts, whether a client player, publisher player, SSAI service, or another request executor.",
+    "source_ad_server": "The originating creative/ad server acts on its own native token."
+  }
+}

@@ -125,9 +125,9 @@ function patchFile(file) {
   const zod = file.endsWith('.mjs') ? 'z' : 'import_zod.z';
   function addLiteralToConstUnion(constName, afterValue, value) {
     const declarationStart = text.indexOf(`const ${constName} =`);
-    if (declarationStart < 0) return;
+    if (declarationStart < 0) throw new Error(`${file}: ${constName} declaration anchor changed`);
     const unionEnd = text.indexOf(']);', declarationStart);
-    if (unionEnd < 0) return;
+    if (unionEnd < 0) throw new Error(`${file}: ${constName} union terminator anchor changed`);
     const before = text.slice(0, declarationStart);
     let declaration = text.slice(declarationStart, unionEnd + 3);
     const literal = `${zod}.literal("${value}")`;
@@ -137,14 +137,17 @@ function patchFile(file) {
         `${zod}.literal("${afterValue}"), ${literal}`,
       );
     }
+    if (!declaration.includes(literal)) {
+      throw new Error(`${file}: ${constName} literal anchor ${afterValue} changed; failed to add ${value}`);
+    }
     text = before + declaration + text.slice(unionEnd + 3);
   }
   function addLiteralToFirstActionUnion(constName, afterValue, value) {
     const declarationStart = text.indexOf(`const ${constName} =`);
-    if (declarationStart < 0) return;
+    if (declarationStart < 0) throw new Error(`${file}: ${constName} declaration anchor changed`);
     const actionStart = text.indexOf(`action: ${zod}.union([`, declarationStart);
     const actionEnd = text.indexOf(']),', actionStart);
-    if (actionStart < 0 || actionEnd < 0) return;
+    if (actionStart < 0 || actionEnd < 0) throw new Error(`${file}: ${constName} action union anchor changed`);
     const before = text.slice(0, actionStart);
     let action = text.slice(actionStart, actionEnd + 2);
     const literal = `${zod}.literal("${value}")`;
@@ -153,6 +156,9 @@ function patchFile(file) {
         `${zod}.literal("${afterValue}")`,
         `${zod}.literal("${afterValue}"), ${literal}`,
       );
+    }
+    if (!action.includes(literal)) {
+      throw new Error(`${file}: ${constName} action anchor ${afterValue} changed; failed to add ${value}`);
     }
     text = before + action + text.slice(actionEnd + 2);
   }

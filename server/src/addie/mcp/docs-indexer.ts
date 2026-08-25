@@ -8,6 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createHash } from 'node:crypto';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('addie-docs-indexer');
@@ -81,6 +82,25 @@ let initialized = false;
 let docsVersions: DocsVersion[] = [];
 let errorCodesByDocsVersion = new Map<string, Set<string> | null>();
 let allKnownErrorCodes = new Set<string>();
+let docsCorpusFingerprint: string | null = null;
+
+function computeDocsCorpusFingerprint(): string {
+  const hash = createHash('sha256');
+  for (const doc of [...docsIndex].sort((left, right) => left.id.localeCompare(right.id))) {
+    hash.update(JSON.stringify([
+      doc.id,
+      doc.title,
+      doc.category,
+      doc.path,
+      doc.content,
+      doc.sourceUrl,
+      doc.version ?? null,
+      doc.artifactVersion ?? null,
+    ]));
+    hash.update('\n');
+  }
+  return hash.digest('hex');
+}
 
 // These describe the organization and community rather than a protocol release.
 // Keep their live copies searchable alongside every protocol version.
@@ -989,6 +1009,7 @@ export async function initializeDocsIndex(): Promise<void> {
 
   docsIndex = nextDocsIndex;
   headingsIndex = nextHeadingsIndex;
+  docsCorpusFingerprint = computeDocsCorpusFingerprint();
   initialized = true;
 
   const categories = [...new Set(docsIndex.map((d) => d.category))];
@@ -1026,6 +1047,15 @@ export async function initializeDocsIndex(): Promise<void> {
  */
 export function isDocsIndexReady(): boolean {
   return initialized;
+}
+
+/**
+ * Stable digest of the exact in-memory corpus used by search_docs/get_doc.
+ * Replay captures bind to this value so a refresh cannot be mislabeled as
+ * the same evidence source. The corpus itself never leaves this module.
+ */
+export function getDocsCorpusFingerprint(): string | null {
+  return initialized ? docsCorpusFingerprint : null;
 }
 
 /**
@@ -1373,6 +1403,7 @@ export async function refreshWorkingGroupDocs(): Promise<void> {
     const workingGroupDocs = await loadWorkingGroupDocuments();
     const nonWgDocs = docsIndex.filter((doc) => !doc.id.startsWith('wg-doc:'));
     docsIndex = [...nonWgDocs, ...workingGroupDocs];
+    docsCorpusFingerprint = computeDocsCorpusFingerprint();
     logger.info({ count: workingGroupDocs.length }, 'Addie Docs: Refreshed working group documents');
   } catch (error) {
     logger.warn({ error }, 'Addie Docs: Failed to refresh working group documents');

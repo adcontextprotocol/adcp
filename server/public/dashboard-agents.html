@@ -1564,11 +1564,12 @@
       const previous = agent.visibility || 'private';
       if (previous === target) return;
       try {
-        const resp = await fetch(`/api/me/member-profile/agents/${index}/visibility`, {
+        const orgQuery = pageState.orgId ? `?org=${encodeURIComponent(pageState.orgId)}` : '';
+        const resp = await fetch(`/api/me/member-profile/agents/${index}/visibility${orgQuery}`, {
           method: 'PATCH',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ visibility: target }),
+          body: JSON.stringify({ visibility: target, organization_id: pageState.orgId || undefined }),
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) {
@@ -1772,7 +1773,8 @@
       let rows = cachedStoryboardStatuses(agentUrl);
       if (rows.length === 0) {
         try {
-          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/storyboard-status', { credentials: 'include' });
+          const orgQuery = pageState.orgId ? '?org=' + encodeURIComponent(pageState.orgId) : '';
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/storyboard-status' + orgQuery, { credentials: 'include' });
           if (res.ok) {
             const data = await res.json();
             rows = Array.isArray(data.storyboards) ? data.storyboards : [];
@@ -2526,7 +2528,10 @@
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ opt_out: !checkbox.checked }),
+          body: JSON.stringify({
+            opt_out: !checkbox.checked,
+            organization_id: pageState.orgId || undefined,
+          }),
         });
         if (!res.ok) {
           checkbox.checked = !checkbox.checked;
@@ -3189,7 +3194,10 @@
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ paused: toggle.checked }),
+            body: JSON.stringify({
+              paused: toggle.checked,
+              organization_id: pageState.orgId || undefined,
+            }),
           });
           if (!res.ok) {
             toggle.checked = !toggle.checked;
@@ -3239,7 +3247,10 @@
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ interval_hours: parseInt(select.value, 10) }),
+            body: JSON.stringify({
+              interval_hours: parseInt(select.value, 10),
+              organization_id: pageState.orgId || undefined,
+            }),
           });
           if (!res.ok) {
             select.value = previousValue;
@@ -3390,6 +3401,7 @@
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ organization_id: pageState.orgId || undefined }),
         });
         const data = await res.json().catch(() => ({}));
 
@@ -3449,7 +3461,8 @@
       panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
       try {
-        const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/monitoring/requests?limit=50`, {
+        const orgQuery = pageState.orgId ? `&org=${encodeURIComponent(pageState.orgId)}` : '';
+        const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/monitoring/requests?limit=50${orgQuery}`, {
           credentials: 'include',
         });
         if (!res.ok) throw new Error('Failed to load');

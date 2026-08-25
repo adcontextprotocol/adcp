@@ -39,11 +39,15 @@ const ACCOUNT_WEBHOOK_PROOF_SYNC_DEADLINE_MS = 30_000;
  * the legacy storyboard fixture. Keeping this list explicit makes the
  * advertised capability and binding-time decision use one source of truth.
  */
-export const TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS = [
+const TRAINING_ACCEPTED_GOVERNANCE_AGENT_INPUT_URLS = [
   'https://governance.example/mcp',
   'https://test-agent.adcontextprotocol.org',
   'https://governance.pinnacle-agency.example',
 ] as const;
+
+export const TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS = TRAINING_ACCEPTED_GOVERNANCE_AGENT_INPUT_URLS
+  .map(agentUrl => canonicalTargetUri(agentUrl));
+const TRAINING_ACCEPTED_GOVERNANCE_AGENT_URL_SET = new Set(TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS);
 
 export const TRAINING_ACCEPTED_GOVERNANCE_AGENTS = {
   any_of: TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS.map(agent_url => ({
@@ -1585,13 +1589,10 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
       continue;
     }
 
-    const acceptedUrls = new Set(
-      TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS.map(url => canonicalTargetUri(url)),
-    );
-    // beta.6 and earlier predate the acceptance declaration. Preserve their
+    // Earlier checkpoints predate the acceptance declaration. Preserve their
     // legacy accept-any behavior; otherwise an omitted capability would hide
     // a binding restriction that buyers cannot discover on that wire version.
-    if (supportsSellerGovernanceDiscovery(ctx.servedAdcpVersion) && !acceptedUrls.has(canonicalAgentUrl)) {
+    if (supportsSellerGovernanceDiscovery(ctx.servedAdcpVersion) && !TRAINING_ACCEPTED_GOVERNANCE_AGENT_URL_SET.has(canonicalAgentUrl)) {
       results.push({
         account: acctRef,
         status: 'failed',

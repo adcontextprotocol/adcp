@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 
@@ -9,8 +9,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.hoisted(() => {
-  process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'sk_test';
-  process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+  vi.stubEnv('WORKOS_API_KEY', process.env.WORKOS_API_KEY ?? 'sk_test');
+  vi.stubEnv('WORKOS_CLIENT_ID', process.env.WORKOS_CLIENT_ID ?? 'client_test');
 });
 
 vi.mock('../../src/services/brandfetch.js', () => ({
@@ -79,6 +79,10 @@ function discoveredBrandWithContext() {
     },
   };
 }
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe('GET /api/brands/enrich', () => {
   beforeEach(() => {

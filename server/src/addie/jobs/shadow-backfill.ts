@@ -167,6 +167,7 @@ async function backfill() {
             sourceKind: 'production',
             sourceModel: thread.source_answer_model,
             sourceConfigVersionId: thread.source_config_version_id,
+            sourceMessageId: thread.source_message_id,
             judgeModel: comparisonDisposition.executedJudgeModel,
             toolMode: thread.source_message_id ? 'production_trace' : 'none',
             traceOrFixtureId: thread.source_message_id,
@@ -187,7 +188,7 @@ async function backfill() {
             `Backfill knowledge gap (${result.gap_severity}): ${result.gap_details}`
           );
           totalGaps++;
-          console.log(`  GAP [${result.gap_severity}]: ${result.gap_details.substring(0, 80)}`);
+          console.log(`  GAP [${result.gap_severity}]`);
         }
 
         if (!comparisonDisposition.skipped) totalProcessed++;

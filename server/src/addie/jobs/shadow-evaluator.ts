@@ -9,30 +9,65 @@
  *
  * Runs every 10 minutes, processes threads that have settled (>10 min since last activity).
  *
- * The shadow generation loads Addie's actual rule files and tool reference so
- * the response shape approximates production. It does not yet execute tools,
- * so these rows are labelled `descriptions_only` and must not be treated as a
- * production answer-quality rate. Generation defaults to Haiku; judging
- * defaults to an independent precision model.
+ * Suppressed opportunities are now admitted only through an immutable,
+ * expiring, signed capture. Mutable thread context contains a queue pointer,
+ * never copied transcript or invocation data. Activation remains fail-closed
+ * until a production docs-only cohort records provider-tool parity.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../../logger.js';
-import { query } from '../../db/client.js';
-import { getThreadReplies } from '../../slack/client.js';
-import { getThreadService } from '../thread-service.js';
+import { getMemberContext } from '../member-context.js';
 import { disableAdaptiveThinking, ModelConfig, AddieModelConfig } from '../../config/models.js';
-import { loadRules, loadResponseStyle } from '../rules/index.js';
-import { ADDIE_TOOL_REFERENCE } from '../prompts.js';
 import { gradeShape, type ShapeReport } from '../testing/shape-grader.js';
 import {
-  buildShadowEvalProvenance,
+  buildChannelContext,
+  buildChannelResponseInvocation,
+  getChannelClaudeClient,
+  type ChannelRespondPlan,
+} from '../bolt-app.js';
+import {
+  claimShadowReplayGeneration,
+  completeShadowReplayGeneration,
+  completeShadowReplayCapture,
+  listPendingShadowReplayCaptures,
+  purgeRetainedShadowReplayTraces,
+  recoverStaleShadowReplayGenerations,
+  renewShadowReplayGenerationLease,
+  resolveShadowReplayTrace,
+  verifyShadowReplayTraceContext,
+} from './shadow-replay-trace.js';
+import {
+  isOfficialDocsProfile,
+  selectOfficialDocsJudgeActivation,
+  selectOfficialDocsReplayActivation,
+} from './shadow-replay-cohort.js';
+import {
+  executeVerifiedOfficialDocsReplay,
+  OfficialDocsReplayBoundaryError,
+  OfficialDocsReplayExecutionError,
+  OfficialDocsReplayOutputConsumerError,
+} from './shadow-replay.js';
+import {
+  createShadowReplayInternalErrorEvidence,
+  createShadowReplayOutputConsumer,
+  hydrateVerifiedShadowReplayHumanEvidence,
+  ShadowReplayJudgeBoundaryError,
+} from './shadow-replay-judge.js';
+import { getDocsCorpusFingerprint } from '../mcp/docs-indexer.js';
+import { getCurrentConfigVersionId } from '../config-version.js';
+import { guardBareJsonEnvelope, validateOutput } from '../security.js';
+import {
   resolveShadowJudgeModel,
-  shadowPromptHash,
   type ShadowEvalType,
 } from './shadow-eval-metadata.js';
 
 const logger = createLogger('shadow-evaluator');
+
+function createShadowJudgeClient(): Anthropic | null {
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  return apiKey ? new Anthropic({ apiKey }) : null;
+}
 
 export interface ShadowEvalResult {
   evaluated: number;
@@ -56,14 +91,15 @@ export interface ShadowComparisonResult {
     | 'comparison_input_too_long'
     | 'comparison_output_truncated'
     | 'generation_empty'
-    | 'generation_truncated';
+    | 'generation_truncated'
+    | 'generation_output_rejected'
+    | 'replay_incomplete';
 }
 
 /**
  * Resolve the model used to generate a suppressed-opportunity answer.
  *
- * Default: Haiku (cheap; same prompt as production so the shape signal is
- * still meaningful even though the model differs).
+ * Default: the production Addie chat model.
  * Override: SHADOW_EVAL_MODEL=primary | depth | precision | <full-model-id>
  *
  * Setting `primary` matches the Addie production chat model. The judge is
@@ -72,7 +108,7 @@ export interface ShadowComparisonResult {
  */
 export function resolveShadowModel(): string {
   const override = process.env.SHADOW_EVAL_MODEL?.trim();
-  if (!override) return ModelConfig.fast;
+  if (!override) return AddieModelConfig.chat;
   if (override === 'primary' || override === 'chat') return AddieModelConfig.chat;
   if (override === 'depth') return ModelConfig.depth;
   if (override === 'precision') return ModelConfig.precision;
@@ -111,46 +147,6 @@ export function fenceShadowEvalInput(label: string, body: string): string {
     escapeFenceTags(body),
     `</${label}>`,
   ].join('\n');
-}
-
-interface PendingThread {
-  thread_id: string;
-  context: {
-    shadow_eval_status: string;
-    shadow_eval_channel_id: string;
-    shadow_eval_thread_ts: string;
-    shadow_eval_tool_sets: string[];
-    shadow_eval_question: string;
-  };
-}
-
-/**
- * Find threads pending shadow evaluation that have settled (10+ min old).
- */
-async function findPendingThreads(limit: number): Promise<PendingThread[]> {
-  const result = await query<PendingThread>(
-    `SELECT thread_id, context
-     FROM addie_threads
-     WHERE context->>'shadow_eval_status' = 'pending'
-       AND updated_at < NOW() - INTERVAL '10 minutes'
-     ORDER BY updated_at ASC
-     LIMIT $1`,
-    [limit]
-  );
-  return result.rows;
-}
-
-/**
- * Extract human responses from a Slack thread (excluding bot messages).
- */
-function extractHumanResponses(
-  messages: Array<{ user?: string; text?: string; bot_id?: string; ts: string }>,
-  questionTs: string,
-): string[] {
-  return messages
-    .filter(msg => msg.user && !msg.bot_id && msg.ts > questionTs && msg.text)
-    .map(msg => msg.text!)
-    .filter(text => text.length > 20); // Skip short acknowledgments
 }
 
 /**
@@ -368,12 +364,72 @@ export function hasDeterministicShapeFailure(
   return report.violationLabels.length > 0;
 }
 
+export function validateShadowReplayOutput(text: string): {
+  text: string;
+  rejected: boolean;
+} {
+  const guarded = guardBareJsonEnvelope(text, { pathTag: 'shadow-channel-replay' });
+  const validation = validateOutput(guarded.text);
+  return {
+    text: validation.flagged ? '' : validation.sanitized,
+    rejected: validation.flagged,
+  };
+}
+
+export function getReplayPreComparisonError(
+  generationError: ShadowComparisonResult['evaluation_error'] | null,
+  completeFidelity: boolean,
+): ShadowComparisonResult['evaluation_error'] | null {
+  return generationError ?? (completeFidelity ? null : 'replay_incomplete');
+}
+
+function parseQueuedRespondPlan(value: unknown): ChannelRespondPlan | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.action !== 'respond'
+    || !Array.isArray(candidate.tool_sets)
+    || !candidate.tool_sets.every((set) => typeof set === 'string')
+    || !['high', 'suggest', 'low'].includes(String(candidate.confidence))
+    || !['quick_match', 'llm'].includes(String(candidate.decision_method))
+    || typeof candidate.reason !== 'string'
+    || !isOfficialDocsProfile(candidate)
+  ) {
+    return null;
+  }
+  return candidate as unknown as ChannelRespondPlan;
+}
+
 /**
  * Main job runner. Finds pending shadow evaluations, generates shadow responses,
  * compares with human answers, and stores results.
  */
 export async function runShadowEvaluatorJob(
-  options: { limit: number } = { limit: 5 }
+  options: { limit: number } = { limit: 5 },
+  dependencies: {
+    purgeTraces?: typeof purgeRetainedShadowReplayTraces;
+    recoverGenerations?: typeof recoverStaleShadowReplayGenerations;
+    listPending?: typeof listPendingShadowReplayCaptures;
+    resolveTrace?: typeof resolveShadowReplayTrace;
+    verifyTraceContext?: typeof verifyShadowReplayTraceContext;
+    completeCapture?: typeof completeShadowReplayCapture;
+    getClient?: typeof getChannelClaudeClient;
+    getDocsFingerprint?: typeof getDocsCorpusFingerprint;
+    getConfigVersionId?: typeof getCurrentConfigVersionId;
+    getMember?: typeof getMemberContext;
+    getChannel?: typeof buildChannelContext;
+    buildInvocation?: typeof buildChannelResponseInvocation;
+    selectReplayActivation?: typeof selectOfficialDocsReplayActivation;
+    selectJudgeActivation?: typeof selectOfficialDocsJudgeActivation;
+    claimGeneration?: typeof claimShadowReplayGeneration;
+    executeReplay?: typeof executeVerifiedOfficialDocsReplay;
+    completeGeneration?: typeof completeShadowReplayGeneration;
+    renewGenerationLease?: typeof renewShadowReplayGenerationLease;
+    hydrateHumanEvidence?: typeof hydrateVerifiedShadowReplayHumanEvidence;
+    getJudgeClient?: typeof createShadowJudgeClient;
+    resolveJudgeModel?: typeof resolveShadowJudgeModel;
+    createOutputConsumer?: typeof createShadowReplayOutputConsumer;
+  } = {},
 ): Promise<ShadowEvalResult> {
   const result: ShadowEvalResult = {
     evaluated: 0,
@@ -383,192 +439,321 @@ export async function runShadowEvaluatorJob(
     errors: 0,
   };
 
-  let pendingThreads: PendingThread[];
+  // Retention cleanup contains no transcript data and is independent of the
+  // evaluation queue. Failure is non-fatal; a later run will retry.
+  await (dependencies.purgeTraces ?? purgeRetainedShadowReplayTraces)().catch(() => {
+    logger.warn('Shadow evaluator: Replay trace retention cleanup failed');
+  });
+  await (dependencies.recoverGenerations ?? recoverStaleShadowReplayGenerations)().catch(() => {
+    logger.warn('Shadow evaluator: Stale replay generation recovery failed');
+  });
+
+  let pendingCaptures: Awaited<ReturnType<typeof listPendingShadowReplayCaptures>>;
   try {
-    pendingThreads = await findPendingThreads(options.limit);
+    pendingCaptures = await (dependencies.listPending ?? listPendingShadowReplayCaptures)(
+      options.limit,
+    );
   } catch (error) {
-    logger.error({ error }, 'Shadow evaluator: Failed to find pending threads');
+    logger.error(
+      { errorType: error instanceof Error ? error.name : typeof error },
+      'Shadow evaluator: Failed to find pending captures',
+    );
     return result;
   }
 
-  if (pendingThreads.length === 0) return result;
+  if (pendingCaptures.length === 0) return result;
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    logger.warn('Shadow evaluator: ANTHROPIC_API_KEY not set');
-    return result;
-  }
+  const finishCapture = async (
+    capture: (typeof pendingCaptures)[number],
+    status: 'verified' | 'skipped' | 'error',
+    reason: string,
+    details: { driftReasons?: string[]; parityVerified?: boolean } = {},
+  ) => (dependencies.completeCapture ?? completeShadowReplayCapture)(
+    capture.trace_id,
+    capture.thread_id,
+    {
+      status,
+      reason,
+      ...details,
+    },
+  );
 
-  const client = new Anthropic({ apiKey });
-  const threadService = getThreadService();
-
-  for (const thread of pendingThreads) {
+  for (const capture of pendingCaptures) {
     try {
-      const ctx = thread.context;
-      if (!ctx.shadow_eval_channel_id || !ctx.shadow_eval_thread_ts || !ctx.shadow_eval_question) {
-        logger.warn({ threadId: thread.thread_id }, 'Shadow evaluator: Missing context fields');
-        await threadService.patchThreadContext(thread.thread_id, { shadow_eval_status: 'error' });
-        result.errors++;
-        continue;
-      }
-
-      // Stamp semantics before external calls so pending/error rows remain
-      // attributable even when Slack or the model provider fails.
-      await threadService.patchThreadContext(thread.thread_id, {
-        shadow_eval_type: 'suppressed_opportunity',
-        shadow_eval_source: 'suppressed',
+      // Authorization is resolved before Slack, member/channel hydration,
+      // invocation construction, or either model. Mutable thread JSON is only
+      // a queue pointer and can never promote itself into eligible evidence.
+      const authorization = await (dependencies.resolveTrace ?? resolveShadowReplayTrace)(capture.trace_id, {
+        expectedThreadId: capture.thread_id,
       });
-
-      // Get the full Slack thread
-      let slackMessages;
-      try {
-        slackMessages = await getThreadReplies(ctx.shadow_eval_channel_id, ctx.shadow_eval_thread_ts);
-      } catch (error) {
-        logger.warn({ error, threadId: thread.thread_id }, 'Shadow evaluator: Could not fetch Slack thread');
-        await threadService.patchThreadContext(thread.thread_id, { shadow_eval_status: 'error' });
-        result.errors++;
-        continue;
-      }
-
-      // Extract human responses (after the question)
-      const humanResponses = extractHumanResponses(slackMessages, ctx.shadow_eval_thread_ts);
-      if (humanResponses.length === 0) {
-        // No substantive human replies yet — skip for now, re-check later
+      if (!authorization.authorized) {
+        await finishCapture(capture, 'skipped', authorization.reason);
         result.skipped++;
         continue;
       }
 
-      // Generate Addie's shadow response with the production rule set so the
-      // response shape is comparable. Default model is Haiku for cost;
-      // SHADOW_EVAL_MODEL=primary upgrades to Sonnet. Tools are not registered
-      // yet, which makes substantive/tool-required verdicts discovery-only.
-      // Provenance records `descriptions_only`, and knowledge-gap-closer
-      // excludes these rows until safe orchestration replay lands.
-      // Mirror claude-client.ts assembly: base rules + tool reference +
-      // response-style.md. Style instructions sit last so the shadow
-      // generation reflects what production emits.
-      let systemPrompt: string;
-      try {
-        systemPrompt = `${loadRules()}\n\n---\n\n${ADDIE_TOOL_REFERENCE}\n\n---\n\n${loadResponseStyle()}`;
-      } catch (loadError) {
-        logger.warn({ error: loadError }, 'Shadow evaluator: rules failed to load, skipping thread');
-        await threadService.patchThreadContext(thread.thread_id, { shadow_eval_status: 'error' });
-        result.errors++;
+      const plan = parseQueuedRespondPlan(authorization.trace.routerDecision);
+      const client = (dependencies.getClient ?? getChannelClaudeClient)();
+      const docsCorpusFingerprint = (dependencies.getDocsFingerprint ?? getDocsCorpusFingerprint)();
+      const currentConfigVersionId = await (
+        dependencies.getConfigVersionId ?? getCurrentConfigVersionId
+      )();
+      if (!plan || !client || !docsCorpusFingerprint) {
+        const reason = !plan
+          ? 'invalid_official_docs_plan'
+          : !client
+            ? 'channel_client_not_initialized'
+            : 'docs_corpus_not_initialized';
+        await finishCapture(capture, 'skipped', reason);
+        result.skipped++;
+        continue;
+      }
+      if (currentConfigVersionId !== authorization.trace.sourceConfigVersionId) {
+        await finishCapture(capture, 'skipped', 'config_version_drift');
+        result.skipped++;
         continue;
       }
 
-      const shadowModel = resolveShadowModel();
-      const shadowResult = await client.messages.create({
-        model: shadowModel,
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: ctx.shadow_eval_question }],
+      const [memberContext, channelContext] = await Promise.all([
+        (dependencies.getMember ?? getMemberContext)(authorization.trace.sourceUserId),
+        (dependencies.getChannel ?? buildChannelContext)(authorization.trace.channelId),
+      ]);
+      const invocation = await (dependencies.buildInvocation ?? buildChannelResponseInvocation)({
+        userId: authorization.trace.sourceUserId,
+        threadId: authorization.trace.threadId,
+        memberContext,
+        channelContext,
+        plan,
+        siRetrievalResult: null,
       });
-      const shadowTextBlock = shadowResult.content.find((block) => block.type === 'text');
-      const shadowResponse = shadowTextBlock?.type === 'text' ? shadowTextBlock.text : '';
-
-      const generationError = !shadowResponse
-        ? 'generation_empty'
-        : shadowResult.stop_reason === 'max_tokens'
-          ? 'generation_truncated'
-          : null;
-
-      // Deterministic shape grade — runs locally, no LLM cost. Catches
-      // template tic, length blow-out, banned ritual phrases, sign-in
-      // openers. Computed for both shadow and the longest human response so
-      // the dashboard can see relative shape divergence.
-      const shadowShape = gradeShape(ctx.shadow_eval_question, shadowResponse);
-      const longestHuman = humanResponses.reduce(
-        (acc, h) => (h.length > acc.length ? h : acc),
-        humanResponses[0],
+      const snapshot = client.prepareMessageInvocation(
+        authorization.trace.question,
+        undefined,
+        invocation.requestTools,
+        undefined,
+        {
+          ...invocation.processOptions,
+          invocationHashKey: authorization.trace.identity.hashKey,
+          invocationHashDomain: authorization.trace.identity.hashDomain,
+        },
       );
-      const humanShape = gradeShape(ctx.shadow_eval_question, longestHuman);
-      // Deterministic failures are absolute and are computed before the LLM
-      // judge. A matching human violation is useful comparison metadata, but
-      // does not erase a failure in Addie's generated response.
-      const shapeRegression = hasDeterministicShapeFailure(shadowShape);
-      const summarizedShape = summarizeShapeReports(shadowShape, humanShape);
-
-      // Use a different judge model by default. Same-model generation and
-      // judging creates correlated errors and is only allowed behind the
-      // explicitly recorded SHADOW_EVAL_ALLOW_SELF_JUDGE experiment flag.
-      const judgeModel = generationError ? null : resolveShadowJudgeModel([shadowModel]);
-      const comparison = generationError
-        ? invalidComparisonResult(generationError)
-        : await compareResponses(
-          client,
-          ctx.shadow_eval_question,
-          humanResponses,
-          shadowResponse,
-          judgeModel!,
-          'suppressed_opportunity',
-        );
-      const comparisonDisposition = getComparisonDisposition(comparison, judgeModel);
-
-      // Store results
-      await threadService.patchThreadContext(thread.thread_id, {
-        shadow_eval_status: comparisonDisposition.status,
-        shadow_eval_type: 'suppressed_opportunity',
-        shadow_eval_source: 'suppressed',
-        shadow_eval_completed_at: new Date().toISOString(),
-        shadow_eval_provenance: buildShadowEvalProvenance({
-          evaluationType: 'suppressed_opportunity',
-          sourceKind: 'generated',
-          sourceModel: shadowModel,
-          generatorModel: shadowModel,
-          judgeModel: comparisonDisposition.executedJudgeModel,
-          promptHash: shadowPromptHash(systemPrompt),
-          toolMode: 'descriptions_only',
-          requestedToolSets: ctx.shadow_eval_tool_sets,
-        }),
-        shadow_eval_result: comparison,
-        shadow_eval_shape: summarizedShape,
-        shadow_eval_answer_response: shadowResponse.substring(0, 2000),
-        shadow_eval_shadow_response: shadowResponse.substring(0, 2000), // Truncate for storage
-        shadow_eval_human_response: humanResponses.join('\n---\n').substring(0, 2000),
+      const providerWebSearchEnabled = client.isWebSearchEnabled()
+        && invocation.processOptions.disableServerTools !== true;
+      const parity = (dependencies.verifyTraceContext ?? verifyShadowReplayTraceContext)(authorization.trace, {
+        memberContext,
+        channelContext,
+        plan,
+        siRetrievalResult: null,
+        invocation,
+        snapshot,
+        docsCorpusFingerprint,
+        providerWebSearchEnabled,
       });
-
-      // Update flag reason — combines knowledge-gap and shape-regression
-      // signals so the admin dashboard surfaces the most actionable label.
-      const flagParts: string[] = [];
-      if (comparisonDisposition.skipped) {
-        flagParts.push('Shadow evaluation skipped — comparison input exceeds safe bounds');
+      if (!parity.verified) {
+        await finishCapture(capture, 'skipped', 'capture_parity_drift', {
+          driftReasons: parity.reasons,
+        });
         result.skipped++;
-      } else if (!comparison.evaluation_valid) {
-        flagParts.push(`Shadow evaluation invalid: ${comparison.evaluation_error}`);
-        result.errors++;
-      } else if (comparison.knowledge_gap) {
-        flagParts.push(`Knowledge gap (${comparison.gap_severity}): ${comparison.gap_details}`);
-        result.knowledge_gaps++;
+        continue;
       }
-      if (shapeRegression) {
-        flagParts.push(`Shape regression: ${shadowShape.violationLabels.join(', ')}`);
-        result.shape_regressions++;
-      }
-      if (flagParts.length === 0) {
-        flagParts.push(`Shadow eval complete — no gap (${comparison.shadow_quality})`);
-      }
-      await threadService.flagThread(thread.thread_id, flagParts.join(' | '));
 
-      if (!comparisonDisposition.skipped) result.evaluated++;
-      logger.info({
-        threadId: thread.thread_id,
-        knowledge_gap: comparison.knowledge_gap,
-        gap_severity: comparison.gap_severity,
-        shadow_quality: comparison.shadow_quality,
-        shape_regression: shapeRegression,
-        shadow_shape_violations: shadowShape.violationLabels,
-        human_shape_violations: humanShape.violationLabels,
-        shadow_model: shadowModel,
-        judge_model: judgeModel,
-      }, 'Shadow evaluator: Evaluation complete');
+      const activation = (
+        dependencies.selectReplayActivation ?? selectOfficialDocsReplayActivation
+      )({
+        channelId: authorization.trace.channelId,
+        plan,
+      });
+      if (!activation.enabled) {
+        const reason = activation.reason === 'generation_disabled'
+          ? 'replay_generation_disabled'
+          : `replay_${activation.reason}`;
+        await finishCapture(capture, 'verified', reason, { parityVerified: true });
+        result.skipped++;
+        continue;
+      }
 
-      // Brief pause between evaluations
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } catch (error) {
-      logger.error({ error, threadId: thread.thread_id }, 'Shadow evaluator: Failed to evaluate thread');
+      const judgeActivation = (
+        dependencies.selectJudgeActivation ?? selectOfficialDocsJudgeActivation
+      )({
+        channelId: authorization.trace.channelId,
+        plan,
+      });
+      let humanEvidence: Awaited<ReturnType<typeof hydrateVerifiedShadowReplayHumanEvidence>>
+        | null = null;
+      let judgeClient: Anthropic | null = null;
+      let judgeModel = '';
+      if (judgeActivation.enabled) {
+        if (authorization.trace.humanEvidence) {
+          try {
+            humanEvidence = await (
+              dependencies.hydrateHumanEvidence ?? hydrateVerifiedShadowReplayHumanEvidence
+            )(authorization.trace);
+          } catch (error) {
+            const reason = error instanceof ShadowReplayJudgeBoundaryError
+              ? error.reason
+              : 'human_evidence_hydration_failed';
+            await finishCapture(capture, 'skipped', reason, { parityVerified: true });
+            result.skipped++;
+            continue;
+          }
+          try {
+            judgeModel = (
+              dependencies.resolveJudgeModel ?? resolveShadowJudgeModel
+            )([invocation.effectiveModel]);
+          } catch {
+            await finishCapture(capture, 'skipped', 'judge_model_unavailable', {
+              parityVerified: true,
+            });
+            result.skipped++;
+            continue;
+          }
+          if (judgeModel === invocation.effectiveModel) {
+            await finishCapture(capture, 'skipped', 'judge_model_not_independent', {
+              parityVerified: true,
+            });
+            result.skipped++;
+            continue;
+          }
+          judgeClient = (dependencies.getJudgeClient ?? createShadowJudgeClient)();
+          if (!judgeClient) {
+            await finishCapture(capture, 'skipped', 'judge_client_unavailable', {
+              parityVerified: true,
+            });
+            result.skipped++;
+            continue;
+          }
+        }
+      }
+
+      const claim = await (
+        dependencies.claimGeneration ?? claimShadowReplayGeneration
+      )(authorization.trace, activation.dailyLimit);
+      if (claim === 'already_claimed') {
+        // Another worker owns this exact trace. It alone may complete the
+        // generation ledger; this worker must not call either model.
+        result.skipped++;
+        continue;
+      }
+      if (claim !== 'claimed') {
+        await finishCapture(
+          capture,
+          'skipped',
+          claim === 'daily_limit_reached'
+            ? 'replay_daily_limit_reached'
+            : 'replay_claim_unavailable',
+          { parityVerified: true },
+        );
+        result.skipped++;
+        continue;
+      }
+
       try {
-        await threadService.patchThreadContext(thread.thread_id, { shadow_eval_status: 'error' });
+        const renewLease = () => (
+          dependencies.renewGenerationLease ?? renewShadowReplayGenerationLease
+        )(authorization.trace);
+        const outputConsumer = (
+          dependencies.createOutputConsumer ?? createShadowReplayOutputConsumer
+        )({
+          trace: authorization.trace,
+          humanEvidence,
+          judgeEnabled: judgeActivation.enabled,
+          judgeModel,
+        }, {
+          client: judgeClient ?? undefined,
+          renewLease,
+        });
+        const generation = await (
+          dependencies.executeReplay ?? executeVerifiedOfficialDocsReplay
+        )({
+          trace: authorization.trace,
+          invocation,
+          docsCorpusFingerprint,
+        }, {
+          renewLease,
+          outputConsumer,
+        });
+        const completeGeneration = dependencies.completeGeneration
+          ?? completeShadowReplayGeneration;
+        const judgment = generation.status === 'succeeded'
+          ? generation.judgment ?? createShadowReplayInternalErrorEvidence(
+            authorization.trace,
+            generation.outputHmac!,
+          )
+          : generation.judgment;
+        const completed = judgment
+          ? await completeGeneration(
+            authorization.trace,
+            generation,
+            { judgment },
+          )
+          : await completeGeneration(authorization.trace, generation);
+        if (!completed) {
+          logger.warn('Shadow evaluator: Claimed replay generation was not completed');
+          result.errors++;
+          continue;
+        }
+        if (!judgment || judgment.status === 'skipped') {
+          result.skipped++;
+        } else if (judgment.status === 'error') {
+          result.errors++;
+        } else {
+          result.evaluated++;
+          if (judgment.status === 'deterministic_failure') result.shape_regressions++;
+          if (judgment.knowledgeGap === true) result.knowledge_gaps++;
+        }
+      } catch (error) {
+        const safeGeneration = error instanceof OfficialDocsReplayOutputConsumerError
+          ? error.completion
+          : null;
+        const boundaryReason = error instanceof OfficialDocsReplayBoundaryError
+          ? error.reason
+          : null;
+        const terminal = safeGeneration ?? (error instanceof OfficialDocsReplayExecutionError
+          ? error.completion
+          : {
+          status: boundaryReason ? 'blocked' as const : 'error' as const,
+          reason: boundaryReason ?? 'replay_generation_failed',
+          outputHmac: null,
+          outputBytes: 0,
+          invocations: [],
+          toolExecutions: [],
+          blockedCapabilities: boundaryReason ? [boundaryReason] : [],
+          inputTokens: 0,
+          outputTokens: 0,
+          });
+        let completed = false;
+        try {
+          const completeGeneration = dependencies.completeGeneration
+            ?? completeShadowReplayGeneration;
+          const judgment = safeGeneration?.status === 'succeeded'
+            && safeGeneration.outputHmac
+            ? createShadowReplayInternalErrorEvidence(
+              authorization.trace,
+              safeGeneration.outputHmac,
+            )
+            : null;
+          completed = judgment
+            ? await completeGeneration(authorization.trace, terminal, { judgment })
+            : await completeGeneration(authorization.trace, terminal);
+        } catch {
+          // Keep the one-attempt row running. Stale recovery will close it;
+          // never fall through to mutable capture completion after a claim.
+          logger.warn('Shadow evaluator: Failed replay generation persistence failed');
+        }
+        if (!completed) logger.warn('Shadow evaluator: Failed replay generation was not completed');
+        if (terminal.status === 'blocked') result.skipped++;
+        else result.errors++;
+      }
+    } catch (error) {
+      logger.error(
+        {
+          errorType: error instanceof Error ? error.name : typeof error,
+          threadId: capture.thread_id,
+        },
+        'Shadow evaluator: Signed trace processing failed',
+      );
+      try {
+        await finishCapture(capture, 'error', 'capture_verification_failed');
       } catch { /* ignore */ }
       result.errors++;
     }

@@ -29,17 +29,10 @@
       "description": "Optional SLA commitment for this action on this buy. Absence means no commitment, not zero commitment."
     },
     "change_term_id": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9_.:-]+$",
-      "x-entity": "media_buy_change_term",
-      "description": "The accepted proposal change_terms[].term_id from which this current-state projection was derived. New 3.2 sellers use this field so SDKs can distinguish a proposal term identity from a document reference."
+      "$ref": "/schemas/core/media-buy-change-term-id.json"
     },
     "terms_ref": {
-      "type": "string",
-      "deprecated": true,
-      "x-deprecated-in": "3.2.0",
-      "x-removed-in": "4.0.0",
-      "description": "Deprecated 3.1 opaque commercial-terms pointer. A 3.2 compatibility projection MAY echo change_term_id here for older buyers, but new buyers MUST prefer change_term_id and MUST NOT assume an arbitrary 3.1 value identifies an accepted change term."
+      "$ref": "/schemas/core/media-buy-legacy-terms-ref.json"
     }
   },
   "required": ["action", "mode"],

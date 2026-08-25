@@ -19,6 +19,8 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 This document defines the data models, validation logic, and integration patterns for Campaign Governance.
 
+Campaign governance authorizes spending on behalf of the buyer; it does not make the buyer's governance agent a seller-side approver. See [sell-side governance boundaries](/docs/governance/sell-side-governance) for seller acceptance policies, proposal-bound change rights, typed seller dispositions, and seller-internal review.
+
 ## Campaign plan
 
 The campaign plan is the source of truth for all validation. Plans are pushed to the governance agent via [`sync_plans`](/docs/governance/campaign/tasks/sync_plans) and define the plan parameters for a campaign -- budget limits, channels, flight dates, and plan markets. The governance agent resolves applicable policies from the brand's compliance configuration. Plans can also reference registry policies directly via `policy_ids` and include campaign-specific rules via `custom_policies`.

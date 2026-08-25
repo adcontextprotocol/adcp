@@ -1,4 +1,4 @@
--- Preserve machine-readable issuer identity and structured acceptance profiles
+-- Migration 557: preserve machine-readable issuer identity and structured acceptance profiles
 -- on authoritative policy-registry records. Community policy authoring does not
 -- populate these fields; registry publication is the controlled write path.
 

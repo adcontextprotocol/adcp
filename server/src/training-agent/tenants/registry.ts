@@ -47,7 +47,7 @@ import { buildCreativeBuilderTenantConfig } from './creative-builder.js';
 import { buildBrandTenantConfig } from './brand.js';
 import { buildSiTenantConfig } from './si.js';
 import { createLogger } from '../../logger.js';
-import type { TrainingContext } from '../types.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../types.js';
 import { getCanonicalBase } from '../canonical-base.js';
 import { creativeProjectionAdapters } from '../task-handlers.js';
 import { sharedTrainingTaskStore } from '../mcp-task-store.js';
@@ -189,7 +189,7 @@ function buildDefaultServerOptions(
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
-    adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : '3.2-beta.6',
+    adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : TRAINING_AGENT_CURRENT_ADCP_VERSION,
     idempotency: getSdkIdempotencyStore(),
     webhooks: getWebhookSigningMaterial(),
     // Preserve terminal inline callbacks when supported by the SDK; actual
@@ -281,7 +281,7 @@ export function createRegistryHolder(options: {
         });
         const tCreate = Date.now();
         const configs = [
-          { id: 'signals', cfg: buildSignalsTenantConfig(hostBase, options) },
+          { id: 'signals', cfg: buildSignalsTenantConfig(hostBase, options, taskRegistry) },
           { id: 'sales', cfg: buildSalesTenantConfig(hostBase, options, taskRegistry) },
           { id: 'governance', cfg: buildGovernanceTenantConfig(hostBase, options) },
           { id: 'creative', cfg: buildCreativeTenantConfig(hostBase, options) },

@@ -151,10 +151,47 @@ phases:
   });
 });
 
+test('missing_check_matcher: error_code must use value', () => {
+  const doc = `
+id: temp_storyboard
+phases:
+  - id: phase_a
+    steps:
+      - id: step_a
+        task: get_products
+        validations:
+          - check: error_code
+            code: ACTION_NOT_ALLOWED
+`;
+  withTempStoryboardDir('matcher.yaml', doc, (dir) => {
+    const violations = lint(dir);
+    assert.equal(violations.length, 1);
+    assert.equal(violations[0].rule, 'missing_check_matcher');
+  });
+});
+
+test('invalid_negative_path: arbitrary labels are rejected', () => {
+  const doc = `
+id: temp_storyboard
+phases:
+  - id: phase_a
+    steps:
+      - id: step_a
+        task: get_products
+        expect_error: true
+        negative_path: wrong_status
+`;
+  withTempStoryboardDir('negative-path.yaml', doc, (dir) => {
+    const violations = lint(dir);
+    assert.equal(violations.length, 1);
+    assert.equal(violations[0].rule, 'invalid_negative_path');
+  });
+});
+
 test('every rule ID has a message', () => {
   // Trip-wire — adding a new rule without a message would surface as a
   // missing key when the rule ID appears in violations output.
-  const ruleIds = ['unknown_check_kind', 'synthesized_check_kind_authored'];
+  const ruleIds = ['unknown_check_kind', 'synthesized_check_kind_authored', 'missing_check_matcher', 'invalid_negative_path'];
   for (const id of ruleIds) {
     assert.ok(typeof RULE_MESSAGES[id] === 'function', `missing message for rule ${id}`);
   }

@@ -34,6 +34,7 @@ import {
   computeGovernanceOutcomeHash,
   computeGovernedPayloadHash,
 } from './governance-payload-hash.js';
+import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
 
 const EXECUTION_GOVERNANCE_PHASES = new Set<GovernancePhase>(['purchase', 'modification', 'delivery']);
 const MAX_REPORTED_OUTCOME_ERROR_BYTES = 16 * 1024;
@@ -41,59 +42,8 @@ const MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES = 32;
 const MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH = 4_000;
 const MAX_REPORTED_OUTCOME_ERROR_PROPERTY_NAME_LENGTH = 128;
 const FORBIDDEN_EVIDENCE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-const REPORTED_OUTCOME_ERROR_INPUT_SCHEMA = {
-  type: 'object',
-  definitions: {
-    bounded_scalar: {
-      oneOf: [
-        { type: 'null' },
-        { type: 'boolean' },
-        { type: 'number' },
-        { type: 'string', maxLength: MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH },
-      ],
-    },
-    bounded_value_level_3: {
-      anyOf: [
-        { $ref: '#/properties/error/definitions/bounded_scalar' },
-        { type: 'array', maxItems: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES, items: { $ref: '#/properties/error/definitions/bounded_scalar' } },
-        { type: 'object', maxProperties: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES, additionalProperties: { $ref: '#/properties/error/definitions/bounded_scalar' } },
-      ],
-    },
-    bounded_value_level_2: {
-      anyOf: [
-        { $ref: '#/properties/error/definitions/bounded_scalar' },
-        { type: 'array', maxItems: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES, items: { $ref: '#/properties/error/definitions/bounded_value_level_3' } },
-        { type: 'object', maxProperties: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES, additionalProperties: { $ref: '#/properties/error/definitions/bounded_value_level_3' } },
-      ],
-    },
-    bounded_value: {
-      anyOf: [
-        { $ref: '#/properties/error/definitions/bounded_scalar' },
-        { type: 'array', maxItems: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES, items: { $ref: '#/properties/error/definitions/bounded_value_level_2' } },
-        { type: 'object', maxProperties: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES, additionalProperties: { $ref: '#/properties/error/definitions/bounded_value_level_2' } },
-      ],
-    },
-    bounded_object: {
-      type: 'object',
-      maxProperties: MAX_REPORTED_OUTCOME_ERROR_CONTAINER_ENTRIES,
-      propertyNames: { maxLength: MAX_REPORTED_OUTCOME_ERROR_PROPERTY_NAME_LENGTH },
-      additionalProperties: { $ref: '#/properties/error/definitions/bounded_value' },
-    },
-  },
-  properties: {
-    code: { type: 'string', minLength: 1, maxLength: 128 },
-    message: { type: 'string', maxLength: MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH },
-    field: { type: 'string', maxLength: 1_000 },
-    suggestion: { type: 'string', maxLength: MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH },
-    recovery: { type: 'string', enum: ['transient', 'correctable', 'terminal'] },
-    details: { $ref: '#/properties/error/definitions/bounded_object' },
-    classification_source: { type: 'string', enum: ['seller_response_copy', 'buyer_classification'] },
-    ext: { $ref: '#/properties/error/definitions/bounded_object' },
-  },
-  maxProperties: 16,
-  propertyNames: { maxLength: MAX_REPORTED_OUTCOME_ERROR_PROPERTY_NAME_LENGTH },
-  additionalProperties: { $ref: '#/properties/error/definitions/bounded_value' },
-};
+const REPORTED_OUTCOME_ERROR_SCHEMA_PATH = 'governance/reported-outcome-error.json';
+const REPORTED_OUTCOME_ERROR_INPUT_SCHEMA = loadSourceSchema(REPORTED_OUTCOME_ERROR_SCHEMA_PATH);
 
 type AuditEvidenceCloneResult =
   | { ok: true; value: Record<string, unknown> }
@@ -196,31 +146,6 @@ function cloneReportedOutcomeError(value: unknown): AuditEvidenceCloneResult {
 
   try {
     const cloned = cloneBoundedObject(value, 'error');
-    if (Object.keys(cloned).length > 16) {
-      return { ok: false, reason: 'must not contain more than 16 properties' };
-    }
-    if ('code' in cloned && (typeof cloned.code !== 'string' || cloned.code.length === 0 || cloned.code.length > 128)) {
-      return { ok: false, reason: 'code must be a string between 1 and 128 characters' };
-    }
-    const stringLimits: Array<[string, number]> = [
-      ['message', MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH],
-      ['field', 1_000],
-      ['suggestion', MAX_REPORTED_OUTCOME_ERROR_STRING_LENGTH],
-    ];
-    for (const [field, maxLength] of stringLimits) {
-      if (field in cloned && (typeof cloned[field] !== 'string' || cloned[field].length > maxLength)) {
-        return { ok: false, reason: `${field} must be a string no longer than ${maxLength} characters` };
-      }
-    }
-    if ('recovery' in cloned && !['transient', 'correctable', 'terminal'].includes(cloned.recovery as string)) {
-      return { ok: false, reason: 'recovery must be transient, correctable, or terminal' };
-    }
-    if ('classification_source' in cloned && !['seller_response_copy', 'buyer_classification'].includes(cloned.classification_source as string)) {
-      return { ok: false, reason: 'classification_source must be seller_response_copy or buyer_classification' };
-    }
-    for (const field of ['details', 'ext']) {
-      if (field in cloned) cloned[field] = cloneBoundedObject(cloned[field], field);
-    }
     const encoded = JSON.stringify(cloned);
     if (Buffer.byteLength(encoded, 'utf8') > MAX_REPORTED_OUTCOME_ERROR_BYTES) {
       return { ok: false, reason: `must not exceed ${MAX_REPORTED_OUTCOME_ERROR_BYTES} UTF-8 bytes` };
@@ -2577,6 +2502,16 @@ export async function handleReportPlanOutcome(args: ToolArgs, ctx: TrainingConte
         }],
       };
     }
+    const schemaValidation = validateSourceSchema(REPORTED_OUTCOME_ERROR_SCHEMA_PATH, clonedError.value);
+    if (!schemaValidation.valid) {
+      const first = schemaValidation.errors[0];
+      return {
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: `error does not match reported-outcome-error.json${first?.instancePath ? ` at ${first.instancePath}` : ''}.`,
+        }],
+      };
+    }
     reportedError = clonedError.value;
   }
 
@@ -3810,7 +3745,7 @@ export async function handleGetPlanAuditLogs(args: ToolArgs, ctx: TrainingContex
           tool: check.tool,
           purchase_type: check.purchaseType || 'media_buy',
           ...(check.governanceContext && { governance_context: check.governanceContext }),
-          status: check.status,
+          verdict: check.status,
           check_type: check.binding === 'committed' ? 'execution' : 'intent',
           ...(check.mode && { mode: check.mode }),
           explanation: check.explanation,

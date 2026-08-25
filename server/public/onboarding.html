@@ -936,7 +936,7 @@
               const domain = currentUser.email ? currentUser.email.split('@')[1] : '';
               document.getElementById('loading').style.display = 'none';
               document.getElementById('mainContent').style.display = 'block';
-              showBrandSetup(companyOrg.name, domain);
+              showBrandSetup(companyOrg.name, domain, companyOrg.id);
               return;
             }
           }
@@ -1547,7 +1547,7 @@
         }
 
         // Show brand setup step instead of going directly to dashboard
-        showBrandSetup(orgName, corporateDomain);
+        showBrandSetup(orgName, corporateDomain, data.organization?.id || data.id);
       } catch (error) {
         showError(error.message);
         createBtn.disabled = false;
@@ -1623,9 +1623,11 @@
     // ── Brand setup step ──────────────────────────────────────────────
 
     var createdOrgName = '';
+    var createdOrgId = '';
 
-    function showBrandSetup(orgName, domain) {
+    function showBrandSetup(orgName, domain, orgId) {
       createdOrgName = orgName;
+      createdOrgId = orgId || '';
       document.getElementById('createForm').style.display = 'none';
       document.getElementById('brandSetupSection').style.display = 'block';
       document.getElementById('brandDomain').value = domain || '';
@@ -1676,6 +1678,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            organization_id: createdOrgId || undefined,
             domain: domain,
             brand_name: createdOrgName,
             logo_url: logoUrl || undefined,

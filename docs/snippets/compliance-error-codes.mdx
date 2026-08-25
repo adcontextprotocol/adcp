@@ -49,6 +49,8 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `CREATIVE_LOCALE_NOT_ACCEPTED` | correctable | supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default |
 | `CREATIVE_NOT_FOUND` | correctable | verify creative_id via list_creatives, or sync_creatives to register it |
 | `CREATIVE_REJECTED` | correctable | revise the creative according to the applicable advertising policy or validated accessibility criteria |
+| `CREATIVE_REPRESENTATION_UNRESOLVED` | correctable | inspect every error.details.representation_rejections entry, then choose a compatible format option or supply a compatible representation |
+| `CREATIVE_REVISION_CONTENT_MISMATCH` | correctable | resend the exact content previously bound to this revision_id, or mint a new revision_id for changed content |
 | `CREATIVE_VALUE_NOT_ALLOWED` | correctable | pick a value from error.details.allowed_values (or re-fetch the format) and resubmit |
 | `CREDENTIAL_IN_ARGS` | terminal | do NOT auto-retry — auto-retry re-logs the credential on each attempt. Move authentication material or caller-supplied trust material out of request args (top-level, <code>{"context"}</code>, <code>{"ext"}</code>, any nested location) onto the relevant transport authentication/trust channel or account provisioning path (Authorization: Bearer, RFC 9421 signature/JWKS, mTLS, MCP/A2A authentication framing); rotate any leaked credential, then resubmit |
 | `EVALUATOR_AGENT_NOT_ACCEPTED` | correctable | replace the evaluator agent_url (evaluator.feature_agent.agent_url or the evaluator agent-form agent_url) with one from the seller's published accepted_verifiers, or drop the evaluator agent pointer to fall back to seller-default ranking |
@@ -61,7 +63,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `FORMAT_OPTION_UNRESOLVED` | correctable | advisory — publisher-side fix needed: a placement's <code>{"format_options[].format_option_id"}</code> references a <code>{"format_option_id"}</code> that does not exist in this file's top-level <code>{"formats[]"}</code>. Buyer SDK MUST fail closed for that placement (drop the format from the placement's accepted set) and surface this code. Publisher fix: either declare the missing format option in <code>{"formats[]"}</code> or remove the reference from the placement. Do not auto-retry |
 | `FORMAT_PROJECTION_FAILED` | correctable | advisory — seller-side fix needed: ask the seller to add an explicit <code>{"canonical"}</code> field on the legacy format declaration, or contribute a registry entry (format_id_glob or structural match) to v1-canonical-mapping.json. Do not auto-retry; the product is still valid on the legacy named-format path |
 | `FORMAT_SHAPE_PROMOTED` | correctable | advisory — migrate the legacy custom format_shape to error.details.promoted_to before error.details.transition_end; dual emission is allowed during the transition window. Do not auto-retry |
-| `GOVERNANCE_AGENT_NOT_ACCEPTED` | correctable | select a governance agent matching error.details.accepted_governance_agents, then retry sync_governance with a fresh idempotency key |
+| `GOVERNANCE_AGENT_NOT_ACCEPTED` | correctable | select a governance agent matching <code>{"error.details.accepted_governance_agents"}</code>, then retry <code>{"sync_governance"}</code> with a fresh idempotency key |
 | `GOVERNANCE_DENIED` | correctable | restructure the buy, escalate to human spending authority, or contact the governance agent for details |
 | `GOVERNANCE_UNAVAILABLE` | transient | retry with backoff; if the agent remains unreachable, the buyer MUST contact the plan's governance operator |
 | `IDEMPOTENCY_CONFLICT` | correctable | use a fresh UUID v4 for the new request, or resend the exact original payload to get the cached response |
@@ -74,6 +76,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `INVALID_USAGE_DATA` | correctable | check required fields for the vendor type (vendor_cost, currency, account at minimum), fix invalid values, and resubmit |
 | `IO_REQUIRED` | correctable | review the proposal's insertion_order, accept terms, and include io_acceptance on accept_proposal; use create_media_buy only for 3.x compatibility |
 | `ITEM_VALIDATION_FAILED` | correctable | check item_issues for per-item rejection reasons and fix the offending items |
+| `MACRO_RESOLUTION_FAILED` | correctable | inspect error.details.macro_resolution_results and route to a resolver that supports the declared dialect, semantic, owner, and encoding depth |
 | `MEDIA_BUY_NOT_FOUND` | correctable | verify media_buy_id; for legacy correlation use get_media_buys plus context, such as context.internal_campaign_id |
 | `MULTI_FINALIZE_UNSUPPORTED` | correctable | sequence single-proposal finalize calls — one finalize entry per get_products refine[] call or per refine_proposals refinements[] call |
 | `NOT_CANCELLABLE` | correctable | check the seller's cancellation policy or contact the seller |
@@ -120,7 +123,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `UNSUPPORTED_PROVISIONING` | correctable | re-issue with the entry shape the seller supports — <code>{"account: {account_id: ...}"}</code> for settings-update sellers with account-id namespaces, or <code>{"brand+operator+billing"}</code> for provisioning sellers; check seller documentation or capability declaration for which modes are implemented |
 | `VALIDATION_ERROR` | correctable | review error details and fix field values |
 | `VAST_PARSE_FAILED` | correctable | inspect error.details.reason (not_xml, no_vast_root, no_ad, no_media_file), fix the VAST document, and resubmit |
-| `VAST_VERSION_MISMATCH` | correctable | re-tag with a version from error.details.supported_versions, or correct the asset's declared vast_version to match the document |
+| `VAST_VERSION_MISMATCH` | correctable | inspect error.details.mismatch_reason and the corresponding acceptance-set or observed-document fields; select a compatible source representation or correct the offending VAST document |
 | `VAST_WRAPPER_DEPTH_EXCEEDED` | correctable | inspect error.details.reason (depth, loop, timeout); flatten the wrapper chain, reduce redirects below the format's max_wrapper_depth, or fix the failing hop |
 | `VERSION_UNSUPPORTED` | correctable | re-pin to a release in supported_versions and retry, or call get_adcp_capabilities without a version pin to discover supported_versions |
 
@@ -460,6 +463,24 @@ Referenced creative does not exist in the agent's creative library. Recovery: co
 Creative failed content-policy, brand-safety, or accessibility review. For deadline violations, see CREATIVE_DEADLINE_EXCEEDED. Accessibility failures SHOULD use structured details conforming to error-details/accessibility-violation.json. Recovery: correctable (revise the creative according to the applicable policy or validated accessibility criteria).
 
 </Accordion>
+<a id="error-code-creative-representation-unresolved"></a>
+
+<Accordion title="CREATIVE_REPRESENTATION_UNRESOLVED — correctable">
+
+**Suggested action:** inspect every error.details.representation_rejections entry, then choose a compatible format option or supply a compatible representation
+
+No representation in a CreativeRepresentationSet is compatible with the selected target capability or product format option. The resolver MUST retain the complete representation set and MUST include one <code>{"error.details.representation_rejections[]"}</code> entry per candidate, conforming to <code>{"error-details/creative-representation-unresolved.json"}</code>; silent seller guessing is forbidden. Recovery: correctable (choose a compatible product/format option, add a compatible representation under a new revision, or fix the rejected asset contract).
+
+</Accordion>
+<a id="error-code-creative-revision-content-mismatch"></a>
+
+<Accordion title="CREATIVE_REVISION_CONTENT_MISMATCH — correctable">
+
+**Suggested action:** resend the exact content previously bound to this revision_id, or mint a new revision_id for changed content
+
+A sync_creatives item reused a revision_id for different canonical revision content under the same creative_id. Revision identity is scoped to the parent creative and immutable after first acceptance. Sellers MUST evaluate the buyer input before transcoding or normalization, MUST leave the prior creative state unchanged, and SHOULD return details conforming to error-details/creative-revision-content-mismatch.json. Distinct from IDEMPOTENCY_CONFLICT: idempotency_key protects one request replay window, while revision identity protects creative content across requests and retention. Recovery: correctable (resend the exact content previously bound to this revision_id, or mint a new revision_id for the changed content).
+
+</Accordion>
 <a id="error-code-creative-value-not-allowed"></a>
 
 <Accordion title="CREATIVE_VALUE_NOT_ALLOWED — correctable">
@@ -604,9 +625,9 @@ Non-fatal deprecation advisory raised when a 3.2-aware SDK encounters <code>{"fo
 
 <Accordion title="GOVERNANCE_AGENT_NOT_ACCEPTED — correctable">
 
-**Suggested action:** select a governance agent matching error.details.accepted_governance_agents, then retry sync_governance with a fresh idempotency key
+**Suggested action:** select a governance agent matching <code>{"error.details.accepted_governance_agents"}</code>, then retry <code>{"sync_governance"}</code> with a fresh idempotency key
 
-The governance agent proposed in sync_governance does not satisfy the seller's authoritative per-account acceptance criteria. The failed binding MUST NOT be persisted or contacted, and credentials supplied for it MUST NOT be echoed in responses or logs. error.details SHOULD conform to governance-agent-not-accepted.json. Distinct from GOVERNANCE_UNAVAILABLE, which means a verification criterion or registry could not be resolved and is retryable. Recovery: correctable (select an agent satisfying the returned criteria or resolve the account-specific requirement with the seller).
+The governance agent proposed in <code>{"sync_governance"}</code> does not satisfy the seller's authoritative per-account acceptance criteria. The failed binding MUST NOT be persisted or contacted, and credentials supplied for it MUST NOT be echoed in responses or logs. <code>{"error.details"}</code> SHOULD conform to <code>{"error-details/governance-agent-not-accepted.json"}</code>. Distinct from <code>{"GOVERNANCE_UNAVAILABLE"}</code>, which means a verification criterion or registry could not be resolved and is retryable. Recovery: correctable (select an agent satisfying the returned criteria or resolve the account-specific requirement with the seller).
 
 </Accordion>
 <a id="error-code-governance-denied"></a>
@@ -725,6 +746,15 @@ The committed proposal requires a signed insertion order but no io_acceptance wa
 **Suggested action:** check item_issues for per-item rejection reasons and fix the offending items
 
 One or more catalog items failed schema validation during sync_catalogs. Recovery: correctable (check item_issues for per-item rejection reasons and fix the offending items).
+
+</Accordion>
+<a id="error-code-macro-resolution-failed"></a>
+
+<Accordion title="MACRO_RESOLUTION_FAILED — correctable">
+
+**Suggested action:** inspect error.details.macro_resolution_results and route to a resolver that supports the declared dialect, semantic, owner, and encoding depth
+
+One or more declared creative macro tokens cannot be resolved or safely preserved under the selected product and seller capability intersection. Sellers MUST include per-token <code>{"error.details.macro_resolution_results"}</code>, conforming to <code>{"error-details/macro-resolution-failed.json"}</code>; unknown or ambiguous tokens remain byte-preserved and MUST NOT receive guessed values. Recovery: correctable (route to a compatible execution path, correct the verified declaration, or assign the proper downstream resolver).
 
 </Accordion>
 <a id="error-code-media-buy-not-found"></a>
@@ -1174,9 +1204,9 @@ A submitted <code>{"vast"}</code> asset failed document-level validation: the in
 
 <Accordion title="VAST_VERSION_MISMATCH — correctable">
 
-**Suggested action:** re-tag with a version from error.details.supported_versions, or correct the asset's declared vast_version to match the document
+**Suggested action:** inspect error.details.mismatch_reason and the corresponding acceptance-set or observed-document fields; select a compatible source representation or correct the offending VAST document
 
-A submitted <code>{"vast"}</code> asset's document declares a <code>{"<VAST version>"}</code> attribute that does not match the asset's declared <code>{"vast_version"}</code>, does not satisfy the format's <code>{"vast_version"}</code> requirement, or is not in the seller's declared <code>{"creative_specs.vast_versions"}</code>. Returned by sellers performing document-level VAST validation (<code>{"creative_specs.vast_validation"}</code> of <code>{"document"}</code> or <code>{"wrapper"}</code>). Distinct from <code>{"VERSION_UNSUPPORTED"}</code> (AdCP protocol version negotiation, unrelated to creative documents). Sellers SHOULD set <code>{"error.field"}</code> to the offending asset path and SHOULD include the accepted versions in <code>{"error.details.supported_versions"}</code>. Recovery: correctable (re-tag with an accepted VAST version, or correct the asset's declared <code>{"vast_version"}</code>).
+A submitted <code>{"vast"}</code> asset is version-incompatible when its exact <code>{"vast_version"}</code> is absent from the intersection of the selected product format option's <code>{"params.vast_versions"}</code> and the seller's <code>{"execution.creative_specs.vast_versions"}</code>, or when an inspected document violates its applicable VAST version rule. Modern <code>{"error.details"}</code> MUST conform to <code>{"error-details/vast-version-mismatch.json"}</code>: acceptance failures carry <code>{"mismatch_reason: asset_outside_acceptance"}</code>, <code>{"asset_vast_version"}</code>, <code>{"product_vast_versions"}</code>, and <code>{"seller_vast_versions"}</code>, plus <code>{"format_option_ref"}</code> only when the selected option is addressable; inspected-document failures carry <code>{"mismatch_reason: document_version_mismatch"}</code>, <code>{"asset_vast_version"}</code>, <code>{"observed_document_vast_version"}</code>, and <code>{"document_role"}</code>. Only the submitted document is compared for equality with the asset declaration; wrapper and terminal documents are checked against the acceptance intersection. The deprecated <code>{"supported_versions"}</code> field remains accepted for older 3.x peers. Distinct from <code>{"VERSION_UNSUPPORTED"}</code>, which concerns AdCP protocol negotiation. Recovery: correctable (select a source VAST representation in the compatibility intersection or correct the offending document; never relabel the asset).
 
 </Accordion>
 <a id="error-code-vast-wrapper-depth-exceeded"></a>

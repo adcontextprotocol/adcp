@@ -24,9 +24,18 @@ export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 
 /**
  * First wire checkpoint that may carry the standardized seller-governance
- * discovery fields added after the immutable 3.2-beta.6 bundle.
+ * discovery fields ratified for the current 3.2 beta checkpoint.
  */
-export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.7' as const;
+export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.6' as const;
+
+/** Release checkpoints the reference training agent can serve. */
+export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = [
+  '3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6',
+  '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14',
+  '3.1-rc.15', '3.1', SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION,
+] as const;
+export const TRAINING_AGENT_CURRENT_ADCP_VERSION = SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION;
+export const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0' as const;
 
 export const PROPOSAL_NEGOTIATION_PROFILES = [
   'ask-only',
@@ -36,32 +45,39 @@ export const PROPOSAL_NEGOTIATION_PROFILES = [
 ] as const;
 export type ProposalNegotiationProfile = (typeof PROPOSAL_NEGOTIATION_PROFILES)[number];
 
-export function supportsGetProductsRejected(servedVersion: string | undefined): boolean {
+export function atLeastAdcpVersion(servedVersion: string | undefined, minimumVersion: string): boolean {
   if (!servedVersion) return false;
-  const match = servedVersion.match(/^(\d+)\.(\d+)(?:-(beta|rc)(?:\.(\d+))?)?$/);
-  if (!match) return false;
-  const major = Number.parseInt(match[1], 10);
-  const minor = Number.parseInt(match[2], 10);
-  if (major > 3 || (major === 3 && minor > 2)) return true;
-  if (major !== 3 || minor !== 2) return false;
-  const qualifier = match[3];
-  if (!qualifier || qualifier === 'rc') return true;
-  const prerelease = Number.parseInt(match[4] ?? '0', 10);
-  return qualifier === 'beta' && prerelease >= 2;
+  const parse = (value: string) => {
+    const match = value.match(/^(\d+)\.(\d+)(?:\.(\d+))?(?:-(beta|rc)(?:\.(\d+))?)?$/);
+    if (!match) return undefined;
+    return {
+      major: Number.parseInt(match[1], 10),
+      minor: Number.parseInt(match[2], 10),
+      patch: Number.parseInt(match[3] ?? '0', 10),
+      qualifier: match[4],
+      prerelease: Number.parseInt(match[5] ?? '0', 10),
+    };
+  };
+  const actual = parse(servedVersion);
+  const minimum = parse(minimumVersion);
+  if (!actual || !minimum) return false;
+  for (const key of ['major', 'minor', 'patch'] as const) {
+    if (actual[key] !== minimum[key]) return actual[key] > minimum[key];
+  }
+  if (actual.qualifier !== minimum.qualifier) {
+    if (!actual.qualifier) return true;
+    if (!minimum.qualifier) return false;
+    return actual.qualifier === 'rc' && minimum.qualifier === 'beta';
+  }
+  return actual.prerelease >= minimum.prerelease;
+}
+
+export function supportsGetProductsRejected(servedVersion: string | undefined): boolean {
+  return atLeastAdcpVersion(servedVersion, GET_PRODUCTS_REJECTED_ADCP_VERSION);
 }
 
 export function supportsSellerGovernanceDiscovery(servedVersion: string | undefined): boolean {
-  if (!servedVersion) return false;
-  const match = servedVersion.match(/^(\d+)\.(\d+)(?:-(beta|rc)(?:\.(\d+))?)?$/);
-  if (!match) return false;
-  const major = Number.parseInt(match[1], 10);
-  const minor = Number.parseInt(match[2], 10);
-  if (major > 3 || (major === 3 && minor > 2)) return true;
-  if (major !== 3 || minor !== 2) return false;
-  const qualifier = match[3];
-  if (!qualifier || qualifier === 'rc') return true;
-  const prerelease = Number.parseInt(match[4] ?? '0', 10);
-  return qualifier === 'beta' && prerelease >= 7;
+  return atLeastAdcpVersion(servedVersion, SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION);
 }
 
 /** AccountReference from SDK — identifies an account on create_media_buy */
@@ -350,6 +366,10 @@ export interface SeededProductAvailability {
 export interface ComplyExtensions {
   accountStatuses: Map<string, string>;
   siSessions: Map<string, { status: string; terminationReason?: string }>;
+  /** Terminal controller states retained only within the owning sandbox
+   * session so repeated transition probes cannot cross account boundaries. */
+  forcedCreativeTerminalStates: Map<string, string>;
+  forcedMediaBuyTerminalStates: Map<string, string>;
   deliverySimulations: Map<string, ComplyDeliveryAccumulator>;
   budgetSimulations: Map<string, ComplyBudgetSimulation>;
   /** Products seeded via comply_test_controller.seed_product. Session-scoped overlay
@@ -392,6 +412,12 @@ export interface ComplyExtensions {
     taskId: string;
     message?: string;
   };
+  /** Single-shot submitted response for the next brief-mode get_signals call. */
+  forcedGetSignalsArm?: {
+    arm: 'submitted';
+    taskId: string;
+    message?: string;
+  };
   /** Single-shot rejected response for the principal's next brief/refine request. */
   forcedGetProductsRejections: Map<string, {
     reason: string;
@@ -403,6 +429,7 @@ export interface ComplyExtensions {
   forcedUpstreamUnavailable?: {
     tool: string;
     upstreamName?: string;
+    cacheAgeSeconds?: number;
     createdAt: string;
   };
 }
@@ -743,6 +770,7 @@ export interface CreativeState {
   formatOptionRef?: Record<string, unknown>;
   assets?: Record<string, ManifestAsset | ManifestAsset[]>;
   componentAssets?: Record<string, Record<string, ManifestAsset | ManifestAsset[]>>;
+  localization?: Record<string, unknown>;
   name?: string;
   status: string;
   syncedAt: string;

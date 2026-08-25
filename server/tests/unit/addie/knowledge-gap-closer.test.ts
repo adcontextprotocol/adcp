@@ -6,7 +6,7 @@ import {
 } from '../../../src/addie/jobs/knowledge-gap-closer.js';
 
 describe('buildPublicGapIssuePayload', () => {
-  it('publishes only allowlisted metadata and an internal thread link', () => {
+  it('publishes only allowlisted metadata without an internal thread identifier', () => {
     const payload = buildPublicGapIssuePayload({
       threadId: '123e4567-e89b-42d3-a456-426614174000',
       severity: 'critical',
@@ -14,7 +14,8 @@ describe('buildPublicGapIssuePayload', () => {
 
     expect(payload.title).toContain('(critical)');
     expect(payload.body).toContain('Candidate file:** requires internal review');
-    expect(payload.body).toContain('thread=123e4567-e89b-42d3-a456-426614174000');
+    expect(payload.body).toContain('restricted Addie admin queue');
+    expect(payload.body).not.toContain('123e4567-e89b-42d3-a456-426614174000');
     expect(payload.labels).toEqual(['documentation', 'knowledge-gap', 'severity:critical']);
   });
 
@@ -28,7 +29,7 @@ describe('buildPublicGapIssuePayload', () => {
 
     expect(payload.title).toContain('(significant)');
     expect(payload.body).toContain('Candidate file:** requires internal review');
-    expect(payload.body).toContain('Internal thread link unavailable');
+    expect(payload.body).toContain('restricted Addie admin queue');
     expect(payload.labels).toEqual(['documentation', 'knowledge-gap', 'severity:significant']);
     expect(publicText).not.toContain(secret);
   });
@@ -80,16 +81,24 @@ describe('isGapEligibleForPublicIssue', () => {
     shadow_eval_type: 'corrected_answer',
     shadow_eval_provenance: {
       self_judged: false,
-      source_answer: { model: 'claude-example' },
+      source_answer: { model: 'claude-example', config_version_id: 42 },
+      source_opportunity: { config_version_id: 42 },
       tools: {
-        mode: 'production_trace',
+        mode: 'read_only_replay',
         trace_or_fixture_id: '123e4567-e89b-42d3-a456-426614174000',
+        policy_version: 'read-only-v1',
+        hash_key_version: 'test-v1',
+        trace_verified: true,
+        complete_fidelity: true,
+        system_block_hashes: ['system-hmac'],
+        schemas: [{ name: 'search_docs', sha256: 'schema-hmac' }],
+        blocked_capabilities: [],
       },
     },
   };
 
-  it('accepts attributable, independently judged production-answer rows', () => {
-    expect(isGapEligibleForPublicIssue(eligible)).toBe(true);
+  it('requires server-side signed-source verification before public automation', () => {
+    expect(isGapEligibleForPublicIssue(eligible)).toBe(false);
   });
 
   it('permanently excludes legacy rows until they are explicitly re-evaluated', () => {

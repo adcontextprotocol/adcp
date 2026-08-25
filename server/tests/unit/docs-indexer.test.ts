@@ -21,6 +21,7 @@ import {
   getDocCount,
   getHeadingCount,
   getDocById,
+  getDocsCorpusFingerprint,
   getSupportedDocsVersions,
   resolveDocsVersion,
 } from '../../src/addie/mcp/docs-indexer.js';
@@ -29,6 +30,7 @@ import {
   createKnowledgeToolHandlers,
 } from '../../src/addie/mcp/knowledge-search.js';
 import { DOCS_SCHEMA_RELEASES } from '../../src/addie/mcp/schema-tools.js';
+import { AddieDatabase } from '../../src/db/addie-db.js';
 
 /**
  * Docs Indexer Tests
@@ -51,6 +53,7 @@ describe('docs-indexer', () => {
   it('initializes successfully with docs from the real docs directory', () => {
     expect(isDocsIndexReady()).toBe(true);
     expect(getDocCount()).toBeGreaterThan(0);
+    expect(getDocsCorpusFingerprint()).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('indexes heading-level content', () => {
@@ -263,6 +266,21 @@ describe('docs-indexer', () => {
       expect(await search!({ query: 'protocol', limit: 2.9 })).toContain('Found 2 docs');
       expect(await search!({ query: 'protocol', limit: 100 })).toContain('Found 5 docs');
       expect(await search!({ query: 'protocol', limit: Number.NaN })).toContain('Found 3 docs');
+    });
+
+    it('can disable search telemetry for evaluation handlers without changing the default', async () => {
+      const logSearch = vi.spyOn(AddieDatabase.prototype, 'logSearch').mockResolvedValue(undefined);
+      try {
+        const evaluationSearch = createKnowledgeToolHandlers({ disableSearchTelemetry: true }).get('search_docs');
+        await evaluationSearch!({ query: 'protocol', limit: 1 });
+        expect(logSearch).not.toHaveBeenCalled();
+
+        const productionSearch = createKnowledgeToolHandlers().get('search_docs');
+        await productionSearch!({ query: 'protocol', limit: 1 });
+        expect(logSearch).toHaveBeenCalledOnce();
+      } finally {
+        logSearch.mockRestore();
+      }
     });
   });
 

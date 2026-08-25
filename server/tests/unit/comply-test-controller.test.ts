@@ -204,6 +204,7 @@ describe('comply_test_controller', () => {
         // server/src/training-agent/comply-test-controller.ts.
         'force_create_media_buy_arm',
         'force_get_products_arm',
+        'force_get_signals_arm',
         'force_task_completion',
         'force_creative_purge',
         'force_wholesale_feed_webhook',
@@ -219,7 +220,7 @@ describe('comply_test_controller', () => {
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(27);
+      expect(scenarios.length).toBe(28);
       // Dedup invariant — see the list_scenarios response merge in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
@@ -2228,6 +2229,31 @@ describe('comply_test_controller', () => {
       });
       expect(result.success).toBe(false);
       expect(result.error).toBe('INVALID_TRANSITION');
+    });
+
+    it('does not apply a terminal state from another sandbox session with the same entity id', async () => {
+      const mediaBuyId = await createMediaBuy(server);
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_media_buy_status',
+        params: { media_buy_id: mediaBuyId, status: 'completed' },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+
+      const otherAccount = {
+        brand: { domain: 'comply-other.example.com' },
+        operator: 'comply-other',
+        sandbox: true,
+      };
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_media_buy_status',
+        params: { media_buy_id: mediaBuyId, status: 'active' },
+        account: otherAccount,
+        brand: otherAccount.brand,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
     });
 
     it('rejects rejected from active (only valid from pending_creatives or pending_start)', async () => {

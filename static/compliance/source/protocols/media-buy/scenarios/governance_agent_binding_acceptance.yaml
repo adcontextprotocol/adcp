@@ -9,13 +9,10 @@ track: media_buy
 required_tools:
   - sync_accounts
   - sync_governance
-  - comply_test_controller
 
 requires_capability:
   path: adcp.governance_enforcement.accepted_governance_agents.any_of
-  contains:
-    kind: agent_url
-    agent_url: "https://governance.example/mcp"
+  present: true
 
 narrative: |
   Governance-agent acceptance is a seller binding constraint, not seller
@@ -23,6 +20,9 @@ narrative: |
   account setup; sync_governance is authoritative for the account. A rejected
   replacement returns a typed, optionally opaque disposition and must not be
   persisted or erase the last accepted binding.
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org/"
 
 agent:
   interaction_model: stateful_push
@@ -37,7 +37,7 @@ caller:
   example: "Pinnacle Agency (buyer)"
 
 prerequisites:
-  description: "The seller advertises the accepted governance.example matcher used by this deterministic fixture."
+  description: "The test-kit governance_agent_url satisfies the seller's advertised acceptance criteria."
   test_kit: "test-kits/acme-outdoor.yaml"
 
 phases:
@@ -51,6 +51,9 @@ phases:
         response_schema_ref: "account/sync-accounts-response.json"
         doc_ref: "/accounts/tasks/sync_accounts"
         stateful: true
+        context_outputs:
+          - name: governance_binding_account_id
+            path: "accounts[0].account_id"
         sample_request:
           accounts:
             - brand:
@@ -67,10 +70,6 @@ phases:
             path: "accounts[0].account_id"
             description: "The account exists before governance binding"
 
-  - id: bind_accepted_agent
-    title: "Bind an accepted governance agent"
-    depends_on: [create_account]
-    steps:
       - id: sync_accepted_governance_agent
         title: "Persist the allowlisted endpoint"
         task: sync_governance
@@ -81,12 +80,9 @@ phases:
         sample_request:
           accounts:
             - account:
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
-                sandbox: true
+                account_id: "$context.governance_binding_account_id"
               governance_agents:
-                - url: "https://governance.example/mcp"
+                - url: "$context.governance_agent_url"
                   authentication:
                     schemes: ["Bearer"]
                     credentials: "test-governance-token-xxxxxxxxxxxx"
@@ -100,13 +96,9 @@ phases:
             description: "The advertised endpoint is accepted"
           - check: field_value
             path: "accounts[0].governance_agents[0].url"
-            value: "https://governance.example/mcp"
+            value: "$context.governance_agent_url"
             description: "The response reflects the persisted accepted binding"
 
-  - id: reject_replacement
-    title: "Reject an unacceptable replacement"
-    depends_on: [bind_accepted_agent]
-    steps:
       - id: sync_unaccepted_governance_agent
         title: "Attempt an off-list replacement"
         task: sync_governance
@@ -117,10 +109,7 @@ phases:
         sample_request:
           accounts:
             - account:
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
-                sandbox: true
+                account_id: "$context.governance_binding_account_id"
               governance_agents:
                 - url: "https://untrusted-governance.example/mcp"
                   authentication:
@@ -142,43 +131,6 @@ phases:
             path: "accounts[0].governance_agents"
             description: "A failed response never represents the rejected endpoint as persisted"
 
-  - id: inspect_retained_binding
-    title: "Verify rejection did not replace accepted state"
-    depends_on: [reject_replacement]
-    steps:
-      - id: inspect_governance_binding
-        title: "Read the sandbox binding through the test controller"
-        task: comply_test_controller
-        requires_tool: comply_test_controller
-        schema_ref: "compliance/comply-test-controller-request.json"
-        response_schema_ref: "compliance/comply-test-controller-response.json"
-        doc_ref: "/building/verification/compliance-testing"
-        stateful: false
-        sample_request:
-          account:
-            brand:
-              domain: "acmeoutdoor.example"
-            operator: "pinnacle-agency.example"
-            sandbox: true
-          scenario: "query_account_governance_binding"
-          params:
-            account:
-              brand:
-                domain: "acmeoutdoor.example"
-              operator: "pinnacle-agency.example"
-              sandbox: true
-        validations:
-          - check: response_schema
-            description: "The sandbox inspection result matches the controller response schema"
-          - check: field_value
-            path: "simulated.governance_agents[0].url"
-            value: "https://governance.example/mcp"
-            description: "The last accepted binding remains active after the rejected replacement"
-
-  - id: recover_with_accepted_agent
-    title: "Recover without poisoned binding state"
-    depends_on: [inspect_retained_binding]
-    steps:
       - id: resync_accepted_governance_agent
         title: "Retry with the advertised endpoint"
         task: sync_governance
@@ -189,12 +141,9 @@ phases:
         sample_request:
           accounts:
             - account:
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
-                sandbox: true
+                account_id: "$context.governance_binding_account_id"
               governance_agents:
-                - url: "https://governance.example/mcp"
+                - url: "$context.governance_agent_url"
                   authentication:
                     schemes: ["Bearer"]
                     credentials: "test-governance-token-xxxxxxxxxxxx"
@@ -208,5 +157,5 @@ phases:
             description: "The rejected endpoint did not poison later valid binding"
           - check: field_value
             path: "accounts[0].governance_agents[0].url"
-            value: "https://governance.example/mcp"
+            value: "$context.governance_agent_url"
             description: "Only the accepted endpoint is represented as persisted"

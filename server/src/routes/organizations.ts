@@ -47,6 +47,11 @@ import { emailPrefsDb } from "../db/email-preferences-db.js";
 import { performCreateOrganization } from "../services/organization-bootstrap.js";
 import { collectWorkOSPages } from "../services/workos-pagination.js";
 import { canManageOrganizationBilling } from "../billing/billing-authorization.js";
+import { getAuthorizationEnforcementWorkos } from "../auth/workos-client.js";
+import {
+  evaluateOrganizationAuthorizationCanary,
+  ORGANIZATION_AUTHORIZATION_BOUNDARIES,
+} from "../middleware/organization-authorization-canary.js";
 
 const logger = createLogger("organization-routes");
 
@@ -3489,13 +3494,42 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId } = req.params;
 
-      // Verify user is member of this organization
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
-      if (!membership) {
-        return res.status(403).json({
-          error: 'Access denied',
-          message: 'You are not a member of this organization',
-        });
+      const canaryDecision = await evaluateOrganizationAuthorizationCanary({
+        boundary: ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_ROLES_READ,
+        principal: user,
+        organizationId: orgId,
+        getWorkos: getAuthorizationEnforcementWorkos,
+      });
+
+      if (canaryDecision.enforced) {
+        logger.info({
+          boundary: ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_ROLES_READ,
+          decision: canaryDecision.status,
+          unavailable_sources: canaryDecision.status === 'unavailable'
+            ? canaryDecision.unavailableSources
+            : undefined,
+        }, 'organization authorization canary decision');
+        if (canaryDecision.status === 'unavailable') {
+          return res.status(503).json({
+            error: 'Authorization temporarily unavailable',
+            message: 'Organization access could not be verified. Please retry.',
+          });
+        }
+        if (canaryDecision.status === 'forbidden') {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
+      } else {
+        // Kill-switch/default path: retain the shipped canonical-user decision.
+        const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+        if (!membership) {
+          return res.status(403).json({
+            error: 'Access denied',
+            message: 'You are not a member of this organization',
+          });
+        }
       }
 
       // Get available roles from WorkOS

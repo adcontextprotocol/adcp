@@ -14,8 +14,8 @@ required_tools:
   - get_plan_audit_logs
 
 requires_capability:
-  path: experimental_features
-  contains: "governance.campaign"
+  path: supported_protocols
+  contains: "governance"
 
 narrative: |
   The buyer receives a failed seller response after governance approved the
@@ -76,10 +76,6 @@ phases:
             value: "failed-outcome-audit-plan"
             description: "The plan is ready for intent checking"
 
-  - id: approve_intent
-    title: "Approve the proposed seller action"
-    depends_on: [register_plan]
-    steps:
       - id: check_failed_outcome_intent
         title: "Authorize an action that will later fail"
         task: check_governance
@@ -113,10 +109,6 @@ phases:
             path: "governance_context"
             description: "The approved binding can be settled exactly once"
 
-  - id: report_failure
-    title: "Report the failed seller interaction"
-    depends_on: [approve_intent]
-    steps:
       - id: report_failed_outcome
         title: "Store untrusted failure evidence"
         task: report_plan_outcome
@@ -149,10 +141,6 @@ phases:
             path: "outcome_id"
             description: "The failed settlement receives an immutable audit identity"
 
-  - id: read_audit
-    title: "Read the persisted evidence"
-    depends_on: [report_failure]
-    steps:
       - id: get_failed_outcome_audit
         title: "Verify report-to-audit persistence"
         task: get_plan_audit_logs

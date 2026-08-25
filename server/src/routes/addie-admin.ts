@@ -58,6 +58,12 @@ import {
 } from "../db/conversation-insights-db.js";
 import { runConversationInsightsJob } from "../addie/jobs/conversation-insights.js";
 import { guardEscalationResolution } from "../services/escalation-resolution-guard.js";
+import {
+  getShadowReplayCaptureSummary,
+  getShadowReplayFunnelSummary,
+  getShadowReplayGenerationSummary,
+  getShadowReplayJudgmentSummary,
+} from "../addie/jobs/shadow-replay-trace.js";
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -553,6 +559,61 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         error: "Internal server error",
         message: "Unable to fetch available tools",
       });
+    }
+  });
+
+  // GET /api/admin/addie/threads/shadow-replay-captures
+  // Per-opportunity rollout accounting contains only categorical outcomes.
+  apiRouter.get("/threads/shadow-replay-captures", async (req, res) => {
+    try {
+      const parsedDays = typeof req.query.days === 'string'
+        ? Number.parseInt(req.query.days, 10)
+        : 7;
+      if (!Number.isInteger(parsedDays) || parsedDays < 1 || parsedDays > 7) {
+        return res.status(400).json({ error: 'days must be an integer from 1 to 7' });
+      }
+      const [outcomes, generationOutcomes, judgmentOutcomes, funnel] = await Promise.all([
+        getShadowReplayCaptureSummary(parsedDays),
+        getShadowReplayGenerationSummary(parsedDays),
+        getShadowReplayJudgmentSummary(parsedDays),
+        getShadowReplayFunnelSummary(parsedDays),
+      ]);
+      res.json({
+        days: parsedDays,
+        total: outcomes.reduce((sum, outcome) => sum + outcome.count, 0),
+        outcomes,
+        generations: {
+          total: generationOutcomes.reduce((sum, outcome) => sum + outcome.count, 0),
+          input_tokens: generationOutcomes.reduce(
+            (sum, outcome) => sum + outcome.input_tokens,
+            0,
+          ),
+          output_tokens: generationOutcomes.reduce(
+            (sum, outcome) => sum + outcome.output_tokens,
+            0,
+          ),
+          outcomes: generationOutcomes,
+        },
+        judgments: {
+          total: judgmentOutcomes.reduce((sum, outcome) => sum + outcome.count, 0),
+          input_tokens: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.input_tokens,
+            0,
+          ),
+          output_tokens: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.output_tokens,
+            0,
+          ),
+          outcomes: judgmentOutcomes,
+        },
+        funnel,
+      });
+    } catch (error) {
+      logger.error(
+        { errorType: error instanceof Error ? error.name : typeof error },
+        "Error fetching shadow replay capture summary",
+      );
+      res.status(500).json({ error: "Unable to fetch shadow replay capture summary" });
     }
   });
 
