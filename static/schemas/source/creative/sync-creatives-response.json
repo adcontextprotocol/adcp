@@ -35,7 +35,7 @@
               },
               "revision_id": {
                 "$ref": "/schemas/core/creative-revision-id.json",
-                "description": "Exact revision_id from the matching request creative. Required for accepted created, updated, or unchanged items when the request supplied revision_id; forbidden on failed or deleted items."
+                "description": "Exact revision_id from the matching request creative. When the agent advertises creative.supports_revisions, required for accepted created, updated, or unchanged items whose request supplied revision_id. A peer without that capability may ignore the request field. Forbidden on failed or deleted items."
               },
               "account": {
                 "$ref": "/schemas/core/account.json",
@@ -175,6 +175,7 @@
                 "x-adcp-validation": {
                   "verifier_constraints": {
                     "revision_echo": {
+                      "required_capability": "creative.supports_revisions",
                       "request_match_key": "creative_id",
                       "request_field": "revision_id",
                       "accepted_actions": ["created", "updated", "unchanged"],

@@ -117,8 +117,10 @@ test('sync response echoes accepted revisions and forbids them on failed or dele
 
   const item = schema('creative/sync-creatives-response.json').oneOf[0].properties.creatives.items;
   const echo = item.allOf.at(-1)['x-adcp-validation'].verifier_constraints.revision_echo;
+  assert.equal(echo.required_capability, 'creative.supports_revisions');
   assert.equal(echo.must_equal_request, true);
   assert.deepEqual(echo.accepted_actions, ['created', 'updated', 'unchanged']);
+  assert.match(item.properties.revision_id.description, /without that capability may ignore/);
 });
 
 test('revision capability requires a creative library', async () => {
