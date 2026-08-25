@@ -152,7 +152,7 @@ const exampleData = {
   
   creativeAsset: {
     "creative_id": "hero_video_30s",
-    "name": "Nike Air Max Hero 30s",
+    "name": "Nova Motors Launch Hero 30s",
     "format_id": { "agent_url": "https://creative.example.com", "id": "video_16x9_30s" },
     "assets": {
       "main_video": {
@@ -212,7 +212,7 @@ const exampleData = {
   getProductsRequest: {
     "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
     "buying_mode": "brief",
-    "brief": "Nike Air Max 2024 - Premium video inventory for sports fans"
+    "brief": "Nova Motors EV launch - Premium video inventory for sports fans"
   },
   
   getProductsResponse: {
@@ -241,8 +241,8 @@ const exampleData = {
   
   createMediaBuyRequest: {
     "idempotency_key": "create-media-buy-001",
-    "account": { "account_id": "acc_nike_001" },
-    "brand": { "domain": "nike.com" },
+    "account": { "account_id": "acc_nova_motors_001" },
+    "brand": { "domain": "novamotors.example" },
     "packages": [
       {
         "product_id": "ctv_sports_premium",
