@@ -12,6 +12,10 @@ const siMocks = vi.hoisted(() => ({
   formatContext: vi.fn(),
 }));
 
+const directoryMocks = vi.hoisted(() => ({
+  createHandlers: vi.fn(),
+}));
+
 const threadMocks = vi.hoisted(() => ({
   getThreadByExternalId: vi.fn(),
   getOrCreateThread: vi.fn(),
@@ -33,8 +37,30 @@ vi.mock('../../src/addie/services/si-retriever.js', () => ({
   },
 }));
 
+vi.mock('../../src/addie/mcp/directory-tools.js', () => ({
+  DIRECTORY_TOOLS: [{
+    name: 'list_agents',
+    description: 'Test directory tool',
+    input_schema: { type: 'object', properties: {} },
+  }],
+  createDirectoryToolHandlers: (context: unknown) => {
+    directoryMocks.createHandlers(context);
+    return new Map([['list_agents', async () => JSON.stringify({ scoped: true })]]);
+  },
+}));
+
 vi.mock('../../src/db/certification-db.js', () => ({
   getProgress: vi.fn(),
+}));
+
+vi.mock('../../src/addie/admin-status-lookup.js', () => ({
+  isWebUserAAOAdmin: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock('../../src/db/working-group-db.js', () => ({
+  WorkingGroupDatabase: class {
+    getCommitteesLedByUser = vi.fn().mockResolvedValue([]);
+  },
 }));
 
 vi.mock('../../src/middleware/auth.js', () => ({
@@ -69,6 +95,7 @@ describe('prepareRequestWithMemberTools organization selection', () => {
     siMocks.retrieve.mockReset();
     siMocks.retrieve.mockResolvedValue({ agents: [], retrieval_time_ms: 0 });
     siMocks.formatContext.mockReset();
+    directoryMocks.createHandlers.mockClear();
   });
 
   it('passes the selected organization id into web member context resolution', async () => {
@@ -82,6 +109,32 @@ describe('prepareRequestWithMemberTools organization selection', () => {
     );
 
     expect(memberContextMocks.getWebMemberContext).toHaveBeenCalledWith('user_123', 'org_selected_123');
+  });
+
+  it('overrides the anonymous directory handler with the authenticated member context', async () => {
+    const paidContext = {
+      is_mapped: true,
+      is_member: true,
+      organization: {
+        workos_organization_id: 'org_paid',
+        name: 'Paid Org',
+        subscription_status: 'active',
+        is_personal: false,
+        membership_tier: 'company_standard',
+      },
+    };
+    memberContextMocks.getWebMemberContext.mockResolvedValue(paidContext);
+
+    const prepared = await prepareRequestWithMemberTools(
+      'List registered agents',
+      'user_123',
+      'thread_external_123',
+      true,
+    );
+
+    expect(directoryMocks.createHandlers).toHaveBeenCalledWith(paidContext);
+    expect(prepared.requestTools.tools.map((tool) => tool.name)).toContain('list_agents');
+    expect(await prepared.requestTools.handlers.get('list_agents')?.({})).toBe('{"scoped":true}');
   });
 });
 
