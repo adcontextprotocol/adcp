@@ -13830,9 +13830,15 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
   if (needsSeededFallback && !req.include_webhook_activity) {
     // Controller-seeded creative storyboards can write under the test-kit
     // brand session while the list request keys by a runner-generated account.
-    // Exact fixture IDs may cross that sandbox-only seam, but ordinary account
+    // Exact fixture IDs may cross that sandbox-only seam. The frozen 3.0 SDK
+    // also drops creative_ids while projecting this request, so its static,
+    // opaque-account path may read controller fixtures only. Ordinary account
     // libraries still require an explicit matching account identity.
     const requestedIds = new Set(filterIds ?? []);
+    const frozenOpaqueFixtureBridge = ctx.storyboardCompat?.version === '3.0'
+      && ctx.principal?.startsWith('static:')
+      && Boolean(req.account?.account_id)
+      && requestedIds.size === 0;
     const seededCreativeVisible = (creative: CreativeState): boolean => {
       if (!req.account) return true;
       if (requestedAccountId && creative.accountId === requestedAccountId) return true;
@@ -13840,7 +13846,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       return Boolean(
         creative.controllerSeeded
         && ctx.principal?.startsWith('static:')
-        && requestedIds.has(creative.creativeId)
+        && (requestedIds.has(creative.creativeId) || frozenOpaqueFixtureBridge)
       );
     };
     const seededSession = await findSessionMatching(s => [...s.creatives.values()].some(creative => (
@@ -13875,7 +13881,15 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       if (
         c.controllerSeeded
         && ctx.principal?.startsWith('static:')
-        && filterIds?.includes(c.creativeId)
+        && (
+          filterIds?.includes(c.creativeId)
+          || (
+            ctx.storyboardCompat?.version === '3.0'
+            && ctx.principal?.startsWith('static:')
+            && Boolean(req.account?.account_id)
+            && !filterIds?.length
+          )
+        )
       ) return true;
       return !req.include_webhook_activity;
     });

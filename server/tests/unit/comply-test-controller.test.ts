@@ -780,6 +780,17 @@ describe('comply_test_controller', () => {
         'controller_fixture_exact_id',
       ]);
 
+      const compatServer = createTrainingAgentServer({
+        mode: 'open',
+        principal: 'static:public',
+        storyboardCompat: { version: '3.0' },
+      });
+      const { result: frozenCompatLibrary } = await simulateCallTool(compatServer, 'list_creatives', {
+        account: { account_id: 'acct_runner_generated' },
+      });
+      expect((frozenCompatLibrary as any).creatives.map((creative: any) => creative.creative_id))
+        .toContain('controller_fixture_exact_id');
+
       const { result: unrelatedLibrary } = await simulateCallTool(publicServer, 'list_creatives', {
         account: {
           brand: { domain: 'unrelated-library.example' },
