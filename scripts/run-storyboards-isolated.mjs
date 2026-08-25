@@ -410,14 +410,23 @@ async function runManagedChild({
 function totalsFromEnvelope(envelope, storyboardId) {
   const totals = envelope?.totals;
   const countFields = ['passed', 'failed', 'skipped', 'not_applicable'];
-  const expectedSummaryIds = storyboardId === 'signed_requests'
-    ? ['signed_requests-strict', 'signed_requests-strict-required', 'signed_requests-strict-forbidden']
-    : [storyboardId];
+  const expectedSummaryIdSets = storyboardId === 'signed_requests'
+    ? [
+        // Current AdCP 3.2 runs only the required-digest profile. Frozen 3.0
+        // compatibility runs retain all three legacy profile variants.
+        ['signed_requests-strict-required'],
+        ['signed_requests-strict', 'signed_requests-strict-required', 'signed_requests-strict-forbidden'],
+      ]
+    : [[storyboardId]];
+  const expectedSummaryIds = expectedSummaryIdSets.find(expectedIds => (
+    envelope?.summaries?.length === expectedIds.length
+    && envelope.summaries.every(summary => expectedIds.includes(summary?.id))
+  ));
   if (
     envelope?.version !== 1
     || envelope.storyboard_id !== storyboardId
     || !Array.isArray(envelope.summaries)
-    || envelope.summaries.length !== expectedSummaryIds.length
+    || !expectedSummaryIds
     || !totals
     || !['clean', 'total', ...countFields].every(field => Number.isSafeInteger(totals[field]) && totals[field] >= 0)
   ) {

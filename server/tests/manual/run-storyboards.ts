@@ -1034,29 +1034,27 @@ async function main() {
               ],
             },
           ]
-        : [
-            {
-              routeSuffix: '/mcp-strict',
-              skipVectors: ['007-missing-content-digest', '018-digest-covered-when-forbidden', '025-jwk-alg-crv-mismatch'],
-            },
-            {
-              routeSuffix: '/mcp-strict-required',
-              skipVectors: skipThreeZeroSignedVectorsExcept([
-                '002-post-with-content-digest',
-                '007-missing-content-digest',
-                '010-content-digest-mismatch',
-              ]),
-            },
-            {
-              routeSuffix: '/mcp-strict-forbidden',
-              skipVectors: [
-                '002-post-with-content-digest',
-                '007-missing-content-digest',
-                '010-content-digest-mismatch',
-                '025-jwk-alg-crv-mismatch',
-              ],
-            },
-          ];
+        : [{
+            // AdCP 3.2 permits only required content-digest coverage. The
+            // frozen 3.0 matrix above retains the legacy either/forbidden
+            // verifier-profile coverage.
+            routeSuffix: '/mcp-strict-required',
+            // The current black-box vector bundle remains 3.1-compatible;
+            // omit only vectors whose bodies intentionally lack the
+            // content-digest coverage that every 3.2 signature requires.
+            skipVectors: [
+              '001-basic-post',
+              '003-es256-post',
+              '004-multiple-signature-labels',
+              '008-unknown-keyid',
+              '009-key-ops-missing-verify',
+              '015-signature-invalid',
+              '016-replayed-nonce',
+              '017-key-revoked',
+              '018-digest-covered-when-forbidden',
+              '025-jwk-alg-crv-mismatch',
+            ],
+          }];
       for (const variant of strictVariants) {
         const variantLabel = `${storyboard.id}${variant.routeSuffix.replace('/mcp', '')}`;
         try {

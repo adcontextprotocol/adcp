@@ -185,6 +185,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           context:
             correlation_id: "stale_response_advisory--stale_response_wire_placement"
         validations:

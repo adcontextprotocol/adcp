@@ -20,17 +20,119 @@ import { ToolError } from '../tool-error.js';
 
 const SCHEMA_HOST = 'https://adcontextprotocol.org';
 
-// Schema base URLs for different versions. v3 is current; keep older aliases
-// so Addie can still answer historical questions.
+// Keep schema selection aligned with the frozen releases exposed in docs.json.
+// Legacy aliases remain available for callers that already use them.
+export const DOCS_SCHEMA_RELEASES = Object.freeze({
+  '3.1': '3.1.19',
+  '3.2-beta': '3.2.0-beta.5',
+  '3.0': '3.0.26',
+  '2.5': '2.5.3',
+});
+
 const SCHEMA_BASE_URLS: Record<string, string> = {
+  '3.1': `${SCHEMA_HOST}/schemas/${DOCS_SCHEMA_RELEASES['3.1']}`,
+  '3.2-beta': `${SCHEMA_HOST}/schemas/${DOCS_SCHEMA_RELEASES['3.2-beta']}`,
+  '3.0': `${SCHEMA_HOST}/schemas/${DOCS_SCHEMA_RELEASES['3.0']}`,
+  '2.5': `${SCHEMA_HOST}/schemas/${DOCS_SCHEMA_RELEASES['2.5']}`,
   v2: `${SCHEMA_HOST}/schemas/v2`,
-  v3: `${SCHEMA_HOST}/schemas/v3`,
-  '2.5': `${SCHEMA_HOST}/schemas/v2.5`,
   '2.6': `${SCHEMA_HOST}/schemas/v2.6`,
   '2.6.0': `${SCHEMA_HOST}/schemas/2.6.0`,
 };
 
-const DEFAULT_VERSION = 'v3';
+const DEFAULT_VERSION = '3.1';
+
+// Public documentation selectors resolve to frozen schema snapshots. Keep the
+// legacy v2/2.6 selectors intact, but do not let v3 or "latest" drift away
+// from the stable documentation release.
+const SCHEMA_VERSION_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  '3.1': '3.1',
+  stable: '3.1',
+  current: '3.1',
+  latest: '3.1',
+  v3: '3.1',
+  [DOCS_SCHEMA_RELEASES['3.1']]: '3.1',
+  '3.2-beta': '3.2-beta',
+  '3.2 beta': '3.2-beta',
+  '3.2': '3.2-beta',
+  [DOCS_SCHEMA_RELEASES['3.2-beta']]: '3.2-beta',
+  '3.0': '3.0',
+  [DOCS_SCHEMA_RELEASES['3.0']]: '3.0',
+  '2.5': '2.5',
+  '2.5 (archived)': '2.5',
+  [DOCS_SCHEMA_RELEASES['2.5']]: '2.5',
+  v2: 'v2',
+  '2.6': '2.6',
+  '2.6.0': '2.6.0',
+});
+
+export const SCHEMA_VERSION_OPTIONS = Object.freeze(Object.keys(SCHEMA_VERSION_ALIASES));
+
+function resolveSchemaVersion(requested?: unknown, fallback = DEFAULT_VERSION): string {
+  const selector = requested === undefined
+    ? fallback
+    : typeof requested === 'string'
+      ? requested.trim().toLowerCase()
+      : '';
+  const canonical = SCHEMA_VERSION_ALIASES[selector];
+  if (!canonical) {
+    throw new ToolError(
+      `Unsupported schema version "${String(requested)}". Supported versions: ${SCHEMA_VERSION_OPTIONS.join(', ')}.`,
+    );
+  }
+  return canonical;
+}
+
+const INFERRED_PRERELEASE_RANGES: Readonly<
+  Record<string, Partial<Record<'beta' | 'rc', readonly [number, number]>>>
+> = Object.freeze({
+  '3.0': Object.freeze({ beta: [1, 3] as const, rc: [1, 3] as const }),
+  '3.1': Object.freeze({ beta: [0, 7] as const, rc: [1, 15] as const }),
+  '3.2-beta': Object.freeze({ beta: [0, 5] as const }),
+});
+
+/**
+ * Resolve a version inferred from a document's `$schema` URL.
+ *
+ * Published documents may remain pinned to an older patch snapshot after the
+ * docs move to a newer frozen snapshot. Preserve their release-line meaning
+ * while keeping explicit tool `version` inputs fail-closed.
+ */
+function resolveInferredSchemaVersion(requested: string): string {
+  const selector = requested.trim().toLowerCase();
+  const direct = SCHEMA_VERSION_ALIASES[selector];
+  if (direct) return direct;
+
+  const prereleaseMatch = selector.match(/^(\d+\.\d+)\.0-(beta|rc)\.(\d+)$/);
+  if (prereleaseMatch) {
+    const [, releaseLine, prereleaseKind, prereleaseNumberText] = prereleaseMatch;
+    const canonical = releaseLine === '3.2' ? '3.2-beta' : releaseLine;
+    const range = INFERRED_PRERELEASE_RANGES[canonical]?.[
+      prereleaseKind as 'beta' | 'rc'
+    ];
+    const prereleaseNumber = Number(prereleaseNumberText);
+    if (range && prereleaseNumber >= range[0] && prereleaseNumber <= range[1]) {
+      return canonical;
+    }
+  }
+
+  const patchMatch = selector.match(/^(\d+\.\d+)\.(\d+)$/);
+  if (patchMatch) {
+    const [, releaseLine, patchNumberText] = patchMatch;
+    const frozenVersion = DOCS_SCHEMA_RELEASES[
+      releaseLine as keyof typeof DOCS_SCHEMA_RELEASES
+    ];
+    const frozenMatch = frozenVersion?.match(/^(\d+\.\d+)\.(\d+)$/);
+    if (
+      frozenMatch
+      && frozenMatch[1] === releaseLine
+      && Number(patchNumberText) <= Number(frozenMatch[2])
+    ) {
+      return releaseLine;
+    }
+  }
+
+  return resolveSchemaVersion(requested);
+}
 
 // Cache for fetched schemas (5 minute TTL, max 50 entries)
 const schemaCache = new Map<string, { schema: unknown; fetchedAt: number }>();
@@ -120,7 +222,10 @@ async function fetchRegistry(version: string): Promise<SchemaRegistry> {
     return cached.registry;
   }
 
-  const baseUrl = SCHEMA_BASE_URLS[version] || SCHEMA_BASE_URLS[DEFAULT_VERSION];
+  const baseUrl = SCHEMA_BASE_URLS[version];
+  if (!baseUrl) {
+    throw new ToolError(`Unsupported canonical schema version "${version}".`);
+  }
   const indexUrl = `${baseUrl}/index.json`;
   const index = await fetchSchema(indexUrl);
   const paths = extractRegistryPaths(index);
@@ -264,7 +369,10 @@ async function resolveSchemaPath(
  * Build full schema URL from version and path
  */
 function buildSchemaUrl(version: string, schemaPath: string): string {
-  const baseUrl = SCHEMA_BASE_URLS[version] || SCHEMA_BASE_URLS[DEFAULT_VERSION];
+  const baseUrl = SCHEMA_BASE_URLS[version];
+  if (!baseUrl) {
+    throw new ToolError(`Unsupported canonical schema version "${version}".`);
+  }
   // Remove leading slash and sanitize path
   let cleanPath = schemaPath.startsWith('/') ? schemaPath.slice(1) : schemaPath;
   // Prevent path traversal
@@ -360,8 +468,8 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         version: {
           type: 'string',
           description:
-            'Schema version to use: "v3" (current stable, default), "v2" (legacy), or specific like "2.6.0". Defaults to version in $schema or "v3".',
-          enum: ['v2', 'v3', '2.5', '2.6', '2.6.0'],
+            'Schema version to use. Public docs selectors are 3.1 (stable default), 3.2-beta, 3.0, and 2.5; exact snapshot and legacy aliases are also accepted.',
+          enum: SCHEMA_VERSION_OPTIONS,
         },
       },
       required: ['json'],
@@ -383,8 +491,8 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         },
         version: {
           type: 'string',
-          description: 'Schema version: "v3" (current stable, default), "v2" (legacy), or specific like "2.6.0"',
-          enum: ['v2', 'v3', '2.5', '2.6', '2.6.0'],
+          description: 'Schema version. Match search_docs: 3.1 (stable default), 3.2-beta, 3.0, or 2.5. Exact snapshot and legacy aliases are also accepted.',
+          enum: SCHEMA_VERSION_OPTIONS,
         },
         property: {
           type: 'string',
@@ -405,7 +513,8 @@ export const SCHEMA_TOOLS: AddieTool[] = [
       properties: {
         version: {
           type: 'string',
-          description: 'Optional version to list schemas for',
+          description: 'Optional schema version. Defaults to stable 3.1.',
+          enum: SCHEMA_VERSION_OPTIONS,
         },
       },
     },
@@ -426,12 +535,12 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         from_version: {
           type: 'string',
           description: 'Source version to compare from (default: "v2")',
-          enum: ['v2', 'v3', '2.5', '2.6', '2.6.0'],
+          enum: SCHEMA_VERSION_OPTIONS,
         },
         to_version: {
           type: 'string',
-          description: 'Target version to compare to (default: "v3")',
-          enum: ['v2', 'v3', '2.5', '2.6', '2.6.0'],
+          description: 'Target version to compare to (default: stable 3.1)',
+          enum: SCHEMA_VERSION_OPTIONS,
         },
       },
       required: ['schema_path'],
@@ -492,26 +601,29 @@ export function createSchemaToolHandlers(): Map<
     }
     const jsonObj = json as Record<string, unknown>;
     let schemaPath = input.schema_path as string | undefined;
-    let version = input.version as string | undefined;
+    let requestedVersion = input.version;
 
     // Try to extract version and schema from $schema field. Accepts both
     // major-alias form (`/schemas/v3/...`) and pinned-semver form
-    // (`/schemas/3.0.0/...`). The version must match a key in
-    // SCHEMA_BASE_URLS, which uses `v3` etc. — not bare `3`.
+    // (`/schemas/3.0.0/...`). All selectors are canonicalized below so a
+    // schema URL cannot bypass the frozen release mapping.
     if (jsonObj.$schema && typeof jsonObj.$schema === 'string') {
       const schemaUrl = jsonObj.$schema;
-      const urlMatch = schemaUrl.match(/schemas(?:\.adcontextprotocol\.org)?\/(v\d+(?:\.\d+)?|\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?)\/(.+)$/);
+      const urlMatch = schemaUrl.match(/(?:\/schemas\/|schemas\.adcontextprotocol\.org\/)([^/]+)\/(.+)$/);
       if (urlMatch) {
-        version = version || urlMatch[1];
+        if (requestedVersion === undefined) {
+          requestedVersion = resolveInferredSchemaVersion(urlMatch[1]);
+        }
         schemaPath = schemaPath || urlMatch[2];
       }
     }
+
+    const version = resolveSchemaVersion(requestedVersion);
 
     if (!schemaPath) {
       return `Cannot determine schema. Please provide schema_path (e.g., "core/format.json") or include a $schema field in the JSON.`;
     }
 
-    version = version || DEFAULT_VERSION;
     const { resolved: resolvedPath, registry } = await resolveSchemaPath(schemaPath, version);
     schemaPath = resolvedPath;
     const schemaUrl = buildSchemaUrl(version, schemaPath);
@@ -540,7 +652,7 @@ ${formatCandidates(schemaPath, registry)}`);
   });
 
   handlers.set('get_schema', async (input) => {
-    const version = (input.version as string) || DEFAULT_VERSION;
+    const version = resolveSchemaVersion(input.version);
     const property = input.property as string | undefined;
 
     const requestedPath = input.schema_path as string;
@@ -610,8 +722,8 @@ ${formatCandidates(requestedPath, registry)}`);
   });
 
   handlers.set('list_schemas', async (input) => {
-    const version = (input.version as string) || DEFAULT_VERSION;
-    const baseUrl = SCHEMA_BASE_URLS[version] || SCHEMA_BASE_URLS[DEFAULT_VERSION];
+    const version = resolveSchemaVersion(input.version);
+    const baseUrl = SCHEMA_BASE_URLS[version];
 
     let registry: SchemaRegistry | null = null;
     try {
@@ -637,7 +749,10 @@ ${formatCandidates(requestedPath, registry)}`);
 ### Schema Versions
 | Version | URL | Notes |
 |---------|-----|-------|
-| v3 | ${SCHEMA_BASE_URLS.v3} | Current stable (3.x) |
+| 3.1 | ${SCHEMA_BASE_URLS['3.1']} | Current stable schema snapshot (${DOCS_SCHEMA_RELEASES['3.1']}) |
+| 3.2-beta | ${SCHEMA_BASE_URLS['3.2-beta']} | Beta docs snapshot (3.2.0-beta.5) |
+| 3.0 | ${SCHEMA_BASE_URLS['3.0']} | Previous 3.x snapshot (3.0.26) |
+| 2.5 | ${SCHEMA_BASE_URLS['2.5']} | Archived snapshot (2.5.3) |
 | v2 | ${SCHEMA_BASE_URLS.v2} | Legacy (2.x) |
 
 ### Key Differences: v2 vs v3
@@ -650,8 +765,8 @@ ${categoryList}
   });
 
   handlers.set('compare_schema_versions', async (input) => {
-    const fromVersion = (input.from_version as string) || 'v2';
-    const toVersion = (input.to_version as string) || 'v3';
+    const fromVersion = resolveSchemaVersion(input.from_version, 'v2');
+    const toVersion = resolveSchemaVersion(input.to_version);
     const requestedPath = input.schema_path as string;
     // Resolve against the "to" version's registry — that's where we most
     // want the path to exist, and the registry also contains legacy schemas.
@@ -739,7 +854,9 @@ ${formatCandidates(requestedPath, registry)}`;
       }
 
       // Add general version changes if available
-      const changeKey = `${fromVersion}-to-${toVersion}`;
+      const changeKey = fromVersion === 'v2' && toVersion.startsWith('3')
+        ? 'v2-to-v3'
+        : `${fromVersion}-to-${toVersion}`;
       if (VERSION_CHANGES[changeKey]) {
         report += `### General ${fromVersion} to ${toVersion} Changes\n`;
         report += VERSION_CHANGES[changeKey].map((change) => `- ${change}`).join('\n') + '\n';
