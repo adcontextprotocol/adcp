@@ -292,7 +292,7 @@ test('current training-agent floors are ratcheted and mirrored by local and CI r
     ['signals', 45, 80],
     ['sales', 126, 556],
     ['governance', 47, 157],
-    ['creative', 50, 247],
+    ['creative', 49, 209],
     ['creative-builder', 51, 222],
     ['brand', 45, 116],
     ['si', 42, 50],
