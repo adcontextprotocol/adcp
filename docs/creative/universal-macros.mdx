@@ -165,38 +165,38 @@ Every `declaration_id` is unique within its asset. Each declared token must exis
 
 ## Capability matching and validation
 
-Sellers publish a seller-wide ceiling in `execution.creative_specs.macro_resolution_capabilities`. The selected product format option publishes the binding set in `params.macro_resolution_capabilities`. Each entry is one exact semantic/operation/actor contract; it does not create a cross-product from a semantic list and maximum depth.
+Sellers publish a seller-wide ceiling in `execution.creative_specs.macro_resolution_capabilities`. The selected product format option publishes the binding set in its top-level `macro_resolution_capabilities` field, alongside `format_kind` and `params`. Each entry is one exact semantic/operation/actor contract; it does not create a cross-product from a semantic list and maximum depth. Capability metadata is deliberately outside canonical `params`: it describes who can process a selected format option, not the creative shape itself.
 
-Standalone creative agents use a separate route rule: the selected `creative.supported_formats[]` entry's `params.macro_resolution_capabilities` is authoritative for build, preview, and validation, and its build-time entries name `performed_by: creative_agent`. The sales seller∩product intersection is evaluated later if the resulting manifest enters a seller execution path.
+Standalone creative agents use a separate route rule: the selected `creative.supported_formats[]` entry's `format.macro_resolution_capabilities` is authoritative for build, preview, and validation, and its build-time entries name `performed_by: creative_agent`. The sales seller∩product intersection is evaluated later if the resulting manifest enters a seller execution path.
 
 ```json
 {
   "format_kind": "video_vast",
+  "macro_resolution_capabilities": [
+    {
+      "dialect": "adcp",
+      "dialect_semantic": "GDPR_CONSENT",
+      "mapping_status": "verified_universal",
+      "universal_semantic": "GDPR_CONSENT",
+      "operation": "resolve_value",
+      "performed_by": "seller",
+      "supported_contexts": ["url_query_value"],
+      "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+    },
+    {
+      "dialect": "iab_vast",
+      "dialect_namespace": "https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html",
+      "dialect_revision": "git:e0858cd714474bf17ef61065097456d7643ff838",
+      "dialect_semantic": "PLAYERSTATE",
+      "mapping_status": "dialect_defined",
+      "operation": "resolve_value",
+      "performed_by": "request_executor",
+      "supported_contexts": ["url_query_value"],
+      "supported_encodings": [{ "kind": "iab_vast_uri", "depth": 1 }]
+    }
+  ],
   "params": {
-    "vast_versions": ["3.0", "4.0"],
-    "macro_resolution_capabilities": [
-      {
-        "dialect": "adcp",
-        "dialect_semantic": "GDPR_CONSENT",
-        "mapping_status": "verified_universal",
-        "universal_semantic": "GDPR_CONSENT",
-        "operation": "resolve_value",
-        "performed_by": "seller",
-        "supported_contexts": ["url_query_value"],
-        "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
-      },
-      {
-        "dialect": "iab_vast",
-        "dialect_namespace": "https://interactiveadvertisingbureau.github.io/vast/vast4macros/vast4-macros-latest.html",
-        "dialect_revision": "git:e0858cd714474bf17ef61065097456d7643ff838",
-        "dialect_semantic": "PLAYERSTATE",
-        "mapping_status": "dialect_defined",
-        "operation": "resolve_value",
-        "performed_by": "request_executor",
-        "supported_contexts": ["url_query_value"],
-        "supported_encodings": [{ "kind": "iab_vast_uri", "depth": 1 }]
-      }
-    ]
+    "vast_versions": ["3.0", "4.0"]
   }
 }
 ```
@@ -654,19 +654,20 @@ Inspect the selected canonical declaration to see which macros it supports:
 {
   "format_option_id": "video_30s_vast",
   "format_kind": "video_vast",
+  "macro_resolution_capabilities": [
+    {
+      "dialect": "adcp",
+      "dialect_semantic": "GDPR_CONSENT",
+      "mapping_status": "verified_universal",
+      "universal_semantic": "GDPR_CONSENT",
+      "operation": "resolve_value",
+      "performed_by": "seller",
+      "supported_contexts": ["url_query_value"],
+      "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+    }
+  ],
   "params": {
-    "macro_resolution_capabilities": [
-      {
-        "dialect": "adcp",
-        "dialect_semantic": "GDPR_CONSENT",
-        "mapping_status": "verified_universal",
-        "universal_semantic": "GDPR_CONSENT",
-        "operation": "resolve_value",
-        "performed_by": "seller",
-        "supported_contexts": ["url_query_value"],
-        "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
-      }
-    ]
+    "vast_versions": ["4.2"]
   }
 }
 ```

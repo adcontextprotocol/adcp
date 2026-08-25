@@ -11,7 +11,24 @@
       "description": "Discriminator identifying this as a VAST tracker asset. See /schemas/creative/asset-types for the registry."
     },
     "vast_event": {
-      "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_event",
+      "allOf": [
+        { "$ref": "/schemas/enums/vast-tracking-event.json" },
+        {
+          "not": {
+            "enum": [
+              "impression",
+              "clickTracking",
+              "customClick",
+              "error",
+              "viewable",
+              "notViewable",
+              "viewUndetermined",
+              "measurableImpression",
+              "viewableImpression"
+            ]
+          }
+        }
+      ],
       "description": "The VAST tracking event this URL fires on. Maps 1:1 to the VAST `Tracking event=\"...\"` attribute inside `TrackingEvents`. MUST NOT be `impression` (belongs in the VAST `Impression` element — model as a `url` asset with `url_type: \"tracker_pixel\"`), `clickTracking` / `customClick` (belong in `VideoClicks`), `error` (VAST `Error` element), or any of `viewable` / `notViewable` / `viewUndetermined` / `measurableImpression` / `viewableImpression` (children of the VAST `ViewableImpression` element, not `TrackingEvents`)."
     },
     "url": {
@@ -30,11 +47,14 @@
       "description": "Exact tokens in `url` and their resolver/encoding contracts."
     },
     "offset": {
-      "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_offset",
+      "type": "string",
+      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$",
       "description": "VAST `offset` attribute. Required when `vast_event` is `progress`; ignored otherwise for compatibility with existing 3.x manifests. Format matches the VAST 4.2 XSD `Tracking@offset` pattern: `HH:MM:SS` or `HH:MM:SS.mmm` for absolute time (two-digit hours, minutes 00–59, seconds 00–59), or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted — the VAST 4.2 XSD pattern does not allow a leading minus."
     },
     "target": {
-      "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_target",
+      "type": "string",
+      "enum": ["linear", "non_linear", "companion"],
+      "default": "linear",
       "description": "Which VAST creative element this tracker scopes to — `linear` for `<Linear>/<TrackingEvents>`, `non_linear` for `<NonLinearAds>/<TrackingEvents>`, `companion` for `<CompanionAds>/<Companion>/<TrackingEvents>`. Defaults to `linear`. Existing 3.x assets remain structurally permissive; a tracker execution contract applies the standards-valid event/target matrix when matching a creative to a product."
     },
     "provenance": {

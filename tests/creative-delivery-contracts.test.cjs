@@ -981,6 +981,43 @@ test('validation and sync response schemas expose per-token macro results', () =
     'ambiguous occurrence identity has one machine-stable reason distinct from unsupported matching');
 });
 
+test('macro processing capabilities bind at the format-option layer, not canonical params', () => {
+  const capability = {
+    dialect: 'adcp',
+    dialect_semantic: 'CACHEBUSTER',
+    mapping_status: 'verified_universal',
+    universal_semantic: 'CACHEBUSTER',
+    operation: 'resolve_value',
+    performed_by: 'seller',
+    supported_contexts: ['url_query_value'],
+    supported_encodings: [{ kind: 'rfc3986', depth: 1 }]
+  };
+  const declaration = {
+    format_option_id: 'vast-with-macros',
+    format_kind: 'video_vast',
+    macro_resolution_capabilities: [capability],
+    params: { vast_versions: ['4.2'] }
+  };
+
+  const validateDeclaration = ajv.getSchema('/schemas/core/product-format-declaration.json');
+  const validateCompact = ajv.getSchema('/schemas/core/canonical-format-option.json');
+  const validateVastParams = ajv.getSchema('/schemas/formats/canonical/video_vast.json');
+  assert.equal(validateDeclaration(declaration), true, JSON.stringify(validateDeclaration.errors));
+  assert.equal(validateCompact(declaration), true, JSON.stringify(validateCompact.errors));
+  assert.equal(validateVastParams({
+    vast_versions: ['4.2'],
+    macro_resolution_capabilities: [capability]
+  }), false, 'execution capabilities must not be repeated through every canonical params branch');
+
+  const base = ajv.getSchema('/schemas/formats/canonical/_base.json').schema;
+  assert.equal(base.properties.macro_resolution_capabilities, undefined);
+  assert.deepEqual(base.not, { required: ['macro_resolution_capabilities'] });
+  assert.equal(validateDeclaration.schema.properties.macro_resolution_capabilities.items.$ref,
+    '/schemas/core/macro-resolution-capability.json');
+  assert.equal(validateCompact.schema.properties.macro_resolution_capabilities.items.$ref,
+    '/schemas/core/macro-resolution-capability.json');
+});
+
 test('creative delivery errors use typed detail schemas without closing the generic extension point', () => {
   const genericDetails = ajv.getSchema('/schemas/core/error.json').schema.properties.details;
   assert.equal(genericDetails.additionalProperties, true);

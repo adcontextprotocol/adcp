@@ -209,17 +209,6 @@
       },
       "description": "Downstream platform connections or grants required to use this format declaration. These are in addition to the single AdCP caller credential. Use this when a platform product requires multiple downstream grants, such as an advertiser account connection plus a publisher identity or post authorization for published-post references."
     },
-    "macro_resolution_capabilities": {
-      "type": "array",
-      "minItems": 1,
-      "items": { "$ref": "/schemas/core/macro-resolution-capability.json" },
-      "description": "Binding product-format processing capabilities for exact macro dialect identities, semantics, operations, actors, contexts, and encodings. Absence means undeclared, not supported on the opt-in declared-token path. Seller-wide capabilities are only a ceiling. This field does not claim that a buyer tracker asset is honored/fired; the proposed product tracking-capabilities contract owns that separate behavior.",
-      "x-adcp-validation": {
-        "verifier_constraints": {
-          "translation_chain_closure": "every translate_to_native entry must have an exact matching resolve_value entry for its translation_target in this same array"
-        }
-      }
-    },
     "reference_mutability": {
       "type": "string",
       "enum": ["immutable_snapshot", "mutable_requires_reapproval", "mutable_auto_recheck"],
@@ -230,6 +219,9 @@
       "minimum": 0,
       "description": "Typical production turnaround in business days when the format requires seller-side production (e.g., host-recording from a buyer-supplied script). 0 for synchronous (e.g., generative AI); >0 for human-produced (e.g., podcast host-read). Absent when no production is required (buyer uploads complete creative)."
     }
+  },
+  "not": {
+    "required": ["macro_resolution_capabilities"]
   },
   "additionalProperties": true,
   "x-canonical-policy-required-params-not-enforced": "Canonical format schemas intentionally do NOT mark parameter fields as required and use additionalProperties: true. The canonical describes which parameters MAY narrow a declaration; it does not supply hidden technical defaults. When a technical parameter is omitted, its meaning comes only from the enclosing declaration's technical_requirements_complete assertion: true means no constraint at that layer, while false or absence means undeclared. Consumers MUST NOT infer an omitted technical constraint from canonical prose, examples, common practice, or implementation defaults. This is intentional: structural schema validation and product-level technical-contract completeness are separate checks.",
