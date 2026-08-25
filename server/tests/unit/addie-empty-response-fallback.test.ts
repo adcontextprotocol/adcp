@@ -44,6 +44,7 @@ import {
 } from '../../src/addie/claude-client.js';
 
 const emptyEndTurn = {
+  model: 'claude-sonnet-4-6-20260801',
   stop_reason: 'end_turn',
   content: [],
   usage: {
@@ -53,6 +54,7 @@ const emptyEndTurn = {
 };
 
 const toolUseTurn = {
+  model: 'claude-sonnet-4-6-20260801',
   stop_reason: 'tool_use',
   content: [{
     type: 'tool_use',
@@ -64,9 +66,25 @@ const toolUseTurn = {
 };
 
 const recoveredEndTurn = {
+  model: 'claude-sonnet-5-20260801',
   stop_reason: 'end_turn',
   content: [{ type: 'text', text: 'Issue 42 is open.' }],
   usage: { input_tokens: 12, output_tokens: 6 },
+};
+
+const personaOnlyEndTurn = {
+  model: 'claude-sonnet-5-20260801',
+  stop_reason: 'end_turn',
+  content: [{
+    type: 'text',
+    text: "I'm Claude, an AI assistant made by Anthropic. As a large language model, I have no real-world identity.",
+  }],
+  usage: { input_tokens: 12, output_tokens: 20 },
+};
+
+const emptyToolUseTurn = {
+  ...emptyEndTurn,
+  stop_reason: 'tool_use',
 };
 
 const emptyRefusal = {
@@ -118,7 +136,7 @@ function makeThrowingStream(error: Error) {
   };
 }
 
-function makeStream(message: typeof toolUseTurn | typeof emptyEndTurn | typeof recoveredEndTurn | typeof mixedRecoveryToolUseTurn | typeof emptyRefusal) {
+function makeStream(message: typeof toolUseTurn | typeof emptyEndTurn | typeof recoveredEndTurn | typeof personaOnlyEndTurn | typeof mixedRecoveryToolUseTurn | typeof emptyRefusal) {
   return {
     async *[Symbol.asyncIterator]() {
       for (const block of message.content) {
@@ -167,6 +185,12 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
     expect(response.flagged).toBe(true);
     expect(response.flag_reason).toContain('Empty turn');
+    expect(response.model_execution).toEqual({
+      source: 'local',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-4-6',
+      reason: 'no_provider_response',
+    });
     expect(mocks.createMessage).toHaveBeenCalledTimes(2);
     expect(mocks.createMessage.mock.calls[0][0]).toMatchObject({ max_tokens: 8_192 });
     expect(mocks.createMessage.mock.calls[0][0]).not.toHaveProperty('output_config');
@@ -198,11 +222,116 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(done?.response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
     expect(done?.response.flagged).toBe(true);
     expect(done?.response.flag_reason).toContain('Empty turn');
+    expect(done?.response.model_execution).toEqual({
+      source: 'local',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-4-6',
+      reason: 'no_provider_response',
+    });
     expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
     expect(mocks.notifySystemError).toHaveBeenCalledWith(expect.objectContaining({
       source: 'addie-empty-response',
       errorMessage: expect.stringContaining('processMessageStream'),
     }));
+  });
+
+  it('classifies persona-only provider output as a local fallback in both paths', async () => {
+    mocks.createMessage.mockResolvedValueOnce(personaOnlyEndTurn);
+    mocks.streamMessage.mockReturnValueOnce(makeStream(personaOnlyEndTurn));
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+
+    const response = await client.processMessage(
+      'who are you?',
+      undefined,
+      undefined,
+      undefined,
+      { uncapped: true, threadId: 'thread-persona-only' },
+    );
+    expect(response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(response.flag_reason).toContain('persona-collapse');
+    expect(response.model_execution).toEqual({
+      source: 'local',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-5',
+      reason: 'no_provider_response',
+    });
+
+    const events: StreamEvent[] = [];
+    for await (const event of client.processMessageStream(
+      'who are you?',
+      undefined,
+      undefined,
+      { uncapped: true, threadId: 'thread-stream-persona-only' },
+    )) {
+      events.push(event);
+    }
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+    expect(done?.response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(done?.response.flag_reason).toContain('persona-collapse');
+    expect(done?.response.model_execution).toEqual({
+      source: 'local',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-5',
+      reason: 'no_provider_response',
+    });
+  });
+
+  it('classifies malformed empty tool-use responses as local in both paths', async () => {
+    mocks.createMessage.mockResolvedValueOnce(emptyToolUseTurn);
+    mocks.streamMessage.mockReturnValueOnce(makeStream(emptyToolUseTurn));
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+
+    const response = await client.processMessage(
+      'hello', undefined, undefined, undefined, { uncapped: true },
+    );
+    const streamEvents: StreamEvent[] = [];
+    for await (const event of client.processMessageStream(
+      'hello', undefined, undefined, { uncapped: true },
+    )) streamEvents.push(event);
+    const done = streamEvents.find(
+      (event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done',
+    );
+
+    expect(response.model_execution).toEqual({
+      source: 'local', requested_provider: 'anthropic', requested_model: 'claude-sonnet-4-6', reason: 'no_provider_response',
+    });
+    expect(done?.response.model_execution).toEqual({
+      source: 'local', requested_provider: 'anthropic', requested_model: 'claude-sonnet-4-6', reason: 'no_provider_response',
+    });
+  });
+
+  it('classifies the non-streaming max-iteration apology as local', async () => {
+    mocks.createMessage.mockResolvedValueOnce(toolUseTurn);
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+    const response = await client.processMessage(
+      'hello',
+      undefined,
+      githubIssueTools,
+      undefined,
+      { uncapped: true, maxIterations: 1 },
+    );
+
+    expect(response.flag_reason).toBe('Max tool iterations reached');
+    expect(response.model_execution).toEqual({
+      source: 'local', requested_provider: 'anthropic', requested_model: 'claude-sonnet-4-6', reason: 'canned_response',
+    });
+  });
+
+  it('classifies the streaming max-iteration apology as local', async () => {
+    mocks.streamMessage.mockReturnValueOnce(makeStream(toolUseTurn));
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+    const events: StreamEvent[] = [];
+    for await (const event of client.processMessageStream(
+      'hello', undefined, githubIssueTools, { uncapped: true, maxIterations: 1 },
+    )) events.push(event);
+    const done = events.find(
+      (event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done',
+    );
+
+    expect(done?.response.flag_reason).toBe('Max tool iterations reached');
+    expect(done?.response.model_execution).toEqual({
+      source: 'local', requested_provider: 'anthropic', requested_model: 'claude-sonnet-4-6', reason: 'canned_response',
+    });
   });
 
   it('recovers once from a wholly empty initial non-streaming response', async () => {
@@ -222,6 +351,15 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(response.text).toBe('Issue 42 is open.');
     expect(response.timing?.iterations).toBe(2);
     expect(response.usage).toMatchObject({ input_tokens: 22, output_tokens: 6 });
+    expect(response.model_execution).toEqual({
+      source: 'provider',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-5',
+      provider: 'anthropic',
+      model: 'claude-sonnet-5-20260801',
+      model_resolution: 'provider_canonicalized',
+      fallback_reason: null,
+    });
     expect(mocks.createMessage).toHaveBeenCalledTimes(2);
     expect(mocks.createMessage.mock.calls[0][0]).toMatchObject({
       max_tokens: 16_384,

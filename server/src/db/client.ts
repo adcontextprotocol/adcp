@@ -9,6 +9,10 @@ const SLOW_QUERY_THRESHOLD_MS = 500;
 
 let pool: Pool | null = null;
 let poolConfig: DatabaseConfig | null = null;
+let healthClient: Client | null = null;
+let healthClientConnectPromise: Promise<Client> | null = null;
+let healthCheckPromise: Promise<void> | null = null;
+const healthClientClosePromises = new WeakMap<Client, Promise<void>>();
 interface QueryDeadlineContext {
   deadlineMs: number;
   readOnly: boolean;
@@ -87,7 +91,9 @@ const TRANSIENT_CONNECTION_ERRORS = new Set([
 const TRANSIENT_CONNECTION_MESSAGES = [
   "Connection terminated unexpectedly",
   "Connection terminated due to connection timeout",
+  "Client has encountered a connection error and is not queryable",
   "timeout exceeded when trying to connect",
+  "timeout expired",
 ];
 
 export function isTransientConnectionError(err: unknown): boolean {
@@ -250,14 +256,18 @@ export async function getDedicatedClient(): Promise<Client> {
 }
 
 /**
- * Perform a health check using a one-off connection, outside the application
- * pool, so saturated worker traffic does not make a reachable database look
- * down to the load balancer.
+ * Get a reusable connection dedicated to health checks. Keeping this outside
+ * the application pool prevents saturated worker traffic from making a
+ * reachable database look down, while reuse avoids opening a fresh TLS/DB
+ * session for every Fly probe on every machine.
  */
-export async function healthCheck(timeoutMs = 5000): Promise<void> {
+async function getHealthClient(timeoutMs: number): Promise<Client> {
   if (!poolConfig) {
     throw new Error("Database not initialized. Call initializeDatabase() first.");
   }
+
+  if (healthClient) return healthClient;
+  if (healthClientConnectPromise) return healthClientConnectPromise;
 
   const client = new Client({
     connectionString: poolConfig.connectionString,
@@ -270,20 +280,96 @@ export async function healthCheck(timeoutMs = 5000): Promise<void> {
     connectionTimeoutMillis: Math.min(poolConfig.connectionTimeoutMillis ?? timeoutMs, timeoutMs),
   });
 
-  let timeout: NodeJS.Timeout | null = null;
+  client.on('error', (err) => {
+    if (healthClient === client) healthClient = null;
+    logger.warn({ err }, 'Dedicated health check connection failed while idle');
+    void discardHealthClient(client);
+  });
+
+  const connectPromise = (async () => {
+    try {
+      await client.connect();
+      healthClient = client;
+      return client;
+    } catch (error) {
+      await client.end().catch(() => undefined);
+      throw error;
+    }
+  })();
+  healthClientConnectPromise = connectPromise;
+
   try {
-    await client.connect();
-    await Promise.race([
-      client.query('SELECT 1'),
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => reject(new Error('health check query timed out')), timeoutMs);
-      }),
-    ]);
+    return await connectPromise;
   } finally {
-    if (timeout) clearTimeout(timeout);
-    await client.end().catch((err) => {
-      logger.warn({ err }, "Health check connection cleanup failed");
-    });
+    if (healthClientConnectPromise === connectPromise) {
+      healthClientConnectPromise = null;
+    }
+  }
+}
+
+async function discardHealthClient(client: Client): Promise<void> {
+  if (healthClient === client) healthClient = null;
+  const existingClose = healthClientClosePromises.get(client);
+  if (existingClose) return existingClose;
+
+  const closePromise = client.end().catch((err) => {
+    logger.warn({ err }, "Health check connection cleanup failed");
+  });
+  healthClientClosePromises.set(client, closePromise);
+  return closePromise;
+}
+
+/**
+ * Perform a health check on a reusable connection outside the application
+ * pool. Concurrent HTTP probes share one in-flight query. A failed connection
+ * is discarded so the next probe establishes a fresh session.
+ */
+export async function healthCheck(timeoutMs = 5000): Promise<void> {
+  if (healthCheckPromise) return healthCheckPromise;
+
+  const deadlineMs = Date.now() + timeoutMs;
+  const checkOnce = async (): Promise<void> => {
+    const remainingMs = deadlineMs - Date.now();
+    if (remainingMs <= 0) throw new Error('health check query timed out');
+
+    const client = await getHealthClient(remainingMs);
+    let timeout: NodeJS.Timeout | null = null;
+
+    try {
+      await Promise.race([
+        client.query('SELECT 1'),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error('health check query timed out')),
+            Math.max(1, deadlineMs - Date.now()),
+          );
+        }),
+      ]);
+    } catch (error) {
+      await discardHealthClient(client);
+      throw error;
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  };
+
+  const run = async (): Promise<void> => {
+    try {
+      await checkOnce();
+    } catch (error) {
+      if (!isTransientConnectionError(error) || Date.now() >= deadlineMs) throw error;
+      logger.warn({ err: error }, 'Transient health check connection error; retrying once');
+      await checkOnce();
+    }
+  };
+
+  const checkPromise = run();
+  healthCheckPromise = checkPromise;
+
+  try {
+    await checkPromise;
+  } finally {
+    if (healthCheckPromise === checkPromise) healthCheckPromise = null;
   }
 }
 
@@ -292,6 +378,12 @@ export async function healthCheck(timeoutMs = 5000): Promise<void> {
  */
 export async function closeDatabase(): Promise<void> {
   if (pool) {
+    if (healthCheckPromise) await healthCheckPromise.catch(() => undefined);
+    const client = healthClient;
+    healthClient = null;
+    healthClientConnectPromise = null;
+    healthCheckPromise = null;
+    if (client) await discardHealthClient(client);
     await pool.end();
     pool = null;
     poolConfig = null;

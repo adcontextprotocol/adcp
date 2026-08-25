@@ -50,6 +50,7 @@ import {
 
 type TruncationStopReason = 'max_tokens' | 'model_context_window_exceeded';
 interface MockMessage {
+  model: string;
   stop_reason: string;
   content: Array<{ type: string; text?: string; [key: string]: unknown }>;
   usage: { input_tokens: number; output_tokens: number };
@@ -64,6 +65,7 @@ function message(
   usage = { input_tokens: 10, output_tokens: 20 },
 ): MockMessage {
   return {
+    model: 'claude-sonnet-4-6-20260801',
     stop_reason: stopReason,
     content: text ? [{ type: 'text', text }] : [],
     usage,
@@ -164,6 +166,15 @@ describe('Addie response truncation (#4431)', () => {
 
     expect(response.text).toBe(expectedTruncation);
     expect(response.flag_reason).toBe(`Response truncated: ${stopReason}`);
+    expect(response.model_execution).toEqual({
+      source: 'provider',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-4-6',
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6-20260801',
+      model_resolution: 'provider_canonicalized',
+      fallback_reason: null,
+    });
     expect(mocks.createMessage).toHaveBeenCalledOnce();
   });
 
@@ -198,6 +209,15 @@ describe('Addie response truncation (#4431)', () => {
     expect(emittedText).toBe(expectedTruncation);
     expect(done?.response.text).toBe(emittedText);
     expect(done?.response.flag_reason).toBe(`Response truncated: ${stopReason}`);
+    expect(done?.response.model_execution).toEqual({
+      source: 'provider',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-4-6',
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6-20260801',
+      model_resolution: 'provider_canonicalized',
+      fallback_reason: null,
+    });
     expect(mocks.streamMessage).toHaveBeenCalledOnce();
   });
 

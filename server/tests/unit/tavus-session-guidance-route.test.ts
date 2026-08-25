@@ -153,6 +153,24 @@ describe("Tavus session guidance route boundary", () => {
     mocks.getCommitteesLedByUser.mockResolvedValue([]);
     mocks.processMessageStream.mockImplementation(async function* () {
       yield { type: "text", text: "Publishers can use AdCP programmatically." };
+      yield {
+        type: "done",
+        response: {
+          text: "Publishers can use AdCP programmatically.",
+          tools_used: [],
+          tool_executions: [],
+          flagged: false,
+          model_execution: {
+            source: 'provider',
+            requested_provider: 'anthropic',
+            requested_model: 'claude-sonnet-5',
+            provider: 'anthropic',
+            model: 'claude-sonnet-5-20260801',
+            model_resolution: 'provider_canonicalized',
+            fallback_reason: null,
+          },
+        },
+      };
     });
     globalThis.fetch = vi.fn(async (_url, init) => {
       tavusRequestBody = JSON.parse(String(init?.body));
@@ -261,7 +279,51 @@ describe("Tavus session guidance route boundary", () => {
     expect(mocks.addMessage).toHaveBeenCalledWith(
       expect.objectContaining({ role: "user", content: SPOKEN_MESSAGE })
     );
+    expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'assistant',
+      content: 'Publishers can use AdCP programmatically.',
+      model_execution: {
+        source: 'provider',
+        requested_provider: 'anthropic',
+        requested_model: 'claude-sonnet-5',
+        provider: 'anthropic',
+        model: 'claude-sonnet-5-20260801',
+        model_resolution: 'provider_canonicalized',
+        fallback_reason: null,
+      },
+    }));
   });
+
+  it.each(['error_event', 'throw'] as const)(
+    'does not persist partial assistant text after %s before terminal done',
+    async (failureMode) => {
+      mocks.addMessage.mockClear();
+      if (failureMode === 'error_event') {
+        mocks.processMessageStream.mockImplementationOnce(async function* () {
+          yield { type: 'text', text: 'partial private response' };
+          yield { type: 'error', error: 'provider failed' };
+        });
+      } else {
+        mocks.processMessageStream.mockImplementationOnce(async function* () {
+          yield { type: 'text', text: 'partial private response' };
+          throw new Error('provider failed');
+        });
+      }
+
+      const response = await request(mountApp())
+        .post('/api/addie/v1/chat/completions')
+        .set('Authorization', 'Bearer test-llm-secret')
+        .send({
+          messages: [
+            { role: 'system', content: `[conductor:thread_id=${THREAD_ID}] server context` },
+            { role: 'user', content: SPOKEN_MESSAGE },
+          ],
+        });
+
+      expect(response.status).toBe(200);
+      expect(mocks.addMessage.mock.calls.filter(([message]) => message.role === 'assistant')).toEqual([]);
+    },
+  );
 
   it("ignores stored guidance and user scope for a non-video thread", async () => {
     storedContext = {

@@ -7,6 +7,55 @@
  */
 
 export type ModelProviderId = 'anthropic' | 'openai' | 'google';
+export type ModelFallbackReason =
+  | 'primary_unavailable'
+  | 'primary_rate_limited'
+  | 'primary_timeout'
+  | 'primary_capability_unsupported'
+  | 'primary_policy_blocked';
+export type LocalModelResponseReason =
+  | 'cost_cap_exceeded'
+  | 'provider_error'
+  | 'stream_interrupted'
+  | 'no_provider_response'
+  | 'canned_response';
+export type ModelResolution = 'exact' | 'provider_canonicalized' | 'fallback';
+export type RequestedModelSelection =
+  | { requested_provider: ModelProviderId; requested_model: string }
+  | { requested_provider: null; requested_model: null };
+
+export type ModelExecution =
+  | {
+      source: 'provider';
+      requested_provider: ModelProviderId;
+      requested_model: string;
+      provider: ModelProviderId;
+      model: string;
+      model_resolution: ModelResolution;
+      fallback_reason: ModelFallbackReason | null;
+    }
+  | ({ source: 'local'; reason: LocalModelResponseReason } & (
+      | { requested_provider: ModelProviderId; requested_model: string }
+      | { requested_provider: null; requested_model: null }
+    ));
+
+export function classifyLocalModelExecution(
+  selection: RequestedModelSelection,
+  reason: LocalModelResponseReason,
+): Extract<ModelExecution, { source: 'local' }> {
+  if ((selection.requested_provider === null) !== (selection.requested_model === null)) {
+    throw new Error('Requested provider and model must be supplied together');
+  }
+  if (selection.requested_provider === null) {
+    return { source: 'local', requested_provider: null, requested_model: null, reason };
+  }
+  return {
+    source: 'local',
+    requested_provider: selection.requested_provider,
+    requested_model: selection.requested_model,
+    reason,
+  };
+}
 export type ModelReasoningEffort = 'provider_default' | 'none' | 'low' | 'medium' | 'high';
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
@@ -222,5 +271,16 @@ export class UnsupportedModelCapabilityError extends Error {
   ) {
     super(`${provider} provider does not support requested capability: ${capability}`);
     this.name = 'UnsupportedModelCapabilityError';
+  }
+}
+
+export class UnexpectedModelIdentityError extends Error {
+  constructor(
+    readonly provider: ModelProviderId,
+    readonly expectedModel: string,
+    readonly actualModel: string,
+  ) {
+    super(`${provider} returned an unexpected model identity`);
+    this.name = 'UnexpectedModelIdentityError';
   }
 }
