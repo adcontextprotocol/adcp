@@ -31,7 +31,7 @@ import {
   TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH,
   TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE,
 } from '../task-handlers.js';
-import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, supportsSellerGovernanceDiscovery, type TrainingContext } from '../types.js';
+import { supportsGetProductsRejected, supportsSellerGovernanceDiscovery, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
