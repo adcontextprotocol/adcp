@@ -142,7 +142,10 @@ const SAFE_ROUTE_FAMILIES: Readonly<Record<string, string>> = Object.freeze({
  */
 export function authorizationRouteFamily(route: string): string {
   const match = /^\S+ \/api\/([^/?#\s]+)/.exec(route);
-  return SAFE_ROUTE_FAMILIES[match?.[1] ?? ''] ?? 'other';
+  const segment = match?.[1] ?? '';
+  return Object.prototype.hasOwnProperty.call(SAFE_ROUTE_FAMILIES, segment)
+    ? SAFE_ROUTE_FAMILIES[segment]
+    : 'other';
 }
 
 function recordAuthorizationObservation(properties: Record<string, unknown>): void {

@@ -61,6 +61,8 @@ describe('organization authorization rollout observer', () => {
   it('reduces routes to a fixed non-identifying family', () => {
     expect(authorizationRouteFamily('PATCH /api/organizations/org_secret')).toBe('organizations');
     expect(authorizationRouteFamily('GET /api/org_secret/private')).toBe('other');
+    expect(authorizationRouteFamily('GET /api/toString/private')).toBe('other');
+    expect(authorizationRouteFamily('GET /api/__proto__/private')).toBe('other');
   });
 
   it('compares the canonical and authenticated credentials without exposing IDs', async () => {
