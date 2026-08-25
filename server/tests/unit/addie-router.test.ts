@@ -1,10 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { AddieRouter, ROUTING_RULES, parseRouterResponse } from '../../src/addie/router.js';
+import { AddieRouter, ROUTING_RULES, buildRoutingPrompt, parseRouterResponse } from '../../src/addie/router.js';
 import type { RoutingContext, ExecutionPlan } from '../../src/addie/router.js';
 import {
   getToolSetDescriptionsForRouter,
   TOOL_SETS,
   getToolsForSets,
+  getValidToolSetNames,
 } from '../../src/addie/tool-sets.js';
 
 /**
@@ -19,6 +20,19 @@ import {
 
 // Use a dummy key — quickMatch never touches the Anthropic API
 const router = new AddieRouter('sk-test-dummy-key');
+
+describe('Addie router prompt policy', () => {
+  it('lists the exact eligible sets and resolves billing guidance by privilege', () => {
+    const memberPrompt = buildRoutingPrompt({ message: 'invoice please', source: 'dm' });
+    const adminPrompt = buildRoutingPrompt({ message: 'invoice please', source: 'dm', isAAOAdmin: true });
+
+    expect(memberPrompt).toContain(`Valid sets: ${[...getValidToolSetNames(false)].join(', ')}`);
+    expect(memberPrompt).toContain('→ [] (use the always-available escalation tool)');
+    expect(adminPrompt).toContain(`Valid sets: ${[...getValidToolSetNames(true)].join(', ')}`);
+    expect(adminPrompt).toContain('→ ["billing", "admin"]');
+    expect(memberPrompt).toContain('Exact bare acknowledgments');
+  });
+});
 
 function makeCtx(overrides: Partial<RoutingContext> = {}): RoutingContext {
   return {
